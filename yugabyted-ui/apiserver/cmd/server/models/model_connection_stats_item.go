@@ -2,7 +2,9 @@ package models
 
 type ConnectionStatsItem struct {
 
-    Pool string `json:"pool"`
+    DatabaseName string `json:"database_name"`
+
+    UserName string `json:"user_name"`
 
     ActiveLogicalConnections int64 `json:"active_logical_connections"`
 

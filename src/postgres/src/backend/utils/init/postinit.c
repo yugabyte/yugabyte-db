@@ -587,7 +587,7 @@ BaseInit(void)
  * already have a PGPROC struct ... but it's not completely filled in yet.
  *
  * YB extension: session_id. If greater than zero, connect local YbSession
- * to existing YbClientSession instance in TServer, rather than requesting new.
+ * to existing YBClientSession instance in TServer, rather than requesting new.
  * Helpful to initialize background worker backends that need to share state.
  *
  * Note:
@@ -693,18 +693,19 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	if (!bootstrap)
 		pgstat_initialize();
 
+	/*
+	 * Set client_addr and client_host in ASH metadata which will remain
+	 * constant throughout the session. We don't want to do this during
+	 * bootstrap because it won't have client address anyway.
+	 */
+	if (YbAshIsClientAddrSet())
+		YbSetAshClientAddrAndPort();
+
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
 		YBInitPostgresBackend("postgres", "", username, session_id);
 	else
 		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
-
-	/*
-	 * Set client_addr and client_host which will remain constant
-	 * throughout the session.
-	 */
-	if (IsYugaByteEnabled() && YBEnableAsh())
-		YbSetAshClientAddrAndPort();
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -1040,6 +1041,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 * the correct value on their next try.
 	 */
 	MyProc->databaseId = MyDatabaseId;
+
+	/* YB: Set the dbid in ASH metadata */
+	if (IsYugaByteEnabled() && yb_ash_enable_infra)
+		YbAshSetDatabaseId(MyDatabaseId);
 
 	/*
 	 * We established a catalog snapshot while reading pg_authid and/or
@@ -1391,11 +1396,19 @@ ThereIsAtLeastOneRole(void)
  * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
  * code and ASH keeps working without client address and port for the current PG
  * backend.
+ *
+ * ASH samples only normal backends and this excludes background workers.
+ * So it's fine in that case to not set the client address.
  */
 static void
 YbSetAshClientAddrAndPort()
 {
-	Assert(MyProcPort != NULL);
+	/* Background workers which creates a postgres backend may have null MyProcPort. */
+	if (MyProcPort == NULL)
+	{
+		Assert(MyProc->isBackgroundWorker == true);
+		return;
+	}
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 

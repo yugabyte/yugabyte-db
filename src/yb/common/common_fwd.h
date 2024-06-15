@@ -21,6 +21,7 @@
 #include "yb/common/ql_protocol.fwd.h"
 #include "yb/common/redis_protocol.fwd.h"
 #include "yb/common/wire_protocol.fwd.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -31,6 +32,7 @@ class ConstContiguousRow;
 class DocHybridTime;
 class EncodedDocHybridTime;
 class HybridTime;
+class MissingValueProvider;
 class TableProperties;
 class TransactionStatusManager;
 class TypeInfo;
@@ -63,6 +65,8 @@ enum class PgSystemAttrNum : int;
 enum class DataType;
 
 enum class SortingType;
+
+YB_STRONGLY_TYPED_BOOL(ClampUncertaintyWindow);
 
 namespace common {
 

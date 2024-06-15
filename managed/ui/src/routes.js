@@ -34,10 +34,17 @@ import Releases from './pages/Releases';
 import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
+import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
-import { clearRbacCreds, getRbacEnabledVal, isRbacEnabled } from './redesign/features/rbac/common/RbacUtils';
+import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
+import { SecondaryDashboard } from './pages/SecondaryDashboard';
+import {
+  clearRbacCreds,
+  getRbacEnabledVal,
+  isRbacEnabled
+} from './redesign/features/rbac/common/RbacUtils';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -60,6 +67,7 @@ export const clearCredentials = () => {
   localStorage.removeItem('apiToken');
   localStorage.removeItem('customerId');
   localStorage.removeItem('userId');
+  localStorage.removeItem(testFeatureFlagsLocalStorageKey);
   clearRbacCreds();
 
   /*
@@ -124,9 +132,9 @@ axios.interceptors.response.use(
   (error) => {
     // skip 401 response for "/login" and "/register" endpoints
     //rbac is not loaded yet or it is enabled
-    if(getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
+    if (getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
 
-    const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
+    const isAllowedUrl = /.+\/(login|register|reset_password)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page
@@ -244,6 +252,11 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
+          <Route
+            path="/universes/:uuid/troubleshoot/:troubleshootUUID"
+            component={SecondaryDashboard}
+          />
+          <Route path="/universes/:uuid/replication-slots/:streamID" component={SlotDetail} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}

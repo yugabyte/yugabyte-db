@@ -60,13 +60,8 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
  * to the generated value.
  */
 extern Oid YBCHeapInsert(TupleTableSlot *slot,
-                         HeapTuple tuple,
+                         YBCPgStatement blockInsertStmt,
                          EState *estate);
-extern Oid YBCHeapInsertForDb(Oid dboid,
-                              TupleTableSlot *slot,
-                              HeapTuple tuple,
-                              EState *estate,
-                              Datum *ybctid);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
@@ -77,16 +72,16 @@ extern Oid YBCHeapInsertForDb(Oid dboid,
  * to the generated value.
  */
 extern Oid YBCExecuteInsert(Relation rel,
-                            TupleDesc tupleDesc,
-                            HeapTuple tuple,
+							TupleTableSlot *slot,
                             OnConflictAction onConflictAction);
 extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  Relation rel,
-                                 TupleDesc tupleDesc,
-                                 HeapTuple tuple,
+								 TupleTableSlot *slot,
                                  OnConflictAction onConflictAction,
                                  Datum *ybctid,
                                  YBCPgTransactionSetting transaction_setting);
+
+extern void YBCApplyWriteStmt(YBCPgStatement handle, Relation relation);
 
 /*
  * Execute the insert outside of a transaction.
@@ -97,13 +92,11 @@ extern Oid YBCExecuteInsertForDb(Oid dboid,
  * to the generated value.
  */
 extern Oid YBCExecuteNonTxnInsert(Relation rel,
-                                  TupleDesc tupleDesc,
-                                  HeapTuple tuple,
+								  TupleTableSlot *slot,
                                   OnConflictAction onConflictAction);
 extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                        Relation rel,
-                                       TupleDesc tupleDesc,
-                                       HeapTuple tuple,
+									   TupleTableSlot *slot,
                                        OnConflictAction onConflictAction,
                                        Datum *ybctid);
 
@@ -190,7 +183,6 @@ extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
  */
 extern Oid YBCExecuteUpdateReplace(Relation rel,
 								   TupleTableSlot *slot,
-								   HeapTuple tuple,
 								   EState *estate);
 
 //------------------------------------------------------------------------------
@@ -213,6 +205,12 @@ extern void YBCUpdateSysCatalogTupleForDb(Oid dboid,
 // Utility methods.
 
 extern bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo);
+
+/*
+ * Checks if the given statement is planned to be executed as a single-row
+ * modify transaction.
+ */
+extern bool YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate);
 
 extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 

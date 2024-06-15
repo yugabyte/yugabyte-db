@@ -151,15 +151,7 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 } // namespace
 
-#if defined(__APPLE__) && !defined(NDEBUG)
-// We are experiencing more slowness in tests on macOS in debug mode.
-const int kDefaultPgYbSessionTimeoutMs = 120 * 1000;
-#else
-const int kDefaultPgYbSessionTimeoutMs = 60 * 1000;
-#endif
-
-DEFINE_UNKNOWN_int32(pg_yb_session_timeout_ms, kDefaultPgYbSessionTimeoutMs,
-             "Timeout for operations between PostgreSQL server and YugaByte DocDB services");
+DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
 PgTxnManager::PgTxnManager(
     PgClient* client,
@@ -172,7 +164,8 @@ PgTxnManager::PgTxnManager(
 
 PgTxnManager::~PgTxnManager() {
   // Abort the transaction before the transaction manager gets destroyed.
-  WARN_NOT_OK(AbortTransaction(), "Failed to abort transaction in dtor");
+  WARN_NOT_OK(ExitSeparateDdlTxnModeWithAbort(), "Failed to abort DDL transaction in dtor");
+  WARN_NOT_OK(AbortPlainTransaction(), "Failed to abort DML transaction in dtor");
 }
 
 Status PgTxnManager::BeginTransaction(int64_t start_time) {
@@ -184,6 +177,9 @@ Status PgTxnManager::BeginTransaction(int64_t start_time) {
     return STATUS(IllegalState, "Transaction is already in progress");
   }
   pg_txn_start_us_ = start_time;
+  // NOTE: Do not reset in_txn_blk_ when restarting txns internally
+  // (i.e., via PgTxnManager::RecreateTransaction).
+  in_txn_blk_ = false;
   return RecreateTransaction(SavePriority::kFalse);
 }
 
@@ -251,6 +247,20 @@ Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
 
 Status PgTxnManager::SetDeferrable(bool deferrable) {
   deferrable_ = deferrable;
+  return Status::OK();
+}
+
+Status PgTxnManager::SetInTxnBlock(bool in_txn_blk) {
+  in_txn_blk_ = in_txn_blk;
+  VLOG_WITH_FUNC(2) << (in_txn_blk ? "In " : "Not in ") << "txn block.";
+  return Status::OK();
+}
+
+Status PgTxnManager::SetReadOnlyStmt(bool read_only_stmt) {
+  read_only_stmt_ = read_only_stmt;
+  VLOG_WITH_FUNC(2)
+    << "Executing a " << (read_only_stmt ? "read only " : "read/write ")
+    << "stmt.";
   return Status::OK();
 }
 
@@ -368,16 +378,21 @@ void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
   active_sub_transaction_id_ = id;
 }
 
-Status PgTxnManager::CommitTransaction() {
-  return FinishTransaction(Commit::kTrue);
+Status PgTxnManager::CommitPlainTransaction() {
+  return FinishPlainTransaction(Commit::kTrue);
 }
 
-Status PgTxnManager::FinishTransaction(Commit commit) {
-  // If a DDL operation during a DDL txn fails the txn will be aborted before we get here.
-  // However if there are failures afterwards (i.e. during COMMIT or catalog version increment),
-  // then we might get here with a ddl_txn_. Clean it up in that case.
-  if (IsDdlMode() && !commit) {
-    RETURN_NOT_OK(ExitSeparateDdlTxnMode(commit));
+Status PgTxnManager::AbortPlainTransaction() {
+  return FinishPlainTransaction(Commit::kFalse);
+}
+
+Status PgTxnManager::FinishPlainTransaction(Commit commit) {
+  if (PREDICT_FALSE(IsDdlMode())) {
+    // GH #22353 - A DML txn must be aborted or committed only when there is no active DDL txn
+    // (ie. after any active DDL txn has itself committed or aborted). Silently ignoring this
+    // scenario may lead to errors in the future. Convert this to an SCHECK once the GH issue is
+    // resolved.
+    LOG(WARNING) << "Received DML txn commit with DDL txn state active";
   }
 
   if (!txn_in_progress_) {
@@ -391,15 +406,15 @@ Status PgTxnManager::FinishTransaction(Commit commit) {
     return Status::OK();
   }
 
+  // Aborting a transaction is on a best-effort basis. In the event that the abort RPC to the
+  // tserver fails, we simply reset the transaction state here and return any error back to the
+  // caller. In the event that the tserver recovers, it will eventually expire the transaction due
+  // to inactivity.
   VLOG_TXN_STATE(2) << (commit ? "Committing" : "Aborting") << " transaction.";
   Status status = client_->FinishTransaction(commit);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
   return status;
-}
-
-Status PgTxnManager::AbortTransaction() {
-  return FinishTransaction(Commit::kFalse);
 }
 
 void PgTxnManager::ResetTxnAndSession() {
@@ -413,6 +428,7 @@ void PgTxnManager::ResetTxnAndSession() {
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  read_only_stmt_ = false;
 }
 
 Status PgTxnManager::EnterSeparateDdlTxnMode() {
@@ -424,15 +440,38 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   return Status::OK();
 }
 
-Status PgTxnManager::ExitSeparateDdlTxnMode(Commit commit) {
+Status PgTxnManager::ExitSeparateDdlTxnModeWithAbort() {
+  return ExitSeparateDdlTxnMode({});
+}
+
+Status PgTxnManager::ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_silent_altering) {
+  return ExitSeparateDdlTxnMode(
+      DdlCommitInfo{.db_oid = db_oid, .is_silent_altering = is_silent_altering});
+}
+
+Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& commit_info) {
   VLOG_TXN_STATE(2);
   if (!IsDdlMode()) {
-    RSTATUS_DCHECK(!commit, IllegalState, "Commit ddl txn called when not in a DDL transaction");
+    RSTATUS_DCHECK(
+        !commit_info, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_mode_));
-  ddl_mode_.reset();
-  return Status::OK();
+  decltype(ddl_mode_) ddl_mode;
+  ddl_mode = ddl_mode_;
+  if (commit_info && commit_info->is_silent_altering) {
+    ddl_mode->silently_altered_db = commit_info->db_oid;
+  }
+
+  Commit commit = commit_info ? Commit::kTrue : Commit::kFalse;
+  Status status = client_->FinishTransaction(commit, ddl_mode);
+  WARN_NOT_OK(status, Format("Failed to $0 DDL transaction", commit ? "commit" : "abort"));
+  if (PREDICT_TRUE(status.ok() || !commit)) {
+    // In case of an abort, reset the DDL mode here as we may later re-enter this function and retry
+    // the abort as part of transaction error recovery if the status is not ok.
+    ddl_mode_.reset();
+  }
+
+  return status;
 }
 
 void PgTxnManager::SetDdlHasSyscatalogChanges() {
@@ -495,6 +534,19 @@ void PgTxnManager::SetupPerformOptions(
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
     // pg_txn_start_us is similarly only used for kPlain transactions.
     options->set_pg_txn_start_us(pg_txn_start_us_);
+    // Only clamp read-only txns/stmts.
+    // Do not clamp in the serializable case since
+    // - SERIALIZABLE reads do not pick read time until later.
+    // - SERIALIZABLE reads do not observe read restarts anyways.
+    if (yb_read_after_commit_visibility
+          == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
+        && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION)
+      // We clamp uncertainty window when
+      // - either we are working with a read only txn
+      // - or we are working with a read only stmt
+      //   i.e. no txn block and a pure SELECT stmt.
+      options->set_clamp_uncertainty_window(
+        read_only_ || (!in_txn_blk_ && read_only_stmt_));
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
@@ -526,8 +578,15 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 
 void PgTxnManager::IncTxnSerialNo() {
   ++txn_serial_no_;
-  active_sub_transaction_id_ = 0;
+  active_sub_transaction_id_ = kMinSubTransactionId;
   ++read_time_serial_no_;
+}
+
+void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
+  txn_serial_no_ = session_data->txn_serial_no;
+  read_time_serial_no_ = session_data->read_time_serial_no;
+  active_sub_transaction_id_ = session_data->active_sub_transaction_id;
+  VLOG_TXN_STATE(2);
 }
 
 }  // namespace yb::pggate

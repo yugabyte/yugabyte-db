@@ -37,7 +37,7 @@ export interface YBModalProps extends DialogProps {
   submitButtonTooltip?: React.ReactNode;
   submitTestId?: string;
   cancelLabel?: React.ReactNode;
-  cancelButtonTooltip?: string;
+  cancelButtonTooltip?: React.ReactNode;
   cancelTestId?: string;
   buttonProps?: OverrideButtonProps;
   customTitle?: React.ReactNode;
@@ -45,6 +45,7 @@ export interface YBModalProps extends DialogProps {
   dialogContentProps?: DialogContentProps;
   titleContentProps?: string;
   isSubmitting?: boolean;
+  showSubmitSpinner?: boolean;
 }
 
 export const SlideTransition = React.forwardRef(
@@ -115,7 +116,9 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     lineHeight: '26px'
   },
   footerAccessory: {
-    marginRight: 'auto'
+    display: 'flex',
+    flexShrink: 1,
+    width: '100%'
   },
   title: {
     display: 'flex'
@@ -130,6 +133,9 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
   text: {
     marginLeft: theme.spacing(1),
     whiteSpace: 'nowrap'
+  },
+  submitButton: {
+    flexShrink: 0
   }
 }));
 
@@ -155,7 +161,8 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     submitButtonTooltip,
     cancelButtonTooltip,
     isSubmitting,
-    dialogContentProps = {},
+    showSubmitSpinner = true,
+    dialogContentProps = { dividers: true },
     titleContentProps,
     ...dialogProps
   } = props;
@@ -246,10 +253,11 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
       <YBButton
         variant="primary"
         onClick={handleSubmit}
+        className={classes.submitButton}
         {...submitBtnProps}
         type="submit"
         autoFocus
-        showSpinner={isSubmitting}
+        showSpinner={isSubmitting && showSubmitSpinner}
         data-testid={submitTestId ?? 'YBModal-SubmitButton'}
       >
         {submitLabel}

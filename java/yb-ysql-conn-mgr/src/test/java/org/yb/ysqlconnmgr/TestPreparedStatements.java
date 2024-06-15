@@ -17,6 +17,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 import java.sql.*;
 import java.util.HashMap;
@@ -179,6 +180,40 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
         if (connection[i] != null && !connection[i].isClosed())
           connection[i].close();
       }
+    }
+  }
+
+  // There are two ways of using prepared statements
+  // - Protocol level prepared statements
+  // - PREPARE and EXECUTE query
+  // testSqlPrepareStatement tests the working of PREPARE and EXECUTE queries
+  // and checks that the connection gets sticky when PREPARE query is executed.
+  @Test
+  public void testSqlPrepareStatement() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement stmt = conn.createStatement()) {
+
+      stmt.execute("CREATE TABLE test_table(id int)");
+      stmt.execute("INSERT INTO test_table values (1), (2), (3)");
+      assertTrue("Expected the connection to be unsticky " +
+          "before executing PREPARE query",
+          verifySessionParameterValue(stmt,
+              "ysql_conn_mgr_sticky_object_count", "0"));
+
+      // PREPARE query
+      stmt.execute("PREPARE testPlan (int) AS SELECT * FROM test_table WHERE id = $1");
+      assertTrue("Expected the connection to be sticky " +
+          "after executing PREPARE query",
+          verifySessionParameterValue(stmt,
+              "ysql_conn_mgr_sticky_object_count", "1"));
+
+      // EXECUTE query
+      stmt.executeQuery("EXECUTE testPlan(1)");
+
+    } catch (Exception e) {
+      fail("Got exception " + e.getMessage());
     }
   }
 }

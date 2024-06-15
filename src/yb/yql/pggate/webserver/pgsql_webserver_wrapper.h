@@ -61,6 +61,8 @@ typedef struct YsqlStatementStat {
 
   // Prefix of Counters in pg_stat_monitor.c
 
+  int64 userid;       /* OID of user who executed the statement */
+  int64 dbid;         /* OID of database in which the statement was executed */
   int64 calls;         /* # of times executed */
   double total_time;   /* total execution time, in msec */
   double min_time;     /* minimum execution time in msec */
@@ -68,7 +70,13 @@ typedef struct YsqlStatementStat {
   double mean_time;    /* mean execution time in msec */
   double sum_var_time; /* sum of variances in execution time in msec */
   int64 rows;          /* total # of retrieved or affected rows */
-  uint64 query_id;     /* query id of the pgssHashKey for the query */
+  int64 query_id;     /* query id of the pgssHashKey for the query */
+  int64 local_blks_hit; /* Number of local buffer hits */
+  int64 local_blks_read; /* Number of local disk blocks read */
+  int64 local_blks_dirtied; /* Number of local disk blocks dirtied */
+  int64 local_blks_written; /* Number of local disk blocks written */
+  int64 temp_blks_read; /* Number of temp blocks read */
+  int64 temp_blks_written; /* Number of temp blocks written */
 } YsqlStatementStat;
 
 typedef struct {
@@ -91,6 +99,7 @@ typedef struct {
 } YbConnectionMetrics;
 
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
+void DestroyWebserver(struct WebserverWrapper *webserver);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
 void RegisterRpczEntries(
     postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,

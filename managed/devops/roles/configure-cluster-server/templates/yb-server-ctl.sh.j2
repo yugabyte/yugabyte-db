@@ -140,6 +140,10 @@ clean_data_paths() {
     if [ "$daemon" == "tserver" ]; then
       rm -rf "${MOUNT_PATHS[i]}"/pg_data
     fi
+
+    if [ "$daemon" == "controller" ]; then
+      rm -rf "${MOUNT_PATHS[i]}"/ybc-data
+    fi
   done
 
   print_err_out "Cleaning core files on `hostname`"
@@ -182,8 +186,11 @@ hard_kill_postgres() {
     if [[ ${postmaster_pid} =~ ^[0-9]+$ ]]; then
       local pg_pids=()
       # In case of the ps command returning nothing, it returns as an error.
+      # The output of the ps command is required to have no padding for easy parsing.
+      # To ensure this, the pid column is explicitly width controlled via "pid:1".
       set +e
-      mapfile -t pg_pids < <(ps -p "${postmaster_pid}" --ppid "${postmaster_pid}" -o pid=)
+      mapfile -t pg_pids < <(ps --no-headers -p "${postmaster_pid}" --ppid "${postmaster_pid}" \
+        -o pid:1)
       set -e
 
       if [[ -n ${pg_pids:-} ]]; then
@@ -218,8 +225,12 @@ esac
 
 if [ "$1" == "clean-instance" ]; then
   print_err_out "Cleaning instance `hostname`"
-  rm -rf "{{ yb_home_dir }}"/*
-  rm -rf "{{ yb_home_dir }}"/.yugabytedb
+  pushd "{{ yb_home_dir }}"
+  # Delete all except hidden files and folders, current directory, bin and node-agent.
+  find . -maxdepth 1 -not -path "*/\.*" -not -name "." -not -name "bin" -not -name "node-agent" -exec rm -rf {} +
+  popd
+  # Delete the bin folder last.
+  rm -rf "{{ yb_home_dir }}/.yugabytedb" "{{ yb_home_dir }}/bin"
   exit 0
 fi
 
@@ -274,6 +285,14 @@ case "$command" in
     fi
     exit_on_running
     print_err_out "Starting yb-$daemon on `hostname` $start_mode"
+
+    # Before starting the process, make sure clock is synchronized.
+    clock_sync_script="{{ yb_home_dir }}/bin/clock-sync.sh"
+    # Check if clock-sync.sh script exists and is executable before executing
+    if [[ -x "$clock_sync_script" ]]; then
+      "$clock_sync_script"
+    fi
+
     # We need all three file descriptors closed so SSH connections running this do not hang!
     nohup ${daemon_binary} $create_option --flagfile ${daemon_conf} \
       >>"$daemon_home/${daemon}.out" 2>>"$daemon_home/${daemon}.err" </dev/null &

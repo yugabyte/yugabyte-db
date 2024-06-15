@@ -239,6 +239,11 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   unique_ptr<CQLRequest> request;
   unique_ptr<CQLResponse> response;
 
+  ADOPT_TRACE(call_->trace());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->set_rpc_request_id(call_->instance_id());
+    wait_state->UpdateAuxInfo({.method{"CQLProcessCall"}});
+  }
   // Parse the CQL request. If the parser failed, it sets the error message in response.
   parse_begin_ = MonoTime::Now();
   const auto& context = static_cast<const CQLConnectionContext&>(call_->connection()->context());
@@ -263,7 +268,6 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
     call_->trace()->set_end_to_end_traces_requested(true);
   }
   call_->SetRequest(request_, service_impl_);
-  ADOPT_TRACE(call_->trace());
   retry_count_ = 0;
   response = ProcessRequest(*request_);
   PrepareAndSendResponse(response);
@@ -406,11 +410,18 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const StartupRequest& req) 
   }
 }
 
+void CQLProcessor::UpdateAshQueryId(const CQLMessage::QueryId& query_id) {
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->set_query_id(CQLMessage::QueryIdAsUint64(query_id));
+  }
+}
+
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) {
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
   VLOG(1) << "Generated Query Id = " << query_id;
+  UpdateAshQueryId(query_id);
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
@@ -448,6 +459,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
+  UpdateAshQueryId(req.query_id());
   auto stmt_res = GetPreparedStatement(req.query_id(), req.params().schema_version());
   if (!stmt_res.ok()) {
     return ProcessError(stmt_res.status(), req.query_id());
@@ -472,6 +484,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   }
   const CQLMessage::QueryId query_id =
       CQLStatement::GetQueryId(ql_env_.CurrentKeyspace(), req.query());
+  UpdateAshQueryId(query_id);
   // Allocates space to unprepared statements in the cache.
   const shared_ptr<CQLStatement> stmt = service_impl_->AllocateStatement(
       query_id, req.query(), &ql_env_, IsPrepare::kFalse);
@@ -601,6 +614,8 @@ Result<shared_ptr<const CQLStatement>> CQLProcessor::GetPreparedStatement(
 }
 
 void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::SharedPtr& result) {
+  ADOPT_WAIT_STATE(call_ ? call_->wait_state() : nullptr);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   unique_ptr<CQLResponse> response(s.ok() ? ProcessResult(result) : ProcessError(s));
   if (response && !s.ok()) {
     // Error response means we're not going to be transparently restarting a query.

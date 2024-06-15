@@ -6,11 +6,13 @@ set -euo pipefail
 #Installation information.
 INSTALL_USER=""
 INSTALL_USER_HOME=""
+INSTALL_PATH=""
 NODE_AGENT_HOME=""
-NODE_AGENT_PKG_DIR=""
-NODE_AGENT_RELEASE_DIR=""
+NODE_AGENT_PKG_PATH=""
+NODE_AGENT_RELEASE_PATH=""
 NODE_AGENT_PKG_TGZ_PATH=""
-NODE_AGENT_CONFIG_FILEPATH=""
+NODE_AGENT_CONFIG_PATH=""
+NODE_AGENT_REGISTRY_PATH=""
 
 # Yugabyte Anywhere SSL cert verification option.
 SKIP_VERIFY_CERT=""
@@ -31,13 +33,13 @@ ZONE_NAME=""
 COMMAND=""
 VERSION=""
 NODE_AGENT_BASE_URL=""
-NODE_AGRNT_CERT_PATH=""
+NODE_AGENT_CERT_PATH=""
 NODE_AGENT_DOWNLOAD_URL=""
 NODE_AGENT_ID=""
 NODE_AGENT_PKG_TGZ="node-agent.tgz"
 API_TOKEN_HEADER="X-AUTH-YW-API-TOKEN"
 INSTALLER_NAME="node-agent-installer.sh"
-SYSTEMD_DIR="/etc/systemd/system"
+SYSTEMD_PATH="/etc/systemd/system"
 SERVICE_NAME="yb-node-agent.service"
 SERVICE_RESTART_INTERVAL_SEC=2
 SESSION_INFO_URL=""
@@ -53,7 +55,15 @@ popd () {
   command popd > /dev/null
 }
 
-add_path() {
+run_as_super_user() {
+  if [ $(id -u) = 0 ]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+export_path() {
   if [[ ":$PATH:" != *":$1:"* ]]; then
     PATH="$1${PATH:+":$PATH"}"
     echo "PATH=$PATH" >> "$INSTALL_USER_HOME"/.bashrc
@@ -61,8 +71,15 @@ add_path() {
   fi
 }
 
+save_node_agent_home() {
+  local node_agent_registry_path=$(dirname "$NODE_AGENT_REGISTRY_PATH")
+  mkdir -p "$node_agent_registry_path"
+  echo "node_agent_home: $NODE_AGENT_HOME" > "$NODE_AGENT_REGISTRY_PATH"
+  chmod 600 "$NODE_AGENT_REGISTRY_PATH"
+}
+
 setup_node_agent_dir() {
-  pushd "$INSTALL_USER_HOME"
+  pushd "$INSTALL_PATH"
   echo "* Creating Node Agent Directory."
   #Create node-agent directory.
   mkdir -p "$NODE_AGENT_HOME"
@@ -75,7 +92,8 @@ setup_node_agent_dir() {
   mkdir -p cert config logs release
   chmod -R 755 .
   popd
-  add_path "$NODE_AGENT_PKG_DIR/bin"
+  save_node_agent_home
+  export_path "$NODE_AGENT_PKG_PATH/bin"
   popd
 }
 
@@ -89,6 +107,7 @@ set_log_dir_permission() {
 set_node_agent_base_url() {
   local RESPONSE_FILE="/tmp/session_info_${INSTALL_USER}.json"
   local STATUS_CODE=""
+  set +e
   STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
     "$SESSION_INFO_URL" --header "$HEADER: $HEADER_VAL" --output "$RESPONSE_FILE"
     )
@@ -97,7 +116,6 @@ set_node_agent_base_url() {
     echo "Fail to get session info. Status code $STATUS_CODE"
     exit 1
   fi
-  set +e
   CUSTOMER_ID="$(grep -o '"customerUUID":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
   NODE_AGENT_BASE_URL="$PLATFORM_URL/api/v1/customers/$CUSTOMER_ID/node_agents"
   rm -rf "$RESPONSE_FILE"
@@ -107,6 +125,7 @@ set_node_agent_base_url() {
 uninstall_node_agent() {
   local RESPONSE_FILE="/tmp/node_agent_${INSTALL_USER}.json"
   local STATUS_CODE=""
+  set +e
   STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
     "$NODE_AGENT_BASE_URL?nodeIp=$NODE_IP" --header "$HEADER: $HEADER_VAL" \
     --output "$RESPONSE_FILE"
@@ -118,17 +137,15 @@ uninstall_node_agent() {
   fi
   # Command jq is not available.
   # Continue after pipefail.
-  set +e
   local NODE_AGENT_UUID=""
   NODE_AGENT_UUID="$(grep -o '"uuid":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
   rm -rf "$RESPONSE_FILE"
   local RUNNING=""
   RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
   if [ -n "$RUNNING" ]; then
-    sudo systemctl stop yb-node-agent
-    sudo systemctl disable yb-node-agent
+    run_as_super_user systemctl stop yb-node-agent
+    run_as_super_user systemctl disable yb-node-agent
   fi
-  set -e
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
     STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request DELETE \
@@ -139,6 +156,7 @@ uninstall_node_agent() {
       exit 1
     fi
   fi
+  set -e
 }
 
 download_package() {
@@ -152,12 +170,14 @@ download_package() {
       GO_ARCH_TYPE="arm64"
     fi
     echo "* Getting $OS/$GO_ARCH_TYPE package"
-    mkdir -p "$NODE_AGENT_RELEASE_DIR"
-    pushd "$NODE_AGENT_RELEASE_DIR"
+    mkdir -p "$NODE_AGENT_RELEASE_PATH"
+    pushd "$NODE_AGENT_RELEASE_PATH"
     local RESPONSE_CODE=""
+    set +e
     RESPONSE_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" --location --request GET \
     "$NODE_AGENT_DOWNLOAD_URL?downloadType=package&os=$OS&arch=$GO_ARCH_TYPE" \
     --header "$HEADER: $HEADER_VAL" --output "$NODE_AGENT_PKG_TGZ")
+    set -e
     popd
     if [ "$RESPONSE_CODE" -ne 200 ]; then
       echo "x Error while downloading the node agent build package"
@@ -173,7 +193,7 @@ extract_package() {
     #./
     #./<version>/
     #./<version>/*
-    pushd "$NODE_AGENT_RELEASE_DIR"
+    pushd "$NODE_AGENT_RELEASE_PATH"
     set +o pipefail
     VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | awk -F '/' '$2{print $2; exit}')
     set -o pipefail
@@ -191,17 +211,19 @@ extract_package() {
 
 setup_symlink() {
   #Remove the previous symlinks if they exist.
-  if [ -L "$NODE_AGENT_PKG_DIR" ]; then
-    unlink "$NODE_AGENT_PKG_DIR"
+  if [ -L "$NODE_AGENT_PKG_PATH" ]; then
+    unlink "$NODE_AGENT_PKG_PATH"
   fi
   #Create a new symlink between node-agent/pkg -> node-agent/release/<version>.
-  ln -s -f "$NODE_AGENT_RELEASE_DIR/$VERSION" "$NODE_AGENT_PKG_DIR"
+  ln -s -f "$NODE_AGENT_RELEASE_PATH/$VERSION" "$NODE_AGENT_PKG_PATH"
 }
 
 check_sudo_access() {
   SUDO_ACCESS="false"
   set +e
-  if sudo -n pwd >/dev/null 2>&1; then
+  if [ $(id -u) = 0 ]; then
+    SUDO_ACCESS="true"
+  elif sudo -n pwd >/dev/null 2>&1; then
     SUDO_ACCESS="true"
   fi
   if [ "$OS" = "Linux" ]; then
@@ -213,10 +235,10 @@ check_sudo_access() {
 modify_firewall() {
   set +e
   if command -v firewall-cmd >/dev/null 2>&1; then
-    is_running=$(sudo firewall-cmd --state 2> /dev/null)
+    is_running=$(run_as_super_user firewall-cmd --state 2> /dev/null)
     if [ "$is_running" = "running" ]; then
-        sudo firewall-cmd --add-port=${NODE_PORT}/tcp --permanent \
-        && sudo systemctl restart firewalld
+        run_as_super_user firewall-cmd --add-port=${NODE_PORT}/tcp --permanent
+        run_as_super_user systemctl restart firewalld
     fi
   fi
   set -e
@@ -229,27 +251,34 @@ modify_selinux() {
       # The changes made with chcon are temporary in the sense that the context of the file
       # altered with chcon goes back to default when restorecon is run.
       # It should not even try to reach out to the repo.
-      sudo chcon -R -t bin_t "$NODE_AGENT_HOME"
-    else
-      if command -v yum >/dev/null 2>&1; then
-        sudo yum install -y policycoreutils-python-utils
-      elif command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update -y
-        sudo apt-get install -y semanage-utils
+      run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
+    elif command -v yum >/dev/null 2>&1; then
+      # Install the semanage package directly.
+      run_as_super_user yum install -y policycoreutils-python-utils
+      if ! command -v semanage >/dev/null 2>&1; then
+        # Search and install the package that provides semanage.
+        run_as_super_user yum install -y /usr/sbin/semanage
       fi
+    elif command -v apt-get >/dev/null 2>&1; then
+      run_as_super_user apt-get update -y
+      run_as_super_user apt-get install -y semanage-utils
     fi
   fi
   # Check if semanage was installed in the previous steps.
   if command -v semanage >/dev/null 2>&1; then
-    sudo semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
+    run_as_super_user semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      sudo semanage port -a -t http_port_t -p tcp "$NODE_PORT"
+      run_as_super_user semanage port -a -t http_port_t -p tcp "$NODE_PORT"
     fi
-    sudo semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
+    run_as_super_user semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
     if [ "$?" -ne 0 ]; then
-      sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+      run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
     fi
-    sudo restorecon -ir "$NODE_AGENT_HOME"
+    run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
+  else
+    # Let it proceed as there can be policies to allow.
+    echo "Command semanage does not exist. Defaulting to using chcon"
+    run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
   fi
   set -e
 }
@@ -260,7 +289,7 @@ install_systemd_service() {
   fi
   modify_firewall
   echo "* Installing Node Agent Systemd Service"
-  sudo tee "$SYSTEMD_DIR/$SERVICE_NAME"  <<-EOF
+  run_as_super_user tee "$SYSTEMD_PATH/$SERVICE_NAME"  <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
   After=network-online.target
@@ -271,7 +300,7 @@ install_systemd_service() {
   LimitCORE=infinity
   LimitNOFILE=1048576
   LimitNPROC=12000
-  ExecStart=$NODE_AGENT_PKG_DIR/bin/node-agent server start
+  ExecStart=$NODE_AGENT_PKG_PATH/bin/node-agent server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
 
@@ -279,10 +308,10 @@ install_systemd_service() {
   WantedBy=multi-user.target
 EOF
   echo "* Starting the systemd service"
-  sudo systemctl daemon-reload
+  run_as_super_user systemctl daemon-reload
   #To enable the node-agent service on reboot.
-  sudo systemctl enable yb-node-agent
-  sudo systemctl restart yb-node-agent
+  run_as_super_user systemctl enable yb-node-agent
+  run_as_super_user systemctl restart yb-node-agent
   echo "* Started the systemd service"
   echo "* Run 'systemctl status yb-node-agent' to check\
  the status of the yb-node-agent"
@@ -302,6 +331,8 @@ Options:
     Yugabyte Anywhere URL.
   -t, --api_token (REQUIRED with install command)
     Api token to download the build files.
+  -ip, --node_ip (Required for uninstall command)
+    Server IP.
   -p, --node_port (OPTIONAL with install command)
     Server port.
   --user (REQUIRED only for install_service command)
@@ -399,8 +430,8 @@ main() {
         echo "$NODE_AGENT_PKG_TGZ_PATH is not found."
         exit 1
       fi
-      if [ ! -d "$NODE_AGRNT_CERT_PATH" ]; then
-        echo "$NODE_AGRNT_CERT_PATH is not found."
+      if [ ! -d "$NODE_AGENT_CERT_PATH" ]; then
+        echo "$NODE_AGENT_CERT_PATH is not found."
         exit 1
       fi
       if [ "$SUDO_ACCESS" = "true" ]; then
@@ -409,8 +440,8 @@ main() {
         set +e
         RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
         if [ -n "$RUNNING" ]; then
-          sudo systemctl stop yb-node-agent
-          sudo systemctl disable yb-node-agent
+          run_as_super_user systemctl stop yb-node-agent
+          run_as_super_user systemctl disable yb-node-agent
         fi
         set -e
       fi
@@ -469,6 +500,10 @@ while [[ $# -gt 0 ]]; do
       COMMAND="$2"
       shift
     ;;
+    --install_path)
+      INSTALL_PATH="$2"
+      shift
+    ;;
     --user)
       INSTALL_USER="$2"
       shift
@@ -509,7 +544,7 @@ while [[ $# -gt 0 ]]; do
       CERT_DIR="$2"
       shift
     ;;
-    -c|--customer_id)
+    --customer_id)
       CUSTOMER_ID="$2"
       shift
     ;;
@@ -560,17 +595,23 @@ if [ -z "$INSTALL_USER" ]; then
   INSTALL_USER="$CURRENT_USER"
 elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
   show_usage >&2
-  echo "Different user can be passed only for installing service."
+  echo "Different user is only used for installing service."
   exit 1
 fi
 
 INSTALL_USER_HOME=$(eval cd ~"$INSTALL_USER" && pwd)
-NODE_AGENT_HOME="$INSTALL_USER_HOME/node-agent"
-NODE_AGENT_PKG_DIR="$NODE_AGENT_HOME/pkg"
-NODE_AGENT_RELEASE_DIR="$NODE_AGENT_HOME/release"
-NODE_AGENT_PKG_TGZ_PATH="$NODE_AGENT_RELEASE_DIR/$NODE_AGENT_PKG_TGZ"
-NODE_AGRNT_CERT_PATH="$NODE_AGENT_HOME/cert/$CERT_DIR"
+
+if [ -z "$INSTALL_PATH" ]; then
+  INSTALL_PATH="$INSTALL_USER_HOME"
+fi
+
+NODE_AGENT_HOME="$INSTALL_PATH/node-agent"
+NODE_AGENT_PKG_PATH="$NODE_AGENT_HOME/pkg"
+NODE_AGENT_RELEASE_PATH="$NODE_AGENT_HOME/release"
+NODE_AGENT_PKG_TGZ_PATH="$NODE_AGENT_RELEASE_PATH/$NODE_AGENT_PKG_TGZ"
+NODE_AGENT_CERT_PATH="$NODE_AGENT_HOME/cert/$CERT_DIR"
 NODE_AGENT_CONFIG_PATH="$NODE_AGENT_HOME/config/config.yml"
+NODE_AGENT_REGISTRY_PATH="$INSTALL_USER_HOME"/.yugabyte/node-agent-registry.yml
 
 if [ -z "$NODE_PORT" ]; then
   if [ -f "$NODE_AGENT_CONFIG_PATH" ]; then

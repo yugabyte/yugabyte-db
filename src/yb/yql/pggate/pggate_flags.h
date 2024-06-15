@@ -15,7 +15,6 @@
 
 #include "yb/util/flags.h"
 
-DECLARE_int32(pgsql_rpc_keepalive_time_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);
@@ -25,7 +24,6 @@ DECLARE_uint64(ysql_prefetch_limit);
 DECLARE_double(ysql_backward_prefetch_scale_factor);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(ysql_non_txn_copy);
-DECLARE_int32(ysql_max_read_restart_attempts);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 DECLARE_int64(TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
 DECLARE_bool(TEST_index_read_multiple_partitions);
@@ -42,13 +40,9 @@ DECLARE_bool(ysql_beta_feature_tablegroup);
 DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(ysql_beta_feature_tablespace_alteration);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(ysql_sleep_before_retry_on_txn_conflict);
 DECLARE_bool(ysql_disable_portal_run_context);
 DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
-DECLARE_bool(TEST_yb_test_fail_matview_refresh_after_creation);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
 DECLARE_bool(ysql_use_relcache_file);
-
-DECLARE_bool(TEST_yb_enable_ash);

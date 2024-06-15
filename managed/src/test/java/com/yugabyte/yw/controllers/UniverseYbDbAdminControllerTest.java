@@ -12,21 +12,20 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -38,7 +37,6 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
@@ -275,60 +273,6 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
   }
 
   @Test
-  // @formatter:off
-  @Parameters({
-    // not insecure, wrong origin, wrong ybmode => failure
-    "false,,, false",
-    // insecure, wrong origin, wrong ybmode => failure
-    "true,,, false",
-    // insecure, correct origin, wrong ybmode => failure
-    "true, https://learn.yugabyte.com,, false",
-    // insecure, correct origin, wrong ybmode => failure
-    "true, https://learn.yugabyte.com, PLATFORM, false",
-    // insecure, correct origin, correct ybmode => success
-    "true, https://learn.yugabyte.com, OSS, true",
-  })
-  // @formatter:on
-  public void testRunQuery_ValidPlatform(
-      boolean insecure, String origin, String ybmode, boolean isGoodResult) throws Exception {
-    Universe u = createUniverse(customer.getId());
-
-    if (insecure) {
-      ConfigHelper configHelper = new ConfigHelper();
-      configHelper.loadConfigToDB(
-          ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
-    }
-    Config customConfig = mock(Config.class);
-    when(customConfig.getString("yb.mode")).thenReturn(ybmode == null ? "" : ybmode);
-    UniverseYbDbAdminHandler handler = app.injector().instanceOf(UniverseYbDbAdminHandler.class);
-    handler.setAppConfig(customConfig);
-
-    ObjectNode bodyJson =
-        Json.newObject().put("query", "select * from product limit 1").put("db_name", "demo");
-    when(mockYsqlQueryExecutor.executeQuery(any(), any()))
-        .thenReturn(Json.newObject().put("foo", "bar"));
-
-    String url =
-        "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID() + "/run_query";
-    Http.RequestBuilder request =
-        Helpers.fakeRequest("POST", url).header("X-AUTH-TOKEN", authToken).bodyJson(bodyJson);
-    if (!StringUtils.isEmpty(origin)) {
-      request = request.header("Origin", origin);
-    }
-    Result result = routeWithYWErrHandler(request);
-
-    JsonNode json = Json.parse(contentAsString(result));
-    if (isGoodResult) {
-      assertOk(result);
-      assertEquals("bar", json.get("foo").asText());
-      assertAuditEntry(1, customer.getUuid());
-    } else {
-      assertBadRequest(result, UniverseYbDbAdminHandler.RUN_QUERY_ISNT_ALLOWED);
-      assertAuditEntry(0, customer.getUuid());
-    }
-  }
-
-  @Test
   public void testConfigureYSQL() {
     Universe universe = createUniverse(customer.getId());
     updateUniverseAPIDetails(universe, false, false, true, false);
@@ -394,6 +338,59 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
+  }
+
+  @Test
+  public void testInvalidDbRoleAttribute() {
+    Universe u = createUniverse(customer.getId());
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("ysqlAdminUsername", "yugabyte")
+            .put("username", "test")
+            .put("password", "Test@123")
+            .put("dbName", "test");
+
+    ObjectNode replication = Json.newObject();
+    replication.put("name", "REPLICATION");
+
+    ObjectNode test = Json.newObject();
+    test.put("name", "test");
+
+    ArrayNode dbRoleAttributesList = Json.newArray();
+    dbRoleAttributesList.add(replication);
+    dbRoleAttributesList.add(test);
+
+    bodyJson.set("dbRoleAttributes", dbRoleAttributesList);
+
+    String url1 =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/create_restricted_db_credentials";
+
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url1, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYsqlQueryExecutor);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertErrorNodeValue(resultJson, "dbRoleAttributes[1].name", "Invalid value");
+    assertAuditEntry(0, customer.getUuid());
+
+    String url2 =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/create_db_credentials";
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url2, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYsqlQueryExecutor, mockYcqlQueryExecutor);
+    assertErrorNodeValue(resultJson, "dbRoleAttributes[1].name", "Invalid value");
+    assertAuditEntry(0, customer.getUuid());
   }
 
   private void updateUniverseAPIDetails(

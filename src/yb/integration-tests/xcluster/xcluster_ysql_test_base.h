@@ -20,14 +20,36 @@ constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
 
 class XClusterYsqlTestBase : public XClusterTestBase {
  public:
+  struct SetupParams {
+    std::vector<uint32_t> num_consumer_tablets = {3};
+    std::vector<uint32_t> num_producer_tablets = {3};
+    uint32_t replication_factor = 3;
+    uint32_t num_masters = 1;
+    bool ranged_partitioned = false;
+    bool is_colocated = false;
+  };
+
   void SetUp() override;
   Status InitClusters(const MiniClusterOptions& opts) override;
+
+  Status SetUpWithParams(
+      const std::vector<uint32_t>& num_consumer_tablets,
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_masters = 1, const bool ranged_partitioned = false);
+
+  Status SetUpClusters();
+
+  Status SetUpClusters(const SetupParams& params);
+
+  Status InitProducerClusterOnly(const MiniClusterOptions& opts);
   Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1);
 
   static std::string GetCompleteTableName(const client::YBTableName& table);
 
-  Result<std::string> GetNamespaceId(YBClient* client);
+  Result<NamespaceId> GetNamespaceId(YBClient* client);
+  Result<NamespaceId> GetNamespaceId(YBClient* client, const NamespaceName& ns_name);
   Result<std::string> GetUniverseId(Cluster* cluster);
+  Result<master::SysClusterConfigEntryPB> GetClusterConfig(Cluster& cluster);
 
   Result<client::YBTableName> CreateYsqlTable(
       Cluster* cluster,
@@ -54,13 +76,18 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
-  Status DropYsqlTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& schema_name,
-      const std::string& table_name);
+  Result<bool> IsTableDeleted(Cluster& cluster, const client::YBTableName& table_name);
 
-  static void WriteWorkload(
+  Status WaitForTableToFullyDelete(
+      Cluster& cluster, const client::YBTableName& table_name, MonoDelta timeout);
+
+  Status DropYsqlTable(
+      Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+      const std::string& table_name, bool is_index = false);
+
+  Status DropYsqlTable(Cluster& cluster, const client::YBTable& table);
+
+  static Status WriteWorkload(
       const client::YBTableName& table, uint32_t start, uint32_t end, Cluster* cluster);
 
   static Result<pgwrapper::PGResultPtr> ScanToStrings(
@@ -108,10 +135,24 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
       bool delete_op = false, bool use_transaction = false);
 
+  Status CheckpointReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
+  Result<bool> IsXClusterBootstrapRequired(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& source_namespace_id);
+  Status AddNamespaceToXClusterReplication(
+      const NamespaceId& source_namespace_id, const NamespaceId& target_namespace_id);
+  Status CreateReplicationFromCheckpoint(
+      const std::string& target_master_addresses = {},
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
+  Status WaitForCreateReplicationToFinish(const std::string& target_master_addresses);
+
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 
  private:
+  void InitFlags(const MiniClusterOptions& opts);
+
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);

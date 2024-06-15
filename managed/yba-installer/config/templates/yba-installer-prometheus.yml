@@ -36,7 +36,7 @@
           password: {{ yamlPath "prometheus.authPassword" }}
         {{ end }}
         static_configs:
-          - targets: ['{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}']
+          - targets: ['{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "prometheus.port" }}']
 
       - job_name: 'platform'
         scheme: https
@@ -45,7 +45,7 @@
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:
-          - targets: ['{{ yamlPath "host" }}:{{ yamlPath "platform.port" }}']
+          - targets: ['{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "platform.port" }}']
 
       - job_name: 'node-agent'
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
@@ -159,11 +159,11 @@
           target_label: "service_type"
           replacement: "$2"
         - source_labels: ["__name__"]
-          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)"
+          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
           target_label: "service_method"
           replacement: "$3"
         - source_labels: ["__name__"]
-          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)"
+          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
           target_label: "__name__"
           replacement: "rpc_latency$4"
         - source_labels: ["__name__"]
@@ -180,10 +180,12 @@
       After=network-online.target
 
       [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
       User={{ yamlPath "service_username" }}
       Group={{ yamlPath "service_username" }}
+      {{ end }}
       Type=simple
-      ExecStart=/usr/local/bin/prometheus \
+      ExecStart= {{ .PromBinaryFile }} \
       --config.file {{ .ConfFileLocation }} \
       --storage.tsdb.path {{ .DataDir }}/storage \
       --storage.tsdb.retention={{ yamlPath "prometheus.retentionTime" }} \
@@ -199,6 +201,7 @@
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
+      OOMScoreAdjust={{ yamlPath "prometheus.oomScoreAdjust"}}
 
       [Install]
       WantedBy=multi-user.target
@@ -207,7 +210,14 @@
     fileName: "{{ .WebConfFile }}"
     contents: |
       {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+      {{ $tlsCiphers := yamlPathSlice "prometheus.allowedTLSCiphers" }}
       tls_server_config:
         cert_file: "{{ yamlPath "prometheus.httpsCertPath" }}"
         key_file: "{{ yamlPath "prometheus.httpsKeyPath" }}"
+        {{ if gt (len $tlsCiphers) 0 }}
+        cipher_suites:
+          {{ range $suite :=  $tlsCiphers }}
+          - {{ removeQuotes $suite }}
+          {{ end }}
+        {{ end }}
       {{ end }}

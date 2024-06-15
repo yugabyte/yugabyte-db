@@ -31,6 +31,12 @@
   vars:
     air_gapped: "{{ air_gap | default(false) }}"
   tasks:
+    - name: "Set up GPG key for AlmaLinux 8 instances"
+      raw: rpm --import https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux
+      when: >
+        not air_gapped and ansible_distribution == 'AlmaLinux'
+        and ansible_distribution_major_version == '8'
+
     - name: "Install python36 on RHEL8 family"
       raw: >
         (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
@@ -135,7 +141,7 @@
         (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
       tags: yb-prebuilt-ami
 
-    - name: Install policycoreutils-python-utils on CentOS 8
+    - name: Install policycoreutils-python-utils on CentOS 8 and up
       module_defaults:
         yum:
           lock_timeout: 600
@@ -144,7 +150,7 @@
         state: present
       when: >
         'policycoreutils-python-utils' not in ansible_facts.packages and custom_ssh_port != '22' and
-        (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '8')
+        (ansible_os_family == 'RedHat' and ansible_distribution_major_version != '7')
       tags: yb-prebuilt-ami
 
     - name: Accept target in firewalld on Oracle Linux
@@ -170,33 +176,31 @@
             custom_ssh_port != '22'
       tags: yb-prebuilt-ami
 
-    - name: Install glibc-locale-source and glibc-langpack-en packages
-      become: yes
-      become_method: sudo
-      vars:
-        air_gapped: "{{ air_gap | default(false) }}"
-      yum:
-        name:
-          - glibc-locale-source
-          - glibc-langpack-en
-        state: present
-      when: not air_gapped and ansible_os_family == 'RedHat' and
-            install_locales | default(false) | bool
+    - block:
+      - name: Install glibc-locale-source and glibc-langpack-en packages
+        become: yes
+        become_method: sudo
+        yum:
+          name:
+            - glibc-locale-source
+            - glibc-langpack-en
+          state: present
+          lock_timeout: 600
 
-    - name: Generate UTF-8 locales
-      become: yes
-      become_method: sudo
-      vars:
-        air_gapped: "{{ air_gap | default(false) }}"
-      shell: |
-        set -x
-        languages=("en_US" "de_DE" "es_ES" "fr_FR" "it_IT"
-               "ja_JP" "ko_KR" "pl_PL" "ru_RU" "sv_SE"
-               "tr_TR" "zh_CN")
-        for lang in "${languages[@]}"; do
-          localedef --quiet --force --inputfile="${lang}" --charmap=UTF-8 "${lang}.UTF-8"
-        done
-      args:
-        executable: /bin/bash
-      when: not air_gapped and ansible_os_family == 'RedHat' and
+      - name: Generate UTF-8 locales
+        become: yes
+        become_method: sudo
+        shell: |
+          set -x
+          languages=("en_US" "de_DE" "es_ES" "fr_FR" "it_IT"
+                "ja_JP" "ko_KR" "pl_PL" "ru_RU" "sv_SE"
+                "tr_TR" "zh_CN")
+          for lang in "${languages[@]}"; do
+            localedef --quiet --force --inputfile="${lang}" --charmap=UTF-8 "${lang}.UTF-8"
+          done
+        args:
+          executable: /bin/bash
+
+      when: not (air_gap | default(false) | bool) and
             install_locales | default(false) | bool
+            and ansible_os_family == 'RedHat' and ansible_distribution_major_version != "7"

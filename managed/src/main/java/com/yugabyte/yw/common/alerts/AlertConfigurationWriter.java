@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.alerts;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -96,6 +97,13 @@ public class AlertConfigurationWriter {
   }
 
   public void start() {
+    boolean COMMUNITY_OP_ENABLED = OperatorConfig.getOssMode();
+
+    if (COMMUNITY_OP_ENABLED) {
+      log.debug("Skipping metrics as community edition is enabled");
+      return;
+    }
+
     int configSyncPeriodSec = configFactory.globalRuntimeConf().getInt(CONFIG_SYNC_INTERVAL_PARAM);
     if (configSyncPeriodSec < MIN_CONFIG_SYNC_INTERVAL_SEC) {
       log.warn(
@@ -125,6 +133,11 @@ public class AlertConfigurationWriter {
           || !configuration.isActive()) {
         swamperHelper.removeAlertDefinition(definitionUuid);
         requiresReload.set(true);
+        if (definition != null) {
+          // Don't want to retry inactive definitions.
+          definition.setConfigWritten(true);
+          alertDefinitionService.save(definition);
+        }
         return SyncResult.REMOVED;
       }
       if (definition.isConfigWritten()) {

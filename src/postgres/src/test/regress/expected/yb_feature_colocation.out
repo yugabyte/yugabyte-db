@@ -628,19 +628,19 @@ LINE 1: SELECT * FROM tab_range_nonkey_noco2;
 -- DROP INDEX
 -- drop index on non-colocated table
 DROP INDEX idx_range2;
-EXPLAIN SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
-                                               QUERY PLAN
---------------------------------------------------------------------------------------------------------
- Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco  (cost=0.00..4.11 rows=1 width=8)
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
    Index Cond: (a = 1)
 (2 rows)
 
 -- drop index on colocated table
 DROP INDEX idx_range5;
-EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Index Scan using tab_range_nonkey5_pkey on tab_range_nonkey5  (cost=0.00..4.11 rows=1 width=8)
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Index Scan using tab_range_nonkey5_pkey on tab_range_nonkey5
    Index Cond: (a = 1)
 (2 rows)
 
@@ -842,7 +842,7 @@ EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
  Unique
    ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
          Index Cond: (r3 <= 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
@@ -859,7 +859,7 @@ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
  Unique
    ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
          Index Cond: (r3 <= 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 /*+Set(enable_hashagg false)*/ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
@@ -948,3 +948,226 @@ select is_colocated from yb_table_properties('m5'::regclass);
 --------------
  f
 (1 row)
+
+-- Test yb_use_hash_splitting_by_default=false (Postgres compatibility)
+CREATE OR REPLACE FUNCTION get_table_indexes(table_name text)
+    RETURNS TABLE(
+                     relname name,
+                     indisprimary boolean,
+                     indisunique boolean,
+                     indexdef text,
+                     constraintdef text
+                 ) AS $$
+BEGIN
+    RETURN QUERY EXECUTE
+        'SELECT c2.relname, i.indisprimary, i.indisunique, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true), ' ||
+        'pg_catalog.pg_get_constraintdef(con.oid, true) ' ||
+        'FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i ' ||
+        'LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN (''p'',''u'',''x'')) ' ||
+        'WHERE c.oid = ' || quote_literal(table_name) || '::regclass AND c.oid = i.indrelid AND i.indexrelid = c2.oid ' ||
+        'ORDER BY i.indisprimary DESC, i.indisunique DESC, c2.relname';
+END;
+$$ LANGUAGE plpgsql;
+-- With HASH as default, creating a colocated table or index with SPLIT AT should fail
+CREATE INDEX ON t1 (b) SPLIT AT VALUES((10), (20), (30));
+ERROR:  cannot create colocated index with split option
+CREATE TABLE split_fail(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
+ERROR:  cannot create colocated table with split option
+SET yb_use_hash_splitting_by_default = false;
+CREATE TABLE foo(a int primary key, b int, c int);
+SELECT * FROM get_table_indexes('foo');
+ relname  | indisprimary | indisunique |                       indexdef                        |  constraintdef
+----------+--------------+-------------+-------------------------------------------------------+-----------------
+ foo_pkey | t            | t           | CREATE UNIQUE INDEX foo_pkey ON foo USING lsm (a ASC) | PRIMARY KEY (a)
+(1 row)
+
+CREATE TABLE bar(a int, b int, c int, primary key(a, b));
+SELECT * FROM get_table_indexes('bar');
+ relname  | indisprimary | indisunique |                           indexdef                           |   constraintdef
+----------+--------------+-------------+--------------------------------------------------------------+--------------------
+ bar_pkey | t            | t           | CREATE UNIQUE INDEX bar_pkey ON bar USING lsm (a ASC, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+CREATE TABLE baz(a int, b int, c int, primary key((a,b) HASH, c));
+ERROR:  cannot colocate hash partitioned table
+CREATE TABLE qux(a int, b int, c int);
+ALTER TABLE qux ADD PRIMARY KEY(a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('qux');
+ relname  | indisprimary | indisunique |                       indexdef                        |  constraintdef
+----------+--------------+-------------+-------------------------------------------------------+-----------------
+ qux_pkey | t            | t           | CREATE UNIQUE INDEX qux_pkey ON qux USING lsm (a ASC) | PRIMARY KEY (a)
+(1 row)
+
+ALTER TABLE qux DROP CONSTRAINT qux_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE qux ADD PRIMARY KEY(a,b);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('qux');
+ relname  | indisprimary | indisunique |                           indexdef                           |   constraintdef
+----------+--------------+-------------+--------------------------------------------------------------+--------------------
+ qux_pkey | t            | t           | CREATE UNIQUE INDEX qux_pkey ON qux USING lsm (a ASC, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+ALTER TABLE qux DROP CONSTRAINT qux_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE qux ADD PRIMARY KEY(a,b ASC);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+SELECT * FROM get_table_indexes('qux');
+ relname  | indisprimary | indisunique |                           indexdef                           |   constraintdef
+----------+--------------+-------------+--------------------------------------------------------------+--------------------
+ qux_pkey | t            | t           | CREATE UNIQUE INDEX qux_pkey ON qux USING lsm (a ASC, b ASC) | PRIMARY KEY (a, b)
+(1 row)
+
+ALTER TABLE qux DROP CONSTRAINT qux_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE qux ADD PRIMARY KEY(a,b HASH);
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: ALTER TABLE qux ADD PRIMARY KEY(a,b HASH);
+                                          ^
+CREATE INDEX ON qux (b);
+CREATE INDEX ON qux (b HASH);
+ERROR:  cannot colocate hash partitioned index
+CREATE INDEX ON qux (c ASC);
+CREATE INDEX ON qux ((a, c), b);
+ERROR:  cannot colocate hash partitioned index
+CREATE INDEX ON qux ((a, c));
+ERROR:  cannot colocate hash partitioned index
+CREATE INDEX ON qux (a, b);
+CREATE INDEX ON qux (b, c ASC);
+CREATE INDEX ON qux (b, c HASH);
+ERROR:  hash column not allowed after an ASC/DESC column
+LINE 1: CREATE INDEX ON qux (b, c HASH);
+                                ^
+SELECT * FROM get_table_indexes('qux');
+   relname   | indisprimary | indisunique |                         indexdef                         | constraintdef
+-------------+--------------+-------------+----------------------------------------------------------+---------------
+ qux_a_b_idx | f            | f           | CREATE INDEX qux_a_b_idx ON qux USING lsm (a ASC, b ASC) |
+ qux_b_c_idx | f            | f           | CREATE INDEX qux_b_c_idx ON qux USING lsm (b ASC, c ASC) |
+ qux_b_idx   | f            | f           | CREATE INDEX qux_b_idx ON qux USING lsm (b ASC)          |
+ qux_c_idx   | f            | f           | CREATE INDEX qux_c_idx ON qux USING lsm (c ASC)          |
+(4 rows)
+
+-- With ASC as default, creating a colocated table or index with SPLIT AT should fail
+CREATE INDEX ON qux (b) SPLIT AT VALUES((10), (20), (30));
+ERROR:  cannot create colocated index with split option
+CREATE TABLE split_table(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
+ERROR:  cannot create colocated table with split option
+-- Test Table Rewrite operations with table colocation option
+CREATE TABLE non_col_tbl_without_pk (k INT) WITH (colocation=0);
+INSERT INTO non_col_tbl_without_pk SELECT generate_series(1, 100);
+ALTER TABLE non_col_tbl_without_pk ADD PRIMARY KEY(k);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d non_col_tbl_without_pk
+       Table "public.non_col_tbl_without_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+Indexes:
+    "non_col_tbl_without_pk_pkey" PRIMARY KEY, lsm (k ASC)
+
+SELECT min(k), max(k) FROM non_col_tbl_without_pk;
+ min | max
+-----+-----
+   1 | 100
+(1 row)
+
+CREATE TABLE col_tbl_without_pk (k INT) WITH (colocation=1);
+INSERT INTO col_tbl_without_pk SELECT generate_series(1, 10);
+ALTER TABLE col_tbl_without_pk ADD PRIMARY KEY(k);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d col_tbl_without_pk
+         Table "public.col_tbl_without_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+Indexes:
+    "col_tbl_without_pk_pkey" PRIMARY KEY, lsm (k ASC), colocation: true
+Colocation: true
+
+SELECT sum(k) FROM col_tbl_without_pk;
+ sum
+-----
+  55
+(1 row)
+
+CREATE MATERIALIZED VIEW non_col_mv WITH (colocation=0) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 0;
+CREATE MATERIALIZED VIEW col_mv WITH (colocation=1) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 1;
+SELECT sum(k) FROM non_col_mv;
+ sum
+-----
+  30
+(1 row)
+
+SELECT sum(k) FROM col_mv;
+ sum
+-----
+  25
+(1 row)
+
+INSERT INTO col_tbl_without_pk VALUES (11);
+REFRESH MATERIALIZED VIEW non_col_mv;
+REFRESH MATERIALIZED VIEW col_mv;
+SELECT sum(k) FROM non_col_mv;
+ sum
+-----
+  30
+(1 row)
+
+SELECT sum(k) FROM col_mv;
+ sum
+-----
+  36
+(1 row)
+
+-- Test table partitions with colocation option
+CREATE TABLE partitioned_table (k INT) PARTITION BY LIST (k);
+CREATE TABLE col_table_partition PARTITION OF partitioned_table FOR VALUES IN (2) WITH (COLOCATION=TRUE);
+\d col_table_partition
+        Table "public.col_table_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           |          |
+Partition of: partitioned_table FOR VALUES IN (2)
+Colocation: true
+
+CREATE TABLE non_col_table_partition PARTITION OF partitioned_table FOR VALUES IN (4) WITH (COLOCATION=FALSE);
+\d non_col_table_partition
+      Table "public.non_col_table_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           |          |
+Partition of: partitioned_table FOR VALUES IN (4)
+Colocation: true
+
+INSERT INTO partitioned_table VALUES (2), (4);
+SELECT * FROM col_table_partition;
+ k
+---
+ 2
+(1 row)
+
+SELECT * FROM non_col_table_partition;
+ k
+---
+ 4
+(1 row)
+
+\c yugabyte
+DROP DATABASE colocation_test;

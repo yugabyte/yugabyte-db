@@ -32,6 +32,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/opid.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 
@@ -48,7 +49,6 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/source_location.h"
 #include "yb/util/status_log.h"
@@ -114,6 +114,10 @@ class ConsensusPeersTest : public YBTest {
     ASSERT_OK(clock_->Init());
 
     consensus_.reset(new TestRaftConsensusQueueIface());
+    raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+      .name = "raft_notifications",
+      .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+    });
     message_queue_.reset(new PeerMessageQueue(
         metric_entity_,
         log_.get(),
@@ -123,7 +127,7 @@ class ConsensusPeersTest : public YBTest {
         kTabletId,
         clock_,
         nullptr /* consensus_context */,
-        raft_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL)));
+        std::make_unique<rpc::Strand>(raft_notifications_pool_.get())));
     message_queue_->RegisterObserver(consensus_.get());
 
     message_queue_->Init(OpId::Min());
@@ -177,6 +181,7 @@ class ConsensusPeersTest : public YBTest {
   unique_ptr<ThreadPoolToken> raft_pool_token_;
   scoped_refptr<server::Clock> clock_;
   std::unique_ptr<Messenger> messenger_;
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
 
 // Tests that a remote peer is correctly built and tracked

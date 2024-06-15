@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -95,7 +96,6 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -109,6 +109,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
@@ -143,6 +144,8 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock NodeAgentClient nodeAgentClient;
 
   @Mock RuntimeConfGetter mockConfGetter;
+
+  @Mock ReleasesUtils mockReleasesUtils;
 
   private CertificateHelper certificateHelper;
 
@@ -251,10 +254,7 @@ public class NodeManagerTest extends FakeDBApplication {
     params.azUuid = testData.zone.getUuid();
     params.instanceType = testData.node.getInstanceTypeCode();
     params.nodeName = testData.node.getNodeName();
-    Iterator<NodeDetails> iter = universe.getNodes().iterator();
-    if (iter.hasNext()) {
-      params.nodeUuid = iter.next().nodeUuid;
-    }
+    params.nodeUuid = testData.node.getNodeUuid();
     params.setUniverseUUID(universe.getUniverseUUID());
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     params.currentClusterType = ClusterType.PRIMARY;
@@ -515,8 +515,10 @@ public class NodeManagerTest extends FakeDBApplication {
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
     testData.addAll(getTestData(customer, Common.CloudType.onprem));
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
+    ReleaseContainer release =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     releaseMetadata.filePath = "/yb/release.tar.gz";
-    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
+    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
     when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(mockConfGetter.getConfForScope(
@@ -568,6 +570,14 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
         .thenReturn(Duration.ofHours(1));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.destroyServerCommandTimeout)))
+        .thenReturn(Duration.ofMinutes(10));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.acceptableClockSkewWaitEnabled)))
+        .thenReturn(true);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)))
+        .thenReturn(Duration.ofMillis(500));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.waitForClockSyncTimeout)))
+        .thenReturn(Duration.ofSeconds(300));
 
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
@@ -575,6 +585,10 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
         .thenReturn(true);
+    when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.enableIMDSv2)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
+        .thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -876,12 +890,10 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(setupParams.instanceType);
         }
 
-        if (cloud.equals(Common.CloudType.gcp)) {
-          String ybImage = testData.region.getYbImage();
-          if (ybImage != null && !ybImage.isEmpty()) {
-            expectedCommand.add("--machine_image");
-            expectedCommand.add(ybImage);
-          }
+        String ybImage = testData.region.getYbImage();
+        if (ybImage != null && !ybImage.isEmpty()) {
+          expectedCommand.add("--machine_image");
+          expectedCommand.add(ybImage);
         }
 
         if ((cloud.equals(Common.CloudType.aws) || cloud.equals(Common.CloudType.gcp))
@@ -1145,6 +1157,11 @@ public class NodeManagerTest extends FakeDBApplication {
                 Json.toJson(
                     getExtraGflags(configureParams, params, userIntent, testData, useHostname))));
 
+        expectedCommand.add("--acceptable_clock_skew_wait_enabled");
+        expectedCommand.add("--acceptable_clock_skew_sec");
+        expectedCommand.add("0.500000000");
+        expectedCommand.add("--acceptable_clock_skew_max_tries");
+        expectedCommand.add("300");
         break;
       case Destroy:
         AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
@@ -1408,8 +1425,10 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testCreateNodeCommandSecondarySubnet() {
     int idx = 0;
+    when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
+        .thenReturn(false);
     for (TestData t : testData) {
-      when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
           t,
@@ -2316,10 +2335,14 @@ public class NodeManagerTest extends FakeDBApplication {
         params.deviceInfo.mountPoints = fakeMountPaths;
 
         when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+        when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
+            .thenReturn(true);
         reset(shellProcessHandler);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
+        when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
+            .thenReturn(false);
         when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
         when(mockConfGetter.getConfForScope(
                 any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
@@ -2333,10 +2356,6 @@ public class NodeManagerTest extends FakeDBApplication {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         verify(shellProcessHandler, times(3)).run(captor.capture(), any(ShellProcessContext.class));
-
-        Map<String, String> cloudGflags = extractGFlags(captor.getAllValues().get(0));
-        assertEquals(
-            new TreeMap<>(params.gflags), new TreeMap<>(cloudGflags)); // Not processed at all.
 
         Map<String, String> gflagsProcessed = extractGFlags(captor.getAllValues().get(1));
         Map<String, String> copy = new TreeMap<>(params.gflags);
@@ -2394,6 +2413,9 @@ public class NodeManagerTest extends FakeDBApplication {
         copy2.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));
+
+        Map<String, String> cloudGflags = extractGFlags(captor.getAllValues().get(0));
+        assertEquals(copy2, new TreeMap<>(cloudGflags)); // Non filtered as well
       }
     }
   }
@@ -3765,7 +3787,11 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testPrecheckNotCheckingSelfSignedCertificates()
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.getCustomerUUID();
-    UUID certificateUUID = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
+    UUID certificateUUID =
+        createCertificateConfig(
+            CertConfigType.SelfSigned,
+            customerUUID,
+            "SS" + RandomStringUtils.randomAlphanumeric(8));
     List<String> cmds = createPrecheckCommandForCerts(certificateUUID, null);
     checkArguments(cmds, PRECHECK_CERT_PATHS); // Check no args
   }
@@ -3774,8 +3800,16 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testPrecheckNotCheckingTwoSelfSignedCertificates()
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.getCustomerUUID();
-    UUID certificateUUID1 = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
-    UUID certificateUUID2 = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
+    UUID certificateUUID1 =
+        createCertificateConfig(
+            CertConfigType.SelfSigned,
+            customerUUID,
+            "SS" + RandomStringUtils.randomAlphanumeric(8));
+    UUID certificateUUID2 =
+        createCertificateConfig(
+            CertConfigType.SelfSigned,
+            customerUUID,
+            "SS" + RandomStringUtils.randomAlphanumeric(8));
     List<String> cmds = createPrecheckCommandForCerts(certificateUUID1, certificateUUID2);
     checkArguments(cmds, PRECHECK_CERT_PATHS); // Check no args
   }
@@ -3826,7 +3860,12 @@ public class NodeManagerTest extends FakeDBApplication {
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo certificateInfo =
-        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
+        createCertificate(
+            CertConfigType.CustomCertHostPath,
+            customerUUID,
+            "CS" + RandomStringUtils.randomAlphanumeric(8),
+            "",
+            true);
     List<String> cmds = createPrecheckCommandForCerts(certificateInfo.getUuid(), null);
 
     checkArguments(
@@ -3849,9 +3888,19 @@ public class NodeManagerTest extends FakeDBApplication {
       throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo cert =
-        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
+        createCertificate(
+            CertConfigType.CustomCertHostPath,
+            customerUUID,
+            "CS" + RandomStringUtils.randomAlphanumeric(8),
+            "",
+            true);
     CertificateInfo cert2 =
-        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
+        createCertificate(
+            CertConfigType.CustomCertHostPath,
+            customerUUID,
+            "CS" + RandomStringUtils.randomAlphanumeric(8),
+            "",
+            true);
     List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid());
 
     checkArguments(
@@ -3875,9 +3924,19 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testPrecheckCheckBothCertificates() throws IOException, NoSuchAlgorithmException {
     UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo cert =
-        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
+        createCertificate(
+            CertConfigType.CustomCertHostPath,
+            customerUUID,
+            "CS" + RandomStringUtils.randomAlphanumeric(8),
+            "",
+            false);
     CertificateInfo cert2 =
-        createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
+        createCertificate(
+            CertConfigType.CustomCertHostPath,
+            customerUUID,
+            "CS" + RandomStringUtils.randomAlphanumeric(8),
+            "",
+            false);
     List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid());
 
     checkArguments(

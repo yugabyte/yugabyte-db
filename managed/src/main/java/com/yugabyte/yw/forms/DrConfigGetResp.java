@@ -114,6 +114,11 @@ public class DrConfigGetResp {
     return drConfig.getModifyTime();
   }
 
+  @ApiModelProperty(value = "Bootstrap backup params for DR config")
+  public XClusterConfigRestartFormData.RestartBootstrapParams getBootstrapParams() {
+    return drConfig.getBootstrapBackupParams();
+  }
+
   @ApiModelProperty(value = "Replication group name in the dr replica universe cluster config")
   public String getReplicationGroupName() {
     return xClusterConfig.getReplicationGroupName();
@@ -146,6 +151,13 @@ public class DrConfigGetResp {
   @ApiModelProperty(value = "List of table ids in replication")
   public Set<String> getTables() {
     return xClusterConfig.getTableIds();
+  }
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. List of db ids in replication")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Set<String> getDbs() {
+    return xClusterConfig.getDbIds();
   }
 
   @ApiModelProperty(

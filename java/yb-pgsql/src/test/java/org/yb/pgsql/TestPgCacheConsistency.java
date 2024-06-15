@@ -434,7 +434,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
           statement2,
           "EXPLAIN (COSTS OFF) SELECT u FROM test_table WHERE u = 1",
           new Row("Seq Scan on test_table"),
-          new Row("  Remote Filter: (u = 1)")
+          new Row("  Storage Filter: (u = 1)")
       );
     }
   }
@@ -661,6 +661,51 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       stmt1.executeUpdate("DROP TABLE prt2");
       waitForTServerHeartbeat();
       runInvalidQuery(stmt2, "INSERT INTO prt VALUES (3)", error_msg);
+    }
+  }
+
+  @Test
+  public void testDefaultPartitionConsistency() throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt1 = connection1.createStatement();
+         Statement stmt2 = connection2.createStatement()) {
+
+      // Create a partitioned table and and a default partition in connection1.
+      stmt1.executeUpdate("CREATE TABLE prt (a int, b varchar) PARTITION BY RANGE(a)");
+      stmt1.executeUpdate("CREATE TABLE prt_default PARTITION OF prt DEFAULT");
+
+      // Concurrently create/attach a new partition in connection 2 while inserting data into the
+      // parent partitioned table in connection 1. Verify that the insert transaction gets aborted
+      // due to concurrent DDL.
+      final String[] abort_errors =
+        { "expired or aborted by a conflict", "Transaction aborted: kAborted" };
+      for (int part_idx = 0; part_idx < 50; ++part_idx) {
+        final int startPartition = 10 * part_idx;
+        final int endPartition = 10 * (part_idx + 1);
+
+        stmt1.execute("BEGIN");
+        stmt1.executeUpdate(String.format("INSERT INTO prt(a,b) VALUES (%d, 'abc')",
+                                          startPartition + 1));
+
+        // Alternatively test creating a new partition and attaching a new partition.
+        if (part_idx % 2 == 0) {
+          stmt2.executeUpdate(String.format("CREATE TABLE prt_p%d (a int, b varchar)",
+                                            part_idx + 1));
+          stmt2.executeUpdate(String.format(
+              "ALTER TABLE prt ATTACH PARTITION prt_p%d FOR VALUES FROM (%d) TO (%d)",
+              part_idx + 1, startPartition, endPartition));
+        } else {
+          stmt2.executeUpdate(String.format(
+                  "CREATE TABLE prt_p%d PARTITION OF prt FOR VALUES FROM (%d) TO (%d)",
+                  part_idx + 1, startPartition, endPartition));
+        }
+
+        runInvalidQuery(stmt1, "COMMIT", abort_errors);
+
+        // There should be no rows in the default partition.
+        assertEquals(getRowList(stmt1, "SELECT * FROM prt_default WHERE a>0").size(), 0);
+      }
     }
   }
 

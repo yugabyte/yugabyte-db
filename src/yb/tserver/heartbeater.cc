@@ -34,7 +34,6 @@
 
 #include <cstdint>
 #include <iosfwd>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -47,49 +46,31 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/log_fwd.h"
-
-#include "yb/docdb/docdb.pb.h"
-
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/master_types.pb.h"
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
-
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.proxy.h"
 
-#include "yb/tablet/tablet_options.h"
-
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/capabilities.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/enums.h"
-#include "yb/util/flags.h"
-#include "yb/util/locks.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
@@ -110,8 +91,6 @@ DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
-
-DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
@@ -358,7 +337,12 @@ void Heartbeater::Thread::SetupCommonField(master::TSToMasterCommonPB* common) {
 Status Heartbeater::Thread::SetupRegistration(master::TSRegistrationPB* reg) {
   reg->Clear();
   RETURN_NOT_OK(server_->GetRegistration(reg->mutable_common()));
-
+  auto* resources = reg->mutable_resources();
+  resources->set_core_count(base::NumCPUs());
+  int64_t tablet_overhead_limit = yb::tserver::ComputeTabletOverheadLimit();
+  if (tablet_overhead_limit > 0) {
+    resources->set_tablet_overhead_ram_in_bytes(tablet_overhead_limit);
+  }
   return Status::OK();
 }
 
@@ -395,18 +379,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
     LOG_WITH_PREFIX(INFO) << "Registering TS with master...";
     RETURN_NOT_OK_PREPEND(SetupRegistration(req.mutable_registration()),
                           "Unable to set up registration");
-    auto capabilities = Capabilities();
-    *req.mutable_registration()->mutable_capabilities() =
-        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
-    auto* resources = req.mutable_registration()->mutable_resources();
-    resources->set_core_count(base::NumCPUs());
-    auto tracker =
-        server_->tablet_manager()->tablet_memory_manager()->tablets_overhead_mem_tracker();
-    // Only set the tablet overhead limit if the tablet overheads memory tracker exists and has a
-    // limit set.  The flag to set the memory tracker's limit is tablet_overhead_size_percentage.
-    if (tracker && tracker->has_limit()) {
-      resources->set_tablet_overhead_ram_in_bytes(tracker->limit());
-    }
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {
@@ -430,9 +402,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
-  // We rely on the heartbeat thread calling GetNumLiveTablets regularly to keep the
-  // ts_live_tablet_peers metric up to date. If you remove this call, add another mechanism to
-  // update the metric.
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -565,7 +534,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
   sending_full_report_ = sending_full_report_ && !all_processed;
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
-  if (FLAGS_ysql_enable_db_catalog_version_mode) {
+  // We only check --enable_ysql when --ysql_enable_db_catalog_version_mode=true
+  // to keep the logic backward compatible.
+  if (FLAGS_ysql_enable_db_catalog_version_mode && FLAGS_enable_ysql) {
     // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In per-db
     // mode, we do not use ysql_catalog_version.
     DCHECK(!last_hb_response_.has_ysql_catalog_version());
@@ -618,8 +589,6 @@ Status Heartbeater::Thread::TryHeartbeat() {
     server_->UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
   }
 
-  server_->UpdateXClusterSafeTime(last_hb_response_.xcluster_namespace_to_safe_time());
-
   std::optional<AutoFlagsConfigPB> new_config;
   if (last_hb_response_.has_auto_flags_config()) {
     new_config = last_hb_response_.auto_flags_config();
@@ -666,7 +635,8 @@ void Heartbeater::Thread::RunThread() {
   // Config the "last heartbeat response" to indicate that we need to register
   // -- since we've never registered before, we know this to be true.
   last_hb_response_.set_needs_reregister(true);
-  // Have the Master request a full tablet report on 2nd HB, once it knows our capabilities.
+
+  // Have the Master request a full tablet report on 2nd HB.
   last_hb_response_.set_needs_full_tablet_report(false);
 
   while (true) {
@@ -741,7 +711,7 @@ Status Heartbeater::Thread::Stop() {
   {
     MutexLock l(mutex_);
     should_run_ = false;
-    cond_.Signal();
+    YB_PROFILE(cond_.Signal());
   }
 
   rpcs_.Shutdown();
@@ -754,7 +724,7 @@ Status Heartbeater::Thread::Stop() {
 void Heartbeater::Thread::TriggerASAP() {
   MutexLock l(mutex_);
   heartbeat_asap_ = true;
-  cond_.Signal();
+  YB_PROFILE(cond_.Signal());
 }
 
 
@@ -764,9 +734,13 @@ const std::string& HeartbeatDataProvider::LogPrefix() const {
 
 void PeriodicalHeartbeatDataProvider::AddData(
     const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) {
-  if (prev_run_time_ + period_ < CoarseMonoClock::Now()) {
-    DoAddData(last_resp, req);
+  // Save that fact that we will need to send a full report the next time we run.
+  needs_full_tablet_report_ |= last_resp.needs_full_tablet_report();
+
+  if (prev_run_time_ + Period() < CoarseMonoClock::Now()) {
+    DoAddData(needs_full_tablet_report_, req);
     prev_run_time_ = CoarseMonoClock::Now();
+    needs_full_tablet_report_ = false;
   }
 }
 

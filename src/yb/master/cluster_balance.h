@@ -125,9 +125,6 @@ class ClusterLoadBalancer {
 
   void InitializeTSDescriptors();
 
-  // Get the list of all live TSDescriptors which reported their tablets.
-  virtual void GetAllReportedDescriptors(TSDescriptorVector* ts_descs) const;
-
   // Get the list of all TSDescriptors.
   virtual void GetAllDescriptors(TSDescriptorVector* ts_descs) const;
 
@@ -348,6 +345,7 @@ class ClusterLoadBalancer {
   int get_total_running_tablets() const;
 
   size_t get_total_wrong_placement() const;
+  size_t get_badly_placed_leaders() const;
   size_t get_total_blacklisted_servers() const;
   size_t get_total_leader_blacklisted_servers() const;
 
@@ -362,8 +360,10 @@ class ClusterLoadBalancer {
   // managed by this class, but by the Master's unique_ptr.
   CatalogManager* catalog_manager_;
 
-  // Info about if load balancing is enabled in the cluster.
   scoped_refptr<AtomicGauge<int64_t>> is_load_balancing_enabled_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> tablets_in_wrong_placement_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> blacklisted_leaders_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> total_table_load_difference_metric_;
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
@@ -375,8 +375,8 @@ class ClusterLoadBalancer {
   Result<bool> IsConfigMemberInTransitionMode(const TabletId& tablet_id) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Dump the sorted load on tservers (it is usually per table).
-  void DumpSortedLoad() const;
+  std::string GetSortedLoad() const;
+  std::string GetSortedLeaderLoad() const;
 
   // Report unusual state at the beginning of an LB run which may prevent LB from making moves.
   void ReportUnusualLoadBalancerState() const;

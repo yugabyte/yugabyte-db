@@ -775,6 +775,9 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
 CREATE INDEX jidx ON testjsonb USING gin (j);
 SET enable_seqscan = off;
+-- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
+-- index scan even if it is detected to be not supported.
+SET yb_test_ybgin_disable_cost_factor = 0.5;
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
@@ -832,6 +835,7 @@ SELECT count(*) from testjsonb  WHERE j->'array' ? '5'::text;
 -- However, a raw scalar is *contained* within the array
 SELECT count(*) from testjsonb  WHERE j->'array' @> '5'::jsonb;
 
+RESET yb_test_ybgin_disable_cost_factor;
 RESET enable_seqscan;
 
 SELECT count(*) FROM (SELECT (jsonb_each(j)).key FROM testjsonb) AS wow;
@@ -863,6 +867,9 @@ SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "
 DROP INDEX jidx;
 CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
 SET enable_seqscan = off;
+-- YB note: yb_test_ybgin_disable_cost_factor setting is needed to really force
+-- index scan even if it is detected to be not supported.
+SET yb_test_ybgin_disable_cost_factor = 0.5;
 
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":"CC"}';
@@ -900,6 +907,7 @@ SELECT count(*) FROM testjsonb WHERE j @? '$';
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
 
+RESET yb_test_ybgin_disable_cost_factor;
 RESET enable_seqscan;
 DROP INDEX jidx;
 

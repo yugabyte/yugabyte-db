@@ -11,6 +11,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonSetter;
@@ -24,6 +25,10 @@ import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.yugabyte.yw.common.HaConfigStates.InstanceState;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.Finder;
 import io.ebean.Model;
 import jakarta.persistence.Column;
@@ -35,6 +40,7 @@ import jakarta.persistence.TemporalType;
 import jakarta.persistence.Transient;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
@@ -58,6 +64,8 @@ public class PlatformInstance extends Model {
 
   private static final SimpleDateFormat TIMESTAMP_FORMAT =
       new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy");
+
+  private static long BACKUP_DISCONNECT_TIME_MILLIS = 15 * (60 * 1000);
 
   @Id
   @Constraints.Required
@@ -102,6 +110,17 @@ public class PlatformInstance extends Model {
     return false;
   }
 
+  public boolean updateLastBackup(Date lastBackup) {
+    try {
+      this.lastBackup = lastBackup;
+      this.update();
+      return true;
+    } catch (Exception e) {
+      LOG.warn("DB error saving last backup time", e);
+    }
+    return false;
+  }
+
   @JsonGetter("is_leader")
   public boolean getIsLeader() {
     return this.isLeader != null;
@@ -141,6 +160,37 @@ public class PlatformInstance extends Model {
     }
   }
 
+  @JsonGetter("instance_state")
+  public InstanceState getInstanceState() {
+    if (this.lastBackup == null) {
+      return InstanceState.AwaitingReplicas;
+    }
+    return isBackupOutdated(getReplicationFrequency(), this.lastBackup)
+        ? InstanceState.Disconnected
+        : InstanceState.Connected;
+  }
+
+  @JsonIgnore
+  public boolean isAwaitingReplicas() {
+    return this.lastBackup == null;
+  }
+
+  @JsonIgnore
+  public boolean isConnected() {
+    return !isBackupOutdated(getReplicationFrequency(), this.lastBackup);
+  }
+
+  @JsonIgnore
+  public boolean isDisconnected() {
+    return isBackupOutdated(getReplicationFrequency(), this.lastBackup);
+  }
+
+  private Duration getReplicationFrequency() {
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.replicationFrequency);
+  }
+
   public static PlatformInstance create(
       HighAvailabilityConfig config, String address, boolean isLeader, boolean isLocal) {
     PlatformInstance model = new PlatformInstance();
@@ -172,6 +222,16 @@ public class PlatformInstance extends Model {
 
   public static void delete(UUID uuid) {
     find.deleteById(uuid);
+  }
+
+  public static boolean isBackupOutdated(Duration replicationFrequency, Date lastBackupTime) {
+    // Means awaiting connection
+    if (lastBackupTime == null) {
+      return false;
+    }
+    long backupAgeMillis = System.currentTimeMillis() - lastBackupTime.getTime();
+    return backupAgeMillis
+        >= Math.max(2 * replicationFrequency.toMillis(), BACKUP_DISCONNECT_TIME_MILLIS);
   }
 
   private static class HAConfigToUUIDSerializer extends JsonSerializer<HighAvailabilityConfig> {

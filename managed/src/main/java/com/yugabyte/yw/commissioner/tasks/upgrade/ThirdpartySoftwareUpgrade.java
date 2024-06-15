@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.LinkedHashSet;
@@ -48,10 +49,21 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    addBasicPrecheckTasks();
+  }
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          LinkedHashSet<NodeDetails> nodesToUpdate = fetchAllNodes(taskParams().upgradeOption);
+          LinkedHashSet<NodeDetails> nodesToUpdate = toOrderedSet(getNodesToBeRestarted().asPair());
 
           createRollingNodesUpgradeTaskFlow(
               (nodes, processTypes) -> {

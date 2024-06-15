@@ -35,12 +35,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
-  private final ShellProcessContext shellContext =
-      ShellProcessContext.builder()
-          .logCmdOutput(true)
-          .defaultSshPort(true)
-          .customUser(true)
-          .build();
+  private ShellProcessContext shellContext =
+      ShellProcessContext.builder().logCmdOutput(true).build();
 
   @Inject
   protected InstallNodeAgent(
@@ -54,10 +50,11 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   public static class Params extends NodeTaskParams {
     public int nodeAgentPort = DEFAULT_NODE_AGENT_PORT;
-    public String nodeAgentHome;
+    public String nodeAgentInstallDir;
     public UUID customerUuid;
     public boolean reinstall;
     public boolean airgap;
+    public String sshUser;
   }
 
   @Override
@@ -87,7 +84,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
     nodeAgent.setOsType(OSType.parse(parts[0].trim()));
     nodeAgent.setArchType(ArchType.parse(parts[1].trim()));
     nodeAgent.setVersion(nodeAgentManager.getSoftwareVersion());
-    nodeAgent.setHome(taskParams().nodeAgentHome);
+    nodeAgent.setHome(
+        Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR).toString());
     return nodeAgentManager.create(nodeAgent, false);
   }
 
@@ -103,23 +101,26 @@ public class InstallNodeAgent extends AbstractTaskBase {
       }
       nodeAgentManager.purge(nodeAgent);
     }
+    if (taskParams().sshUser != null) {
+      shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
+    }
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    Path stagingDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
+    Path nodeAgentSourcePath = stagingDir.resolve(NodeAgent.NODE_AGENT_DIR);
     NodeAgent nodeAgent = createNodeAgent(universe, node);
-    Path baseTargetDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
-    InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, baseTargetDir);
+    InstallerFiles installerFiles =
+        nodeAgentManager.getInstallerFiles(nodeAgent, nodeAgentSourcePath);
     Set<String> dirs =
         installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
-    StringBuilder sb = new StringBuilder();
-    sb.append("mkdir -p ").append(baseTargetDir);
-    sb.append(" && chmod 777 ").append(baseTargetDir);
-    String baseTargetDirCommand = sb.toString();
-    // Create the base directory with sudo first, make it writable for all users.
+    // Create the staging directory with sudo first, make it writable for all users.
     // This is done because some on-prem nodes may not have write permission to /tmp.
-    List<String> command = ImmutableList.of("sudo", "/bin/bash", "-c", baseTargetDirCommand);
-    log.info("Creating base target directory: {}", baseTargetDirCommand);
+    List<String> command =
+        ImmutableList.of("sudo", "mkdir", "-m", "777", "-p", stagingDir.toString());
+    log.info("Creating staging directory: {}", command);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+
     // Create the child folders as the current SSH user so that the files can be uploaded.
     command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
     log.info("Creating directories {} for node agent {}", dirs, nodeAgent.getUuid());
@@ -133,33 +134,39 @@ public class InstallNodeAgent extends AbstractTaskBase {
                   f.getTargetPath(),
                   nodeAgent.getUuid());
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
-              nodeUniverseManager
-                  .uploadFileToNode(
-                      node,
-                      universe,
-                      f.getSourcePath().toString(),
-                      f.getTargetPath().toString(),
-                      filePerm,
-                      shellContext)
-                  .processErrors();
+              nodeUniverseManager.uploadFileToNode(
+                  node,
+                  universe,
+                  f.getSourcePath().toString(),
+                  f.getTargetPath().toString(),
+                  filePerm,
+                  shellContext);
             });
-    Path nodeAgentSourcePath = baseTargetDir.resolve("node-agent");
-    Path nodeAgentInstallerPath = Paths.get(taskParams().nodeAgentHome, "node-agent-installer.sh");
-    sb.setLength(0);
+    Path nodeAgentHomePath = Paths.get(nodeAgent.getHome());
+    Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
+    Path nodeAgentInstallerPath = nodeAgentHomePath.resolve("node-agent-installer.sh");
+    StringBuilder sb = new StringBuilder();
     // Remove existing node agent folder.
-    sb.append("rm -rf ").append(taskParams().nodeAgentHome);
+    sb.append("rm -rf ").append(nodeAgentHomePath);
+    // Create the node agent home directory.
+    sb.append(" && mkdir -m 755 -p ").append(nodeAgentInstallPath);
     // Extract only the installer file.
     sb.append(" && tar -zxf ").append(installerFiles.getPackagePath());
     sb.append(" --strip-components=3 -C ").append(nodeAgentSourcePath);
-    sb.append(" --wildcards */node-agent-installer.sh");
+    sb.append(" --wildcards -- */node-agent-installer.sh");
     // Move the node-agent source folder to the right location.
     sb.append(" && mv -f ").append(nodeAgentSourcePath);
-    sb.append(" ").append(taskParams().nodeAgentHome);
+    sb.append(" ").append(nodeAgentHomePath);
+    // Remove the staging directory.
+    sb.append(" && rm -rf ").append(stagingDir);
+    // Change the owner to the current user.
+    sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     // Give executable permission to the installer script.
     sb.append(" && chmod +x ").append(nodeAgentInstallerPath);
     // Run the installer script.
     sb.append(" && ").append(nodeAgentInstallerPath);
     sb.append(" -c install --skip_verify_cert --disable_egress");
+    sb.append(" --install_path ").append(nodeAgentInstallPath);
     sb.append(" --id ").append(nodeAgent.getUuid());
     sb.append(" --customer_id ").append(nodeAgent.getCustomerUuid());
     sb.append(" --cert_dir ").append(installerFiles.getCertDir());
@@ -169,13 +176,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
     if (taskParams().airgap) {
       sb.append(" --airgap");
     }
-    // Give executable permission to node-agent path.
-    sb.append(" && chmod 755 /root ").append(taskParams().nodeAgentHome);
-    // Remove the unused installer script.
-    sb.append(" && rm -rf ").append(nodeAgentInstallerPath);
-    String installCommand = sb.toString();
-    log.debug("Running node agent installation command: {}", installCommand);
-    command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", installCommand);
+    command = ImmutableList.of("sudo", "-H", "/bin/bash", "-c", sb.toString());
+    log.debug("Running node agent installation command: {}", command);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
   }
 }

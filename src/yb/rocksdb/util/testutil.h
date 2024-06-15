@@ -46,6 +46,7 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/random.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
@@ -356,13 +357,13 @@ class SleepingBackgroundTask {
   void DoSleep() {
     MutexLock l(&mutex_);
     sleeping_ = true;
-    bg_cv_.SignalAll();
+    YB_PROFILE(bg_cv_.SignalAll());
     while (should_sleep_) {
       bg_cv_.Wait();
     }
     sleeping_ = false;
     done_with_sleep_ = true;
-    bg_cv_.SignalAll();
+    YB_PROFILE(bg_cv_.SignalAll());
   }
   void WaitUntilSleeping() {
     MutexLock l(&mutex_);
@@ -373,7 +374,7 @@ class SleepingBackgroundTask {
   void WakeUp() {
     MutexLock l(&mutex_);
     should_sleep_ = false;
-    bg_cv_.SignalAll();
+    YB_PROFILE(bg_cv_.SignalAll());
   }
   void WaitUntilDone() {
     MutexLock l(&mutex_);
@@ -793,6 +794,10 @@ class TestUserFrontier : public UserFrontier {
   }
 
   void ResetFilter() override {}
+
+  uint64_t GetHybridTimeAsUInt64() const override {
+    return 0;
+  }
 
  private:
   uint64_t value_ = 0;

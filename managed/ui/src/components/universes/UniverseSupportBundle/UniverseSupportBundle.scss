@@ -2,7 +2,6 @@
 @use '../../../_style/colors.scss';
 
 .universe-support-bundle {
-
   .modal-footer {
     div {
       display: flex;
@@ -21,7 +20,7 @@
       font-weight: 400;
       font-size: 13px;
       line-height: 21px;
-      color: #4C4C4C;
+      color: #4c4c4c;
       margin-top: 22px;
     }
 
@@ -39,7 +38,7 @@
         padding-bottom: 200px;
 
         .first-step-icon {
-          color: #67666C;
+          color: #67666c;
           opacity: 0.3;
           font-size: 40px;
           width: max-content;
@@ -76,7 +75,7 @@
         }
 
         .selection-area {
-          border: 1px solid #E3E3E5;
+          border: 1px solid #e3e3e5;
           padding: 16px;
           border-radius: 8px;
 
@@ -85,7 +84,7 @@
             font-weight: 600;
             font-size: 13px;
             line-height: 16px;
-            color: #4C4C4C;
+            color: #4c4c4c;
           }
 
           .selection-option {
@@ -100,9 +99,24 @@
             }
           }
         }
+        .core-file-container {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          border: 1px solid #e3e3e5;
+          border-radius: 8px;
+          padding: 16px;
+          margin-top: 16px;
+
+          .title {
+            font-style: normal;
+            font-weight: 600;
+            font-size: 13px;
+            line-height: 16px;
+            color: #4c4c4c;
+          }
+        }
       }
     }
-
-
   }
 }

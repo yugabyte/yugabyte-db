@@ -6,7 +6,15 @@ import SideNavBar from './SideNavBar';
 import './stylesheets/NavBar.scss';
 
 export default class NavBar extends Component {
+  componentDidMount() {
+    this.props.fetchCustomerRunTimeConfigs();
+  }
+
   render() {
+    const {
+      customer: { customerRuntimeConfigs }
+    } = this.props;
+
     return (
       <div className="yb-nav-bar">
         <TopNavBar customer={this.props.customer} logoutProfile={this.props.logoutProfile} />

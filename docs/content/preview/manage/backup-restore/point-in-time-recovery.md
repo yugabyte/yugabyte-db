@@ -6,6 +6,7 @@ description: Restore data to a specific point in time in YugabyteDB
 aliases:
   - /preview/manage/backup-restore/point-in-time-restore
   - /preview/manage/backup-restore/point-in-time-restore-ycql
+  - /preview/yugabyte-platform/back-up-restore-universes/point-in-time
 menu:
   preview:
     identifier: point-in-time-recovery
@@ -143,25 +144,17 @@ You can also use the same command to view the information about a particular sch
 
 ## Restore to a point in time
 
-{{< warning title="Stop workloads before restoring" >}}
-
-Stop all the application workloads before you restore to a point in time. Transactions running concurrently with the restore operation can lead to data inconsistency.
-
-This requirement will be removed in an upcoming release, and is tracked in issue [12853](https://github.com/yugabyte/yugabyte-db/issues/12853).
-
-{{< /warning >}}
-
 If a database or a keyspace has an associated snapshot schedule, you can use that schedule to restore the database or keyspace to a particular point in time by using the [`restore_snapshot_schedule`](../../../admin/yb-admin/#restore-snapshot-schedule) command with the following parameters:
 
-* The ID of the schedule.
+- The ID of the schedule.
 
-* Target restore time, with the following two options:
+- Target restore time, with the following two options:
 
-  * Restore to an absolute time, providing a specific timestamp in one of the following formats:
+  - Restore to an absolute time, providing a specific timestamp in one of the following formats:
 
-    * [Unix timestamp](https://www.unixtimestamp.com) in seconds, milliseconds, or microseconds.
-    * [YSQL timestamp](../../../api/ysql/datatypes/type_datetime/).
-    * [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp).
+    - [Unix timestamp](https://www.unixtimestamp.com) in microseconds.
+    - [YSQL timestamp](../../../api/ysql/datatypes/type_datetime/).
+    - [YCQL timestamp](../../../api/ycql/type_datetime/#timestamp).
 
     For example, the following command restores to 1:00 PM PDT on May 1st 2022 using a Unix timestamp:
 
@@ -179,7 +172,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
         restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 "2022-05-01 13:00-0700"
     ```
 
-  * Restore to a time that is relative to the current (for example, to 10 minutes ago from now) by specifying how much time back you would like to roll a database or keyspace.
+  - Restore to a time that is relative to the current (for example, to 10 minutes ago from now) by specifying how much time back you would like to roll a database or keyspace.
 
     For example, to restore to 5 minutes ago, run the following command:
 
@@ -242,7 +235,7 @@ xCluster does not replicate any commands related to PITR. If you have two cluste
 
 ### Global objects
 
-PITR doesn't support global objects, such as [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/), roles, and permissions, because they're not currently backed up by the distributed snapshots. If you alter or drop a global object, then try to restore to a point in time before the change, the object will _not_ be restored.
+PITR doesn't support global objects, such as [tablespaces](../../../explore/going-beyond-sql/tablespaces/), roles, and permissions, because they're not currently backed up by the distributed snapshots. If you alter or drop a global object, then try to restore to a point in time before the change, the object will _not_ be restored.
 
 Tracking issue for YSQL tablespaces: [10257](https://github.com/yugabyte/yugabyte-db/issues/10257)
 
@@ -270,6 +263,6 @@ YugabyteDB Anywhere [supports PITR](../../../yugabyte-platform/back-up-restore-u
 
 ### Other limitations
 
-* The `TRUNCATE` command is disallowed for databases with a snapshot schedule. Tracking issue: [7129](https://github.com/yugabyte/yugabyte-db/issues/7129).
-* PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
-* You can't modify a snapshot schedule once it's created. If you need to change the interval or the retention period, delete the snapshot and recreate it with the new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
+- PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
+- You can't modify a snapshot schedule once it's created. If you need to change the interval or the retention period, delete the snapshot and recreate it with the new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
+- Issuing DDLs against a database while it is being restored is not recommended.

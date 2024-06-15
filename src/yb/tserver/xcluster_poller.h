@@ -11,16 +11,15 @@
 // under the License.
 //
 
-#include <stdlib.h>
 #include <string>
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/tserver/xcluster_async_executor.h"
+#include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/tserver/xcluster_output_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/tserver/xcluster_poller_id.h"
 #include "yb/tserver/xcluster_poller_stats.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
 #include "yb/util/status_fwd.h"
 
@@ -44,25 +43,27 @@ class CDCServiceProxy;
 
 namespace tserver {
 
-class XClusterConsumer;
-
-namespace xcluster {
 class AutoFlagsCompatibleVersion;
-}  // namespace xcluster
+class XClusterConsumer;
+class XClusterDDLQueueHandler;
 
 class XClusterPoller : public XClusterAsyncExecutor {
  public:
   XClusterPoller(
-      const cdc::ProducerTabletInfo& producer_tablet_info,
-      const cdc::ConsumerTabletInfo& consumer_tablet_info,
-      std::shared_ptr<const xcluster::AutoFlagsCompatibleVersion> auto_flags_version,
-      ThreadPool* thread_pool, rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
+      const xcluster::ProducerTabletInfo& producer_tablet_info,
+      const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+      const NamespaceId& consumer_namespace_id,
+      std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
+      rpc::Rpcs* rpcs, client::YBClient& local_client,
       const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
       SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
       std::function<int64_t(const TabletId&)> get_leader_term);
   ~XClusterPoller();
 
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+  void InitDDLQueuePoller(
+      bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
+      const NamespaceName& namespace_name, ConnectToPostgresFunc connect_to_pg_func);
 
   void StartShutdown() override;
   void CompleteShutdown() override;
@@ -87,8 +88,13 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
-  const cdc::ConsumerTabletInfo& GetConsumerTabletInfo() const { return consumer_tablet_info_; }
-  const cdc::ProducerTabletInfo& GetProducerTabletInfo() const { return producer_tablet_info_; }
+  const xcluster::ConsumerTabletInfo& GetConsumerTabletInfo() const {
+    return consumer_tablet_info_;
+  }
+  const NamespaceId& GetConsumerNamespaceId() const { return consumer_namespace_id_; }
+  const xcluster::ProducerTabletInfo& GetProducerTabletInfo() const {
+    return producer_tablet_info_;
+  }
 
   bool IsStuck() const;
   std::string State() const;
@@ -105,7 +111,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void ApplyChangesCallback(XClusterOutputClientResponse&& response);
 
  private:
-  const cdc::ReplicationGroupId& GetReplicationGroupId() const {
+  const xcluster::ReplicationGroupId& GetReplicationGroupId() const {
     return producer_tablet_info_.replication_group_id;
   }
 
@@ -121,16 +127,18 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void ScheduleApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response);
   void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response)
       EXCLUDES(data_mutex_);
-  void HandleApplyChangesResponse(XClusterOutputClientResponse& response) EXCLUDES(data_mutex_);
+  void VerifyApplyChangesResponse(XClusterOutputClientResponse response);
+  void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
   Status ProcessGetChangesResponseError(const cdc::GetChangesResponsePB& resp);
 
-  const cdc::ProducerTabletInfo producer_tablet_info_;
-  const cdc::ConsumerTabletInfo consumer_tablet_info_;
+  const xcluster::ProducerTabletInfo producer_tablet_info_;
+  const xcluster::ConsumerTabletInfo consumer_tablet_info_;
+  const NamespaceId consumer_namespace_id_;
   const XClusterPollerId poller_id_;
-  const std::shared_ptr<const xcluster::AutoFlagsCompatibleVersion> auto_flags_version_;
+  const std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version_;
 
   mutable rw_spinlock schema_version_lock_;
   cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(schema_version_lock_);
@@ -149,9 +157,10 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::atomic<SchemaVersion> last_compatible_consumer_schema_version_;
   std::function<int64_t(const TabletId&)> get_leader_term_;
 
-  const std::shared_ptr<XClusterClient> local_client_;
+  client::YBClient& local_client_;
   std::shared_ptr<XClusterOutputClient> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;
+  std::shared_ptr<XClusterDDLQueueHandler> ddl_queue_handler_;
 
   // Unsafe to use after shutdown.
   XClusterConsumer* const xcluster_consumer_;

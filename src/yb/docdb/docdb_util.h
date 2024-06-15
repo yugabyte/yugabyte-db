@@ -38,6 +38,8 @@ Status SetValueFromQLBinaryWrapper(
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
     DatumMessagePB* cdc_datum_message = NULL);
 
+void DeleteMemoryContextForCDCWrapper();
+
 struct ExternalIntent {
   dockv::DocPath doc_path;
   std::string value;
@@ -68,8 +70,8 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   rocksdb::DB* intents_db();
   DocDB doc_db() { return { rocksdb(), intents_db(), &KeyBounds::kNoBounds }; }
 
-  Status InitCommonRocksDBOptionsForTests();
-  Status InitCommonRocksDBOptionsForBulkLoad();
+  Status InitCommonRocksDBOptionsForTests(const TabletId& tablet_id);
+  Status InitCommonRocksDBOptionsForBulkLoad(const TabletId& tablet_id);
 
   const rocksdb::WriteOptions& write_options() const { return write_options_; }
 
@@ -216,7 +218,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
     return ReopenRocksDB();
   }
 
-  Status ReinitDBOptions();
+  Status ReinitDBOptions(const TabletId& tablet_id);
 
   std::atomic<int64_t>& monotonic_counter() {
     return monotonic_counter_;

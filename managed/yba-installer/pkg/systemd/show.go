@@ -23,6 +23,9 @@ func Show(service string, properties ...string) map[string]string {
 	if len(properties) > 0 {
 		args = append(args, "--property", strings.Join(properties, ","))
 	}
+	if !isRoot() {
+		args = append(args, "--user")
+	}
 	cmd := exec.Command("systemctl", args...)
 	stdout, err := cmd.Output()
 	if err != nil {

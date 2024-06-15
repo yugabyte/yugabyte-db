@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.74-SNAPSHOT</version>
+    <version>0.8.89-SNAPSHOT</version>
   </parent>
   <groupId>org.yb</groupId>
   <artifactId>yb-cdc</artifactId>
@@ -43,12 +43,12 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.74-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.74-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
@@ -100,7 +100,12 @@
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.6.0-yb-11</version>
+      <version>4.15.0-yb-2</version>
+    </dependency>
+    <dependency>
+      <groupId>commons-configuration</groupId>
+      <artifactId>commons-configuration</artifactId>
+      <version>1.10</version>
     </dependency>
     <!-- dependency for smart jdbc driver yugabyte -->
     <dependency>

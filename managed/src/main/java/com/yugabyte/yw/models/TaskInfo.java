@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.TaskDetails;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
@@ -41,9 +43,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import play.data.validation.Constraints;
 
 @Entity
@@ -149,13 +152,20 @@ public class TaskInfo extends Model {
   @ApiModelProperty(value = "Percentage complete", accessMode = READ_ONLY)
   private Integer percentDone = 0;
 
-  // Details of the task, usually a JSON representation of the incoming task. This is used to
-  // describe the details of the task that is being executed.
+  // Task input parameters.
   @Constraints.Required
   @Column(columnDefinition = "TEXT default '{}'", nullable = false)
   @DbJson
-  @ApiModelProperty(value = "Task details", accessMode = READ_ONLY, required = true)
-  private JsonNode details;
+  @ApiModelProperty(value = "Task params", accessMode = READ_ONLY, required = true)
+  private JsonNode taskParams;
+
+  // Execution or runtime details of the task.
+  @Setter(AccessLevel.NONE)
+  @Constraints.Required
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  @ApiModelProperty(value = "Task details", accessMode = READ_ONLY)
+  private TaskDetails details;
 
   // Identifier of the process owning the task.
   @Constraints.Required
@@ -166,33 +176,38 @@ public class TaskInfo extends Model {
       required = true)
   private String owner;
 
-  public TaskInfo(TaskType taskType) {
+  public TaskInfo(TaskType taskType, UUID taskUUID) {
     this.taskType = taskType;
+    this.uuid = taskUUID;
   }
 
   @JsonIgnore
   public String getErrorMessage() {
-    if (details == null || taskState == State.Success) {
-      return null;
+    TaskError error = getTaskError();
+    if (error != null) {
+      return error.getMessage();
     }
-    JsonNode node = details.get("errorString");
-    if (node == null || node.isNull()) {
-      return null;
-    }
-    return node.asText();
+    return null;
   }
 
   @JsonIgnore
-  public UUID getUniverseUuid() {
-    UUID universeUUID = null;
-    JsonNode jsonNode = getDetails();
-    if (jsonNode != null && !jsonNode.isNull()) {
-      JsonNode universeUUIDNode = jsonNode.get("universeUUID");
-      if (universeUUIDNode != null) {
-        universeUUID = UUID.fromString(universeUUIDNode.asText());
-      }
+  public synchronized TaskError getTaskError() {
+    if (taskState == State.Success || details == null) {
+      return null;
     }
-    return universeUUID;
+    TaskError error = details.getError();
+    if (error == null || error.getCode() == null) {
+      return null;
+    }
+    return error;
+  }
+
+  @JsonIgnore
+  public synchronized void setTaskError(TaskError error) {
+    if (details == null) {
+      details = new TaskDetails();
+    }
+    details.setError(error);
   }
 
   public State getTaskState() {

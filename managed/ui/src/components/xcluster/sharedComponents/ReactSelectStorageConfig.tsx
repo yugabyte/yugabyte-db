@@ -5,6 +5,7 @@ import { FieldValues } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { groupBy } from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 
 import {
   ReactSelectGroupedOption,
@@ -15,12 +16,13 @@ import { usePillStyles } from '../../../redesign/styles/styles';
 import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
 
 import { Optional } from '../../../redesign/helpers/types';
-import { Link } from 'react-router';
 
 const useSelectStyles = makeStyles((theme) => ({
   optionLabel: {
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+
+    marginRight: theme.spacing(1)
   },
   optionPillContainer: {
     display: 'flex',
@@ -34,7 +36,6 @@ export interface StorageConfigOption {
   label: string;
   value: {
     name: string;
-    regions: any[];
     uuid: string;
   };
 }
@@ -76,8 +77,7 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
     return {
       value: {
         uuid: storageConfig.configUUID,
-        name: storageConfig.name,
-        regions: storageConfig.data?.REGION_LOCATIONS
+        name: storageConfig.name
       },
       label: storageConfig.configName
     };
@@ -90,6 +90,7 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
       <YBReactSelectField
         options={groupedStorageConfigOptions}
         stylesOverride={storageConfigSelectStylesOverride}
+        accessoryContainerWidthPx={180}
         components={{
           SingleValue: SingleValue,
           Option: Option
@@ -100,7 +101,11 @@ export const ReactSelectStorageConfigField = <TFieldValues extends FieldValues>(
         <Typography variant="body2">
           <Trans
             i18nKey={`${TRANSLATION_KEY_PREFIX}.createBackupStorageConfigPrompt`}
-            components={{ createStorageConfigLink: <Link to={'/config/backup'} /> }}
+            components={{
+              createStorageConfigLink: (
+                <Link to={'/config/backup'} target="_blank" rel="noopener noreferrer" />
+              )
+            }}
           />
         </Typography>
       )}

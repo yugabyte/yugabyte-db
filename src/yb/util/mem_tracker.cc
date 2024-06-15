@@ -44,6 +44,8 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/tserver/server_main_util.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -57,21 +59,29 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/logging.h"
+#include "yb/util/tcmalloc_profile.h"
 #include "yb/util/tcmalloc_trace.h"
 #include "yb/util/tcmalloc_util.h"
 #include "yb/util/tcmalloc_impl_util.h"
 
 using namespace std::literals;
 
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_int64(memory_limit_hard_bytes, 0,
-             "Maximum amount of memory this daemon should use, in bytes. "
-             "A value of 0 autosizes based on the total system memory. "
-             "A value of -1 disables all memory limiting.");
+    "Maximum amount of memory this daemon should use in bytes. "
+    "A value of 0 specifies to instead use a percentage of the total system memory; "
+    "see --default_memory_limit_to_ram_ratio for the percentage used. "
+    "A value of -1 disables all memory limiting.");
 TAG_FLAG(memory_limit_hard_bytes, stable);
+
+// NOTE: The default here is for tools and tests; the actual defaults
+// for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_double(default_memory_limit_to_ram_ratio, 0.85,
-              "If memory_limit_hard_bytes is left unspecified, then it is "
-              "set to default_memory_limit_to_ram_ratio * Available RAM.");
-TAG_FLAG(default_memory_limit_to_ram_ratio, advanced);
+    "The percentage of available RAM to use if --memory_limit_hard_bytes is 0. "
+    "The special value " BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE)
+    " means to instead use a recommended percentage determined "
+    "in part by the amount of RAM available.");
 
 DEFINE_NON_RUNTIME_int32(memory_limit_soft_percentage, 85,
              "Percentage of the hard memory limit that this daemon may "
@@ -235,6 +245,7 @@ void MemTracker::CreateRootTracker() {
     // - 10% of the RAM for masters.
     int64_t total_ram;
     CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
+    DCHECK(FLAGS_default_memory_limit_to_ram_ratio != USE_RECOMMENDED_MEMORY_VALUE);
     limit = total_ram * FLAGS_default_memory_limit_to_ram_ratio;
   }
 
@@ -255,9 +266,10 @@ void MemTracker::CreateRootTracker() {
             << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
 #endif
 
+  LOG(INFO) << "Root memory limit is " << limit;
   root_tracker = std::make_shared<MemTracker>(
-      limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kTrue,
-      CreateMetrics::kFalse);
+      limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kFalse,
+      CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);
 }
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
@@ -289,15 +301,16 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   }
   auto result = std::make_shared<MemTracker>(
       byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
-          create_metrics, metric_name);
-  auto p = child_trackers_.emplace(id, result);
-  if (!p.second) {
-    auto existing = p.first->second.lock();
+          create_metrics, metric_name, IsRootTracker::kFalse);
+  auto [iter, inserted] = child_trackers_.emplace(id, result);
+  if (!inserted) {
+    auto& tracker_weak_ptr = iter->second;
+    auto existing = tracker_weak_ptr.lock();
     if (existing) {
       LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
       return existing;
     }
-    p.first->second = result;
+    tracker_weak_ptr = result;
   }
 
   return result;
@@ -306,7 +319,7 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
 MemTracker::MemTracker(int64_t byte_limit, const string& id,
                        ConsumptionFunctor consumption_functor, std::shared_ptr<MemTracker> parent,
                        AddToParent add_to_parent, CreateMetrics create_metrics,
-                       const std::string& metric_name)
+                       const std::string& metric_name, IsRootTracker is_root_tracker)
     : limit_(byte_limit),
       soft_limit_(limit_ == -1 ? -1 : (limit_ * FLAGS_memory_limit_soft_percentage) / 100),
       id_(id),
@@ -316,7 +329,8 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
       enable_logging_(FLAGS_mem_tracker_logging),
       log_stack_(FLAGS_mem_tracker_log_stack_trace),
       add_to_parent_(add_to_parent),
-      metric_name_(CreateMetricName(*this, metric_name)) {
+      metric_name_(CreateMetricName(*this, metric_name)),
+      is_root_tracker_(is_root_tracker) {
   VLOG(1) << "Creating tracker " << ToString();
   UpdateConsumption();
 
@@ -605,30 +619,43 @@ bool MemTracker::LimitExceeded() {
 }
 
 SoftLimitExceededResult MemTracker::SoftLimitExceeded(double* score) {
-  // Did we exceed the actual limit?
-  if (LimitExceeded()) {
-    return {ToString(), true, consumption() * 100.0 / limit()};
-  }
-
-  // No soft limit defined.
-  if (!has_limit() || limit_ == soft_limit_) {
-    return SoftLimitExceededResult::NotExceeded();
-  }
-
-  // Are we under the soft limit threshold?
   int64_t usage = consumption();
-  if (usage < soft_limit_) {
-    return SoftLimitExceededResult::NotExceeded();
+  // If we have exceed the hard limit, we can skip the soft limit calculations.
+  if (!LimitExceeded()) {
+    // No soft limit defined.
+    if (!has_limit() || limit_ == soft_limit_) {
+      return SoftLimitExceededResult::NotExceeded();
+    }
+
+    // Are we under the soft limit threshold?
+    if (usage < soft_limit_) {
+      return SoftLimitExceededResult::NotExceeded();
+    }
+
+    // We're over the threshold; were we randomly chosen to be over the soft limit?
+    if (*score == 0.0) {
+      *score = RandomUniformReal<double>();
+    }
+    if (usage + (limit_ - soft_limit_) * *score <= limit_) {
+      return SoftLimitExceededResult::NotExceeded();
+    }
+
+    if (!GcMemory(soft_limit_)) {
+      // We were able to GC enough to be below the soft memory limit.
+      return SoftLimitExceededResult::NotExceeded();
+    }
   }
 
-  // We're over the threshold; were we randomly chosen to be over the soft limit?
-  if (*score == 0.0) {
-    *score = RandomUniformReal<double>();
+  // Soft limit exceeded.
+  // Dump heap snapshot for debugging if this is the root tracker (and we have not dumped recently).
+  if (IsRoot()) {
+    DumpHeapSnapshotUnlessThrottled();
   }
-  if (usage + (limit_ - soft_limit_) * *score > limit_ && GcMemory(soft_limit_)) {
-    return {ToString(), true, usage * 100.0 / limit()};
-  }
-  return SoftLimitExceededResult::NotExceeded();
+  return SoftLimitExceededResult {
+    .tracker_path = ToString(),
+    .exceeded = true,
+    .current_capacity_pct = usage * 100.0 / limit()
+  };
 }
 
 SoftLimitExceededResult MemTracker::AnySoftLimitExceeded(double* score) {
@@ -799,6 +826,24 @@ int64_t MemTracker::GetRootTrackerConsumption() {
 shared_ptr<MemTracker> MemTracker::GetRootTracker() {
   InitRootTrackerOnce();
   return root_tracker;
+}
+
+uint64_t MemTracker::GetTrackedMemory() {
+  uint64_t tracked_memory = 0;
+  for (auto child_tracker : GetRootTracker()->ListChildren()) {
+    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix)) {
+      tracked_memory += child_tracker->consumption();
+    }
+  }
+  return tracked_memory;
+}
+
+uint64_t MemTracker::GetUntrackedMemory() {
+  #if YB_TCMALLOC_ENABLED
+  // generic.current_allocated_bytes = root - tcmalloc
+  return ::yb::GetTCMallocProperty("generic.current_allocated_bytes") - GetTrackedMemory();
+  #endif
+  return 0;
 }
 
 void MemTracker::SetMetricEntity(const MetricEntityPtr& metric_entity) {

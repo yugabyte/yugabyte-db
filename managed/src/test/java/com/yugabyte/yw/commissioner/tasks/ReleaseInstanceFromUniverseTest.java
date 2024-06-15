@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +44,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
@@ -89,7 +92,8 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
-        ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
+        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     setDefaultNodeState(NodeState.Removed);
 
@@ -99,11 +103,14 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     ChangeMasterClusterConfigResponse mockChangeConfigResponse =
         new ChangeMasterClusterConfigResponse(1111, "", null);
+    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
 
     mockClient = mock(YBClient.class);
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockChangeConfigResponse);
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
     } catch (Exception e) {
     }
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -145,12 +152,14 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> RELEASE_INSTANCE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckNodeSafeToDelete,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
-          TaskType.ModifyBlackList,
           TaskType.SetNodeState,
+          TaskType.CheckNodeSafeToDelete,
           TaskType.AnsibleDestroyServer,
+          TaskType.ModifyBlackList,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded);
@@ -158,7 +167,9 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> RELEASE_INSTANCE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "BeingDecommissioned")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -175,7 +186,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = RELEASE_INSTANCE_TASK_EXPECTED_RESULTS.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -192,11 +203,12 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
     } catch (Exception e) {
     }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-
+    setDumpEntitiesMock(defaultUniverse, DEFAULT_NODE_NAME, false);
+    NodeDetails node = defaultUniverse.getNode(DEFAULT_NODE_NAME);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
     TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -208,19 +220,13 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testReleaseStoppedInstanceSuccess() {
-    setDefaultNodeState(NodeState.Removed);
+  public void testReleaseStoppedInstanceFailure() {
+    setDefaultNodeState(NodeState.Stopped);
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-
-    TaskInfo taskInfo = submitTask(taskParams, DEFAULT_NODE_NAME, 4);
-    assertEquals(Success, taskInfo.getTaskState());
-
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(RELEASE_INSTANCE_TASK_SEQUENCE.size(), subTasksByPosition.size());
-    assertReleaseInstanceSequence(subTasksByPosition);
+    // Throws at validateParams check.
+    assertThrows(
+        PlatformServiceException.class, () -> submitTask(taskParams, DEFAULT_NODE_NAME, 4));
   }
 
   @Test
@@ -250,12 +256,14 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
 
+    NodeDetails node = defaultUniverse.getNode(DEFAULT_NODE_NAME);
     try {
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
     } catch (Exception e) {
     }
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-
+    setDumpEntitiesMock(defaultUniverse, DEFAULT_NODE_NAME, false);
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.expectedUniverseVersion = 3;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());

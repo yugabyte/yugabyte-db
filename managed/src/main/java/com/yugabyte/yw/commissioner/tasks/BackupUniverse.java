@@ -107,13 +107,14 @@ public class BackupUniverse extends UniverseTaskBase {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      universe = lockUniverseForUpdate(-1);
+      universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
 
       try {
 
         // If this is a retry and keyspace to restore to already exists, drop it.
         if (!isFirstTry() && taskParams().actionType == ActionType.RESTORE) {
-          createDeleteKeySpaceTask(taskParams().getKeyspace(), taskParams().backupType)
+          createDeleteKeySpaceTask(
+                  taskParams().getKeyspace(), taskParams().backupType, false /*ysqlForce*/)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
 

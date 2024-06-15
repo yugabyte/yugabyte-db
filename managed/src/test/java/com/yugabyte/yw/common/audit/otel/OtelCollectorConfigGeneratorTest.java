@@ -4,16 +4,23 @@ package com.yugabyte.yw.common.audit.otel;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
@@ -23,6 +30,7 @@ import com.yugabyte.yw.models.helpers.telemetry.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -40,14 +48,37 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   private TelemetryProviderService telemetryProviderService;
   private Customer customer;
   private Provider provider;
+  private Universe universe;
+  private NodeTaskParams nodeTaskParams;
 
   @Before
   public void setUp() {
     new File(OTEL_COL_TMP_PATH).mkdir();
     generator = app.injector().instanceOf(OtelCollectorConfigGenerator.class);
-    telemetryProviderService = app.injector().instanceOf(TelemetryProviderService.class);
+    doNothing().when(mockTelemetryProviderService).validateBean(any());
     customer = ModelFactory.testCustomer();
     provider = ModelFactory.awsProvider(customer);
+    universe = ModelFactory.createUniverse(customer.getId());
+    universe = ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    // update the node name
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            new UniverseUpdater() {
+              @Override
+              public void run(Universe universe) {
+                UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+                for (NodeDetails node : params.nodeDetailsSet) {
+                  node.nodeName = "test-node";
+                }
+                universe.setUniverseDetails(params);
+              }
+            },
+            false);
+    // create nodeTaskParams
+    nodeTaskParams = new NodeTaskParams();
+    nodeTaskParams.setUniverseUUID(universe.getUniverseUUID());
+    nodeTaskParams.nodeName = "test-node";
   }
 
   @After
@@ -58,10 +89,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
   @Test
   public void generateOtelColConfigYsqlPlusDatadog() {
-    NodeTaskParams nodeTaskParams = new NodeTaskParams();
-    nodeTaskParams.nodeName = "test-node";
-
     TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(new UUID(0, 0));
     telemetryProvider.setCustomerUUID(customer.getUuid());
     telemetryProvider.setName("DD");
     telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
@@ -70,7 +99,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setSite("ddsite");
     config.setApiKey("apikey");
     telemetryProvider.setConfig(config);
-    telemetryProviderService.save(telemetryProvider);
+    mockTelemetryProviderService.save(telemetryProvider);
 
     AuditLogConfig auditLogConfig = new AuditLogConfig();
     YSQLAuditConfig ysqlAuditConfig = new YSQLAuditConfig();
@@ -85,7 +114,13 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
       File file = new File(OTEL_COL_TMP_PATH + "config.yml");
       file.createNewFile();
       generator.generateConfigFile(
-          nodeTaskParams, provider, null, auditLogConfig, "%t | %u%d : ", file.toPath());
+          nodeTaskParams,
+          provider,
+          null,
+          auditLogConfig,
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams));
 
       String result = FileUtils.readFileToString(file, Charset.defaultCharset());
 
@@ -98,10 +133,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
   @Test
   public void generateOtelColConfigYcqlPlusSplunk() {
-    NodeTaskParams nodeTaskParams = new NodeTaskParams();
-    nodeTaskParams.nodeName = "test-node";
-
     TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(new UUID(0, 0));
     telemetryProvider.setCustomerUUID(customer.getUuid());
     telemetryProvider.setName("Splunk");
     telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
@@ -113,7 +146,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setToken("apitoken");
     config.setSourceType("some_type");
     telemetryProvider.setConfig(config);
-    telemetryProviderService.save(telemetryProvider);
+    mockTelemetryProviderService.save(telemetryProvider);
 
     AuditLogConfig auditLogConfig = new AuditLogConfig();
     YCQLAuditConfig ycqlAuditConfig = new YCQLAuditConfig();
@@ -129,7 +162,13 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
       File file = new File(OTEL_COL_TMP_PATH + "config.yml");
       file.createNewFile();
       generator.generateConfigFile(
-          nodeTaskParams, provider, null, auditLogConfig, "%t | %u%d : ", file.toPath());
+          nodeTaskParams,
+          provider,
+          null,
+          auditLogConfig,
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams));
 
       String result = FileUtils.readFileToString(file, Charset.defaultCharset());
 
@@ -142,10 +181,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
   @Test
   public void generateMultiConfig() {
-    NodeTaskParams nodeTaskParams = new NodeTaskParams();
-    nodeTaskParams.nodeName = "test-node";
-
     TelemetryProvider awsTelemetryProvider = new TelemetryProvider();
+    awsTelemetryProvider.setUuid(new UUID(0, 0));
     awsTelemetryProvider.setCustomerUUID(customer.getUuid());
     awsTelemetryProvider.setName("AWS");
     awsTelemetryProvider.setTags(ImmutableMap.of("tag", "value"));
@@ -158,9 +195,10 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     awsConfig.setLogStream("logStream");
     awsConfig.setRegion("us-west2");
     awsTelemetryProvider.setConfig(awsConfig);
-    telemetryProviderService.save(awsTelemetryProvider);
+    mockTelemetryProviderService.save(awsTelemetryProvider);
 
     TelemetryProvider gcpTelemetryProvider = new TelemetryProvider();
+    gcpTelemetryProvider.setUuid(UUID.fromString("11111111-1111-1111-1111-111111111111"));
     gcpTelemetryProvider.setCustomerUUID(customer.getUuid());
     gcpTelemetryProvider.setName("GCP");
     gcpTelemetryProvider.setTags(ImmutableMap.of("tag", "value1"));
@@ -169,7 +207,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     gcpConfig.setProject("project");
     gcpConfig.setCredentials(Json.parse("{\"creds\": \"some_creds\"}"));
     gcpTelemetryProvider.setConfig(gcpConfig);
-    telemetryProviderService.save(gcpTelemetryProvider);
+    mockTelemetryProviderService.save(gcpTelemetryProvider);
 
     AuditLogConfig auditLogConfig = new AuditLogConfig();
     YCQLAuditConfig ycqlAuditConfig = new YCQLAuditConfig();
@@ -192,7 +230,13 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
       File file = new File(OTEL_COL_TMP_PATH + "config.yml");
       file.createNewFile();
       generator.generateConfigFile(
-          nodeTaskParams, provider, null, auditLogConfig, "%t | %u%d : ", file.toPath());
+          nodeTaskParams,
+          provider,
+          null,
+          auditLogConfig,
+          "%t | %u%d : ",
+          file.toPath(),
+          NodeManager.getOtelColMetricsPort(nodeTaskParams));
 
       String result = FileUtils.readFileToString(file, Charset.defaultCharset());
 

@@ -62,7 +62,7 @@ class MaintenanceManager;
 class RpcServer;
 class ServerEntryPB;
 class ThreadPool;
-class AutoFlagsManager;
+class AutoFlagsManagerBase;
 class AutoFlagsConfigPB;
 
 namespace server {
@@ -79,12 +79,14 @@ class SecureContext;
 
 namespace master {
 
+class MasterAutoFlagsManager;
+
 class Master : public tserver::DbServerBase {
  public:
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
-  virtual Status InitAutoFlags() override;
+  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
   Status InitAutoFlagsFromMasterLeader(const HostPort& leader_address);
   Status Init() override;
   Status Start() override;
@@ -109,6 +111,8 @@ class Master : public tserver::DbServerBase {
 
   CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
 
+  TabletSplitManager& tablet_split_manager() const;
+
   XClusterManagerIf* xcluster_manager() const;
 
   XClusterManager* xcluster_manager_impl() const;
@@ -119,15 +123,19 @@ class Master : public tserver::DbServerBase {
 
   TabletHealthManager* tablet_health_manager() const { return tablet_health_manager_.get(); }
 
+  MasterClusterHandler* master_cluster_handler() const { return master_cluster_handler_.get(); }
+
   YsqlBackendsManager* ysql_backends_manager() const {
     return ysql_backends_manager_.get();
   }
 
-  AutoFlagsManager* auto_flags_manager() { return auto_flags_manager_.get(); }
-
   PermissionsManager& permissions_manager();
 
   EncryptionManager& encryption_manager();
+
+  MasterAutoFlagsManager* GetAutoFlagsManagerImpl() { return auto_flags_manager_.get(); }
+
+  CloneStateManager* clone_state_manager() const;
 
   scoped_refptr<MetricEntity> metric_entity_cluster();
 
@@ -180,20 +188,16 @@ class Master : public tserver::DbServerBase {
   uint32_t GetAutoFlagConfigVersion() const override;
   AutoFlagsConfigPB GetAutoFlagsConfig() const;
 
-  yb::client::AsyncClientInitializer& async_client_initializer() {
-    return *async_client_init_;
-  }
+  const std::shared_future<client::YBClient*>& client_future() const;
 
-  yb::client::AsyncClientInitializer& cdc_state_client_initializer() {
-    return *cdc_state_client_init_;
-  }
+  const std::shared_future<client::YBClient*>& cdc_state_client_future() const;
 
   enum MasterMetricType {
     TaskMetric,
     AttemptMetric,
   };
 
-  // Function that returns an object pointer to a RPC's histogram metric. If a histogram
+  // Function that returns an object pointer to an RPC's histogram metric. If a histogram
   // metric pointer is not created, it will create a new object pointer and return it.
   scoped_refptr<Histogram> GetMetric(const std::string& metric_identifier,
                                      Master::MasterMetricType type,
@@ -211,6 +215,8 @@ class Master : public tserver::DbServerBase {
   Status ReloadKeysAndCertificates() override;
 
   std::string GetCertificateDetails() override;
+
+  void WriteServerMetaCacheAsJson(JsonWriter* writer) override;
 
  protected:
   Status RegisterServices();
@@ -247,13 +253,17 @@ class Master : public tserver::DbServerBase {
 
   std::atomic<MasterState> state_;
 
-  std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
+  // The metric entity for the cluster.
+  scoped_refptr<MetricEntity> metric_entity_cluster_;
+
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
+  std::unique_ptr<MasterAutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<YsqlBackendsManager> ysql_backends_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;
   std::unique_ptr<FlushManager> flush_manager_;
   std::unique_ptr<TabletHealthManager> tablet_health_manager_;
+  std::unique_ptr<MasterClusterHandler> master_cluster_handler_;
 
   std::unique_ptr<TestAsyncRpcManager> test_async_rpc_manager_;
 
@@ -271,9 +281,6 @@ class Master : public tserver::DbServerBase {
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
-
-  // The metric entity for the cluster.
-  scoped_refptr<MetricEntity> metric_entity_cluster_;
 
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;

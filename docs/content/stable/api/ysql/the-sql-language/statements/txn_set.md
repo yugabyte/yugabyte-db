@@ -27,9 +27,9 @@ Use the `SET TRANSACTION` statement to set the current transaction isolation lev
 
 ## Semantics
 
-Supports Serializable, Snapshot and Read Committed Isolation<sup>$</sup> using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
+Supports Serializable, Snapshot, and Read Committed {{<badge/ea>}} Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
 
-<sup>$</sup> Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ### *transaction_mode*
 
@@ -51,7 +51,11 @@ Maps to Snapshot Isolation of YugabyteDB.
 
 #### READ COMMITTED
 
-Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+{{< note >}}
+
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity).
+
+{{</note >}}
 
 Default in PostgreSQL and YSQL.
 
@@ -95,7 +99,7 @@ When a transaction is `READ ONLY`, the following SQL statements are:
 
 Use to defer a transaction only when both `SERIALIZABLE` and `READ ONLY` modes are also selected. If used, then the transaction may block when first acquiring its snapshot, after which it is able to run without the normal overhead of a `SERIALIZABLE` transaction and without any risk of contributing to, or being canceled by a serialization failure.
 
-The `DEFERRABLE` mode may be useful for long-running reports or back-ups.
+The `DEFERRABLE` mode may be helpful for long-running reports or back-ups.
 
 ## Examples
 
@@ -133,7 +137,7 @@ In each shell, check the only the rows from the current transaction are visible.
 yugabyte=# SELECT * FROM sample; -- run in first shell
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a
@@ -147,7 +151,7 @@ yugabyte=# SELECT * FROM sample; -- run in first shell
 yugabyte=# SELECT * FROM sample; -- run in second shell
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   2 |  2 |  3 | a
@@ -173,7 +177,7 @@ In each shell check that only the rows from the committed transaction are visibl
 yugabyte=# SELECT * FROM sample; -- run in first shell.
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a
@@ -185,7 +189,7 @@ yugabyte=# SELECT * FROM sample; -- run in first shell.
 yugabyte=# SELECT * FROM sample; -- run in second shell.
 ```
 
-```
+```output
  k1 | k2 | v1 | v2
 ----+----+----+----
   1 |  2 |  3 | a

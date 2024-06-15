@@ -16,8 +16,14 @@ import { YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
 import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButtonLink } from '../../common/forms/fields';
-import './ListTables.scss';
+import {
+  getTableName,
+  getTableUuid,
+  isColocatedChildTable,
+  isColocatedParentTable
+} from '../../../utils/tableUtils';
 
+import './ListTables.scss';
 
 class TableTitle extends Component {
   render() {
@@ -138,8 +144,8 @@ class ListTableGrid extends Component {
       }
     };
 
-    const getTableName = function (tableName, data) {
-      if (data.status === 'success') {
+    const formatTableName = function (tableName, data) {
+      if (data?.status === 'success' && !data?.isParentTable) {
         return (
           <Link
             title={tableName}
@@ -162,16 +168,7 @@ class ListTableGrid extends Component {
     const disableManualBackup = currentUniverse?.universeConfig?.takeBackups === 'true';
     const formatActionButtons = function (item, row, disabled) {
       if (!row.isIndexTable) {
-        const actions = [
-          <TableAction
-            key={`${row.tableName}-backup-btn`}
-            currentRow={row}
-            actionType="create-backup"
-            disabled={actions_disabled || !disableManualBackup}
-            btnClass={'btn-orange'}
-            universeUUID={currentUniverse.universeUUID}
-          />
-        ];
+        const actions = [];
         if (getTableIcon(row.tableType) === 'YCQL') {
           actions.push([
             <TableAction
@@ -183,6 +180,7 @@ class ListTableGrid extends Component {
             />
           ]);
         }
+        if(actions.length === 0) return null;
         return (
           <ButtonGroup>
             <DropdownButton
@@ -231,19 +229,18 @@ class ListTableGrid extends Component {
 
     let listItems = [];
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
-      listItems = self.props.tables.universeTablesList.map(function (item, idx) {
-        return {
-          keySpace: item.keySpace,
-          tableID: item.tableUUID,
-          pgSchemaName: item.pgSchemaName,
-          tableType: item.tableType,
-          tableName: item.tableName,
-          status: 'success',
-          isIndexTable: item.isIndexTable,
-          sizeBytes: item.sizeBytes,
-          walSizeBytes: item.walSizeBytes
-        };
-      });
+      listItems = self.props.tables.universeTablesList.map((ybTable) => ({
+        keySpace: ybTable.keySpace,
+        tableID: getTableUuid(ybTable),
+        pgSchemaName: ybTable.pgSchemaName,
+        tableType: ybTable.tableType,
+        tableName: getTableName(ybTable),
+        status: 'success',
+        isIndexTable: ybTable.isIndexTable,
+        sizeBytes: isColocatedChildTable(ybTable) ? '-' : ybTable.sizeBytes,
+        walSizeBytes: isColocatedChildTable(ybTable) ? '-' : ybTable.walSizeBytes,
+        isParentTable: isColocatedParentTable(ybTable)
+      }));
     }
     const currentUniverseTasks = universeTasks.data[currentUniverse.universeUUID];
     if (getPromiseState(universeTasks).isSuccess() && isNonEmptyArray(currentUniverseTasks)) {
@@ -277,7 +274,7 @@ class ListTableGrid extends Component {
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn
           dataField={'tableName'}
-          dataFormat={getTableName}
+          dataFormat={formatTableName}
           width="15%"
           columnClassName={'table-name-label yb-table-cell'}
           className={'yb-table-cell'}
@@ -337,7 +334,7 @@ class ListTableGrid extends Component {
         >
           WAL Size
         </TableHeaderColumn>
-        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') &&  (
+        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && sortedListItems.filter(t => t.tableType === 'YQL_TABLE_TYPE').length > 0 && (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}

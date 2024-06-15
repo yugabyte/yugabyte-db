@@ -33,21 +33,22 @@ public class CustomerConfigStorageNFSValidator extends ConfigDataValidator {
     String value = nfsData.backupLocation;
     if (!pathPattern.matcher(value).matches()) {
       String errorMsg = "Invalid field value '" + value + "'.";
-      throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, errorMsg);
+      throwBeanConfigDataValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, errorMsg);
     }
     if (!bucketPattern.matcher(nfsData.nfsBucket).matches()) {
       String errorMsg = "Invalid field value '" + value + "'.";
-      throwBeanValidatorError("NFS_BUCKET", errorMsg);
+      throwBeanConfigDataValidatorError("NFS_BUCKET", errorMsg);
     }
     if (nfsData.regionLocations != null) {
       for (RegionLocations location : nfsData.regionLocations) {
         if (StringUtils.isEmpty(location.region)) {
-          throwBeanValidatorError(
+          throwBeanConfigDataValidatorError(
               CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
         }
         if (!pathPattern.matcher(location.location).matches()) {
           String errorMsg = "Invalid field value '" + value + "'.";
-          throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, errorMsg);
+          throwBeanConfigDataValidatorError(
+              CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, errorMsg);
         }
       }
     }

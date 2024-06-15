@@ -50,6 +50,7 @@ public class TestPgSelect extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_packed_row", "false");
+    flagMap.put("pg_client_use_shared_memory", "false");
     return flagMap;
   }
 
@@ -560,7 +561,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertTrue("Expect SeqScan on t1 when colOrder is HASH",
                   explainOutput.contains("Seq Scan on t1"));
         assertTrue("Expect filter pushdown to DocDB",
-                  explainOutput.contains("Remote Filter: (b IS NOT NULL)"));
+                  explainOutput.contains("Storage Filter: (b IS NOT NULL)"));
       }
       else {
         assertTrue("Expect pushdown for IS NOT NULL when colOrder is ASC or DESC",
@@ -578,7 +579,7 @@ public class TestPgSelect extends BasePgSQLTest {
       assertRowSet(statement, query, expectedRows);
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
-      assertTrue("Expect pushdown for IN condition",
+      assertTrue("Expect index pushdown for IN condition",
                  explainOutput.contains("Index Cond: (b = ANY ('{NULL,2,3}'::integer[]))"));
       assertFalse("Expect DocDB to filter fully",
                  explainOutput.contains("Rows Removed by"));
@@ -589,10 +590,8 @@ public class TestPgSelect extends BasePgSQLTest {
       assertRowSet(statement, query, expectedRows);
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
-      assertTrue("Expect no pushdown for NOT IN condition",
-                 explainOutput.contains("Filter: (b <> ALL ('{NULL,2}'::integer[]))"));
-      assertTrue("Expect YSQL-level filtering",
-                 explainOutput.contains("Rows Removed by Filter: 5"));
+      assertTrue("Expect expression pushdown for NOT IN condition",
+                 explainOutput.contains("Storage Filter: (b <> ALL ('{NULL,2}'::integer[]))"));
 
       // Test BETWEEN.
       query = "select * from t1 where b between 1 and 3";
@@ -607,7 +606,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertTrue("Expect SeqScan on t1 when colOrder is HASH",
                   explainOutput.contains("Seq Scan on t1"));
         assertTrue("Expect filter pushdown to DocDB",
-                  explainOutput.contains("Remote Filter: ((b >= 1) AND (b <= 3))"));
+                  explainOutput.contains("Storage Filter: ((b >= 1) AND (b <= 3))"));
       } else {
         assertTrue("Expect pushdown for BETWEEN condition on ASC/DESC",
                    explainOutput.contains("Index Cond: ((b >= 1) AND (b <= 3))"));
@@ -746,7 +745,7 @@ public class TestPgSelect extends BasePgSQLTest {
 
       explainOutput = getExplainAnalyzeOutput(statement, query);
       assertTrue("Expect pushdown for IS NULL" + explainOutput,
-                 explainOutput.contains("Remote Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
+                 explainOutput.contains("Storage Filter: ((vh1 IS NULL) AND (vr1 IS NULL) " +
                                                 "AND (vr2 IS NULL))"));
 
       // Test hash key + partly set range key (should push down).
@@ -1587,10 +1586,10 @@ public class TestPgSelect extends BasePgSQLTest {
         query = "SELECT * FROM sample WHERE key ";
 
         // Num requests are 1 as it just searches tablet 1.
-        assertTrue(getNumDocdbRequests(statement, query + "< 65534") == 1);
+        assertEquals(1, getNumDocdbRequests(statement, query + "< 65534"));
 
         // Test 2
-        assertTrue(getNumDocdbRequests(statement, query + "< 65534::bigint") == 1);
+        assertEquals(1, getNumDocdbRequests(statement, query + "< 65534::bigint"));
 
         // Test 3
         // 2147483648 is an actual bigint value. Hence, we end up perfroming a scan on all the
@@ -1598,10 +1597,10 @@ public class TestPgSelect extends BasePgSQLTest {
         // of rows returned are equal when the qualifying condition is 2147483648 as compared to
         // 20999999999, the former condition ends up scanning all the 4 tablets while the later
         // condition scans just 3 tablets.
-        assertTrue(getNumDocdbRequests(statement, query + "< 2147483648") == 4);
+        assertEquals(4, getNumDocdbRequests(statement, query + "< 2147483648"));
 
         // Test 4
-        assertTrue(getNumDocdbRequests(statement, query + "< 2099999999") == 3);
+        assertEquals(3, getNumDocdbRequests(statement, query + "< 2099999999"));
     }
   }
 
@@ -1629,8 +1628,8 @@ public class TestPgSelect extends BasePgSQLTest {
         // All the elements present in the IN list are out of the 32 bit integer range. Hence, they
         // should not be pushed down as a part of search array. Subsequently the number of RPCs
         // should be 0.
-        assertTrue(
-          getNumDocdbRequests(statement, query + "IN (3000000005, 3000000006, 3000000007)") == 0);
+        assertEquals(
+          0, getNumDocdbRequests(statement, query + "IN (3000000005, 3000000006, 3000000007)"));
 
         // Test 6
         // Fails with the following error in prior to this diff

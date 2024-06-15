@@ -6,7 +6,6 @@ import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
@@ -19,6 +18,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.NodeInstance;
@@ -27,6 +27,7 @@ import com.yugabyte.yw.nodeagent.Server.PingResponse;
 import com.yugabyte.yw.nodeagent.Server.ServerInfo;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -161,8 +162,7 @@ public class NodeAgentPoller {
 
     private boolean checkVersion(NodeAgent nodeAgent) {
       String ybaVersion = param.getSoftwareVersion();
-      boolean versionMatched =
-          Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0;
+      boolean versionMatched = Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true);
       NODE_AGENT_VERSION_MISMATCH_GAUGE
           .labels(nodeAgent.getUuid().toString())
           .set(versionMatched ? 0 : 1);
@@ -298,6 +298,12 @@ public class NodeAgentPoller {
 
     // This handles upgrade for the given node agent.
     private void upgradeNodeAgent(NodeAgent nodeAgent) {
+      if (HighAvailabilityConfig.isFollower()) {
+        // Task may have already been submitted. This check ensures that submitted tasks are not
+        // run.
+        log.info("Skipping node agent upgrade as it is a follower instance");
+        return;
+      }
       nodeAgent.refresh();
       checkState(
           nodeAgent.getState() != State.REGISTERING, "Invalid state " + nodeAgent.getState());
@@ -312,7 +318,8 @@ public class NodeAgentPoller {
       }
       if (nodeAgent.getState() == State.UPGRADE) {
         log.info("Initiating upgrade for node agent {}", nodeAgent.getUuid());
-        InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, null);
+        InstallerFiles installerFiles =
+            nodeAgentManager.getInstallerFiles(nodeAgent, Paths.get(nodeAgent.getHome()));
         // Upload the installer files including new cert and key to the remote node agent.
         uploadInstallerFiles(nodeAgent, installerFiles);
         NodeAgentUpgradeParam upgradeParam =
@@ -394,9 +401,12 @@ public class NodeAgentPoller {
         installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
-    log.info("Creating directories {} on node agent {}", dirs, nodeAgent.getUuid());
-    List<String> command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
-    nodeAgentClient.executeCommand(nodeAgent, command);
+    if (dirs.size() > 0) {
+      log.info("Creating directories {} on node agent {}", dirs, nodeAgent.getUuid());
+      List<String> command =
+          ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
+      nodeAgentClient.executeCommand(nodeAgent, command).processErrors();
+    }
     installerFiles.getCopyFileInfos().stream()
         .forEach(
             f -> {
@@ -405,13 +415,20 @@ public class NodeAgentPoller {
                   f.getSourcePath(),
                   f.getTargetPath(),
                   nodeAgent.getUuid());
-              nodeAgentClient.uploadFile(
-                  nodeAgent, f.getSourcePath().toString(), f.getTargetPath().toString());
+              int perm = 0;
               if (StringUtils.isNotBlank(f.getPermission())) {
-                nodeAgentClient.executeCommand(
-                    nodeAgent,
-                    Lists.newArrayList("chmod", f.getPermission(), f.getTargetPath().toString()));
+                try {
+                  perm = Integer.parseInt(f.getPermission().trim(), 8);
+                } catch (NumberFormatException e) {
+                }
               }
+              nodeAgentClient.uploadFile(
+                  nodeAgent,
+                  f.getSourcePath().toString(),
+                  f.getTargetPath().toString(),
+                  null /*user*/,
+                  perm,
+                  null /*timeout*/);
             });
   }
 
@@ -462,6 +479,7 @@ public class NodeAgentPoller {
           iter.remove();
         }
       }
+      nodeAgentClient.cleanupCachedClients();
     } catch (Exception e) {
       log.error("Error in pollerService - " + e.getMessage(), e);
     }

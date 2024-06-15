@@ -15,6 +15,7 @@
 #include <regex>
 #include <set>
 #include <unordered_set>
+#include <google/protobuf/repeated_field.h>
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/colocated_util.h"
@@ -24,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/snapshot.h"
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
@@ -31,6 +33,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
@@ -55,6 +58,7 @@
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_pgapi.h"
 
@@ -85,12 +89,15 @@
 
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/service_util.h"
+#include "yb/tserver/tserver_admin.pb.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/date_time.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/service_util.h"
@@ -111,6 +118,7 @@ using namespace std::placeholders;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
+using std::unordered_map;
 using std::unordered_set;
 using std::vector;
 
@@ -136,19 +144,6 @@ DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
     "during the import snapshot metadata phase of restore.");
 
-DEFINE_RUNTIME_int32(inflight_splits_completion_timeout_secs, 600,
-    "Total time to wait for all inflight splits to complete during Restore.");
-TAG_FLAG(inflight_splits_completion_timeout_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_max_restore_duration_secs, 600,
-    "Maximum amount of time to complete a PITR restore.");
-TAG_FLAG(pitr_max_restore_duration_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
-    "Delay before retrying to see if inflight tablet split operations have completed "
-    "after which PITR restore can be performed.");
-TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
-
 DEFINE_RUNTIME_bool(enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
 
@@ -157,6 +152,8 @@ DEFINE_RUNTIME_uint32(default_snapshot_retention_hours, 24,
     "by the client when creating the snapshot.");
 
 namespace yb {
+
+using google::protobuf::RepeatedPtrField;
 
 using rpc::RpcContext;
 using pb_util::ParseFromSlice;
@@ -169,19 +166,75 @@ namespace master {
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
+using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
+using SysTabletsEntriesWithIds = std::vector<TabletIdWithEntry>;
+struct TableWithTabletsEntries {
+  TableWithTabletsEntries(
+      const SysTablesEntryPB& table_entry, const SysTabletsEntriesWithIds& tablets_entries) {
+    this->table_entry = table_entry;
+    this->tablets_entries = tablets_entries;
+  }
+  TableWithTabletsEntries() {}
+
+  // Add the table with table_id and its tablets entries to a list of backup entries.
+  void AddToBackupEntries(
+      const TableId& table_id, RepeatedPtrField<BackupRowEntryPB>* backup_entries) {
+    BackupRowEntryPB* table_backup_entry = backup_entries->Add();
+    std::string output;
+    table_entry.AppendToString(&output);
+    *table_backup_entry->mutable_entry() =
+        ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
+    if (table_entry.schema().has_pgschema_name() && table_entry.schema().pgschema_name() != "") {
+      table_backup_entry->set_pg_schema_name(table_entry.schema().pgschema_name());
+    }
+    for (const auto& tablet_entry : tablets_entries) {
+      std::string output;
+      tablet_entry.second.AppendToString(&output);
+      *backup_entries->Add()->mutable_entry() =
+          ToSysRowEntry(tablet_entry.first, SysRowEntryType::TABLET, std::move(output));
+    }
+  }
+
+  void OrderTabletsByPartitions() {
+    std::sort(
+        tablets_entries.begin(), tablets_entries.end(),
+        [](const TabletIdWithEntry& lhs, const TabletIdWithEntry& rhs) -> bool {
+          return lhs.second.partition().partition_key_start() <
+                 rhs.second.partition().partition_key_start();
+        });
+  }
+
+  SysRowEntry ToSysRowEntry(const string& id, const SysRowEntryType& type, const string& data) {
+    SysRowEntry entry;
+    entry.set_id(id);
+    entry.set_type(type);
+    entry.set_data(data);
+    return entry;
+  }
+
+  SysTablesEntryPB table_entry;
+  SysTabletsEntriesWithIds tablets_entries;
+};
+
 Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
                                       CreateSnapshotResponsePB* resp,
                                       RpcContext* rpc, const LeaderEpoch& epoch) {
+  return DoCreateSnapshot(req, resp, rpc->GetClientDeadline(), epoch);
+}
+
+Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
+                                        CreateSnapshotResponsePB* resp,
+                                        CoarseTimePoint deadline, const LeaderEpoch& epoch) {
   LOG(INFO) << "Servicing CreateSnapshot request: " << req->ShortDebugString();
 
   if (FLAGS_enable_transaction_snapshots && req->transaction_aware()) {
-    return CreateTransactionAwareSnapshot(*req, resp, rpc->GetClientDeadline());
+    return CreateTransactionAwareSnapshot(*req, resp, deadline);
   }
 
   if (req->has_schedule_id()) {
     auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(req->schedule_id()));
     auto snapshot_id = snapshot_coordinator_.CreateForSchedule(
-        schedule_id, leader_ready_term(), rpc->GetClientDeadline());
+        schedule_id, leader_ready_term(), deadline);
     if (!snapshot_id.ok()) {
       LOG(INFO) << "Create snapshot failed: " << snapshot_id.status();
       return snapshot_id.status();
@@ -190,13 +243,13 @@ Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
     return Status::OK();
   }
 
-  return CreateNonTransactionAwareSnapshot(req, resp, rpc, epoch);
+  return CreateNonTransactionAwareSnapshot(req, resp, epoch);
 }
 
 Status CatalogManager::CreateNonTransactionAwareSnapshot(
     const CreateSnapshotRequestPB* req,
     CreateSnapshotResponsePB* resp,
-    RpcContext* rpc, const LeaderEpoch& epoch) {
+    const LeaderEpoch& epoch) {
   SnapshotId snapshot_id;
   {
     LockGuard lock(mutex_);
@@ -440,7 +493,8 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   }
   CollectFlags flags{CollectFlag::kIncludeParentColocatedTable};
   flags.SetIf(CollectFlag::kAddIndexes, req.add_indexes())
-       .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types());
+       .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types())
+       .SetIf(CollectFlag::kSucceedIfCreateInProgress, req.imported());
   SysRowEntries entries = VERIFY_RESULT(CollectEntries(req.tables(), flags));
 
   // If client does not explicitly pass in a value then use a default
@@ -851,7 +905,7 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(
 Status CatalogManager::DoImportSnapshotMeta(
       const SnapshotInfoPB& snapshot_pb,
       const LeaderEpoch& epoch,
-      ImportSnapshotMetaResponsePB* resp,
+      const std::optional<string>& clone_target_namespace_name,
       NamespaceMap* namespace_map,
       UDTypeMap* type_map,
       ExternalTableSnapshotDataMap* tables_data,
@@ -876,19 +930,22 @@ Status CatalogManager::DoImportSnapshotMeta(
         MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
 
+  bool is_clone = clone_target_namespace_name.has_value();
+
   // PHASE 1: Recreate namespaces, create type's & table's meta data.
-  RETURN_NOT_OK(ImportSnapshotPreprocess(snapshot_pb, epoch, namespace_map, type_map, tables_data));
+  RETURN_NOT_OK(ImportSnapshotPreprocess(
+      snapshot_pb, epoch, clone_target_namespace_name, namespace_map, type_map, tables_data));
 
   // PHASE 2: Recreate UD types.
   RETURN_NOT_OK(ImportSnapshotProcessUDTypes(snapshot_pb, type_map, *namespace_map));
 
   // PHASE 3: Recreate ONLY tables.
   RETURN_NOT_OK(ImportSnapshotCreateAndWaitForTables(
-      snapshot_pb, *namespace_map, *type_map, epoch, tables_data, deadline));
+      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, tables_data, deadline));
 
   // PHASE 4: Recreate ONLY indexes.
-  RETURN_NOT_OK(
-      ImportSnapshotCreateIndexes(snapshot_pb, *namespace_map, *type_map, epoch, tables_data));
+  RETURN_NOT_OK(ImportSnapshotCreateIndexes(
+      snapshot_pb, *namespace_map, *type_map, epoch, is_clone, tables_data));
 
   // PHASE 5: Restore tablets.
   RETURN_NOT_OK(ImportSnapshotProcessTablets(snapshot_pb, tables_data));
@@ -900,19 +957,13 @@ Status CatalogManager::DoImportSnapshotMeta(
   }
 
   successful_exit = true;
-  // Copy the table mapping into the response.
-  for (auto& [_, table_data] : *tables_data) {
-    if (table_data.table_meta) {
-      resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
-    }
-  }
-
   return Status::OK();
 }
 
 Status CatalogManager::ImportSnapshotPreprocess(
     const SnapshotInfoPB& snapshot_pb,
     const LeaderEpoch& epoch,
+    const std::optional<string>& clone_target_namespace_name,
     NamespaceMap* namespace_map,
     UDTypeMap* type_map,
     ExternalTableSnapshotDataMap* tables_data) {
@@ -921,7 +972,8 @@ Status CatalogManager::ImportSnapshotPreprocess(
     const SysRowEntry& entry = backup_entry.entry();
     switch (entry.type()) {
       case SysRowEntryType::NAMESPACE: // Recreate NAMESPACE.
-        RETURN_NOT_OK(ImportNamespaceEntry(entry, epoch, namespace_map));
+        RETURN_NOT_OK(ImportNamespaceEntry(
+            entry, epoch, clone_target_namespace_name, namespace_map));
         break;
       case SysRowEntryType::UDTYPE: // Create TYPE metadata.
         LOG_IF(DFATAL, entry.id().empty()) << "Empty entry id";
@@ -951,6 +1003,8 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1048,6 +1102,7 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
                                                    const NamespaceMap& namespace_map,
                                                    const UDTypeMap& type_map,
                                                    const LeaderEpoch& epoch,
+                                                   bool is_clone,
                                                    ExternalTableSnapshotDataMap* tables_data) {
   // Create ONLY INDEXES.
   for (const BackupRowEntryPB& backup_entry : snapshot_pb.backup_entries()) {
@@ -1059,7 +1114,7 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
         // YSQL indices can be in an invalid state. In this state they are omitted by ysql_dump.
         // Assume this is an invalid index that wasn't part of the ysql_dump instead of failing the
         // import here.
-        auto s = ImportTableEntry(namespace_map, type_map, *tables_data, epoch, &data);
+        auto s = ImportTableEntry(namespace_map, type_map, *tables_data, epoch, is_clone, &data);
         if (s.IsInvalidArgument() && MasterError(s) == MasterErrorPB::OBJECT_NOT_FOUND) {
           continue;
         } else if (!s.ok()) {
@@ -1074,8 +1129,8 @@ Status CatalogManager::ImportSnapshotCreateIndexes(const SnapshotInfoPB& snapsho
 
 Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
     const SnapshotInfoPB& snapshot_pb, const NamespaceMap& namespace_map,
-    const UDTypeMap& type_map, const LeaderEpoch& epoch, ExternalTableSnapshotDataMap* tables_data,
-    CoarseTimePoint deadline) {
+    const UDTypeMap& type_map, const LeaderEpoch& epoch, bool is_clone,
+    ExternalTableSnapshotDataMap* tables_data, CoarseTimePoint deadline) {
   std::queue<TableId> pending_creates;
   for (const auto& backup_entry : snapshot_pb.backup_entries()) {
     const SysRowEntry& entry = backup_entry.entry();
@@ -1092,18 +1147,27 @@ Status CatalogManager::ImportSnapshotCreateAndWaitForTables(
     if (data.is_index()) {
       continue;
     }
-    // If we are at the limit, wait for the oldest table to be created
-    // so that we can send create request for the current table.
-    DCHECK_LE(pending_creates.size(), FLAGS_import_snapshot_max_concurrent_create_table_requests);
-    while (pending_creates.size() >= FLAGS_import_snapshot_max_concurrent_create_table_requests) {
-      RETURN_NOT_OK(WaitForCreateTableToFinish(pending_creates.front(), deadline));
-      LOG(INFO) << "ImportSnapshot: Create table finished for " << pending_creates.front()
-                << ", time remaining " << ToSeconds(deadline - CoarseMonoClock::Now()) << " secs";
-      pending_creates.pop();
+
+    if (is_clone) {
+      // Do not use the concurrent create table limit for clone, since the tables are not actually
+      // being created on the tservers.
+      RETURN_NOT_OK(ImportTableEntry(
+          namespace_map, type_map, *tables_data, epoch, true /* is_clone */, &data));
+    } else {
+      // If we are at the limit, wait for the oldest table to be created
+      // so that we can send create request for the current table.
+      DCHECK_LE(pending_creates.size(), FLAGS_import_snapshot_max_concurrent_create_table_requests);
+      while (pending_creates.size() >= FLAGS_import_snapshot_max_concurrent_create_table_requests) {
+        RETURN_NOT_OK(WaitForCreateTableToFinish(pending_creates.front(), deadline));
+        LOG(INFO) << "ImportSnapshot: Create table finished for " << pending_creates.front()
+                  << ", time remaining " << ToSeconds(deadline - CoarseMonoClock::Now()) << " secs";
+        pending_creates.pop();
+      }
+      // Ready to send request for this table now.
+      RETURN_NOT_OK(ImportTableEntry(
+          namespace_map, type_map, *tables_data, epoch, false /* is_clone */, &data));
+      pending_creates.push(data.new_table_id);
     }
-    // Ready to send request for this table now.
-    RETURN_NOT_OK(ImportTableEntry(namespace_map, type_map, *tables_data, epoch, &data));
-    pending_creates.push(data.new_table_id);
   }
 
   // Pop from queue and wait for those tables to be created.
@@ -1262,10 +1326,204 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   ExternalTableSnapshotDataMap tables_data;
 
   RETURN_NOT_OK(DoImportSnapshotMeta(
-      req->snapshot(), epoch, resp, &namespace_map, &type_map, &tables_data,
-      rpc->GetClientDeadline()));
+      req->snapshot(), epoch, std::nullopt /* clone_target_namespace_name */, &namespace_map,
+      &type_map, &tables_data, rpc->GetClientDeadline()));
+
+  // Copy the table mapping into the response.
+  for (auto& [_, table_data] : tables_data) {
+    if (table_data.table_meta) {
+      resp->mutable_tables_meta()->Add()->Swap(&*table_data.table_meta);
+    }
+  }
 
   return Status::OK();
+}
+
+Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapshotId& snapshot_id) {
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  req.set_prepare_for_backup(true);
+  RETURN_NOT_OK_PREPEND(
+      ListSnapshots(&req, &resp), Format("Failed to list snapshot: $0", snapshot_id));
+  if (resp.snapshots().size() < 1) {
+    return STATUS_FORMAT(InvalidArgument, "Unknown snapshot: $0", snapshot_id);
+  }
+  SnapshotInfoPB snapshot_info = resp.snapshots()[0];
+  RSTATUS_DCHECK(
+      snapshot_info.entry().tablet_snapshots().empty(), IllegalState,
+      "Expected tablet_snapshots field to be cleared by ListSnapshots");
+  RSTATUS_DCHECK(
+      snapshot_info.entry().entries().empty(), IllegalState,
+      "Expected entries field to be cleared by ListSnapshots");
+
+  return snapshot_info;
+}
+
+Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
+    const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
+    CoarseTimePoint deadline) {
+  LOG(INFO) << Format(
+      "Servicing GenerateSnapshotInfoFromScheduleForClone for snapshot_schedule_id: $0 and "
+      "read_time: $1",
+      snapshot_schedule_id, read_time);
+
+  // Find or create a snapshot that covers read_time.
+  auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshotForRestore(
+      snapshot_schedule_id, read_time, LeaderTerm(), deadline));
+  LOG(INFO) << Format("Found suitable snapshot for restore: $0", snapshot_id);
+
+  ListSnapshotSchedulesResponsePB resp;
+  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, &resp));
+  const auto& filter = resp.schedules(0).options().filter().tables().tables();
+  if (filter.empty() || filter.begin()->namespace_().id().empty()) {
+    return STATUS_FORMAT(
+        IllegalState, "No namespace found in filter for schedule id $0", snapshot_schedule_id);
+  }
+  const NamespaceId& source_ns_id = filter.begin()->namespace_().id();
+
+  // Get the SnapshotInfoPB, save the set of tablets it contained, and clear backup_entries.
+  // backup_entries will be repopulated with the set of tablets that were running at read_time
+  // later when reading from DocDB as of read_time.
+  auto snapshot_info = VERIFY_RESULT(GetSnapshotInfoForBackup(snapshot_id));
+  std::unordered_set<TabletId> snapshotted_tablets;
+  for (auto& backup_entry : snapshot_info.backup_entries()) {
+    if (backup_entry.entry().type() == SysRowEntryType::TABLET) {
+      snapshotted_tablets.insert(backup_entry.entry().id());
+    }
+  }
+  snapshot_info.clear_backup_entries();
+  // Clear the schedule related fields from snapshot_info, this is required so that the restore is
+  // not considered a PITR restore. This mainly implies overwriting any current schema packings with
+  // the old schema packings from the snapshot at the restore side.
+  snapshot_info.mutable_entry()->clear_schedule_id();
+  snapshot_info.mutable_entry()->clear_previous_snapshot_hybrid_time();
+
+  // Set backup_entries based on what entries were running in the sys catalog as of read_time.
+  *snapshot_info.mutable_backup_entries() = VERIFY_RESULT(
+      GetBackupEntriesAsOfTime(snapshot_id, source_ns_id, read_time));
+  VLOG_WITH_FUNC(1) << Format("snapshot_info returned: $0", snapshot_info.ShortDebugString());
+
+  // Compute the set of tablets that were running as of read_time but were not snapshotted because
+  // they were hidden before the snapshot was taken.
+  std::unordered_set<TabletId> not_snapshotted_tablets;
+  for (const auto& backup_entry : snapshot_info.backup_entries()) {
+    if (backup_entry.entry().type() == SysRowEntryType::TABLET &&
+        !snapshotted_tablets.contains(backup_entry.entry().id())) {
+      not_snapshotted_tablets.insert(backup_entry.entry().id());
+    }
+  }
+  return std::make_pair(std::move(snapshot_info), std::move(not_snapshotted_tablets));
+}
+
+Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfTime(
+    const TxnSnapshotId& snapshot_id, const NamespaceId& source_ns_id, HybridTime read_time) {
+  // Open a temporary on-the-side DocDB for the sys.catalog using the data files of snapshot_id and
+  // read sys.catalog data as of export_time to get the list of tablets that were running at that
+  // time.
+  RepeatedPtrField<BackupRowEntryPB> backup_entries;
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  LOG(INFO) << Format("Opening temporary SysCatalog DocDB for snapshot $0 at read_time $1",
+      snapshot_id, read_time);
+  auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(tablet.get(), snapshot_id, read_time));
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+
+  const docdb::DocReadContext& doc_read_cntxt = doc_read_context();
+  dockv::ReaderProjection projection(doc_read_cntxt.schema());
+
+  // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
+  auto db_pending_op = ScopedRWOperation();
+
+  // Pass 1: Get the SysNamespaceEntryPB of the selected database.
+  docdb::DocRowwiseIterator namespace_iter = docdb::DocRowwiseIterator(
+      projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
+      docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+  bool found_ns = false;
+  RETURN_NOT_OK(EnumerateSysCatalog(
+      &namespace_iter, doc_read_cntxt.schema(), SysRowEntryType::NAMESPACE,
+      [&source_ns_id, &backup_entries, &found_ns](const Slice& id, const Slice& data) -> Status {
+        if (id.ToBuffer() == source_ns_id) {
+          if (found_ns) {
+            LOG(WARNING) << "Found duplicate backup entry for namespace " << source_ns_id;
+          }
+          auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysNamespaceEntryPB>(data));
+          VLOG_WITH_FUNC(1) << "Found SysNamespaceEntryPB: " << pb.ShortDebugString();
+          SysRowEntry* ns_entry = backup_entries.Add()->mutable_entry();
+          ns_entry->set_id(id.ToBuffer());
+          ns_entry->set_type(SysRowEntryType::NAMESPACE);
+          ns_entry->set_data(data.ToBuffer());
+          found_ns = true;
+        }
+        return Status::OK();
+      }));
+  RSTATUS_DCHECK(found_ns, IllegalState,
+      Format("Did not find backup entry for namespace $0", source_ns_id));
+
+  // Pass 2: Get all the SysTablesEntry of the database that are in running state and not Hidden as
+  // of read_time.
+  // Stores SysTablesEntry and its SysTabletsEntries to order the tablets of each table by
+  // partitions' start keys.
+  std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
+  std::optional<std::string> colocation_parent_table_id;
+  docdb::DocRowwiseIterator tables_iter = docdb::DocRowwiseIterator(
+      projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
+      docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+  RETURN_NOT_OK(EnumerateSysCatalog(
+      &tables_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLE,
+      [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id](
+          const Slice& id, const Slice& data) -> Status {
+        auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
+        if (pb.namespace_id() == source_ns_id && pb.state() == SysTablesEntryPB::RUNNING &&
+            pb.hide_state() == SysTablesEntryPB_HideState_VISIBLE &&
+            !pb.schema().table_properties().is_ysql_catalog_table()) {
+          VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
+          if (IsColocatedDbParentTableId(id.ToBuffer()) ||
+              IsColocatedDbTablegroupParentTableId(id.ToBuffer())) {
+            colocation_parent_table_id = id.ToBuffer();
+          }
+          // Tables and tablets will be added to backup entries at the end.
+          tables_to_tablets.insert(std::make_pair(
+              id.ToBuffer(), TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
+        }
+        return Status::OK();
+      }));
+
+  // Pass 3: Get all the SysTabletsEntry that are in a running state as of read_time and belongs to
+  // the running tables from pass 2.
+  docdb::DocRowwiseIterator tablets_iter = docdb::DocRowwiseIterator(
+      projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
+      docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+  RETURN_NOT_OK(EnumerateSysCatalog(
+      &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
+      [&tables_to_tablets](const Slice& id, const Slice& data) -> Status {
+        auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
+        // TODO(Yamen): handle tablet splitting cases by either keeping the parent or the children
+        // according to their state.
+        if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING &&
+            pb.hide_hybrid_time() == 0) {
+          VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
+          tables_to_tablets[pb.table_id()].tablets_entries.push_back(
+              std::make_pair(id.ToBuffer(), pb));
+        }
+        return Status::OK();
+      }));
+  // Order SysTabletsEntries in each SysTableEntry by partition start_key as CreateTable relies on
+  // the order of tablets.
+  for (auto& sys_table_entry : tables_to_tablets) {
+    sys_table_entry.second.OrderTabletsByPartitions();
+  }
+  // Populate the backup_entries with SysTablesEntry and SysTabletsEntry
+  // Start with the colocation_parent_table_id if the database is colocated.
+  if (colocation_parent_table_id) {
+    tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
+        colocation_parent_table_id.value(), &backup_entries);
+    tables_to_tablets.erase(colocation_parent_table_id.value());
+  }
+  for (auto& sys_table_entry : tables_to_tablets) {
+    sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, &backup_entries);
+  }
+  return backup_entries;
 }
 
 Status CatalogManager::GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,
@@ -1308,9 +1566,11 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
       ClusterConfig()->LockForRead()->pb.encryption_info(), resp);
 }
 
-Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
-                                            const LeaderEpoch& epoch,
-                                            NamespaceMap* namespace_map) {
+Status CatalogManager::ImportNamespaceEntry(
+    const SysRowEntry& entry,
+    const LeaderEpoch& epoch,
+    const std::optional<string>& clone_target_namespace_name,
+    NamespaceMap* namespace_map) {
   LOG_IF(DFATAL, entry.type() != SysRowEntryType::NAMESPACE)
       << "Unexpected entry type: " << entry.type();
 
@@ -1327,27 +1587,41 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
     ns = FindPtrOrNull(namespace_ids_map_, entry.id());
   }
 
-  if (ns != nullptr && ns->name() == meta.name() && ns->state() == SysNamespaceEntryPB::RUNNING) {
+  bool is_clone = clone_target_namespace_name.has_value();
+  bool found_matching_ns_by_id = ns != nullptr &&
+                                 ns->name() == meta.name() &&
+                                 ns->state() == SysNamespaceEntryPB::RUNNING;
+  if (found_matching_ns_by_id && !is_clone) {
     ns_data.new_namespace_id = entry.id();
     return Status::OK();
+  }
+
+  if (is_clone && !found_matching_ns_by_id) {
+    return STATUS_FORMAT(
+        IllegalState, "Could not find running namespace $0 to clone from.", meta.name());
   }
 
   // If the namespace was not found by ID, it's ok on a new cluster OR if the namespace was
   // deleted and created again. In both cases the namespace can be found by NAME.
   if (ns_data.db_type == YQL_DATABASE_PGSQL) {
     // YSQL database must be created via external call. Find it by name.
+    std::string new_namespace_name;
+    if (is_clone) {
+      new_namespace_name = *clone_target_namespace_name;
+    } else {
+      new_namespace_name = meta.name();
+    }
     {
       SharedLock lock(mutex_);
-      ns = FindPtrOrNull(namespace_names_mapper_[ns_data.db_type], meta.name());
+      ns = FindPtrOrNull(namespace_names_mapper_[ns_data.db_type], new_namespace_name);
     }
-
     if (ns == nullptr) {
-      const string msg = Format("YSQL database must exist: $0", meta.name());
+      const string msg = Format("YSQL database must exist: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
-      const string msg = Format("Found YSQL database must be running: $0", meta.name());
+      const string msg = Format("Found YSQL database must be running: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
@@ -1357,13 +1631,20 @@ Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
   } else {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;
-    req.set_name(meta.name());
+    if (is_clone) {
+      req.set_name(*clone_target_namespace_name);
+    } else {
+      req.set_name(meta.name());
+    }
     const Status s = CreateNamespace(&req, &resp, nullptr, epoch);
 
     if (s.ok()) {
       // The namespace was successfully re-created.
       ns_data.just_created = true;
     } else if (s.IsAlreadyPresent()) {
+      if (is_clone) {
+        return STATUS_FORMAT(IllegalState, "Namespace $0 was already created.", meta.name());
+      }
       LOG_WITH_FUNC(INFO) << "Using existing namespace '" << meta.name() << "': " << resp.id();
     } else {
       return s.CloneAndAppend("Failed to create namespace");
@@ -1548,6 +1829,7 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
                                      const UDTypeMap& type_map,
                                      const ExternalTableSnapshotDataMap& table_map,
                                      const LeaderEpoch& epoch,
+                                     bool is_clone,
                                      ExternalTableSnapshotData* table_data) {
   const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
 
@@ -1556,8 +1838,9 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
   req.set_name(meta.name());
   req.set_table_type(meta.table_type());
   req.set_num_tablets(narrow_cast<int32_t>(table_data->num_tablets));
-  for (const auto& p : table_data->partitions) {
-    *req.add_partitions() = p;
+  req.set_is_clone(is_clone);
+  for (const auto& p : table_data->old_tablets) {
+    *req.add_partitions() = p.second;
   }
   req.mutable_namespace_()->set_id(new_namespace_id);
   *req.mutable_partition_schema() = meta.partition_schema();
@@ -1645,8 +1928,8 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   req.set_is_matview(meta.is_matview());
 
-  if (meta.has_matview_pg_table_id()) {
-    req.set_matview_pg_table_id(meta.matview_pg_table_id());
+  if (meta.has_pg_table_id()) {
+    req.set_pg_table_id(meta.pg_table_id());
   }
 
   RETURN_NOT_OK(CreateTable(&req, &resp, /* RpcContext */nullptr, epoch));
@@ -1657,8 +1940,9 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 }
 
 Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
-                                        const ExternalTableSnapshotData* table_data,
-                                        const LeaderEpoch& epoch) {
+                                        ExternalTableSnapshotData* table_data,
+                                        const LeaderEpoch& epoch,
+                                        bool is_clone) {
   DCHECK_EQ(table->id(), table_data->new_table_id);
   if (table->GetTableType() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(InvalidArgument,
@@ -1667,15 +1951,6 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
   }
   LOG_WITH_FUNC(INFO) << "Repartition table " << table->id()
                       << " using external snapshot table " << table_data->old_table_id;
-
-  // Get partitions from external snapshot.
-  size_t i = 0;
-  vector<dockv::Partition> partitions(table_data->partitions.size());
-  for (const auto& partition_pb : table_data->partitions) {
-    dockv::Partition::FromPB(partition_pb, &partitions[i++]);
-  }
-  VLOG_WITH_FUNC(3) << "Got " << partitions.size()
-                    << " partitions from external snapshot for table " << table->id();
 
   // Change TableInfo to point to the new tablets.
   string deletion_msg;
@@ -1709,12 +1984,19 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
       // Create and mark new tablets for creation.
 
-      // Use partitions from external snapshot to create new tablets in state PREPARING. The tablets
-      // will start CREATING once they are committed in memory.
-      for (const auto& partition : partitions) {
-        PartitionPB partition_pb;
-        partition.ToPB(&partition_pb);
-        new_tablets.push_back(CreateTabletInfo(table.get(), partition_pb));
+      // Use partitions from external snapshot to create new tablets.
+      // Clone tablets start in the CREATING state since they will be created by tservers.
+      // Non-clone tablets start in the PREPARING state, and will start CREATING once they are
+      // committed in memory.
+      for (const auto& [source_tablet_id, partition_pb] : table_data->old_tablets) {
+        TabletInfoPtr tablet;
+        if (is_clone) {
+          tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::CREATING);
+          tablet->mutable_metadata()->mutable_dirty()->pb.set_created_by_clone(true);
+        } else {
+          tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::PREPARING);
+        }
+        new_tablets.push_back(tablet);
       }
 
       // Add tablets to catalog manager tablet_map_. This should be safe to do after creating
@@ -1855,6 +2137,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
                                         const UDTypeMap& type_map,
                                         const ExternalTableSnapshotDataMap& table_map,
                                         const LeaderEpoch& epoch,
+                                        bool is_clone,
                                         ExternalTableSnapshotData* table_data) {
   const SysTablesEntryPB& meta = DCHECK_NOTNULL(table_data)->table_entry_pb;
   bool is_parent_colocated_table = false;
@@ -1911,7 +2194,8 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       case TableType::YQL_TABLE_TYPE: FALLTHROUGH_INTENDED;
       case TableType::REDIS_TABLE_TYPE: {
         // For YCQL and YEDIS, simply create the missing table.
-        RETURN_NOT_OK(RecreateTable(new_namespace_id, type_map, table_map, epoch, table_data));
+        RETURN_NOT_OK(RecreateTable(
+            new_namespace_id, type_map, table_map, epoch, is_clone, table_data));
         break;
       }
       case TableType::PGSQL_TABLE_TYPE: {
@@ -2083,14 +2367,14 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     if (table_data->num_tablets > 0) {
       if (meta.table_type() == TableType::PGSQL_TABLE_TYPE) {
-        bool partitions_match = true;
-        if (new_num_tablets != table_data->num_tablets) {
-          partitions_match = false;
+        bool needs_repartition = false;
+        if (new_num_tablets != table_data->num_tablets || is_clone) {
+          needs_repartition = true;
         } else {
           // Check if partition boundaries match.  Only check the starts; assume the ends are fine.
           size_t i = 0;
           vector<PartitionKey> partition_starts(table_data->num_tablets);
-          for (const auto& partition_pb : table_data->partitions) {
+          for (const auto& [_, partition_pb] : table_data->old_tablets) {
             partition_starts[i] = partition_pb.partition_key_start();
             LOG_IF(DFATAL, (i == 0) ? partition_starts[i] != ""
                                     : partition_starts[i] <= partition_starts[i-1])
@@ -2099,12 +2383,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
           }
           if (!table->HasPartitions(partition_starts)) {
             LOG_WITH_FUNC(INFO) << "Partition boundaries mismatch for table " << table->id();
-            partitions_match = false;
+            needs_repartition = true;
           }
         }
 
-        if (!partitions_match) {
-          RETURN_NOT_OK(RepartitionTable(table, table_data, epoch));
+        if (needs_repartition) {
+          RETURN_NOT_OK(RepartitionTable(table, table_data, epoch, is_clone));
         }
       } else { // not PGSQL_TABLE_TYPE
         if (new_num_tablets != table_data->num_tablets) {
@@ -2172,10 +2456,31 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the schema version to the version of the snapshot if it is less.
-    if (meta.version() > table->LockForRead()->pb.version()) {
+    // Bump up the current schema version of the target table as follows:
+    // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
+    // current schema version is greater than all schema versions that might exist in the snapshot
+    // used for clone.
+    // 2- Restoring a backup case: bump the schema version to the schema version of SysTableEntryPB
+    // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
+    // schema version found in snapshotInfo is the maximum schema version that can be found in the
+    // snapshot at backup creation time.
+    std::optional<int> schema_version;
+    if (is_clone) {
+      // The Source table should be found as we are cloning from it.
+      TRACE("Looking up source table");
+      scoped_refptr<TableInfo> source_table =
+          VERIFY_RESULT(FindTableById(table_data->old_table_id));
+      auto source_table_lock = source_table->LockForRead();
+      schema_version = source_table_lock->pb.version() + 1;
+    } else if (meta.version() > table->LockForRead()->pb.version()) {
+      schema_version = meta.version();
+    }
+
+    if (schema_version) {
+      VLOG_WITH_FUNC(1) << Format(
+          "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
       auto l = table->LockForWrite();
-      l.mutable_data()->pb.set_version(meta.version());
+      l.mutable_data()->pb.set_version(schema_version.value());
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
@@ -2264,7 +2569,7 @@ Status CatalogManager::PreprocessTabletEntry(const SysRowEntry& entry,
     ++table_data.num_tablets;
   }
   if (meta.has_partition()) {
-    table_data.partitions.push_back(meta.partition());
+    table_data.old_tablets.emplace_back(entry.id(), meta.partition());
   }
   return Status::OK();
 }
@@ -2352,17 +2657,6 @@ const docdb::DocReadContext& CatalogManager::doc_read_context() {
   return sys_catalog()->doc_read_context();
 }
 
-TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
-  TabletInfos result;
-  result.reserve(ids.size());
-  SharedLock lock(mutex_);
-  for (const auto& id : ids) {
-    auto it = tablet_map_->find(id);
-    result.push_back(it != tablet_map_->end() ? it->second : nullptr);
-  }
-  return result;
-}
-
 Result<SchemaVersion> CatalogManager::GetTableSchemaVersion(const TableId& table_id) {
   auto table = VERIFY_RESULT(FindTableById(table_id));
   auto lock = table->LockForRead();
@@ -2403,24 +2697,32 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
   WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
 }
 
+Result<std::unique_ptr<rocksdb::DB>> CatalogManager::RestoreSnapshotToTmpRocksDb(
+    tablet::Tablet* tablet, const TxnSnapshotId& snapshot_id, HybridTime restore_at) {
+  std::string log_prefix = LogPrefix();
+  // Remove ": " to patch suffix.
+  log_prefix.erase(log_prefix.size() - 2);
+
+  // Restore master snapshot and load it to RocksDB.
+  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(snapshot_id, restore_at));
+  rocksdb::Options rocksdb_options;
+  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+
+  return rocksdb::DB::Open(rocksdb_options, dir);
+}
+
 Status CatalogManager::RestoreSysCatalogCommon(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
     std::reference_wrapper<const ScopedRWOperation> tablet_pending_op,
     RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
     docdb::KeyValuePairPB* restore_kv) {
   // Restore master snapshot and load it to RocksDB.
-  auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
-      restoration->snapshot_id, restoration->restore_at));
-  rocksdb::Options rocksdb_options;
-  std::string log_prefix = LogPrefix();
-  // Remove ": " to patch suffix.
-  log_prefix.erase(log_prefix.size() - 2);
-  tablet->InitRocksDBOptions(&rocksdb_options, log_prefix + " [TMP]: ");
+  auto db = VERIFY_RESULT(RestoreSnapshotToTmpRocksDb(
+      tablet, restoration->snapshot_id, restoration->restore_at));
+  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
-  auto db = VERIFY_RESULT(rocksdb::DB::Open(rocksdb_options, dir));
   // db can't be closed concurrently, so it is ok to use dummy ScopedRWOperation.
   auto db_pending_op = ScopedRWOperation();
-  auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
   auto schema_packing_provider = &tablet->GetSchemaPackingProvider();
@@ -2632,52 +2934,41 @@ void CatalogManager::CleanupHiddenObjects(
     const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(schedule_min_restore_time);
 
-  std::vector<TabletInfoPtr> hidden_tablets;
-  std::vector<TableInfoPtr> tables;
-  {
-    SharedLock lock(mutex_);
-    hidden_tablets = hidden_tablets_;
-    tables.reserve(tables_->Size());
-    for (const auto& p : tables_->GetAllTables()) {
-      if (!p->is_system()) {
-        tables.push_back(p);
-      }
-    }
-  }
-  CleanupHiddenTablets(hidden_tablets, schedule_min_restore_time, epoch);
-  CleanupHiddenTables(std::move(tables), schedule_min_restore_time, epoch);
+  CleanupHiddenTablets(schedule_min_restore_time, epoch);
+  CleanupHiddenTables(schedule_min_restore_time, epoch);
 }
 
 void CatalogManager::CleanupHiddenTablets(
-    const std::vector<TabletInfoPtr>& hidden_tablets,
-    const ScheduleMinRestoreTime& schedule_min_restore_time,
-    const LeaderEpoch& epoch) {
-  if (hidden_tablets.empty()) {
-    return;
+    const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) {
+  std::vector<TabletInfoPtr> hidden_tablets;
+  {
+    SharedLock lock(mutex_);
+    if (hidden_tablets_.empty()) {
+      return;
+    }
+    hidden_tablets = hidden_tablets_;
   }
-  std::vector<TabletInfoPtr> tablets_to_delete;
+
   std::vector<TabletInfoPtr> tablets_to_remove_from_hidden;
+  TabletInfos tablets_to_delete;
 
   for (const auto& tablet : hidden_tablets) {
-    auto lock = tablet->LockForRead();
-    if (!lock->ListedAsHidden()) {
+    if (!tablet->LockForRead()->ListedAsHidden()) {
       tablets_to_remove_from_hidden.push_back(tablet);
       continue;
     }
-    auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-    bool cleanup = !CatalogManagerUtil::RetainTablet(
-        lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
-        hide_hybrid_time, tablet->tablet_id()) && !RetainedByXRepl(tablet->id()) &&
-        !snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet->id());
-    if (cleanup) {
+
+    if (!ShouldRetainHiddenTablet(*tablet, schedule_min_restore_time)) {
       tablets_to_delete.push_back(tablet);
     }
   }
+
   if (!tablets_to_delete.empty()) {
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
-    WARN_NOT_OK(DeleteTabletListAndSendRequests(
-        tablets_to_delete, "Cleanup hidden tablets", {} /* retaining_snapshot_schedules */,
-        false /* transaction_status_tablets */, epoch, false /* active_snapshots */),
+    WARN_NOT_OK(
+        DeleteOrHideTabletsAndSendRequests(
+            tablets_to_delete, TabletDeleteRetainerInfo::AlwaysDelete(), "Cleanup hidden tablets",
+            epoch),
         "Failed to cleanup hidden tablets");
   }
 
@@ -2701,20 +2992,15 @@ void CatalogManager::CleanupHiddenTablets(
 void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
     const LeaderEpoch& epoch) {
-  auto lock = table->LockForRead();
-  if (!lock->is_hidden_but_not_deleting()) {
+  if (!table->LockForRead()->is_hidden_but_not_deleting()) {
     return;
   }
   auto tablet_info = table->GetColocatedUserTablet();
   if (!tablet_info) {
     return;
   }
-  auto tablet_lock = tablet_info->LockForRead();
-  auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-  if (CatalogManagerUtil::RetainTablet(
-          tablet_lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
-          hide_hybrid_time, tablet_info->tablet_id()) ||
-      snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_info->tablet_id())) {
+  if (snapshot_coordinator_.ShouldRetainHiddenColocatedTable(
+          *table, *tablet_info, schedule_min_restore_time)) {
     return;
   }
   LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
@@ -2726,8 +3012,18 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
 }
 
 void CatalogManager::CleanupHiddenTables(
-    std::vector<TableInfoPtr> tables, const ScheduleMinRestoreTime& schedule_min_restore_time,
-    const LeaderEpoch& epoch) {
+    const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) {
+  std::vector<TableInfoPtr> tables;
+  {
+    SharedLock lock(mutex_);
+    tables.reserve(tables_->Size());
+    for (const auto& p : tables_->GetAllTables()) {
+      if (!p->is_system()) {
+        tables.push_back(p);
+      }
+    }
+  }
+
   std::vector<TableInfoPtr> expired_tables;
   for (auto& table : tables) {
     if (table->GetColocatedUserTablet() != nullptr) {
@@ -2735,10 +3031,9 @@ void CatalogManager::CleanupHiddenTables(
       // tablet's metadata first.
       RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
     }
-    if (!table->IsHiddenButNotDeleting() || !table->AreAllTabletsDeleted()) {
-      continue;
+    if (table->IsHiddenButNotDeleting() && table->AreAllTabletsDeleted()) {
+      expired_tables.push_back(std::move(table));
     }
-    expired_tables.push_back(std::move(table));
   }
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
   // acquisition order for tables.
@@ -2802,7 +3097,6 @@ void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool
     TRACE("Acquired catalog manager lock");
 
     if (current_snapshot_id_.empty()) {
-      LOG(WARNING) << "No active snapshot: " << current_snapshot_id_;
       return;
     }
 
@@ -3080,28 +3374,7 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
-      (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
-  const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
-      MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
-
-  // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableTabletSplittingInternal(disable_duration_ms, kPitrFeatureName);
-
-  bool inflight_splits_finished = false;
-  while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
-    // Wait for existing split operations to complete.
-    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */, deadline)) {
-      inflight_splits_finished = true;
-      break;
-    }
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_pitr_split_disable_check_freq_ms));
-  }
-
-  if (!inflight_splits_finished) {
-    ReenableTabletSplitting(kPitrFeatureName);
-    return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
-  }
+  RETURN_NOT_OK(tablet_split_manager_.PrepareForPitr(deadline));
 
   return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, epoch.leader_term, deadline);
 }
@@ -3125,8 +3398,7 @@ bool ShouldResendRegistry(
 
 Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                              TSHeartbeatResponsePB* resp) {
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(GetClusterConfig(&cluster_config));
+  SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
   RETURN_NOT_OK(snapshot_coordinator_.FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
@@ -3256,17 +3528,8 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
   return ts;
 }
 
-Result<SnapshotSchedulesToObjectIdsMap> CatalogManager::MakeSnapshotSchedulesToObjectIdsMap(
-    SysRowEntryType type) {
-  return snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(type);
-}
-
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
   return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
-}
-
-Result<bool> CatalogManager::IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
-  return snapshot_coordinator_.IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 
 bool CatalogManager::IsPitrActive() {

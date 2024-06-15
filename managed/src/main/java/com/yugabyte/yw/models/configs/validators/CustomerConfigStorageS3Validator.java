@@ -61,7 +61,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     if (StringUtils.isEmpty(s3data.awsAccessKeyId)
         || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
       if (!s3data.isIAMInstanceProfile) {
-        throwBeanValidatorError(
+        throwBeanConfigDataValidatorError(
             CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
             "Aws credentials are null and IAM profile is not used.");
       }
@@ -77,7 +77,8 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
         s3Client = factory.createS3Client(s3data);
       } catch (AmazonS3Exception s3Exception) {
         exceptionMsg = s3Exception.getErrorMessage();
-        throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);
+        throwBeanConfigDataValidatorError(
+            CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);
       }
 
       validateBucket(
@@ -88,7 +89,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       if (s3data.regionLocations != null) {
         for (RegionLocations location : s3data.regionLocations) {
           if (StringUtils.isEmpty(location.region)) {
-            throwBeanValidatorError(
+            throwBeanConfigDataValidatorError(
                 CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
           }
           validateUrl(
@@ -115,7 +116,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     // invalid.
     if (s3UriPath.length() < 5 || !s3UriPath.startsWith("s3://")) {
       String exceptionMsg = "Invalid s3UriPath format: " + s3UriPath;
-      throwBeanValidatorError(fieldName, exceptionMsg);
+      throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
     } else {
       try {
         CloudLocationInfo configLocationInfo =
@@ -126,9 +127,9 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
         String exceptionMsg = s3Exception.getErrorMessage();
         if (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))
           exceptionMsg += " " + s3UriPath;
-        throwBeanValidatorError(fieldName, exceptionMsg);
+        throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
       } catch (SdkClientException e) {
-        throwBeanValidatorError(fieldName, e.getMessage());
+        throwBeanConfigDataValidatorError(fieldName, e.getMessage());
       }
     }
   }

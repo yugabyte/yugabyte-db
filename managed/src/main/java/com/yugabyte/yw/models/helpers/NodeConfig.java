@@ -78,6 +78,8 @@ public class NodeConfig {
 
     CHRONYD_RUNNING("Chronyd running"),
 
+    LOCALE_PRESENT("Locale is present"),
+
     SSH_PORT("SSH port is open"),
 
     SUDO_ACCESS("Sudo access available"),
@@ -137,6 +139,10 @@ public class NodeConfig {
     REDIS_SERVER_HTTP_PORT("Redis server http port is open"),
 
     REDIS_SERVER_RPC_PORT("Redis server rpc port is open"),
+
+    YB_HOME_DIR_CLEAN("Check if the home directory is clean"),
+
+    DATA_DIR_CLEAN("Check if the directory is clean"),
 
     YCQL_SERVER_HTTP_PORT("YCQL server http port is open"),
 

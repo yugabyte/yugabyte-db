@@ -3,7 +3,9 @@ title: Scaling reads
 headerTitle: Scaling reads
 linkTitle: Scaling reads
 description: Scaling reads in YugabyteDB.
-headcontent: Scale reads horizonatally by adding more nodes
+headcontent: Read performance when scaling horizontally
+aliases:
+  - /preview/architecture/core-functions/read-path
 menu:
   preview:
     identifier: scaling-reads
@@ -12,7 +14,7 @@ menu:
 type: docs
 ---
 
-Reads scale linearly in YugabyteDB as more nodes are added to the cluster.
+Reads scale linearly in YugabyteDB as more nodes are added to the cluster. The read I/O path is very straightforward. As the mapping of a row to a tablet is deterministic, the system knows exactly where to look for a row. Let's go over how reads work and see how well they scale.
 
 ## How reads work
 
@@ -20,13 +22,15 @@ When an application connected to a node sends a read request for a key, say `SEL
 
 A basic `select` statement involves a maximum of just 2 nodes. This redirection is completely transparent to the application.
 
+In the following illustration, you can see that the application sent the request for `K=5` to `NODE-2`. The system identified that the key `K=5` is located in `NODE-1` and internally redirected the request to that node.
+
 ![How does a read work](/images/explore/scalability/scaling-reads-redirection.png)
 
 Multiple applications can connect to any node and the reads will be redirected correctly.
 
 ## Sysbench workload
 
-The following shows how reads scale horizontally in YugabyteDB using a Sysbench workload of basic selects. The cluster consisted of m6i.4xlarge instances and had 1024 connections. All requests had a latency of less than 3ms.
+The following chart shows how reads scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic selects. The cluster consisted of m6i.4xlarge instances and had 1024 connections. All requests had a latency of less than 3ms.
 
 ![Scaling with Sysbench](/images/explore/scalability/scaling-reads-sysbench.png)
 

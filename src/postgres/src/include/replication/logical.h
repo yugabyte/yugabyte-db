@@ -52,6 +52,9 @@ typedef struct LogicalDecodingContext
 	 */
 	bool		fast_forward;
 
+	/* Are we processing the end LSN of a transaction? */
+	bool		end_xact;
+
 	OutputPluginCallbacks callbacks;
 	OutputPluginOptions options;
 
@@ -89,6 +92,24 @@ typedef struct LogicalDecodingContext
 	bool		prepared_write;
 	XLogRecPtr	write_location;
 	TransactionId write_xid;
+
+	/*
+	 * Don't replay commits from an LSN < this LSN. This is the YB equivalent of
+	 * start_decoding_at of SnapBuild struct. We have this field here because we
+	 * do not use the snapbuild mechanism.
+	 */
+	XLogRecPtr	yb_start_decoding_at;
+
+	/*
+	 * A per table_oid to oid map.
+	 *
+	 * If an entry is present in the table, it indicates that the next
+	 * DML record should invalidate the relcache and set yb_read_time to its
+	 * commit_time.
+	 *
+	 * The entry (value) remains unused i.e. this is used like a set.
+	 */
+	HTAB		*yb_needs_relcache_invalidation;
 } LogicalDecodingContext;
 
 
@@ -119,5 +140,7 @@ extern void LogicalIncreaseRestartDecodingForSlot(XLogRecPtr current_lsn,
 extern void LogicalConfirmReceivedLocation(XLogRecPtr lsn);
 
 extern bool filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId origin_id);
+
+extern void YBValidateOutputPlugin(char *plugin);
 
 #endif

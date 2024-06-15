@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"go.etcd.io/etcd/pkg/fileutil"
+	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"golang.org/x/sys/unix"
 
 	"github.com/dustin/go-humanize"
@@ -61,7 +61,7 @@ func (r diskAvailCheck) Execute() Result {
 	}
 	if bytesAvail < minDiskReq {
 		res.Error = fmt.Errorf(
-			"Availabile disk space on volume %s is less than minimum required %s",
+			"Available disk space on volume %s is less than minimum required %s",
 			humanize.IBytes(bytesAvail), humanize.IBytes(minDiskReq))
 		res.Status = StatusCritical
 		return res

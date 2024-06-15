@@ -6,8 +6,9 @@ export const CONFIG_ROUTE_PREFIX = 'config';
 export const ConfigTabKey = {
   INFRA: 'infra',
   BACKUP: 'backup',
-  BACKUP_NEW: 'backupNew',
-  SECURITY: 'security'
+  BACKUP_NEW: 'newBackupConfig',
+  SECURITY: 'security',
+  TROUBLESHOOT: 'troubleshoot'
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 
@@ -149,6 +150,12 @@ export const SUPPORTED_KUBERNETES_PROVIDERS = [
   ...KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.TANZU]
 ];
 
+export const ProviderOperation = {
+  CREATE: 'create',
+  EDIT: 'edit'
+} as const;
+export type ProviderOperation = typeof ProviderOperation[keyof typeof ProviderOperation];
+
 export const InstanceTypeOperation = {
   ADD: 'add',
   EDIT: 'edit'
@@ -213,7 +220,7 @@ export const KubernetesProviderLabel = {
 export const KubernetesProviderTypeLabel = {
   [KubernetesProviderType.MANAGED_SERVICE]: 'Managed Kubernetes Service',
   [KubernetesProviderType.OPEN_SHIFT]: 'Red Hat OpenShift',
-  [KubernetesProviderType.TANZU]: 'VMWare Tanzu'
+  [KubernetesProviderType.TANZU]: 'VMware Tanzu'
 } as const;
 
 export const RegionOperationLabel = {
@@ -232,3 +239,9 @@ export const InstanceTypeOperationLabel = {
 // Data Refetching Constants
 // --------------------------------------------------------------------------------------
 export const PROVIDER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
+
+export const AzuProviderCredentialType = {
+  HOST_INSTANCE_MI: 'hostInstanceMI',
+  SPECIFIED_SERVICE_PRINCIPAL: 'specifiedServicePrincipal'
+} as const;
+export type AzuProviderCredentialType = typeof AzuProviderCredentialType[keyof typeof AzuProviderCredentialType];

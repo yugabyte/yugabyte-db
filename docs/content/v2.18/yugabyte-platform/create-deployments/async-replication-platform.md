@@ -120,7 +120,7 @@ This page allows you to do the following:
 
 - Pause the replication process (stop the traffic) by clicking **Pause Replication**. This is helpful when performing maintenance. Paused replications can be resumed from the last checkpoint.
 
-- Restart the replication by clicking **Actions > Restart Replication** and using the dialog shown in the following illustration to select the tables or database for which to restart the replication:
+- Restart the replication by clicking **Actions > Restart Replication**. Use the dialog shown in the following illustration to select the databases (YSQL) or keyspaces and tables (YCQL) for which to restart the replication:
 
   ![Replication Details](/images/yp/asynch-replication-551.png)
 
@@ -147,6 +147,10 @@ This page allows you to do the following:
     If YugabyteDB Anywhere is unable to obtain the status (for example, due to a heavy workload being run on the universe) the status for that table will be _UnableToFetch_. You may refresh the page to retry gathering information.
 
   - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
+
+    {{<note title="Before dropping tables">}}
+Always remove tables from replication _before_ you drop them from the database.
+    {{</note>}}
 
   - To add more tables to the replication, click **Add Tables** to open the **Add Tables to Replication** dialog which allows you to make a selection from a list of tables that have not been replicated, and then click **Validate Table Selection**.
 

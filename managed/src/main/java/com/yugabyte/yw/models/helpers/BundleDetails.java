@@ -2,6 +2,7 @@ package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.EnumSet;
 import java.util.stream.Collectors;
 
@@ -77,10 +78,19 @@ public class BundleDetails {
 
   public EnumSet<ComponentType> components;
 
+  @ApiModelProperty(value = "Max number of most recent cores to collect (if any)", required = false)
+  public int maxNumRecentCores;
+
+  @ApiModelProperty(value = "Max size of the collected cores (if any)", required = false)
+  public long maxCoreFileSize;
+
   public BundleDetails() {}
 
-  public BundleDetails(EnumSet<ComponentType> components) {
+  public BundleDetails(
+      EnumSet<ComponentType> components, int maxNumRecentCores, long maxCoreFileSize) {
     this.components = components;
+    this.maxNumRecentCores = maxNumRecentCores;
+    this.maxCoreFileSize = maxCoreFileSize;
   }
 
   @JsonIgnore

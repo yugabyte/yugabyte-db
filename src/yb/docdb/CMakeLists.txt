@@ -12,7 +12,6 @@
 #
 
 set(YB_PCH_PREFIX docdb)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 # docdb_proto
 
@@ -25,11 +24,11 @@ YRPC_GENERATE(
 
 ADD_YB_LIBRARY(docdb_proto
         SRCS ${DOCDB_PROTO_SRCS}
-        DEPS protobuf yb_common_proto opid_proto
+        DEPS protobuf yb_common_proto
         NONLINK_DEPS ${DOCDB_PROTO_TGTS})
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
-include_directories("${YB_BUILD_ROOT}/postgres_build/src/include/catalog")
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
 set(DOCDB_SRCS
         bounded_rocksdb_iterator.cc
@@ -85,6 +84,7 @@ set(DOCDB_SRCS
 set(DOCDB_DEPS
         yb_dockv
         rocksdb
+        yb_ash
         yb_util
         yb_rocksutil
         yb_common
@@ -142,6 +142,7 @@ ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)
 ADD_YB_TEST(consensus_frontier-test)
 ADD_YB_TEST(compaction_file_filter-test)
+ADD_YB_TEST(usearch_vector_index-test)
 
 if(YB_BUILD_FUZZ_TARGETS)
   # A library with common code shared between DocDB fuzz tests.

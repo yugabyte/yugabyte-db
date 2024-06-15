@@ -31,6 +31,8 @@
 #include <limits>
 #include <unordered_map>
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/listener.h"
@@ -299,6 +301,10 @@ struct ColumnFamilyOptions {
   //
   // Dynamically changeable through SetOptions() API
   int max_write_buffer_number;
+
+  // The limit for the number of bytes in immutable mem tables.
+  // After reaching this limit new writes are blocked.
+  size_t max_flushing_bytes = std::numeric_limits<size_t>::max();
 
   // The minimum number of write buffers that will be merged together
   // before writing to storage.  If set to 1, then
@@ -1339,6 +1345,9 @@ struct DBOptions {
   // A prefix for log messages, usually containing the tablet id.
   std::string log_prefix;
 
+  // Tablet id.
+  yb::TabletId tablet_id;
+
   // This RocksDB instance root mem tracker.
   std::shared_ptr<yb::MemTracker> mem_tracker;
 
@@ -1412,13 +1421,21 @@ class ReadFileFilter {
   virtual ~ReadFileFilter() {}
 };
 
-class TableReader;
+// Cache filter key produced from user key by particular transformer.
+struct FilterKeyCache {
+  explicit FilterKeyCache(Slice user_key) : filter_key(user_key) {}
+
+  Slice filter_key;
+  const void* transformer = nullptr;
+};
+
 class TableAwareReadFileFilter {
  public:
-  virtual bool Filter(TableReader*) const = 0;
+  virtual bool Filter(const ReadOptions& read_options, Slice user_key, FilterKeyCache* cache,
+                      TableReader* reader) const = 0;
 
  protected:
-  virtual ~TableAwareReadFileFilter() {}
+  virtual ~TableAwareReadFileFilter() = default;
 };
 
 // Options that control read operations
@@ -1520,7 +1537,9 @@ struct ReadOptions {
 
   // Filter for pruning SST files. RocksDB user can provide its own implementation to exclude SST
   // files from being added to MergeIterator. By default doesn't filter files.
-  std::shared_ptr<TableAwareReadFileFilter> table_aware_file_filter;
+  const TableAwareReadFileFilter* table_aware_file_filter = nullptr;
+
+  Slice user_key_for_filter;
 
   std::shared_ptr<ReadFileFilter> file_filter;
 

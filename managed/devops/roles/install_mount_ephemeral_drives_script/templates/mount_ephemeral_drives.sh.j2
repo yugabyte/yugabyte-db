@@ -21,12 +21,19 @@ readonly CLOUD_TYPE="{{ cloud_type }}"
 readonly DEFAULT_SSD_DRIVES="{{ device_paths }}"
 readonly MOUNT_PATHS="{{ mount_paths }}"
 readonly LUN_INDEXES="{{ disk_lun_indexes }}"
+readonly IMDSv2Required="{{ imdsv2required }}"
 
 {% raw %}
 should_check_aws_meta() {
   [[ -z $DEFAULT_SSD_DRIVES && $CLOUD_TYPE == "aws" ]]
 }
 
+if [[ "$IMDSv2Required" == "True" ]]; then
+  TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 120")
+  CURL_COMMANND="curl -H \"X-aws-ec2-metadata-token: $TOKEN\""
+else 
+  CURL_COMMANND="curl"
+fi
 # Figure out how many ephemerals we have by querying the metadata API, and then:
 #  - convert the drive name returned from the API to the hosts DRIVE_SCHEME, if necessary
 #  - verify a matching device is available in /dev/
@@ -38,7 +45,7 @@ get_device_path() {
   local ephemeral_name=$1
   local output=
   if should_check_aws_meta; then
-    output=$(curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/$ephemeral_name)
+    output=$($CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/$ephemeral_name)
   else
     output=$ephemeral_name
   fi
@@ -74,7 +81,7 @@ get_ephemeral_drives() {
     local -i attempt=0
     local ephemerals=""
     while true; do
-      if curl --silent $METADATA_URL_BASE/meta-data/ | grep block-device-mapping >/dev/null; then
+      if $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/ | grep block-device-mapping >/dev/null; then
         break
       fi
       echo >&2 "$METADATA_URL_BASE/meta-data/block-device-mapping not yet available"
@@ -88,12 +95,12 @@ get_ephemeral_drives() {
     done
 
     # Verify that we can curl this URL successfully.
-    curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ >/dev/null
+    $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ >/dev/null
 
     # Turn off error checking and grep for ephemeral drives. We won't fail even if none are present.
     set +e
     get_ephemeral_drives_rv=$(
-        curl --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
+        $CURL_COMMANND --silent $METADATA_URL_BASE/meta-data/block-device-mapping/ | grep ephemeral )
     set -e
   elif [[ $CLOUD_TYPE == "azu" ]]; then
     get_azu_scsi_drives
@@ -153,8 +160,10 @@ get_ephemeral_drives() {
   fi
 
   declare -g eph_idx=0
+  declare -g max_iterations=$((num_devices+1))
   # iterate through 1 more than num_devices to skip over root volume
-  for (( i=0; i<num_devices+1; ++i )); do
+  for (( i=0; i<max_iterations; ++i )); do
+    fs_opts="defaults,noatime,nofail,allocsize=4m"
     e=${ephemerals[eph_idx]}
     echo "Probing $e ..."
     # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
@@ -171,11 +180,34 @@ get_ephemeral_drives() {
         device_path=$(echo $device_path | sed "s/sd/$DRIVE_SCHEME/")
     fi
 
+    echo "Device path $device_path"
+
+    if ! [[ -b "$device_path" ]]; then
+      echo "Ephemeral disk $e, $device_path is not present. Skipping."
+      continue
+    fi
+
+    # In aws we cannot clearly identify whether disk is provided with ami or added by yba
+    # So if we see that disk is already mounted to some mount point that is not managed by yba
+    # then we skip it
+    declare -g active_mount_points=$(lsblk -o MOUNTPOINT -nr "$device_path" | grep -v '^$')
+    if ! [[ -z "$active_mount_points" ]]; then
+      declare -g mount_points_arr=(${active_mount_points})
+      for value in "${mount_points_arr[@]}"
+      do
+        if ! [[ " ${mounts[*]} " =~ [[:space:]]${value}[[:space:]] ]]; then
+          echo "$device_path is mounted at $value, which is not expected to be managed by yba"
+          max_iterations=$((max_iterations+1))
+          continue 2
+        fi
+      done
+    fi
+
     # Test that the device actually exists since you can request more ephemeral drives than are
     # available for an instance type and the meta-data API will happily tell you it exists when it
     # really does not.
     # Also check to make sure we don't try to mount on root volume
-    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
+    if ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
       echo "Detected ephemeral disk: $device_path"
       set +e
       # NOTE: This does not seem to return the actual file system
@@ -194,6 +226,7 @@ get_ephemeral_drives() {
           echo "Creating xfs on: " $device_path
           /sbin/mkfs.xfs $device_path -f
           file_system=xfs
+          fs_opts="${fs_opts},ikeep"
         else
           echo "mkfs.xfs not found. Using the default - $file_system"
         fi
@@ -217,7 +250,7 @@ get_ephemeral_drives() {
         echo "Adding entry for $mount_path to fstab..."
         echo "#$mount_path" >> /etc/fstab
         # Mounting using UUID
-        echo "UUID=$device_uuid $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
+        echo "UUID=${device_uuid} ${mount_path} ${file_system} ${fs_opts} 0 2" \
                         >> /etc/fstab
       fi
       echo "checking actual path"
@@ -232,7 +265,7 @@ get_ephemeral_drives() {
         echo "$device_path is already mounted on $mount_path"
       else
         echo "Mounting $device_path on $mount_path"
-        ( set -x; mount $mount_path )
+        ( set -x; mount $device_path $mount_path )
       fi
       # The first time we mount the drives, the permissions seem to flip back to 755. Perhaps,
       # there's a better way to set the permissions in fstab itself. But couldn't find one that
@@ -246,7 +279,7 @@ get_ephemeral_drives() {
         break
       fi
     else
-      echo "Ephemeral disk $e, $device_path is not present or part of root $root_drive. Skipping."
+      echo "Ephemeral disk $e, $device_path is a part of root $root_drive. Skipping."
     fi
   done
 

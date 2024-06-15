@@ -16,6 +16,7 @@
 
 #include "yb/qlexpr/index.h"
 
+#include "yb/common/common.messages.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 
@@ -109,6 +110,10 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       has_index_by_expr_ = true;
     }
   }
+
+  if (pb.has_vector_idx_options()) {
+    vector_idx_options_ = pb.vector_idx_options();
+  }
 }
 
 IndexInfo::IndexInfo() = default;
@@ -141,6 +146,10 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (where_predicate_spec_) {
     pb->mutable_where_predicate_spec()->CopyFrom(*where_predicate_spec_);
+  }
+
+  if (is_vector_idx()) {
+    *pb->mutable_vector_idx_options() = get_vector_idx_options();
   }
 }
 
@@ -273,8 +282,23 @@ size_t IndexInfo::DynamicMemoryUsage() const {
   return size;
 }
 
+bool IndexInfo::is_vector_idx() const {
+  return has_vector_idx_options_;
+}
+
+const PgVectorIdxOptionsPB &IndexInfo::get_vector_idx_options() const {
+  return vector_idx_options_;
+}
+
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
   FromPB(indexes);
+}
+
+IndexMap::IndexMap(const ArenaList<LWIndexInfoPB>& indexes) {
+  clear();
+  for (const auto& index : indexes) {
+    emplace(index.table_id(), IndexInfo(index.ToGoogleProtobuf()));
+  }
 }
 
 void IndexMap::FromPB(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {

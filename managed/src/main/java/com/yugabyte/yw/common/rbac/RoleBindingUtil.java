@@ -561,4 +561,29 @@ public class RoleBindingUtil {
     }
     return roleBindingUUIDs;
   }
+
+  /**
+   * Add role binding for user with system role.
+   *
+   * @param user
+   */
+  public void createRoleBindingsForSystemRole(Users user) {
+    // Get the built-in role UUID by name.
+    Role role = Role.getOrBadRequest(user.getCustomerUUID(), user.getRole().toString());
+    // Need to define all available resources in resource group as default.
+    ResourceGroup resourceGroup =
+        ResourceGroup.getSystemDefaultResourceGroup(user.getCustomerUUID(), user);
+    // Create a single role binding for the user.
+    List<RoleBinding> createdRoleBindings =
+        setUserRoleBindings(
+            user.getUuid(),
+            Arrays.asList(new RoleResourceDefinition(role.getRoleUUID(), resourceGroup)),
+            RoleBindingType.Custom);
+
+    log.info(
+        "Created user '{}', email '{}', default role bindings '{}'.",
+        user.getUuid(),
+        user.getEmail(),
+        createdRoleBindings.toString());
+  }
 }

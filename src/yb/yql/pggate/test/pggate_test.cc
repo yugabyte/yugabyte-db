@@ -73,6 +73,13 @@ const char* GetDebugQueryStringStub() {
   return "GetDebugQueryString not implemented in test";
 }
 
+uint32_t PgstatReportWaitStartNoOp(uint32_t wait_event) {
+  return wait_event;
+}
+
+// Not defined locally in PggateTest::Init to avoid asan use-after-return error
+bool yb_enable_ash = false;
+
 } // namespace
 
 PggateTest::PggateTest()
@@ -143,11 +150,16 @@ Status PggateTest::Init(const char *test_name,
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
   YBCPgCallbacks callbacks;
+  YBCPgAshConfig ash_config;
+
   auto* session_stats =
       static_cast<YBCPgExecStatsState*>(PggateTestAlloc(sizeof(YBCPgExecStatsState)));
   memset(session_stats, 0, sizeof(YBCPgExecStatsState));
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
+  callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
+
+  ash_config.yb_enable_ash = &yb_enable_ash;
 
   {
     auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));
@@ -161,7 +173,7 @@ Status PggateTest::Init(const char *test_name,
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
 
-  YBCInitPgGate(type_table, count, callbacks, nullptr, nullptr);
+  YBCInitPgGate(type_table, count, callbacks, nullptr, &ash_config);
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */, session_stats));
@@ -205,8 +217,9 @@ void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
 void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
-      db_name.c_str(), db_oid, 0 /* source_database_oid */, 0 /* next_oid */, false /* colocated */,
-      &pg_stmt));
+      db_name.c_str(), db_oid, 0 /* source_database_oid */,
+      kDefaultTemplateDatabaseName /* source_database_name */, 0 /* next_oid */,
+      false /* colocated */, 0 /* clone_time*/, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
 }
 
@@ -219,7 +232,7 @@ void PggateTest::BeginDDLTransaction() {
 }
 
 void PggateTest::CommitDDLTransaction() {
-  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode());
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(0 /* db_oid */, false /* is_silent_altering */));
 }
 
 void PggateTest::BeginTransaction() {
@@ -227,7 +240,7 @@ void PggateTest::BeginTransaction() {
 }
 
 void PggateTest::CommitTransaction() {
-  CHECK_YBC_STATUS(YBCPgCommitTransaction());
+  CHECK_YBC_STATUS(YBCPgCommitPlainTransaction());
 }
 
 void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {

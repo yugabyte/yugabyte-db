@@ -20,6 +20,7 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Adding primary key to a partitioned table results in an error](#adding-primary-key-to-a-partitioned-table-results-in-an-error)
 - [Index creation on partitions fail for some YugabyteDB builds](#index-creation-on-partitions-fail-for-some-yugabytedb-builds)
 - [Creation of certain views in the rule.sql file](#creation-of-certain-views-in-the-rule-sql-file)
+- [Indexes on INET type are not supported](#indexes-on-inet-type-are-not-supported)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -70,7 +71,7 @@ PARTITION BY LIST (region);
 
 **Description**: If you have a partitioned table with indexes on it, the migration will fail with an error for YugabyteDB `2.15` or `2.16` due to a regression.
 
-Note that this is fixed in release [12.17.1.0](../../../releases/release-notes/v2.17/#v2.17.1.0).
+Note that this is fixed in release [2.17.1.0](../../../releases/ybdb-releases/v2.17/#v2.17.1.0).
 
 **Workaround**: N/A
 
@@ -136,4 +137,36 @@ CREATE OR REPLACE VIEW public.v1 AS
   SELECT foo.n1,foo.n2
   FROM public.foo
   GROUP BY foo.n1;
+```
+
+---
+
+### Indexes on INET type are not supported
+
+**GitHub**: [Issue #17017](https://github.com/yugabyte/yb-voyager/issues/17017)
+
+**Description**: If there is an index on a column of the INET type, it errors out during import.
+
+**Workaround**: Modify the column to a TEXT type.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+create table test( id int primary key, f1 inet);
+create index test_index on test(f1);
+```
+
+The import schema error is as follows:
+
+```sql
+INDEXES_table.sql: CREATE INDEX test_index ON public.test USING btree (f1);
+ERROR: INDEX on column of type 'INET' not yet supported (SQLSTATE 0A000)
+```
+
+Suggested workaround is to change the INET column to TEXT for the index creation to succeed as follows:
+
+```sql
+create table test( id int primary key, f1 text);
 ```

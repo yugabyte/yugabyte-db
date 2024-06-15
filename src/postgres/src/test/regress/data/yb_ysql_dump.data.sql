@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.0.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
+-- Dumped from database version 11.2-YB-2.21.1.0-b0
+-- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -17,6 +17,18 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces true
+\endif
+
+-- Set variable use_roles (if not already set)
+\if :{?use_roles}
+\else
+\set use_roles true
+\endif
+
 --
 -- Name: hint_plan; Type: SCHEMA; Schema: -; Owner: yugabyte_test
 --
@@ -24,7 +36,9 @@ SET row_security = off;
 CREATE SCHEMA hint_plan;
 
 
-ALTER SCHEMA hint_plan OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER SCHEMA hint_plan OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner: 
@@ -35,7 +49,9 @@ DROP EXTENSION IF EXISTS pg_hint_plan;
 SELECT pg_catalog.binary_upgrade_create_empty_extension('pg_hint_plan', 'hint_plan', false, '1.3.7', '{16549,16547}', '{"",""}', ARRAY[]::pg_catalog.text[]);
 
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 --
 -- Name: grp1; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
@@ -47,7 +63,9 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16480'::pg_catalog.oid
 CREATE TABLEGROUP grp1;
 
 
-ALTER TABLEGROUP grp1 OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLEGROUP grp1 OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: grp2; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
@@ -59,9 +77,13 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16481'::pg_catalog.oid
 CREATE TABLEGROUP grp2;
 
 
-ALTER TABLEGROUP grp2 OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLEGROUP grp2 OWNER TO tablegroup_test_user;
+\endif
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user; Tablespace: tsp1
@@ -73,9 +95,13 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16482'::pg_catalog.oid
 CREATE TABLEGROUP grp_with_spc;
 
 
-ALTER TABLEGROUP grp_with_spc OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLEGROUP grp_with_spc OWNER TO tablegroup_test_user;
+\endif
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 SET default_with_oids = false;
 
@@ -104,7 +130,9 @@ SPLIT INTO 3 TABLETS;
 ALTER EXTENSION pg_hint_plan ADD TABLE hint_plan.hints;
 
 
-ALTER TABLE hint_plan.hints OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE hint_plan.hints OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: hints_id_seq; Type: SEQUENCE; Schema: hint_plan; Owner: yugabyte_test
@@ -126,7 +154,9 @@ CREATE SEQUENCE hint_plan.hints_id_seq
 ALTER EXTENSION pg_hint_plan ADD SEQUENCE hint_plan.hints_id_seq;
 
 
-ALTER TABLE hint_plan.hints_id_seq OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE hint_plan.hints_id_seq OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: hints_id_seq; Type: SEQUENCE OWNED BY; Schema: hint_plan; Owner: yugabyte_test
@@ -154,7 +184,9 @@ CREATE TABLE public.chat_user (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.chat_user OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.chat_user OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: hash_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -177,7 +209,9 @@ CREATE TABLE public.hash_tbl_pk_with_include_clause (
 SPLIT INTO 8 TABLETS;
 
 
-ALTER TABLE public.hash_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.hash_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: hash_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -201,7 +235,9 @@ CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.hash_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.hash_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: p1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -223,7 +259,9 @@ CREATE TABLE public.p1 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.p1 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.p1 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: p2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -245,7 +283,9 @@ CREATE TABLE public.p2 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.p2 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.p2 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: pre_split_range; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -280,7 +320,9 @@ CREATE TABLE public.pre_split_range (
 SPLIT AT VALUES ((1000), (5000), (10000), (15000), (20000), (25000), (30000), (35000), (55000), (85000), (110000), (150000), (250000), (300000), (350000), (400000), (450000), (500000), (1000000));
 
 
-ALTER TABLE public.pre_split_range OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.pre_split_range OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: range_tbl_pk_with_include_clause; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -303,7 +345,9 @@ CREATE TABLE public.range_tbl_pk_with_include_clause (
 SPLIT AT VALUES ((1, '1'), (100, '100'));
 
 
-ALTER TABLE public.range_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.range_tbl_pk_with_include_clause OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: range_tbl_pk_with_multiple_included_columns; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -326,7 +370,9 @@ CREATE TABLE public.range_tbl_pk_with_multiple_included_columns (
 );
 
 
-ALTER TABLE public.range_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.range_tbl_pk_with_multiple_included_columns OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: rls_private; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -350,7 +396,9 @@ SPLIT INTO 3 TABLETS;
 ALTER TABLE ONLY public.rls_private FORCE ROW LEVEL SECURITY;
 
 
-ALTER TABLE public.rls_private OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.rls_private OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: rls_public; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -372,7 +420,9 @@ CREATE TABLE public.rls_public (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.rls_public OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.rls_public OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -393,7 +443,9 @@ CREATE TABLE public.tbl1 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl1 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl1 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl10; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -417,7 +469,9 @@ CREATE TABLE public.tbl10 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl10 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl10 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl11; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -439,7 +493,9 @@ CREATE TABLE public.tbl11 (
 );
 
 
-ALTER TABLE public.tbl11 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl11 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl12; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -462,7 +518,9 @@ CREATE TABLE public.tbl12 (
 );
 
 
-ALTER TABLE public.tbl12 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl12 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl13; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -486,7 +544,9 @@ CREATE TABLE public.tbl13 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl13 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl13 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl1_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -505,7 +565,9 @@ CREATE SEQUENCE public.tbl1_a_seq
     CACHE 1;
 
 
-ALTER TABLE public.tbl1_a_seq OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl1_a_seq OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl1_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -532,7 +594,9 @@ CREATE TABLE public.tbl2 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
@@ -551,7 +615,9 @@ CREATE SEQUENCE public.tbl2_a_seq
     CACHE 1;
 
 
-ALTER TABLE public.tbl2_a_seq OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl2_a_seq OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
@@ -579,7 +645,9 @@ CREATE TABLE public.tbl3 (
 );
 
 
-ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl3 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl4; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -601,7 +669,9 @@ CREATE TABLE public.tbl4 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl4 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl5; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -624,7 +694,9 @@ CREATE TABLE public.tbl5 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl5 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl6; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -645,7 +717,9 @@ CREATE TABLE public.tbl6 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl6 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl6 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl7; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -669,7 +743,9 @@ CREATE TABLE public.tbl7 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl7 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl7 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl8; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -693,7 +769,9 @@ CREATE TABLE public.tbl8 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl8 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl8 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tbl9; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -716,7 +794,9 @@ CREATE TABLE public.tbl9 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tbl9 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tgroup_after_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -737,7 +817,9 @@ WITH (parallel_workers='2', colocation_id='20002')
 TABLEGROUP grp1;
 
 
-ALTER TABLE public.tgroup_after_options OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_after_options OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_empty_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -757,7 +839,9 @@ CREATE TABLE public.tgroup_empty_options (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tgroup_empty_options OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_empty_options OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_in_between_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -778,7 +862,9 @@ WITH (parallel_workers='2', autovacuum_enabled='true', colocation_id='20003')
 TABLEGROUP grp1;
 
 
-ALTER TABLE public.tgroup_in_between_options OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_in_between_options OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_no_options_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -799,7 +885,9 @@ WITH (colocation_id='20001')
 TABLEGROUP grp1;
 
 
-ALTER TABLE public.tgroup_no_options_and_tgroup OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_no_options_and_tgroup OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_one_option; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -820,7 +908,9 @@ WITH (autovacuum_enabled='true')
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tgroup_one_option OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_one_option OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_one_option_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -841,7 +931,9 @@ WITH (autovacuum_enabled='true', colocation_id='20001')
 TABLEGROUP grp2;
 
 
-ALTER TABLE public.tgroup_one_option_and_tgroup OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_one_option_and_tgroup OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_options; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -862,7 +954,9 @@ WITH (autovacuum_enabled='true', parallel_workers='2')
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.tgroup_options OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_options OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_options_and_tgroup; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -883,7 +977,9 @@ WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='20002')
 TABLEGROUP grp2;
 
 
-ALTER TABLE public.tgroup_options_and_tgroup OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_options_and_tgroup OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_options_tgroup_and_custom_colocation_id; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -904,7 +1000,9 @@ WITH (autovacuum_enabled='true', parallel_workers='2', colocation_id='100500')
 TABLEGROUP grp2;
 
 
-ALTER TABLE public.tgroup_options_tgroup_and_custom_colocation_id OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_options_tgroup_and_custom_colocation_id OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: tgroup_with_spc; Type: TABLE; Schema: public; Owner: tablegroup_test_user
@@ -925,7 +1023,9 @@ WITH (colocation_id='20001')
 TABLEGROUP grp_with_spc;
 
 
-ALTER TABLE public.tgroup_with_spc OWNER TO tablegroup_test_user;
+\if :use_roles
+    ALTER TABLE public.tgroup_with_spc OWNER TO tablegroup_test_user;
+\endif
 
 --
 -- Name: th1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -947,7 +1047,9 @@ CREATE TABLE public.th1 (
 SPLIT INTO 2 TABLETS;
 
 
-ALTER TABLE public.th1 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.th1 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: th2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -970,7 +1072,9 @@ CREATE TABLE public.th2 (
 SPLIT INTO 3 TABLETS;
 
 
-ALTER TABLE public.th2 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.th2 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: th3; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -993,7 +1097,9 @@ CREATE TABLE public.th3 (
 SPLIT INTO 4 TABLETS;
 
 
-ALTER TABLE public.th3 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.th3 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tr1; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1016,7 +1122,9 @@ CREATE TABLE public.tr1 (
 SPLIT AT VALUES ((1), (100));
 
 
-ALTER TABLE public.tr1 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tr1 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: tr2; Type: TABLE; Schema: public; Owner: yugabyte_test
@@ -1039,7 +1147,9 @@ CREATE TABLE public.tr2 (
 SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n', MINVALUE), (1, 'z', -5.12000000000000011));
 
 
-ALTER TABLE public.tr2 OWNER TO yugabyte_test;
+\if :use_roles
+    ALTER TABLE public.tr2 OWNER TO yugabyte_test;
+\endif
 
 --
 -- Name: uaccount; Type: TABLE; Schema: public; Owner: regress_rls_alice
@@ -1060,7 +1170,9 @@ CREATE TABLE public.uaccount (
 );
 
 
-ALTER TABLE public.uaccount OWNER TO regress_rls_alice;
+\if :use_roles
+    ALTER TABLE public.uaccount OWNER TO regress_rls_alice;
+\endif
 
 --
 -- Name: hints id; Type: DEFAULT; Schema: hint_plan; Owner: yugabyte_test
@@ -1588,50 +1700,62 @@ UPDATE pg_extension SET extconfig = ARRAY['hint_plan.hints'::regclass::oid,'hint
 -- Name: SCHEMA hint_plan; Type: ACL; Schema: -; Owner: yugabyte_test
 --
 
+\if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT USAGE ON SCHEMA hint_plan TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
 
 
 --
 -- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
 
 
 --
 -- Name: TABLE hints; Type: ACL; Schema: hint_plan; Owner: yugabyte_test
 --
 
+\if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE hint_plan.hints TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
 
 
 --
 -- Name: TABLE pg_stat_statements; Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
+\if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
 
 
 --
 -- Name: TABLE rls_private; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\if :use_roles
 GRANT SELECT ON TABLE public.rls_private TO rls_user;
+\endif
 
 
 --
 -- Name: TABLE rls_public; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
+\if :use_roles
 GRANT ALL ON TABLE public.rls_public TO PUBLIC;
+\endif
 
 
 --

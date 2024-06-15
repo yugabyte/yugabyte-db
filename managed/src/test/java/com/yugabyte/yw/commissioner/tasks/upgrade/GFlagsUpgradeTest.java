@@ -22,11 +22,12 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
+import com.yugabyte.yw.commissioner.MockUpgrade;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
@@ -50,7 +51,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -78,50 +78,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @InjectMocks GFlagsUpgrade gFlagsUpgrade;
 
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleConfigureServers,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.CheckFollowerLag,
-          TaskType.SetNodeState);
-
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
-          TaskType.AnsibleConfigureServers,
-          TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.ModifyBlackList,
-          TaskType.CheckFollowerLag,
-          TaskType.SetNodeState);
-
-  private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleConfigureServers,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.SetNodeState);
-
-  private static final List<TaskType> NON_RESTART_UPGRADE_TASK_SEQUENCE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleConfigureServers,
-          TaskType.SetFlagInMemory,
-          TaskType.SetNodeState);
-
   @Override
   @Before
   public void setUp() {
@@ -132,6 +88,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     setFollowerLagMock();
     try {
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+      setCheckNodesAreSafeToTakeDown(mockClient);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -173,156 +130,10 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     return submitTask(requestParams, TaskType.GFlagsUpgrade, commissioner, expectedVersion);
   }
 
-  private int assertCommonTasks(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      int startPosition,
-      UpgradeType type,
-      boolean isFinalStep) {
-    int position = startPosition;
-    List<TaskType> commonNodeTasks = new ArrayList<>();
-    if (type.name().equals("ROLLING_UPGRADE_TSERVER_ONLY") && !isFinalStep) {
-      commonNodeTasks.add(TaskType.ModifyBlackList);
-    }
-    if (isFinalStep) {
-      commonNodeTasks.addAll(
-          ImmutableList.of(TaskType.UpdateAndPersistGFlags, TaskType.UniverseUpdateSucceeded));
-    }
-    for (TaskType commonNodeTask : commonNodeTasks) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
-      position++;
-    }
-    return position;
-  }
-
-  private int assertSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      ServerType serverType,
-      int startPosition,
-      UpgradeOption option) {
-    return assertSequence(subTasksByPosition, serverType, startPosition, option, false);
-  }
-
-  private int assertSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      ServerType serverType,
-      int startPosition,
-      UpgradeOption option,
-      boolean isEdit) {
-    return assertSequence(subTasksByPosition, serverType, startPosition, option, isEdit, false);
-  }
-
-  private int assertSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      ServerType serverType,
-      int startPosition,
-      UpgradeOption option,
-      boolean isEdit,
-      boolean isDelete) {
-    Map<String, String> gflags =
-        serverType == MASTER
-            ? ImmutableMap.of("master-flag", isEdit ? "m2" : "m1")
-            : ImmutableMap.of("tserver-flag", isEdit ? "t2" : "t1");
-    return assertSequence(subTasksByPosition, serverType, startPosition, option, isDelete, gflags);
-  }
-
-  private int assertSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      ServerType serverType,
-      int startPosition,
-      UpgradeOption option,
-      boolean isDelete,
-      Map<String, String> gflags) {
-    int position = startPosition;
-    ObjectNode gflagsJson = Json.newObject();
-    gflags.forEach(
-        (k, v) -> {
-          gflagsJson.put(k, v);
-        });
-    switch (option) {
-      case ROLLING_UPGRADE:
-        List<TaskType> taskSequence =
-            serverType == MASTER
-                ? ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
-                : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
-        List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType);
-        for (int nodeIdx : nodeOrder) {
-          String nodeName = String.format("host-n%d", nodeIdx);
-          for (TaskType type : taskSequence) {
-            List<TaskInfo> tasks = subTasksByPosition.get(position);
-            TaskType taskType = tasks.get(0).getTaskType();
-            assertEquals(1, tasks.size());
-            assertEquals(type, taskType);
-            if (!NON_NODE_TASKS.contains(taskType)) {
-              Map<String, Object> assertValues =
-                  new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
-
-              if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-                if (!isDelete) {
-                  assertValues.putAll(ImmutableMap.of("gflags", gflagsJson));
-                }
-              }
-              assertNodeSubTask(tasks, assertValues);
-            }
-            position++;
-          }
-        }
-        break;
-      case NON_ROLLING_UPGRADE:
-        for (TaskType type : NON_ROLLING_UPGRADE_TASK_SEQUENCE) {
-          List<TaskInfo> tasks = subTasksByPosition.get(position);
-          TaskType taskType = assertTaskType(tasks, type);
-
-          if (NON_NODE_TASKS.contains(taskType)) {
-            assertEquals(1, tasks.size());
-          } else {
-            Map<String, Object> assertValues =
-                new HashMap<>(
-                    ImmutableMap.of(
-                        "nodeNames",
-                        (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
-                        "nodeCount",
-                        3));
-            if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-              if (!isDelete) {
-                assertValues.putAll(ImmutableMap.of("gflags", gflagsJson));
-              }
-              assertValues.put("processType", serverType.toString());
-            }
-            assertEquals(3, tasks.size());
-            assertNodeSubTask(tasks, assertValues);
-          }
-          position++;
-        }
-        break;
-      case NON_RESTART_UPGRADE:
-        for (TaskType type : NON_RESTART_UPGRADE_TASK_SEQUENCE) {
-          List<TaskInfo> tasks = subTasksByPosition.get(position);
-          TaskType taskType = assertTaskType(tasks, type);
-
-          if (NON_NODE_TASKS.contains(taskType)) {
-            assertEquals(1, tasks.size());
-          } else {
-            Map<String, Object> assertValues =
-                new HashMap<>(
-                    ImmutableMap.of(
-                        "nodeNames",
-                        (Object) ImmutableList.of("host-n1", "host-n2", "host-n3"),
-                        "nodeCount",
-                        3));
-            if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-              if (!isDelete) {
-                assertValues.putAll(ImmutableMap.of("gflags", gflagsJson));
-              }
-            }
-            assertEquals(3, tasks.size());
-            assertNodeSubTask(tasks, assertValues);
-          }
-          position++;
-        }
-        break;
-    }
-
-    return position;
+  private MockUpgrade initMockUpgrade() {
+    MockUpgrade mockUpgrade = initMockUpgrade(GFlagsUpgrade.class);
+    mockUpgrade.setUpgradeContext(UpgradeTaskBase.RUN_BEFORE_STOPPING);
+    return mockUpgrade;
   }
 
   @Test
@@ -334,20 +145,16 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(false))
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .masterTask(TaskType.AnsibleConfigureServers)
+        .tserverTask(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
+
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
-
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertSequence(subTasksByPosition, MASTER, position, UpgradeOption.NON_ROLLING_UPGRADE);
-    position =
-        assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.NON_ROLLING_UPGRADE);
-    position = assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true);
-    assertEquals(15, position);
   }
 
   @Test
@@ -360,17 +167,13 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertSequence(subTasksByPosition, MASTER, position, UpgradeOption.NON_ROLLING_UPGRADE);
-    position =
-        assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE_MASTER_ONLY, true);
-    assertEquals(9, position);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(false))
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .masterTask(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -383,18 +186,13 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.NON_ROLLING_UPGRADE);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.FULL_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(9, position);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(false))
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .tserverTask(TaskType.AnsibleConfigureServers)
+        .applyToTservers()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -405,17 +203,13 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position = assertSequence(subTasksByPosition, MASTER, position, UpgradeOption.ROLLING_UPGRADE);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(30, position);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .masterTask(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -430,16 +224,13 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
-    position = assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.ROLLING_UPGRADE);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(43, position);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .tserverTask(TaskType.AnsibleConfigureServers)
+        .applyToTservers()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -450,19 +241,13 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position = assertSequence(subTasksByPosition, MASTER, position, UpgradeOption.ROLLING_UPGRADE);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
-    position = assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.ROLLING_UPGRADE);
-    position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(70, position);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -477,7 +262,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testGFlagsUpgradeWithSameMasterFlags() {
-
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> masterFlags = ImmutableMap.of("master-flag", "m123");
     Universe.UniverseUpdater updater =
@@ -498,26 +282,18 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, 3);
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    subTasksByPosition.get(0);
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
-    position =
-        assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.ROLLING_UPGRADE, true);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(43, position);
+
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .tserverTask(TaskType.AnsibleConfigureServers)
+        .applyToTservers()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
   public void testGFlagsUpgradeWithSameTserverFlags() {
-
     // Simulate universe created with master flags and tserver flags.
     final Map<String, String> tserverFlags = ImmutableMap.of("tserver-flag", "m123");
     Universe.UniverseUpdater updater =
@@ -538,17 +314,13 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, 3);
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertSequence(subTasksByPosition, MASTER, position, UpgradeOption.ROLLING_UPGRADE, true);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(30, position);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .masterTask(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -584,28 +356,20 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       int numInvocations = serverType == MASTER ? 9 : 18;
       verify(mockNodeManager, times(numInvocations)).nodeCommand(any(), any());
 
-      List<TaskInfo> subTasks = new ArrayList<>(taskInfo.getSubTasks());
-      Map<Integer, List<TaskInfo>> subTasksByPosition =
-          subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-      int position = 0;
-      assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-      if (serverType != MASTER) {
-        position =
-            assertCommonTasks(
-                subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
+      MockUpgrade.UpgradeRound upgradeRound =
+          initMockUpgrade()
+              .precheckTasks(getPrecheckTasks(true))
+              .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+              .task(TaskType.AnsibleConfigureServers);
+
+      MockUpgrade mockUpgrade;
+      if (serverType == MASTER) {
+        mockUpgrade = upgradeRound.applyToMasters();
+      } else {
+        mockUpgrade = upgradeRound.applyToTservers();
       }
-      position =
-          assertSequence(
-              subTasksByPosition, serverType, position, UpgradeOption.ROLLING_UPGRADE, true, true);
-      position =
-          assertCommonTasks(
-              subTasksByPosition,
-              position,
-              serverType == MASTER
-                  ? UpgradeType.ROLLING_UPGRADE_MASTER_ONLY
-                  : UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY,
-              true);
-      assertEquals(serverType == MASTER ? 30 : 43, position);
+
+      mockUpgrade.addTasks(TaskType.UpdateAndPersistGFlags).verifyTasks(taskInfo.getSubTasks());
     }
   }
 
@@ -622,31 +386,13 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertSequence(
-            subTasksByPosition, MASTER, position, UpgradeOption.ROLLING_UPGRADE, false, gflags);
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
-    position =
-        assertSequence(
-            subTasksByPosition,
-            TSERVER,
-            position,
-            UpgradeOption.ROLLING_UPGRADE,
-            false,
-            Collections.emptyMap());
-    position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-
-    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    // Verify changed to false.
-    assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, false);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -717,7 +463,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     Set<String> changedNodes = new HashSet<>();
     subTasks.stream()
         .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-        .map(t -> t.getDetails().get("nodeName").asText())
+        .map(t -> t.getTaskParams().get("nodeName").asText())
         .forEach(changedNodes::add);
     assertEquals(nodeNames, changedNodes);
 
@@ -739,6 +485,14 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         roGFlags.getGFlags(null, TSERVER),
         defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.tserverGFlags);
+
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToCluster(clusterId)
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -782,7 +536,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       Set<String> changedNodes = new HashSet<>();
       subTasks.stream()
           .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-          .map(t -> t.getDetails().get("nodeName").asText())
+          .map(t -> t.getTaskParams().get("nodeName").asText())
           .forEach(changedNodes::add);
       assertEquals(nodeNames, changedNodes);
 
@@ -821,6 +575,14 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               .get(0)
               .userIntent
               .tserverGFlags);
+
+      initMockUpgrade()
+          .precheckTasks(getPrecheckTasks(true))
+          .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+          .task(TaskType.AnsibleConfigureServers)
+          .applyToCluster(clusterId)
+          .addTasks(TaskType.UpdateAndPersistGFlags)
+          .verifyTasks(taskInfo.getSubTasks());
     } catch (Exception e) {
       log.error("", e);
       throw e;
@@ -845,7 +607,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     Set<String> changedNodes = new HashSet<>();
     subTasks.stream()
         .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-        .map(t -> t.getDetails().get("nodeName").asText())
+        .map(t -> t.getTaskParams().get("nodeName").asText())
         .forEach(changedNodes::add);
     assertEquals(6, changedNodes.size()); // all nodes are affected
 
@@ -866,6 +628,17 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         specificGFlags.getGFlags(null, TSERVER),
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags);
+
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -902,9 +675,9 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
+
     assertThat(
-        thrown.getMessage(),
-        containsString("No changes in gflags (modify specificGflags in cluster)"));
+        thrown.getMessage(), containsString(GFlagsUpgradeParams.SPECIFIC_GFLAGS_NO_CHANGES_ERROR));
   }
 
   @Test
@@ -1032,6 +805,73 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testChangeSingleAZGflags() {
+    List<UUID> azList = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
+    AtomicInteger idx = new AtomicInteger();
+    Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe -> {
+          universe
+              .getUniverseDetails()
+              .nodeDetailsSet
+              .forEach(
+                  node -> {
+                    node.azUuid = azList.get(idx.getAndIncrement());
+                  });
+        });
+    addReadReplica();
+    expectedUniverseVersion++;
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(Collections.emptyMap(), Collections.emptyMap());
+    Map<UUID, SpecificGFlags.PerProcessFlags> perAZ = new HashMap<>();
+    specificGFlags.setPerAZ(perAZ);
+
+    UUID firstAZ = azList.get(0);
+    SpecificGFlags.PerProcessFlags firstPerProcessFlags = new SpecificGFlags.PerProcessFlags();
+    firstPerProcessFlags.value =
+        ImmutableMap.of(
+            MASTER, ImmutableMap.of("master-flag", "m2"),
+            TSERVER, ImmutableMap.of("tserver-flag", "t2"));
+    perAZ.put(firstAZ, firstPerProcessFlags);
+
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    UUID primaryUUID = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID readonlyUUID = defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
+    Set<String> az1PrimaryNodeNames = new HashSet<>();
+    Set<String> az1RRNodeNames = new HashSet<>();
+
+    for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      if (nodeDetails.azUuid.equals(firstAZ)) {
+        if (nodeDetails.isInPlacement(primaryUUID)) {
+          az1PrimaryNodeNames.add(nodeDetails.nodeName);
+        } else {
+          az1RRNodeNames.add(nodeDetails.nodeName);
+        }
+      }
+    }
+
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToNodes(az1PrimaryNodeNames, az1PrimaryNodeNames)
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToNodes(Collections.emptySet(), az1RRNodeNames)
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
   public void testSpecificGflagChangingIntentYBM() {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     // Verify enabled by default.
@@ -1060,6 +900,14 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL, false);
+
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .masterTask(TaskType.AnsibleConfigureServers)
+        .applyToMasters()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -1077,32 +925,14 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     verify(mockNodeManager, times(18)).nodeCommand(any(), any());
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    position =
-        assertSequence(
-            subTasksByPosition,
-            MASTER,
-            position,
-            UpgradeOption.ROLLING_UPGRADE,
-            false,
-            specificGFlags.getGFlags(null, MASTER));
-    position =
-        assertCommonTasks(
-            subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
-    position =
-        assertSequence(
-            subTasksByPosition,
-            TSERVER,
-            position,
-            UpgradeOption.ROLLING_UPGRADE,
-            false,
-            Collections.emptyMap());
-    position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(true))
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
 
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     // Verify changed to false.
@@ -1202,9 +1032,10 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .filter(t -> t.getTaskType() == TaskType.SetFlagInMemory)
         .forEach(
             task -> {
-              ServerType process = ServerType.valueOf(task.getDetails().get("serverType").asText());
+              ServerType process =
+                  ServerType.valueOf(task.getTaskParams().get("serverType").asText());
               Map<String, String> gflags =
-                  Json.fromJson(task.getDetails().get("gflags"), Map.class);
+                  Json.fromJson(task.getTaskParams().get("gflags"), Map.class);
               if (process == MASTER) {
                 assertEquals(specificGFlags.getGFlags(null, MASTER), gflags);
               } else {
@@ -1221,6 +1052,18 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         specificGFlags.getGFlags(null, TSERVER),
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags);
+    initMockUpgrade()
+        .precheckTasks(getPrecheckTasks(false))
+        .upgradeRound(UpgradeOption.NON_RESTART_UPGRADE, true)
+        .task(TaskType.AnsibleConfigureServers)
+        .task(TaskType.SetFlagInMemory)
+        .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+        .upgradeRound(UpgradeOption.NON_RESTART_UPGRADE, true)
+        .tserverTask(TaskType.AnsibleConfigureServers)
+        .tserverTask(TaskType.SetFlagInMemory)
+        .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
+        .addTasks(TaskType.UpdateAndPersistGFlags)
+        .verifyTasks(taskInfo.getSubTasks());
   }
 
   @Test
@@ -1235,6 +1078,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.GFlagsUpgrade,
@@ -1248,24 +1093,24 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   private Map<String, String> getGflagsForNode(
       List<TaskInfo> tasks, String nodeName, ServerType process) {
     TaskInfo taskInfo = findGflagsTask(tasks, nodeName, process);
-    JsonNode gflags = taskInfo.getDetails().get("gflags");
+    JsonNode gflags = taskInfo.getTaskParams().get("gflags");
     return Json.fromJson(gflags, Map.class);
   }
 
   private Set<String> getGflagsToRemoveForNode(
       List<TaskInfo> tasks, String nodeName, ServerType process) {
     TaskInfo taskInfo = findGflagsTask(tasks, nodeName, process);
-    ArrayNode gflagsToRemove = (ArrayNode) taskInfo.getDetails().get("gflagsToRemove");
+    ArrayNode gflagsToRemove = (ArrayNode) taskInfo.getTaskParams().get("gflagsToRemove");
     return Json.fromJson(gflagsToRemove, Set.class);
   }
 
   private TaskInfo findGflagsTask(List<TaskInfo> tasks, String nodeName, ServerType process) {
     return tasks.stream()
         .filter(t -> t.getTaskType() == TaskType.AnsibleConfigureServers)
-        .filter(t -> t.getDetails().get("nodeName").asText().equals(nodeName))
+        .filter(t -> t.getTaskParams().get("nodeName").asText().equals(nodeName))
         .filter(
             t ->
-                t.getDetails()
+                t.getTaskParams()
                     .get("properties")
                     .get("processType")
                     .asText()

@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.LinkedHashSet;
@@ -18,6 +19,11 @@ import play.mvc.Http.Status;
 @Retryable
 @Abortable
 public class RebootUniverse extends UpgradeTaskBase {
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
+  }
 
   @Inject
   protected RebootUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -45,10 +51,16 @@ public class RebootUniverse extends UpgradeTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          LinkedHashSet<NodeDetails> nodes = fetchAllNodes(taskParams().upgradeOption);
+          LinkedHashSet<NodeDetails> nodes = toOrderedSet(getNodesToBeRestarted().asPair());
           createRollingNodesUpgradeTaskFlow(
               (nodez, processTypes) ->
                   createRebootTasks(nodez, false /* isHardReboot */)

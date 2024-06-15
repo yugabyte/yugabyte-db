@@ -12,15 +12,17 @@
 #
 
 set(YB_PCH_PREFIX pggate)
-set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+set(YB_PCH_DEP_LIBS yb_test_util)
 
 # We need access to the generated pg_type_d.h header from this directory.
-include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/backend")
 
 # Utility functions that are specific for PGGate.
 add_subdirectory(util)
 
 add_subdirectory(webserver)
+
+add_subdirectory(ysql_bench_metrics_handler)
 
 # PGGate API library.
 set(PGGATE_SRCS
@@ -57,10 +59,13 @@ set(PGGATE_SRCS
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc
-               DEPS yb_util)
+               DEPS yb_ash yb_util)
 
 set(PGGATE_LIBS
     consensus_error
+    cdc_service_proto
+    server_common
+    yb_ash
     yb_util
     yb_common
     yb_client
@@ -73,6 +78,8 @@ set(PGGATE_LIBS
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}
                DEPS ${PGGATE_LIBS})
+
+add_dependencies(yb_pggate postgres_genbki)
 
 yb_use_pch(yb_pggate pggate)
 

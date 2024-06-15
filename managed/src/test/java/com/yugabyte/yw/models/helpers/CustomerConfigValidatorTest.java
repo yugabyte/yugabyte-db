@@ -8,7 +8,7 @@ import static com.yugabyte.yw.common.AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME;
 import static com.yugabyte.yw.common.GCPUtil.GCS_CREDENTIALS_JSON_FIELDNAME;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static com.yugabyte.yw.models.configs.CustomerConfig.ALERTS_PREFERENCES;
-import static com.yugabyte.yw.models.helpers.BaseBeanValidator.fieldFullName;
+import static com.yugabyte.yw.models.configs.validators.ConfigDataValidator.fieldFullName;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_GCS;
@@ -120,6 +120,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     "S3, BACKUP_LOCATION,, false",
     "GCS, BACKUP_LOCATION, gs://itest-backup, true",
     "GCS, BACKUP_LOCATION, gs://itest-backup/test, true",
+    "GCS, BACKUP_LOCATION, gs://itest_backup, true",
+    "GCS, BACKUP_LOCATION, gs://itest_backup_1, true",
+    "GCS, BACKUP_LOCATION, gs://itest_backup_, false",
     "GCS, BACKUP_LOCATION, https://storage.googleapis.com/itest-backup/test, true",
     "GCS, BACKUP_LOCATION, gcp.test.com, false",
     "GCS, BACKUP_LOCATION, ftp://gcp.test.com, false",

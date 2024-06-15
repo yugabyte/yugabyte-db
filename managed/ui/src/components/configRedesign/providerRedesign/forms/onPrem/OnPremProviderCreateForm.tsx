@@ -11,7 +11,8 @@ import {
   DEFAULT_SSH_PORT,
   KeyPairManagement,
   NTPSetupType,
-  ProviderCode
+  ProviderCode,
+  ProviderOperation
 } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import {
@@ -193,10 +194,7 @@ export const OnPremProviderCreateForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.CREATE_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -212,12 +210,13 @@ export const OnPremProviderCreateForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.ON_PREM}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message ? (

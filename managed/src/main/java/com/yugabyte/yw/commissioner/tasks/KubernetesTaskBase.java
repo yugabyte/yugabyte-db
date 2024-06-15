@@ -10,17 +10,25 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -29,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -36,6 +45,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import play.libs.Json;
 
 @Slf4j
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
@@ -378,7 +389,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         isReadOnlyCluster,
         commandType,
         false,
-        null);
+        null,
+        /* addDelayAfterStartup */ false);
   }
 
   public void upgradePodsNonRolling(
@@ -638,7 +650,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement currPlacement,
       ServerType serverType,
       String softwareVersion,
-      int waitTime,
+      long waitTime,
       String universeOverridesStr,
       Map<String, String> azsOverrides,
       boolean masterChanged,
@@ -647,7 +659,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       CommandType commandType,
       boolean enableYbc,
-      String ybcSoftwareVersion) {
+      String ybcSoftwareVersion,
+      boolean addDelayAfterStartup) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -744,6 +757,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             getKubernetesNodeName(partition, azCode, serverType, isMultiAz, isReadOnlyCluster);
         List<NodeDetails> nodeList = new ArrayList<>();
         nodeList.add(node);
+        // Add pre-check task
+        createNodePrecheckTasks(
+            node,
+            new HashSet<>(Arrays.asList(serverType)),
+            SubTaskGroupType.ConfigureUniverse,
+            false,
+            softwareVersion);
         if (serverType == ServerType.TSERVER && !edit) {
           addLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
@@ -792,8 +812,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
         createWaitForServersTasks(nodeList, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        createWaitForServerReady(node, serverType, waitTime)
+        createWaitForServerReady(node, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+        if (addDelayAfterStartup) {
+          createSleepAfterStartupTask(
+              taskParams().getUniverseUUID(),
+              Collections.singletonList(serverType),
+              KubernetesCommandExecutor.getPodCommandDateKey(podName, commandType),
+              waitTime);
+        }
 
         // If there are no universe keys on the universe, it will have no effect.
         if (serverType == ServerType.MASTER
@@ -804,6 +832,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         if (serverType == ServerType.TSERVER && !edit) {
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.ConfigureUniverse);
         }
+        // Create post upgrade subtasks
+        createPostUpgradeChecks(serverType, nodeList);
       }
     }
   }
@@ -970,7 +1000,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Returns the NodeDetails of the pod that we need to wait for.
   */
-  public NodeDetails getKubernetesNodeName(
+  public static NodeDetails getKubernetesNodeName(
       int partition,
       String azCode,
       ServerType serverType,
@@ -1006,7 +1036,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be added.
   */
-  public Set<NodeDetails> getPodsToAdd(
+  public static Set<NodeDetails> getPodsToAdd(
       Map<UUID, Integer> newPlacement,
       Map<UUID, Integer> currPlacement,
       ServerType serverType,
@@ -1033,7 +1063,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be removed.
   */
-  public Set<NodeDetails> getPodsToRemove(
+  public static Set<NodeDetails> getPodsToRemove(
       Map<UUID, Integer> newPlacement,
       Map<UUID, Integer> currPlacement,
       ServerType serverType,
@@ -1783,5 +1813,121 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     KubernetesCheckNumPod task = createTask(KubernetesCheckNumPod.class);
     task.initialize(params);
     return task;
+  }
+
+  protected void createPostUpgradeChecks(
+      ServerType serverType, Collection<NodeDetails> nodeDetailsCollection) {
+    if (isFollowerLagCheckEnabled()) {
+      nodeDetailsCollection.stream()
+          .forEach(
+              nD ->
+                  createCheckFollowerLagTask(nD, serverType)
+                      .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse));
+    }
+  }
+
+  protected void createValidateDiskSizeOnEdit(Universe universe) {
+    int targetDiskUsagePercentage =
+        confGetter.getConfForScope(universe, UniverseConfKeys.targetNodeDiskUsagePercentage);
+    if (targetDiskUsagePercentage <= 0) {
+      log.info(
+          "Downsize disk size validation is disabled (usageMultiplierPercentage = {})",
+          targetDiskUsagePercentage);
+      return;
+    }
+
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    for (Cluster newCluster : taskParams().clusters) {
+      boolean isReadOnlyCluster = newCluster.clusterType == ClusterType.ASYNC;
+
+      Cluster currCluster = universe.getCluster(newCluster.uuid);
+      UserIntent newIntent = newCluster.userIntent;
+      PlacementInfo newPI = newCluster.placementInfo, curPI = currCluster.placementInfo;
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+      boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+
+      KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
+          curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
+
+      boolean masterChanged = true;
+      boolean tserverChanged = true;
+
+      Set<NodeDetails> tserversToDelete =
+          getPodsToRemove(
+              newPlacement.tservers,
+              curPlacement.tservers,
+              ServerType.TSERVER,
+              universe,
+              isMultiAZ,
+              isReadOnlyCluster);
+
+      Set<NodeDetails> mastersToDelete =
+          getPodsToRemove(
+              newPlacement.masters,
+              curPlacement.masters,
+              ServerType.MASTER,
+              universe,
+              isMultiAZ,
+              isReadOnlyCluster);
+
+      if (CollectionUtils.isEmpty(tserversToDelete) && CollectionUtils.isEmpty(mastersToDelete)) {
+        log.debug("No pods to be removed");
+      }
+
+      DeviceInfo taskDeviceInfo = newCluster.userIntent.deviceInfo;
+      DeviceInfo existingDeviceInfo = currCluster.userIntent.deviceInfo;
+      if (taskDeviceInfo == null
+          || existingDeviceInfo == null
+          || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
+              && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
+        log.debug("No change in the volume configuration");
+        tserverChanged = CollectionUtils.isNotEmpty(tserversToDelete);
+      }
+      DeviceInfo taskMasterDeviceInfo = newCluster.userIntent.masterDeviceInfo;
+      DeviceInfo existingMasterDeviceInfo = currCluster.userIntent.masterDeviceInfo;
+      if (taskMasterDeviceInfo == null
+          || existingMasterDeviceInfo == null
+          || (Objects.equals(taskMasterDeviceInfo.numVolumes, existingMasterDeviceInfo.numVolumes)
+              && Objects.equals(
+                  taskMasterDeviceInfo.volumeSize, existingMasterDeviceInfo.volumeSize))) {
+        log.debug("No change in the master volume configuration");
+        masterChanged = CollectionUtils.isNotEmpty(mastersToDelete);
+      }
+
+      if (!masterChanged && !tserverChanged) {
+        return;
+      }
+
+      // Gather all namespaces
+      Set<String> namespaces = new HashSet<>();
+      for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
+        UUID azUUID = entry.getKey();
+        String azCode = isMultiAZ ? AvailabilityZone.get(azUUID).getCode() : null;
+        Map<String, String> config = entry.getValue();
+        String namespace =
+            KubernetesUtil.getKubernetesNamespace(
+                universeDetails.nodePrefix,
+                azCode,
+                config,
+                universeDetails.useNewHelmNamingStyle,
+                isReadOnlyCluster);
+        namespaces.add(namespace);
+      }
+
+      SubTaskGroup validateSubTaskGroup =
+          createSubTaskGroup(
+              ValidateNodeDiskSize.class.getSimpleName(), SubTaskGroupType.ValidateConfigurations);
+      ValidateNodeDiskSize.Params params =
+          Json.fromJson(Json.toJson(taskParams()), ValidateNodeDiskSize.Params.class);
+      params.clusterUuid = newCluster.uuid;
+      params.namespaces = namespaces;
+      params.tserversChanged = tserverChanged;
+      params.mastersChanged = masterChanged;
+      params.targetDiskUsagePercentage = targetDiskUsagePercentage;
+      ValidateNodeDiskSize task = createTask(ValidateNodeDiskSize.class);
+      task.initialize(params);
+      validateSubTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(validateSubTaskGroup);
+    }
   }
 }

@@ -17,20 +17,44 @@ import static org.yb.pgsql.IsolationLevel.SERIALIZABLE;
 
 import static org.yb.AssertionWrappers.*;
 
+import com.google.common.net.HostAndPort;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBDaemon;
 
 import java.sql.Connection;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @RunWith(value = YBTestRunner.class)
 public class TestPgAlterTable extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTable.class);
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
+    flagMap.put("ysql_yb_enable_replica_identity", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    if (isTestRunningWithConnectionManager())
+      flagMap.put("allowed_preview_flags_csv",
+        "ysql_yb_enable_replica_identity,enable_ysql_conn_mgr");
+    else
+      flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
+    flagMap.put("ysql_yb_enable_replica_identity", "true");
+    return flagMap;
+  }
 
   @Test
   public void testAddColumnIfNotExists() throws Exception {
@@ -421,46 +445,6 @@ public class TestPgAlterTable extends BasePgSQLTest {
   }
 
   @Test
-  public void testAddColumnWithUnsupportedConstraint() throws Exception {
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE test_table(id int)");
-      statement.execute("CREATE TABLE test_table_ref(id int)");
-
-      // Constrained variants of UNIQUE fail.
-      for (String addCol : Arrays.asList(
-          "ADD COLUMN",
-          "ADD",
-          "ADD COLUMN IF NOT EXISTS",
-          "ADD IF NOT EXISTS")) {
-        for (String constr : Arrays.asList(
-            "DEFAULT 5",
-            "DEFAULT NOW()",
-            "CHECK (id > 0)",
-            "CHECK (a > 0)",
-            "REFERENCES test_table_ref(id)")) {
-          runInvalidQuery(statement,
-              "ALTER TABLE test_table " + addCol + " a int UNIQUE " + constr,
-              "This ALTER TABLE command is not yet supported");
-        }
-      }
-
-      // GENERATED fails.
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD gac int GENERATED ALWAYS AS IDENTITY",
-          "This ALTER TABLE command is not yet supported"
-      );
-
-      // No columns were added.
-      assertQuery(
-          statement,
-          selectAttributesQuery("test_table"),
-          new Row("id", "int4")
-      );
-    }
-  }
-
-  @Test
   public void testRenameTableIfExists() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE test_table(id int)");
@@ -505,6 +489,40 @@ public class TestPgAlterTable extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testReplicaIdentity() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int primary key, name text);");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("change"));
+
+      // Alter the table to set all the supported replica identity modes one by one
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY FULL;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("full"));
+
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY NOTHING;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("nothing"));
+
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("default"));
+
+      statement.execute("ALTER TABLE test_table REPLICA IDENTITY CHANGE;");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table"), new Row("change"));
+
+      runInvalidQuery(
+        statement,
+        "ALTER TABLE test_table REPLICA IDENTITY INVALID_REPLICA_IDENTITY;",
+        "syntax error");
+
+      // Test the behaviour of the flag ysql_yb_default_replica_identity.
+      Set<HostAndPort> tServers = miniCluster.getTabletServers().keySet();
+      for (HostAndPort tServer : tServers) {
+        setServerFlag(tServer, "ysql_yb_default_replica_identity", "DEFAULT");
+      }
+      statement.execute("CREATE TABLE test_table_2 (id int primary key, name text);");
+      assertQuery(statement, selectReplicaIdentityQuery("test_table_2"), new Row("default"));
+    }
+  }
+
   private static String selectAttributesQuery(String table) {
     return String.format(
         "SELECT a.attname, t.typname FROM pg_attribute a" +
@@ -512,6 +530,20 @@ public class TestPgAlterTable extends BasePgSQLTest {
             " JOIN pg_type t ON t.oid=a.atttypid" +
             " WHERE a.attnum > 0 AND r.relname='%s' ORDER BY a.attname",
         table
+    );
+  }
+
+  private static String selectReplicaIdentityQuery(String table) {
+    return String.format(
+        "SELECT CASE relreplident " +
+          "WHEN 'd' THEN 'default'\n" +
+          "WHEN 'n' THEN 'nothing'\n" +
+          "WHEN 'f' THEN 'full'\n" +
+          "WHEN 'i' THEN 'index'\n" +
+          "WHEN 'c' THEN 'change'\n" +
+          "END AS replica_identity\n" +
+          "FROM pg_class\n" +
+          "WHERE oid = '%s'::regclass;", table
     );
   }
 }

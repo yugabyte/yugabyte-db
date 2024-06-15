@@ -170,7 +170,8 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
           NodeInstance.maybeGetByName(nodeName)
               .ifPresent(
                   nodeInstance -> {
-                    nodeInstance.setInUse(!setNonLive);
+                    nodeInstance.setState(
+                        setNonLive ? NodeInstance.State.FREE : NodeInstance.State.USED);
                     nodeInstance.save();
                   });
         });

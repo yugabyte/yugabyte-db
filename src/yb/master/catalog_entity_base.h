@@ -13,10 +13,32 @@
 
 #pragma once
 
+#include <shared_mutex>
+
 #include "yb/master/master_types.pb.h"
+#include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
 
 namespace yb::master {
+
+#define DECLARE_MULTI_INSTANCE_LOADER_CLASS(name, key_type, entry_pb_name) \
+  class BOOST_PP_CAT(name, Loader) \
+      : public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
+   public: \
+    explicit BOOST_PP_CAT(name, Loader)( \
+        std::function<Status(const key_type&, const entry_pb_name&)> & \
+        catalog_entity_inserter_func) \
+        : catalog_entity_inserter_func_(catalog_entity_inserter_func) {} \
+\
+   private: \
+    Status Visit(const key_type& key, const entry_pb_name& metadata) override { \
+      return catalog_entity_inserter_func_(key, metadata); \
+    } \
+    std::function<Status(const key_type&, const entry_pb_name&)>& catalog_entity_inserter_func_; \
+    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
+  };
+
+class TasksTracker;
 
 // This class is a base wrapper around the protos that get serialized in the data column of the
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
@@ -96,6 +118,58 @@ class SingletonMetadataCowWrapper : public MetadataCowWrapper<PersistentDataEntr
     static const std::string fake_id;
     return fake_id;
   }
+};
+
+class CatalogEntityWithTasks {
+ public:
+  explicit CatalogEntityWithTasks(scoped_refptr<TasksTracker> tasks_tracker);
+  virtual ~CatalogEntityWithTasks();
+
+  bool HasTasks() const EXCLUDES(mutex_);
+  bool HasTasks(server::MonitoredTaskType type) const EXCLUDES(mutex_);
+  std::size_t NumTasks() const EXCLUDES(mutex_);
+  std::unordered_set<server::MonitoredTaskPtr> GetTasks() const EXCLUDES(mutex_);
+
+  void AddTask(server::MonitoredTaskPtr task) EXCLUDES(mutex_);
+
+  // Returns true if no running tasks left.
+  bool RemoveTask(const server::MonitoredTaskPtr& task) EXCLUDES(mutex_);
+  // Abort all inflight tasks. New tasks can still be added.
+  void AbortTasks(const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
+      EXCLUDES(mutex_);
+  // Abort all inflight tasks and prevent new tasks from being added.
+  void AbortTasksAndClose() EXCLUDES(mutex_);
+  // Wait for all inflight tasks to complete.
+  void WaitTasksCompletion() EXCLUDES(mutex_);
+
+  void CloseAndWaitForAllTasksToAbort() EXCLUDES(mutex_);
+
+  template <typename IterableCatalogEntityWithTasks>
+  static void CloseAbortAndWaitForAllTasks(
+      const IterableCatalogEntityWithTasks& entity_collection) {
+    for (const auto& entity : entity_collection) {
+      VLOG(1) << entity->ToString() << ": Closing and aborting tasks";
+      entity->AbortTasksAndClose();
+    }
+    for (const auto& entity : entity_collection) {
+      VLOG(1) << entity->ToString() << ": Waiting for tasks for complete";
+      entity->WaitTasksCompletion();
+      VLOG(1) << entity->ToString() << ": Completed wait for tasks to complete";
+    }
+  }
+
+ private:
+  void AbortTasksAndCloseIfRequested(
+      bool close, const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {})
+      EXCLUDES(mutex_);
+
+  scoped_refptr<TasksTracker> tasks_tracker_;
+
+  mutable std::shared_mutex mutex_;
+  std::unordered_set<server::MonitoredTaskPtr> pending_tasks_ GUARDED_BY(mutex_);
+
+  // If closing, requests to AddTask will be promptly aborted.
+  bool closing_ GUARDED_BY(mutex_) = false;
 };
 
 }  // namespace yb::master

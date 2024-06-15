@@ -9,20 +9,20 @@ import com.google.common.collect.Comparators;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import org.apache.pekko.actor.CoordinatedShutdown;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.inject.ApplicationLifecycle;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ShutdownHookHandlerTest {
 
-  @Mock private ApplicationLifecycle mockApplicationLifecycle;
+  @Mock private CoordinatedShutdown mockCoordinatedShutdown;
 
   @Test
   public void testOnApplicationShutdown() {
-    ShutdownHookHandler handler = new ShutdownHookHandler(mockApplicationLifecycle);
+    ShutdownHookHandler handler = new ShutdownHookHandler(mockCoordinatedShutdown);
     int weights[] = new int[] {1, 2, 1, 3, 1, 5, 2, 10, 7, 9, 5, 3};
     List<Integer> weightOrders = new ArrayList<>();
     List<Object> objects = new ArrayList<>();

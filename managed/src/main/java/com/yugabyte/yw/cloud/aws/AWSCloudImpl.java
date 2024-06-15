@@ -95,7 +95,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
@@ -116,7 +115,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -227,7 +226,7 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   @Override
-  public boolean isValidCreds(Provider provider, String region) {
+  public boolean isValidCreds(Provider provider) {
     // TODO: Remove this function once the validators are added for all cloud provider.
     return true;
   }
@@ -511,12 +510,6 @@ public class AWSCloudImpl implements CloudAPI {
       String message = "Error executing task {manageNodeGroup()}, error='{}'";
       throw new RuntimeException(message, e);
     }
-  }
-
-  @Override
-  public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
-    throw new PlatformServiceException(
-        BAD_REQUEST, "Instance templates are currently not supported for AWS");
   }
 
   /**
@@ -994,15 +987,6 @@ public class AWSCloudImpl implements CloudAPI {
       LOG.error("AWS Provider authorizeSecurityGroupIngress dry run validation failed: ", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Dry run of AWS AuthorizeSecurityGroupIngress failed: " + e.getMessage());
-    }
-  }
-
-  public String getPrivateKeyAlgoOrBadRequest(String privateKeyString) {
-    try {
-      return CertificateHelper.getPrivateKey(privateKeyString).getAlgorithm();
-    } catch (RuntimeException e) {
-      LOG.error("Private key Algorithm extraction failed: ", e);
-      throw new PlatformServiceException(BAD_REQUEST, "Could not fetch private key algorithm");
     }
   }
 

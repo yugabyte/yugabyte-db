@@ -117,6 +117,13 @@ class YBClient::Data {
                                         const std::string& namespace_id,
                                         CoarseTimePoint deadline);
 
+  Status IsCloneNamespaceInProgress(
+      YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
+      CoarseTimePoint deadline, bool* create_in_progress);
+  Status WaitForCloneNamespaceToFinish(
+      YBClient* client, const std::string& source_namespace_id, uint32_t clone_seq_no,
+      CoarseTimePoint deadline);
+
   Status CreateTable(YBClient* client,
                      const master::CreateTableRequestPB& req,
                      const YBSchema& schema,
@@ -302,12 +309,11 @@ class YBClient::Data {
       const CoarseTimePoint deadline,
       const CoarseDuration max_wait = std::chrono::seconds(2));
 
-  void CreateCDCStream(YBClient* client,
-                       const TableId& table_id,
-                       const std::unordered_map<std::string, std::string>& options,
-                       cdc::StreamModeTransactional transactional,
-                       CoarseTimePoint deadline,
-                       CreateCDCStreamCallback callback);
+  void CreateXClusterStream(
+      YBClient* client, const TableId& table_id,
+      const google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB>& options,
+      master::SysCDCStreamEntryPB::State state, cdc::StreamModeTransactional transactional,
+      CoarseTimePoint deadline, CreateCDCStreamCallback callback);
 
   void DeleteCDCStream(
       YBClient* client,
@@ -442,7 +448,25 @@ class YBClient::Data {
   Status ReportYsqlDdlTxnStatus(
       const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
 
+  Status IsYsqlDdlVerificationInProgress(
+    const TransactionMetadata& txn,
+    CoarseTimePoint deadline,
+    bool *ddl_verification_in_progress);
+
+  Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn, CoarseTimePoint deadline);
+
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
+
+  Status GetXClusterStreams(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+      std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb);
+
+  Status IsXClusterBootstrapRequired(
+      YBClient* client, CoarseTimePoint deadline,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      std::function<void(Result<bool>)> user_cb);
 
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(
@@ -569,6 +593,8 @@ class YBClient::Data {
   TabletRequests requests_;
 
   std::array<std::atomic<int>, 2> tserver_count_cached_;
+
+  std::string client_name_;
 
  private:
   Status FlushTablesHelper(YBClient* client,

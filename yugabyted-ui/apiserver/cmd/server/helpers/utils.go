@@ -7,9 +7,9 @@ import (
     "fmt"
     "io/ioutil"
     "math/big"
-    "net"
     "net/http"
     "net/url"
+    "os"
     "os/exec"
     "path/filepath"
     "strconv"
@@ -32,6 +32,34 @@ func (h *HelperContainer) Random128BitString() (string, error) {
     nonce := n.Text(16)
 
     return nonce, nil
+}
+// Return the version of all nodes
+func (h *HelperContainer) GetAllNodeVersions() (map[string]string, error) {
+    tabletServersFuture := make(chan TabletServersFuture)
+    go h.GetTabletServersFuture(HOST, tabletServersFuture)
+    tabletServersResponse := <-tabletServersFuture
+    if tabletServersResponse.Error != nil {
+        h.logger.Errorf("Failed to fetch tablet servers: %s", tabletServersResponse.Error.Error())
+        return nil, tabletServersResponse.Error
+    }
+    nodeList := h.GetNodesList(tabletServersResponse)
+    nodeVersions := make(map[string]string)
+    versionInfoFutures := make(map[string]chan VersionInfoFuture)
+    for _, nodeHost := range nodeList {
+        future := make(chan VersionInfoFuture, 1)
+        versionInfoFutures[nodeHost] = future
+        go h.GetVersionFuture(nodeHost, false, future)
+    }
+    for nodeHost, future := range versionInfoFutures {
+        versionInfo := <-future
+        if versionInfo.Error != nil {
+            h.logger.Errorf("Failed to get version info for node %s: %s", nodeHost,
+                                                          versionInfo.Error.Error())
+            return nil, versionInfo.Error
+        }
+        nodeVersions[nodeHost] = versionInfo.VersionInfo.VersionNumber
+    }
+    return nodeVersions, nil
 }
 
 // Convert a version number string into a slice of integers. Will only get the major, minor, and
@@ -88,6 +116,24 @@ func (h *HelperContainer) GetSmallestVersion(
     return smallestVersion
 }
 
+func (h *HelperContainer) ValidateVersions(nodeVersions map[string]string) bool {
+    var baseVersion string
+    isFirst := true
+
+    for _, version := range nodeVersions {
+        if isFirst {
+            // Initialize with the first version in the map to set a base for comparison
+            baseVersion = version
+            isFirst = false
+        } else if h.CompareVersions(version, baseVersion) != 0 {
+            // If a mismatch is found compared to the base version, return true
+            return true
+        }
+    }
+    // If all versions are consistent with the base version, return false
+    return false
+}
+
 func (h *HelperContainer) GetBytesFromString(sizeString string) (int64, error) {
     // Possible units are BKMGTPE, for byte, kilobyte, megabyte, etc.
     if len(sizeString) < 1 {
@@ -123,21 +169,32 @@ func (h *HelperContainer) GetBytesFromString(sizeString string) (int64, error) {
 }
 
 func (h *HelperContainer) FindBinaryLocation(binaryName string) (string, error) {
-    YUGABYTE_DIR := filepath.Join("..", "..")
+    executablePath, err := os.Executable()
+    if err != nil {
+        return "", fmt.Errorf("failed to get executable path: %s", err.Error())
+    }
+    executablePath, err = filepath.EvalSymlinks(executablePath)
+    if err != nil {
+        return "", fmt.Errorf("failed to evaluate symlink of %s: %s", executablePath, err.Error())
+    }
 
-    dirCandidates := []string{
-        // Default if tar is downloaded
-        filepath.Join(YUGABYTE_DIR, "bin"),
-        // Development environment
-        filepath.Join(YUGABYTE_DIR, "build", "latest", "bin"),
-        // Development environment for UI
-        filepath.Join(YUGABYTE_DIR, "build", "latest", "gobin"),
+    // Directory that is one level above directory containing yugabyted-ui binary
+    yugabyteDir := filepath.Dir(filepath.Dir(executablePath))
+
+    var dirCandidates []string
+    if binaryName == "yb-controller-cli" {
+        dirCandidates = []string{filepath.Join(yugabyteDir, "ybc", "bin")}
+    } else {
+        dirCandidates = []string{filepath.Join(yugabyteDir, "bin")}
     }
     for _, path := range dirCandidates {
-        binaryPath, err := exec.LookPath(filepath.Join(path, binaryName))
-        if err == nil {
-            return binaryPath, err
-        }
+       h.logger.Infof("Checking binary path %s in directory: %s",
+                                       filepath.Join(path, binaryName), yugabyteDir)
+       binaryPath, err := exec.LookPath(filepath.Join(path, binaryName))
+       if err == nil {
+           h.logger.Infof("Found binary %s at path: %s", binaryName, binaryPath)
+           return binaryPath, err
+       }
     }
     return "", fmt.Errorf("failed to find binary %s", binaryName)
 }
@@ -163,17 +220,25 @@ func (h *HelperContainer) RemoveLocalAddresses(nodeList []string) []string {
 }
 
 // Attempt GET requests to every URL in the provided slice, one at a time. Returns the result
-// of the first successful request (status OK), or the most recent error if all requests failed.
-func (h *HelperContainer) AttemptGetRequests(urlList []string, expectJson bool) ([]byte, error) {
+// of the first successful request (status OK), or an error if all requests failed.
+func (h *HelperContainer) AttemptGetRequests(
+    urlList []string,
+    expectJson bool,
+) ([]byte, string, error) {
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    var resp *http.Response
-    var err error
     var body []byte
+    successUrl := ""
+    success := false
     h.logger.Debugf("getting requests from list of urls: %v", urlList)
+    // Loop through all urls until one returns a response with no errors and status OK.
+    // If expectJson is true, also fails the request if the response is not valid json.
+    // If successful, should set err = nil and break from loop.
+    // If failed, should set err != nil and continue.
+    // At end of loop, check if err == nil to know if a request succeeded.
     for _, url := range urlList {
-        resp, err = httpClient.Get(url)
+        resp, err := httpClient.Get(url)
         if err != nil {
             h.logger.Debugf("attempt to get request to %s failed with error: %s", url, err.Error())
             continue
@@ -181,31 +246,49 @@ func (h *HelperContainer) AttemptGetRequests(urlList []string, expectJson bool) 
         if resp.StatusCode != http.StatusOK {
             resp.Body.Close()
             h.logger.Debugf("response from %s failed with status %s", url, resp.Status)
-        } else {
-            body, err = ioutil.ReadAll(resp.Body)
-            resp.Body.Close()
-            if err != nil {
-                h.logger.Debugf("failed to read response from %s: %s", url, err.Error())
-                err = fmt.Errorf("failed to read response: %s", err.Error())
-            } else if !expectJson || json.Valid([]byte(body)) {
-                h.logger.Debugf("good response from %s", url)
-                err = nil
-                break
-            }
+            continue
         }
+        body, err = ioutil.ReadAll(resp.Body)
+        resp.Body.Close()
+        if err != nil {
+            h.logger.Debugf("failed to read response from %s: %s", url, err.Error())
+            continue
+        }
+        if !expectJson || json.Valid([]byte(body)) {
+            h.logger.Debugf("good response from %s", url)
+            successUrl = url
+            success = true
+            break
+        }
+        h.logger.Debugf("invalid json response from %s", url)
     }
-    if err != nil {
+    if !success {
         h.logger.Errorf("all requests to list of urls failed: %v", urlList)
-        return nil, errors.New("all requests to list of urls failed")
+        return nil, "", fmt.Errorf("all requests to list of urls failed: %v", urlList)
     }
-    return body, nil
+    return body, successUrl, nil
+}
+
+// Attempts to append query parameteres to provided urlList. Modifies the original slice.
+// Does not return error on failure, urls that fail to be parsed will be left unchanged.
+func (h *HelperContainer) AppendQueryParams(urlList []string, params url.Values) {
+    for index, baseUrl := range urlList {
+        requestUrl, err := url.Parse(baseUrl)
+        if err != nil {
+            h.logger.Warnf("failed to parse url %s to add query params: %s",
+                baseUrl, err.Error())
+            continue
+        }
+        requestUrl.RawQuery = params.Encode()
+        urlList[index] = requestUrl.String()
+    }
 }
 
 // The purpose of this function is to create a list of urls to each master, for use with the
 // AttemptGetRequest function. If the current node is a master, then the first entry of the list
 // will use the current node's master address (i.e. we will prefer querying the current node
 // first when calling AttemptGetRequest)
-func (h *HelperContainer) BuildMasterURLs(path string) ([]string, error) {
+func (h *HelperContainer) BuildMasterURLs(path string, params url.Values) ([]string, error) {
     urlList := []string{}
     masterAddressesFuture := make(chan MasterAddressesFuture)
     go h.GetMasterAddressesFuture(masterAddressesFuture)
@@ -217,11 +300,16 @@ func (h *HelperContainer) BuildMasterURLs(path string) ([]string, error) {
     for _, host := range masterAddressesResponse.HostList {
         url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), path)
         if err != nil {
-            h.logger.Warnf("failed to construct url for %s:%s with path %s",
-                host, MasterUIPort, path)
+            h.logger.Warnf("failed to construct url for %s:%s with path %s: %s",
+                host, MasterUIPort, path, err.Error())
             continue
         }
         urlList = append(urlList, url)
+    }
+    // Add query params if provided
+    if len(params) >= 1 {
+        h.logger.Debugf("adding params %v", params)
+        h.AppendQueryParams(urlList, params)
     }
     return urlList, nil
 }
@@ -238,7 +326,7 @@ func (h *HelperContainer) GetMasterAddressesFuture(future chan MasterAddressesFu
         Error:    nil,
     }
     mastersFuture := make(chan MastersFuture)
-    go h.GetMastersFuture(HOST, mastersFuture)
+    go h.GetMastersFuture(mastersFuture)
     mastersListFuture := make(chan MastersListFuture)
     go h.GetMastersFromTserverFuture(HOST, mastersListFuture)
     mastersListResponse := <-mastersListFuture
@@ -253,31 +341,66 @@ func (h *HelperContainer) GetMasterAddressesFuture(future chan MasterAddressesFu
                 fmt.Errorf("failed to get masters from master and tserver at %s: %s",
                     HOST, mastersResponse.Error.Error())
             future <- masterAddresses
+            return
         }
-
-        for _, master := range mastersResponse.Masters {
-            if len(master.Registration.PrivateRpcAddresses) > 0 {
-                host := master.Registration.PrivateRpcAddresses[0].Host
-                if host == HOST {
-                    masterAddresses.HostList = append([]string{host}, masterAddresses.HostList...)
-                } else {
-                    masterAddresses.HostList = append(masterAddresses.HostList, host)
-                }
-            }
-        }
+        masterAddresses.HostList = h.ExtractMasterAddresses(mastersResponse)
     } else {
-        for _, master := range mastersListResponse.Masters {
-            host, _, err := net.SplitHostPort(master.HostPort)
-            if err != nil {
-                h.logger.Warnf("failed to split host and port of %s", master.HostPort)
-                continue
-            }
-            if host == HOST {
-                masterAddresses.HostList = append([]string{host}, masterAddresses.HostList...)
-            } else {
-                masterAddresses.HostList = append(masterAddresses.HostList, host)
-            }
-        }
+        masterAddresses.HostList = h.ExtractMasterAddressesList(mastersListResponse)
     }
     future <- masterAddresses
+}
+
+// BuildMasterURLsAndAttemptGetRequests first performs AttemptGetRequests using the cached
+// master addresses. If they all fail, calls BuildMasterURLs, updates the cache, and tries
+// AttemptGetRequests again.
+func (h *HelperContainer) BuildMasterURLsAndAttemptGetRequests(
+    path string,
+    params url.Values,
+    expectJson bool,
+) ([]byte, error) {
+    urlList := []string{}
+    masterAddressCache := MasterAddressCache.Get()
+    h.logger.Debugf("got cached master addresses %v", masterAddressCache)
+    for _, host := range masterAddressCache {
+        url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), path)
+        if err != nil {
+            h.logger.Warnf("failed to construct url for %s:%s with path %s",
+                host, MasterUIPort, path)
+            continue
+        }
+        urlList = append(urlList, url)
+    }
+    if len(params) >= 1 {
+        h.AppendQueryParams(urlList, params)
+    }
+    resp, successUrl, err := h.AttemptGetRequests(urlList, expectJson)
+    if err == nil {
+        // We will update the cache to move all failed addresses to the back of the slice
+        // Parse host from successUrl
+        parsedUrl, err := url.Parse(successUrl)
+        if err != nil {
+            h.logger.Warnf("couldn't parse host from url %s: %s", successUrl, err.Error())
+        }
+        successHost := parsedUrl.Hostname()
+        for index, host := range masterAddressCache {
+            if successHost == host {
+                masterAddressCache =
+                    append(masterAddressCache[index:], masterAddressCache[:index]...)
+                break
+            }
+        }
+        MasterAddressCache.Update(masterAddressCache)
+        h.logger.Debugf("updated cached master addresses %v", masterAddressCache)
+        return resp, err
+    }
+    h.logger.Warnf("get requests to cached master addresses %v failed: %s",
+        urlList, err.Error())
+    // BuildMasterURLs will try to get new master addresses and triggers cache refresh.
+    urlList, err = h.BuildMasterURLs(path, params)
+    if err != nil {
+        h.logger.Errorf("failed to build master urls")
+        return nil, err
+    }
+    body, _, err := h.AttemptGetRequests(urlList, expectJson)
+    return body, err
 }

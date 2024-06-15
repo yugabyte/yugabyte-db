@@ -25,11 +25,12 @@
 
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/util/callsite_profiling.h"
+#include "yb/util/compare_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/unique_lock.h"
-#include "yb/util/compare_util.h"
 
 using namespace std::placeholders;
 
@@ -251,7 +252,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
         std::swap(task_, task);
       }
     }
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
     if (task) {
       task->task()->Run(kShutdownStatus, nullptr /* suspender */);
       context_->TaskAborted(task);
@@ -301,7 +302,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
         std::swap(task, task_);
       }
     }
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
     if (task) {
       task->task()->Run(kShutdownStatus, nullptr /* suspender */);
       context_->TaskAborted(task);
@@ -315,7 +316,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
   }
 
   void Resumed() {
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
 
   const PriorityThreadPoolInternalTask* task() const {

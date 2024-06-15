@@ -42,6 +42,8 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
@@ -51,9 +53,10 @@
 #include "yb/gutil/callback.h"
 
 #include "yb/rpc/scheduler.h"
+#include "yb/rpc/strand.h"
+#include "yb/rpc/thread_pool.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/opid.h"
 #include "yb/util/random.h"
 
 DECLARE_int32(leader_lease_duration_ms);
@@ -117,7 +120,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequestsManager* retryable_requests_manager,
+    rpc::ThreadPool* raft_notifications_pool,
+    RetryableRequests* retryable_requests,
     MultiRaftManager* multi_raft_manager);
 
   // Creates RaftConsensus.
@@ -127,7 +131,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::unique_ptr<PeerProxyFactory> peer_proxy_factory,
     std::unique_ptr<PeerMessageQueue> queue,
     std::unique_ptr<PeerManager> peer_manager,
-    std::unique_ptr<ThreadPoolToken> raft_pool_token,
+    std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token,
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     const std::string& peer_uuid,
@@ -137,7 +141,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequestsManager* retryable_requests_manager);
+    RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus();
 
@@ -191,6 +195,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const TabletId& split_parent_tablet_id() const override;
 
+  const std::optional<CloneSourceInfo>& clone_source_info() const override;
+
   LeaderLeaseStatus GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const;
   LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const;
 
@@ -201,6 +207,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   ConsensusStatePB ConsensusStateUnlocked(
       ConsensusConfigType type,
       LeaderLeaseStatus* leader_lease_status) const override;
+
+  // Returns a copy of ConsensusState from the committed consensus state cache.
+  // This method is thread safe.
+  ConsensusStatePB GetConsensusStateFromCache() const;
 
   RaftConfigPB CommittedConfig() const override;
   RaftConfigPB CommittedConfigUnlocked() const;
@@ -294,13 +304,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
   Result<RetryableRequests> GetRetryableRequests() const;
-  Status FlushRetryableRequests();
-  Status CopyRetryableRequestsTo(const std::string& dest_path);
+  Result<std::unique_ptr<RetryableRequests>> TakeSnapshotOfRetryableRequests();
   OpId GetLastFlushedOpIdInRetryableRequests();
+  Status SetLastFlushedOpIdInRetryableRequests(const OpId& op_id);
 
   int64_t follower_lag_ms() const;
 
-  bool TEST_HasRetryableRequestsOnDisk() const;
   int TEST_RetryableRequestTimeoutSecs() const;
 
  protected:
@@ -672,7 +681,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Threadpool token for constructing requests to peers, handling RPC callbacks,
   // etc.
-  std::unique_ptr<ThreadPoolToken> raft_pool_token_;
+  std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token_;
 
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;
@@ -759,6 +768,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<uint64_t> majority_num_sst_files_{0};
 
   const TabletId split_parent_tablet_id_;
+
+  const std::optional<CloneSourceInfo> clone_source_info_;
 
   std::atomic<uint64_t> follower_last_update_received_time_ms_{0};
 

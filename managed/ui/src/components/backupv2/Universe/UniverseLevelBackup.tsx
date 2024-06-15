@@ -18,11 +18,18 @@ import { BackupAndRestoreBanner } from '../restore/BackupAndRestoreBanner';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
+import { AdvancedRestoreNewModal } from '../components/advancedRestore/AdvancedRestoreNewModal';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { Universe } from '../../../redesign/helpers/dtos';
+import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
 
 import './UniverseLevelBackup.scss';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { useQuery } from 'react-query';
+import { api } from '../../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
+import { useTranslation } from 'react-i18next';
 
 interface UniverseBackupProps {
   params: {
@@ -33,14 +40,40 @@ interface UniverseBackupProps {
 
 const isPITRSupported = (version: string): boolean => {
   //PITR is supported from 2.14
-  const [major, minor] = version.split('.');
-  return parseInt(major, 10) > 2 || (parseInt(major, 10) === 2 && parseInt(minor, 10) >= 14);
+  const PITR_THRESHOLD_VERSION = '2.14.0.0';
+  return (
+    compareYBSoftwareVersions({
+      versionA: version,
+      versionB: PITR_THRESHOLD_VERSION,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0
+  );
 };
 
 const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
+  const { t } = useTranslation();
+  const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
+  const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
+
   const featureFlags = useSelector((state: any) => state.featureFlags);
-  const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
-  const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
+  // const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
+  const currentUniverse = useQuery<Universe>(['universe', uuid], () => api.fetchUniverse(uuid));
+
+  if (currentUniverse.isLoading || currentUniverse.isIdle) {
+    return <YBLoading />;
+  }
+
+  if (currentUniverse.isError) {
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('error.failedToFetchUniverse', { universeUuid: uuid })}
+      />
+    );
+  }
+
+  const primaryCluster = getPrimaryCluster(currentUniverse?.data?.universeDetails.clusters);
   const currentSoftwareVersion = primaryCluster.userIntent.ybSoftwareVersion.split('-')[0];
 
   //PITR
@@ -52,19 +85,31 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
     isYbcInstalledInUniverse(currentUniverse.data.universeDetails);
 
-  const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
-  const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
+  const allowedTasks = currentUniverse?.data?.allowedTasks;
 
   return (
     <>
       <BackupAndRestoreBanner />
-      <BackupAdvancedRestore
-        onHide={() => {
-          setShowAdvancedRestore(false);
-        }}
-        visible={showAdvancedRestore}
-        currentUniverseUUID={uuid}
-      />
+      {featureFlags.test.enableNewAdvancedRestoreModal ? (
+        showAdvancedRestore && (
+          <AdvancedRestoreNewModal
+            onHide={() => {
+              setShowAdvancedRestore(false);
+            }}
+            visible={showAdvancedRestore}
+            currentUniverseUUID={uuid}
+          />
+        )
+      ) : (
+        <BackupAdvancedRestore
+          onHide={() => {
+            setShowAdvancedRestore(false);
+          }}
+          allowedTasks={allowedTasks}
+          visible={showAdvancedRestore}
+          currentUniverseUUID={uuid}
+        />
+      )}
       {YBCInstalled && (
         <BackupThrottleParameters
           visible={showThrottleParametersModal}
@@ -80,14 +125,14 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
       >
         <YBTabsPanel id="backup-tab-panel" defaultTab="backupList">
           <Tab eventKey="backupList" title="Backups" unmountOnExit>
-            <BackupList allowTakingBackup universeUUID={uuid} />
+            <BackupList allowTakingBackup universeUUID={uuid} allowedTasks={allowedTasks} />
           </Tab>
           <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
-            <ScheduledBackup universeUUID={uuid} />
+            <ScheduledBackup universeUUID={uuid} allowedTasks={allowedTasks} />
           </Tab>
           {enablePITR && (
             <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
-              <PointInTimeRecovery universeUUID={uuid} />
+              <PointInTimeRecovery universeUUID={uuid} allowedTasks={allowedTasks} />
             </Tab>
           )}
           {(featureFlags.test.enableRestore || featureFlags.released.enableRestore) && (

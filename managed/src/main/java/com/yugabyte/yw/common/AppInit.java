@@ -10,6 +10,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
+import com.yugabyte.yw.commissioner.AutomatedMasterFailover;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
@@ -49,6 +51,8 @@ import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.HashMap;
 import java.util.List;
@@ -64,6 +68,10 @@ public class AppInit {
 
   private static final long MAX_APP_INITIALIZATION_TIME = 30;
 
+  public static final Gauge INIT_TIME =
+      Gauge.build("yba_init_time_seconds", "Last YBA startup time in seconds.")
+          .register(CollectorRegistry.defaultRegistry);
+
   @Inject
   public AppInit(
       Environment environment,
@@ -76,6 +84,7 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       PitrConfigPoller pitrConfigPoller,
+      AutomatedMasterFailover automatedMasterFailover,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       RefreshKmsService refreshKmsService,
@@ -98,6 +107,7 @@ public class AppInit {
       SupportBundleCleanup supportBundleCleanup,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
+      XClusterSyncScheduler xClusterSyncScheduler,
       PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
       FileDataService fileDataService,
@@ -105,12 +115,11 @@ public class AppInit {
       RuntimeConfGetter confGetter,
       PrometheusConfigManager prometheusConfigManager,
       ImageBundleUtil imageBundleUtil,
-      @Named("AppStartupTimeMs") Long startupTime)
+      @Named("AppStartupTimeMs") Long startupTime,
+      ReleasesUtils releasesUtils)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
-
-      String mode = config.getString("yb.mode");
 
       if (!environment.isTest()) {
         // only start thread dump collection for YBM at this time
@@ -146,27 +155,18 @@ public class AppInit {
                     .toString());
         fileDataService.syncFileData(storagePath, ywFileDataSynced);
 
-        if (mode.equals("PLATFORM")) {
-          String devopsHome = config.getString("yb.devops.home");
-          if (devopsHome == null || devopsHome.length() == 0) {
-            throw new RuntimeException("yb.devops.home is not set in application.conf");
-          }
+        String devopsHome = config.getString("yb.devops.home");
+        if (devopsHome == null || devopsHome.length() == 0) {
+          throw new RuntimeException("yb.devops.home is not set in application.conf");
+        }
 
-          if (storagePath == null || storagePath.length() == 0) {
-            throw new RuntimeException(("yb.storage.path is not set in application.conf"));
-          }
+        if (storagePath == null || storagePath.length() == 0) {
+          throw new RuntimeException(("yb.storage.path is not set in application.conf"));
         }
 
         boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
-        String defaultYbaOsVersion =
-            configHelper
-                .getConfig(ConfigHelper.ConfigType.YBADefaultAMI)
-                .getOrDefault(CloudImageBundleSetup.ybaDefaultKey, "")
-                .toString();
-        boolean migrateImageBundlesToNewYBAAMIVersion =
-            (defaultYbaOsVersion.isEmpty()
-                    || !defaultYbaOsVersion.equals(CloudImageBundleSetup.YBA_DEFAULT_OS))
-                && vmOsPatchingEnabled;
+        Map<String, Object> defaultYbaOsVersion =
+            configHelper.getConfig(ConfigHelper.ConfigType.YBADefaultAMI);
 
         // temporarily revert due to PLAT-2434
         // LogUtil.updateApplicationLoggingFromConfig(sConfigFactory, config);
@@ -212,23 +212,28 @@ public class AppInit {
               }
             }
           }
-          if (migrateImageBundlesToNewYBAAMIVersion) {
-            // In case defaultYbaAmiVersion is not null & not equal to version specified in
-            // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
-            // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
-            // new bundle with the latest AMIs. This will only hold in case the provider
-            // does not have CUSTOM bundles.
-            imageBundleUtil.migrateImageBundlesForProviders(provider);
+          if (vmOsPatchingEnabled) {
+            String providerCode = provider.getCode();
+            Map<String, String> currOSVersionDBMap = null;
+            if (defaultYbaOsVersion != null && defaultYbaOsVersion.containsKey(providerCode)) {
+              currOSVersionDBMap = (Map<String, String>) defaultYbaOsVersion.get(providerCode);
+            }
+            if (imageBundleUtil.migrateYBADefaultBundles(currOSVersionDBMap, provider)) {
+              // In case defaultYbaAmiVersion is not null & not equal to version specified in
+              // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
+              // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
+              // new bundle with the latest AMIs. This will only hold in case the provider
+              // does not have CUSTOM bundles.
+              imageBundleUtil.migrateImageBundlesForProviders(provider);
+            }
           }
         }
 
-        if (migrateImageBundlesToNewYBAAMIVersion) {
+        if (vmOsPatchingEnabled) {
           // Store the latest YBA_AMI_VERSION in the yugaware_roperty.
-          // This will be first time YBA reboot post VM OS Patching changes.
-          Map<String, Object> defaultYbaAmiVersionMap = new HashMap<>();
-          defaultYbaAmiVersionMap.put(
-              CloudImageBundleSetup.ybaDefaultKey, CloudImageBundleSetup.YBA_DEFAULT_OS);
-          configHelper.loadConfigToDB(ConfigType.YBADefaultAMI, defaultYbaAmiVersionMap);
+          Map<String, Object> defaultYbaOsVersionMap =
+              new HashMap<>(CloudImageBundleSetup.CLOUD_OS_MAP);
+          configHelper.loadConfigToDB(ConfigType.YBADefaultAMI, defaultYbaOsVersionMap);
         }
 
         // Load metrics configurations.
@@ -250,11 +255,11 @@ public class AppInit {
         releaseManager.importLocalReleases();
         releaseManager.updateCurrentReleases();
         releaseManager
-            .getLocalReleases()
+            .getLocalReleaseVersions(false /* includeKubernetes */)
             .forEach(
-                (version, rm) -> {
+                version -> {
                   try {
-                    gFlagsValidation.addDBMetadataFiles(version, rm);
+                    gFlagsValidation.addDBMetadataFiles(version);
                   } catch (Exception e) {
                     log.error("Error: ", e);
                   }
@@ -283,6 +288,9 @@ public class AppInit {
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();
+
+        // Cleanup any untracked uploaded releases
+        releasesUtils.cleanupUntracked();
 
         // Schedule garbage collection of old completed tasks in database.
         taskGC.start();
@@ -317,6 +325,8 @@ public class AppInit {
         shellLogsManager.startLogsGC();
         nodeAgentPoller.init();
         pitrConfigPoller.start();
+        automatedMasterFailover.start();
+        xClusterSyncScheduler.start();
 
         ybcUpgrade.start();
 
@@ -324,8 +334,7 @@ public class AppInit {
 
         if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
           if (!HighAvailabilityConfig.isFollower()) {
-            kubernetesOperator.init(
-                confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace));
+            kubernetesOperator.init();
           } else {
             log.info("Detected follower instance, not initializing kubernetes operator");
           }
@@ -336,6 +345,7 @@ public class AppInit {
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);
+        INIT_TIME.set(elapsed);
         if (elapsed > MAX_APP_INITIALIZATION_TIME) {
           log.warn("Completed initialization in " + elapsedStr + " seconds.");
         } else {
@@ -343,6 +353,13 @@ public class AppInit {
         }
 
         setYbaVersion(ConfigHelper.getCurrentVersion(environment));
+
+        // Fix up DB paths again to handle any new files (ybc) that moved during AppInit.
+        if (config.getBoolean("yb.fixPaths")) {
+          log.debug("Fixing up file paths a second time.");
+          fileDataService.fixUpPaths(storagePath);
+          releaseManager.fixFilePaths();
+        }
 
         log.info("AppInit completed");
       }

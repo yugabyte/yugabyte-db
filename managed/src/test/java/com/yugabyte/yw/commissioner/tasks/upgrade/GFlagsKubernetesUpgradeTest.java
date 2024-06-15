@@ -6,11 +6,8 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -18,8 +15,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.operator.NoOpOperatorStatusUpdater;
-import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -28,70 +23,92 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
-  @InjectMocks private GFlagsKubernetesUpgrade gFlagsKubernetesUpgrade;
+  private GFlagsKubernetesUpgrade gFlagsKubernetesUpgrade;
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.CheckFollowerLag,
           TaskType.ModifyBlackList,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.ModifyBlackList,
-          TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.ModifyBlackList,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.ModifyBlackList,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.ModifyBlackList,
+          TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
           TaskType.InstallingThirdPartySoftware,
           TaskType.UpdateAndPersistGFlags,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
 
-  protected OperatorStatusUpdaterFactory mockStatusUpdaterFactory =
-      mock(OperatorStatusUpdaterFactory.class);
-
-  @Override
-  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
-    when(mockStatusUpdaterFactory.create()).thenReturn(mock(NoOpOperatorStatusUpdater.class));
-    return super.configureApplication(builder)
-        .overrides(bind(OperatorStatusUpdaterFactory.class).toInstance(mockStatusUpdaterFactory));
+  @Before
+  public void setUp() {
+    super.setUp();
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
+    this.gFlagsKubernetesUpgrade =
+        new GFlagsKubernetesUpgrade(
+            mockBaseTaskDependencies, mockGFlagsValidation, null, mockOperatorStatusUpdaterFactory);
   }
 
   private TaskInfo submitTask(KubernetesGFlagsUpgradeParams taskParams) {
@@ -101,14 +118,10 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
@@ -117,11 +130,28 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
                 "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
+        Json.toJson(
+            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -140,12 +170,6 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -155,6 +179,22 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
+        Json.toJson(
+            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -225,6 +265,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.GFlagsUpgrade,

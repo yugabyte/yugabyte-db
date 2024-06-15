@@ -1,4 +1,10 @@
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+-- This test's output has temporary tables' schema names that contain the
+-- tserver uuid, which can lead to unstable results.
+-- Use replace_temp_schema_name to change the schema name to pg_temp_x so that
+-- the result is stable.
+select current_setting('data_directory') || '/describe.out' as desc_output_file
+\gset
+\set replace_temp_schema_name 'select regexp_replace(pg_read_file(:\'desc_output_file\'), \'pg_temp_.{32}_\\d+\', \'pg_temp_x\', \'g\')'
 -- Test views on temporary tables.
 create temp table main_table(a int, b int);
 CREATE OR REPLACE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS '
@@ -243,57 +249,81 @@ SELECT * from main_view order by a, b;
 
 \set QUIET true
 -- Describe view should list triggers
+\o :desc_output_file
 \d main_view
-            View "pg_temp_2.main_view"
- Column |  Type   | Collation | Nullable | Default
---------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
-Triggers:
-    after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')
-    after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')
-    after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')
-    before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')
-    before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')
-    before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')
-    instead_of_delete_trig INSTEAD OF DELETE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_del')
-    instead_of_insert_trig INSTEAD OF INSERT ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_ins')
-    instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')
+\o
+:replace_temp_schema_name;
+                                                        regexp_replace                                                         
+-------------------------------------------------------------------------------------------------------------------------------
+ View "pg_temp_x.main_view"                                                                                                   +
+  Column |  Type   | Collation | Nullable | Default                                                                           +
+ --------+---------+-----------+----------+---------                                                                          +
+  a      | integer |           |          |                                                                                   +
+  b      | integer |           |          |                                                                                   +
+ Triggers:                                                                                                                    +
+     after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')   +
+     after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')   +
+     after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')   +
+     before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')+
+     before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')+
+     before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')+
+     instead_of_delete_trig INSTEAD OF DELETE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_del')      +
+     instead_of_insert_trig INSTEAD OF INSERT ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_ins')      +
+     instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')      +
+                                                                                                                              +
+ 
+(1 row)
 
 -- Test dropping view triggers
 DROP TRIGGER instead_of_insert_trig ON main_view;
 DROP TRIGGER instead_of_delete_trig ON main_view;
+\o :desc_output_file
 \d main_view
-            View "pg_temp_2.main_view"
- Column |  Type   | Collation | Nullable | Default
---------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
-Triggers:
-    after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')
-    after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')
-    after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')
-    before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')
-    before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')
-    before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')
-    instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')
+\o
+:replace_temp_schema_name;
+                                                        regexp_replace                                                         
+-------------------------------------------------------------------------------------------------------------------------------
+ View "pg_temp_x.main_view"                                                                                                   +
+  Column |  Type   | Collation | Nullable | Default                                                                           +
+ --------+---------+-----------+----------+---------                                                                          +
+  a      | integer |           |          |                                                                                   +
+  b      | integer |           |          |                                                                                   +
+ Triggers:                                                                                                                    +
+     after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')   +
+     after_ins_stmt_trig AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')   +
+     after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')   +
+     before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')+
+     before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')+
+     before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')+
+     instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')      +
+                                                                                                                              +
+ 
+(1 row)
 
 -- Test alter (rename) triggers
 ALTER TRIGGER after_ins_stmt_trig ON main_view RENAME TO after_ins_stmt_trig_new_name;
+\o :desc_output_file
 \d main_view
-            View "pg_temp_2.main_view"
- Column |  Type   | Collation | Nullable | Default
---------+---------+-----------+----------+---------
- a      | integer |           |          |
- b      | integer |           |          |
-Triggers:
-    after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')
-    after_ins_stmt_trig_new_name AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')
-    after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')
-    before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')
-    before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')
-    before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')
-    instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')
+\o
+:replace_temp_schema_name;
+                                                           regexp_replace                                                            
+-------------------------------------------------------------------------------------------------------------------------------------
+ View "pg_temp_x.main_view"                                                                                                         +
+  Column |  Type   | Collation | Nullable | Default                                                                                 +
+ --------+---------+-----------+----------+---------                                                                                +
+  a      | integer |           |          |                                                                                         +
+  b      | integer |           |          |                                                                                         +
+ Triggers:                                                                                                                          +
+     after_del_stmt_trig AFTER DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_del_stmt')         +
+     after_ins_stmt_trig_new_name AFTER INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_ins_stmt')+
+     after_upd_stmt_trig AFTER UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('after_view_upd_stmt')         +
+     before_del_stmt_trig BEFORE DELETE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_del_stmt')      +
+     before_ins_stmt_trig BEFORE INSERT ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_ins_stmt')      +
+     before_upd_stmt_trig BEFORE UPDATE ON main_view FOR EACH STATEMENT EXECUTE PROCEDURE view_trigger('before_view_upd_stmt')      +
+     instead_of_update_trig INSTEAD OF UPDATE ON main_view FOR EACH ROW EXECUTE PROCEDURE view_trigger('instead_of_upd')            +
+                                                                                                                                    +
+ 
+(1 row)
 
 DROP VIEW main_view;
 DROP TABLE main_table;
@@ -338,33 +368,118 @@ end;
 $$;
 create trigger self_ref_trigger_del_trig before delete on self_ref_trigger
   for each row execute procedure self_ref_trigger_del_func();
+create index nonconcurrently on self_ref_trigger (parent asc);
+create index nonconcurrently on self_ref_trigger (data asc);
+create index nonconcurrently on self_ref_trigger (nchildren asc);
 insert into self_ref_trigger values (1, null, 'root');
 insert into self_ref_trigger values (2, 1, 'root child A');
 insert into self_ref_trigger values (3, 1, 'root child B');
 insert into self_ref_trigger values (4, 2, 'grandchild 1');
 insert into self_ref_trigger values (5, 3, 'grandchild 2');
 update self_ref_trigger set data = 'root!' where id = 1;
-select * from self_ref_trigger;
+update self_ref_trigger set nchildren = nchildren + 1;
+update self_ref_trigger set nchildren = nchildren - 1;
+-- Check that all indexes are consistent with the table (see #20648).
+\set ordering ''
+\set query 'SELECT * FROM (select * from self_ref_trigger :ordering LIMIT ALL) ybview ORDER BY id'
+\set run 'EXPLAIN (costs off) :query; :query'
+:run;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Seq Scan on self_ref_trigger
+(3 rows)
+
  id | parent |     data     | nchildren
 ----+--------+--------------+-----------
-  5 |      3 | grandchild 2 |         0
   1 |        | root!        |         2
-  4 |      2 | grandchild 1 |         0
   2 |      1 | root child A |         1
   3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
+(5 rows)
+
+\set ordering 'order by parent'
+:run;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Index Scan using self_ref_trigger_parent_idx on self_ref_trigger
+(3 rows)
+
+ id | parent |     data     | nchildren
+----+--------+--------------+-----------
+  1 |        | root!        |         2
+  2 |      1 | root child A |         1
+  3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
+(5 rows)
+
+\set ordering 'order by data'
+:run;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Index Scan using self_ref_trigger_data_idx on self_ref_trigger
+(3 rows)
+
+ id | parent |     data     | nchildren
+----+--------+--------------+-----------
+  1 |        | root!        |         2
+  2 |      1 | root child A |         1
+  3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
+(5 rows)
+
+\set ordering 'order by nchildren'
+:run;
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Index Scan using self_ref_trigger_nchildren_idx on self_ref_trigger
+(3 rows)
+
+ id | parent |     data     | nchildren
+----+--------+--------------+-----------
+  1 |        | root!        |         2
+  2 |      1 | root child A |         1
+  3 |      1 | root child B |         1
+  4 |      2 | grandchild 1 |         0
+  5 |      3 | grandchild 2 |         0
 (5 rows)
 
 delete from self_ref_trigger where id in (2, 4);
-select * from self_ref_trigger;
+\set ordering ''
+:run;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Seq Scan on self_ref_trigger
+(3 rows)
+
  id | parent |     data     | nchildren
 ----+--------+--------------+-----------
-  5 |      3 | grandchild 2 |         0
   1 |        | root!        |         1
   3 |      1 | root child B |         1
+  5 |      3 | grandchild 2 |         0
 (3 rows)
 
 delete from self_ref_trigger;
-select * from self_ref_trigger;
+:run;
+             QUERY PLAN
+------------------------------------
+ Sort
+   Sort Key: self_ref_trigger.id
+   ->  Seq Scan on self_ref_trigger
+(3 rows)
+
  id | parent | data | nchildren
 ----+--------+------+-----------
 (0 rows)
@@ -452,7 +567,7 @@ RESET SESSION AUTHORIZATION;
 -- Verify trigger was run
 INSERT INTO foo VALUES (0);
 SELECT * from bar;
- b 
+ b
 ---
  1
 (1 row)

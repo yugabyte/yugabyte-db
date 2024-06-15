@@ -19,8 +19,12 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
+
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_error.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
@@ -68,6 +72,9 @@ void SetupErrorAndRespond(LWTabletServerErrorPB* error,
 void SetupError(LWTabletServerErrorPB* error, const Status& s);
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
+
+std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
+    const tablet::TabletPeerPtr& peer);
 
 // Template helpers.
 
@@ -157,6 +164,8 @@ Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const Slice& tablet_id);
 
+bool IsErrorCodeNotTheLeader(const Status& status);
+
 template<class RespClass, class Key>
 Result<TabletPeerTablet> LookupTabletPeerOrRespond(
     TabletPeerLookupIf* tablet_manager,
@@ -202,10 +211,64 @@ struct LeaderTabletPeer {
   void FillTabletPeer(TabletPeerTablet source);
 };
 
+// Note this method expects that the Resp class must have a field tablet_consensus_info field;
+// it is used to piggyback a TabletConsensusInfo for the receiver of this response to refresh
+// its meta-cache.
+template <class Resp>
+void FillTabletConsensusInfo(Resp* resp, const TabletId& tablet_id, tablet::TabletPeerPtr peer) {
+  if constexpr (HasTabletConsensusInfo<Resp>::value) {
+    auto outgoing_tablet_consensus_info = resp->mutable_tablet_consensus_info();
+    outgoing_tablet_consensus_info->set_tablet_id(tablet_id);
+
+    if (auto consensus = peer->GetRaftConsensus()) {
+      *(outgoing_tablet_consensus_info->mutable_consensus_state()) =
+          consensus.get()->GetConsensusStateFromCache();
+      VLOG(1) << "Sending out Consensus state for tablet: " << tablet_id << ", leader TServer is: "
+              << outgoing_tablet_consensus_info->consensus_state().leader_uuid();
+    }
+  }
+}
+
+template <class Resp>
 Result<LeaderTabletPeer> LookupLeaderTablet(
-    TabletPeerLookupIf* tablet_manager,
-    const std::string& tablet_id,
-    TabletPeerTablet peer = TabletPeerTablet());
+    TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id, Resp* resp,
+    TabletPeerTablet peer = TabletPeerTablet()) {
+  if (peer.tablet_peer) {
+    LOG_IF(DFATAL, peer.tablet_peer->tablet_id() != tablet_id)
+        << "Mismatching table ids: peer " << peer.tablet_peer->tablet_id() << " vs " << tablet_id;
+    LOG_IF(DFATAL, !peer.tablet) << "Empty tablet pointer for tablet id : " << tablet_id;
+  } else {
+    peer = VERIFY_RESULT(LookupTabletPeer(tablet_manager, tablet_id));
+  }
+  LeaderTabletPeer result;
+  result.FillTabletPeer(std::move(peer));
+  auto status = result.FillTerm();
+  if(!status.ok()) {
+    if(IsErrorCodeNotTheLeader(status)) {
+      FillTabletConsensusInfo(resp, tablet_id, result.peer);
+    }
+    return status;
+  }
+  return result;
+}
+
+template <class Req, class Resp>
+void FillTabletConsensusInfoIfRequestOpIdStale(
+    tablet::TabletPeerPtr peer, const Req* req, Resp* resp) {
+  if constexpr (HasTabletConsensusInfo<Resp>::value) {
+    auto outgoing_tablet_consensus_info = resp->mutable_tablet_consensus_info();
+    if (auto consensus = peer->GetRaftConsensus()) {
+      auto cstate = consensus.get()->GetConsensusStateFromCache();
+      if (cstate.has_config() && req->raft_config_opid_index() < cstate.config().opid_index()) {
+        outgoing_tablet_consensus_info->set_tablet_id(peer->tablet_id());
+        *(outgoing_tablet_consensus_info->mutable_consensus_state()) = cstate;
+        VLOG(1) << "Sending out Consensus state for tablet: " << peer->tablet_id()
+                  << ", leader TServer is: "
+                  << outgoing_tablet_consensus_info->consensus_state().leader_uuid();
+      }
+    }
+  }
+}
 
 // The "peer" argument could be provided by the caller in case the caller has already performed
 // the LookupTabletPeerOrRespond call, and we only need to fill the leader term.
@@ -216,7 +279,7 @@ LeaderTabletPeer LookupLeaderTabletOrRespond(
     RespClass* resp,
     rpc::RpcContext* context,
     TabletPeerTablet peer = TabletPeerTablet()) {
-  auto result = LookupLeaderTablet(tablet_manager, tablet_id, std::move(peer));
+  auto result = LookupLeaderTablet(tablet_manager, tablet_id, resp, std::move(peer));
   if (!result.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), result.status(), context);
     return LeaderTabletPeer();
@@ -237,7 +300,7 @@ Status CheckPeerIsReady(
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet);
+    AllowSplitTablet allow_split_tablet, ReadResponsePB* resp = nullptr);
 
 Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer);
 
@@ -266,7 +329,9 @@ class CatalogVersionChecker {
           InvalidArgument, "Different db_oid values are not expected");
       if (version_info.version < tserver_version_info_->version) {
         return STATUS(
-            QLError, "The catalog snapshot used for this transaction has been invalidated",
+            QLError,
+            Format("The catalog snapshot used for this transaction has been invalidated: "
+                   "expected: $0, got: $1", tserver_version_info_->version, version_info.version),
             TabletServerError(TabletServerErrorPB::MISMATCHED_SCHEMA));
       }
     }

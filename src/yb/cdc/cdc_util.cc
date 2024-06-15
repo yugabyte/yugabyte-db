@@ -20,31 +20,16 @@
 
 namespace yb::cdc {
 
-std::string ProducerTabletInfo::ToString() const {
-  return Format(
-      "{ replication_group_id: $0 stream_id: $1 tablet_id: $2 }", replication_group_id, stream_id,
-      tablet_id);
+std::string TabletStreamInfo::ToString() const {
+  return Format("{ stream_id: $1 tablet_id: $2 }", stream_id, tablet_id);
 }
 
-std::size_t ProducerTabletInfo::Hash::operator()(const ProducerTabletInfo& p) const noexcept {
+std::size_t TabletStreamInfo::Hash::operator()(const TabletStreamInfo& p) const noexcept {
   std::size_t hash = 0;
-  boost::hash_combine(hash, p.replication_group_id);
   boost::hash_combine(hash, p.stream_id);
   boost::hash_combine(hash, p.tablet_id);
 
   return hash;
 }
 
-bool IsAlterReplicationGroupId(const ReplicationGroupId& replication_group_id) {
-  return GStringPiece(replication_group_id.ToString()).ends_with(kAlterReplicationGroupSuffix);
-}
-
-ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& replication_group_id) {
-  // Remove the .ALTER suffix from universe_uuid if applicable.
-  GStringPiece clean_id(replication_group_id.ToString());
-  if (clean_id.ends_with(kAlterReplicationGroupSuffix)) {
-    clean_id.remove_suffix(sizeof(kAlterReplicationGroupSuffix) - 1 /* exclude \0 ending */);
-  }
-  return ReplicationGroupId(clean_id.ToString());
-}
 }  // namespace yb::cdc

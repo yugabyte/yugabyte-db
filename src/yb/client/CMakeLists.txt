@@ -31,12 +31,9 @@
 #
 
 set(YB_PCH_PREFIX client)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 set(CLIENT_SRCS
-  async_initializer.cc
   async_rpc.cc
-  auto_flags_manager.cc
   batcher.cc
   client.cc
   client_builder-internal.cc
@@ -53,9 +50,7 @@ set(CLIENT_SRCS
   permissions.cc
   session.cc
   schema.cc
-  stateful_services/pg_auto_analyze_service_client.cc
   stateful_services/stateful_service_client_base.cc
-  stateful_services/test_echo_service_client.cc
   table.cc
   table_alterer.cc
   table_creator.cc
@@ -68,22 +63,24 @@ set(CLIENT_SRCS
   transaction_rpc.cc
   universe_key_client.cc
   value.cc
+  xcluster_client.cc
   yb_op.cc
   yb_table_name.cc
 )
 
 set(CLIENT_LIBS
   yb_common
+  cdc_service_proto
   master_proto
   master_rpc
   master_util
-  server_process
   tserver_proto
   tserver_service_proto
   pg_auto_analyze_service_proto
   test_echo_service_proto
   tserver_util
   yb_ql_expr
+  yb_ash
   yb_util
   gutil
   yrpc
@@ -126,6 +123,7 @@ set(YB_TEST_LINK_LIBS
 ADD_YB_TEST(backup-txn-test)
 ADD_YB_TEST(client-test)
 ADD_YB_TEST(client-unittest)
+ADD_YB_TEST(clone_namespace-test)
 ADD_YB_TEST(ql-dml-test)
 ADD_YB_TEST(ql-dml-ttl-test)
 ADD_YB_TEST(ql-list-test)
@@ -135,6 +133,6 @@ ADD_YB_TEST(ql-transaction-test)
 ADD_YB_TEST(ql-stress-test)
 ADD_YB_TEST(seal-txn-test)
 ADD_YB_TEST(snapshot-txn-test)
-ADD_YB_TEST(snapshot-schedule-test)
+ADD_YB_TEST(snapshot_schedule-test)
 ADD_YB_TEST(serializable-txn-test)
 ADD_YB_TEST(tablet_rpc-test)

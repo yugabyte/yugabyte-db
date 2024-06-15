@@ -116,6 +116,8 @@ kiwi_fe_write_password(machine_msg_t *msg, char *password, int len)
 	msg = machine_msg_create_or_advance(msg, size);
 	if (kiwi_unlikely(msg == NULL))
 		return NULL;
+
+	assert(password != NULL);
 	char *pos;
 	pos = (char *)machine_msg_data(msg) + offset;
 	kiwi_write8(&pos, KIWI_FE_PASSWORD_MESSAGE);
@@ -336,13 +338,36 @@ kiwi_fe_write_prep_stmt(machine_msg_t *msg, char *query, char *param)
 	return msg;
 }
 
+/*
+ * yb_logical_conn_type enum identifies type of connection between client
+ * and ysql conn mgr.
+ * 
+ * Below are different values yb_logical_conn_type enum can have:
+ * 
+ * YB_LOGICAL_ENCRYPTED_CONN denotes SSL encrypted, TCP/IP Connection 
+ * between client & ysql conn mgr
+ * 
+ * YB_LOGICAL_UNENCRYPTED_CONN denotes no SSL, TCP/IP Connection between
+ * client & ysql conn mgr
+ * 
+ * YB_LOGICAL_USD_CONN denotes Unix Socket Connection between client &
+ * ysql conn mgr which is currently not supported.
+ * TODO(mkumar) GH #20048 Support for unix socket connectivity b/w client and
+ * odyssey.
+ */
+typedef enum {
+	YB_LOGICAL_ENCRYPTED_CONN = 'E',
+	YB_LOGICAL_UNENCRYPTED_CONN = 'U',
+	YB_LOGICAL_USD_CONN = 'L'
+} yb_logical_conn_type;
+
 KIWI_API static inline machine_msg_t *
 kiwi_fe_write_authentication(machine_msg_t *msg, char *username, char *database,
-			     char *peer)
+			     char *peer, yb_logical_conn_type logical_conn_type )
 {
 	int size = sizeof(kiwi_header_t) +
 		   sizeof(char) * (strlen(username) + strlen(database) +
-				   strlen(peer) + 3);
+				   strlen(peer) + 3) + sizeof(yb_logical_conn_type);
 
 	int offset = 0;
 	if (msg)
@@ -357,6 +382,7 @@ kiwi_fe_write_authentication(machine_msg_t *msg, char *username, char *database,
 	kiwi_write(&pos, username, strlen(username) + 1); // username
 	kiwi_write(&pos, database, strlen(database) + 1); // database
 	kiwi_write(&pos, peer, strlen(peer) + 1); // host
+	kiwi_write8(&pos, logical_conn_type); // conn type
 	return msg;
 }
 
@@ -443,3 +469,4 @@ KIWI_API static inline machine_msg_t *kiwi_fe_copy_msg(machine_msg_t *msg,
 }
 
 #endif /* KIWI_FE_WRITE_H */
+

@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-There is a number of error messages that are common to all YugabytDB components.
+The following error messages are common to all YugabyteDB components.
 
 ## Skipping add replicas
 
@@ -59,7 +59,7 @@ Snapshot too old: Snapshot too old. Read point: { physical: 1628678717824559 }, 
 
 When the command takes a long time to be processed, a compaction may have occurred and have deleted some rows at the snapshot the dump was started on. For large backups, it is recommended to use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/), which are more efficient and fast.
 
-If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) gflag in YB-TServer and retry.
+If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) gflag on the master to a higher value. The total time necessary for this command depends on the amount of metadata in your environment, thus you might need to tune this flag a couple of times. You can start by setting this flag to 3600 seconds and iterating from there. Note: Ideally, you don't want to leave this flag at a really high value, as that can have an adverse effect on the runtime of regular metadata queries (eg DDLs, new connection establishment, metadata cache refreshes).
 
 ## Not able to perform operations using yb-admin after enabling encryption in transit
 
@@ -118,3 +118,13 @@ SELECT * FROM system.peers_v2;
 ```
 
 The most likely reason is that you are not using one of the YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](../../../reference/drivers/ycql-client-drivers/) to find a driver for your client language.
+
+## Poll stopped: Service unavailable
+
+You may find messages similar to the following in your PostgreSQL logs:
+
+```sh
+I0208 00:01:18.247143 3895457 poller.cc:66] Poll stopped: Service unavailable (yb/rpc/scheduler.cc:80): Scheduler is shutting down (system error 108)
+```
+
+This is an informational message triggered by a process shutting down. It can be safely ignored.

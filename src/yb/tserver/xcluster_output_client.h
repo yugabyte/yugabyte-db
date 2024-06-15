@@ -11,9 +11,9 @@
 // under the License.
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/tserver/xcluster_async_executor.h"
-#include "yb/cdc/cdc_util.h"
 
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -47,10 +47,10 @@ struct XClusterClient;
 class XClusterOutputClient : public XClusterAsyncExecutor {
  public:
   XClusterOutputClient(
-      XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
-      const cdc::ProducerTabletInfo& producer_tablet_info,
-      const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-      bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+      XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+      const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
+      ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver,
+      rocksdb::RateLimiter* rate_limiter);
   ~XClusterOutputClient();
   void StartShutdown() override;
   void CompleteShutdown() override;
@@ -128,11 +128,11 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   // TODO: Once we move the async execution logic to the Poller, it will guarantee that our lifetime
   // is less than the pollers lifetime, making this always safe to use.
   XClusterPoller* const xcluster_poller_ GUARDED_BY(lock_);
-  const cdc::ConsumerTabletInfo consumer_tablet_info_;
-  const cdc::ProducerTabletInfo producer_tablet_info_;
+  const xcluster::ConsumerTabletInfo consumer_tablet_info_;
+  const xcluster::ProducerTabletInfo producer_tablet_info_;
   cdc::XClusterSchemaVersionMap schema_versions_ GUARDED_BY(lock_);
   cdc::ColocatedSchemaVersionMap colocated_schema_version_map_ GUARDED_BY(lock_);
-  std::shared_ptr<XClusterClient> local_client_;
+  client::YBClient& local_client_;
 
   bool use_local_tserver_;
 
@@ -167,10 +167,10 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 };
 
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
-    XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
-    const cdc::ProducerTabletInfo& producer_tablet_info,
-    const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+    XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+    const xcluster::ProducerTabletInfo& producer_tablet_info, client::YBClient& local_client,
+    ThreadPool* thread_pool, rpc::Rpcs* rpcs, bool use_local_tserver,
+    rocksdb::RateLimiter* rate_limiter);
 
 } // namespace tserver
 } // namespace yb

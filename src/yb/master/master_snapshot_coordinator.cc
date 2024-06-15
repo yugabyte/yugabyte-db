@@ -41,6 +41,7 @@
 #include "yb/master/snapshot_state.h"
 #include "yb/master/state_with_tablets.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/tablet_split_manager.h"
 
 #include "yb/rpc/poller.h"
 #include "yb/rpc/scheduler.h"
@@ -68,8 +69,8 @@ using namespace std::placeholders;
 DECLARE_int32(sys_catalog_write_timeout_ms);
 DECLARE_bool(enable_fast_pitr);
 
-DEFINE_UNKNOWN_uint64(snapshot_coordinator_poll_interval_ms, 5000,
-              "Poll interval for snapshot coordinator in milliseconds.");
+DEFINE_NON_RUNTIME_uint64(snapshot_coordinator_poll_interval_ms, 5000,
+                          "Poll interval for snapshot coordinator in milliseconds.");
 
 DEFINE_test_flag(bool, skip_sending_restore_finished, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
@@ -175,53 +176,26 @@ auto MakeDoneCallback(
   };
 }
 
-bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
-  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
-          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
-         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at;
-}
-
-Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
-    const SnapshotScheduleInfoPB& schedule, HybridTime restore_at) {
-  if (schedule.snapshots().empty()) {
-    return STATUS(NotFound, "Schedule does not have any snapshots.");
+std::vector<SnapshotScheduleId> GetSchedulesForTable(
+    const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map, const TableId& table_id) {
+  std::vector<SnapshotScheduleId> result;
+  for (const auto& [schedule_id, tables] : schedules_to_tables_map) {
+    if (std::binary_search(tables.begin(), tables.end(), table_id)) {
+      result.push_back(schedule_id);
+    }
   }
-  std::vector<std::reference_wrapper<const SnapshotInfoPB>> snapshots(
-      schedule.snapshots().begin(), schedule.snapshots().end());
-  // Don't rely on the implementation sorting the snapshots by creation time.
-  std::sort(
-      snapshots.begin(), snapshots.end(), [](const SnapshotInfoPB& lhs, const SnapshotInfoPB& rhs) {
-        return HybridTime::FromPB(lhs.entry().snapshot_hybrid_time()) <
-               HybridTime::FromPB(rhs.entry().snapshot_hybrid_time());
-      });
-  if (restore_at < HybridTime::FromPB(snapshots[0].get().entry().snapshot_hybrid_time())) {
-    const auto& earliest_snapshot = snapshots[0];
-    return STATUS_FORMAT(
-        IllegalState,
-        "Trying to restore to $0 which is earlier than the configured retention. "
-        "Not allowed. Earliest snapshot that can be used is $1 and was taken at $2.",
-        restore_at, TryFullyDecodeTxnSnapshotId(earliest_snapshot.get().id()),
-        HybridTime::FromPB(earliest_snapshot.get().entry().snapshot_hybrid_time()));
-  }
-  // Return the id of the oldest valid snapshot created before the restore_at time.
-  auto it = std::find_if(
-      snapshots.begin(), snapshots.end(), [&restore_at](const SnapshotInfoPB& snapshot) {
-        return SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at);
-      });
-  if (it != snapshots.end()) {
-    return FullyDecodeTxnSnapshotId(it->get().id());
-  }
-  return STATUS_FORMAT(
-      NotFound,
-      "The schedule does not have any valid snapshots created after the restore at time.");
+  return result;
 }
 
 } // namespace
 
 class MasterSnapshotCoordinator::Impl {
  public:
-  explicit Impl(SnapshotCoordinatorContext* context, CatalogManager* cm)
-      : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
+  Impl(
+      SnapshotCoordinatorContext* context, CatalogManager* cm,
+      TabletSplitManager& tablet_split_manager)
+      : context_(*context), cm_(cm), tablet_split_manager_(tablet_split_manager),
+        poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
       const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline,
@@ -325,7 +299,7 @@ class MasterSnapshotCoordinator::Impl {
       RETURN_NOT_OK(tablet->snapshots().Create(*sys_catalog_snapshot_data));
     }
 
-    ExecuteOperations(operations, leader_term);
+    ScheduleOperations(operations, leader_term);
 
     if (leader_term >= 0 && snapshot_empty) {
       // There could be snapshot for 0 tables, so they should be marked as complete right after
@@ -539,30 +513,17 @@ class MasterSnapshotCoordinator::Impl {
     RETURN_NOT_OK(tablet->ApplyOperation(
         operation, /* batch_idx= */ -1, *rpc::CopySharedMessage(write_batch)));
 
-    ExecuteOperations(operations, leader_term);
+    ScheduleOperations(operations, leader_term);
     return Status::OK();
   }
 
   Status RestoreSysCatalogReplicated(
       int64_t leader_term, const tablet::SnapshotOperation& operation, Status* complete_status) {
-    auto restoration = std::make_shared<SnapshotScheduleRestoration>(SnapshotScheduleRestoration {
-      .snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id())),
-      .restore_at = HybridTime::FromPB(operation.request()->snapshot_hybrid_time()),
-      .restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(
-          operation.request()->restoration_id())),
-      .op_id = operation.op_id(),
-      .write_time = operation.hybrid_time(),
-      .term = leader_term,
-      .db_oid = std::nullopt,
-      .schedules = {},
-      .non_system_obsolete_tablets = {},
-      .non_system_obsolete_tables = {},
-      .non_system_objects_to_restore = {},
-      .existing_system_tables = {},
-      .restoring_system_tables = {},
-      .parent_to_child_tables = {},
-      .non_system_tablets_to_restore = {},
-    });
+    auto restoration = SnapshotScheduleRestoration::Create(
+        VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(operation.request()->restoration_id())),
+        VERIFY_RESULT(FullyDecodeTxnSnapshotId(operation.request()->snapshot_id())),
+        HybridTime::FromPB(operation.request()->snapshot_hybrid_time()), operation.op_id(),
+        operation.hybrid_time(), leader_term);
     {
       std::lock_guard lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(restoration->snapshot_id));
@@ -733,67 +694,86 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
-  Result<TxnSnapshotId> SuitableSnapshotId(
+  // Returns the earliest time we can restore to with this snapshot. For all snapshots except the
+  // very first one taken after creating a snapshot schedule, this is the previous snapshot's hybrid
+  // time. For the first snapshot, this is the snapshot's hybrid time.
+  HybridTime ComputeMinRestoreTime(const SnapshotState& snapshot) {
+    auto prev_snapshot_time = snapshot.previous_snapshot_hybrid_time();
+    return HybridTime(prev_snapshot_time ? prev_snapshot_time : snapshot.snapshot_hybrid_time());
+  }
+
+  Result<bool> IsSnapshotSuitableForRestoreAt(
+      const SnapshotState& snapshot, HybridTime restore_at) {
+    auto state = VERIFY_RESULT(snapshot.AggregatedState());
+    return (state == SysSnapshotEntryPB::COMPLETE || state == SysSnapshotEntryPB::CREATING) &&
+           restore_at <= snapshot.snapshot_hybrid_time() &&
+           restore_at >= ComputeMinRestoreTime(snapshot);
+  }
+
+  // Returns the suitable TxnSnapshotId instead of SnapshotInfoPB as the snapshot might still be in
+  // creating state.
+  Result<TxnSnapshotId> FindSnapshotSuitableForRestoreAt(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    const auto [begin, end] = snapshots_.get<ScheduleTag>().equal_range(schedule_id);
+
+    for (auto it = begin; it != end; ++it) {
+      if (VERIFY_RESULT(IsSnapshotSuitableForRestoreAt(**it, restore_at))) {
+        return (*it)->id();
+      }
+    }
+    return STATUS_FORMAT(
+        NotFound,
+        "The schedule does not have any valid snapshots created after the restore time ($0).",
+        restore_at);
+  }
+
+  Result<TxnSnapshotId> WaitForSnapshotToComplete(
+      const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline) {
+    while (CoarseMonoClock::now() < deadline) {
+      // Have to look up the snapshot each iteration because the snapshot is only valid while the
+      // mutex is held.
+      {
+        std::lock_guard lock(mutex_);
+        const auto& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id)).get();
+        if (VERIFY_RESULT(snapshot.AggregatedState()) == master::SysSnapshotEntryPB::COMPLETE) {
+          return snapshot.id();
+        }
+      }
+      std::this_thread::sleep_for(100ms);
+    }
+    return STATUS_FORMAT(TimedOut, "Timed out waiting for snapshot $0 to complete", snapshot_id);
+  }
+
+  Result<TxnSnapshotId> GetSuitableSnapshotForRestore(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline) {
-    while (CoarseMonoClock::now() < deadline) {
-      ListSnapshotSchedulesResponsePB resp;
-      RETURN_NOT_OK_PREPEND(ListSnapshotSchedules(schedule_id, &resp),
-                            "Failed to list snapshot schedules");
-      if (resp.schedules().size() < 1) {
-        return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
-      }
-      auto snapshot_result = FindSnapshotSuitableForRestoreAt(resp.schedules()[0], restore_at);
-      if (snapshot_result.ok()) {
-        return *snapshot_result;
-      } else if (!snapshot_result.status().IsNotFound()) {
-        return snapshot_result;
-      }
-      auto snapshot_id = CreateForSchedule(schedule_id, leader_term, deadline);
-      if (!snapshot_id.ok() &&
-          MasterError(snapshot_id.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
-        continue;
-      }
-      return snapshot_id;
+    SCHECK_LE(
+        restore_at, GetCurrentHybridTime(), InvalidArgument,
+        Format("Cannot restore to $0 since it is in the future", restore_at));
+
+    TxnSnapshotId snapshot_id = TxnSnapshotId::Nil();
+
+    // First check if a suitable snapshot already exists.
+    auto snapshot_result = FindSnapshotSuitableForRestoreAt(schedule_id, restore_at);
+    if (snapshot_result.ok()) {
+      snapshot_id = *snapshot_result;
+    } else if (!snapshot_result.status().IsNotFound()) {
+      return snapshot_result.status();
+    } else {
+      // If a suitable snapshot does not exist, try to create one.
+      VERIFY_RESULT(CreateForSchedule(schedule_id, leader_term, deadline));
+      snapshot_id = VERIFY_RESULT(FindSnapshotSuitableForRestoreAt(schedule_id, restore_at));
     }
 
-    return STATUS_FORMAT(
-        TimedOut, "Timed out getting a suitable snapshot id from schedule $0", schedule_id);
+    return WaitForSnapshotToComplete(snapshot_id, restore_at, deadline);
   }
 
   Status RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at,
       RestoreSnapshotScheduleResponsePB* resp, int64_t leader_term, CoarseTimePoint deadline) {
-    auto snapshot_id =
-        VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, leader_term, deadline));
-
-    bool suitable_snapshot_is_complete = false;
-    while (CoarseMonoClock::now() < deadline) {
-      ListSnapshotsResponsePB resp;
-
-      RETURN_NOT_OK_PREPEND(ListSnapshots(snapshot_id, false, {}, &resp),
-                            "Failed to list snapshots");
-      if (resp.snapshots().size() != 1) {
-        return STATUS_FORMAT(
-            IllegalState, "Wrong number of snapshots received $0", resp.snapshots().size());
-      }
-
-      if (resp.snapshots()[0].entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
-        if (SnapshotSuitableForRestoreAt(resp.snapshots()[0].entry(), restore_at)) {
-          suitable_snapshot_is_complete = true;
-          break;
-        }
-        return STATUS_FORMAT(
-            IllegalState, "Snapshot is not suitable for restore at $0", restore_at);
-      }
-      std::this_thread::sleep_for(100ms);
-    }
-
-    if (!suitable_snapshot_is_complete) {
-      return STATUS_FORMAT(
-          TimedOut, "Timed out completing a snapshot $0", snapshot_id);
-    }
-
+    const auto snapshot_id = VERIFY_RESULT(
+        GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline));
     TxnSnapshotRestorationId restoration_id = VERIFY_RESULT(Restore(
         snapshot_id, restore_at, leader_term));
 
@@ -998,9 +978,9 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
     SnapshotSchedulesToObjectIdsMap result;
-    for (const auto& id_and_filter : schedules) {
-      auto entries = VERIFY_RESULT(CollectEntries(id_and_filter.second));
-      auto& ids = result[id_and_filter.first];
+    for (const auto& [schedule_id, filter] : schedules) {
+      auto entries = VERIFY_RESULT(CollectEntries(filter));
+      auto& ids = result[schedule_id];
       for (const auto& entry : entries.entries()) {
         if (entry.type() == type) {
           ids.push_back(entry.id());
@@ -1011,8 +991,34 @@ class MasterSnapshotCoordinator::Impl {
     return result;
   }
 
+  Result<std::vector<SnapshotScheduleId>> GetSnapshotSchedules(
+      SysRowEntryType type, const std::string& object_id) const {
+    std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& schedule : schedules_) {
+        if (!schedule->deleted()) {
+          schedules.emplace_back(schedule->id(), schedule->options().filter());
+        }
+      }
+    }
+
+    std::vector<SnapshotScheduleId> result;
+    for (const auto& [schedule_id, filter] : schedules) {
+      auto entries = VERIFY_RESULT(CollectEntries(filter));
+      for (const auto& entry : entries.entries()) {
+        if (entry.type() == type && entry.id() == object_id) {
+          result.emplace_back(schedule_id);
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
   Result<bool> TableMatchesSchedule(
-      const TableIdentifiersPB& table_identifiers, const SysTablesEntryPB& pb, const string& id) {
+      const TableIdentifiersPB& table_identifiers, const SysTablesEntryPB& pb, const string& id)
+      const {
     for (const auto& table_identifier : table_identifiers.tables()) {
       if (VERIFY_RESULT(TableMatchesIdentifier(id, pb, table_identifier))) {
         return true;
@@ -1021,7 +1027,7 @@ class MasterSnapshotCoordinator::Impl {
     return false;
   }
 
-  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) {
+  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) const {
     auto lock = table_info.LockForRead();
     {
       std::lock_guard l(mutex_);
@@ -1061,6 +1067,65 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
     return false;
+  }
+
+  Status PopulateDeleteRetainerInfoForTableDrop(
+      const TableInfo& table_info, const TabletInfos& tablets_to_check,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
+      TabletDeleteRetainerInfo& delete_retainer) const {
+    delete_retainer.snapshot_schedules =
+        GetSchedulesForTable(schedules_to_tables_map, table_info.id());
+
+    // If even one tablet has an active snapshot then hide the table.
+    delete_retainer.active_snapshot = std::any_of(
+        tablets_to_check.begin(), tablets_to_check.end(),
+        [this](const auto& tablet) { return IsTabletCoveredBySnapshot(tablet->tablet_id()); });
+
+    return Status::OK();
+  }
+
+  Status PopulateDeleteRetainerInfoForTabletDrop(
+      const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const {
+    delete_retainer.snapshot_schedules =
+        VERIFY_RESULT(GetSnapshotSchedules(SysRowEntryType::TABLE, tablet_info.table()->id()));
+
+    delete_retainer.active_snapshot = IsTabletCoveredBySnapshot(tablet_info.tablet_id());
+
+    return Status::OK();
+  }
+
+  bool ShouldRetainHiddenTablet(
+      const TabletInfo& tablet_info, const ScheduleMinRestoreTime& schedule_to_min_restore_time) {
+    const auto& tablet_id = tablet_info.tablet_id();
+    auto l = tablet_info.LockForRead();
+    const auto& tablets_entry_pb = l->pb;
+    if (!tablets_entry_pb.has_hide_hybrid_time()) {
+      LOG_WITH_FUNC(DFATAL) << "Tablet " << tablet_id << " is not hidden";
+      return true;
+    }
+
+    return ShouldRetain(
+        tablet_id, tablets_entry_pb, HybridTime::FromPB(tablets_entry_pb.hide_hybrid_time()),
+        schedule_to_min_restore_time);
+  }
+
+  bool ShouldRetainHiddenColocatedTable(
+      const TableInfo& table_info, const TabletInfo& tablet_info,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time) const {
+    HybridTime table_hide_hybrid_time;
+    {
+      auto table_lock = table_info.LockForRead();
+      if (!table_lock->pb.has_hide_hybrid_time()) {
+        LOG_WITH_FUNC(DFATAL) << "Table " << table_info.id() << " is not hidden";
+        return true;
+      }
+      table_hide_hybrid_time = HybridTime::FromPB(table_lock->pb.hide_hybrid_time());
+    }
+
+    auto tablet_lock = tablet_info.LockForRead();
+    return ShouldRetain(
+        tablet_info.tablet_id(), tablet_lock->pb, table_hide_hybrid_time,
+        schedule_to_min_restore_time);
   }
 
   bool IsPitrActive() {
@@ -1116,14 +1181,23 @@ class MasterSnapshotCoordinator::Impl {
     return restore_kv;
   }
 
-  bool IsTabletCoveredBySnapshot(const TabletId& tablet_id, const TxnSnapshotId& snapshot_id) {
+  bool IsTabletCoveredBySnapshot(
+      const TabletId& tablet_id, const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil()) const {
+    // Potential optimization opportunity:
+    // For colocated tables, the following scenario could happen.
+    // 1. Snapshot has colocated tables t1, t2 and t3.
+    // 2. User created t4 after snapshot is complete.
+    // 3. User dropped t4, ideally we can delete this table (instead of hiding)
+    // but the below logic will hide it instead. This is ok from a correctness
+    // standpoint but can be a potential optimization worth considering especially
+    // if the table occupies a lot of space on disk and/or snapshot is long lived.
+
     std::lock_guard l(mutex_);
-    auto it = tablet_to_covering_snapshots_.find(tablet_id);
+    auto* snapshots = FindOrNull(tablet_to_covering_snapshots_, tablet_id);
     // If snapshot_id is nil then return true if any snapshot covers the particular tablet
     // whereas if snapshot_id is not nil then return true if that particular snapshot
     // covers the tablet.
-    return it != tablet_to_covering_snapshots_.end() &&
-           (!snapshot_id || it->second.contains(snapshot_id));
+    return snapshots && (!snapshot_id || snapshots->contains(snapshot_id));
   }
 
   void Start() {
@@ -1238,15 +1312,18 @@ class MasterSnapshotCoordinator::Impl {
                     MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
-  void ExecuteOperations(
-      const TabletSnapshotOperations& operations, int64_t leader_term) {
+  template <typename Operation>
+  void ScheduleOperation(const Operation& operation, const TabletInfoPtr& tablet_info,
+                       int64_t leader_term);
+
+  template <typename Operations>
+  void ScheduleOperations(const Operations& operations, int64_t leader_term) {
     if (operations.empty()) {
       return;
     }
-    VLOG(4) << __func__ << "(" << AsString(operations) << ")";
 
     size_t num_operations = operations.size();
-    LOG(INFO) << "Number of snapshot operations to be executed " << num_operations;
+    LOG(INFO) << "Number of tablet operations to be executed " << num_operations;
     std::vector<TabletId> tablet_ids;
     tablet_ids.reserve(num_operations);
     for (const auto& operation : operations) {
@@ -1254,57 +1331,7 @@ class MasterSnapshotCoordinator::Impl {
     }
     auto tablet_infos = context_.GetTabletInfos(tablet_ids);
     for (size_t i = 0; i != num_operations; ++i) {
-      ExecuteOperation(operations[i], tablet_infos[i], leader_term);
-    }
-  }
-
-  void ExecuteOperation(
-      const TabletSnapshotOperation& operation, const TabletInfoPtr& tablet_info,
-      int64_t leader_term) {
-    auto callback = MakeDoneCallback(
-        &mutex_, &snapshots_, operation.snapshot_id, operation.tablet_id,
-        std::bind(&Impl::UpdateSnapshot, this, _1, leader_term, _2));
-    if (!tablet_info) {
-      callback(STATUS_EC_FORMAT(NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING),
-                                "Tablet info not found for $0", operation.tablet_id));
-      return;
-    }
-    auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
-
-    auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
-    if (operation.state == SysSnapshotEntryPB::DELETING) {
-      auto task = context_.CreateAsyncTabletSnapshotOp(
-          tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET,
-          epoch, callback);
-      context_.ScheduleTabletSnapshotOp(task);
-    } else if (operation.state == SysSnapshotEntryPB::CREATING) {
-      auto task = context_.CreateAsyncTabletSnapshotOp(
-          tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET, epoch,
-          callback);
-      task->SetSnapshotScheduleId(operation.schedule_id);
-      task->SetSnapshotHybridTime(operation.snapshot_hybrid_time);
-      context_.ScheduleTabletSnapshotOp(task);
-    } else {
-      LOG(DFATAL) << "Unsupported snapshot operation: " << operation.ToString();
-    }
-  }
-
-  void ExecuteRestoreOperations(
-      const TabletRestoreOperations& operations, int64_t leader_term) {
-    if (operations.empty()) {
-      return;
-    }
-
-    size_t num_operations = operations.size();
-    LOG(INFO) << "Number of tablet restore operations to be executed " << num_operations;
-    std::vector<TabletId> tablet_ids;
-    tablet_ids.reserve(num_operations);
-    for (const auto& operation : operations) {
-      tablet_ids.push_back(operation.tablet_id);
-    }
-    auto tablet_infos = context_.GetTabletInfos(tablet_ids);
-    for (size_t i = 0; i != num_operations; ++i) {
-      ExecuteRestoreOperation(
+      ScheduleOperation(
           operations[i], tablet_infos[i], leader_term);
     }
   }
@@ -1326,50 +1353,6 @@ class MasterSnapshotCoordinator::Impl {
       }
       task->SetColocatedTableMetadata(table_id, (*table_info_result)->LockForRead()->pb);
     }
-  }
-
-  void ExecuteRestoreOperation(
-      const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
-      int64_t leader_term) {
-    auto callback = MakeDoneCallback(
-        &mutex_, &restorations_, operation.restoration_id, operation.tablet_id,
-        std::bind(&Impl::FinishRestoration, this, _1, leader_term));
-    if (!tablet_info) {
-      callback(STATUS_EC_FORMAT(
-          NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING), "Tablet info not found for $0",
-          operation.tablet_id));
-      return;
-    }
-    auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
-    // If this tablet did not participate in snapshot, i.e. was deleted.
-    // We just change hybrid time limit and clear hide state.
-    auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
-    auto task = context_.CreateAsyncTabletSnapshotOp(
-        tablet_info, operation.is_tablet_part_of_snapshot ? snapshot_id_str : std::string(),
-        tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET, epoch, callback);
-    task->SetSnapshotHybridTime(operation.restore_at);
-    task->SetRestorationId(operation.restoration_id);
-    if (!operation.schedule_id.IsNil()) {
-      task->SetSnapshotScheduleId(operation.schedule_id);
-    }
-    if (operation.sys_catalog_restore_needed) {
-      task->SetMetadata(tablet_info->table()->LockForRead()->pb);
-      // Populate metadata for colocated tables.
-      if (tablet_info->colocated()) {
-        auto lock = tablet_info->LockForRead();
-        if (lock->pb.hosted_tables_mapped_by_parent_id()) {
-          SetTaskMetadataForColocatedTable(tablet_info->GetTableIds(), task.get());
-        } else {
-          SetTaskMetadataForColocatedTable(lock->pb.table_ids(), task.get());
-        }
-      }
-    }
-    // For sequences_data_table, we should set partial restore and db_oid.
-    if (tablet_info->table()->id() == kPgSequencesDataTableId) {
-      LOG_IF(DFATAL, !operation.db_oid) << "DB OID not found for restoring database";
-      task->SetDbOid(*operation.db_oid);
-    }
-    context_.ScheduleTabletSnapshotOp(task);
   }
 
   struct PollSchedulesData {
@@ -1434,9 +1417,9 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    ExecuteOperations(operations, leader_term);
+    ScheduleOperations(operations, leader_term);
     PollSchedulesComplete(schedules_data, l.epoch());
-    ExecuteRestoreOperations(restore_operations, leader_term);
+    ScheduleOperations(restore_operations, leader_term);
   }
 
   void TryDeleteSnapshot(SnapshotState* snapshot, PollSchedulesData* data) {
@@ -1453,40 +1436,38 @@ class MasterSnapshotCoordinator::Impl {
 
   void PollSchedulesPrepare(PollSchedulesData* data) REQUIRES(mutex_) {
     auto now = context_.Clock()->Now();
-    for (const auto& p : schedules_) {
+    for (const auto& schedule : schedules_) {
       HybridTime last_snapshot_time;
-      if (p->deleted()) {
-        auto range = snapshots_.get<ScheduleTag>().equal_range(p->id());
+      if (schedule->deleted()) {
+        auto range = snapshots_.get<ScheduleTag>().equal_range(schedule->id());
         for (const auto& snapshot : boost::make_iterator_range(range.first, range.second)) {
           TryDeleteSnapshot(snapshot.get(), data);
         }
       } else {
-        auto& index = snapshots_.get<ScheduleTag>();
-        auto range = index.equal_range(p->id());
-        if (range.first != range.second) {
-          --range.second;
-          for (; range.first != range.second; ++range.first) {
-            if ((**range.first).initial_state() != SysSnapshotEntryPB::DELETING) {
+        auto [begin, end] = snapshots_.get<ScheduleTag>().equal_range(schedule->id());
+        if (begin != end) {
+          --end;
+          // Get the first non-deleting snapshot.
+          for (; begin != end; ++begin) {
+            if ((**begin).initial_state() != SysSnapshotEntryPB::DELETING) {
               break;
             }
           }
-          auto& first_snapshot = **range.first;
-          data->schedule_min_restore_time[p->id()] =
-              first_snapshot.previous_snapshot_hybrid_time()
-                  ? first_snapshot.previous_snapshot_hybrid_time()
-                  : first_snapshot.snapshot_hybrid_time();
-          auto gc_limit = now.AddSeconds(-p->options().retention_duration_sec());
+          data->schedule_min_restore_time[schedule->id()] = ComputeMinRestoreTime(**begin);
+
+          // Delete all non-deleting snapshots that are older than the retention duration.
+          auto gc_limit = now.AddSeconds(-schedule->options().retention_duration_sec());
           VLOG_WITH_FUNC(4) << "Gc limit: " << gc_limit;
-          for (; range.first != range.second; ++range.first) {
-            if ((**range.first).snapshot_hybrid_time() >= gc_limit) {
+          for (; begin != end; ++begin) {
+            if ((**begin).snapshot_hybrid_time() >= gc_limit) {
               break;
             }
-            TryDeleteSnapshot(range.first->get(), data);
+            TryDeleteSnapshot(begin->get(), data);
           }
-          last_snapshot_time = (**range.second).snapshot_hybrid_time();
+          last_snapshot_time = (**end).snapshot_hybrid_time();
         }
       }
-      p->PrepareOperations(last_snapshot_time, now, &data->schedule_operations);
+      schedule->PrepareOperations(last_snapshot_time, now, &data->schedule_operations);
     }
   }
 
@@ -1628,6 +1609,10 @@ class MasterSnapshotCoordinator::Impl {
     (**it).SnapshotFinished(snapshot_id, status);
   }
 
+  HybridTime GetCurrentHybridTime() {
+    return context_.Clock()->MaxGlobalNow();
+  }
+
   Status SubmitCreate(
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
       HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
@@ -1651,7 +1636,7 @@ class MasterSnapshotCoordinator::Impl {
       }
     }
 
-    request->set_snapshot_hybrid_time(context_.Clock()->MaxGlobalNow().ToUint64());
+    request->set_snapshot_hybrid_time(GetCurrentHybridTime().ToUint64());
     request->set_operation(tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER);
     request->dup_snapshot_id(snapshot_id.AsSlice());
     request->set_imported(imported);
@@ -1884,7 +1869,7 @@ class MasterSnapshotCoordinator::Impl {
 
     // Enable tablet splitting again.
     if (restoration->schedule_id()) {
-      context_.ReenableTabletSplitting(kPitrFeatureName);
+      tablet_split_manager_.ReenableSplittingFor(kPitrFeatureName);
     }
   }
 
@@ -1927,7 +1912,7 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  Result<SysRowEntries> CollectEntries(const SnapshotScheduleFilterPB& filter) {
+  Result<SysRowEntries> CollectEntries(const SnapshotScheduleFilterPB& filter) const {
     return context_.CollectEntriesForSnapshot(filter.tables().tables());
   }
 
@@ -2024,7 +2009,7 @@ class MasterSnapshotCoordinator::Impl {
       return SubmitRestore(snapshot_id, restore_at, restoration_id, leader_term);
     }
 
-    ExecuteRestoreOperations(operations, leader_term);
+    ScheduleOperations(operations, leader_term);
 
     // For empty tablet list, finish the restore.
     if (tablet_list_empty) {
@@ -2084,9 +2069,32 @@ class MasterSnapshotCoordinator::Impl {
             << AsString(tablet_to_covering_snapshots_);
   }
 
+  bool ShouldRetain(
+      const TabletId& tablet_id, const SysTabletsEntryPB& tablets_entry_pb,
+      const HybridTime& hide_hybrid_time,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time) const {
+    for (const auto& schedule_id_str : tablets_entry_pb.retained_by_snapshot_schedules()) {
+      auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+      auto it = schedule_to_min_restore_time.find(schedule_id);
+      // If schedule is not present in schedule_min_restore_time then it means that schedule
+      // was deleted, so it should not retain the tablet.
+      if (it != schedule_to_min_restore_time.end() && it->second <= hide_hybrid_time) {
+        VLOG(1) << "Retaining tablet: " << tablet_id << ", hide hybrid time: " << hide_hybrid_time
+                << ", because of schedule: " << schedule_id << ", min restore time: " << it->second;
+        return true;
+      }
+    }
+
+    return IsTabletCoveredBySnapshot(tablet_id);
+  }
+
   SnapshotCoordinatorContext& context_;
   CatalogManager* cm_;
-  std::mutex mutex_;
+  TabletSplitManager& tablet_split_manager_;
+
+  // Guards the maps below and their members. Members should not be accessed without holding the
+  // mutex to avoid data races, though this is currently unenforced.
+  mutable std::mutex mutex_;
   class ScheduleTag;
   using Snapshots = boost::multi_index_container<
       std::unique_ptr<SnapshotState>,
@@ -2151,9 +2159,88 @@ class MasterSnapshotCoordinator::Impl {
   rpc::Poller poller_;
 };
 
+template <>
+void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletSnapshotOperation>(
+    const TabletSnapshotOperation& operation, const TabletInfoPtr& tablet_info,
+    int64_t leader_term) {
+  auto callback = MakeDoneCallback(
+      &mutex_, &snapshots_, operation.snapshot_id, operation.tablet_id,
+      std::bind(&Impl::UpdateSnapshot, this, _1, leader_term, _2));
+  if (!tablet_info) {
+    callback(STATUS_EC_FORMAT(
+        NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING), "Tablet info not found for $0",
+        operation.tablet_id));
+    return;
+  }
+  auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
+
+  auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
+  if (operation.state == SysSnapshotEntryPB::DELETING) {
+    auto task = context_.CreateAsyncTabletSnapshotOp(
+        tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET, epoch,
+        callback);
+    context_.ScheduleTabletSnapshotOp(task);
+  } else if (operation.state == SysSnapshotEntryPB::CREATING) {
+    auto task = context_.CreateAsyncTabletSnapshotOp(
+        tablet_info, snapshot_id_str, tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET, epoch,
+        callback);
+    task->SetSnapshotScheduleId(operation.schedule_id);
+    task->SetSnapshotHybridTime(operation.snapshot_hybrid_time);
+    context_.ScheduleTabletSnapshotOp(task);
+  } else {
+    LOG(DFATAL) << "Unsupported snapshot operation: " << operation.ToString();
+  }
+}
+
+template <>
+void MasterSnapshotCoordinator::Impl::ScheduleOperation<TabletRestoreOperation>(
+    const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
+    int64_t leader_term) {
+  auto callback = MakeDoneCallback(
+      &mutex_, &restorations_, operation.restoration_id, operation.tablet_id,
+      std::bind(&Impl::FinishRestoration, this, _1, leader_term));
+  if (!tablet_info) {
+    callback(STATUS_EC_FORMAT(
+        NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING), "Tablet info not found for $0",
+        operation.tablet_id));
+    return;
+  }
+  auto snapshot_id_str = operation.snapshot_id.AsSlice().ToBuffer();
+  // If this tablet did not participate in snapshot, i.e. was deleted.
+  // We just change hybrid time limit and clear hide state.
+  auto epoch = LeaderEpoch(leader_term, context_.pitr_count());
+  auto task = context_.CreateAsyncTabletSnapshotOp(
+      tablet_info, operation.is_tablet_part_of_snapshot ? snapshot_id_str : std::string(),
+      tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET, epoch, callback);
+  task->SetSnapshotHybridTime(operation.restore_at);
+  task->SetRestorationId(operation.restoration_id);
+  if (!operation.schedule_id.IsNil()) {
+    task->SetSnapshotScheduleId(operation.schedule_id);
+  }
+  if (operation.sys_catalog_restore_needed) {
+    task->SetMetadata(tablet_info->table()->LockForRead()->pb);
+    // Populate metadata for colocated tables.
+    if (tablet_info->colocated()) {
+      auto lock = tablet_info->LockForRead();
+      if (lock->pb.hosted_tables_mapped_by_parent_id()) {
+        SetTaskMetadataForColocatedTable(tablet_info->GetTableIds(), task.get());
+      } else {
+        SetTaskMetadataForColocatedTable(lock->pb.table_ids(), task.get());
+      }
+    }
+  }
+  // For sequences_data_table, we should set partial restore and db_oid.
+  if (tablet_info->table()->id() == kPgSequencesDataTableId) {
+    LOG_IF(DFATAL, !operation.db_oid) << "DB OID not found for restoring database";
+    task->SetDbOid(*operation.db_oid);
+  }
+  context_.ScheduleTabletSnapshotOp(task);
+}
+
 MasterSnapshotCoordinator::MasterSnapshotCoordinator(
-    SnapshotCoordinatorContext* context, CatalogManager* cm)
-    : impl_(new Impl(context, cm)) {}
+    SnapshotCoordinatorContext* context, CatalogManager* cm,
+    TabletSplitManager& tablet_split_manager)
+    : impl_(new Impl(context, cm, tablet_split_manager)) {}
 
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 
@@ -2264,8 +2351,19 @@ Result<SnapshotSchedulesToObjectIdsMap>
   return impl_->MakeSnapshotSchedulesToObjectIdsMap(type);
 }
 
+Result<std::vector<SnapshotScheduleId>> MasterSnapshotCoordinator::GetSnapshotSchedules(
+    SysRowEntryType type, const std::string& object_id) {
+  return impl_->GetSnapshotSchedules(type, object_id);
+}
+
+Result<TxnSnapshotId> MasterSnapshotCoordinator::GetSuitableSnapshotForRestore(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
+    CoarseTimePoint deadline) {
+  return impl_->GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline);
+}
+
 Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(
-    const TableInfo& table_info) {
+    const TableInfo& table_info) const {
   return impl_->IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 
@@ -2292,9 +2390,35 @@ bool MasterSnapshotCoordinator::IsPitrActive() {
   return impl_->IsPitrActive();
 }
 
-bool MasterSnapshotCoordinator::IsTabletCoveredBySnapshot(
-    const TabletId& tablet_id, const TxnSnapshotId& snapshot_id) {
+bool MasterSnapshotCoordinator::TEST_IsTabletCoveredBySnapshot(
+    const TabletId& tablet_id, const TxnSnapshotId& snapshot_id) const {
   return impl_->IsTabletCoveredBySnapshot(tablet_id, snapshot_id);
+}
+
+Status MasterSnapshotCoordinator::PopulateDeleteRetainerInfoForTableDrop(
+    const TableInfo& table_info, const TabletInfos& tablets_to_check,
+    const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
+    TabletDeleteRetainerInfo& delete_retainer) const {
+  return impl_->PopulateDeleteRetainerInfoForTableDrop(
+      table_info, tablets_to_check, schedules_to_tables_map, delete_retainer);
+}
+
+Status MasterSnapshotCoordinator::PopulateDeleteRetainerInfoForTabletDrop(
+    const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const {
+  return impl_->PopulateDeleteRetainerInfoForTabletDrop(tablet_info, delete_retainer);
+}
+
+bool MasterSnapshotCoordinator::ShouldRetainHiddenTablet(
+    const TabletInfo& tablet_info,
+    const ScheduleMinRestoreTime& schedule_to_min_restore_time) const {
+  return impl_->ShouldRetainHiddenTablet(tablet_info, schedule_to_min_restore_time);
+}
+
+bool MasterSnapshotCoordinator::ShouldRetainHiddenColocatedTable(
+    const TableInfo& table_info, const TabletInfo& tablet_info,
+    const ScheduleMinRestoreTime& schedule_to_min_restore_time) const {
+  return impl_->ShouldRetainHiddenColocatedTable(
+      table_info, tablet_info, schedule_to_min_restore_time);
 }
 
 } // namespace master

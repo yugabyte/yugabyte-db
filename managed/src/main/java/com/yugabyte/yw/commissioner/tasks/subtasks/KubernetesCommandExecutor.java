@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -247,8 +248,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return config;
   }
 
+  public static String getPodCommandDateKey(String podName, CommandType commandType) {
+    return podName + "_" + commandType + "_started";
+  }
+
   @Override
   public void run() {
+    if (getTaskUUID() != null) {
+      putDateIntoCache(getPodCommandDateKey(taskParams().podName, taskParams().commandType));
+    }
     String overridesFile;
 
     Map<String, String> config;
@@ -970,7 +978,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         taskUniverseDetails.getPrimaryCluster().userIntent;
 
-    if (taskUniverseDetails.rootCA != null || taskUniverseDetails.getClientRootCA() != null) {
+    // Fetch universe again for Certs
+    // For Certs rotate task, we're updating the certs in the Universe details as a subtask
+    Universe universeFromDB = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    UniverseDefinitionTaskParams universeFromDBParams = universeFromDB.getUniverseDetails();
+
+    if (universeFromDBParams.rootCA != null || universeFromDBParams.getClientRootCA() != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
@@ -978,12 +991,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tlsInfo.put("insecure", taskUniverseDetails.allowInsecure);
       String rootCert;
       String rootKey;
-      if (taskUniverseDetails.rootCA != null) {
-        rootCert = CertificateHelper.getCertPEM(taskUniverseDetails.rootCA);
-        rootKey = CertificateHelper.getKeyPEM(taskUniverseDetails.rootCA);
+      if (universeFromDBParams.rootCA != null) {
+        rootCert = CertificateHelper.getCertPEM(universeFromDBParams.rootCA);
+        rootKey = CertificateHelper.getKeyPEM(universeFromDBParams.rootCA);
       } else {
-        rootCert = CertificateHelper.getCertPEM(taskUniverseDetails.getClientRootCA());
-        rootKey = CertificateHelper.getKeyPEM(taskUniverseDetails.getClientRootCA());
+        rootCert = CertificateHelper.getCertPEM(universeFromDBParams.getClientRootCA());
+        rootKey = CertificateHelper.getKeyPEM(universeFromDBParams.getClientRootCA());
       }
 
       if (rootKey != null && !rootKey.isEmpty()) {
@@ -995,10 +1008,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
         CertificateInfo certInfo;
-        if (taskUniverseDetails.rootCA != null) {
-          certInfo = CertificateInfo.get(taskUniverseDetails.rootCA);
+        if (universeFromDBParams.rootCA != null) {
+          certInfo = CertificateInfo.get(universeFromDBParams.rootCA);
         } else {
-          certInfo = CertificateInfo.get(taskUniverseDetails.getClientRootCA());
+          certInfo = CertificateInfo.get(universeFromDBParams.getClientRootCA());
         }
 
         Map<String, Object> rootCA = new HashMap<>();
@@ -1087,9 +1100,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UUID placementUuid = cluster.uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
-    Map<String, Object> masterGFlags =
-        new HashMap<>(
-            GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, taskUniverseDetails.clusters));
+    Map<String, String> masterGFlags =
+        GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, taskUniverseDetails.clusters);
     if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
       masterGFlags.put("placement_cloud", placementCloud);
     }
@@ -1142,7 +1154,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 ? taskUniverseDetails.getReadOnlyClusters().get(0).uuid
                 : taskUniverseDetails.getPrimaryCluster().uuid);
       }
-      GFlagsUtil.mergeCSVs(tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
+      GFlagsUtil.mergeCSVs(
+          tserverGFlags, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV, false);
       tserverGFlags.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
@@ -1206,6 +1219,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       labels.put("yugabyte.io/zone", placementZone);
       overrides.put("commonLabels", labels);
     }
+
+    // Conditionally enable yugabyteDUI if running in community mode.
+    boolean COMMUNITY_OP_ENABLED = OperatorConfig.getOssMode();
+    Map<String, Object> yugabytedUiInfo = new HashMap<>();
+    Map<String, Object> metricsSnapshotterInfo = new HashMap<>();
+    metricsSnapshotterInfo.put("enabled", COMMUNITY_OP_ENABLED);
+    yugabytedUiInfo.put("enabled", COMMUNITY_OP_ENABLED);
+    yugabytedUiInfo.put("metricsSnapshotter", metricsSnapshotterInfo);
+
+    overrides.put("yugabytedUi", yugabytedUiInfo);
 
     Map<String, Object> ybcInfo = new HashMap<>();
     ybcInfo.put("enabled", taskParams().isEnableYbc());

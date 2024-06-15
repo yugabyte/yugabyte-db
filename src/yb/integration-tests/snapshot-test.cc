@@ -263,15 +263,20 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         });
   }
 
-  TxnSnapshotId CreateSnapshot(int32_t retention_duration_hours = 0) {
+  TxnSnapshotId CreateSnapshot(
+      std::optional<int32_t> retention_duration_hours = std::nullopt,
+      std::optional<bool> imported = std::nullopt) {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
     req.set_transaction_aware(true);
     TableIdentifierPB* const table = req.mutable_tables()->Add();
     table->set_table_name(kTableName.table_name());
     table->mutable_namespace_()->set_name(kTableName.namespace_name());
-    if (retention_duration_hours > 0) {
-      req.set_retention_duration_hours(retention_duration_hours);
+    if (retention_duration_hours) {
+      req.set_retention_duration_hours(*retention_duration_hours);
+    }
+    if (imported) {
+      req.set_imported(*imported);
     }
 
     // Check the request.
@@ -454,7 +459,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
         &master_leader->catalog_manager_impl().snapshot_coordinator());
     for (const auto& tablet : tablets) {
-      if (!coordinator->IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
+      if (!coordinator->TEST_IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
         return STATUS_FORMAT(
             IllegalState, "Covering snapshot for tablet $0 not found", tablet->id());
       }
@@ -500,7 +505,7 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   ASSERT_OK(cluster_->RestartSync());
 }
 
-// Tests that a snapshot hides a table that is dropped subsequently.
+// Tests that a non-imported snapshot hides a table that is dropped subsequently.
 // Until the snapshot is deleted, the table is hidden and once the
 // snapshot gets deleted, the table is subsequently deleted.
 TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
@@ -538,10 +543,38 @@ TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
       std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s, "IsTableDropped"));
 }
 
+TEST_F(SnapshotTest, ImportedSnapshotsDoNotBlockCleanup) {
+  auto workload = SetupWorkload(); // Used to create table.
+
+  // Get the table id.
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
+      workload.table_name().namespace_type(), workload.table_name().namespace_name(),
+      workload.table_name().table_name());
+
+  // Create imported snapshot.
+  const auto snapshot_id = CreateSnapshot(-1 /* retention_duration_hours */, true /* imported */);
+
+  // Verify the snapshot does not cover the tablets.
+  ASSERT_NOK(SnapshotCoversTablets(snapshot_id, table->id()));
+  // The snapshot should not cover the tablets after a restart either.
+  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_NOK(SnapshotCoversTablets(snapshot_id, table->id()));
+
+  // Drop table and verify table is dropped, not hidden.
+  ASSERT_OK(client_->DeleteTable(workload.table_name(), true /* wait */));
+  ASSERT_TRUE(ASSERT_RESULT(IsTableDropped(table->id())));
+}
+
+YB_STRONGLY_TYPED_BOOL(Imported);
+class SnapshotTestImported : public SnapshotTest, public testing::WithParamInterface<Imported> {};
+INSTANTIATE_TEST_SUITE_P(
+    , SnapshotTestImported, ::testing::Values(Imported::kTrue, Imported::kFalse));
+
 // Tests that snapshot TTL field is set in snapshots.
-TEST_F(SnapshotTest, SnapshotTtlBasic) {
+TEST_P(SnapshotTestImported, SnapshotTtlBasic) {
   SetupWorkload();
-  auto snapshot_id = CreateSnapshot(5 /* retention_duration_hours */);
+  auto snapshot_id = CreateSnapshot(5 /* retention_duration_hours */, GetParam() /* imported */);
   auto expiry_equals_cb = [this](const TxnSnapshotId& snapshot_id, int32_t expiry_hrs) -> Status {
     ListSnapshotsRequestPB list_req;
     ListSnapshotsResponsePB list_resp;
@@ -561,39 +594,56 @@ TEST_F(SnapshotTest, SnapshotTtlBasic) {
   DeleteSnapshot(snapshot_id);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_default_snapshot_retention_hours) = 12;
   // Default value controlled by gflag should be set.
-  snapshot_id = CreateSnapshot();
+  snapshot_id = CreateSnapshot(
+      std::nullopt /* retention_duration_hours */, GetParam() /* imported */);
   ASSERT_OK(expiry_equals_cb(snapshot_id, FLAGS_default_snapshot_retention_hours));
 }
 
 // Tests that snapshot TTL is honoured and that snapshots get expired.
-TEST_F(SnapshotTest, SnapshotTtl) {
+TEST_P(SnapshotTestImported, SnapshotTtl) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
   // To speed up tests.
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
   SetupWorkload();
   // This will actually be treated as 1000 ms instead of 1000 hours due to the flag.
-  const auto snapshot_id = CreateSnapshot(1000 /* retention_duration_hours */);
+  const auto snapshot_id =
+      CreateSnapshot(1000 /* retention_duration_hours */, GetParam() /* imported */);
   // Give three cycles to the snapshot coordinator to cleanup the snapshot.
   ASSERT_OK(WaitForSnapshotOpDone(
       "IsSnapshotDeleted", snapshot_id,
       MonoDelta::FromMilliseconds(FLAGS_snapshot_coordinator_poll_interval_ms * 3)));
 }
 
-TEST_F(SnapshotTest, SnapshotTtlWithRestart) {
+TEST_P(SnapshotTestImported, SnapshotTtlWithRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
   // To speed up tests.
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
   SetupWorkload();
   // This will actually be treated as 5000 ms instead of 5000 hours due to the flag.
-  const auto snapshot_id = CreateSnapshot(5000 /* retention_duration_hours */);
+  const auto snapshot_id =
+      CreateSnapshot(5000 /* retention_duration_hours */, GetParam() /* imported */);
   // Restart.
   ASSERT_OK(cluster_->RestartSync());
   // Give four cycles to the snapshot coordinator to cleanup the snapshot.
   ASSERT_OK(WaitForSnapshotOpDone(
       "IsSnapshotDeleted", snapshot_id,
       MonoDelta::FromMilliseconds(FLAGS_snapshot_coordinator_poll_interval_ms * 4)));
+}
+
+// Test that snapshots with retention_duration_hours = -1 are not cleaned up.
+TEST_F(SnapshotTest, InfiniteRetentionDuration) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_default_snapshot_retention_hours) = 1;
+
+  SetupWorkload();
+  const auto snapshot_id = CreateSnapshot(-1 /* retention_duration_hours */, Imported::kFalse);
+  // Give three cycles to the snapshot coordinator to try to clean up the snapshot.
+  ASSERT_NOK(WaitForSnapshotOpDone(
+      "IsSnapshotDeleted", snapshot_id,
+      MonoDelta::FromMilliseconds(FLAGS_snapshot_coordinator_poll_interval_ms * 3)));
 }
 
 // Tests that deleted objects are eventually cleaned up even if the client

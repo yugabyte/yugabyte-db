@@ -55,7 +55,10 @@ import ellipsisIcon from '../../common/media/more.svg';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { customPermValidateFunction, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  customPermValidateFunction,
+  RbacValidator
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { Action, Resource } from '../../../redesign/features/rbac';
 import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
@@ -247,7 +250,7 @@ export const UniverseView = (props) => {
           {getUniverseStatusIcon(status)}
           <span>
             {status.text === 'Error' && failedTask
-              ? `${failedTask.type} ${failedTask.target} failed`
+              ? `${failedTask?.type} ${failedTask?.target} failed`
               : status.text}
           </span>
         </div>
@@ -523,26 +526,26 @@ export const UniverseView = (props) => {
   let universes =
     _.isObject(universeList) && isNonEmptyArray(universeList.data)
       ? universeList.data.map((universeBase) => {
-        const universe = _.cloneDeep(universeBase);
-        universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
+          const universe = _.cloneDeep(universeBase);
+          universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
 
-        const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
-        const clusterProviders = props.providers.data.filter((p) =>
-          clusterProviderUUIDs.includes(p.uuid)
-        );
-        universe.providerTypes = clusterProviders.map((provider) => {
-          return getProviderMetadata(provider).name;
-        });
-        universe.providerNames = clusterProviders.map((provider) => provider.name);
+          const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+          const clusterProviders = props.providers.data.filter((p) =>
+            clusterProviderUUIDs.includes(p.uuid)
+          );
+          universe.providerTypes = clusterProviders.map((provider) => {
+            return getProviderMetadata(provider).name;
+          });
+          universe.providerNames = clusterProviders.map((provider) => provider.name);
 
-        const universeStatus = getUniverseStatus(
-          universe,
-          universePendingTasks[universe.universeUUID]
-        );
-        universe.status = universeStatus.state;
-        universe.statusText = universeStatus.state.text;
-        return universe;
-      })
+          const universeStatus = getUniverseStatus(
+            universe,
+            universePendingTasks[universe.universeUUID]
+          );
+          universe.status = universeStatus.state;
+          universe.statusText = universeStatus.state.text;
+          return universe;
+        })
       : [];
 
   const statusFilterTokens = curStatusFilter.map((status) => ({
@@ -581,10 +584,11 @@ export const UniverseView = (props) => {
     });
   }
 
-
-  if (!customPermValidateFunction(() => {
-    return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
-  })) {
+  if (
+    !customPermValidateFunction(() => {
+      return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
+    })
+  ) {
     return getWrappedChildren({});
   }
 

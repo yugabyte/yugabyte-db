@@ -37,6 +37,8 @@
 #include <utility>
 #include <vector>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/perf_level.h"
@@ -63,6 +65,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 
+#include "yb/util/atomic.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"
@@ -255,9 +259,19 @@ CompactionJob::CompactionJob(
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
       file_numbers_provider_(file_numbers_provider),
       table_cache_(std::move(table_cache)),
+      wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>()),
       event_logger_(event_logger),
       paranoid_file_checks_(paranoid_file_checks),
       measure_io_stats_(measure_io_stats) {
+  if (wait_state_) {
+    wait_state_->UpdateMetadata(
+        {.root_request_id = yb::Uuid::Generate(),
+         .query_id = yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForCompaction),
+         .rpc_request_id = job_id_});
+    wait_state_->UpdateAuxInfo({.tablet_id = db_options_.tablet_id, .method = "Compaction"});
+    SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
+    yb::ash::FlushAndCompactionWaitStatesTracker().Track(wait_state_);
+  }
   assert(log_buffer_ != nullptr);
   const auto* cfd = compact_->compaction->column_family_data();
   ReportStartedCompaction(compaction);
@@ -265,6 +279,9 @@ CompactionJob::CompactionJob(
 
 CompactionJob::~CompactionJob() {
   assert(compact_ == nullptr);
+  if (wait_state_) {
+    yb::ash::FlushAndCompactionWaitStatesTracker().Untrack(wait_state_);
+  }
 }
 
 void CompactionJob::ReportStartedCompaction(
@@ -438,6 +455,8 @@ void CompactionJob::GenSubcompactionBoundaries() {
 }
 
 Result<FileNumbersHolder> CompactionJob::Run() {
+  ADOPT_WAIT_STATE(wait_state_);
+  SCOPED_WAIT_STATUS(RocksDB_Compaction);
   DEBUG_ONLY_TEST_SYNC_POINT("CompactionJob::Run():Start");
   log_buffer_->FlushBufferToLog();
   LogCompaction();
@@ -1056,6 +1075,7 @@ void CompactionJob::RecordCompactionIOStats() {
 Status CompactionJob::OpenFile(const std::string table_name, uint64_t file_number,
     const std::string file_type_label, const std::string fname,
     std::unique_ptr<WritableFile>* writable_file) {
+  SCOPED_WAIT_STATUS(RocksDB_OpenFile);
   Status s = NewWritableFile(env_, fname, writable_file, env_options_);
   if (!s.ok()) {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,

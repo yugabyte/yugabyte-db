@@ -58,7 +58,11 @@ class FlushManager {
 
   void HandleFlushTabletsResponse(const FlushRequestId& flush_id,
                                   const TabletServerId& ts_uuid,
-                                  const Status& status);
+                                  const Status& status) EXCLUDES(lock_);
+
+  void HandleFlushTabletsRpcFinish(const FlushRequestId& flush_id,
+                                   const TabletServerId& ts_uuid,
+                                   const Status& status) EXCLUDES(lock_);
 
  private:
   // Start the background task to send the FlushTablets RPC to the Tablet Server.
@@ -69,6 +73,11 @@ class FlushManager {
                                bool is_compaction,
                                bool regular_only,
                                const LeaderEpoch& epoch);
+
+  void UpdateFlushRequestsUnlocked(const FlushRequestId& flush_id,
+                                   const TabletServerId& ts_uuid,
+                                   const Status& status) REQUIRES(lock_);
+
 
   void DeleteCompleteFlushRequests();
 

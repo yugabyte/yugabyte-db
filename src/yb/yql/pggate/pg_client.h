@@ -20,6 +20,7 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/pg_types.h"
@@ -42,11 +43,11 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 struct DdlMode {
   bool has_docdb_schema_changes{false};
+  std::optional<uint32_t> silently_altered_db;
 
   std::string ToString() const;
   void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
@@ -54,7 +55,7 @@ struct DdlMode {
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
-    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
@@ -120,7 +121,8 @@ class PgClient {
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
-               std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata);
+               std::optional<uint64_t> session_id,
+               const YBCPgAshConfig* ash_config);
 
   void Shutdown();
 
@@ -133,7 +135,7 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode = std::nullopt);
+  Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -223,10 +225,31 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
+  Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
+      tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
-  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
       const ReplicationSlotName& slot_name);
+
+  Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
+  Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
+
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id);
+
+  Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
+      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
@@ -242,10 +265,11 @@ class PgClient {
 
   Status CancelTransaction(const unsigned char* transaction_id);
 
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

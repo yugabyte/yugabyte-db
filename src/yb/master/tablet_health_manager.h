@@ -42,12 +42,20 @@ class AreNodesSafeToTakeDownCallbackHandler {
   template <typename T>
   void ReportHealthCheck(const T& resp, const std::string& uuid);
 
-  Result<ReplicaCountMap> WaitForResponses(CoarseTimePoint deadline);
+  // Returns whether we completed within the deadline, and a list of replicas that are still
+  // outstanding.
+  std::pair<bool, ReplicaCountMap> WaitForResponses(CoarseTimePoint deadline);
 
  private:
   const int64_t follower_lag_bound_ms_;
+
+  // The number of replicas that must heartbeat as healthy for this tablet to have quorum.
   ReplicaCountMap required_replicas_ GUARDED_BY(mutex_);
+
+  // The set of servers that have not yet responded to the health check RPCs.
   ServerUuidSet outstanding_rpcs_ GUARDED_BY(mutex_);
+
+  bool returned_ GUARDED_BY(mutex_) = false;
   std::mutex mutex_;
   std::condition_variable_any cv_;
 
@@ -72,15 +80,14 @@ class AreNodesSafeToTakeDownCallbackHandler {
 class AreNodesSafeToTakeDownDriver {
  public:
   AreNodesSafeToTakeDownDriver(
-      const AreNodesSafeToTakeDownRequestPB& req, AreNodesSafeToTakeDownResponsePB* resp,
+      const AreNodesSafeToTakeDownRequestPB& req,
       Master* master, CatalogManagerIf* catalog_manager) :
-      req_(req), resp_(resp), master_(master), catalog_manager_(catalog_manager) {}
+      req_(req), master_(master), catalog_manager_(catalog_manager) {}
 
   Status StartCallAndWait(CoarseTimePoint deadline);
 
  private:
   const AreNodesSafeToTakeDownRequestPB& req_;
-  AreNodesSafeToTakeDownResponsePB* resp_;
   Master* master_;
   CatalogManagerIf* catalog_manager_;
 
@@ -89,6 +96,14 @@ class AreNodesSafeToTakeDownDriver {
 
   Result<std::unordered_map<TabletServerId, std::vector<TabletId>>> FindTserversToContact(
       ReplicaCountMap* required_replicas);
+
+  Status ScheduleTServerTasks(
+      std::unordered_map<TabletServerId, std::vector<TabletId>>&& tservers,
+      std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
+
+  Status ScheduleMasterTasks(
+      std::vector<consensus::RaftPeerPB>&& masters,
+      std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
 };
 
 class TabletHealthManager {

@@ -38,37 +38,85 @@ DROP USER regress_alter_table_user1;
 --- Empty table case
 CREATE TABLE no_pk_tbl(k INT);
 ALTER TABLE no_pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE no_pk_tbl ADD COLUMN v1 SERIAL;
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d no_pk_tbl;
+                                      Table "public.no_pk_tbl"
+ Column |            Type             | Collation | Nullable |                Default                
+--------+-----------------------------+-----------+----------+---------------------------------------
+ k      | integer                     |           |          | 
+ s1     | timestamp without time zone |           |          | clock_timestamp()
+ v1     | integer                     |           | not null | nextval('no_pk_tbl_v1_seq'::regclass)
+
 --- Non-empty case
 INSERT INTO no_pk_tbl VALUES(1), (2), (3);
 ALTER TABLE no_pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE no_pk_tbl ADD COLUMN v2 SERIAL;
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d no_pk_tbl;
+                                      Table "public.no_pk_tbl"
+ Column |            Type             | Collation | Nullable |                Default                
+--------+-----------------------------+-----------+----------+---------------------------------------
+ k      | integer                     |           |          | 
+ s1     | timestamp without time zone |           |          | clock_timestamp()
+ v1     | integer                     |           | not null | nextval('no_pk_tbl_v1_seq'::regclass)
+ s2     | timestamp without time zone |           |          | clock_timestamp()
+ v2     | integer                     |           | not null | nextval('no_pk_tbl_v2_seq'::regclass)
+
 DROP TABLE no_pk_tbl;
 --- Table with primary key index
 --- Empty table case
 CREATE TABLE pk_tbl(k INT PRIMARY KEY);
 ALTER TABLE pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE pk_tbl ADD COLUMN v1 SERIAL;
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d pk_tbl;
+                                      Table "public.pk_tbl"
+ Column |            Type             | Collation | Nullable |              Default               
+--------+-----------------------------+-----------+----------+------------------------------------
+ k      | integer                     |           | not null | 
+ s1     | timestamp without time zone |           |          | clock_timestamp()
+ v1     | integer                     |           | not null | nextval('pk_tbl_v1_seq'::regclass)
+Indexes:
+    "pk_tbl_pkey" PRIMARY KEY, lsm (k HASH)
+
 --- Non-empty case
 INSERT INTO pk_tbl VALUES(1), (2), (3);
 ALTER TABLE pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d pk_tbl;
+                                      Table "public.pk_tbl"
+ Column |            Type             | Collation | Nullable |              Default               
+--------+-----------------------------+-----------+----------+------------------------------------
+ k      | integer                     |           | not null | 
+ s1     | timestamp without time zone |           |          | clock_timestamp()
+ v1     | integer                     |           | not null | nextval('pk_tbl_v1_seq'::regclass)
+ s2     | timestamp without time zone |           |          | clock_timestamp()
+ v2     | integer                     |           | not null | nextval('pk_tbl_v2_seq'::regclass)
+Indexes:
+    "pk_tbl_pkey" PRIMARY KEY, lsm (k HASH)
+
 DROP TABLE pk_tbl;
 -- Verify cache cleanup of table names when TABLE RENAME fails.
 CREATE TABLE rename_test (id int);
@@ -169,10 +217,6 @@ SELECT * FROM foo WHERE e COLLATE "C" < 'hi' ORDER BY e;
  7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
 (1 row)
 
--- Test add column with volatile default value fails.
-ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 -- Test updating columns that have missing default values.
 UPDATE foo SET d = '01-01-2024' WHERE a = 1;
 SELECT * FROM foo ORDER BY a;
@@ -204,10 +248,10 @@ SELECT * FROM foo WHERE b is null;
 
 -- Test expression pushdown on column with default value.
 EXPLAIN SELECT * FROM foo WHERE d = '01-01-2023';
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
  Seq Scan on foo  (cost=0.00..102.50 rows=1000 width=80)
-   Remote Filter: (d = 'Sun Jan 01 00:00:00 2023'::timestamp without time zone)
+   Storage Filter: (d = 'Sun Jan 01 00:00:00 2023'::timestamp without time zone)
 (2 rows)
 
 SELECT * FROM foo WHERE b = 6 ORDER BY a;
@@ -363,3 +407,35 @@ SELECT * FROM foo_part ORDER BY a, b;
 -- null.
 ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;
 ERROR:  column "g" contains null values
+-- Test add column with volatile default value.
+ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+--
+-- Tests for ALTER TABLE ... ADD COLUMN ... UNIQUE
+--
+CREATE TABLE foo_unique(a int);
+INSERT INTO foo_unique VALUES (1), (2), (3);
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE NOT NULL; -- should fail
+ERROR:  column "b" contains null values
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE;
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE DEFAULT 1.0; -- should fail
+ERROR:  duplicate key value violates unique constraint "foo_unique_c_key"
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE NOT NULL DEFAULT random();
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1) DEFAULT random(); -- should fail
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  check constraint "foo_unique_d_check" is violated by some row
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1);
+SELECT a,b,d FROM foo_unique ORDER BY a;
+ a | b | d
+---+---+---
+ 1 |   |
+ 2 |   |
+ 3 |   |
+(3 rows)

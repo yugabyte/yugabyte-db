@@ -13,25 +13,22 @@
 
 #include <chrono>
 
-#include "yb/client/client-internal.h"
-#include "yb/client/session.h"
 #include "yb/client/stateful_services/test_echo_service_client.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -72,6 +69,7 @@ class StatefulServiceTest : public MiniClusterTestWithClient<MiniCluster> {
     ASSERT_EQ(tablet_ids.size(), 1);
     tablet_id_.swap(tablet_ids[0]);
     ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(kTimeout));
+    service_client_ = std::make_unique<client::TestEchoServiceClient>(*client_);
   }
 
   Status VerifyEchoServiceHostedOnAllPeers() {
@@ -91,6 +89,7 @@ class StatefulServiceTest : public MiniClusterTestWithClient<MiniCluster> {
   }
 
   TabletId tablet_id_;
+  std::unique_ptr<client::TestEchoServiceClient> service_client_;
 };
 
 TEST_F(StatefulServiceTest, TestRemoteBootstrap) {
@@ -213,9 +212,6 @@ Status ValidateRowsFromServiceTable(
 }  // namespace
 
 TEST_F(StatefulServiceTest, TestEchoService) {
-  auto service_client =
-      ASSERT_RESULT(cluster_->CreateStatefulServiceClient<client::TestEchoServiceClient>());
-
   auto service_table = std::make_unique<client::TableHandle>();
   ASSERT_OK(service_table->Open(service_table_name, client_.get()));
   auto session = client_->NewSession(kTimeout);
@@ -225,7 +221,7 @@ TEST_F(StatefulServiceTest, TestEchoService) {
   auto message = "Hello World!";
   echo_req.set_message(message);
 
-  auto echo_resp = ASSERT_RESULT(service_client->GetEcho(echo_req, kTimeout));
+  auto echo_resp = ASSERT_RESULT(service_client_->GetEcho(echo_req, kTimeout));
 
   ASSERT_EQ(echo_resp.message(), "Hello World! World! World!");
   auto initial_node_id = echo_resp.node_id();
@@ -236,14 +232,14 @@ TEST_F(StatefulServiceTest, TestEchoService) {
   ASSERT_EQ(echo_resp.node_id(), initial_leader_uuid);
   ASSERT_OK(ValidateRowsFromServiceTable(*service_table, 1, message, initial_leader_uuid));
 
-  auto count_resp = ASSERT_RESULT(service_client->GetEchoCount(count_req, kTimeout));
+  auto count_resp = ASSERT_RESULT(service_client_->GetEchoCount(count_req, kTimeout));
   ASSERT_EQ(count_resp.count(), 1);
 
   initial_leader->Shutdown();
 
   message = "Hungry shark doo";
   echo_req.set_message(message);
-  echo_resp = ASSERT_RESULT(service_client->GetEcho(echo_req, CoarseMonoClock::Now() + kTimeout));
+  echo_resp = ASSERT_RESULT(service_client_->GetEcho(echo_req, CoarseMonoClock::Now() + kTimeout));
 
   ASSERT_EQ(echo_resp.message(), "Hungry shark doo doo doo");
   ASSERT_NE(echo_resp.node_id(), initial_leader_uuid);
@@ -263,26 +259,26 @@ TEST_F(StatefulServiceTest, TestEchoService) {
 
   // We cannot test ValidateRowsFromServiceTable as we dont know which leader which processed the
   // request. Load balancer could have moved the leader before we can find it.
-  count_resp = ASSERT_RESULT(service_client->GetEchoCount(count_req, kTimeout));
+  count_resp = ASSERT_RESULT(service_client_->GetEchoCount(count_req, kTimeout));
   ASSERT_EQ(count_resp.count(), 2);
 
   message = "Anybody there?";
   echo_req.set_message(message);
-  echo_resp = ASSERT_RESULT(service_client->GetEcho(echo_req, kTimeout));
+  echo_resp = ASSERT_RESULT(service_client_->GetEcho(echo_req, kTimeout));
 
   // Make sure the new tablet leader is the one serving the request.
   ASSERT_EQ(echo_resp.message(), "Anybody there? there? there?");
   ASSERT_EQ(echo_resp.node_id(), final_leader_uuid);
   ASSERT_OK(ValidateRowsFromServiceTable(*service_table, 3, message, final_leader_uuid));
 
-  count_resp = ASSERT_RESULT(service_client->GetEchoCount(count_req, kTimeout));
+  count_resp = ASSERT_RESULT(service_client_->GetEchoCount(count_req, kTimeout));
   ASSERT_EQ(count_resp.count(), 3);
 
   ASSERT_OK(initial_leader->Start());
 }
 
 TEST_F(StatefulServiceTest, TestLeadershipChange) {
-  // If the tablet leader changes in the middle of a RPC, but after the write then the RPC should
+  // If the tablet leader changes in the middle of an RPC, but after the write then the RPC should
   // still fail. The StatefulServiceClient should retry the RPC on the new leader such that the
   // client is unaware of the leader change.
   // Note: This will lead to double write in our TestEchoService. If this behavior is undesirable
@@ -295,14 +291,13 @@ TEST_F(StatefulServiceTest, TestLeadershipChange) {
   // This is needed for the Batcher to propagate back the errors to the caller.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
 
-  auto service_client =
-      ASSERT_RESULT(cluster_->CreateStatefulServiceClient<client::TestEchoServiceClient>());
+  auto service_client = client::TestEchoServiceClient(*client_);
   auto service_table = std::make_unique<client::TableHandle>();
   ASSERT_OK(service_table->Open(service_table_name, client_.get()));
 
   stateful_service::GetEchoCountRequestPB count_req;
   stateful_service::GetEchoCountResponsePB count_resp;
-  count_resp = ASSERT_RESULT(service_client->GetEchoCount(count_req, kTimeout));
+  count_resp = ASSERT_RESULT(service_client_->GetEchoCount(count_req, kTimeout));
   ASSERT_EQ(count_resp.count(), 0);
 
   yb::SyncPoint::GetInstance()->LoadDependency(
@@ -326,9 +321,8 @@ TEST_F(StatefulServiceTest, TestLeadershipChange) {
   echo_req.set_message(message);
   auto test_thread_holder = TestThreadHolder();
   Result<stateful_service::GetEchoResponsePB> result = kUninitializedStatus;
-  test_thread_holder.AddThread([&service_client, &echo_req, &result]() {
-    result = service_client->GetEcho(echo_req, kTimeout);
-  });
+  test_thread_holder.AddThread(
+      [this, &echo_req, &result]() { result = service_client_->GetEcho(echo_req, kTimeout); });
 
   TEST_SYNC_POINT("StatefulServiceTest::TestLeadershipChange::BeforeLeaderChange");
   ASSERT_OK(StepDown(leader_peer, std::string() /* new_leader_uuid */, ForceStepDown::kTrue));
@@ -343,7 +337,7 @@ TEST_F(StatefulServiceTest, TestLeadershipChange) {
   ASSERT_GT(attempts, 1);
 
   // We should have logged to the table twice.
-  count_resp = ASSERT_RESULT(service_client->GetEchoCount(count_req, kTimeout));
+  count_resp = ASSERT_RESULT(service_client_->GetEchoCount(count_req, kTimeout));
   ASSERT_EQ(count_resp.count(), 2);
 }
 
@@ -377,8 +371,6 @@ TEST_F(StatefulServiceTest, TestWriteDuringLeadershipChange) {
       });
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
-  auto service_client =
-      ASSERT_RESULT(cluster_->CreateStatefulServiceClient<client::TestEchoServiceClient>());
   auto service_table = std::make_unique<client::TableHandle>();
   ASSERT_OK(service_table->Open(service_table_name, client_.get()));
 
@@ -389,9 +381,8 @@ TEST_F(StatefulServiceTest, TestWriteDuringLeadershipChange) {
   echo_req.set_message("Hello World!");
   auto test_thread_holder = TestThreadHolder();
   Result<stateful_service::GetEchoResponsePB> result = kUninitializedStatus;
-  test_thread_holder.AddThread([&service_client, &echo_req, &result]() {
-    result = service_client->GetEcho(echo_req, kTimeout);
-  });
+  test_thread_holder.AddThread(
+      [this, &echo_req, &result]() { result = service_client_->GetEcho(echo_req, kTimeout); });
 
   TEST_SYNC_POINT("StatefulServiceTest::TestWriteDuringLeadershipChange::BeforeLeaderChange");
   ASSERT_OK(StepDown(leader_peer, std::string() /* new_leader_uuid */, ForceStepDown::kTrue));

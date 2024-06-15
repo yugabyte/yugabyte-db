@@ -4,11 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -23,6 +21,7 @@ import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -70,8 +69,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
   @Inject RuntimeConfGetter confGetter;
 
   @Inject GFlagsAuditHandler gFlagsAuditHandler;
-
-  public static final String rollbackSupportRuntimeFlagPath = "yb.upgrade.enable_rollback_support";
 
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
@@ -147,6 +144,50 @@ public class UpgradeUniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that upgrades YugabyteDB DB version in all nodes. Supports rolling and non-rolling upgrade
+   * of the universe. It also support rollback if upgrade is not finalize.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.20.2.0",
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      notes =
+          "WARNING: This is a preview API that could change. This is a two step DB software version"
+              + " upgrade, Upgrade DB version and then finalize software which would be same as of"
+              + " upgrade software but additionally support rollback before upgrade finalize. ",
+      value = "Upgrade DB version",
+      nickname = "upgradeDBVersion",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "software_upgrade_params",
+          value = "Software Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.SoftwareUpgradeParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result upgradeDBVersion(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::upgradeDBVersion,
+        SoftwareUpgradeParams.class,
+        Audit.ActionType.UpgradeSoftware,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
    * API that finalize YugabyteDB software version upgrade on a universe.
    *
    * @param customerUuid ID of customer
@@ -155,12 +196,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Finalize Upgrade.",
-      notes = "Queues a task to finalize upgrade in a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to finalize upgrade in a"
+              + " universe.",
+      value = "Finalize Upgrade",
       nickname = "finalizeUpgrade",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -195,12 +237,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Rollback Upgrade",
-      notes = "Queues a task to rollback upgrade in a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to rollback upgrade in a"
+              + " universe.",
+      value = "Rollback Upgrade",
       nickname = "rollbackUpgrade",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -392,8 +435,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @return Result indicating the success of the modification operation
    */
   @ApiOperation(
-      value = "YbaApi Internal. Modify Audit Logging Configuration",
-      notes = "Modifies the audit logging configuration for a universe.",
+      notes = "YbaApi Internal. Modifies the audit logging configuration for a universe.",
+      value = "Modify Audit Logging Configuration",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -429,7 +472,12 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @ApiOperation(
       value = "Resize Node",
-      notes = "Queues a task to perform node resize and rolling restart in a universe.",
+      notes =
+          "Queues a task to perform node resize and rolling restart in a universe.<p>This API can"
+              + " be used to change the deviceInfo.volumeSize,"
+              + " masterDeviceInfo.volumeSize,instanceType, masterInstanceType of all the nodes of"
+              + " a Universe simultaneously without moving data from old nodes to new nodes. Refer:"
+              + " https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/edit-universe/#smart-resize",
       nickname = "resizeNode",
       response = YBPTask.class)
   @ApiImplicitParams(
@@ -523,13 +571,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getOrBadRequest(universeUuid, customer);
 
-    // TODO yb.cloud.enabled is redundant here because many tests set it during runtime,
-    // to enable this method in cloud. Clean it up later when the tests are fixed.
-    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
-        && !confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeVmImage)) {
-      throw new PlatformServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
-    }
-
     return requestHandler(
         request,
         upgradeUniverseHandler::upgradeVMImage,
@@ -621,13 +662,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Software Upgrade universe pre-check",
-      notes = "Performs pre-checks and provides pre-upgrade info",
+      notes =
+          "WARNING: This is a preview API that could change. Performs pre-checks and provides"
+              + " pre-upgrade info.",
+      value = "Software Upgrade universe pre-check",
       nickname = "softwareUpgradePreCheck",
       response = SoftwareUpgradeInfoResponse.class)
   @ApiImplicitParams(
@@ -661,12 +702,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Finalize Software Upgrade info",
-      notes = "Provides pre-finalize software upgrade info",
+      notes =
+          "WARNING: This is a preview API that could change. Provides pre-finalize software upgrade"
+              + " info.",
+      value = "Finalize Software Upgrade info",
       nickname = "preFinalizeSoftwareUpgradeInfo",
       response = FinalizeUpgradeInfoResponse.class)
   @AuthzPath({
@@ -715,5 +757,44 @@ public class UpgradeUniverseController extends AuthenticatedController {
             taskUuid,
             additionalDetails);
     return new YBPTask(taskUuid, universe.getUniverseUUID()).asResult();
+  }
+
+  /**
+   * API that updates ProxyConfig in the Universe. Current implementation only updates it in
+   * Universe details.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.3.0")
+  @ApiOperation(
+      value = "Update Proxy Config",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to perform Proxy config"
+              + " update in the Universe details.",
+      nickname = "updateProxyConfig",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "update_proxy_config_params",
+          value = "Update Proxy Config Params",
+          dataType = "com.yugabyte.yw.forms.ProxyConfigUpdateParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result updateProxyConfig(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::updateProxyConfig,
+        ProxyConfigUpdateParams.class,
+        Audit.ActionType.UpdateProxyConfig,
+        customerUuid,
+        universeUuid);
   }
 }

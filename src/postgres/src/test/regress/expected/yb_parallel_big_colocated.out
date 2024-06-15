@@ -1,0 +1,123 @@
+CREATE DATABASE pctest colocation = true;
+\c pctest
+-- large table to ensure multiple parallel ranges
+CREATE TABLE pcustomer (
+    pc_id int primary key,
+    pc_name text,
+    pc_address text,
+    pc_phone text,
+    pc_email text,
+    pc_acctbalance numeric(15,2)) WITH (colocation = true);
+CREATE INDEX on pcustomer(pc_phone ASC);
+INSERT INTO pcustomer
+SELECT i, -- pc_id
+       'Customer #' || i::text, -- pc_name
+       (1234 + i * 2)::text || ' Unknown Str., Some Random City, XX, ' || (567 * i % 89991 + 10001)::text, -- pc_address
+       '(' || (i % 399 + 100)::text || ')' || ((i + 13) % 897 + 101)::text || '-' || ((i + 4321) % 8999 + 1000)::text, -- pc_phone
+       'customer' || i::text || '@example.com', -- pc_email
+       random() * 25000.0 - 10000.0
+FROM generate_series(1, 500000) i;
+ANALYZE pcustomer;
+set yb_parallel_range_rows to 10000;
+set yb_enable_base_scans_cost_model to true;
+EXPLAIN (costs off)
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name = 'Customer #42';
+                        QUERY PLAN
+----------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Seq Scan on pcustomer
+         Storage Filter: (pc_name = 'Customer #42'::text)
+(4 rows)
+
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name = 'Customer #42';
+ pc_id |                   pc_address                   |   pc_phone    |        pc_email
+-------+------------------------------------------------+---------------+------------------------
+    42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com
+(1 row)
+
+-- parallel query in transaction and subtransaction
+BEGIN;
+UPDATE pcustomer SET pc_acctbalance = 0 WHERE pc_id >= 40 AND pc_id < 50;
+EXPLAIN (costs off)
+SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
+                        QUERY PLAN
+-----------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Seq Scan on pcustomer
+         Storage Filter: (pc_name ~~ 'Customer #4_'::text)
+(4 rows)
+
+SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
+ pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance
+-------+--------------+------------------------------------------------+---------------+------------------------+----------------
+    40 | Customer #40 | 1314 Unknown Str., Some Random City, XX, 32681 | (140)154-5361 | customer40@example.com |           0.00
+    41 | Customer #41 | 1316 Unknown Str., Some Random City, XX, 33248 | (141)155-5362 | customer41@example.com |           0.00
+    42 | Customer #42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com |           0.00
+    43 | Customer #43 | 1320 Unknown Str., Some Random City, XX, 34382 | (143)157-5364 | customer43@example.com |           0.00
+    44 | Customer #44 | 1322 Unknown Str., Some Random City, XX, 34949 | (144)158-5365 | customer44@example.com |           0.00
+    45 | Customer #45 | 1324 Unknown Str., Some Random City, XX, 35516 | (145)159-5366 | customer45@example.com |           0.00
+    46 | Customer #46 | 1326 Unknown Str., Some Random City, XX, 36083 | (146)160-5367 | customer46@example.com |           0.00
+    47 | Customer #47 | 1328 Unknown Str., Some Random City, XX, 36650 | (147)161-5368 | customer47@example.com |           0.00
+    48 | Customer #48 | 1330 Unknown Str., Some Random City, XX, 37217 | (148)162-5369 | customer48@example.com |           0.00
+    49 | Customer #49 | 1332 Unknown Str., Some Random City, XX, 37784 | (149)163-5370 | customer49@example.com |           0.00
+(10 rows)
+
+SAVEPOINT svp;
+UPDATE pcustomer SET pc_acctbalance = 100 WHERE pc_id = 42;
+EXPLAIN (costs off)
+SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
+                        QUERY PLAN
+-----------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Seq Scan on pcustomer
+         Storage Filter: (pc_name ~~ 'Customer #4_'::text)
+(4 rows)
+
+SELECT * FROM pcustomer WHERE pc_name LIKE 'Customer #4_';
+ pc_id |   pc_name    |                   pc_address                   |   pc_phone    |        pc_email        | pc_acctbalance
+-------+--------------+------------------------------------------------+---------------+------------------------+----------------
+    40 | Customer #40 | 1314 Unknown Str., Some Random City, XX, 32681 | (140)154-5361 | customer40@example.com |           0.00
+    41 | Customer #41 | 1316 Unknown Str., Some Random City, XX, 33248 | (141)155-5362 | customer41@example.com |           0.00
+    42 | Customer #42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com |         100.00
+    43 | Customer #43 | 1320 Unknown Str., Some Random City, XX, 34382 | (143)157-5364 | customer43@example.com |           0.00
+    44 | Customer #44 | 1322 Unknown Str., Some Random City, XX, 34949 | (144)158-5365 | customer44@example.com |           0.00
+    45 | Customer #45 | 1324 Unknown Str., Some Random City, XX, 35516 | (145)159-5366 | customer45@example.com |           0.00
+    46 | Customer #46 | 1326 Unknown Str., Some Random City, XX, 36083 | (146)160-5367 | customer46@example.com |           0.00
+    47 | Customer #47 | 1328 Unknown Str., Some Random City, XX, 36650 | (147)161-5368 | customer47@example.com |           0.00
+    48 | Customer #48 | 1330 Unknown Str., Some Random City, XX, 37217 | (148)162-5369 | customer48@example.com |           0.00
+    49 | Customer #49 | 1332 Unknown Str., Some Random City, XX, 37784 | (149)163-5370 | customer49@example.com |           0.00
+(10 rows)
+
+COMMIT;
+-- backward scan
+set enable_sort to false;
+EXPLAIN (costs off)
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like 'Customer #4_' ORDER BY pc_phone DESC;
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  Parallel Index Scan Backward using pcustomer_pc_phone_idx on pcustomer
+         Storage Filter: (pc_name ~~ 'Customer #4_'::text)
+(4 rows)
+
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like 'Customer #4_' ORDER BY pc_phone DESC;
+ pc_id |                   pc_address                   |   pc_phone    |        pc_email
+-------+------------------------------------------------+---------------+------------------------
+    49 | 1332 Unknown Str., Some Random City, XX, 37784 | (149)163-5370 | customer49@example.com
+    48 | 1330 Unknown Str., Some Random City, XX, 37217 | (148)162-5369 | customer48@example.com
+    47 | 1328 Unknown Str., Some Random City, XX, 36650 | (147)161-5368 | customer47@example.com
+    46 | 1326 Unknown Str., Some Random City, XX, 36083 | (146)160-5367 | customer46@example.com
+    45 | 1324 Unknown Str., Some Random City, XX, 35516 | (145)159-5366 | customer45@example.com
+    44 | 1322 Unknown Str., Some Random City, XX, 34949 | (144)158-5365 | customer44@example.com
+    43 | 1320 Unknown Str., Some Random City, XX, 34382 | (143)157-5364 | customer43@example.com
+    42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com
+    41 | 1316 Unknown Str., Some Random City, XX, 33248 | (141)155-5362 | customer41@example.com
+    40 | 1314 Unknown Str., Some Random City, XX, 32681 | (140)154-5361 | customer40@example.com
+(10 rows)
+
+reset enable_sort;
+DROP TABLE pcustomer;

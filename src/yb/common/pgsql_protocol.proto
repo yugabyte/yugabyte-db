@@ -221,6 +221,12 @@ message PgsqlWriteRequestPB {
   // Not used with UPDATEs. Use column_new_values to UPDATE a value.
   repeated PgsqlColumnValuePB column_values = 10;
 
+  // Inserted rows in packed format.
+  // Even indexes are used to encode keys, odd indexes are used to encode values.
+  // partition_column_values, range_column_values, ybctid_column_value are ignored if packed rows
+  // are specified.
+  repeated bytes packed_rows = 26;
+
   // If this attribute is present, this request is a batch request.
   repeated PgsqlBatchArgumentPB batch_arguments = 18;
 
@@ -330,16 +336,27 @@ message PgsqlPagingStatePB {
   optional ReadHybridTimePB read_time = 6;
 }
 
-// Backfill instruction.
+// Given: master --chunk--> tserver --batch--> postgres --page--> tserver
+// The backfill spec is updated and passed around for each batch and page.
 message PgsqlBackfillSpecPB {
-  // Limit for each backfill batch. "-1" means no limit.
+  // [batch] Minimum number of table rows to backfill in this batch (see issue #10649).  Stays
+  // constant for each batch and all of its pages.  -1 means no limit.
   optional int64 limit = 1 [default = -1];
 
-  // Accumulated counter is used to check if the number of scanned rows has reached limit.
+  // [page] Number of table rows backfilled so far in this batch.  Updated every page.
   optional int64 count = 2 [default = 0];
 
-  // The next row key to read for backfill. Defined/used similar to how it is used in paging state.
-  // i.e. The row key (SubDocKey = [DocKey + HybridTimestamp]) of the next row to read.
+  // [batch] The next row key to read for a backfill batch.  Defined/used similar to how it is used
+  // in paging state.  All the intermediate pages of the batch have this unset.  An example is
+  // easier to understand:
+  // - tserver --batch--> postgres: next_row_key = FOO
+  //   - postgres --page--> tserver: next_row_key = FOO
+  //   - postgres <--page-- tserver: next_row_key = unset; PgsqlPagingStatePB.next_row_key = BAR
+  //   - postgres --page--> tserver: next_row_key = unset; PgsqlPagingStatePB.next_row_key = BAR
+  //   - postgres <--page-- tserver: next_row_key = unset; PgsqlPagingStatePB.next_row_key = BAZ
+  //   - postgres --page--> tserver: next_row_key = unset; PgsqlPagingStatePB.next_row_key = BAZ
+  //   - postgres <--page-- tserver: next_row_key = QUX; PgsqlPagingStatePB.next_row_key = QUX
+  // - tserver <--batch-- postgres: next_row_key = QUX
   optional bytes next_row_key = 3;
 }
 
@@ -355,8 +372,7 @@ message GetTabletKeyRangesEmbeddedRequestPB {
   optional bytes lower_bound_key = 1;
   optional bytes upper_bound_key = 2;
   optional uint64 range_size_bytes = 3;
-  optional bool is_forward = 4 [ default = true ];
-  optional uint32 max_key_length = 5;
+  optional uint32 max_key_length = 4;
 }
 
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
@@ -526,6 +542,8 @@ message PgsqlReadRequestPB {
   // TODO(get_table_key_ranges): deprecate this field after separate separate GetTabletKeyRanges
   // RPC to the tablet leader is used.
   optional GetTabletKeyRangesEmbeddedRequestPB get_tablet_key_ranges_request = 41;
+
+  optional PgVectorReadOptionsPB vector_idx_options = 42;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -555,6 +573,10 @@ message PgsqlRequestMetricsPB {
   repeated PgsqlRequestCounterMetricPB counter_metrics = 2;
   // Event stats metrics changes as a result of processing the request.
   repeated PgsqlRequestEventMetricPB event_metrics = 3;
+  // Count of table rows scanned as a result of processing the request.
+  optional int64 scanned_table_rows = 4;
+  // Count of secondary index rows scanned as a result of processing the request.
+  optional int64 scanned_index_rows = 5;
 }
 
 // Response from tablet server for both read and write.

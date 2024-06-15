@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.LdapUnivSyncFormData;
 import com.yugabyte.yw.forms.LdapUnivSyncFormData.TargetApi;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -66,24 +67,34 @@ public class DbLdapSync extends UniverseTaskBase {
   }
 
   // get the db state to compare with the ldap state and generate queries
-  private List<String> queryDbAndComputeDiff(boolean isYsql) {
+  private List<String> queryDbAndComputeDiff(boolean isYsql, boolean enableDetailedLogs) {
     LdapUnivSyncFormData ldapUnivSyncFormData = taskParams().ldapUnivSyncFormData;
 
     // query db for user-memberOf mapping
     HashMap<String, List<String>> dbUserMemberOf =
-        queryDb(isYsql, ldapUnivSyncFormData.getDbUser(), ldapUnivSyncFormData.getDbuserPassword());
+        queryDb(
+            isYsql,
+            ldapUnivSyncFormData.getDbUser(),
+            ldapUnivSyncFormData.getDbuserPassword(),
+            enableDetailedLogs);
+    if (enableDetailedLogs) {
+      log.debug("[DB state] user-to-group mapping: {}", dbUserMemberOf);
+    }
 
     List<String> queriesCreate = new ArrayList<>();
     List<String> queriesUsers = new ArrayList<>();
 
     // Queries are generated based on the difference between the ldap groups and db users
     if (ldapUnivSyncFormData.getCreateGroups()) {
-      queriesCreate = computeQueriesCreateGroups(dbUserMemberOf.keySet(), isYsql);
+      log.debug("LDAP groups should be created as part of the sync");
+      queriesCreate =
+          computeQueriesCreateGroups(dbUserMemberOf.keySet(), isYsql, enableDetailedLogs);
     }
 
     // Queries are generated based on the difference between the db users and the ldap users
     queriesUsers =
-        computeQueriesViaDiffUsers(dbUserMemberOf, isYsql, ldapUnivSyncFormData.getExcludeUsers());
+        computeQueriesViaDiffUsers(
+            dbUserMemberOf, isYsql, ldapUnivSyncFormData.getExcludeUsers(), enableDetailedLogs);
 
     List<String> queriesAll = new ArrayList<>();
     queriesAll.addAll(queriesCreate);
@@ -93,7 +104,8 @@ public class DbLdapSync extends UniverseTaskBase {
   }
 
   // query the db for users-memberOf mapping
-  private HashMap<String, List<String>> queryDb(boolean isYsql, String dbUser, String password) {
+  private HashMap<String, List<String>> queryDb(
+      boolean isYsql, String dbUser, String password, boolean enableDetailedLogs) {
     HashMap<String, List<String>> dbUsers = new HashMap<>();
     Universe universe = getUniverse();
     JsonNode respDB;
@@ -101,8 +113,8 @@ public class DbLdapSync extends UniverseTaskBase {
       respDB = ysqlQueryExecutor.runUserDbCommands(YSQL_GET_USERS, "", universe);
     } else {
       RunQueryFormData queryFormData = new RunQueryFormData();
-      queryFormData.query = YCQL_GET_USERS;
-      queryFormData.tableType = TableType.YQL_TABLE_TYPE;
+      queryFormData.setQuery(YCQL_GET_USERS);
+      queryFormData.setTableType(TableType.YQL_TABLE_TYPE);
       respDB = ycqlQueryExecutor.executeQuery(universe, queryFormData, true, dbUser, password);
     }
 
@@ -113,6 +125,9 @@ public class DbLdapSync extends UniverseTaskBase {
 
       if (respDB.has("result") && !respDB.get("result").isEmpty()) {
         ArrayNode result = (ArrayNode) respDB.get("result");
+        if (enableDetailedLogs) {
+          log.debug("DB users retrieved: {}", result);
+        }
         for (JsonNode userGroup : result) {
           String username = userGroup.get("role").asText(null);
           List<String> groups = new ArrayList<>();
@@ -129,7 +144,8 @@ public class DbLdapSync extends UniverseTaskBase {
   }
 
   // generate queries for creating groups
-  public List<String> computeQueriesCreateGroups(Set<String> dbStateUsers, boolean isYsql) {
+  public List<String> computeQueriesCreateGroups(
+      Set<String> dbStateUsers, boolean isYsql, boolean enableDetailedLogs) {
     List<String> queriesCreate = new ArrayList<>();
 
     // diff: ldapGroups - dbUsers : to create the LDAP groups if the createGroups is true
@@ -137,6 +153,9 @@ public class DbLdapSync extends UniverseTaskBase {
         taskParams().ldapGroups.stream()
             .filter(group -> !dbStateUsers.contains(group))
             .collect(Collectors.toList());
+    if (enableDetailedLogs) {
+      log.debug("LDAP groups that are to be created on DB: {}", groupsToCreate);
+    }
 
     for (String group : groupsToCreate) {
       queriesCreate.add(
@@ -149,12 +168,24 @@ public class DbLdapSync extends UniverseTaskBase {
 
   // generate queries based on the difference between the ldapState and the dbState
   public List<String> computeQueriesViaDiffUsers(
-      HashMap<String, List<String>> dbUserMemberOf, boolean isYsql, List<String> excludeUsers) {
+      HashMap<String, List<String>> dbUserMemberOf,
+      boolean isYsql,
+      List<String> excludeUsers,
+      boolean enabledDetailedLogs) {
     List<String> queries = new ArrayList<>();
 
     // diff: dbState - ldapState
     MapDifference<String, List<String>> difference =
         Maps.difference(dbUserMemberOf, taskParams().userToGroup);
+    if (enabledDetailedLogs) {
+      log.debug("Difference between the LDAP state and the DB state: {}", difference);
+      log.debug("User(s) present only on the LDAP: {}", difference.entriesOnlyOnRight());
+      log.debug("User(s) present only on DB: {}", difference.entriesOnlyOnLeft());
+      log.debug(
+          "User(s) present on both the LDAP server and DB but only differs in the groups they"
+              + " belong to: {}",
+          difference.entriesDiffering());
+    }
 
     // the user is present only on the LDAP
     difference
@@ -165,6 +196,9 @@ public class DbLdapSync extends UniverseTaskBase {
             });
 
     // user is present on both ldap and db but only differs in the roles the user belongs to
+    log.debug(
+        "Revoke queries generated for users that are not included in the exclude users list"
+            + " provided..");
     difference
         .entriesDiffering()
         .forEach(
@@ -197,6 +231,9 @@ public class DbLdapSync extends UniverseTaskBase {
             });
 
     // present only on db
+    log.debug(
+        "Drop queries generated for users that are not LDAP groups and not mentioned in exclude"
+            + " users list provided..");
     difference
         .entriesOnlyOnLeft()
         .forEach(
@@ -257,17 +294,21 @@ public class DbLdapSync extends UniverseTaskBase {
     log.info("Started {} sub-task for uuid={}", getName(), taskParams().getUniverseUUID());
     LdapUnivSyncFormData ldapUnivSyncFormData = taskParams().ldapUnivSyncFormData;
     List<String> queries = new ArrayList<>();
+    boolean enableDetailedLogs = confGetter.getGlobalConf(GlobalConfKeys.enableDetailedLogs);
 
     if (ldapUnivSyncFormData.getTargetApi() == TargetApi.ysql) {
-      queries = queryDbAndComputeDiff(true);
+      queries = queryDbAndComputeDiff(true, enableDetailedLogs);
+      if (enableDetailedLogs) {
+        log.debug("[YSQL] Queries generated: {}", queries);
+      }
       ysqlQueryExecutor.runUserDbCommands(StringUtils.join(queries, "\n"), "", getUniverse());
     } else {
-      queries = queryDbAndComputeDiff(false);
+      queries = queryDbAndComputeDiff(false, enableDetailedLogs);
       int i = 0;
       for (String query : queries) {
         RunQueryFormData queryFormData = new RunQueryFormData();
-        queryFormData.query = query;
-        queryFormData.tableType = TableType.YQL_TABLE_TYPE;
+        queryFormData.setQuery(query);
+        queryFormData.setTableType(TableType.YQL_TABLE_TYPE);
         JsonNode resp =
             ycqlQueryExecutor.executeQuery(
                 getUniverse(),
@@ -279,7 +320,9 @@ public class DbLdapSync extends UniverseTaskBase {
         if (resp.has("error")) {
           throw new PlatformServiceException(BAD_REQUEST, resp.get("error").asText());
         }
-        log.debug("Finished YCQL DB Comparison query {} of {}", ++i, queries.size());
+        if (enableDetailedLogs) {
+          log.debug("Finished YCQL DB query {}({} of {})", query, ++i, queries.size());
+        }
       }
     }
   }

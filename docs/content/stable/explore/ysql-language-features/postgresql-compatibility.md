@@ -28,13 +28,11 @@ The following PostgreSQL features are not supported in YugabyteDB:
 | Deferrable constraints | [1709](https://github.com/yugabyte/yugabyte-db/issues/1709)|
 | GiST indexes | [1337](https://github.com/yugabyte/yugabyte-db/issues/1337)|
 | Events (Listen/Notify) | [1872](https://github.com/yugabyte/yugabyte-db/issues/1872)|
-| Drop primary key constraints |[8735](https://github.com/yugabyte/yugabyte-db/issues/8735)|
 | XML Functions | [1043](https://github.com/yugabyte/yugabyte-db/issues/1043)|
 | XA syntax | [11084](https://github.com/yugabyte/yugabyte-db/issues/11084)|
 | ALTER TYPE | [1893](https://github.com/yugabyte/yugabyte-db/issues/1893)|
 | CREATE CONVERSION | [10866](https://github.com/yugabyte/yugabyte-db/issues/10866)|
 | Primary/Foreign key constraints on foreign tables | [10698](https://github.com/yugabyte/yugabyte-db/issues/10698), [10699](https://github.com/yugabyte/yugabyte-db/issues/10699) |
-| LIKE ALL | [10697](https://github.com/yugabyte/yugabyte-db/issues/10697)|
 | GENERATED ALWAYS AS STORED columns | [10695](https://github.com/yugabyte/yugabyte-db/issues/10695)|
 | Multicolumn GIN indexes| [10652](https://github.com/yugabyte/yugabyte-db/issues/10652)|
 | CREATE ACCESS METHOD | [10693](https://github.com/yugabyte/yugabyte-db/issues/10693)|

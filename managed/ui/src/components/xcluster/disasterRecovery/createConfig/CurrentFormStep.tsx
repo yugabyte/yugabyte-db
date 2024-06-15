@@ -5,6 +5,7 @@ import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 
 import { TableSelect, TableSelectProps } from '../../sharedComponents/tableSelect/TableSelect';
+import { ConfirmAlertStep } from '../../sharedComponents/ConfirmAlertStep';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { FormStep } from './CreateConfigModal';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
@@ -57,7 +58,7 @@ export const CurrentFormStep = ({
           </ol>
           <TableSelect {...tableSelectProps} />
           <div className={classes.bannerContainer}>
-            <YBBanner variant={YBBannerVariant.INFO} showBannerIcon={false}>
+            <YBBanner variant={YBBannerVariant.INFO}>
               <Typography variant="body2">
                 <Trans
                   i18nKey={`${TRANSLATION_KEY_PREFIX}.step.selectDatabases.pitrSetUpNote`}
@@ -70,6 +71,8 @@ export const CurrentFormStep = ({
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
       return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
+    case FormStep.CONFIRM_ALERT:
+      return <ConfirmAlertStep isDrInterface={true} sourceUniverse={sourceUniverse} />;
     default:
       return assertUnreachableCase(currentFormStep);
   }

@@ -102,6 +102,7 @@
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
 
 DECLARE_bool(cql_raise_index_where_clause_error);
+DECLARE_bool(ycql_suppress_group_by_error);
 
 namespace yb {
 namespace ql {
@@ -203,6 +204,7 @@ using namespace yb::ql;
 
 #define PARSER_INVALID(loc) parser_->Error(loc, ErrorCode::SQL_STATEMENT_INVALID)
 #define PARSER_UNSUPPORTED(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_SUPPORTED)
+#define PARSER_UNSUPPORTED_MSG(loc, msg) parser_->Error(loc, msg, ErrorCode::FEATURE_NOT_SUPPORTED)
 #define PARSER_NOCODE(loc) parser_->Error(loc, ErrorCode::FEATURE_NOT_YET_IMPLEMENTED)
 
 #define PARSER_CQL_INVALID(loc) parser_->Error(loc, ErrorCode::CQL_STATEMENT_INVALID)
@@ -2522,6 +2524,11 @@ group_clause:
     $$ = nullptr;
   }
   | GROUP_LA BY group_by_list {
+    if(!FLAGS_ycql_suppress_group_by_error)
+      PARSER_UNSUPPORTED_MSG(@1,
+        "This is not recommended but this error can be suppressed by setting " \
+        "ycql_suppress_group_by_error flag to false. When set to false, " \
+        "the error will be suppressed but the GROUP BY clause will be ignored.");
     $$ = $3;
   }
 ;

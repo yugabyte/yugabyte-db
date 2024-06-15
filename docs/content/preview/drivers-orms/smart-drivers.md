@@ -11,6 +11,11 @@ menu:
 type: docs
 ---
 
+{{<tabs>}}
+{{<tabitem href="../smart-drivers/" text="YSQL" icon="postgres" active="true">}}
+{{<tabitem href="../smart-drivers-ycql/" text="YCQL" icon="cassandra" >}}
+{{</tabs>}}
+
 In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports smart drivers, which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
 Yugabyte has developed the following smart drivers for YSQL, available as open source software under the Apache 2.0 license.
@@ -18,10 +23,12 @@ Yugabyte has developed the following smart drivers for YSQL, available as open s
 | GitHub project | Based on | Learn more |
 | :--- | :--- | :--- |
 | [YugabyteDB JDBC Driver for Java](https://github.com/yugabyte/pgjdbc) | PostgreSQL JDBC Driver | [Documentation](../java/yugabyte-jdbc/) |
+| [YugabyteDB R2DBC Driver for Java](https://github.com/yugabyte/r2dbc-postgresql) | [PostgreSQL R2DBC driver](https://github.com/pgjdbc/r2dbc-postgresql) | [Documentation](../java/yb-r2dbc/) |
 | [YugabyteDB PGX Driver for Go](https://github.com/yugabyte/pgx) | jackc/pgx | [Documentation](../go/yb-pgx/) |
 | [YugabyteDB Psycopg2 Driver for Python](https://github.com/yugabyte/psycopg2) | PostgreSQL psycopg2 | [Documentation](../python/yugabyte-psycopg2/) |
 | [YugabyteDB node-postgres Driver for Node.js](https://github.com/yugabyte/node-postgres) | node-postgres | [Documentation](../nodejs/yugabyte-node-driver/) |
 | [YugabyteDB Npgsql Driver for C#](https://github.com/yugabyte/npgsql) | PostgreSQL Npgsql Driver | [Documentation](../csharp/ysql/) |
+| [YugabyteDB Rust-postgres Driver](https://github.com/yugabyte/rust-postgres) | Rust-Postgres Driver | [Documentation](../rust/yb-rust-postgres) |
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 

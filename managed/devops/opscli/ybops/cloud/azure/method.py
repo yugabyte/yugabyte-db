@@ -11,7 +11,7 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
     DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, HardRebootInstancesMethod
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 import logging
 import json
 import glob
@@ -69,6 +69,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="JSON of custom data disk options to merge.")
         self.parser.add_argument("--custom_network_params", default=None,
                                  help="JSON of custom network interface options to merge.")
+        self.parser.add_argument("--ignore_plan", action="store_true", default=False,
+                                 help="Whether or not to skip passing in plan information.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)
@@ -363,3 +365,16 @@ class AzureChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _host_info(self, args, host_info):
         return host_info
+
+
+class AzureQueryCurrentHostMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AzureQueryCurrentHostMethod, self).__init__(base_command, "current-host")
+        # We do not need cloud credentials to query metadata.
+        self.need_validation = False
+
+    def callback(self, args):
+        try:
+            print(json.dumps(self.cloud.get_current_host_info(args)))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps(get_exception_message(ye)))

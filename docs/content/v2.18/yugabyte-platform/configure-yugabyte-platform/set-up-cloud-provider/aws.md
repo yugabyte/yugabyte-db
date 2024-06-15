@@ -95,7 +95,13 @@ Navigate to **Configs > Infrastructure > Amazon Web Services** to see a list of 
 
 To view a provider, select it in the list of AWS Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.18.5, if the provider has been used to create a universe, you can only edit a subset of fields, including the following:
+
+- Provider Name
+- Access Key ID
+- Secret Access Key
+- Regions - You can add regions and zones to an in-use provider.
+Note that you cannot edit existing region details, or delete a region if any of the region's zones are in use. You also cannot delete zones which are in-use.
 
 To view the universes created using the provider, select **Universes**.
 
@@ -202,28 +208,6 @@ For each availability zone in which you wish to be able to deploy in the region,
 1. Click **Add Zone**.
 1. Select the zone.
 1. Enter the Subnet ID to use for the zone. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
-
-<!--
-### Create a new VPC
-
-If you use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Clouds (VPCs), YugabyteDB Anywhere generates a YugabyteDB-specific VPC in each selected region, then interconnects them (including the VPC in which YugabyteDB Anywhere is deployed) using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant sub-components in all regions, such as subnets, security groups, and routing table entries.
-
-You have an option to provide the following:
-
-- A custom CIDR block for each regional VPC. If not provided, YugabyteDB Anywhere chooses defaults, aiming to not overlap across regions.
-
-- A custom AMI ID to use in each region.
-
-  YugabyteDB Anywhere supports x86 and ARM (aarch64) CPU architectures. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
-
-  If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../../supported-os-and-arch/) for a complete list of supported operating systems.
-
-To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YugabyteDB Anywhere enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
-
-#### Limitations
-
-If you create more than one AWS cloud provider with different CIDR block prefixes, your attempt to create a new VPC as part of your [VPC setup](#vpc-setup) will result in a silent failure.
--->
 
 ## Marketplace acceptance
 

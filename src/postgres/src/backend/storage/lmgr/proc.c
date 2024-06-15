@@ -66,6 +66,7 @@ bool		log_lock_waits = false;
 int			RetryMaxBackoffMsecs;
 int			RetryMinBackoffMsecs;
 double		RetryBackoffMultiplier;
+int yb_max_query_layer_retries;
 
 /* Pointer to this process's PGPROC and PGXACT structs, if any */
 PGPROC	   *MyProc = NULL;
@@ -453,7 +454,11 @@ InitProcess(void)
 
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
-	MyProc->yb_ash_metadata.query_id = 0;
+	/*
+	 * TODO(asaha): Update the query_id for catalog calls in circular buffer
+	 * once it's calculated
+	 */
+	MyProc->yb_ash_metadata.query_id = YBCGetQueryIdForCatalogRequests();
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0,
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;

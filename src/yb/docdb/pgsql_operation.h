@@ -47,12 +47,7 @@ class PgsqlWriteOperation :
   PgsqlWriteOperation(std::reference_wrapper<const PgsqlWriteRequestPB> request,
                       DocReadContextPtr doc_read_context,
                       const TransactionOperationContext& txn_op_context,
-                      rpc::Sidecars* sidecars)
-      : DocOperationBase(request),
-        doc_read_context_(std::move(doc_read_context)),
-        txn_op_context_(txn_op_context),
-        sidecars_(sidecars) {
-  }
+                      rpc::Sidecars* sidecars);
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
   Status Init(PgsqlResponsePB* response);
@@ -78,10 +73,6 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
-  Status UpdateIterator(
-      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) final;
-
  private:
   void ClearResponse() override {
     if (response_) {
@@ -102,7 +93,10 @@ class PgsqlWriteOperation :
 
   // Reading current row before operating on it.
   // Returns true if row was present.
-  Result<bool> ReadColumns(const DocOperationApplyData& data, dockv::PgTableRow* table_row);
+  Result<bool> ReadRow(const DocOperationApplyData& data, dockv::PgTableRow* table_row);
+  Result<bool> ReadRow(
+      const DocOperationApplyData& data, const dockv::DocKey& doc_key,
+      dockv::PgTableRow* table_row);
 
   Status PopulateResultSet(const dockv::PgTableRow* table_row);
 
@@ -146,6 +140,7 @@ class PgsqlWriteOperation :
   int64_t result_rows_ = 0;
   WriteBufferPos row_num_pos_;
   WriteBuffer* write_buffer_ = nullptr;
+  const bool ysql_skip_row_lock_for_update_;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {
@@ -235,6 +230,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   PgsqlResponsePB response_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
+  uint64_t scanned_table_rows_ = 0;
+  uint64_t scanned_index_rows_ = 0;
 };
 
 }  // namespace yb::docdb

@@ -8,15 +8,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 const (
 	defaultProviderListing = "table {{.Name}}\t{{.Code}}\t{{.UUID}}" +
-		"\t{{.Status}}\t{{.Regions}}\t{{.SSHUser}}\t{{.SSHPort}}"
+		"\t{{.Regions}}\t{{.SSHUser}}\t{{.SSHPort}}\t{{.Status}}"
 	sshPortHeader = "SSH Port"
 	sshUserHeader = "SSH User"
 
@@ -108,7 +110,17 @@ func (c *Context) Code() string {
 
 // Status fetches the provider usability state
 func (c *Context) Status() string {
-	return c.p.GetUsabilityState()
+	state := c.p.GetUsabilityState()
+	if strings.Compare(state, util.ReadyProviderState) == 0 {
+		return formatter.Colorize("Ready", formatter.GreenColor)
+	}
+	if strings.Compare(state, util.ErrorProviderState) == 0 {
+		return formatter.Colorize("Error", formatter.RedColor)
+	}
+	if strings.Compare(state, util.UpdatingProviderState) == 0 {
+		return formatter.Colorize("Updating", formatter.YellowColor)
+	}
+	return formatter.Colorize("Deleting", formatter.YellowColor)
 }
 
 // Regions fetches the region name + number of regions associated with the provider

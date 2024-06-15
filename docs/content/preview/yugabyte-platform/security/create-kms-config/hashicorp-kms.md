@@ -1,44 +1,44 @@
 ---
 title: Create a KMS configuration using HashiCorp Vault
-headerTitle: Create a KMS configuration using HashiCorp Vault
+headerTitle: Create a KMS configuration
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp Vault.
 menu:
   preview_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-3-hashicorp-kms
-    weight: 27
+    identifier: create-kms-config-4-hashicorp-kms
+    weight: 50
 type: docs
 ---
 
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./aws-kms.md" >}}" class="nav-link">
+    <a href="../aws-kms/" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
     </a>
   </li>
   <li >
-    <a href="{{< relref "./google-kms.md" >}}" class="nav-link">
+    <a href="../google-kms/" class="nav-link">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       Google KMS
     </a>
   </li>
   <li >
-    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+    <a href="../azure-kms/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure Key Vault
     </a>
   </li>
   <li >
-    <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link active">
+    <a href="../hashicorp-kms/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
     </a>
   </li>
 </ul>
-
-Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
 
 Encryption at rest in YugabyteDB Anywhere supports the use of [HashiCorp Vault](https://www.vaultproject.io/) as a KMS.
 
@@ -124,6 +124,10 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
     - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
 
     - `period` — If specified, the token can be infinitely renewed.
+
+    YBA automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
+
+    For more information, refer to [Tokens](https://developer.hashicorp.com/vault/tutorials/tokens/tokens) in the Hashicorp documentation.
 
 1. If you want to use AppRole for authentication, do the following:
 

@@ -32,7 +32,7 @@ The decision to use colocating clusters should be based on the specific requirem
 
 Applications with smaller sized datasets may have the following pattern and requirements:
 
-- The size of the entire dataset is small. Typically, this entire database is less than 500 GB in size.
+- The size of the entire dataset is small. Typically, this entire database is less than 50 GB in size.
 - They require a large number of tables, indexes and other relations created in a single database.
 - Need high availability and/or geographic data distribution.
 - Scaling the dataset or the number of IOPS is not an immediate concern.
@@ -61,7 +61,7 @@ Colocation can be enabled at the cluster, database, or table level. For a coloca
 
 ### Clusters
 
-To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../concepts/yb-master/) and [YB-TServer](../../concepts/yb-tserver/) services as follows:
+To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../yb-master/) and [YB-TServer](../../yb-tserver/) services as follows:
 
 ```sql
 ysql_colocate_database_by_default = true
@@ -97,6 +97,20 @@ You can create a backup of a database that was colocated with the deprecated syn
 
 {{< /warning >}}
 
+To check if a database is colocated or not, you can use the `yb_is_database_colocated` function as follows:
+
+```sql
+select yb_is_database_colocated();
+```
+
+You should see an output similar to the following:
+
+```output
+ yb_is_database_colocated
+--------------------------
+ t
+```
+
 ### Tables
 
 All the tables in a colocated database are colocated by default. There is no need to enable colocation when creating tables. You can choose to opt specific tables out of colocation in a colocated database. To do this, use the following command:
@@ -116,6 +130,20 @@ CREATE TABLE <name> (columns) WITH (colocated = <true|false>)
 ```
 
 {{< /warning >}}
+
+To check if a table is colocated or not, you can use the [`\d`](../../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
+
+```sql
+select is_colocated from yb_table_properties('table_name'::regclass);
+```
+
+You should see an output similar to the following:
+
+```output
+ is_colocated
+--------------
+ f
+```
 
 #### Change table colocation
 
@@ -151,7 +179,7 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-xCluster is supported for colocated tables in v2.18.0 only via [yb-admin](../../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocationid` for a given table needs to match on the source and target universes.
+xCluster is supported for colocated tables and indexes in v2.18.0 only via [yb-admin](../../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocation_id` for a given table or index needs to match on the source and target universes.
 
 To set up xCluster for colocated tables, do the following:
 
@@ -165,6 +193,18 @@ To set up xCluster for colocated tables, do the following:
 
     ```SQL
     CREATE TABLE <name> WITH (COLOCATION = true, COLOCATION_ID = 20000)
+    ```
+
+1. Create the index in the colocated database on the source universe with colocation ID explicitly specified.
+
+    ```SQL
+    CREATE INDEX <index_name> ON TABLE <table_name> WITH (COLOCATION_ID = 20000)
+    ```
+
+1. Create the index in the colocated database on the target universe using the same colocation ID.
+
+    ```SQL
+    CREATE INDEX <index_name> ON TABLE <table_name> WITH (COLOCATION_ID = 20000)
     ```
 
 1. Get the parent table UUID for the colocated database.

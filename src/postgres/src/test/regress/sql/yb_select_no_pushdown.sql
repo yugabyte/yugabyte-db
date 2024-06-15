@@ -168,11 +168,11 @@ EXPLAIN (COSTS FALSE) EXECUTE si_param(0, 0);
 EXECUTE si_param(0, 0);
 DEALLOCATE si_param;
 
--- Index scan with remote filter on a system table
+-- Index scan with storage filter on a system table
 EXPLAIN (COSTS FALSE) SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
 SELECT relname, relkind FROM pg_class WHERE relname LIKE 'pushdown_c%';
 
--- Index scan with remote filter on a range table
+-- Index scan with storage filter on a range table
 CREATE TABLE pushdown_range(k1 text, v1 int, v2 int, primary key(k1 asc)) SPLIT AT VALUES (('2 '), ('3 '), ('4 '), ('5 '), ('6 '), ('7 '), ('8 '), ('9 '));
 INSERT INTO pushdown_range SELECT i::text, i, i FROM  generate_series(1,100) AS i;
 EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_range WHERE k1 IN ('11', '17', '33', '42', '87') AND (v1 = 17 OR v2 = 87);
@@ -207,11 +207,11 @@ INSERT INTO tidxrescan1 VALUES (1,1,2,3), (1,2,4,5);
 INSERT INTO tidxrescan2 VALUES (1,2), (2,2);
 INSERT INTO tidxrescan3 VALUES (1,2), (2,2);
 
-EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan2 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
 
-EXPLAIN SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
+EXPLAIN (COSTS FALSE) SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1;
 SELECT t1.k2, t1.v1, (SELECT t2.v1 FROM tidxrescan3 t2 WHERE t2.k1 = t1.k2 AND t2.v1 = t1.v1) FROM tidxrescan1 t1 WHERE t1.k1 = 1 ORDER BY t1.k2 DESC;
 

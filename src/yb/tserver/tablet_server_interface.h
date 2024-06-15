@@ -15,6 +15,9 @@
 
 #include <future>
 
+#include "yb/ash/wait_state.h"
+
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
 
@@ -31,7 +34,14 @@ namespace yb {
 
 class MemTracker;
 
+namespace server {
+class RpcAndWebServerBase;
+class YCQLStatementStatsProvider;
+}
+
 namespace tserver {
+class PgYCQLStatementStatsRequestPB;
+class PgYCQLStatementStatsResponsePB;
 
 using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
@@ -67,6 +77,15 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status GetLiveTServers(
       std::vector<master::TSInformationPB> *live_tservers) const = 0;
 
+  // Returns connection info of all live tservers available at this server.
+  virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
+      GetRemoteTabletServers() const = 0;
+
+  // Returns connection info for the passed in 'ts_uuids', if available. If unavailable,
+  // returns a bad status.
+  virtual Result<std::vector<client::internal::RemoteTabletServerPtr>>
+      GetRemoteTabletServers(const std::unordered_set<std::string>& ts_uuids) const = 0;
+
   virtual const std::shared_ptr<MemTracker>& mem_tracker() const = 0;
 
   virtual void SetPublisher(rpc::Publisher service) = 0;
@@ -76,6 +95,20 @@ class TabletServerIf : public LocalTabletServer {
   client::YBClient* client() const {
     return client_future().get();
   }
+
+  virtual void SetCQLServer(yb::server::RpcAndWebServerBase* server,
+      server::YCQLStatementStatsProvider* stmt_provider) = 0;
+
+  virtual rpc::Messenger* GetMessenger(ash::Component component) const = 0;
+
+  virtual std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const = 0;
+
+  virtual void ClearAllMetaCachesOnServer() = 0;
+
+  virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+    tserver::PgYCQLStatementStatsResponsePB* resp) const = 0;
+
+  virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const = 0;
 };
 
 } // namespace tserver

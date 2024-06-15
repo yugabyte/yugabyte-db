@@ -21,7 +21,6 @@ export function fetchUniversesList() {
 }
 
 export type UniverseTableFilters = {
-  excludeColocatedTables?: boolean;
   includeParentTableInfo?: boolean;
   xClusterSupportedOnly?: boolean;
 };
@@ -38,27 +37,43 @@ export function fetchTablesInUniverse(
   }
   return Promise.reject('Querying universe tables failed: No universe UUID provided.');
 }
+export interface CreateXClusterConfigRequest {
+  name: string;
+  sourceUniverseUUID: string;
+  targetUniverseUUID: string;
+  configType: XClusterConfigType;
+  tables: string[];
 
-export function createXClusterReplication(
-  targetUniverseUUID: string,
-  sourceUniverseUUID: string,
-  name: string,
-  configType: XClusterConfigType,
-  tables: string[],
   bootstrapParams?: {
     tables: string[];
-    backupRequestParams: any;
-  }
-) {
+    allowBootstrapping: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  };
+}
+
+export interface EditXClusterConfigTablesRequest {
+  tables: string[];
+
+  autoIncludeIndexTables?: boolean;
+  bootstrapParams?: {
+    tables: string[];
+    allowBootstrapping: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  };
+}
+
+export function createXClusterConfig(createxClusterConfigRequest: CreateXClusterConfigRequest) {
   const customerId = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${customerId}/xcluster_configs`, {
-    sourceUniverseUUID,
-    targetUniverseUUID,
-    name,
-    configType,
-    tables,
-    ...(bootstrapParams !== undefined && { bootstrapParams })
-  });
+  return axios
+    .post<YBPTask>(
+      `${ROOT_URL}/customers/${customerId}/xcluster_configs`,
+      createxClusterConfigRequest
+    )
+    .then((response) => response.data);
 }
 
 export function restartXClusterConfig(
@@ -136,16 +151,13 @@ export function editXclusterName(replication: XClusterConfig) {
 
 export function editXClusterConfigTables(
   xClusterUUID: string,
-  tables: string[],
-  bootstrapParams?: {
-    tables: string[];
-    backupRequestParams: any;
-  }
+  { tables, autoIncludeIndexTables, bootstrapParams }: EditXClusterConfigTablesRequest
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
     .put<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-      tables: tables,
+      tables,
+      autoIncludeIndexTables: autoIncludeIndexTables ?? false,
       ...(bootstrapParams !== undefined && { bootstrapParams })
     })
     .then((response) => response.data);

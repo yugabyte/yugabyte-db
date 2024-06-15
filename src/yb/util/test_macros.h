@@ -346,13 +346,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   } while (false)
   /**/
 
-#define ASSERT_QUERY_FAIL(query_exec, expected_failure_substr) \
+#define ASSERT_NOK_STR_CONTAINS(expr, expected_failure_substr) \
   do { \
-    auto&& status = (query_exec); \
-    ASSERT_NOK(status); \
-    ASSERT_STR_CONTAINS(status.ToString(), expected_failure_substr); \
-  } while (false) \
-  /**/
+    auto&& result = (expr); \
+    ASSERT_NOK(result); \
+    ASSERT_STR_CONTAINS(StatusToString(result), expected_failure_substr); \
+  } while (false)
 
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
@@ -381,6 +380,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_TSAN(test_name) test_name
 #endif
 
+#ifdef ADDRESS_SANITIZER
+#define YB_DISABLE_TEST_IN_ASAN(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_IN_ASAN(test_name) test_name
+#endif
+
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 #define YB_DISABLE_TEST_IN_SANITIZERS(test_name) YB_DISABLE_TEST(test_name)
 #else
@@ -403,6 +408,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) YB_DISABLE_TEST(test_name)
 #else
 #define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) test_name
+#endif
+
+#ifdef __linux__
+#define YB_LINUX_ONLY_TEST(test_name) test_name
+#else
+#define YB_LINUX_ONLY_TEST(test_name) YB_DISABLE_TEST(test_name)
 #endif
 
 // Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.

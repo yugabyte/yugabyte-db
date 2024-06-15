@@ -41,6 +41,7 @@
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
+#include "yb/common/opid.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 
@@ -50,7 +51,6 @@
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
-#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
@@ -71,7 +71,7 @@ struct InFlightOpsGroup {
 
 struct InFlightOpsTransactionMetadata {
   TransactionMetadata transaction;
-  boost::optional<SubTransactionMetadata> subtransaction;
+  boost::optional<SubTransactionMetadataPB> subtransaction_pb;
 };
 
 struct InFlightOpsGroupsWithMetadata {
@@ -83,10 +83,9 @@ struct InFlightOpsGroupsWithMetadata {
 
 struct RequestDetails {
   RetryableRequestId min_running_request_id;
-  MicrosTime start_time_micros;
 
-  RequestDetails(RetryableRequestId min_running_request_id_, MicrosTime start_time_micros_) :
-      min_running_request_id(min_running_request_id_), start_time_micros(start_time_micros_) {}
+  explicit RequestDetails(RetryableRequestId min_running_request_id_) :
+      min_running_request_id(min_running_request_id_) {}
 };
 
 using BatcherRequestsMap = std::unordered_map<RetryableRequestId, RequestDetails>;
@@ -99,8 +98,9 @@ class TxnBatcherIf {
 
   // Notifies transaction that specified ops were flushed with some status.
   virtual void Flushed(
-      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-      const Status& status) = 0;
+      const internal::InFlightOps& ops,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb,
+      const ReadHybridTime& used_read_time, const Status& status) = 0;
 
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
@@ -237,6 +237,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   const ClientId& client_id() const;
 
+  MicrosTime rpcs_start_time_micros() const { return rpcs_start_time_micros_; }
+
   server::Clock* Clock() const;
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
@@ -244,8 +246,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   void RequestsFinished();
 
   void RegisterRequest(
-      RetryableRequestId id, RetryableRequestId min_running_id, MicrosTime start_time_micros) {
-    retryable_requests_.emplace(id, RequestDetails(min_running_id, start_time_micros));
+      RetryableRequestId id, RetryableRequestId min_running_id) {
+    retryable_requests_.emplace(id, RequestDetails(min_running_id));
   }
 
   void MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id);
@@ -275,6 +277,22 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // This is a status error string used when there are multiple errors that need to be fetched
   // from the error collector.
   static const std::string kErrorReachingOutToTServersMsg;
+
+  void SetRpcStartTime(MicrosTime rpcs_start_time_micros);
+
+  // When there are retryable failures for a set of ops in a batcher, a 'retry_batcher' is created.
+  // InitFromFailedBatcher is called on the retry batcher to initialize the retry batcher before
+  // executing ::FlushAsync.
+  void InitFromFailedBatcher(const BatcherPtr& failed_batcher, const CollectedErrors& errors);
+
+  void SetSubTransactionMetadataPB(
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+    ops_info_.metadata.subtransaction_pb = subtransaction_pb;
+  }
+
+  const boost::optional<SubTransactionMetadataPB>& GetSubTransactionMetadataPB() const {
+    return ops_info_.metadata.subtransaction_pb;
+  }
 
  private:
   friend class RefCountedThreadSafe<Batcher>;
@@ -367,13 +385,19 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   RejectionScoreSourcePtr rejection_score_source_;
 
   // Map to store retryable request ids used in current batcher.
-  // retryable_request_id => { min_running_request_id, start_time_micros }
+  // retryable_request_id => { min_running_request_id }
   // When creating WriteRpc, new ids will be registered into this map.
   // If the batcher has requests to be retried, request id is removed from current batcher
   // and transmit to the retry batcher.
   // At destruction of the batcher, all request ids in the map will be removed from the client
   // running requests.
   BatcherRequestsMap retryable_requests_;
+
+  // Stores the time at which the read/write rpcs of this batcher are created. 'start_time_micros'
+  // of launched WriteRpc/ReadRpc requests is set to this batcher's 'rpcs_start_time_micros_'.
+  // If the batcher has requests to be retried, this field is copied to the retry batcher, hence
+  // preserving rpc start times across retries.
+  MicrosTime rpcs_start_time_micros_ = 0;
 
   const int64_t leader_term_;
 

@@ -27,6 +27,9 @@ import org.yb.YBTestRunner;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
 
 @RunWith(value=YBTestRunner.class)
 public class TestRoles extends BaseAuthenticationCQLTest {
@@ -658,5 +661,39 @@ public class TestRoles extends BaseAuthenticationCQLTest {
     // Revoke ALL on all roles.
     session.execute(RevokePermissionAllRolesStmt(ALL, roles.get(6)));
     assertPermissionsGranted(session, roles.get(6), canonicalResource, new ArrayList<>());
+  }
+
+  @Test
+  public void testCassandraUserRecreationDisabledOnRestart() throws Exception {
+    String cassandra_user = "cassandra";
+    String superuser2 = "superuser2";
+    String password = "password";
+
+    // Create a new 'superuser2' role (as 'cassandra')
+    createRole(session, superuser2, password, true, true, true);
+
+    // Connect as 'superuser2'.
+    try (ClusterAndSession cs2 = connectWithCredentials(superuser2, password)) {
+    // Verify that second_admin can delete 'cassandra'.
+      cs2.execute(String.format("DROP ROLE %s", cassandra_user));
+    }
+
+    // Verify that we can't connect using the deleted 'cassandra' role.
+    checkConnectivity(true, cassandra_user, cassandra_user, true);
+
+    // Restart the cluster
+    restartYcqlMiniCluster();
+
+    // Verify again after restart that we can't connect using the deleted 'cassandra' role.
+    checkConnectivity(true, cassandra_user, cassandra_user, true);
+
+    // Restart cluster with autoflag disabled
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ycql_allow_cassandra_drop", "false");
+    restartClusterWithMasterFlags(flags);
+
+    // Verify that we can connect as cassandra role as it gets regenerated with flag disabled
+    checkConnectivity(true, cassandra_user, cassandra_user, false);
+    markClusterNeedsRecreation();
   }
 }

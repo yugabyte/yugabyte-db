@@ -33,6 +33,4 @@ public enum IsolationLevel {
     this.pgIsolationLevel = pgIsolationLevel;
     this.sql = sql;
   }
-
-  public final static IsolationLevel DEFAULT = REPEATABLE_READ;
 }

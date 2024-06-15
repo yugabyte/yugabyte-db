@@ -10,8 +10,9 @@ menu:
   preview_faq:
     identifier: faq-api-compatibility
     parent: faq
-    weight: 20
+    weight: 60
 type: docs
+unversioned: true
 rightNav:
   hideH3: true
   hideH4: true
@@ -135,7 +136,7 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 ### Features present in YCQL but not present in CQL
 
 1. Strongly-consistent reads and writes for a single row as an absolute guarantee. This is because YugabyteDB is a Consistent & Partition-tolerant (CP) database as opposed to Apache Cassandra which is an Available & Partition-tolerant (AP) database. [Official Jepsen tests](https://www.yugabyte.com/blog/yugabyte-db-1-2-passes-jepsen-testing/) prove this correctness aspect under extreme failure conditions.
-1. [JSONB](../../develop/learn/data-types/) column type for modeling document data
+1. [JSONB](../../explore/ycql-language/jsonb-ycql) column type for modeling document data.
 1. [Distributed transactions](../../develop/learn/acid-transactions/) for multi-row ACID transactions.
 
 ### Features present in both YCQL and CQL but YCQL provides stricter guarantees

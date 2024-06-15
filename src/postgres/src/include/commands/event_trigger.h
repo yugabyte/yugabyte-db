@@ -33,6 +33,8 @@ typedef struct EventTriggerData
 #define AT_REWRITE_COLUMN_REWRITE		0x04
 #define AT_REWRITE_ALTER_OID			0x08
 
+#define YB_AT_REWRITE_ALTER_PRIMARY_KEY	0x8000
+
 /*
  * EventTriggerData is the node type that is passed as fmgr "context" info
  * when a function is called by the event trigger manager.

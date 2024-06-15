@@ -371,7 +371,7 @@ yb-admin \
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * `include_db_type`: (Optional) Add this flag to include the database type for each table.
-* `include_table_id`: (Optional) Add this flag to include the table ID for each table.
+* `include_table_id`: (Optional) Add this flag to include the unique UUID associated with the table.
 * `include_table_type`: (Optional) Add this flag to include the table type for each table.
 
 Returns tables in the following format, depending on the flags used:
@@ -426,64 +426,56 @@ template1.pg_inherits
 
 Triggers manual compaction on a table.
 
-**Syntax**
+**Syntax 1: Using table name**
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
-    compact_table <keyspace> <table_name> \
-    [timeout_in_seconds] [ADD_INDEXES]
+    -master_addresses <master_addresses> \
+    compact_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
-* *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
-* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_type*: The type of database. Valid values include ysql and ycql.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table*: The name of the table to compact.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the secondary indexes associated with the table. Default is `false`.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    compact_table ycql.kong test
+    -master_addresses $MASTER_RPC_ADDRS \
+    compact_table ysql.yugabyte table_name
 ```
 
 ```output
-Started compaction of table kong.test
-Compaction request id: 75c406c1d2964487985f9c852a8ef2a3
-Waiting for compaction...
-Compaction complete: SUCCESS
+Compacted [yugabyte.table_name] tables.
 ```
 
-#### compact_table_by_id
-
-Triggers manual compaction on a table.
-
-**Syntax**
+**Syntax 2: Using table ID**
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
-    compact_table_by_id <table_id> \
-    [timeout_in_seconds] [ADD_INDEXES]
+    -master_addresses <master_addresses> \
+    compact_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *table_id*: The unique UUID associated with the table to be compacted.
-* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
-* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_id*: The unique UUID associated with the table.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the secondary indexes associated with the table. Default is `false`.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    compact_table_by_id 000033f100003000800000000000410a
+    -master_addresses $MASTER_RPC_ADDRS \
+    compact_table tableid.000033eb000030008000000000004002
 ```
 
 ```output
-Compacted [000033f100003000800000000000410a] tables.
+Compacted [000033eb000030008000000000004002] tables.
 ```
 
 #### modify_table_placement_info
@@ -594,7 +586,7 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *table_id*: The identifier (ID) of the table.
+* *table_id*: The unique UUID associated with the table.
 
 **Example**
 
@@ -605,6 +597,63 @@ yb-admin \
 ```
 
 To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
+
+#### flush_table
+
+Flush the memstores of the specified table on all tablet servers to disk.
+
+**Syntax 1: Using table name**
+
+```sh
+yb-admin \
+    -master_addresses <master_addresses> \
+    flush_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_type*: The type of database. Valid values include ysql and ycql.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table*: The name of the table to flush.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to flush the secondary indexes associated with the table. Default is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    flush_table ysql.yugabyte table_name
+
+```
+
+```output
+Flushed [yugabyte.table_name] tables.
+```
+
+**Syntax 2: Using table ID**
+
+```sh
+yb-admin \
+    -master_addresses <master_addresses> \
+    flush_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_id*: The unique UUID associated with the table.
+* *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to flush the secondary indexes associated with the table. Default is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    flush_table tableid.000033eb000030008000000000004002
+```
+
+```output
+Flushed [000033eb000030008000000000004002] tables.
+```
 
 ---
 
@@ -784,8 +833,8 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: The name of the database or keyspace formatted as <ycql|ysql|yedis>.<keyspace>.
 * *table_name*: The name of the table name.
-* *table_id*: The identifier (ID) of the table.
-* *flush_timeout_in_seconds*: Specifies duration, in seconds, before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
+* *table_id*: The unique UUID associated with the table.
+* *flush_timeout_in_seconds*: Specifies duration (in seconds) before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
 
 When this command runs, a `snapshot_id` is generated and printed.
 
@@ -1944,7 +1993,7 @@ Sets the xCluster role to `STANDBY` or `ACTIVE`.
 yb-admin \
     -master_addresses <master_addresses> \
     change_xcluster_role \
-    <role> 
+    <role>
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
@@ -1968,7 +2017,7 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 yb-admin \
     -master_addresses <target_master_addresses> \
     get_xcluster_safe_time \
-    [include_lag_and_skew] 
+    [include_lag_and_skew]
 ```
 
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -2100,7 +2149,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+* *comma_separated_list_of_table_ids*: Comma-separated list of unique UUIDs associated with the tables (`table_id`).
 
 **Example**
 
@@ -2126,7 +2175,7 @@ Returns the replication status of all consumer streams. If *source_universe_uuid
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <target-master-addresses> \
     get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
@@ -2406,14 +2455,14 @@ yb-admin \
 If the operation is successful you should see output similar to the following:
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 New AutoFlags were promoted. Config version: 2
 ```
 
 OR
 
 ```output
-PromoteAutoFlags status: 
+PromoteAutoFlags status:
 No new AutoFlags to promote
 ```
 

@@ -33,9 +33,9 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
   @Inject
   protected UpdateKubernetesDiskSize(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory,
-      KubernetesManagerFactory kubernetesManagerFactory) {
-    super(baseTaskDependencies, statusUpdaterFactory, kubernetesManagerFactory);
+      KubernetesManagerFactory kubernetesManagerFactory,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, kubernetesManagerFactory, operatorStatusUpdaterFactory);
   }
 
   @Override
@@ -50,9 +50,12 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
       verifyParams(UniverseOpType.EDIT);
       // additional verification about disk size increase is needed here
 
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       preTaskActions();
+      addBasicPrecheckTasks();
 
       // String softwareVersion = userIntent.ybSoftwareVersion;
       // primary and readonly clusters disk resize

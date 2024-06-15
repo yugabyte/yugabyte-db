@@ -54,7 +54,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
@@ -84,6 +84,7 @@ DECLARE_int32(retryable_request_range_time_limit_secs);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_max_background_compactions);
+DECLARE_int32(rocksdb_max_write_buffer_number);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
 DECLARE_int64(db_write_buffer_size);
@@ -145,11 +146,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WaitForTabletLeaders() {
-    const MonoTime deadline = MonoTime::Now() + 10s * kTimeMultiplier;
-    for (const auto& tablet_id : ListTabletIdsForTable(cluster_.get(), table_->id())) {
-      RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster_.get(), tablet_id, deadline));
-    }
-    return Status::OK();
+    return WaitForTableLeaders(cluster_.get(), table_->id(), 10s * kTimeMultiplier);
   }
 
   YBqlWriteOpPtr InsertRow(const YBSessionPtr& session,
@@ -648,7 +645,7 @@ void QLStressTest::VerifyFlushedFrontiers() {
       rocksdb::Options options;
       auto tablet_options = TabletOptions();
       tablet_options.rocksdb_env = db->GetEnv();
-      InitRocksDBOptions(&options, "", nullptr, tablet_options);
+      InitRocksDBOptions(&options, "", "", nullptr, tablet_options);
       std::unique_ptr<rocksdb::DB> checkpoint_db;
       rocksdb::DB* checkpoint_db_raw_ptr = nullptr;
 
@@ -834,7 +831,7 @@ void QLStressTest::AddWriter(
 }
 
 void QLStressTest::TestWriteRejection() {
-  constexpr int kWriters = IsDebug() ? 10 : 20;
+  constexpr int kWriters = kIsDebug ? 10 : 20;
   constexpr int kKeyBase = 10000;
 
   std::array<std::atomic<int>, kWriters> keys;
@@ -1033,6 +1030,7 @@ class QLStressDynamicCompactionPriorityTest : public QLStressTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 160_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_write_buffer_number) = 2;
     QLStressTest::SetUp();
   }
 

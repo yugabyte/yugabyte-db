@@ -19,7 +19,7 @@ dependencyOverrides ++= jacksonOverrides
 
 dependencyOverrides += "com.google.googlejavaformat" % "google-java-format" % "1.17.0"
 
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.11"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.4.14"
 
 // The Play plugin
 addSbtPlugin("org.playframework" % "sbt-plugin" % "3.0.0")
@@ -36,6 +36,11 @@ addSbtPlugin("com.github.sbt" % "sbt-jacoco" % "3.4.0")
 addSbtPlugin("com.github.sbt" % "sbt-eclipse" % "6.0.0")
 
 addSbtPlugin("org.openapitools" % "sbt-openapi-generator" % "5.0.1")
+addSbtPlugin("net.rouly" % "sbt-openapi-style-validator" % "0.0.4")
+
+// Use a newer version of open api generator than the latest available
+// SBT plugin version (defined above) comes packaged with.
+libraryDependencies += "org.openapitools" % "openapi-generator" % "5.1.1"
 
 // Plugin for formatting code.
 addSbtPlugin("com.lightbend.sbt" % "sbt-java-formatter" % "0.8.0")

@@ -20,6 +20,8 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.MaintenanceWindow.SortBy;
+import com.yugabyte.yw.models.MaintenanceWindow.State;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedQuery;
@@ -38,7 +40,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Singleton
 @Slf4j
@@ -210,5 +212,28 @@ public class MaintenanceService {
           .forField("", "can't update missing maintenance window '" + window.getUuid() + "'")
           .throwError();
     }
+  }
+
+  /**
+   * Checks if there is any active maintenance window for the given universe for health check
+   * notifications.
+   *
+   * @param universe
+   * @return true if there is any active maintenance window for the given universe, else false
+   */
+  public boolean isHealthCheckNotificationSuppressedForUniverse(Universe universe) {
+    MaintenanceWindowFilter filter = MaintenanceWindowFilter.builder().state(State.ACTIVE).build();
+    List<MaintenanceWindow> windows = list(filter);
+    for (MaintenanceWindow window : windows) {
+      if ((window.getSuppressHealthCheckNotificationsConfig() != null)
+          && (window.getSuppressHealthCheckNotificationsConfig().isSuppressAllUniverses()
+              || window
+                  .getSuppressHealthCheckNotificationsConfig()
+                  .getUniverseUUIDSet()
+                  .contains(universe.getUniverseUUID()))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -52,12 +52,19 @@ class PgDmlWrite : public PgDml {
 
   Status SetWriteTime(const HybridTime& write_time);
 
+  Status BindRow(uint64_t ybctid, YBCBindColumn* columns, int count);
+
+  bool packed() const {
+    return packed_;
+  }
+
  protected:
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,
              const PgObjectId& table_id,
              bool is_region_local,
-             YBCPgTransactionSetting transaction_setting);
+             YBCPgTransactionSetting transaction_setting,
+             bool packed = false);
 
   // Allocate write request.
   void AllocWriteRequest();
@@ -87,10 +94,14 @@ class PgDmlWrite : public PgDml {
 
   int32_t rows_affected_count_ = 0;
 
+  bool packed_;
+
  private:
   Status DeleteEmptyPrimaryBinds();
 
   virtual PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const = 0;
+
+  Status BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int count);
 };
 
 }  // namespace pggate

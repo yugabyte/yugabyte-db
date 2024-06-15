@@ -36,7 +36,7 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 - QA should be able to alter the `integration_tests` table in the database `dev_database`.
 - DB admins should be able to perform all operations on any database.
 
-The exercise assumes you have [enabled authentication for YSQL](../../enable-authentication/ysql/).
+The exercise assumes you have [enabled authentication for YSQL](../../enable-authentication/authentication-ysql/).
 
 ## 1. Create role hierarchy
 

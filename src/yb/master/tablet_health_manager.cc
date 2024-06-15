@@ -49,6 +49,8 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/callsite_profiling.h"
+#include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -63,6 +65,10 @@ using std::unordered_set;
 using std::vector;
 
 using namespace std::chrono_literals;
+
+DEFINE_RUNTIME_int32(are_nodes_safe_to_take_down_timeout_buffer_ms, 2000, "How much earlier than "
+    "the deadline to return from AreNodesSafeToTakeDown. This allows the caller to receive a "
+    "more readable error instead of a generic timeout error.");
 
 namespace yb {
 namespace master {
@@ -86,7 +92,7 @@ void AreNodesSafeToTakeDownCallbackHandler::ProcessHealthyReplica(const TabletId
 bool AreNodesSafeToTakeDownCallbackHandler::DoneProcessing() {
   // Wake up the main thread if we have processed all RPCs or all tablets have been removed from the
   // map (i.e., all tablets have enough replicas).
-  return outstanding_rpcs_.size() == 0 || required_replicas_.size() == 0;
+  return returned_ || outstanding_rpcs_.size() == 0 || required_replicas_.size() == 0;
 }
 
 template <typename T>
@@ -117,7 +123,7 @@ void AreNodesSafeToTakeDownCallbackHandler::ReportHealthCheck(
   }
 
   if (DoneProcessing()) {
-    cv_.notify_one();
+    YB_PROFILE(cv_.notify_one());
   }
 }
 
@@ -149,14 +155,14 @@ void AreNodesSafeToTakeDownCallbackHandler::ProcessHealthCheck(
 std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler>
 AreNodesSafeToTakeDownCallbackHandler::MakeHandler(
     int64_t follower_lag_bound_ms,
-    const std::unordered_map<TabletServerId, std::vector<TabletId>>& tserver_to_tablets,
+    const std::unordered_map<TabletServerId, std::vector<TabletId>>& tservers_to_tablets,
     const std::vector<consensus::RaftPeerPB>& masters_to_contact,
     ReplicaCountMap required_replicas) {
   ServerUuidSet outstanding_rpcs;
   for (const auto& peer : masters_to_contact) {
     outstanding_rpcs.insert(peer.permanent_uuid());
   }
-  for (const auto& [tserver_uuid, _] : tserver_to_tablets) {
+  for (const auto& [tserver_uuid, _] : tservers_to_tablets) {
     outstanding_rpcs.insert(tserver_uuid);
   }
 
@@ -167,15 +173,13 @@ AreNodesSafeToTakeDownCallbackHandler::MakeHandler(
   return std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler>(handler_ptr);
 }
 
-Result<ReplicaCountMap> AreNodesSafeToTakeDownCallbackHandler::WaitForResponses(
+std::pair<bool, ReplicaCountMap> AreNodesSafeToTakeDownCallbackHandler::WaitForResponses(
     CoarseTimePoint deadline) {
   UniqueLock lock(mutex_);
   bool finished_processing = cv_.wait_until(
       lock, deadline, std::bind(&AreNodesSafeToTakeDownCallbackHandler::DoneProcessing, this));
-  if (!finished_processing) {
-    return STATUS_FORMAT(TimedOut, "Timed out waiting for responses");
-  }
-  return std::move(required_replicas_);
+  returned_ = true;
+  return {finished_processing, std::move(required_replicas_)};
 }
 
 Result<unordered_map<TabletServerId, vector<TabletId>>>
@@ -254,42 +258,57 @@ AreNodesSafeToTakeDownDriver::FindMastersToContact(ReplicaCountMap* required_rep
   return masters_to_contact;
 }
 
+Status AreNodesSafeToTakeDownDriver::ScheduleTServerTasks(
+    std::unordered_map<TabletServerId, std::vector<TabletId>>&& tservers_to_tablets,
+    std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler) {
+  for (auto& [ts_uuid, tablets] : tservers_to_tablets) {
+    VLOG(1) << "Scheduling AsyncTserverTabletHealthTask for tserver " << ts_uuid;
+    auto call = std::make_shared<AsyncTserverTabletHealthTask>(
+        master_, catalog_manager_->AsyncTaskPool(), ts_uuid, std::move(tablets), cb_handler);
+    auto s = catalog_manager_->ScheduleTask(std::move(call));
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
+Status AreNodesSafeToTakeDownDriver::ScheduleMasterTasks(
+    std::vector<consensus::RaftPeerPB>&& masters,
+    std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler) {
+  for (auto& master : masters) {
+    VLOG(1) << "Scheduling AsyncMasterTabletHealthTask for master " << master.permanent_uuid();
+    auto call = std::make_shared<AsyncMasterTabletHealthTask>(
+        master_, catalog_manager_->AsyncTaskPool(), std::move(master), cb_handler);
+    auto s = catalog_manager_->ScheduleTask(std::move(call));
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
 Status AreNodesSafeToTakeDownDriver::StartCallAndWait(CoarseTimePoint deadline) {
   ReplicaCountMap required_replicas;
 
-  const auto tservers_to_tablets = VERIFY_RESULT(FindTserversToContact(&required_replicas));
-  const auto masters_to_contact = VERIFY_RESULT(FindMastersToContact(&required_replicas));
-
+  auto masters_to_contact = VERIFY_RESULT(FindMastersToContact(&required_replicas));
+  auto tservers_to_tablets = VERIFY_RESULT(FindTserversToContact(&required_replicas));
   auto cb_handler = AreNodesSafeToTakeDownCallbackHandler::MakeHandler(
       req_.follower_lag_bound_ms(), tservers_to_tablets, masters_to_contact,
       std::move(required_replicas));
+  RETURN_NOT_OK(ScheduleTServerTasks(std::move(tservers_to_tablets), cb_handler));
+  RETURN_NOT_OK(ScheduleMasterTasks(std::move(masters_to_contact), cb_handler));
 
-  for (auto& [ts_uuid, tablets] : tservers_to_tablets) {
-    auto call = std::make_shared<AsyncTserverTabletHealthTask>(
-        master_, catalog_manager_->AsyncTaskPool(), ts_uuid, tablets, cb_handler);
-    auto s = catalog_manager_->ScheduleTask(call);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
-      return s;
-    }
-  }
-
-  for (auto& master : masters_to_contact) {
-    auto call = std::make_shared<AsyncMasterTabletHealthTask>(
-        master_, catalog_manager_->AsyncTaskPool(), master, cb_handler);
-    auto s = catalog_manager_->ScheduleTask(call);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
-      return s;
-    }
-  }
-
-  auto tablets_missing_replicas = VERIFY_RESULT(cb_handler->WaitForResponses(deadline));
+  auto [finished, tablets_missing_replicas] = (cb_handler->WaitForResponses(deadline));
   if (!tablets_missing_replicas.empty()) {
     auto& [tablet_id, missing_replicas] = *tablets_missing_replicas.begin();
-    return STATUS_FORMAT(IllegalState,
+    std::string msg = finished ? "" : "Timed out waiting for responses. ";
+    msg += Format(
         "$0 tablet(s) would be under-replicated. Example: tablet $1 would be under-replicated by "
-        "$2 replicas", tablets_missing_replicas, tablet_id, missing_replicas);
+        "$2 replicas", tablets_missing_replicas.size(), tablet_id, missing_replicas);
+    return STATUS(IllegalState, msg);
   }
 
   return Status::OK();
@@ -299,8 +318,21 @@ Status TabletHealthManager::AreNodesSafeToTakeDown(
     const AreNodesSafeToTakeDownRequestPB* req, AreNodesSafeToTakeDownResponsePB* resp,
     rpc::RpcContext* rpc) {
   LOG(INFO) << "Processing AreNodesSafeToTakeDown call";
-  AreNodesSafeToTakeDownDriver driver(*req, resp, master_, catalog_manager_);
-  auto status = driver.StartCallAndWait(rpc->GetClientDeadline());
+  AreNodesSafeToTakeDownDriver driver(*req, master_, catalog_manager_);
+
+  // Exit a bit earlier than the actual deadline so we can provide the caller with a readable
+  // explanation, instead of them just getting a generic timeout error.
+  auto adjusted_deadline =
+      rpc->GetClientDeadline() - FLAGS_are_nodes_safe_to_take_down_timeout_buffer_ms * 1ms;
+
+  if (CoarseMonoClock::Now() > adjusted_deadline) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR,
+        STATUS(TimedOut, "Adjusted deadline (deadline minus buffer time) has already been exceeded "
+            " before starting AreNodesSafeToTakeDown check."));
+  }
+
+  auto status = driver.StartCallAndWait(adjusted_deadline);
   if (!status.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);
   }

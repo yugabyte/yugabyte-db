@@ -13,11 +13,11 @@ menu:
 type: docs
 ---
 
-There is a number of security measures that you can implement to protect your YugabyteDB installation.
+Use the following security measures to protect your YugabyteDB installation.
 
 ## Enable authentication
 
-Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
+Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL and YCQL APIs.
 
 For more information, see [Authentication in YugabyteDB](../authentication/).
 
@@ -39,7 +39,7 @@ Ensure that YugabyteDB runs in a trusted network environment, such that:
 
 * Servers running YugabyteDB services are directly accessible only by the servers running the application and database administrators.
 
-* Only servers running applications can connect to YugabyteDB services on the RPC ports. Access to the [YugabyteDB ports](../../deploy/checklist/#default-ports-reference) should be denied to everybody else.
+* Only servers running applications can connect to YugabyteDB services on the RPC ports. Access to the [YugabyteDB ports](../../reference/configuration/default-ports/) should be denied to everybody else.
 
 ### RPC bind interfaces
 
@@ -51,7 +51,7 @@ Limit the interfaces on which YugabyteDB instances listen for incoming connectio
 
 * In Amazon Web Services (AWS), run the YugabyteDB cluster in a separate VPC ([Amazon Virtual Private Network](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html)) and peer this only with VPCs from which database access is required, for example from those VPCs where the application will run.
 
-* Make the security groups assigned to the database servers very restrictive. Ensure that they can communicate with each other on the necessary ports, and expose only the client accessible ports to just the required set of servers. See the [list of YugabyteDB ports](../../deploy/checklist/#default-ports-reference).
+* Make the security groups assigned to the database servers very restrictive. Ensure that they can communicate with each other on the necessary ports, and expose only the client accessible ports to just the required set of servers. See the [list of YugabyteDB ports](../../reference/configuration/default-ports/).
 
 ## Enable encryption in transit
 

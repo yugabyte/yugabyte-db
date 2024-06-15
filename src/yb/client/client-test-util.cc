@@ -92,7 +92,8 @@ namespace {
                    const bool exists) {
     ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
       auto ret = client->TableExists(
-          client::YBTableName(YQL_DATABASE_PGSQL, database_name, table_name));
+          client::YBTableName(YQL_DATABASE_PGSQL, database_name, table_name),
+          true /* skip_hidden */);
       WARN_NOT_OK(ResultToStatus(ret), "TableExists call failed");
       return ret.ok() && ret.get() == exists;
     }, MonoDelta::FromSeconds(timeout_secs),
@@ -195,7 +196,8 @@ std::shared_ptr<YBqlReadOp> CreateReadOp(
 
 Result<string> GetNamespaceIdByNamespaceName(YBClient* client,
                                              const string& namespace_name) {
-  const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
+  const auto namespaces = VERIFY_RESULT(
+      client->ListNamespaces(client::IncludeNonrunningNamespaces::kFalse, YQL_DATABASE_PGSQL));
   for (const auto& ns : namespaces) {
     if (ns.id.name() == namespace_name) {
       return ns.id.id();

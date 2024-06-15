@@ -110,7 +110,10 @@ public class Users extends Model {
     local,
 
     @EnumValue("ldap")
-    ldap;
+    ldap,
+
+    @EnumValue("oidc")
+    oidc;
   }
 
   // A globally unique UUID for the Users.
@@ -155,7 +158,9 @@ public class Users extends Model {
       accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
-  @JsonIgnore private String apiToken;
+  @ApiModelProperty(value = "Hash of API Token")
+  @JsonIgnore
+  private String apiToken;
 
   @JsonIgnore private Long apiTokenVersion = 0L;
 
@@ -218,6 +223,10 @@ public class Users extends Model {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
   }
 
+  public static List<Users> getAll() {
+    return find.query().where().findList();
+  }
+
   public Users() {
     this.setCreationDate(new Date());
   }
@@ -232,7 +241,26 @@ public class Users extends Model {
   public static Users create(
       String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
     try {
-      return createInternal(email, password, role, customerUUID, isPrimary);
+      return createInternal(email, password, role, customerUUID, isPrimary, UserType.local);
+    } catch (DuplicateKeyException pe) {
+      throw new PlatformServiceException(Status.CONFLICT, "User already exists");
+    }
+  }
+
+  /**
+   * Create new Users, we encrypt the password before we store it in the DB
+   *
+   * @return Newly Created Users
+   */
+  public static Users create(
+      String email,
+      String password,
+      Role role,
+      UUID customerUUID,
+      boolean isPrimary,
+      UserType userType) {
+    try {
+      return createInternal(email, password, role, customerUUID, isPrimary, userType);
     } catch (DuplicateKeyException pe) {
       throw new PlatformServiceException(Status.CONFLICT, "User already exists");
     }
@@ -246,14 +274,19 @@ public class Users extends Model {
    */
   public static Users createPrimary(String email, String password, Role role, UUID customerUUID) {
     try {
-      return createInternal(email, password, role, customerUUID, true);
+      return createInternal(email, password, role, customerUUID, true, UserType.local);
     } catch (DuplicateKeyException pe) {
       throw new PlatformServiceException(Status.CONFLICT, "Customer already registered.");
     }
   }
 
   static Users createInternal(
-      String email, String password, Role role, UUID customerUUID, boolean isPrimary) {
+      String email,
+      String password,
+      Role role,
+      UUID customerUUID,
+      boolean isPrimary,
+      UserType userType) {
     Users users = new Users();
     users.setEmail(email.toLowerCase());
     users.setPassword(password);
@@ -261,7 +294,7 @@ public class Users extends Model {
     users.setCreationDate(new Date());
     users.setRole(role);
     users.setPrimary(isPrimary);
-    users.setUserType(UserType.local);
+    users.setUserType(userType);
     users.setLdapSpecifiedRole(false);
     users.save();
     return users;
@@ -357,10 +390,12 @@ public class Users extends Model {
       if (version != null && apiTokenVersion != null && !version.equals(apiTokenVersion)) {
         throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
       }
-      apiToken = UUID.randomUUID().toString();
+      String apiTokenUnhashed = UUID.randomUUID().toString();
+      apiToken = Users.hasher.hash(apiTokenUnhashed);
+
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
-      return apiToken;
+      return apiTokenUnhashed;
     } finally {
       usersLock.releaseLock(uuidToLock);
     }
@@ -377,7 +412,7 @@ public class Users extends Model {
     usersLock.acquireLock(uuidToLock);
     try {
       if (StringUtils.isEmpty(apiToken)) {
-        return upsertApiToken();
+        upsertApiToken();
       }
       return apiToken;
     } finally {
@@ -432,7 +467,13 @@ public class Users extends Model {
     }
 
     try {
-      return find.query().where().eq("apiToken", apiToken).findOne();
+      List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
+      for (Users user : usersList) {
+        if (Users.hasher.isValid(apiToken, user.getApiToken())) {
+          return user;
+        }
+      }
+      return null;
     } catch (Exception e) {
       return null;
     }

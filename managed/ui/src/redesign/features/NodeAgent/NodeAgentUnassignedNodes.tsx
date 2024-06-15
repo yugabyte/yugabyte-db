@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { useMutation } from 'react-query';
 import { NodeAgentAPI } from './api';
 import { NodeAgentData } from './NodeAgentData';
@@ -19,6 +19,7 @@ export const NodeAgentUnassignedNodes: FC<NodeAgentUnassignedNodesProps> = ({
   nodeIPs,
   selectedProvider
 }) => {
+  const [isNodeAgentDeleted, setNodeAgentDeleted] = useState<boolean>(false);
   const [nodeAgentData, setNodeAgentData] = useState<NodeAgentEntities[]>([]);
   const nodeAgentStatusByIPs = useMutation(
     (queryParams) => NodeAgentAPI.fetchNodeAgentByIPs(queryParams),
@@ -44,6 +45,9 @@ export const NodeAgentUnassignedNodes: FC<NodeAgentUnassignedNodesProps> = ({
     needTotalCount: true
   };
 
+  const onNodeAgentDeleted = () => {
+    setNodeAgentDeleted(true);
+  };
   // Call page API when nodeIPs change
   useEffect(() => {
     if (isNonEmptyArray(nodeIPs)) {
@@ -53,16 +57,17 @@ export const NodeAgentUnassignedNodes: FC<NodeAgentUnassignedNodesProps> = ({
 
   // Call page API when provider selected is "All Providers"
   useEffect(() => {
-    if (selectedProvider === MetricConsts.ALL) {
+    if (selectedProvider === MetricConsts.ALL || isNodeAgentDeleted) {
       nodeAgentStatusByIPs.mutateAsync(payload);
     }
-  }, [selectedProvider]);
+  }, [selectedProvider, isNodeAgentDeleted]);
 
   return (
     <NodeAgentData
       isAssignedNodes={false}
       nodeAgentData={nodeAgentData}
       isNodeAgentDebugPage={isNodeAgentDebugPage}
+      onNodeAgentDeleted={onNodeAgentDeleted}
     />
   );
 };

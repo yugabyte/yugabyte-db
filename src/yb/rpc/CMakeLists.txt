@@ -57,6 +57,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES rpc_introspection.proto)
 set(RPC_INTROSPECTION_PROTO_LIBS
+  yb_common_proto
   rpc_header_proto
   protobuf)
 ADD_YB_LIBRARY(rpc_introspection_proto
@@ -97,6 +98,7 @@ set(YRPC_SRCS
     rpc_with_queue.cc
     rpc_util.cc
     scheduler.cc
+    secure.cc
     secure_stream.cc
     serialization.cc
     service_if.cc
@@ -115,6 +117,7 @@ set(YRPC_LIBS
   rpc_header_proto
   rpc_introspection_proto
   snappy
+  yb_ash
   yb_common
   yb_util
   ${OPENSSL_CRYPTO_LIBRARY}

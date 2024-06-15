@@ -26,6 +26,7 @@ from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
                                    change_instance_type, create_instance, delete_vpc, get_client,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
+                                   get_predefined_devices, describe_ami,
                                    query_vpc, update_disk, get_image_arch, get_root_label)
 from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.common.exceptions import YBOpsRecoverableError, YBOpsRuntimeError
@@ -450,6 +451,7 @@ class AwsCloud(AbstractCloud):
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
                 instance_state=instance_state,
+                image_id=data["ImageId"],
                 is_running=True if instance_state == "running" else False
             )
             disks = data.get("BlockDeviceMappings")
@@ -462,11 +464,17 @@ class AwsCloud(AbstractCloud):
             results.append(result)
         return results
 
-    def get_device_names(self, args):
+    def get_device_names(self, args, host_info=None):
         if has_ephemerals(args.instance_type, args.region):
             return []
         else:
-            return get_device_names(args.instance_type, args.num_volumes, args.region)
+            predefined_device_names = []
+            if host_info:
+                ami_id = args.machine_image if args.machine_image else host_info.get("image_id")
+                ami_descr = describe_ami(args.region, ami_id)
+                predefined_device_names = get_predefined_devices(ami_descr)
+            return get_device_names(args.instance_type, args.num_volumes, args.region,
+                                    predefined_device_names)
 
     def get_subnet_cidr(self, args, subnet_id):
         ec2 = boto3.resource('ec2', args.region)
@@ -474,15 +482,6 @@ class AwsCloud(AbstractCloud):
         return subnet.cidr_block
 
     def create_instance(self, args):
-        # If we are configuring second NIC, ensure that this only happens for a
-        # centOS AMI right now.
-        if args.cloud_subnet_secondary:
-            supported_os = ['centos', 'almalinux']
-            ec2 = boto3.resource('ec2', args.region)
-            image = ec2.Image(args.machine_image)
-            if not any(os_type in image.name.lower() for os_type in supported_os):
-                raise YBOpsRuntimeError(
-                    "Second NIC can only be configured for CentOS/Alma right now")
         create_instance(args)
 
     def delete_instance(self, region, instance_id, has_elastic_ip=False):

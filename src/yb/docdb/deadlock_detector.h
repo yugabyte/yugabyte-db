@@ -15,6 +15,7 @@
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
@@ -29,20 +30,108 @@
 namespace yb {
 namespace tablet {
 
-// Structure holding the required data of each blocker transaction.
+// Structure holding the required data of each blocker transaction blocking the waiter request.
 struct BlockerTransactionInfo {
-    TransactionId id;
-    TabletId status_tablet;
-    std::shared_ptr<const SubtxnSetAndPB> blocking_subtxn_info = nullptr;
+  TransactionId id = TransactionId::Nil();
+  TabletId status_tablet;
+  // Using shared ptr here avoids SubtxnSet copy in WaiterInfoEntry::UpdateBlockingData.
+  std::shared_ptr<const SubtxnSet> blocking_subtxn_set;
+
+  bool operator==(const BlockerTransactionInfo& rhs) const {
+    // Multiple requests of a waiter transaction could be blocked on different subtxn(s) of
+    // a blocker transaction. Additionally a blocker transaction could be simultaneously
+    // active at two status tablets in case of txn promotion. Hence compare all fields.
+    const auto& lhs = *this;
+    return YB_STRUCT_EQUALS(id, status_tablet) && *blocking_subtxn_set == *rhs.blocking_subtxn_set;
+  }
+
+  size_t hash_value() const {
+    size_t seed = 0;
+    boost::hash_combine(seed, id);
+    boost::hash_combine(seed, status_tablet);
+    boost::hash_combine(seed, *blocking_subtxn_set);
+    return seed;
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(id, status_tablet, *blocking_subtxn_set);
+  }
 };
 
-using BlockerData = std::vector<BlockerTransactionInfo>;
-using BlockerDataPtr = std::shared_ptr<BlockerData>;
+struct WaitingRequestsInfo {
+  // Map of waiter rpc retryable request id and the time at which it was registered at the
+  // local waiting txn registry.
+  std::unordered_map<int64_t, HybridTime> waiting_requests;
 
-struct WaiterData {
-    HybridTime wait_start_time;
-    BlockerDataPtr blockers;
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(waiting_requests);
+  }
+
+  void UpdateRequests(const WaitingRequestsInfo& old_info) {
+    for (const auto& [id, start_time] : old_info.waiting_requests) {
+      // Ignore updating start time of exisiting request ids, since they are expected to be
+      // the newer ones.
+      waiting_requests.try_emplace(id, start_time);
+    }
+  }
 };
+
+// BlockingInfo struct captures the dependency info of a waiter transaction on a request level
+// granularity. It helps avoids duplication of BlockerTransactionInfo(s) when multiple requests
+// of a waiter could be blocked on the same (blocker_id, subtxn, status_tablet) tuple.
+//
+// Note: For read requests with explicit, conflict resolution code populates the request id as
+// -1. Since we find/create the 'BlockingInfo' for each request based on hash of the tuple above,
+// it wouldn't lead to ovewriting issues even if we receive multiple waiting requests of a waiter
+// txn with id -1 from different tablets (as the request id would get appended to multiple keys
+// of 'BlockingData').
+struct BlockingInfo {
+  BlockerTransactionInfo blocker_txn_info;
+  WaitingRequestsInfo waiting_requests_info;
+  // Indicates whether the blocker is still active i.e. if the blocker txn and the involved
+  // subtxn(s) are still active.
+  mutable std::atomic<bool> is_active{true};
+
+  BlockingInfo(
+      BlockerTransactionInfo&& blocker_txn_info_, WaitingRequestsInfo&& waiting_requests_info_)
+          : blocker_txn_info(std::move(blocker_txn_info_)),
+            waiting_requests_info(std::move(waiting_requests_info_)) {}
+
+  BlockingInfo(const BlockingInfo& other) {
+    blocker_txn_info = other.blocker_txn_info;
+    waiting_requests_info = other.waiting_requests_info;
+    is_active.store(other.is_active);
+  }
+
+  bool operator==(const BlockingInfo& info) const {
+    return blocker_txn_info == info.blocker_txn_info;
+  }
+
+  size_t hash_value() const {
+    return blocker_txn_info.hash_value();
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(blocker_txn_info, waiting_requests_info, is_active);
+  }
+
+  void UpdateWaitingRequestsInfo(const WaitingRequestsInfo& info) {
+    waiting_requests_info.UpdateRequests(info);
+  }
+};
+
+inline std::size_t hash_value(const BlockerTransactionInfo& blocker_txn_info) noexcept {
+  return blocker_txn_info.hash_value();
+}
+
+using BlockingData = boost::multi_index_container<BlockingInfo,
+    boost::multi_index::indexed_by <
+        boost::multi_index::hashed_unique <
+            BOOST_MULTI_INDEX_MEMBER(BlockingInfo, BlockerTransactionInfo, blocker_txn_info)
+        >
+    >
+>;
+using BlockingDataPtr = std::shared_ptr<BlockingData>;
 
 // WaiterInfoEntry stores the wait-for dependencies of a waiter transaction received from a
 // TabletServer. For waiter transactions spanning across tablet servers, we create multiple
@@ -51,8 +140,8 @@ class WaiterInfoEntry {
  public:
   WaiterInfoEntry(
       const TransactionId& txn_id, const std::string& tserver_uuid,
-      const std::shared_ptr<WaiterData>& waiter_data) :
-    txn_id_(txn_id), tserver_uuid_(tserver_uuid), waiter_data_(waiter_data) {}
+      const BlockingDataPtr& blocking_data) :
+    txn_id_(txn_id), tserver_uuid_(tserver_uuid), blocking_data_(blocking_data) {}
 
   const TransactionId& txn_id() const {
     return txn_id_;
@@ -66,17 +155,23 @@ class WaiterInfoEntry {
     return std::pair<const TransactionId, const std::string>(txn_id_, tserver_uuid_);
   }
 
-  const std::shared_ptr<WaiterData>& waiter_data() const {
-    return waiter_data_;
+  const BlockingDataPtr& blocking_data() const {
+    return blocking_data_;
   }
 
-  void ResetWaiterData(const std::shared_ptr<WaiterData>& waiter_data) {
-    waiter_data_ = waiter_data;
+  void ResetBlockingData(const BlockingDataPtr& blocking_data) {
+    blocking_data_ = blocking_data;
+  }
+
+  void UpdateBlockingData(const BlockingDataPtr& old_blocking_data);
+
+  std::string ToString() const {
+    return YB_CLASS_TO_STRING(txn_id, tserver_uuid, *blocking_data);
   }
 
   const TransactionId txn_id_;
   const std::string tserver_uuid_;
-  std::shared_ptr<WaiterData> waiter_data_;
+  BlockingDataPtr blocking_data_;
 };
 
 // Waiters is a multi-indexed container storing WaiterInfoEntry records. The records are indexed
@@ -121,13 +216,16 @@ typedef boost::multi_index_container<WaiterInfoEntry,
 
 // Specification used by the deadlock detector to interact with the transaction coordinator to abort
 // transactions or determine which transactions are no longer running.
-class TransactionAbortController {
+class TransactionStatusController {
  public:
-  virtual void Abort(const TransactionId& transaction_id, TransactionStatusCallback callback) = 0;
   virtual void RemoveInactiveTransactions(Waiters* waiters) = 0;
-  virtual bool IsAnySubtxnActive(const TransactionId& transaction_id,
-                                 const SubtxnSet& subtxn_set) = 0;
-  virtual ~TransactionAbortController() = default;
+  // Returns Aborted status if the blocking probe isn't active anymore, and need not be forwarded.
+  // Else, returns Status::OK().
+  virtual Status CheckProbeActive(
+      const TransactionId& transaction_id, const SubtxnSet& subtxn_set) = 0;
+  virtual std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) = 0;
+  virtual const std::string& LogPrefix() = 0;
+  virtual ~TransactionStatusController() = default;
 };
 
 using DeadlockDetectorRpcCallback = std::function<void(const Status&)>;
@@ -169,7 +267,7 @@ class DeadlockDetector {
  public:
   DeadlockDetector(
       const std::shared_future<client::YBClient*>& client_future,
-      TransactionAbortController* controller,
+      TransactionStatusController* controller,
       const TabletId& status_tablet_id,
       const MetricEntityPtr& metrics);
 
@@ -188,10 +286,6 @@ class DeadlockDetector {
   void TriggerProbes();
 
   void Shutdown();
-
-  // Returns the deadlock status if the given transaction could have been involved in a deadlock.
-  // Returns Status::OK() in all other cases.
-  Status GetTransactionDeadlockStatus(const TransactionId& txn_id);
 
  private:
   class Impl;

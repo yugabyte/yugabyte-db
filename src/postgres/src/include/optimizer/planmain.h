@@ -58,6 +58,8 @@ extern Plan *change_plan_targetlist(Plan *subplan, List *tlist,
 extern Plan *materialize_finished_plan(Plan *subplan);
 extern bool is_projection_capable_path(Path *path);
 extern bool is_projection_capable_plan(Plan *plan);
+extern bool is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo,
+							   bool bitmapindex);
 
 /* External use of these functions is deprecated: */
 extern Sort *make_sort_from_sortclauses(List *sortcls, Plan *lefttree);
@@ -117,6 +119,8 @@ extern bool innerrel_is_unique(PlannerInfo *root,
  * prototypes for plan/setrefs.c
  */
 extern Plan *set_plan_references(PlannerInfo *root, Plan *plan);
+extern Param *find_minmax_agg_replacement_param(PlannerInfo *root,
+												Aggref *aggref);
 extern void record_plan_function_dependency(PlannerInfo *root, Oid funcid);
 extern void extract_query_dependencies(Node *query,
 						   List **relationOids,

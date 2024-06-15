@@ -19,9 +19,9 @@ Read replicas are a read-only extension to the primary cluster. With read replic
 For more information on read replicas and follower reads in YugabyteDB, see the following:
 
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
-- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
+- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/)
 
-You can customize the number of read replicas in the read replica cluster. Multiple replicas ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [RAFT](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover. The number of read replicas can't exceed the number of nodes in the read replica cluster.
+You can customize the number of read replicas in the read replica cluster. Multiple replicas ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [Raft](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover. The number of read replicas can't exceed the number of nodes in the read replica cluster.
 
 You can delete, modify, and scale read replica clusters. Adding or removing nodes incurs a load on the read replica cluster. Perform scaling operations when the cluster isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade performance and increase the length of time of the scaling operation.
 
@@ -49,6 +49,7 @@ Add the `leader_failure_max_missed_heartbeat_periods` configuration flag for YB-
     - Specify the regions where you want to place replicas.
     - Specify the number of nodes and the number of read replicas. The number of nodes must be greater than or equal to the number of replicas.
     - Customize the availability zones if desired.
+    - Choose the Linux version to be provisioned on the nodes of the replica cluster.
     - Configure the instance type to use for your read replica cluster.
     - You can choose to use the same flags as the primary cluster, or set custom flags for the read replica cluster. Read replicas only have YB-TServers. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
 

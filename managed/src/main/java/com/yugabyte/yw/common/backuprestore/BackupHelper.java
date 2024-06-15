@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.UniverseBackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -86,6 +87,7 @@ import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.NamespaceType;
+import org.yb.ybc.ProxyConfig;
 import play.libs.Json;
 
 @Slf4j
@@ -168,6 +170,42 @@ public class BackupHelper {
       throw new PlatformServiceException(
           BAD_REQUEST, "Incremental backup frequency should be lower than full backup frequency.");
     }
+  }
+
+  public UUID createUniverseBackupTask(UUID customerUUID, UniverseBackupRequestParams taskParams) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+
+    if (universe
+        .getConfig()
+        .getOrDefault(Universe.TAKE_BACKUPS, "true")
+        .equalsIgnoreCase("false")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Taking backups on the universe is disabled");
+    }
+
+    if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          CONFLICT,
+          String.format(
+              "Cannot run Backup task since the universe %s is currently in a locked state.",
+              taskParams.getUniverseUUID().toString()));
+    }
+
+    if (taskParams.storageConfigUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
+    }
+
+    CustomerConfig customerConfig =
+        customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
+
+    if (!customerConfig.getState().equals(ConfigState.Active)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
+    }
+
+    return UUID.randomUUID();
+    // change to task response once tasks implementation complete
   }
 
   public UUID createBackupTask(UUID customerUUID, BackupRequestParams taskParams) {
@@ -266,6 +304,10 @@ public class BackupHelper {
               && !Pattern.matches(VALID_OWNER_REGEX, bSI.newOwner)) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Invalid owner rename during restore operation");
+          }
+          if (StringUtils.isBlank(bSI.keyspace)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Restore keyspace cannot be empty/blank");
           }
           if (bSI.backupType != null) {
             if (bSI.backupType.equals(TableType.PGSQL_TABLE_TYPE)
@@ -1059,6 +1101,7 @@ public class BackupHelper {
    */
   public Map<String, YbcBackupResponse> getYbcSuccessMarker(
       CustomerConfig storageConfig, Set<String> storageLocationList, UUID universeUUID) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<String, String> successMarkerStrs = new HashMap<>();
     try {
       storageLocationList.stream()
@@ -1068,10 +1111,15 @@ public class BackupHelper {
                     storageUtilFactory
                         .getStorageUtil(storageConfig.getName())
                         .createDsmCloudStoreSpec(bL, storageConfig.getDataObject());
+                ProxyConfig proxyConfig =
+                    storageUtilFactory
+                        .getStorageUtil(storageConfig.getName())
+                        .createYbcProxyConfig(universe, storageConfig.getDataObject());
                 String taskId = UUID.randomUUID().toString() + "_preflight_success_marker";
                 // Need to assign some namespace type here, real context does not change.
                 BackupServiceTaskCreateRequest smDownloadRequest =
-                    YbcBackupUtil.createDsmRequest(successMarkerCSSpec, taskId, NamespaceType.YCQL);
+                    YbcBackupUtil.createDsmRequest(
+                        successMarkerCSSpec, taskId, NamespaceType.YCQL, proxyConfig);
                 String successMarkerStr =
                     ybcManager.downloadSuccessMarker(smDownloadRequest, universeUUID, taskId);
                 if (StringUtils.isBlank(successMarkerStr)) {
@@ -1110,7 +1158,7 @@ public class BackupHelper {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
           node.cloudInfo.private_ip,
           universe,
-          ybcBackupUtil.getCloudStoreConfigWithProvidedRegions(config, null));
+          ybcBackupUtil.getCloudStoreConfigWithProvidedRegions(config, null, universe));
     }
   }
 
@@ -1134,7 +1182,8 @@ public class BackupHelper {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
           node.cloudInfo.private_ip,
           universe,
-          ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(config, bucketLocationsMap));
+          ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(
+              config, bucketLocationsMap, universe));
     }
   }
 
@@ -1145,13 +1194,16 @@ public class BackupHelper {
     }
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (String successMarkerLoc : successMarkerLocations) {
+      CloudStoreSpec successMarkerCSSpec =
+          storageUtilFactory
+              .getStorageUtil(config.getName())
+              .createDsmCloudStoreSpec(successMarkerLoc, config.getDataObject());
+      ProxyConfig proxyConfig =
+          storageUtilFactory
+              .getStorageUtil(config.getName())
+              .createYbcProxyConfig(universe, config.getDataObject());
       CloudStoreConfig csConfig =
-          CloudStoreConfig.newBuilder()
-              .setDefaultSpec(
-                  storageUtilFactory
-                      .getStorageUtil(config.getName())
-                      .createDsmCloudStoreSpec(successMarkerLoc, config.getDataObject()))
-              .build();
+          YbcBackupUtil.getCloudStoreConfig(successMarkerCSSpec, null, proxyConfig);
       for (NodeDetails node : nodeDetailsList) {
         ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
             node.cloudInfo.private_ip, universe, csConfig);

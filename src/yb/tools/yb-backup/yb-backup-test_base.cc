@@ -12,6 +12,7 @@
 // under the License.
 
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/redis_protocol.pb.h"
 
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -23,7 +24,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_admin.proxy.h"
-
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -31,6 +32,8 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
 
@@ -80,6 +83,10 @@ string YBBackupTestBase::GetTempDir(const string& subdir) {
 }
 
 Status YBBackupTestBase::RunBackupCommand(const vector<string>& args, auto *cluster) {
+  if (UseYbController()) {
+    return tools::RunYbControllerCommand(cluster, *tmp_dir_, args);
+  }
+
   return tools::RunBackupCommand(
       cluster->pgsql_hostport(0), cluster->GetMasterAddresses(),
       cluster->GetTabletServerHTTPAddresses(), *tmp_dir_, args);
@@ -96,6 +103,11 @@ void YBBackupTest::SetUp() {
   snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
   snapshot_util_->SetProxy(&client_->proxy_cache());
   snapshot_util_->SetCluster(cluster_.get());
+
+  // Start Yb Controllers for backup/restore.
+  if (UseYbController()) {
+    CHECK_OK(cluster_->StartYbControllerServers());
+  }
 }
 
 void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
@@ -376,7 +388,8 @@ void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
   }
 
   // Restore into the original "ysql.yugabyte" YSQL DB.
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Check the table data.
   ASSERT_NO_FATALS(RunPsqlCommand(
@@ -459,7 +472,8 @@ void YBBackupTest::DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp)
   }
 
   // Restore into the original "ysql.yugabyte" YSQL DB.
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Check the table data.
   ASSERT_NO_FATALS(RunPsqlCommand(
@@ -560,39 +574,43 @@ void YBBackupTest::TestColocatedDBBackupRestore() {
       {"--backup_location", backup_dir, "--keyspace", "ysql.demo", "create"}));
   LOG(INFO) << "Backup finished";
 
-  // Read the SnapshotInfoPB from the given path.
-  master::SnapshotInfoPB snapshot_info;
-  ASSERT_OK(pb_util::ReadPBContainerFromPath(
-      Env::Default(), JoinPathSegments(backup_dir, "SnapshotInfoPB"), &snapshot_info));
-  LOG(INFO) << "SnapshotInfoPB: " << snapshot_info.ShortDebugString();
+  // YB Controller doesn't write SnapshotInfoPB to the given path
+  if (!UseYbController()) {
+    // Read the SnapshotInfoPB from the given path.
+    master::SnapshotInfoPB snapshot_info;
+    ASSERT_OK(pb_util::ReadPBContainerFromPath(
+        Env::Default(), JoinPathSegments(backup_dir, "SnapshotInfoPB"), &snapshot_info));
+    LOG(INFO) << "SnapshotInfoPB: " << snapshot_info.ShortDebugString();
 
-  // SnapshotInfoPB should contain 1 namespace entry, 1 tablet entry and 11 table entries.
-  // 11 table entries comprise of - 10 entries for the tables created and 1 entry for
-  // the parent colocated table.
-  int32_t num_namespaces = 0, num_tables = 0, num_tablets = 0, num_others = 0;
-  for (const auto& entry : snapshot_info.backup_entries()) {
-    if (entry.entry().type() == master::SysRowEntryType::NAMESPACE) {
-      num_namespaces++;
-    } else if (entry.entry().type() == master::SysRowEntryType::TABLE) {
-      num_tables++;
-    } else if (entry.entry().type() == master::SysRowEntryType::TABLET) {
-      num_tablets++;
-    } else {
-      num_others++;
+    // SnapshotInfoPB should contain 1 namespace entry, 1 tablet entry and 11 table entries.
+    // 11 table entries comprise of - 10 entries for the tables created and 1 entry for
+    // the parent colocated table.
+    int32_t num_namespaces = 0, num_tables = 0, num_tablets = 0, num_others = 0;
+    for (const auto& entry : snapshot_info.backup_entries()) {
+      if (entry.entry().type() == master::SysRowEntryType::NAMESPACE) {
+        num_namespaces++;
+      } else if (entry.entry().type() == master::SysRowEntryType::TABLE) {
+        num_tables++;
+      } else if (entry.entry().type() == master::SysRowEntryType::TABLET) {
+        num_tablets++;
+      } else {
+        num_others++;
+      }
     }
-  }
 
-  ASSERT_EQ(num_namespaces, 1);
-  ASSERT_EQ(num_tablets, 1);
-  ASSERT_EQ(num_tables, 11);
-  ASSERT_EQ(num_others, 0);
-  // Snapshot should be complete.
-  ASSERT_EQ(snapshot_info.entry().state(),
-            master::SysSnapshotEntryPB::State::SysSnapshotEntryPB_State_COMPLETE);
-  // We clear all tablet snapshot entries for backup.
-  ASSERT_EQ(snapshot_info.entry().tablet_snapshots_size(), 0);
-  // We've migrated this field to backup_entries so they are already accounted above.
-  ASSERT_EQ(snapshot_info.entry().entries_size(), 0);
+    ASSERT_EQ(num_namespaces, 1);
+    ASSERT_EQ(num_tablets, 1);
+    ASSERT_EQ(num_tables, 11);
+    ASSERT_EQ(num_others, 0);
+    // Snapshot should be complete.
+    ASSERT_EQ(
+        snapshot_info.entry().state(),
+        master::SysSnapshotEntryPB::State::SysSnapshotEntryPB_State_COMPLETE);
+    // We clear all tablet snapshot entries for backup.
+    ASSERT_EQ(snapshot_info.entry().tablet_snapshots_size(), 0);
+    // We've migrated this field to backup_entries so they are already accounted above.
+    ASSERT_EQ(snapshot_info.entry().entries_size(), 0);
+  }
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));

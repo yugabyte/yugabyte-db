@@ -29,7 +29,7 @@
  * If you increment it, make sure you didn't forget to add a new SQL migration
  * (see pg_yb_migration.dat and src/yb/yql/pgwrapper/ysql_migrations/README.md)
  */
-#define YB_LAST_USED_OID 8064
+#define YB_LAST_USED_OID 8066
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);
@@ -62,5 +62,9 @@ extern Oid GetRowTypeOidFromRelOptions(List *relOptions);
 extern Oid YbGetColocationIdFromRelOptions(List *relOptions);
 
 extern bool YbGetUseInitdbAclFromRelOptions(List *options);
+
+extern bool YbIsSysCatalogTabletRelation(Relation rel);
+extern bool YbIsSysCatalogTabletRelationByIds(Oid relationId, Oid namespaceId,
+											  char *namespace_name);
 
 #endif							/* CATALOG_H */

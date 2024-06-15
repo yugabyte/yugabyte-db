@@ -12,41 +12,55 @@ aliases:
 type: docs
 ---
 
-Starting with v2.16, YugabyteDB follows a new release versioning convention for stable (production-ready) and preview (development) releases. There are three release types: long-term support (LTS), standard-term support (STS), and preview.
+YugabyteDB and YugabyteDB Anywhere have three kinds of releases:
 
-Individual features may also be made available as tech previews or early access, which have different documentation and support standards than general availability features.
+- Stable, with Long-term support (LTS)
+- Stable, with Standard-term support (STS)
+- Preview, with no official support
 
-## Release versioning convention
+Additionally, individual features may also be designated as tech preview or early access, or generally available. These designations indicate the feature maturity level, and provide different levels of documentation and support as described in  [Feature maturity](#feature-maturity).
 
-YugabyteDB follows the [semantic versioning (SemVer)](https://semver.org) convention for numbering release versions, modified slightly to use even and odd minor releases denote stable and development releases, respectively. Release versions follow the versioning format of `MAJOR.MINOR.PATCH.REVISION`, where non-negative integers are used for:
+## Release versioning convention for Stable releases
 
-- `MAJOR` — Includes substantial changes.
-- `MINOR` — Incremented when new features and changes are introduced.
-  - `EVEN` — Stable minor release, intended for production deployments.
-  - `ODD` — Preview minor release, intended for development and testing.
-- `PATCH` — Patches in a stable release (`MAJOR.EVEN.PATCH`) include bug fixes and revisions that do not break backward compatibility. For patches in the preview release series (`MAJOR.ODD.PATCH`), new features and changes are introduced that might break backward compatibility.
-- `REVISION` - Occasionally, a revision is required to address an issue without delay. Most releases are a `.0` revision level.
+YugabyteDB follows the below-described convention for numbering release versions.
 
-Examples are included in the relevant sections below.
+Release versions follow the versioning format of `YYYY.N.MAINTENANCE.PATCH` as follows:
 
-### Stable releases
+- `YYYY.N` - Includes substantial changes, such as new features and possibly incompatible API changes. `YYYY` is the year (for example, 2024). `N` is either 1 or 2 designating either the first release of the year, or the second. Such major releases occur roughly every 6 months. Generally, one of these releases (and its derivative maintenance and patch releases) per year is designated as LTS, and the other is designated as STS.
 
-Releases in LTS (long-term support) and STS (standard-term support) release series, denoted by `MAJOR.EVEN` versioning, introduce fully tested new features and changes added after the last stable release. A stable release series is based on the preceding preview release series. For example, the v2.16 STS release series is based on the v2.15 preview release series.
+- `MAINTENANCE` - Includes releases which occur roughly every 1-2 months.
+  - For YugabyteDB, backward compatible bug fixes are included.
+  - For YugabyteDB Anywhere, functionality may be added in a backward compatible manner.
+
+- `PATCH` - Includes bug fixes and revisions that do not break backward compatibility.
+
+On rare occasions, YugabyteDB may issue a hot fix release. Hot fix releases are for specific point issues, and usually offered only to specific customers. Hot fix releases append an additional number to the release versioning convention as `YYYY.N.MAINTENANCE.PATCH.HOTFIX`.
 
 Features in stable releases are considered to be {{<badge/ga>}} unless marked otherwise.
 
-Patch and revision releases in a stable release series (`MAJOR.EVEN`) include bug fixes and revisions that do not break backward compatibility.
-
 {{< note title="Important" >}}
 
-- Yugabyte supports *production deployments* on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../release-notes/) and [YugabyteDB Anywhere releases](../yba-releases/).
+- Yugabyte supports *production deployments* on stable YugabyteDB releases and upgrades to newer stable releases. For a list of releases and their support timelines, see [YugabyteDB releases](../ybdb-releases/) and [YugabyteDB Anywhere releases](../yba-releases/).
 - For recommendations on which version to use for development and testing, see [Recommended release series for projects](../../releases/#recommended-release-series-for-projects).
 
 {{< /note >}}
 
-### Preview releases
+## Release versioning convention for Preview releases
 
-Releases in the preview release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally introduce new features and changes, and are intended for development, testing, and proof-of-concept projects. The v2.13 preview release series became the basis for the v2.14 LTS release series. **The current preview version is {{< yb-version version="preview" format="">}}**.
+Preview releases, which include features under active development, are recommended for development and testing only.
+
+Preview release versions use the versioning format of `MAJOR.MINOR.PATCH.HOTFIX`, where non-negative integers are used as follows:
+
+- `MAJOR` — Includes substantial changes.
+- `MINOR` — Incremented when new features and changes are introduced. Currently, by convention for historical reasons, the MINOR integer is always odd; thus, successive MINOR releases increment this number by 2 (for example, 23, 25, 27, and so on.)
+- `PATCH` - Patches in the preview release series (`MAJOR.ODD.PATCH`) focus on bug fixes that do not break backward compatibility. At the same time however, new features and changes may be are introduced that might break backward compatibility.
+- `HOTFIX` - On rare occasions, a hot fix is required to address an issue without delay.
+
+Releases in the preview release series, denoted by `MAJOR.ODD` versioning, are under active development and incrementally (with each MINOR release) introduce new features and changes.
+
+Preview releases are the basis from which stable releases are derived. That is, the code base from a preview release is branched, and then hardened to become a stable release. The v2.21 preview release series, for example became the basis for the v2024.1 STS release series.
+
+Note that while most features in a preview release series do appear in the derivative stable release, this cannot be guaranteed; some features may remain internally _disabled_ in the derivative stable release series to allow more time for the feature to be completed.
 
 Features in preview releases are considered to be {{<badge/tp>}} unless marked otherwise.
 
@@ -59,7 +73,7 @@ Patch releases in the preview release series (`MAJOR.ODD.PATCH`) introduce new f
 
 {{< /note >}}
 
-## Feature availability
+## Feature maturity
 
 YugabyteDB features are made available as one of the following:
 
@@ -71,12 +85,12 @@ Changes for EA and GA are always reported in the Release Notes.
 
 | Description | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | Deprecated |
 | :--- | :--- | :--- | :--- | :--- |
-| Contact with Product Team | Y | N | N | N/A
+| Contact with Product Team | Y | Recommended | N | N/A |
 | Changes | Subject to change | Backwards compatible | Backwards compatible | N/A |
 | Support | N | Y | Y | N |
 | SLA | N | Y | Y | Y |
 | SLA (YBM) | N | N | Y | Y |
-| In Release Notes | N | Y | Y | Y |
+| In Release Notes | Y | Y | Y | Y |
 | Availability | By invitation or request | Y | Y | Y |
 | Documentation | Limited | Y | Y | N/A |
 
@@ -96,11 +110,11 @@ Documentation (if provided) for TP features is marked as such.
 
 A feature in Early Access (EA) is new or enhanced functionality made available for you to use.
 
-Code is well tested. Enabling the feature is considered safe. Some of these features are enabled by default.
+Code is well tested. Typically these features are not enabled by default. Enabling the feature is considered safe.
 
-Support for the overall feature will not be dropped, though details may change in incompatible ways in a subsequent GA release.
+Support for the overall feature will not be dropped, though details may change in a subsequent GA release.
 
-Recommended only for non-production use.
+For production use cases, it is recommended to validate the use case with the Yugabyte Product team. Refer to product documentation for specific limitations.
 
 Any bug fixes or improvements are managed and fixed with the same timeline and processes as those in GA.
 
@@ -112,9 +126,9 @@ Documentation for EA features is marked as such.
 
 ### General Availability (GA)
 
-A feature in General Availability (GA) is enabled by default for all customers.
+A feature in General Availability (GA) is enabled and accessible by default for all customers.
 
-GA features are supported by Yugabyte Support, and issues are addressed according to the [release support policy](../#release-support-policy).
+GA features are supported by Yugabyte Support, and issues are addressed according to the [stable release support policy](../#stable-release-support-policy).
 
 Any feature not marked Tech Preview or Early Access should be considered GA.
 

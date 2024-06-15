@@ -5,7 +5,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) < 4000)
    Rows Removed by Filter: 5
 (4 rows)
@@ -18,18 +18,19 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 (2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) < 4000 AND y IN (5, 6); -- this one uses index successfully on master (because it has recheck)
-                               QUERY PLAN
--------------------------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Filter: ((y = ANY ('{5,6}'::integer[])) AND (yb_hash_code(x) < 4000))
-   Rows Removed by Filter: 9
-(3 rows)
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
+   Filter: (yb_hash_code(x) < 4000)
+   Rows Removed by Filter: 1
+(4 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y > 4;
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) = 2675)
    Rows Removed by Filter: 5
 (4 rows)
@@ -72,7 +73,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) < 4000)
    Rows Removed by Filter: 5
 (4 rows)
@@ -85,12 +86,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 (2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) < 4000 AND y IN (5, 6);
-                               QUERY PLAN
--------------------------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Filter: ((y = ANY ('{5,6}'::integer[])) AND (yb_hash_code(x) < 4000))
-   Rows Removed by Filter: 9
-(3 rows)
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
+   Filter: (yb_hash_code(x) < 4000)
+   Rows Removed by Filter: 1
+(4 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y > 4;
                              QUERY PLAN
@@ -106,7 +108,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) < 4000)
    Rows Removed by Filter: 5
 (4 rows)
@@ -129,7 +131,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) = 2675)
    Rows Removed by Filter: 5
 (4 rows)
@@ -139,9 +141,9 @@ CREATE INDEX t_cbrtx_hash_y_hash_idx ON t ((cbrt(x), y) HASH);
 -- Query #2 should use the index
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) < 1.2 AND y < 2;
                                        QUERY PLAN
-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: ((y < 2) AND (cbrt((x)::double precision) < '1.2'::double precision))
+   Storage Filter: ((y < 2) AND (cbrt((x)::double precision) < '1.2'::double precision))
 (2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) = 1 AND y = 1;
@@ -153,16 +155,16 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t W
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) < 1.2 AND y = 1;
                                        QUERY PLAN
-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: ((y = 1) AND (cbrt((x)::double precision) < '1.2'::double precision))
+   Storage Filter: ((y = 1) AND (cbrt((x)::double precision) < '1.2'::double precision))
 (2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) = 1 AND y < 2;
                                       QUERY PLAN
---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: ((y < 2) AND (cbrt((x)::double precision) = '1'::double precision))
+   Storage Filter: ((y < 2) AND (cbrt((x)::double precision) = '1'::double precision))
 (2 rows)
 
 DROP INDEX t_cbrtx_hash_y_hash_idx;
@@ -201,9 +203,9 @@ CREATE INDEX t_cbrtx_hash_y_asc_idx ON t (cbrt(x) HASH, y ASC);
 -- Query #2 and #4 should use the index
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) < 1.2 AND y < 2;
                                        QUERY PLAN
-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: ((y < 2) AND (cbrt((x)::double precision) < '1.2'::double precision))
+   Storage Filter: ((y < 2) AND (cbrt((x)::double precision) < '1.2'::double precision))
 (2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) = 1 AND y = 1;
@@ -215,9 +217,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t W
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) < 1.2 AND y = 1;
                                        QUERY PLAN
-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: ((y = 1) AND (cbrt((x)::double precision) < '1.2'::double precision))
+   Storage Filter: ((y = 1) AND (cbrt((x)::double precision) < '1.2'::double precision))
 (2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) = 1 AND y < 2;
@@ -232,9 +234,9 @@ CREATE INDEX t_y_hash_cbrtx_asc_idx ON t (y HASH, cbrt(x) ASC);
 -- Query #2 and #3 should use the index
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) < 1.2 AND y < 2;
                                        QUERY PLAN
-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: ((y < 2) AND (cbrt((x)::double precision) < '1.2'::double precision))
+   Storage Filter: ((y < 2) AND (cbrt((x)::double precision) < '1.2'::double precision))
 (2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) = 1 AND y = 1;
@@ -253,9 +255,9 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t W
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(x), y FROM t WHERE cbrt(x) = 1 AND y < 2;
                                       QUERY PLAN
---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: ((y < 2) AND (cbrt((x)::double precision) = '1'::double precision))
+   Storage Filter: ((y < 2) AND (cbrt((x)::double precision) = '1'::double precision))
 (2 rows)
 
 DROP INDEX t_y_hash_cbrtx_asc_idx;
@@ -265,32 +267,34 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) < 4000)
    Rows Removed by Filter: 5
 (4 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
-                               QUERY PLAN
--------------------------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Filter: ((y = ANY ('{5,6}'::integer[])) AND (yb_hash_code(x) = 2675))
-   Rows Removed by Filter: 9
-(3 rows)
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
+   Filter: (yb_hash_code(x) = 2675)
+   Rows Removed by Filter: 1
+(4 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) < 4000 AND y IN (5, 6);
-                               QUERY PLAN
--------------------------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Filter: ((y = ANY ('{5,6}'::integer[])) AND (yb_hash_code(x) < 4000))
-   Rows Removed by Filter: 9
-(3 rows)
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
+   Filter: (yb_hash_code(x) < 4000)
+   Rows Removed by Filter: 1
+(4 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y > 4;
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) = 2675)
    Rows Removed by Filter: 5
 (4 rows)
@@ -323,7 +327,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) < 4000)
    Rows Removed by Filter: 5
 (4 rows)
@@ -352,7 +356,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
               QUERY PLAN
 ---------------------------------------
  Seq Scan on t (actual rows=1 loops=1)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
    Filter: (yb_hash_code(x) = 2675)
    Rows Removed by Filter: 5
 (4 rows)
@@ -408,7 +412,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 -------------------------------------------------------------------
  Index Scan using t_x_hash_y_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 4000)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
 (3 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
@@ -416,7 +420,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 -------------------------------------------------------------------
  Index Scan using t_x_hash_y_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) = 2675)
-   Filter: (y = ANY ('{5,6}'::integer[]))
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
 (3 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) < 4000 AND y IN (5, 6);
@@ -424,7 +428,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 -------------------------------------------------------------------
  Index Scan using t_x_hash_y_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 4000)
-   Filter: (y = ANY ('{5,6}'::integer[]))
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
 (3 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y > 4;
@@ -432,7 +436,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 -------------------------------------------------------------------
  Index Scan using t_x_hash_y_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) = 2675)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
 (3 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), yb_hash_code(y) FROM t WHERE yb_hash_code(x) < 4000 AND yb_hash_code(y) > 4;
@@ -486,7 +490,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 --------------------------------------------------------------------
  Index Scan using t_x_hash_yz_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 4000)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
 (3 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
@@ -494,7 +498,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 --------------------------------------------------------------------
  Index Scan using t_x_hash_yz_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) = 2675)
-   Filter: (y = ANY ('{5,6}'::integer[]))
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
 (3 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) < 4000 AND y IN (5, 6);
@@ -502,7 +506,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 --------------------------------------------------------------------
  Index Scan using t_x_hash_yz_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) < 4000)
-   Filter: (y = ANY ('{5,6}'::integer[]))
+   Storage Filter: (y = ANY ('{5,6}'::integer[]))
 (3 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y > 4;
@@ -510,7 +514,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x), y 
 --------------------------------------------------------------------
  Index Scan using t_x_hash_yz_hashcode on t (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) = 2675)
-   Remote Filter: (y > 4)
+   Storage Filter: (y > 4)
 (3 rows)
 
 -- These should all be able to use the index

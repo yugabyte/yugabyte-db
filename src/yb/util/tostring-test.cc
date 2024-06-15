@@ -14,8 +14,11 @@
 //
 
 #include <deque>
+#include <functional>
 #include <list>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -50,16 +53,18 @@ void CheckInt(T t) {
   CheckPlain<T>(std::numeric_limits<T>::max());
 }
 
+template<TypeForToStringAsPointer T>
+std::string PointerValueAsString(const T& t) {
+  std::stringstream ss;
+  ss << "0x" << std::setw(sizeof(void *) * 2) << std::setfill('0') << std::setbase(16)
+     << reinterpret_cast<size_t>(t);
+  return ss.str();
+}
+
 template<class T>
 void CheckPointer(const std::string& tail, const T& t) {
-  if (t) {
-    std::stringstream ss;
-    ss << "0x" << std::setw(sizeof(void *) * 2) << std::setfill('0') << std::setbase(16)
-       << reinterpret_cast<size_t>(&*t) << " -> " << tail;
-    ASSERT_EQ(ss.str(), ToString(t));
-  } else {
-    ASSERT_EQ(tail, ToString(t));
-  }
+  const auto expected = t ? (PointerValueAsString(&*t) + " -> " + tail) : tail;
+  ASSERT_EQ(expected, ToString(t));
 }
 
 } // namespace
@@ -89,9 +94,6 @@ TEST(ToStringTest, TestCollection) {
   std::list<int> l(v.begin(), v.end());
   ASSERT_EQ(expected, ToString(l));
   CheckPointer(expected, &l);
-
-  auto pair = std::make_pair(v, d);
-  ASSERT_EQ("{" + expected + ", " + expected + "}", ToString(pair));
 }
 
 TEST(ToStringTest, TestMap) {
@@ -129,6 +131,12 @@ TEST(ToStringTest, TestPointer) {
 
   std::shared_ptr<int> shared_ptr = std::make_shared<int>(number);
   CheckPointer(expected, shared_ptr);
+
+  void* void_ptr = &number;
+  ASSERT_EQ(PointerValueAsString(void_ptr), ToString(void_ptr));
+
+  const void* const_void_ptr = some_text;
+  ASSERT_EQ(PointerValueAsString(const_void_ptr), ToString(const_void_ptr));
 }
 
 const std::string kShortDebugString = "ShortDebugString";
@@ -255,6 +263,46 @@ TEST(ToStringTest, Struct) {
   };
 
   ASSERT_EQ(TestClass(42, "test").ToString(), "{ a: 42 b: test }");
+}
+
+TEST(ToStringTest, Optional) {
+  using Opt = std::optional<int>;
+  Opt i{10};
+  const auto& ci = i;
+
+  ASSERT_EQ(ToString(i), "10");
+  ASSERT_EQ(ToString(ci), "10");
+  ASSERT_EQ(ToString(std::vector<Opt>{10, std::nullopt, 20}), "[10, <nullopt>, 20]");
+  ASSERT_EQ(ToString(std::tuple<Opt, Opt, Opt>{10, std::nullopt, 20}), "{10, <nullopt>, 20}");
+}
+
+TEST(ToStringTest, TupleLikeType) {
+  ASSERT_EQ(ToString(std::pair<int, int>{1, 2}), "{1, 2}");
+  ASSERT_EQ(ToString(std::pair<const int, std::pair<int, int>>{1, {2, 3}}), "{1, {2, 3}}");
+  ASSERT_EQ(ToString(std::tuple<int, int, std::string>{1, 2, "three"}), "{1, 2, three}");
+  ASSERT_EQ(ToString(std::array<int, 3>{1, 2, 3}), "{1, 2, 3}");
+}
+
+TEST(ToStringTest, ReferenceWrapper) {
+  {
+    int i = 1;
+    int j = 2;
+    int k = 3;
+    std::vector<std::reference_wrapper<int>> values = {i, j, k};
+    ASSERT_EQ(ToString(values), "[1, 2, 3]");
+  }
+
+  {
+    std::optional<int> value;
+    std::reference_wrapper<std::optional<int>> ref{value};
+    ASSERT_EQ(ToString(ref), ToString(value));
+  }
+
+  {
+    std::vector<int> values{1, 2, 3};
+    std::reference_wrapper<std::vector<int>> ref{values};
+    ASSERT_EQ(ToString(ref), ToString(values));
+  }
 }
 
 } // namespace util_test

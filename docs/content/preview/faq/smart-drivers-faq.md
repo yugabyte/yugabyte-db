@@ -10,6 +10,7 @@ menu:
     parent: faq
     weight: 40
 type: docs
+unversioned: true
 showRightNav: false
 ---
 
@@ -24,6 +25,7 @@ showRightNav: false
 - [Do smart drivers know when a region fails?](#do-smart-drivers-know-when-a-region-fails)
 - [Do smart drivers provide metrics that can be monitored via JMX?](#do-smart-drivers-provide-metrics-that-can-be-monitored-via-jmx)
 - [Are there recommended settings for the maximum lifetime of a connection?](#are-there-recommended-settings-for-the-maximum-lifetime-of-a-connection)
+- [How do I limit traffic to specific clouds, regions, or AZs using a smart driver?](#how-do-i-limit-traffic-to-specific-clouds-regions-or-azs-using-a-smart-driver)
 
 ### What is a smart driver?
 
@@ -86,3 +88,16 @@ No.
 ### Are there recommended settings for the maximum lifetime of a connection?
 
 Apart from directing connections to healthy nodes, smart driver connections are no different. Smart drivers require no special optimizations or modifications to your application's connection handling.
+
+### How do I limit traffic to specific clouds, regions, or AZs using a smart driver?
+
+You can direct connections to specific clouds, regions, or AZs using topology keys. Each smart driver client sets this using a parameter particular to each language, as follows:
+
+- Java: `topology-keys`
+- Node: `topologyKeys`
+- C#: `Topology Keys`
+- Go: `topology_keys`
+- Python: `topology_keys`
+- Rust: `topology_keys`
+
+For more information, refer to [Topology-aware connection load balancing](../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). 

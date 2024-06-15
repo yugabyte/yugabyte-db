@@ -43,6 +43,7 @@ var replicatedToYbaCtl = map[string]string{
 	"java_https_proxy_host":        "platform.proxy.java_https_proxy_host",
 	"java_http_proxy_port":         "platform.proxy.java_http_proxy_port",
 	"java_http_proxy_host":         "platform.proxy.java_http_proxy_host",
+	"java_non_proxy":								"platform.proxy.java_non_proxy",
 	"db_external_port":             "postgres.install.port",
 	"dbuser":                       "postgres.install.username",
 	"dbldapauth":                   "postgres.install.ldap_enabled",
@@ -51,6 +52,7 @@ var replicatedToYbaCtl = map[string]string{
 	"ldap_dn_prefix":               "postgres.install.ldap_prefix",
 	"ldap_base_dn":                 "postgres.install.ldap_suffix",
 	"ldap_port":                    "postgres.install.ldap_port",
+	"secure_ldap":									"postgres.install.secure_ldap",
 	"prometheus_retention":         "prometheus.retentionTime",
 	"prometheus_query_timeout":     "prometheus.timeout",
 	"prometheus_scrape_interval":   "prometheus.scrapeInterval",
@@ -181,28 +183,26 @@ func (ac *AppConfig) ExportYbaCtl() error {
 		}
 		if ybaCtlPath, ok := replicatedToYbaCtl[e.Name]; ok {
 			if b, err := e.Bool(); err == nil {
-				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b))
+				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, b)
 				if err != nil {
-					return fmt.Errorf("Error setting boolean value at %s: %s", ybaCtlPath, err.Error())
+					return fmt.Errorf("Error setting boolean value at %s to %s", ybaCtlPath, err.Error())
+				}
+			} else if i, err := e.Int(); err == nil {
+				err := common.SetYamlValue(common.InputFile(), ybaCtlPath, i)
+				if err != nil {
+					return fmt.Errorf("Error setting integer value at %s to %s", ybaCtlPath, err.Error())
 				}
 			} else {
-				i, err := e.Int()
-				if strings.HasSuffix(ybaCtlPath, "port") && err == nil {
-					err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i))
-					if err != nil {
-						return fmt.Errorf("Error setting port value at %s: %s", ybaCtlPath, err.Error())
+				// Special handling of installRoot
+				if ybaCtlPath == "installRoot" {
+					if e.Value == "/opt/ybanywhere" {
+						common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/yugabyte")
+					} else {
+						common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/ybanywhere")
 					}
-				} else {
-					// Special handling of installRoot
-					if ybaCtlPath == "installRoot" {
-						if e.Value == "/opt/ybanywhere" {
-							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/yugabyte")
-						} else {
-							common.SetYamlValue(common.InputFile(), ybaCtlPath, "/opt/ybanywhere")
-						}
-						continue
-					}
+					continue
 				}
+				common.SetYamlValue(common.InputFile(), ybaCtlPath, e.Value)
 			}
 		}
 	}

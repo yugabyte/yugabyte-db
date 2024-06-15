@@ -1,39 +1,41 @@
 ---
 title: Create a KMS configuration using AWS KMS
-headerTitle: Create a KMS configuration using AWS KMS
+headerTitle: Create a KMS configuration
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for Amazon Web Services (AWS) KMS.
 menu:
   preview_yugabyte-platform:
     parent: security
     identifier: create-kms-config-1-aws-kms
-    weight: 27
+    weight: 50
 type: docs
 ---
 
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./aws-kms.md" >}}" class="nav-link active">
+    <a href="../aws-kms/" class="nav-link active">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
     </a>
   </li>
   <li >
-    <a href="{{< relref "./google-kms.md" >}}" class="nav-link">
+    <a href="../google-kms/" class="nav-link">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       Google KMS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+    <a href="../azure-kms/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure Key Vault
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
+    <a href="../hashicorp-kms/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
     </a>
@@ -41,37 +43,11 @@ type: docs
 
 </ul>
 
-Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
-
 Encryption at rest in YugabyteDB Anywhere supports the use of [Amazon Web Services (AWS) KMS](https://aws.amazon.com/kms/).
 
-The master key resource policy should include the following key policy [permissions](https://docs.aws.amazon.com/kms/latest/developerguide/kms-api-permissions-reference.html):
+## Prerequisites
 
-- kms:Encrypt
-- kms:Decrypt
-- kms:GenerateDataKeyWithoutPlaintext
-- kms:DescribeKey
-- kms:DisableKey
-- kms:ScheduleKeyDeletion
-- kms:CreateAlias
-- kms:DeleteAlias
-- kms:UpdateAlias
-
-{{< note title="Note" >}}
-
-To support master key rotation, after upgrading YBA from a version prior to 2.17.3, add the kms:Encrypt permission to any existing keys that are used by any AWS KMS configurations, if not already present.
-
-{{< /note >}}
-
-The AWS user associated with a KMS configuration requires the following minimum Identity and Access Management (IAM) KMS-related permissions:
-
-- kms:CreateKey
-- kms:ListAliases
-- kms:ListKeys
-- kms:CreateAlias
-- kms:DeleteAlias
-- kms:UpdateAlias
-- kms:TagResource
+The master key resource policy and AWS user associated with a KMS configuration require specific permissions. Refer to [To use encryption at rest with YugabyteDB Anywhere](../../../prepare/cloud-permissions/cloud-permissions-ear/).
 
 ## Create a KMS configuration
 
@@ -126,3 +102,23 @@ You can create a KMS configuration that uses AWS KMS, as follows:
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+
+## Modify a KMS configuration
+
+You can modify an existing KMS configuration as follows:
+
+1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+
+1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
+
+1. Provide new values for the **Vault Address** and **Secret Token** fields.
+
+1. Click **Save**.
+
+1. Optionally, to confirm that the information is correct, click **Show details** or **Actions > Details**.
+
+## Delete a KMS configuration
+
+To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.
+
+Note that a saved KMS configuration can only be deleted if it is not in use by any existing universes.

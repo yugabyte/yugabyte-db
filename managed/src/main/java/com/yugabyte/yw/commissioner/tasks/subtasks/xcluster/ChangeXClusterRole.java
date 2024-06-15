@@ -86,7 +86,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
       // Sync roles in YBA with YBDB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
       XClusterRole currentXClusterRole =
-          clusterConfigResp.getConfig().getConsumerRegistry().getRole();
+          clusterConfigResp.getConfig().getConsumerRegistry().getDEPRECATEDRole();
       if (Objects.nonNull(taskParams().sourceRole)) {
         xClusterConfig.setSourceActive(currentXClusterRole.equals(XClusterRole.ACTIVE));
       } else {
@@ -94,7 +94,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
       }
       xClusterConfig.update();
       log.info(
-          "Universe role for universe {} was synced to {}",
+          "Current universe role for universe {} is {}",
           universe.getUniverseUUID(),
           currentXClusterRole);
 
@@ -111,6 +111,10 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
                   "Failed to set the role for universe %s to %s on XClusterConfig(%s): %s",
                   universe.getUniverseUUID(), requestedRole, xClusterConfig, resp.errorMessage()));
         }
+        log.info(
+            "Universe role for universe {} was set to {}",
+            universe.getUniverseUUID(),
+            requestedRole);
 
         if (HighAvailabilityConfig.get().isPresent()) {
           universe.incrementVersion();

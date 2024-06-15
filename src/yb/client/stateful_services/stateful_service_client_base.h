@@ -14,24 +14,21 @@
 #pragma once
 
 #include <memory>
-#include "yb/client/client.h"
-#include "yb/rpc/messenger.h"
-#include "yb/server/secure.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
-#include "yb/rpc/proxy.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/gutil/thread_annotations.h"
+
 #include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/status.h"
 
 using namespace std::placeholders;
 
 namespace yb {
-namespace tserver {
-class TabletServer;
-}
+
+class HostPort;
 
 namespace client {
+class YBClient;
 
 #define STATEFUL_SERVICE_RPC(r, service, method_name) \
   template <typename T> \
@@ -52,24 +49,30 @@ namespace client {
     return resp; \
   }
 
+// Input: service name, csv list of RPC methods.
 // Creates functions with these signature:
 // Result<[RpcMethod]ResponsePB> [RpcMethod](const CoarseTimePoint&, const [RpcMethod]RequestPB&);
 // Result<[RpcMethod]ResponsePB> [RpcMethod](const MonoDelta&, const [RpcMethod]RequestPB&);
-#define STATEFUL_SERVICE_RPCS(service, methods) \
-  BOOST_PP_SEQ_FOR_EACH(STATEFUL_SERVICE_RPC, service, methods)
+#define STATEFUL_SERVICE_RPCS(service, ...) \
+  BOOST_PP_SEQ_FOR_EACH(STATEFUL_SERVICE_RPC, service, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))
+
+// Input: service_name, service_kind and csv list of rpc methods.
+// Creates a service client with constructor of type:
+// [service_name]ServiceClient(client::YBClient & yb_client);
+#define DEFINE_STATEFUL_SERVICE_CLIENT(service_name, service_kind, ...) \
+  class BOOST_PP_CAT(service_name, ServiceClient) : public StatefulServiceClientBase { \
+   public: \
+    BOOST_PP_CAT(service_name, ServiceClient) \
+    (client::YBClient & yb_client) \
+        : StatefulServiceClientBase(yb_client, StatefulServiceKind::service_kind) {} \
+    STATEFUL_SERVICE_RPCS(service_name, __VA_ARGS__); \
+  }
 
 class StatefulServiceClientBase {
  public:
-  explicit StatefulServiceClientBase(StatefulServiceKind service_kind);
+  StatefulServiceClientBase(client::YBClient& yb_client, StatefulServiceKind service_kind);
 
-  virtual ~StatefulServiceClientBase();
-
-  Status Init(tserver::TabletServer* server);
-
-  Status TESTInit(
-      const std::string& local_host, const std::string& master_addresses);
-
-  void Shutdown();
+  virtual ~StatefulServiceClientBase() = default;
 
   Status InvokeRpcSync(
       const CoarseTimePoint& deadline,
@@ -105,13 +108,9 @@ class StatefulServiceClientBase {
  private:
   const StatefulServiceKind service_kind_;
   const std::string service_name_;
-  std::unique_ptr<rpc::SecureContext> secure_context_;
-  std::unique_ptr<rpc::Messenger> messenger_;
-  std::shared_ptr<client::YBClient> master_client_;
-  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+  YBClient& yb_client_;
 
   mutable std::mutex mutex_;
-  std::shared_ptr<HostPort> service_hp_ GUARDED_BY(mutex_);
   std::shared_ptr<rpc::ProxyBase> proxy_ GUARDED_BY(mutex_);
 };
 }  // namespace client

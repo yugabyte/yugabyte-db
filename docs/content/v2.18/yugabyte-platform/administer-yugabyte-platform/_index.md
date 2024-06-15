@@ -9,7 +9,7 @@ menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
-    weight: 649
+    weight: 700
 type: indexpage
 ---
 
@@ -59,6 +59,18 @@ type: indexpage
       </div>
       <div class="body">
         Customize YugabyteDB Anywhere by changing default settings for the application, universes, and providers.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="shutdown/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Shutdown</div>
+      </div>
+      <div class="body">
+        Shut YugabyteDB Anywhere down gracefully.
       </div>
     </a>
   </div>

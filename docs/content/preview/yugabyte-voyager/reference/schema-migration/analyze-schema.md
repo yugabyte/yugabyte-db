@@ -25,10 +25,10 @@ The valid *arguments* for analyze schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| -e, --export-dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help. |
-| --output-format <format> | Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. |
-| --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --output-format | Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. |
+| &#8209;&#8209;send&#8209;diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
 ### Example

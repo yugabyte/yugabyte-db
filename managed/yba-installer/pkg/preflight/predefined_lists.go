@@ -16,6 +16,7 @@ var InstallChecks = []Check{
 	checks.DBConfigCheck,
 	checks.ValidateLocaleConfig,
 	checks.Prometheus,
+	checks.ReplicatedNotExists,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks
@@ -38,4 +39,5 @@ var ReplicatedMigrateChecks = []Check{
 	checks.License,
 	checks.ValidateLocaleConfig,
 	checks.MigrateDiskCheck,
+	checks.HTTPHACheck,
 }

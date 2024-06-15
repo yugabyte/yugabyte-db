@@ -14,21 +14,12 @@
 
 using std::string;
 
-DECLARE_bool(ysql_ddl_rollback_enabled);
-
 namespace yb {
 namespace pgwrapper {
 
 const std::string table = "testtable";
 
 class PgDropColumnSanityTest : public LibPqTestBase {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
-    options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=false");
-  }
-
  public:
   void TestMarkColForDeletion();
 
@@ -63,7 +54,7 @@ void PgDropColumnSanityTest::SetupTables() {
   ASSERT_OK(conn.ExecuteFormat(
     "INSERT INTO $0 VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)", table));
   // Disable rollback.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
   // Issue Alter Table Drop column.
   ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP COLUMN col_to_test", table)));
 }
@@ -166,7 +157,7 @@ class PgDropReferencingColumnFKTest : public PgDropColumnSanityTest {
         " (5, 5), (6, 6), (7, 7)", table));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (6, 6), (7, 7)", ref_table));
     // Disable rollback.
-    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
     // Issue Alter Table Drop column.
     ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP COLUMN col", ref_table)));
   }
@@ -205,7 +196,7 @@ class PgDropColumnColocatedTableTest : public PgDropColumnSanityTest {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 2), (3, 3), (4, 4),"
         " (5, 5)", table));
     // Disable rollback.
-    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
     // Issue Alter Table Drop column.
     ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP COLUMN col_to_test", table)));
   }
@@ -237,7 +228,7 @@ class PgDropColumnTablegroupTest : public PgDropColumnSanityTest {
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 2), (3, 3), (4, 4),"
         " (5, 5)", table));
     // Disable rollback.
-    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_disable_ysql_ddl_txn_verification", "true"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
     // Issue Alter Table Drop column.
     ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP COLUMN col_to_test", table)));
   }

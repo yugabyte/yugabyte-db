@@ -302,14 +302,10 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			AttrNumber	attno = var_expr->varattno;
 			/* DocDB is not aware of Postgres virtual attributes */
 			if (!AttrNumberIsForUserDefinedAttr(attno))
-			{
 				return true;
-			}
 			/* Need to convert values between DocDB and Postgres formats */
 			if (!YBCPgFindTypeEntity(var_expr->vartype))
-			{
 				return true;
-			}
 			/* Collect column reference */
 			if (colrefs)
 			{
@@ -345,21 +341,16 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			FuncExpr *func_expr = castNode(FuncExpr, node);
 			/* DocDB executor does not expand variadic argument */
 			if (func_expr->funcvariadic)
-			{
 				return true;
-			}
 			/*
 			 * Unsafe to pushdown function if collation is not C, there may be
 			 * needed metadata lookup for collation details.
 			 */
-			if (YBIsCollationValidNonC(func_expr->inputcollid)) {
+			if (YBIsCollationValidNonC(func_expr->inputcollid))
 				return true;
-			}
 			/* Check if the function is pushable */
 			if (!yb_can_pushdown_func(func_expr->funcid))
-			{
 				return true;
-			}
 			break;
 		}
 		case T_OpExpr:
@@ -369,13 +360,37 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			 * Unsafe to pushdown function if collation is not C, there may be
 			 * needed metadata lookup for collation details.
 			 */
-			if (YBIsCollationValidNonC(op_expr->inputcollid)) {
+			if (YBIsCollationValidNonC(op_expr->inputcollid))
 				return true;
-			}
 			if (!yb_can_pushdown_func(op_expr->opfuncid))
-			{
 				return true;
+			break;
+		}
+		case T_ScalarArrayOpExpr:
+		{
+			ScalarArrayOpExpr *saop_expr = castNode(ScalarArrayOpExpr, node);
+			if (!yb_enable_saop_pushdown)
+				return true;
+			/*
+			 * Unsafe to pushdown function if collation is not C, there may be
+			 * needed metadata lookup for collation details.
+			 */
+			if (YBIsCollationValidNonC(saop_expr->inputcollid))
+				return true;
+			if (!yb_can_pushdown_func(saop_expr->opfuncid))
+				return true;
+			if (list_length(saop_expr->args) == 2)
+			{
+				/* Check if DocDB can deconstruct the array */
+				Oid elmtype = get_element_type(exprType(lsecond(saop_expr->args)));
+				int elmlen;
+				bool elmbyval;
+				char elmalign;
+				if (!YbTypeDetails(elmtype, &elmlen, &elmbyval, &elmalign))
+					return true;
 			}
+			else
+				return true;
 			break;
 		}
 		case T_CaseExpr:
@@ -386,18 +401,14 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			 * lookup to find equality operation for the argument data type.
 			 */
 			if (case_expr->arg)
-			{
 				return true;
-			}
 			break;
 		}
 		case T_Param:
 		{
 			Param *p = castNode(Param, node);
 			if (!YBCPgFindTypeEntity(p->paramtype))
-			{
 				return true;
-			}
 			break;
 		}
 		case T_Const:
@@ -408,9 +419,7 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			* DocDB does not support arbitrary types.
 			*/
 			if (!YBCPgFindTypeEntity(c->consttype))
-			{
 				return true;
-			}
 			break;
 		}
 		case T_RelabelType:

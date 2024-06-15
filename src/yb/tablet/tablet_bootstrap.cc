@@ -39,6 +39,7 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -65,6 +66,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/lightweight_message.h"
 
@@ -72,6 +74,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/history_cutoff_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/split_operation.h"
@@ -80,6 +83,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
@@ -97,7 +101,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status.h"
@@ -126,8 +129,12 @@ TAG_FLAG(force_recover_flushed_frontier, hidden);
 TAG_FLAG(force_recover_flushed_frontier, advanced);
 
 DEFINE_UNKNOWN_bool(skip_flushed_entries, true,
-            "Only replay WAL entries that are not flushed to RocksDB or within the retryable "
-            "request timeout.");
+            "Only replay WAL entries that are not flushed to RocksDB or necessary to bootstrap "
+            "retryable requests (unflushed and within retryable request timeout).");
+
+DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
+            "If applicable, only replay entries that are not flushed to RocksDB or necessary "
+            "to bootstrap retryable requests in the first replayed wal segment.");
 
 DECLARE_int32(retryable_request_timeout_secs);
 
@@ -497,19 +504,23 @@ class TabletBootstrap {
 
     const bool has_blocks = VERIFY_RESULT(OpenTablet());
 
-    if (data_.retryable_requests_manager) {
-      data_.retryable_requests_manager->retryable_requests().SetMetricEntity(
-          tablet_->GetTabletMetricsEntity());
-      data_.retryable_requests_manager->retryable_requests().SetRequestTimeout(
-          client::RetryableRequestTimeoutSecs(tablet_->table_type()));
+    if (data_.retryable_requests) {
+      const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
+          ? client::SysCatalogRetryableRequestTimeoutSecs()
+          : client::RetryableRequestTimeoutSecs(tablet_->table_type());
+      data_.retryable_requests->SetRequestTimeout(retryable_request_timeout_secs);
+      data_.retryable_requests->SetMetricEntity(tablet_->GetTabletMetricsEntity());
     }
 
     // Load retryable requests after metrics entity has been instantiated.
     if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
-          data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
-      Status load_status = data_.retryable_requests_manager->LoadFromDisk();
-      if (!load_status.ok() && !load_status.IsNotFound()) {
-        RETURN_NOT_OK(load_status);
+          data_.bootstrap_retryable_requests && data_.retryable_requests &&
+          data_.bootstrap_state_manager) {
+      auto result = data_.bootstrap_state_manager->LoadFromDisk();
+      if (result.ok()) {
+        data_.retryable_requests->FromPB(*result);
+      } else if (!result.status().IsNotFound()) {
+        return result.status();
       }
     }
 
@@ -979,6 +990,9 @@ class TabletBootstrap {
       case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
         return PlayChangeAutoFlagsConfigRequest(replicate);
 
+      case consensus::CLONE_OP:
+        return PlayCloneOpRequest(replicate);
+
       // Unexpected cases:
       case consensus::UNKNOWN_OP:
         return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
@@ -1034,6 +1048,19 @@ class TabletBootstrap {
     // - tablet bootstrap of new after-split tablet replaying split operation.
   }
 
+  Status PlayCloneOpRequest(consensus::LWReplicateMsg* replicate_msg) {
+    CloneOperation operation(
+        tablet_, data_.tablet_init_data.tablet_splitter, replicate_msg->mutable_clone_tablet());
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_hybrid_time(HybridTime(replicate_msg->hybrid_time()));
+    // We might be asked to replay CLONE_OP even if it was applied and flushed when
+    // FLAGS_force_recover_flushed_frontier is set. ApplyCloneTablet will still succeed in this case
+    // because it is a no-op if a clone with the same seq_no is already applied according to the
+    // source tablet's metadata.
+    return data_.tablet_init_data.tablet_splitter->ApplyCloneTablet(
+        &operation, log_.get(), cmeta_->committed_config());
+  }
+
   Status PlayChangeAutoFlagsConfigRequest(consensus::LWReplicateMsg* replicate_msg) {
     if (!tablet_->is_sys_catalog()) {
       // This should never happen. We use WAL to propagate AutoFlags config only to other masters.
@@ -1054,8 +1081,8 @@ class TabletBootstrap {
     if (!replicate.has_write())
       return;
 
-    if (data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
-      data_.retryable_requests_manager->retryable_requests().Bootstrap(replicate, entry_time);
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
+      data_.retryable_requests->Bootstrap(replicate, entry_time);
     }
 
     // In a test, we might not have data_.retryable_requests, but we still want to tell the test
@@ -1243,27 +1270,36 @@ class TabletBootstrap {
 
     // OpId::Max() can avoid bootstrapping the retryable requests.
     OpId last_op_id_in_retryable_requests = OpId::Max();
-    if (data_.bootstrap_retryable_requests && data_.retryable_requests_manager) {
+    if (data_.bootstrap_retryable_requests && data_.retryable_requests) {
       // If it is required, bootstrap the retryable requests starting from max replicated op id
       // in the structure.
       // If it's OpId::Min(), then should replay all data in last retryable_requests_timeout_secs.
       last_op_id_in_retryable_requests =
-          data_.retryable_requests_manager->retryable_requests().GetMaxReplicatedOpId();
+          data_.retryable_requests->GetMaxReplicatedOpId();
     }
 
     SegmentSequence& segments = *segments_ptr;
 
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
-    boost::optional<RestartSafeCoarseTimePoint> replay_from_this_or_earlier_time;
     boost::optional<RestartSafeCoarseTimePoint> retryable_requests_replay_from_this_or_earlier_time;
 
     RestartSafeCoarseDuration retryable_requests_retain_interval =
-        data_.bootstrap_retryable_requests && data_.retryable_requests_manager
+        data_.bootstrap_retryable_requests && data_.retryable_requests
             ? std::chrono::seconds(
-                  data_.retryable_requests_manager->retryable_requests().request_timeout_secs())
+                  data_.retryable_requests->request_timeout_secs())
             : 0s;
-    RestartSafeCoarseDuration min_duration_to_retain_logs = 0s;
+    // If retryable_requests_retain_interval is 0s, set last_op_id_in_retryable_requests to
+    // OpId::Max() to avoid replaying logs from last_op_id_in_retryable_requests if
+    // last_op_id_in_retryable_requests < op_id_replay_lowest.
+    if (retryable_requests_retain_interval == 0s) {
+      last_op_id_in_retryable_requests = OpId::Max();
+    }
+
+    if (test_hooks_) {
+      last_op_id_in_retryable_requests = test_hooks_->GetFlushedRetryableRequestsOpIdOverride()
+                                             .value_or(last_op_id_in_retryable_requests);
+    }
 
     // When lazy superblock flush is enabled, superblock is flushed on a new segment allocation
     // instead of doing it for every CHANGE_METADATA_OP. This reduces the latency of applying
@@ -1285,17 +1321,8 @@ class TabletBootstrap {
     //
     // We should be able to get rid of this requirement when we address:
     // https://github.com/yugabyte/yugabyte-db/issues/16684.
-    if (min_duration_to_retain_logs == 0s && meta_->IsLazySuperblockFlushEnabled() &&
-        segments.size() > 1) {
-      // The below ensures atleast two segments are replayed. This is because to find the segment to
-      // start replay from we take the last segment's first operation's restart-safe time, subtract
-      // min_duration_to_retain_logs from it, and find the segment that has that time or earlier as
-      // its first operation's restart-safe time. Please refer to the function comment for more
-      // details.
-      min_duration_to_retain_logs = std::chrono::nanoseconds(1);
-    }
-
-    const RestartSafeCoarseDuration const_min_duration_to_retain_logs = min_duration_to_retain_logs;
+    const bool is_lazy_superblock_flush_enabled = meta_->IsLazySuperblockFlushEnabled();
+    const auto kMinSegmentsToReplayWithLazySuperblockFlush = 2;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {
@@ -1322,17 +1349,15 @@ class TabletBootstrap {
         test_hooks_->FirstOpIdOfSegment(segment_path, op_id);
       }
       const RestartSafeCoarseTimePoint first_op_time = first_op_metadata.entry_time;
-      const auto replay_from_this_or_earlier_time_was_initialized =
-          replay_from_this_or_earlier_time.is_initialized();
+      const auto retryable_requests_replay_from_this_or_earlier_time_was_initialized =
+          retryable_requests_replay_from_this_or_earlier_time.is_initialized();
 
-      if (!replay_from_this_or_earlier_time_was_initialized) {
-        replay_from_this_or_earlier_time = first_op_time - const_min_duration_to_retain_logs;
+      if (!retryable_requests_replay_from_this_or_earlier_time_was_initialized) {
         retryable_requests_replay_from_this_or_earlier_time =
             first_op_time - retryable_requests_retain_interval;
       }
 
       const auto is_first_op_id_low_enough = op_id <= op_id_replay_lowest;
-      const auto is_first_op_time_early_enough = first_op_time <= replay_from_this_or_earlier_time;
       const auto is_first_op_id_low_enough_for_retryable_requests =
           op_id <= last_op_id_in_retryable_requests;
       const auto is_first_op_time_early_enough_for_retryable_requests =
@@ -1344,16 +1369,62 @@ class TabletBootstrap {
             op_id_replay_lowest,
             last_op_id_in_retryable_requests,
             first_op_time,
-            const_min_duration_to_retain_logs,
             retryable_requests_retain_interval,
-            *retryable_requests_replay_from_this_or_earlier_time,
-            *replay_from_this_or_earlier_time);
+            *retryable_requests_replay_from_this_or_earlier_time);
         return ss.str();
       };
 
-      if (is_first_op_id_low_enough && is_first_op_time_early_enough &&
+      if (is_first_op_id_low_enough &&
           (is_first_op_id_low_enough_for_retryable_requests ||
               is_first_op_time_early_enough_for_retryable_requests)) {
+        // If lazy superblock flush enabled, make sure at least two segments are replayed
+        // if segments.size() >= kMinSegmentsToReplayWithLazySuperblockFlush.
+        const auto older_segment_may_contain_unflushed_change_metadata_op =
+            is_lazy_superblock_flush_enabled &&
+            segments.end() - iter < kMinSegmentsToReplayWithLazySuperblockFlush;
+        // Continue to older segment if it exists and it may contain unflushed change metadata op.
+        if (older_segment_may_contain_unflushed_change_metadata_op &&
+            iter != segments.begin()) {
+          continue;
+        }
+        // If lazy superblock flush is enabled for colocated tables, it needs to replay at least
+        // the last two segments so if the first segment to replay is the penultimate or the last
+        // segment, then there's no need to get the corresponding log entry index to start with.
+        // If is_first_op_id_low_enough_for_retryable_requests = true, it means the first segment
+        // can be replayed from min(op_id_replay_lowest, last_op_id_in_retryable_requests) instead
+        // of very beginning of it. This condition is always true if avoid bootstrapping retryable
+        // requests where last_op_id_in_retryable_requests=OpId::Max().
+        // If the first segment is unclosed, it needs read all entries to build footer anyways, so
+        // it's also unnecessary to get the starting offset to start replaying.
+        const auto first_segment = *iter;
+        const auto current_segment_may_contain_unflushed_change_metadata_op =
+            is_lazy_superblock_flush_enabled &&
+            segments.end() - iter <= kMinSegmentsToReplayWithLazySuperblockFlush;
+        if (FLAGS_skip_flushed_entries_in_first_replayed_segment &&
+            is_first_op_id_low_enough_for_retryable_requests &&
+            !current_segment_may_contain_unflushed_change_metadata_op &&
+            first_segment->HasLogIndexInFooter()) {
+          const auto first_op_index_to_replay =
+              std::min(op_id_replay_lowest.index, last_op_id_in_retryable_requests.index);
+          // Get the offset of the first mandatory op in the segment.
+          const auto index_entry = log_->GetLogReader()->GetIndexEntry(
+              first_op_index_to_replay, first_segment.get());
+          if (index_entry.ok()) {
+            DCHECK_EQ(index_entry->segment_sequence_number,
+                      first_segment->header().sequence_number());
+            first_op_to_replay_offset_ = index_entry->offset_in_segment;
+            LOG_WITH_PREFIX(INFO) << Format("Found log index (seqno: $0 offset: $1) of the "
+                                            "first mandatory op(index: $2) to replay in segment $3",
+                                            index_entry->segment_sequence_number,
+                                            index_entry->offset_in_segment,
+                                            first_op_index_to_replay,
+                                            first_segment->header().sequence_number());
+          } else {
+            LOG_WITH_PREFIX(DFATAL) << "Could not get index entry of op_index "
+                                     << first_op_index_to_replay << ", status: "
+                                     << index_entry.status();
+          }
+        }
         LOG_IF_WITH_PREFIX(INFO,
             !is_first_op_id_low_enough_for_retryable_requests &&
                 is_first_op_time_early_enough_for_retryable_requests)
@@ -1381,8 +1452,7 @@ class TabletBootstrap {
           << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
               is_first_op_id_low_enough_for_retryable_requests,
               is_first_op_time_early_enough_for_retryable_requests,
-              is_first_op_id_low_enough,
-              is_first_op_time_early_enough);
+              is_first_op_id_low_enough);
     }
 
     LOG_WITH_PREFIX(INFO)
@@ -1462,19 +1532,35 @@ class TabletBootstrap {
     OpId last_read_entry_op_id;
     // All ops covered by retryable requests file are committed.
     OpId last_op_id_in_retryable_requests =
-        data_.bootstrap_retryable_requests && data_.retryable_requests_manager
-            ? data_.retryable_requests_manager->retryable_requests().GetMaxReplicatedOpId()
+        data_.bootstrap_retryable_requests && data_.retryable_requests
+            ? data_.retryable_requests->GetMaxReplicatedOpId()
             : OpId::Min();
     RestartSafeCoarseTimePoint last_entry_time;
-    for (; iter != segments.end(); ++iter) {
-      const scoped_refptr<ReadableLogSegment>& segment = *iter;
 
-      auto read_result = segment->ReadEntries();
+    // If the segment is the first one to replay, start replaying from the last flushed op id
+    // instead of very beginning of the segment.
+    auto replay_from_offset = first_op_to_replay_offset_;
+    for (; iter != segments.end(); ++iter, replay_from_offset = std::nullopt) {
+      const scoped_refptr<ReadableLogSegment>& segment = *iter;
+      auto read_result = segment->ReadEntries(
+          /* max_entries_to_read = */ std::numeric_limits<int64_t>::max(),
+          log::EntriesToRead::kAll, replay_from_offset);
+
       last_committed_op_id = std::max(
           std::max(last_committed_op_id, read_result.committed_op_id),
           last_op_id_in_retryable_requests);
+
       if (!read_result.entries.empty()) {
         last_read_entry_op_id = OpId::FromPB(read_result.entries.back()->replicate().id());
+      }
+      if (test_hooks_) {
+        if (!read_result.entries.empty()) {
+          const auto& first_read_entry_op_id = read_result.entries.front()->replicate().id();
+          test_hooks_->FirstOpIdReadFromReplayedSegment(
+              segment->path(), OpId::FromPB(first_read_entry_op_id));
+        } else {
+          test_hooks_->FirstOpIdReadFromReplayedSegment(segment->path(), OpId::Invalid());
+        }
       }
       for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
         const Status s = HandleEntry(
@@ -1577,8 +1663,8 @@ class TabletBootstrap {
     consensus_info->last_id = MakeOpIdPB(replay_state_->prev_op_id);
     consensus_info->last_committed_id = MakeOpIdPB(replay_state_->committed_op_id);
 
-    if (data_.retryable_requests_manager) {
-      data_.retryable_requests_manager->retryable_requests().Clock().Adjust(last_entry_time);
+    if (data_.retryable_requests) {
+      data_.retryable_requests->Clock().Adjust(last_entry_time);
     }
 
     // Update last_flushed_change_metadata_op_id if invalid so that next tablet bootstrap
@@ -1913,6 +1999,10 @@ class TabletBootstrap {
   std::vector<OpId> TEST_replayed_op_ids_;
 
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks_;
+
+  // If this offset is specified, when replaying the first segment that satisfies the
+  // bootstrap criteria, only read and apply entries from this offset.
+  std::optional<int64_t> first_op_to_replay_offset_ = std::nullopt;
 
   DISALLOW_COPY_AND_ASSIGN(TabletBootstrap);
 };

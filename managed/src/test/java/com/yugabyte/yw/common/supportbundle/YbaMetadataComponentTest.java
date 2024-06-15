@@ -2,14 +2,12 @@
 
 package com.yugabyte.yw.common.supportbundle;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -20,14 +18,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.text.ParseException;
-import java.util.Arrays;
-import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
@@ -38,13 +33,11 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
 
   @Mock ConfigHelper configHelper;
   @Mock ApiHelper apiHelper;
-  @InjectMocks CallHomeManager callHomeManager;
 
   private Universe universe;
   private Customer customer;
   public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-application_logs/";
-  //   private String fakeSourceLogsPath = fakeSupportBundleBasePath + "logs/";
   private String fakeBundlePath =
       fakeSupportBundleBasePath + "yb-support-bundle-test-20220308000000.000-logs";
 
@@ -53,19 +46,6 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
     // Setup fake temp log files, universe, customer
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());
-    // List<String> fakeLogsList =
-    //     Arrays.asList(
-    //         "application-log-2022-03-05.gz",
-    //         "application-log-2022-03-06.gz",
-    //         "application-log-2022-03-07.gz",
-    //         "application-log-2022-03-08.gz",
-    //         "application.log");
-    // for (String fileName : fakeLogsList) {
-    //   File fakeFile = new File(fakeSourceLogsPath + fileName);
-    //   if (!fakeFile.exists()) {
-    //     createTempFile(fakeSourceLogsPath, fileName, "test-application-logs-content");
-    //   }
-    // }
 
     // Mock all the config invocations with fake data
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
@@ -80,18 +60,12 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
   public void testDownloadComponentBetweenDates() throws IOException, ParseException {
     // Calling the download function
     YbaMetadataComponent ybaMetadataComponent =
-        new YbaMetadataComponent(mockBaseTaskDependencies, mockSupportBundleUtil, callHomeManager);
+        new YbaMetadataComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     ybaMetadataComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), null, null, null);
+        null, customer, universe, Paths.get(fakeBundlePath), null, null, null);
 
-    // Files expected to be present in the bundle after filtering
-    List<String> expectedFilesList = Arrays.asList("call_home_data.json");
-
-    // Checking if the filtered list is same as expected list of files
+    // Checking if the directory has some files.
     File[] files = new File(fakeBundlePath + "/metadata/").listFiles();
-    assertEquals(files.length, expectedFilesList.size());
-    for (int i = 0; i < files.length; i++) {
-      assertTrue(expectedFilesList.contains(files[i].getName()));
-    }
+    assertTrue(files.length > 0);
   }
 }

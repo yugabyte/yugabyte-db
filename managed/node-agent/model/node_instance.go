@@ -14,6 +14,7 @@ type BasicInfo struct {
 	Active bool   `json:"active"`
 }
 
+// Provider is the provider object.
 type Provider struct {
 	BasicInfo
 	Cuuid               string            `json:"customerUUID"`
@@ -25,6 +26,14 @@ type Provider struct {
 	ShowSetUpChrony     bool              `json:"showSetUpChrony"`
 	Config              map[string]string `json:"config"`
 	Regions             []Region          `json:"regions"`
+	Details             ProviderDetails   `json:"details"`
+}
+
+// ProviderDetails contains the details object within a provider.
+// Only the required fields are added here.
+type ProviderDetails struct {
+	NodeExporterPort int  `json:"nodeExporterPort"`
+	SkipProvisioning bool `json:"skipProvisioning"`
 }
 
 // yyyy-MM-dd HH:mm:ss
@@ -49,7 +58,7 @@ type AccessKeyInfo struct {
 	NodeExporterUser       string   `json:"nodeExporterUser"`
 	SetUpChrony            bool     `json:"setUpChrony"`
 	NtpServers             []string `json:"ntpServers"`
-	CreatetionDate         Date     `json:"creationDate"`
+	CreationDate           Date     `json:"creationDate"`
 	SkipProvisioning       bool     `json:"skipProvisioning"`
 }
 
@@ -69,8 +78,8 @@ func (keys AccessKeys) Len() int {
 func (keys AccessKeys) Less(i, j int) bool {
 	keyInfo1 := keys[i].KeyInfo
 	keyInfo2 := keys[j].KeyInfo
-	cTime1 := time.Time(keyInfo1.CreatetionDate)
-	cTime2 := time.Time(keyInfo2.CreatetionDate)
+	cTime1 := time.Time(keyInfo1.CreationDate)
+	cTime2 := time.Time(keyInfo2.CreationDate)
 	return cTime1.Before(cTime2)
 }
 

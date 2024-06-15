@@ -16,6 +16,12 @@ groups:
         labels:
           saved_name: node_cpu_usage
 
+      - record: node_cpu_usage_avg
+        expr: "sum without (mode) (avg without (cpu) (irate(node_cpu_seconds_total{mode!~'idle|iowait'}[{{ range }}])))"
+        labels:
+          saved_name: node_cpu_usage_avg
+          mode: total
+
       - record: node_disk_reads_irate
         expr: "sum without (device) (irate(node_disk_reads_completed_total[{{ range }}]))"
         labels:
@@ -75,6 +81,26 @@ groups:
         expr: 'sum without (device) (irate(node_network_transmit_errs_total{device=~"[^l].*"}[{{ range }}]))'
         labels:
           saved_name: node_network_transmit_errs_irate
+
+      - record: node_disk_io_time_irate
+        expr: 'irate(node_disk_io_time_seconds_total{device=~"[^l].*"}[{{ range }}])'
+        labels:
+          saved_name: node_disk_io_time_irate
+
+      - record: node_disk_io_time_weighted_seconds_total_irate
+        expr: 'irate(node_disk_io_time_weighted_seconds_total{device=~"[^l].*"}[{{ range }}])'
+        labels:
+          saved_name: node_disk_io_time_weighted_seconds_total_irate
+
+      - record: node_disk_io_read_service_time_irate
+        expr: "irate(node_disk_read_time_seconds_total[{{ range }}]) / ignoring(saved_name) irate(node_disk_reads_completed_total[{{ range }}])"
+        labels:
+          saved_name: node_disk_io_read_service_time_irate
+
+      - record: node_disk_io_write_service_time_irate
+        expr: "irate(node_disk_write_time_seconds_total[{{ range }}]) / ignoring(saved_name) irate(node_disk_writes_completed_total[{{ range }}])"
+        labels:
+          saved_name: node_disk_io_write_service_time_irate
 
       - record: involuntary_context_switches_irate
         expr: "irate(involuntary_context_switches[{{ range }}])"

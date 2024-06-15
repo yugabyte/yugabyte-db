@@ -47,14 +47,17 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */,
+                                       true /* is_sys_catalog_table */,
                                        true /* if_not_exist */,
-                                       false /* add_primary_key */,
+                                       PG_YBROWID_MODE_NONE,
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
                                        false /* is_matview */,
-                                       kInvalidOid /* matview_pg_table_id */,
+                                       kInvalidOid /* pg_table_oid */,
+                                       kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
                                              DataType::INT64, false, true));
@@ -400,14 +403,17 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */,
+                                       true /* is_sys_catalog_table */,
                                        true /* if_not_exist */,
-                                       false /* add_primary_key */,
+                                       PG_YBROWID_MODE_NONE,
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
                                        false /* is_matview */,
-                                       kInvalidOid /* matview_pg_table_id */,
+                                       kInvalidOid /* pg_table_oid */,
+                                       kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "value", 2, DataType::INT32, false, false));
@@ -442,10 +448,9 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // COPYDB ----------------------------------------------------------------------------------------
   LOG(INFO) << "Create another database from default database";
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(copy_db_name, copy_db_oid,
-                                          kDefaultDatabaseOid, kInvalidOid /* next_oid */,
-                                          false /* colocated */,
-                                          &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
+      copy_db_name, copy_db_oid, kDefaultDatabaseOid, kDefaultTemplateDatabaseName,
+      kInvalidOid /* next_oid */, false /* colocated */, 0 /* clone_time*/, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   // Fresh state of cache must be read after new DB creation.
   YBCPgResetCatalogReadTime();
@@ -494,9 +499,9 @@ TEST_F(PggateTestCatalog, TestReserveOids) {
   const YBCPgOid db_oid = 101;
   YBCPgStatement pg_stmt;
 
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(db_name, db_oid,
-                                          kInvalidOid /* source_database_oid */,
-                                          100 /* next_oid */, false /* colocated */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
+      db_name, db_oid, kInvalidOid /* source_database_oid */, kDefaultTemplateDatabaseName,
+      100 /* next_oid */, false /* colocated */, 0 /* clone_time*/, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   pg_stmt = nullptr;
 

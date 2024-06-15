@@ -8,7 +8,10 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -23,6 +26,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
@@ -45,6 +49,7 @@ import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -59,14 +64,17 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -75,7 +83,7 @@ import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -110,6 +118,7 @@ public class Util {
   public static final String GCS = "GCS";
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
+  public static final String HTTP = "HTTP";
 
   public static final String CUSTOMERS = "customers";
   public static final String UNIVERSES = "universes";
@@ -125,9 +134,17 @@ public class Util {
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
-  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.0.0-b1";
+  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
+
+  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_STABLE_VERSION = "2024.1.1.0-b1";
+
+  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_PREVIEW_VERSION = "2.23.0.0-b416";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
+
+  public static final String GFLAG_GROUPS_FILENAME = "gflag_groups.json";
+
+  public static final String DB_VERSION_METADATA_FILENAME = "version_metadata.json";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
@@ -139,6 +156,9 @@ public class Util {
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
 
   public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
+
+  private static final List<String> specialCharacters =
+      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
@@ -154,6 +174,10 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  public static final String HTTP_SCHEME = "http://";
+
+  public static final String HTTPS_SCHEME = "https://";
 
   public static volatile String YBA_VERSION;
 
@@ -460,16 +484,88 @@ public class Util {
     return details;
   }
 
-  // Wrapper on the existing compareYbVersions() method (to specify if format error
-  // should be suppressed)
+  /**
+   * This function checks if a given version string is on stable track or not. Eg: 2024.1.0.0-b1 for
+   * stable and 2.23.0.0-b1 for preview.
+   *
+   * @param currentVersion
+   * @param suppressFormatError
+   * @return boolean true if stable, else false.
+   */
+  public static boolean isStableVersion(String currentVersion, boolean suppressFormatError) {
+    String[] versionParts = currentVersion.split("-", 3);
+    if (versionParts.length > 2) {
+      currentVersion = versionParts[0] + "-" + versionParts[1];
+    }
+
+    Pattern versionPattern = Pattern.compile(YBA_VERSION_REGEX);
+    Matcher versionMatcher = versionPattern.matcher(currentVersion);
+
+    if (versionMatcher.find()) {
+      String[] v1Numbers = versionMatcher.group(1).split("\\.");
+      int minorVersion = Integer.parseInt(v1Numbers[1]);
+      if (v1Numbers[0].length() == 4 || (minorVersion % 2) == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * This is a new wrapper method on top of existing compareYbVersions() to compare YBA or YBDB
+   * version strings. Use this method instead of other compareYbVersions() when you want to compare
+   * if a feature exists across both preview and stable tracks. Must specify both a preview and a
+   * stable version from when the feature exists. New versioning scheme is like: 2024.1.0.0-b1 for
+   * stable and 2.23.0.0-b1 for preview. Use this method to compare any features after 2.21 or
+   * 2024.1.
+   *
+   * @param currentVersion
+   * @param stableVersion
+   * @param previewVersion
+   * @param suppressFormatError
+   * @return
+   */
+  public static int compareYBVersions(
+      String currentVersion,
+      String stableVersion,
+      String previewVersion,
+      boolean suppressFormatError) {
+    boolean isCurrentVersionStable = isStableVersion(currentVersion, suppressFormatError);
+    return compareYbVersions(
+        currentVersion,
+        isCurrentVersionStable ? stableVersion : previewVersion,
+        suppressFormatError);
+  }
+
+  public static boolean areYbVersionsEqual(String v1, String v2, boolean suppressFormatError) {
+    return compareYbVersions(v1, v2, suppressFormatError) == 0;
+  }
+
+  /**
+   * This method compares 2 version strings. Make sure to only compare stable with stable and
+   * preview with preview if using this function. If you are not sure of either, use method {@link
+   * com.yugabyte.yw.common.Util#compareYBVersions}.
+   *
+   * @param v1
+   * @param v2
+   * @return
+   */
   public static int compareYbVersions(String v1, String v2) {
 
     return compareYbVersions(v1, v2, false);
   }
 
-  // Compare v1 and v2 Strings. Returns 0 if the versions are equal, a
-  // positive integer if v1 is newer than v2, a negative integer if v1
-  // is older than v2.
+  /**
+   * Compare v1 and v2 Strings. Returns 0 if the versions are equal, a positive integer if v1 is
+   * newer than v2, a negative integer if v1 is older than v2. Make sure to only compare stable with
+   * stable and preview with preview if using this function. If you are not sure of either, use
+   * method {@link com.yugabyte.yw.common.Util#compareYBVersions}.
+   *
+   * @param v1
+   * @param v2
+   * @param suppressFormatError
+   * @return
+   */
   public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
     // After the second dash, a user can add anything, and it will be ignored.
     String[] v1Parts = v1.split("-", 3);
@@ -549,6 +645,35 @@ public class Util {
 
   public static String escapeSingleQuotesOnly(String src) {
     return src.replaceAll("'", "''");
+  }
+
+  public static void shutdownYbaProcess(int seconds) {
+    // Background thread to exit YBA process
+    Thread shutdownThread =
+        new Thread(
+            () -> {
+              try {
+                Thread.sleep(seconds * 1000 /* ms */);
+                LOG.info("Shutting down via system exit.");
+                System.exit(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during system exit.");
+              }
+            });
+    // Watcher thread to forcibly halt JVM if exit hangs
+    Thread haltThread =
+        new Thread(
+            () -> {
+              try {
+                shutdownThread.join((seconds * 1000) + 30000 /* add 30 seconds */);
+                LOG.info("Shutting down via halt.");
+                Runtime.getRuntime().halt(0);
+              } catch (InterruptedException e) {
+                LOG.warn("Interrupted during wait for exit.");
+              }
+            });
+    shutdownThread.start();
+    haltThread.start();
   }
 
   @VisibleForTesting
@@ -714,9 +839,12 @@ public class Util {
     return Math.abs(d1 - d2) < Util.EPSILON;
   }
 
-  /** Checks if the given date is past the current time or not. */
   public static boolean isTimeExpired(Date date) {
-    Date currentTime = new Date();
+    return isTimeExpired(date, new Date());
+  }
+
+  /** Checks if the given date is past the current time or not. */
+  public static boolean isTimeExpired(Date date, Date currentTime) {
     return currentTime.compareTo(date) >= 0 ? true : false;
   }
 
@@ -757,6 +885,7 @@ public class Util {
     } else if (ybServerPackage.contains(Architecture.aarch64.name().toLowerCase())) {
       archType = Architecture.aarch64.name();
     } else {
+      LOG.warn("Could not parse {} to x86_64 or aarch64", ybServerPackage);
       throw new RuntimeException(
           "Cannot install ybc on machines of arch types other than x86_64, aarch64");
     }
@@ -856,7 +985,7 @@ public class Util {
     try (FileInputStream fis = new FileInputStream(tarFile.toFile());
         GZIPInputStream gis = new GZIPInputStream(new BufferedInputStream(fis));
         TarArchiveInputStream tis = new TarArchiveInputStream(gis)) {
-      while ((currentEntry = tis.getNextTarEntry()) != null) {
+      while ((currentEntry = tis.getNextEntry()) != null) {
         File destPath = new File(folderPath, currentEntry.getName());
         if (currentEntry.isDirectory()) {
           destPath.mkdirs();
@@ -900,7 +1029,8 @@ public class Util {
     }
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
-        new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
+        new DigestInputStream(
+            new BufferedInputStream(new FileInputStream(filePath.toFile())), md)) {
       while (dis.read() != -1)
         ; // Empty loop to clear the data
       md = dis.getMessageDigest();
@@ -1031,5 +1161,181 @@ public class Util {
   public static boolean isIpAddress(String maybeIp) {
     InetAddressValidator ipValidator = InetAddressValidator.getInstance();
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
+  }
+
+  /** Get randomly generated password inline with YB's password policy */
+  public static String getRandomPassword() {
+    byte[] password = new byte[16];
+    new Random().nextBytes(password);
+    String generatedPassword = new String(password, Charset.forName("UTF-8"));
+    // To be consistent with password policy
+    Integer randomInt = new Random().nextInt(26);
+    String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
+    String uppercaseLetter = lowercaseLetter.toUpperCase();
+    generatedPassword +=
+        (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
+            + lowercaseLetter
+            + uppercaseLetter
+            + String.valueOf(randomInt));
+    return generatedPassword;
+  }
+
+  /**
+   * Validate url string and get URL object
+   *
+   * @param url
+   * @param defaultHttpScheme
+   * @return
+   */
+  public static URL validateAndGetURL(String url, boolean defaultHttpScheme) {
+    String urlString = url;
+    if (!urlString.startsWith(HTTP_SCHEME) && !urlString.startsWith(HTTPS_SCHEME)) {
+      urlString = (defaultHttpScheme ? HTTP_SCHEME : HTTPS_SCHEME) + urlString;
+    }
+    try {
+      URL urlInstance = new URL(urlString);
+      if (StringUtils.isBlank(urlInstance.getHost())) {
+        throw new RuntimeException("Malformed URL: " + urlString);
+      }
+      return urlInstance;
+    } catch (MalformedURLException e) {
+      throw new RuntimeException("Malformed URL: " + urlString);
+    }
+  }
+
+  public static UUID retreiveImageBundleUUID(
+      Architecture arch, UserIntent userIntent, Provider provider) {
+    return retreiveImageBundleUUID(arch, userIntent, provider, false);
+  }
+
+  public static UUID retreiveImageBundleUUID(
+      Architecture arch, UserIntent userIntent, Provider provider, boolean cloudEnabled) {
+    UUID imageBundleUUID = null;
+    if (userIntent.imageBundleUUID != null) {
+      imageBundleUUID = userIntent.imageBundleUUID;
+    } else if (provider.getUuid() != null && !cloudEnabled) {
+      // Don't use defaultProvider bundle for YBM, as they will
+      // specify machineImage for provisioning the node.
+      List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+      if (bundles.size() > 0) {
+        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
+      }
+    }
+
+    return imageBundleUUID;
+  }
+
+  /**
+   * Get a new JsonNode where each leaf node's value is replaced with an object containing jsonPath
+   * to that node and its value.
+   *
+   * <p>Example:
+   *
+   * <pre>
+   * {
+   *   "zones": ["az-1"]
+   * }
+   * </pre>
+   *
+   * Gets modified to:
+   *
+   * <pre>
+   * {
+   *   "zones": [
+   *     {
+   *       "jsonPath": "$.zones[0]",
+   *       "value": "az-1"
+   *     }
+   *   ]
+   * }
+   * </pre>
+   *
+   * @param node The JsonNode to be processed.
+   * @return A new JsonNode with original JsonNode's leaf nodes replaced.
+   */
+  public static JsonNode addJsonPathToLeafNodes(JsonNode node) {
+    return addJsonPathToLeafNodesInternal("$", node.deepCopy());
+  }
+
+  private static JsonNode addJsonPathToLeafNodesInternal(String path, JsonNode node) {
+    if (node.isValueNode()) {
+      return Json.newObject().put("jsonPath", path).set("value", node);
+    }
+    if (node.isArray()) {
+      for (int index = 0; index < node.size(); index++) {
+        String elementPath = path + "[" + index + "]";
+        ((ArrayNode) node).set(index, addJsonPathToLeafNodesInternal(elementPath, node.get(index)));
+      }
+    }
+    if (node.isObject()) {
+      for (Iterator<Map.Entry<String, JsonNode>> it = node.fields(); it.hasNext(); ) {
+        Map.Entry<String, JsonNode> field = it.next();
+        String fieldPath = path + "." + field.getKey();
+        ((ObjectNode) node)
+            .set(field.getKey(), addJsonPathToLeafNodesInternal(fieldPath, field.getValue()));
+      }
+    }
+    return node;
+  }
+
+  /**
+   * Transforms the values (non-map, non-collection) in a nested map of string to objects.
+   *
+   * @param map the given map.
+   * @param valueTransformer the transformer for a value.
+   * @return the transformed map.
+   */
+  @SuppressWarnings("unchecked")
+  public static Map<String, ?> transformMap(
+      Map<String, ?> map, Function<Object, Object> valueTransformer) {
+    Map<String, Object> clone = new HashMap<>();
+    for (Map.Entry<String, ?> entry : map.entrySet()) {
+      if (entry.getValue() instanceof Map) {
+        clone.put(
+            entry.getKey(), transformMap((Map<String, ?>) entry.getValue(), valueTransformer));
+      } else if (entry.getValue() instanceof Collection) {
+        clone.put(
+            entry.getKey(),
+            transformCollection((Collection<?>) entry.getValue(), valueTransformer));
+      } else {
+        Object out = valueTransformer.apply(entry.getValue());
+        if (out != null) {
+          clone.put(entry.getKey(), out);
+        }
+      }
+    }
+    return clone;
+  }
+
+  /**
+   * Transforms the values (non-map, non-collection) in a nested collection of objects.
+   *
+   * @param collection the given collection.
+   * @param valueTransformer the transformer for a value.
+   * @return the transformed collection.
+   */
+  @SuppressWarnings("unchecked")
+  public static Collection<?> transformCollection(
+      Collection<?> collection, Function<Object, Object> valueTransformer) {
+    Collection<Object> clone =
+        (collection instanceof Set)
+            ? new HashSet<>(collection.size())
+            : new ArrayList<>(collection.size());
+    for (Object elem : collection) {
+      if (elem instanceof Map) {
+        clone.add(transformMap((Map<String, ?>) elem, valueTransformer));
+      } else if (elem instanceof Collection) {
+        clone.add(transformCollection((List<?>) elem, valueTransformer));
+      } else {
+        Object out = valueTransformer.apply(elem);
+        if (out != null) {
+          clone.add(out);
+        }
+      }
+    }
+    return clone;
   }
 }

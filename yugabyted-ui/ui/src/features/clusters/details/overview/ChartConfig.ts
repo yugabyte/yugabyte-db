@@ -192,10 +192,10 @@ export const useChartConfig = (): Record<string, ChartConfig> => {
       metric: ['AVERAGE_SSTABLES_PER_NODE']
     },
     totalConnections: {
-      title: t('clusterDetail.charts.totalConnections'),
+      title: t('clusterDetail.charts.totalConnectionsYsql'),
       chartLabels: [
-        t('clusterDetail.charts.logicalConnections'),
-        t('clusterDetail.charts.physicalConnections')
+        t('clusterDetail.charts.logicalConnectionsYsql'),
+        t('clusterDetail.charts.physicalConnectionsYsql')
       ],
       chartDrawingType: ['line', 'line'],
       metric: [

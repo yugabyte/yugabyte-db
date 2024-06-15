@@ -11,73 +11,106 @@ spec:
     schema:
       openAPIV3Schema:
         type: object
+        description: >
+          Custom resource definition for YugabyteDB universe.
+          This CR describes the universe configuration for an instance of yugabytedb database.
+          For details about YugabyteDB please refer to https://docs.yugabyte.com/
         properties:
           spec:
             type: object
+            description: Schema spec for a yugabytedb universe.
             x-kubernetes-validations:
               - message: replicationFactor <= numNodes
                 rule: self.replicationFactor <= self.numNodes
             properties:
               universeName:
                 type: string
+                description: Name of the universe object to create
                 x-kubernetes-validations:
                 - message: universeName cannot be changed once set.
                   rule: self == oldSelf
               numNodes:
+                description: Number of tservers in the universe to create.
                 type: integer
               replicationFactor:
+                description: Number of times to replicate data in a universe.
                 type: integer
                 x-kubernetes-validations:
                 - message: Replication Factor is cannot be changed
                   rule: self == oldSelf
-              instanceType:
-                type: string
-              assignPublicIP:
-                type: boolean
-              masterGFlags:
+              gFlags:
+                description: >
+                  Configuration flags for the universe.
+                  These can be set on masters or tservers
                 type: object
-                additionalProperties:
-                  type: string
-              tserverGFlags:
-                type: object
-                additionalProperties:
-                  type: string
-                  x-kubernetes-preserve-unknown-fields: true
-              useTimeSync:
-                type: boolean
+                properties:
+                  tserverGFlags:
+                    description: >
+                      Configuration flags for the tserver process in the universe.
+                    type: object
+                    additionalProperties:
+                      type: string
+                  masterGFlags:
+                    description: >
+                      Configuration flags for the master process in the universe.
+                    type: object
+                    additionalProperties:
+                      type: string
+                  perAZ:
+                    description: >
+                      Configuration flags per AZ per process in the universe.
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        tserverGFlags:
+                          type: object
+                          additionalProperties:
+                            type: string
+                        masterGFlags:
+                          type: object
+                          additionalProperties:
+                            type: string
+
               enableYSQL:
+                description: Enable YSQL interface in the universe.
+                default: true
                 type: boolean
                 x-kubernetes-validations:
                 - message: enableYSQL cannot be changed
                   rule: self == oldSelf
-              enableYEDIS:
-                type: boolean
-                x-kubernetes-validations:
-                - message: enableYEDIS cannot be changed
-                  rule: self == oldSelf
               enableNodeToNodeEncrypt:
+                description: >
+                  Enable node to node encryption in the universe.
+                  This encrypts the data in transit between nodes.
                 type: boolean
+                default: true
                 x-kubernetes-validations:
                 - message: enableNodeToNodeEncrypt cannot be changed
                   rule: self == oldSelf
               enableClientToNodeEncrypt:
+                description: >
+                  Enable client to node encryption in the universe.
+                  Enable this to use tls enabled connnection between
+                  client and database.
                 type: boolean
+                default: true
                 x-kubernetes-validations:
                 - message: enableClientToNodeEncrypt cannot be changed
                   rule: self == oldSelf
-              enableVolumeEncryption:
-                type: boolean
-                x-kubernetes-validations:
-                - message: enableVolumeEncryption cannot be changed
-                  rule: self == oldSelf
               ybSoftwareVersion:
+                description: Version of DB software to use in the universe.
                 type: string
               providerName:
+                description: Preexisting Provider name to use in the universe.
                 type: string
                 x-kubernetes-validations:
                 - message: providerName cannot be changed
                   rule: self == oldSelf
               zoneFilter:
+                description: >
+                  Only deploy yugabytedb nodes in these zones mentioned in the list.
+                  Defaults to all zones if unspecified.
                 type: array
                 x-kubernetes-validations:
                 - message: zoneFilter cannot be changed
@@ -85,11 +118,14 @@ spec:
                 items:
                   type: string
               enableYSQLAuth:
+                description: enableYSQLAuth enables authentication for YSQL inteface.
                 type: boolean
+                default: false
                 x-kubernetes-validations:
                   - message: enableYSQL auth cannot be changed once set.
                     rule: self == oldSelf
               ysqlPassword:
+                description: Used to refer to secrets if enableYSQLAuth is set.
                 type: object
                 x-kubernetes-validations:
                 - message: ysqlPassword cannot be changed once set.
@@ -100,116 +136,78 @@ spec:
                 required:
                 - secretName
               enableYCQL:
+                description: Enable YCQL interface in the universe.
                 type: boolean
+                default: false
                 x-kubernetes-validations:
                 - message: enableYCQL cannot be changed once set.
                   rule: self == oldSelf
-
               enableYCQLAuth:
+                description: enableYCQLAuth enables authentication for YCQL inteface.
                 type: boolean
+                default: false
                 x-kubernetes-validations:
                 - message: enableYCQLAuth cannot be changed once set.
                   rule: self == oldSelf
-
               ycqlPassword:
+                description: Used to refer to secrets if enableYCQLAuth is set.
                 type: object
                 x-kubernetes-validations:
                 - message:  ycqlPassword cannot be changed once set.
                   rule: self == oldSelf
-
                 properties:
                   secretName:
                     type: string
                 required:
                 - secretName
               enableIPV6:
+                description: Enable IPV6 in the universe.
                 type: boolean
+                default: false
                 x-kubernetes-validations:
                 - message:   enableIPV6 cannot be changed once set.
                   rule: self == oldSelf
-              enableExposingService:
-                type: string
+              enableLoadBalancer:
+                description: >
+                  Enable LoadBalancer access to the universe.
+                  Creates a service with Type:LoadBalancer
+                  in the universe for tserver and masters.
+                type: boolean
+                default: false
                 x-kubernetes-validations:
                 - message:   enableExposingService cannot be changed once set.
                   rule: self == oldSelf
-              accessKeyCode:
-                type: string
-                x-kubernetes-validations:
-                  - message:   AccessKeycode cannot be changed once set.
-                    rule: self == oldSelf
               deviceInfo:
+                description: >
+                  Device information for the universe to
+                  refer to storage information for volume,
+                  storage classes etc.
                 properties:
                   volumeSize:
                     type: integer
+                    default: 100
                   numVolumes:
                     type: integer
-                  diskIops:
-                    type: integer
+                    default: 1
                     x-kubernetes-validations:
-                      - message:   DiskIops cannot be changed once set.
+                      - message:   numVolumes cannot be changed once set.
                         rule: self == oldSelf
-                  throughput:
-                    type: integer
-                    x-kubernetes-validations:
-                    - message:   thoughput cannot be changed once set.
-                      rule: self == oldSelf
                   storageClass:
                     type: string
                     x-kubernetes-validations:
                       - message:   StorageClass cannot be changed once set.
                         rule: self == oldSelf
-                  mountPoints:
-                    type: string
-                    x-kubernetes-validations:
-                      - message:   mountPoints cannot be changed once set.
-                        rule: self == oldSelf
-                  storageType:
-                    enum:
-                    - IO1
-                    - GP2
-                    - GP3
-                    - Scratch
-                    - Persistent
-                    - StandardSSD_LRS
-                    - Premium_LRS
-                    - UltraSSD_LRS
-                    - cloudType
-                    - iopsProvisioning
-                    - throughputProvisioning
-                    type: string
-                    x-kubernetes-validations:
-                      - message:   StroageType cannot be changed once set.
-                        rule: self == oldSelf
                 type: object
               kubernetesOverrides:
+                description: >
+                  Kubernetes overrides for the universe.
+                  Please refer to yugabyteDB documentation for more details.
+                  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides
                 type: object
                 # Since this is not an exhaustive list yet.
                 # Helm chart can have a bunch more properties.
-                additionalProperties: true
+                x-kubernetes-preserve-unknown-fields: true
                 properties:
-                  storage:
-                    type: object
-                    properties:
-                      ephemeral:
-                        type: boolean
-                      master:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
-                      tserver:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
                   resource:
                     type: object
                     properties:
@@ -562,10 +560,6 @@ spec:
                                           type: array
                                           items:
                                             type: string
-
-
-
-
                           nodeAffinity:
                             description: Node affinity settings
                             type: object
@@ -1289,27 +1283,61 @@ spec:
                       type: string
                     type: object
           status:
+            description: Status of the universe CR
             type: object
             properties:
-              universeStatus:
+              universeState:
+                description: >
+                  The state of the universe  (e.g. "Ready", "Creating", "Editing", "Deleting")
                 type: string
               sqlEndpoints:
+                description: SQL endpoints for the universe.
                 type: array
                 items:
                   type: string
               cqlEndpoints:
+                description: CQL endpoints for the universe.
                 type: array
                 items:
                   type: string
               resourceUUID:
                 type: string
+              actions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    action_type:
+                      type: string
+                    message:
+                      type: string
+                    taskUUID:
+                      type: string
+                    status:
+                      type: string
+                      enum:
+                      - queued
+                      - running
+                      - failed
 
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: State
+      type: string
+      description: The state of the universe
+      jsonPath: .status.universeState
+    - name: Software Version
+      type: string
+      description: The Software version of the Universe
+      jsonPath: .spec.ybSoftwareVersion
   names:
     kind: YBUniverse
     plural: ybuniverses
     singular: ybuniverse
     shortNames:
-    - ybuniverse
+      - ybuniverse
+    categories:
+      - all
+      - yugabyte
   scope: Namespaced

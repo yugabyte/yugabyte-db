@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -40,9 +42,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   @Inject
   protected UpgradeKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   public static class Params extends KubernetesUpgradeParams {}
@@ -60,9 +62,15 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
-          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
+      kubernetesStatus.startYBUniverseEventStatus(
+          universe,
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.UpgradeKubernetesUniverse.name(),
+          getUserTaskUUID(),
+          UniverseState.EDITING);
 
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
 
@@ -168,8 +176,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.UpgradeKubernetesUniverse.name(),
           getUserTaskUUID(),
+          (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }
@@ -240,13 +249,17 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           ybSoftwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
-          universeOverrides, // Is this old code to update k8s universe?
+          getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
+          universeOverrides,
           azOverrides,
           masterChanged,
           tserverChanged,
           newNamingStyle,
-          isReadOnlyCluster);
+          /*isReadOnlyCluster*/ false,
+          CommandType.HELM_UPGRADE,
+          enableYbc,
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -269,7 +282,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           CommandType.HELM_UPGRADE,
           enableYbc,
-          ybcSoftwareVersion);
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
 
       if (enableYbc) {
         if (isReadOnlyCluster) {

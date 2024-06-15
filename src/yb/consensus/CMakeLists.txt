@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX consensus)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # consensus_metadata_proto
@@ -81,7 +80,7 @@ ADD_YB_LIBRARY(consensus_proto
 ADD_YB_LIBRARY(
   consensus_error
   SRCS consensus_error.cc
-  DEPS consensus_proto yb_util)
+  DEPS consensus_proto yb_ash yb_util)
 
 #########################################
 # log_proto
@@ -137,7 +136,11 @@ set(CONSENSUS_SRCS
   retryable_requests.cc)
 
 ADD_YB_LIBRARY(consensus SRCS ${CONSENSUS_SRCS})
+
 add_dependencies(consensus gen_src_yb_rpc_any_proto)
+add_dependencies(consensus cdc_service_proto)
+add_dependencies(consensus gen_src_yb_master_master_client_proto)
+add_dependencies(consensus gen_src_yb_master_master_types_proto)
 
 target_link_libraries(consensus
   consensus_error

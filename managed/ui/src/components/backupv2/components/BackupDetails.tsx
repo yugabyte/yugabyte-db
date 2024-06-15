@@ -36,8 +36,8 @@ import { YBLoadingCircleIcon } from '../../common/indicators';
 import { handleCACertErrMsg } from '../../customCACerts';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import './BackupDetails.scss';
 import { Action, Resource } from '../../../redesign/features/rbac';
+import './BackupDetails.scss';
 
 export type IncrementalBackupProps = {
   isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
@@ -380,7 +380,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">Expiration</div>
-                <div>{ybFormatDate(backupDetails.expiryTime)}</div>
+                <div>{backupDetails.expiryTime ? ybFormatDate(backupDetails.expiryTime) : "Won't Expire"}</div>
               </div>
               <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>

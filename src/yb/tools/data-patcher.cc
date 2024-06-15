@@ -161,7 +161,8 @@ class RocksDBHelper {
  public:
   RocksDBHelper() : immutable_cf_options_(options_) {
     docdb::InitRocksDBOptions(
-        &options_, kLogPrefix, /* statistics= */ nullptr, tablet_options_, table_options_);
+        &options_, kLogPrefix, yb::TabletId{}, /* statistics= */ nullptr, tablet_options_,
+        table_options_);
     internal_key_comparator_ = std::make_shared<rocksdb::InternalKeyComparator>(
         options_.comparator);
   }
@@ -469,6 +470,35 @@ Status AddDeltaToSstFile(
             add_kv(key, txn_metadata_buffer);
           } else {
             delta_data.AddEarlyTime(HybridTime(metadata_pb.start_hybrid_time()));
+          }
+          continue;
+        }
+
+        // Post-apply transaction metadata record.
+        if (key.size() == 2 + TransactionId::StaticSize() + kKeySuffixLen) {
+          // We do not modify the key in this case, only the value.
+
+          // Modify commit_ht/log_ht stored in metadata.
+          PostApplyTransactionMetadataPB metadata_pb;
+          const auto v = iterator->value();
+          if (!metadata_pb.ParseFromArray(v.data(), narrow_cast<int>(v.size()))) {
+            return STATUS_FORMAT(Corruption, "Bad post-apply txn metadata: $0",
+                                 v.ToDebugHexString());
+          }
+
+          if (is_final_pass) {
+            const auto new_commit_ht = VERIFY_RESULT(delta_data.AddDelta(
+                HybridTime(metadata_pb.commit_ht()), FileType::kSST));
+            const auto new_log_ht = VERIFY_RESULT(delta_data.AddDelta(
+                HybridTime(metadata_pb.log_ht()), FileType::kSST));
+            metadata_pb.set_commit_ht(new_commit_ht.ToUint64());
+            metadata_pb.set_log_ht(new_log_ht.ToUint64());
+            txn_metadata_buffer.clear();
+            RETURN_NOT_OK(pb_util::SerializeToString(metadata_pb, &txn_metadata_buffer));
+            add_kv(key, txn_metadata_buffer);
+          } else {
+            delta_data.AddEarlyTime(HybridTime(metadata_pb.commit_ht()));
+            delta_data.AddEarlyTime(HybridTime(metadata_pb.log_ht()));
           }
           continue;
         }

@@ -34,7 +34,7 @@ const Status& StrandAbortedStatus() {
 
 }
 
-Strand::Strand(ThreadPool* thread_pool) : thread_pool_(*thread_pool) {}
+Strand::Strand(ThreadPool* thread_pool) : ThreadSubPoolBase(thread_pool) {}
 
 Strand::~Strand() {
   const auto running = running_.load();
@@ -45,33 +45,25 @@ Strand::~Strand() {
       static_cast<void*>(this), running, closing, active_tasks);
 }
 
-void Strand::Enqueue(StrandTask* task) {
+bool Strand::Enqueue(StrandTask* task) {
   if (closing_.load(std::memory_order_acquire)) {
     task->Done(STATUS(Aborted, "Strand closing"));
-    return;
+    return false;
   }
 
-  active_tasks_.fetch_add(1, std::memory_order_release);
+  // Increment with memory_order_acq_rel rather than with memory_order_release: we don't want the
+  // Push or the compare/exchange on running_ later in the code to be reordered before this
+  // increment.
+  active_tasks_.fetch_add(1, std::memory_order_acq_rel);
+
   queue_.Push(task);
 
   bool expected = false;
   if (running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    // The Done method will handle the failure to enqueue.
     thread_pool_.Enqueue(this);
   }
-}
-
-void Strand::Shutdown() {
-  bool expected = false;
-  if (!closing_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-    LOG(DFATAL) << "Strand already closed";
-    return;
-  }
-
-  while (active_tasks_.load(std::memory_order_acquire) ||
-         running_.load(std::memory_order_acquire)) {
-    // We expected shutdown to happen rarely, so just use busy wait here.
-    std::this_thread::sleep_for(1ms);
-  }
+  return true;
 }
 
 void Strand::Run() {
@@ -93,7 +85,13 @@ void Strand::Done(const Status& status) {
       }
       task->Done(actual_status);
     }
-    running_.store(false, std::memory_order_release);
+
+    // Using sequential consistency here instead of memory_order_release to prevent reordering of
+    // later reads/writes before this assignment and make it easier to reason about avoiding issues
+    // similar to the one fixed by the following commit:
+    // https://github.com/yugabyte/yugabyte-db/commit/8f9d00638387cff6fc1407229dce47338e89112a
+    running_ = false;
+
     if (FLAGS_TEST_strand_done_inject_delay_ms > 0) {
       std::this_thread::sleep_for(FLAGS_TEST_strand_done_inject_delay_ms * 1ms);
     }
@@ -110,6 +108,11 @@ void Strand::Done(const Status& status) {
     }
     break;
   }
+}
+
+bool Strand::IsIdle() {
+  // Use sequential consistency for safety. This is only used during shutdown.
+  return ThreadSubPoolBase::IsIdle() && !running_;
 }
 
 } // namespace rpc

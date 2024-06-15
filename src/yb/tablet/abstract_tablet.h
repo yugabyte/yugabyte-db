@@ -70,7 +70,8 @@ class AbstractTablet {
       const docdb::YQLStorageIf& ql_storage,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       QLReadRequestResult* result,
-      WriteBuffer* rows_data);
+      WriteBuffer* rows_data,
+      const docdb::DocDBStatistics* statistics);
 
   virtual Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                   const size_t row_count,

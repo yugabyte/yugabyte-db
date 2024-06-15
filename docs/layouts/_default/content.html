@@ -1,10 +1,28 @@
+{{- $headingIcon := false -}}
+{{- $headingImage := false -}}
 <div class="td-content">
-  <div class="main-heading-with-version {{- if not .Params.image }} heading-without-image{{- end }}">
-    {{ if .Page.Params.image }}
+  {{- if .Site.Params.search_banner -}}
+    {{ partial "search-banner.html" . }}
+  {{- end -}}
+
+  {{- if and (.Site.Params.yb.heading_icons) (.Params.image) (not .Params.hideHeadingIcon) -}}
+    {{- if in .Params.image "/" -}}
+      {{- $headingImage = true -}}
+    {{- else -}}
+      {{- $headingIcon = true -}}
+    {{- end -}}
+  {{- end -}}
+
+  <div class="main-heading-with-version {{- if and (not $headingImage) (not $headingIcon) }} heading-without-image{{- end }}">
+    {{- if $headingImage -}}
       <div class="heading-image">
         <img alt="{{ .Title }}" title="{{ .Title }}" src="{{ .Params.image }}" />
       </div>
-    {{ end }}
+    {{- else if $headingIcon -}}
+      <div class="heading-image">
+        <i class="{{ .Params.image }}"></i>
+      </div>
+    {{- end -}}
     <div class="heading-content">
       <div>
         <h1>{{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}{{ partial "badges.html" . }}</h1>

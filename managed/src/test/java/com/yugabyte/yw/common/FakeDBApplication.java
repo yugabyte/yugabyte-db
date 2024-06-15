@@ -11,12 +11,14 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
@@ -50,6 +53,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
   public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
   public EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
+  public TelemetryProviderService mockTelemetryProviderService =
+      spy(TelemetryProviderService.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
@@ -89,6 +94,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public PrometheusConfigManager mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
   public NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   public GetTableSchemaResponse mockSchemaResponse = mock(GetTableSchemaResponse.class);
+  public AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
+  public ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
+  public XClusterSyncScheduler mockXClusterSyncScheduler = mock(XClusterSyncScheduler.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -121,6 +129,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(
                     bind(LdapUniverseSyncHandler.class).toInstance(mockLdapUniverseSyncHandler))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+                .overrides(
+                    bind(TelemetryProviderService.class).toInstance(mockTelemetryProviderService))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
@@ -158,9 +168,12 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(bind(GetTableSchemaResponse.class).toInstance(mockSchemaResponse))
+                .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
+                .overrides(bind(ReleasesUtils.class).toInstance(mockReleasesUtils))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
+        .overrides(bind(XClusterSyncScheduler.class).toInstance(mockXClusterSyncScheduler))
         .build();
   }
 
@@ -181,8 +194,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   }
 
   public static UUID buildTaskInfo(UUID parentUUID, TaskType taskType) {
-    TaskInfo taskInfo = new TaskInfo(taskType);
-    taskInfo.setDetails(Json.newObject());
+    TaskInfo taskInfo = new TaskInfo(taskType, null);
+    taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("test-owner");
     if (parentUUID != null) {
       taskInfo.setParentUuid(parentUUID);

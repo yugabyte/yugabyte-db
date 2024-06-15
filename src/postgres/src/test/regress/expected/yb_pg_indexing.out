@@ -47,8 +47,9 @@ CREATE TABLE idxpart1 PARTITION OF idxpart FOR VALUES FROM (MINVALUE) TO (MAXVAL
 CREATE INDEX partidx_abc_idx ON idxpart (a, b, c);
 INSERT INTO idxpart (a, b, c) SELECT i, i, i FROM generate_series(1, 50) i;
 ALTER TABLE idxpart ALTER COLUMN c TYPE numeric;
-ERROR:  changing column type of a partitioned table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 DROP TABLE idxpart;
 -- If a table without index is attached as partition to a table with
 -- an index, the index is automatically created
@@ -879,12 +880,30 @@ alter table idxpart add primary key (a);	-- not an incomplete one though
 ERROR:  insufficient columns in PRIMARY KEY constraint definition
 DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is part of the partition key.
 alter table idxpart add primary key (a, b);	-- this works
-ERROR:  changing primary key of a partitioned table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
--- TODO: Adding primary key to a partitioned table is not yet implemented (#14196).
--- \d idxpart
--- create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
--- \d idxpart1
+\d idxpart
+              Table "public.idxpart"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+ c      | text    |           |          | 
+Partition key: RANGE (a, b)
+Indexes:
+    "idxpart_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
+Number of partitions: 0
+
+create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
+\d idxpart1
+              Table "public.idxpart1"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+ c      | text    |           |          | 
+Partition of: idxpart FOR VALUES FROM (0, 0) TO (1000, 1000)
+Indexes:
+    "idxpart1_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
+
 drop table idxpart;
 -- use ALTER TABLE to add a unique constraint
 create table idxpart (a int, b int) partition by range (a, b);
@@ -974,35 +993,65 @@ create table idxpart (i int) partition by hash (i);
 create table idxpart0 partition of idxpart (i) for values with (modulus 2, remainder 0);
 create table idxpart1 partition of idxpart (i) for values with (modulus 2, remainder 1);
 alter table idxpart0 add primary key(i);
-ERROR:  changing primary key of a partitioned table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16980. React with thumbs up to raise its priority
--- Uncomment when changing primary key of a partitioned table is implemented (#14196)
-/*
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table idxpart add primary key(i);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
+ idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
+ idxpart1 | idxpart1_pkey | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
+ idxpart  | idxpart_pkey  |              | t          | idxpart_pkey  | t          |           0 | t            | t
+(3 rows)
+
 drop index idxpart0_pkey;								-- fail
+ERROR:  cannot drop index idxpart0_pkey because index idxpart_pkey requires it
+HINT:  You can drop index idxpart_pkey instead.
 drop index idxpart1_pkey;								-- fail
+ERROR:  cannot drop index idxpart1_pkey because index idxpart_pkey requires it
+HINT:  You can drop index idxpart_pkey instead.
 alter table idxpart0 drop constraint idxpart0_pkey;		-- fail
+ERROR:  cannot drop inherited constraint "idxpart0_pkey" of relation "idxpart0"
 alter table idxpart1 drop constraint idxpart1_pkey;		-- fail
+ERROR:  cannot drop inherited constraint "idxpart1_pkey" of relation "idxpart1"
 alter table idxpart drop constraint idxpart_pkey;		-- ok
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-*/
+ indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated 
+----------+------------+-----------+------------+---------+------------+-------------+--------------+--------------
+(0 rows)
+
 drop table idxpart;
 -- If the partition to be attached already has a primary key, fail if
 -- it doesn't match the parent's PK.
 CREATE TABLE idxpart (c1 INT PRIMARY KEY, c2 INT, c3 VARCHAR(10)) PARTITION BY RANGE(c1);
 CREATE TABLE idxpart1 (LIKE idxpart);
 ALTER TABLE idxpart1 ADD PRIMARY KEY (c1, c2);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE idxpart ATTACH PARTITION idxpart1 FOR VALUES FROM (100) TO (200);
 ERROR:  multiple primary keys for table "idxpart1" are not allowed
 DROP TABLE idxpart, idxpart1;
@@ -1019,16 +1068,26 @@ drop table idxpart, idxpart1, idxpart11;
 create table idxpart (a int) partition by range (a);
 create table idxpart0 (like idxpart);
 alter table idxpart0 add primary key (a);
--- Uncomment when changing primary key of a partitioned table is implemented (#14196)
-/*
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table idxpart attach partition idxpart0 for values from (0) to (1000);
 alter table only idxpart add primary key (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
+ indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+----------+---------------+-----------+------------+---------------+------------+-------------+--------------+--------------
+ idxpart0 | idxpart0_pkey |           | t          | idxpart0_pkey | t          |           0 | t            | t
+ idxpart  | idxpart_pkey  |           | f          | idxpart_pkey  | t          |           0 | t            | t
+(2 rows)
+
 alter index idxpart_pkey attach partition idxpart0_pkey;
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
@@ -1036,16 +1095,19 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
-*/
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
+ idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
+ idxpart  | idxpart_pkey  |              | t          | idxpart_pkey  | t          |           0 | t            | t
+(2 rows)
+
 drop table idxpart;
 -- if a partition has a unique index without a constraint, does not attach
 -- automatically; creates a new index instead.
-create table idxpart (a int PRIMARY KEY, b int) partition by range (a);
+create table idxpart (a int, b int) partition by range (a);
 create table idxpart1 (a int not null, b int);
 create unique index on idxpart1 (a);
--- Uncomment when changing primary key of a partitioned table is implemented (#14196).
--- For now primary key of idxpart is specified at creation time itself.
--- alter table idxpart add primary key (a);
+alter table idxpart add primary key (a);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
@@ -1053,29 +1115,27 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
+ indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
 ----------+----------------+--------------+------------+---------------+------------+-------------+--------------+--------------
- idxpart0 | idxpart0_pkey  |              | t          | idxpart0_pkey | t          |           0 | t            | t
- idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              |
+ idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              | 
  idxpart1 | idxpart1_pkey  | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
  idxpart  | idxpart_pkey   |              | t          | idxpart_pkey  | t          |           0 | t            | t
-(4 rows)
+(3 rows)
 
 drop table idxpart;
--- Uncomment when changing primary key of a partitioned table is implemented (#14196)
-/*
 -- Can't attach an index without a corresponding constraint
 create table idxpart (a int, b int) partition by range (a);
 create table idxpart1 (a int not null, b int);
 create unique index on idxpart1 (a);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
 alter table only idxpart add primary key (a);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter index idxpart_pkey attach partition idxpart1_a_idx;	-- fail
+ERROR:  cannot attach index "idxpart1_a_idx" as a partition of index "idxpart_pkey"
+DETAIL:  The index "idxpart_pkey" belongs to a constraint in table "idxpart" but no constraint exists for index "idxpart1_a_idx".
 drop table idxpart;
-*/
--- YB Note: When above tests are uncommented, idxpart0 will be attached as a
--- partition to idxpart, so this drop statement will become unnecessary.
-drop table idxpart0;
 -- Test that unique constraints are working
 create table idxpart (a int, b text, primary key (a, b)) partition by range (a);
 create table idxpart1 partition of idxpart for values from (0) to (100000);
@@ -1120,7 +1180,7 @@ insert into fastpath select generate_series(1,10000), 'b', 100;
 -- guarantee if index-only scans will be picked up in all cases or not, but
 -- that fuzziness actually helps the test.
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 set enable_seqscan to false;
 set enable_bitmapscan to false;
 select sum(a) from fastpath where a = 6456;
@@ -1174,7 +1234,7 @@ truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 -- again, vacuum here either forces index-only scans or creates fuzziness
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1210,7 +1270,7 @@ create index fpindex3 on fastpath(a desc, b asc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1245,7 +1305,7 @@ create index fpindex4 on fastpath(a asc, b desc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1281,7 +1341,7 @@ create index fpindex5 on fastpath(b asc, a desc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1316,7 +1376,7 @@ create index fpindex6 on fastpath(b desc, a desc);
 truncate fastpath;
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 vacuum fastpath;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
                md5
@@ -1390,6 +1450,9 @@ alter table parted_pk_detach_test1 drop constraint parted_pk_detach_test1_pkey;	
 ERROR:  cannot drop inherited constraint "parted_pk_detach_test1_pkey" of relation "parted_pk_detach_test1"
 alter table parted_pk_detach_test detach partition parted_pk_detach_test1;
 alter table parted_pk_detach_test1 drop constraint parted_pk_detach_test1_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 drop table parted_pk_detach_test, parted_pk_detach_test1;
 create table parted_uniq_detach_test (a int unique) partition by list (a);
 create table parted_uniq_detach_test1 partition of parted_uniq_detach_test for values in (1);

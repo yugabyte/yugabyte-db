@@ -133,9 +133,11 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
 
     def update_ansible_vars_with_args(self, args):
         super(AwsProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
-        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
         self.extra_vars.update({"aws_key_pair_name": args.key_pair_name})
+
+    def get_device_names(self, args, host_info=None):
+        return self.cloud.get_device_names(args, host_info)
 
 
 class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
@@ -417,7 +419,6 @@ class AwsQuerySpotPricingMethod(AbstractMethod):
 class AwsQueryImageMethod(AbstractMethod):
     def __init__(self, base_command):
         super(AwsQueryImageMethod, self).__init__(base_command, "image")
-        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def add_extra_args(self):
         super(AwsQueryImageMethod, self).add_extra_args()
@@ -571,3 +572,6 @@ class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
         super(AwsUpdateMountedDisksMethod, self).add_extra_args()
         self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
+
+    def get_device_names(self, args, host_info=None):
+        return self.cloud.get_device_names(args, host_info)

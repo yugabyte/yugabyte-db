@@ -46,6 +46,8 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <ev++.h>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 
@@ -262,6 +264,10 @@ Reactor::Reactor(Messenger* messenger,
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
+  // Store this to user data to be able to obtain Reactor in ReleaseLoop and AcquireLoop.
+  ev_set_userdata(loop_.raw_loop, this);
+  ev_set_loop_release_cb(loop_.raw_loop, &ReleaseLoop, &AcquireLoop);
+
   VLOG_WITH_PREFIX(1) << "Create reactor with keep alive_time: "
                       << yb::ToString(connection_keepalive_time_)
                       << ", coarse timer granularity: " << yb::ToString(coarse_timer_granularity_);
@@ -454,6 +460,7 @@ Status Reactor::QueueEventOnFilteredConnections(
 
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
+  SCOPED_WAIT_STATUS(DumpRunningRpc_WaitOnReactor);
   return RunOnReactorThread([&req, resp](Reactor* reactor) -> Status {
     ReactorThreadRoleGuard guard;
     for (const ConnectionPtr& conn : reactor->server_conns_) {
@@ -722,7 +729,9 @@ void Reactor::RunThread() {
   ThreadRestrictions::SetWaitAllowed(false);
   ThreadRestrictions::SetIOAllowed(false);
   DVLOG_WITH_PREFIX(6) << "Calling Reactor::RunThread()...";
+  IncrementGauge(messenger_.rpc_metrics()->busy_reactors);
   loop_.run(/* flags */ 0);
+  DecrementGauge(messenger_.rpc_metrics()->busy_reactors);
   VLOG_WITH_PREFIX(1) << "thread exiting.";
 }
 
@@ -836,7 +845,10 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
                       << ")";
 
   ConnectionPtr retained_conn = conn->shared_from_this();
-  conn->Shutdown(conn_status);
+  if (!conn->Shutdown(conn_status)) {
+    // Connection was already destroyed. Error logged by Connection::Shutdown itself.
+    return;
+  }
 
   // Unlink connection from lists.
   if (conn->direction() == ConnectionDirection::CLIENT) {
@@ -854,8 +866,10 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
         LOG_WITH_PREFIX(WARNING) << "  Client connection: " << p.first.ToString() << ", "
                                  << p.second->ToString();
       }
+      LOG_WITH_PREFIX(FATAL)
+          << "Couldn't find connection for any index to " << conn->ToString()
+          << ", destroy reason: " << conn_status;
     }
-    CHECK(erased) << "Couldn't find connection for any index to " << conn->ToString();
   } else if (conn->direction() == ConnectionDirection::SERVER) {
     auto it = server_conns_.begin();
     while (it != server_conns_.end()) {
@@ -1010,6 +1024,16 @@ Status Reactor::RunOnReactorThread(const F& f, const SourceLocation& source_loca
   auto task = std::make_shared<RunFunctionTask<F>>(f, source_location);
   RETURN_NOT_OK(ScheduleReactorTask(task));
   return task->Wait();
+}
+
+void Reactor::ReleaseLoop(struct ev_loop* loop) noexcept {
+  auto reactor = static_cast<Reactor*>(ev_userdata(loop));
+  DecrementGauge(reactor->messenger_.rpc_metrics()->busy_reactors);
+}
+
+void Reactor::AcquireLoop(struct ev_loop* loop) noexcept {
+  auto reactor = static_cast<Reactor*>(ev_userdata(loop));
+  IncrementGauge(reactor->messenger_.rpc_metrics()->busy_reactors);
 }
 
 }  // namespace rpc

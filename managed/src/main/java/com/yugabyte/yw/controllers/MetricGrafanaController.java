@@ -40,7 +40,8 @@ public class MetricGrafanaController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Get Grafana Dashboard",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get Grafana Dashboard",
       response = String.class,
       nickname = "GrafanaDashboard")
   @AuthzPath({

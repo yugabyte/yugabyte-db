@@ -76,6 +76,9 @@ class Master;
 class TableInfo;
 class TabletInfo;
 
+YB_STRONGLY_TYPED_BOOL(AddPendingDelete);
+YB_STRONGLY_TYPED_BOOL(CDCSDKSetRetentionBarriers);
+
 // Interface used by RetryingTSRpcTask to pick the tablet server to
 // send the next RPC to.
 class TSPicker {
@@ -261,9 +264,9 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 // A background task which continuously retries sending an RPC to master server.
 class RetryingMasterRpcTask : public RetryingRpcTask {
  public:
-  RetryingMasterRpcTask(Master *master,
+  RetryingMasterRpcTask(Master* master,
                         ThreadPool* callback_pool,
-                        const consensus::RaftPeerPB& peer,
+                        consensus::RaftPeerPB&& peer,
                         AsyncTaskThrottlerBase* async_task_throttler = nullptr);
 
   ~RetryingMasterRpcTask() {}
@@ -414,7 +417,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTaskWithTable {
                      const std::string& permanent_uuid,
                      const scoped_refptr<TabletInfo>& tablet,
                      const std::vector<SnapshotScheduleId>& snapshot_schedules,
-                     LeaderEpoch epoch);
+                     LeaderEpoch epoch,
+                     CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kCreateReplica;
@@ -434,6 +438,8 @@ class AsyncCreateReplica : public RetrySpecificTSRpcTaskWithTable {
   const TabletId tablet_id_;
   tserver::CreateTabletRequestPB req_;
   tserver::CreateTabletResponsePB resp_;
+  const CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers_ =
+      CDCSDKSetRetentionBarriers::kFalse;
 };
 
 class AsyncMasterTabletHealthTask : public RetryingMasterRpcTask {
@@ -441,7 +447,7 @@ class AsyncMasterTabletHealthTask : public RetryingMasterRpcTask {
   AsyncMasterTabletHealthTask(
       Master* master,
       ThreadPool* callback_pool,
-      const consensus::RaftPeerPB& peer,
+      consensus::RaftPeerPB&& peer,
       std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
 
   server::MonitoredTaskType type() const override {
@@ -469,7 +475,7 @@ class AsyncTserverTabletHealthTask : public RetrySpecificTSRpcTask {
     Master* master,
     ThreadPool* callback_pool,
     std::string permanent_uuid,
-    std::vector<TabletId> tablets,
+    std::vector<TabletId>&& tablets,
     std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler);
 
   server::MonitoredTaskType type() const override {
@@ -577,6 +583,10 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
 
   std::string description() const override;
 
+  Status BeforeSubmitToTaskPool() override;
+
+  Status OnSubmitFailure() override;
+
   void set_hide_only(bool value) {
     hide_only_ = value;
   }
@@ -585,9 +595,9 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
     keep_data_ = value;
   }
 
- protected:
   TabletId tablet_id() const override { return tablet_id_; }
 
+ protected:
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void UnregisterAsyncTaskCallback() override;
@@ -599,6 +609,9 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
   tserver::DeleteTabletResponsePB resp_;
   bool hide_only_ = false;
   bool keep_data_ = false;
+
+ private:
+  Status SetPendingDelete(AddPendingDelete add_pending_delete);
 };
 
 // Send the "Alter Table" with the latest table schema to the leader replica
@@ -944,7 +957,6 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
 
   tablet::SplitTabletRequestPB req_;
   tserver::SplitTabletResponsePB resp_;
-  TabletSplitCompleteHandlerIf* tablet_split_complete_handler_;
 };
 
 class AsyncTsTestRetry : public RetrySpecificTSRpcTask {
@@ -976,7 +988,7 @@ class AsyncTsTestRetry : public RetrySpecificTSRpcTask {
 class AsyncMasterTestRetry : public RetryingMasterRpcTask {
  public:
   AsyncMasterTestRetry(
-      Master *master, ThreadPool *callback_pool, const consensus::RaftPeerPB& peer,
+      Master *master, ThreadPool *callback_pool, consensus::RaftPeerPB&& peer,
       int32_t num_retries, StdStatusCallback callback);
 
   server::MonitoredTaskType type() const override {
@@ -1023,6 +1035,62 @@ class AsyncUpdateTransactionTablesVersion: public RetrySpecificTSRpcTask {
   uint64_t version_;
   StdStatusCallback callback_;
   tserver::UpdateTransactionTablesVersionResponsePB resp_;
+};
+
+class AsyncCloneTablet: public AsyncTabletLeaderTask {
+ public:
+  AsyncCloneTablet(
+      Master* master,
+      ThreadPool* callback_pool,
+      const TabletInfoPtr& tablet,
+      LeaderEpoch epoch,
+      tablet::CloneTabletRequestPB req);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kCloneTablet;
+  }
+
+  std::string type_name() const override { return "Clone Tablet"; }
+
+  std::string description() const override;
+
+ private:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+
+  tablet::CloneTabletRequestPB req_;
+  tserver::CloneTabletResponsePB resp_;
+};
+
+class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
+ public:
+  using ClonePgSchemaCallbackType = std::function<Status(Status)>;
+  AsyncClonePgSchema(
+      Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& source_db_name, const std::string& target_db_name, HybridTime restore_time,
+      ClonePgSchemaCallbackType callback, MonoTime deadline);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kClonePgSchema;
+  }
+
+  std::string type_name() const override { return "Clone PG Schema Objects"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  MonoTime ComputeDeadline() override;
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+ private:
+  std::string source_db_name_;
+  std::string target_db_name;
+  HybridTime restore_ht_;
+  tserver::ClonePgSchemaResponsePB resp_;
+  ClonePgSchemaCallbackType callback_;
 };
 
 } // namespace master

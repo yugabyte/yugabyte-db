@@ -8,11 +8,12 @@ import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { useQuery } from 'react-query';
-import { Provider, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { AxiosError } from 'axios';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -24,6 +25,7 @@ import {
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   CloudVendorRegionField,
   ConfigureRegionModal
@@ -33,6 +35,7 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType,
   YBImageType
 } from '../../constants';
@@ -72,7 +75,7 @@ import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
 import { RuntimeConfigKey, YBAHost } from '../../../../../redesign/helpers/constants';
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
-import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
+import { CloudType, YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSProviderCredentialType, VPC_SETUP_OPTIONS } from './constants';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
@@ -86,11 +89,20 @@ import {
   AWSProvider,
   AWSRegion,
   AWSRegionMutation,
-  ImageBundle,
   YBProviderMutation
 } from '../../types';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 interface AWSProviderEditFormProps {
   editProvider: EditProvider;
@@ -188,6 +200,7 @@ export const AWSProviderEditForm = ({
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
+  const { t } = useTranslation();
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<AWSProviderEditFormFieldValues>({
     defaultValues: defaultValues,
@@ -201,14 +214,24 @@ export const AWSProviderEditForm = ({
   );
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
+
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
+
   if (
     hostInfoQuery.isLoading ||
     hostInfoQuery.isIdle ||
@@ -346,6 +369,8 @@ export const AWSProviderEditForm = ({
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  const imagebundles = formMethods.watch('imageBundles', defaultValues.imageBundles);
+
   /**
    * In use zones for selected region.
    */
@@ -359,7 +384,8 @@ export const AWSProviderEditForm = ({
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
     getIsFormDisabled(formMethods.formState, providerConfig) ||
-    isForceSubmitting;
+    isForceSubmitting ||
+    !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -513,10 +539,7 @@ export const AWSProviderEditForm = ({
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -552,6 +575,7 @@ export const AWSProviderEditForm = ({
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -559,7 +583,7 @@ export const AWSProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.AWS,
                   'regions',
                   isFormDisabled,
@@ -575,22 +599,38 @@ export const AWSProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={ProviderCode.AWS}
+              providerOperation={ProviderOperation.EDIT}
+              providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.AWS,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
+            />
             <FieldGroup
               heading="SSH Key Pairs"
               infoTitle="SSH Key Pairs"
               infoContent="YBA requires SSH access to DB nodes. For public clouds, YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
             >
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AWS,
-                    'sshUser',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AWS,
+                      'sshUser',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -601,12 +641,14 @@ export const AWSProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AWS,
-                    'sshPort',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AWS,
+                      'sshPort',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -737,7 +779,7 @@ export const AWSProviderEditForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -757,14 +799,9 @@ export const AWSProviderEditForm = ({
               </YBBanner>
             )}
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-                {!!featureFlags.test.enableAWSProviderValidation && (
-                  <Typography variant="body2" color="primary">
-                    Validating provider configuration fields... usually take 5-30s to complete.
-                  </Typography>
-                )}
-              </Box>
+              <SubmitInProgress
+                isValidationEnabled={!!featureFlags.test.enableAWSProviderValidation}
+              />
             )}
           </Box>
           <Box marginTop="16px">
@@ -788,7 +825,10 @@ export const AWSProviderEditForm = ({
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
-              onClick={onFormReset}
+              onClick={(e: any) => {
+                onFormReset();
+                e.currentTarget.blur();
+              }}
               disabled={isFormDisabled}
               data-testid={`${FORM_NAME}-ClearButton`}
             />
@@ -815,6 +855,10 @@ export const AWSProviderEditForm = ({
           regionSelection={regionSelection}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
+          imageBundles={imagebundles}
+          onImageBundleSubmit={(images) => {
+            formMethods.setValue('imageBundles', images);
+          }}
         />
       )}
       <DeleteRegionModal
@@ -841,7 +885,7 @@ const constructDefaultFormValues = (
   providerCredentialType: providerConfig.details.cloudInfo.aws.awsAccessKeySecret
     ? AWSProviderCredentialType.ACCESS_KEY
     : AWSProviderCredentialType.HOST_INSTANCE_IAM_ROLE,
-  imageBundles: providerConfig.imageBundles,
+  imageBundles: (providerConfig.imageBundles as unknown) as ImageBundle[],
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
@@ -874,6 +918,7 @@ const constructProviderPayload = async (
   } catch (error) {
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
+  const imageBundles = constructImageBundlePayload(formValues, true);
 
   const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
@@ -920,7 +965,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
-    imageBundles: formValues.imageBundles,
+    imageBundles,
     regions: [
       ...formValues.regions.map<AWSRegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<AWSProvider, AWSRegion>(
@@ -928,12 +973,10 @@ const constructProviderPayload = async (
           regionFormValues.code
         );
         return {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid
-          }),
+          ...existingRegion,
           code: regionFormValues.code,
           details: {
+            ...existingRegion?.details,
             cloudInfo: {
               [ProviderCode.AWS]: {
                 ...(existingRegion
@@ -969,10 +1012,7 @@ const constructProviderPayload = async (
                 azFormValues.code
               );
               return {
-                ...(existingZone && {
-                  active: existingZone.active,
-                  uuid: existingZone.uuid
-                }),
+                ...existingZone,
                 code: azFormValues.code,
                 name: azFormValues.code,
                 subnet: azFormValues.subnet

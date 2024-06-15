@@ -28,6 +28,7 @@
 
 #include <stdio.h>
 
+#include "catalog/yb_type.h"
 #include "utils/elog.h"
 #include "ybgate/ybgate_api-test.h"
 #include "ybgate/ybgate_status.h"
@@ -348,4 +349,10 @@ YbgStatus YbgTest(YbGateTestCase case_no)
 void YbgTestNoReporting(YbGateTestCase case_no)
 {
 	yb_test(case_no);
+}
+
+bool YbTypeDetailsTest(
+	unsigned int elmtype, int *elmlen, bool *elmbyval, char *elmalign)
+{
+	return YbTypeDetails(elmtype, elmlen, elmbyval, elmalign);
 }

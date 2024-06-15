@@ -12,11 +12,12 @@
 //
 
 #include "yb/tserver/xcluster_poller_id.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
 XClusterPollerId::XClusterPollerId(
-    cdc::ReplicationGroupId replication_group_id, TableId consumer_table_id,
+    xcluster::ReplicationGroupId replication_group_id, TableId consumer_table_id,
     TabletId producer_tablet_id, int64 leader_term)
     : replication_group_id(replication_group_id),
       consumer_table_id(consumer_table_id),

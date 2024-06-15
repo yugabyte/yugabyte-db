@@ -7,7 +7,9 @@ import { Field, FieldArray } from 'redux-form';
 import { Col, Alert } from 'react-bootstrap';
 import clsx from 'clsx';
 
+import { fetchGlobalRunTimeConfigs } from '../../../../api/admin';
 import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
+import { YBLoadingCircleIcon } from '../../indicators';
 import {
   createErrorMessage,
   isNonEmptyArray,
@@ -25,7 +27,6 @@ import { EncryptionInTransit } from './EncryptionInTransit';
 import GFlagComponent from '../../../universes/UniverseForm/GFlagComponent';
 import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
-import { sortVersion } from '../../../releases';
 import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverrides';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
 import { hasLinkedXClusterConfig } from '../../../xcluster/ReplicationUtils';
@@ -34,11 +35,12 @@ import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/Rbac
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import './RollingUpgradeForm.scss';
+import { compareYBSoftwareVersions, isVersionStable } from '../../../../utils/universeUtilsTyped';
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
     super(props);
-    this.state = { formConfirmed: false };
+    this.state = { formConfirmed: false, globalRuntimeConfigs: null, isLoading: true };
   }
 
   toggleConfirmValidation = () => {
@@ -233,6 +235,11 @@ export default class RollingUpgradeForm extends Component {
     this.setState({ formConfirmed: false });
   };
 
+  componentDidMount() {
+    const { fetchRuntimeConfigs } = this.props;
+    fetchRuntimeConfigs();
+  }
+
   render() {
     const {
       modalVisible,
@@ -242,15 +249,55 @@ export default class RollingUpgradeForm extends Component {
       universe: { error, supportedReleases },
       formValues,
       certificates,
-      overrideIntentParams
+      overrideIntentParams,
+      runtimeConfigs
     } = this.props;
 
+    const skipVersionChecksValue = runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === 'yb.skip_version_checks'
+    )?.value;
+    // By default skipVersionChecks is false
+    // If runtime config flag is not accessible, assign false to the variable
+    const skipVersionChecks = (skipVersionChecksValue === undefined || skipVersionChecksValue === 'false') ? false : true;
     const currentVersion = this.getCurrentVersion();
+    const isCurrentVersionStable = isVersionStable(currentVersion);
     const submitAction = handleSubmit(this.setRollingUpgradeProperties);
     let softwareVersionOptions = [];
     if (getPromiseState(supportedReleases).isSuccess()) {
-      softwareVersionOptions = (supportedReleases?.data || [])
-        ?.sort(sortVersion)
+      let filteredReleases;
+      const sortedStableDbReleases = (supportedReleases?.data || [])?.filter(
+        (release) => isVersionStable(release))?.sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA,
+            options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          }
+          ));
+      const sortedPreviewDbReleases = (supportedReleases?.data || [])?.filter(
+        (release) => !isVersionStable(release))?.sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA,
+            options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          }
+          ));
+      if (!skipVersionChecks) {
+        if (isCurrentVersionStable) {
+          filteredReleases = sortedStableDbReleases;
+        } else {
+          filteredReleases = sortedPreviewDbReleases;
+        }
+      } else {
+        // Print stable versions before preview versions
+        filteredReleases = sortedStableDbReleases.concat(sortedPreviewDbReleases);
+      }
+      softwareVersionOptions = filteredReleases
         .map((item, idx) => (
           // eslint-disable-next-line react/no-array-index-key
           <option key={idx} disabled={item === currentVersion} value={item}>

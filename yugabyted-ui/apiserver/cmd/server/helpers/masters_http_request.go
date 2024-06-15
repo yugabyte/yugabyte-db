@@ -56,7 +56,7 @@ type MastersFuture struct {
     Error error `json:"error"`
 }
 
-func (h *HelperContainer) GetMastersFuture(nodeHost string, future chan MastersFuture) {
+func (h *HelperContainer) GetMastersFuture(future chan MastersFuture) {
     masters := MastersFuture{
         Masters: []Master{},
         Error: nil,
@@ -73,18 +73,7 @@ func (h *HelperContainer) GetMastersFuture(nodeHost string, future chan MastersF
         // In this case, assume current node is a master
         masterAddresses = append(masterAddresses, HOST)
     } else {
-        for _, master := range mastersListResponse.Masters {
-            host, _, err := net.SplitHostPort(master.HostPort)
-            if err != nil {
-                h.logger.Warnf("failed to split host and port of %s", master.HostPort)
-                continue
-            }
-            if host == HOST {
-                masterAddresses = append([]string{host}, masterAddresses...)
-            } else {
-                masterAddresses = append(masterAddresses, host)
-            }
-        }
+        masterAddresses = h.ExtractMasterAddressesList(mastersListResponse)
     }
     urlList := []string{}
     for _, host := range masterAddresses {
@@ -96,19 +85,26 @@ func (h *HelperContainer) GetMastersFuture(nodeHost string, future chan MastersF
         }
         urlList = append(urlList, url)
     }
-    body, err := h.AttemptGetRequests(urlList, true)
+    body, _, err := h.AttemptGetRequests(urlList, true)
     if err != nil {
         masters.Error = err
         future <- masters
         return
     }
     err = json.Unmarshal([]byte(body), &masters)
-    if masters.Error != nil {
+    if err != nil {
+        h.logger.Debugf("unable to parse json: %s", body)
         future <- masters
         return
     }
     masters.Error = err
     future <- masters
+    // Update cache if successful
+    if err == nil {
+        masterAddresses := h.ExtractMasterAddresses(masters)
+        MasterAddressCache.Update(masterAddresses)
+        h.logger.Debugf("updated cached master addresses %v", masterAddresses)
+    }
 }
 
 type MasterAddressAndType struct {
@@ -152,4 +148,48 @@ func (h *HelperContainer) GetMastersFromTserverFuture(
     }
     masters.Error = err
     future <- masters
+    // Update cache if successful
+    if err == nil {
+        masterAddresses := h.ExtractMasterAddressesList(masters)
+        MasterAddressCache.Update(masterAddresses)
+        h.logger.Debugf("updated cached master addresses %v", masterAddresses)
+    }
+}
+
+// Get master addresses from MastersFuture, from master server response
+func (h *HelperContainer) ExtractMasterAddresses(masters MastersFuture) []string {
+    addresses := []string{}
+    count := 0
+    for _, master := range masters.Masters {
+        if len(master.Registration.PrivateRpcAddresses) > 0 {
+            host := master.Registration.PrivateRpcAddresses[0].Host
+            addresses = append(addresses, host)
+            if host == HOST {
+                addresses[0], addresses[count] = addresses[count], addresses[0]
+            }
+            count += 1
+        } else {
+            h.logger.Warnf("couldn't find private rpc address of a master")
+        }
+    }
+    return addresses
+}
+
+// Get master addresses from MastersListFuture, from tserver response
+func (h *HelperContainer) ExtractMasterAddressesList(masters MastersListFuture) []string {
+    addresses := []string{}
+    count := 0
+    for _, master := range masters.Masters {
+        host, _, err := net.SplitHostPort(master.HostPort)
+        if err != nil {
+            h.logger.Warnf("failed to split host and port of %s", master.HostPort)
+            continue
+        }
+        addresses = append(addresses, host)
+        if host == HOST {
+            addresses[0], addresses[count] = addresses[count], addresses[0]
+        }
+        count += 1
+    }
+    return addresses
 }

@@ -8,7 +8,7 @@
 import time
 
 from azure.core.exceptions import HttpResponseError
-from azure.identity import ClientSecretCredential
+from azure.identity import DefaultAzureCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
@@ -24,7 +24,6 @@ from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
 
-import adal
 import base64
 import datetime
 import json
@@ -103,11 +102,13 @@ class GetPriceWorker(Thread):
 
 
 def get_credentials():
-    credentials = ClientSecretCredential(
-        client_id=os.environ.get("AZURE_CLIENT_ID"),
-        client_secret=os.environ.get("AZURE_CLIENT_SECRET"),
-        tenant_id=os.environ.get("AZURE_TENANT_ID")
-    )
+    """
+    DefaultAzureCredential authenticates using various mechanisms in a pre-defined order:
+    1) EnvironmentCredential: Reads credentials from environment variables.
+    2) WorkloadIdentityCredential: Authenticates on Kubernetes with workload-identity.
+    3) ManagedIdentityCredential: Authenticates on Azure hosts with managed-identity.
+    """
+    credentials = DefaultAzureCredential()
     return credentials
 
 
@@ -443,9 +444,7 @@ class AzureCloudAdmin():
             "managed_disk": {
                 "storageAccountType": AZURE_SKU_FORMAT[vol_type],
                 "id": data_disk.id
-            },
-            "caching": "ReadOnly"
-        })
+            }})
 
         async_disk_attach = self.compute_client.virtual_machines.begin_create_or_update(
             RESOURCE_GROUP,
@@ -728,6 +727,8 @@ class AzureCloudAdmin():
             logging.info("[app] VM {} is not found".format(vm_name))
             self.destroy_orphaned_resources(vm_name, node_uuid)
             return
+        public_ip = self.is_public_ip_assigned(vm)
+
         # Delete the VM first. Any subsequent failure will invoke the orphaned
         # resource deletion.
         logging.info("[app] Deleting vm {}".format(vm_name))
@@ -750,18 +751,19 @@ class AzureCloudAdmin():
             disk_dels[os_disk_name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
-        ip_name = self.get_public_ip_name(vm_name)
         logging.info("[app] Deleting nic {}".format(nic_name))
         nic_del = self.network_client.network_interfaces.begin_delete(NETWORK_RESOURCE_GROUP,
                                                                       nic_name)
         nic_del.wait()
         logging.info("[app] Deleted nic {}".format(nic_name))
 
-        logging.info("[app] Deleting ip {}".format(ip_name))
-        ip_del = self.network_client.public_ip_addresses.begin_delete(NETWORK_RESOURCE_GROUP,
-                                                                      ip_name)
-        ip_del.wait()
-        logging.info("[app] Deleted ip {}".format(ip_name))
+        if public_ip:
+            ip_name = self.get_public_ip_name(vm_name)
+            logging.info("[app] Deleting ip {}".format(ip_name))
+            ip_del = self.network_client.public_ip_addresses.begin_delete(NETWORK_RESOURCE_GROUP,
+                                                                          ip_name)
+            ip_del.wait()
+            logging.info("[app] Deleted ip {}".format(ip_name))
 
         for disk_name, disk_del in disk_dels.items():
             disk_del.wait()
@@ -819,7 +821,7 @@ class AzureCloudAdmin():
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
-                            use_spot_instance, vm_custom, disk_custom, is_edit=False,
+                            use_spot_instance, vm_custom, disk_custom, use_plan, is_edit=False,
                             json_output=True, cloud_instance_types=[]):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
@@ -924,7 +926,7 @@ class AzureCloudAdmin():
                     "maxPrice": spot_price
                 }
             logging.info(f'[app] Using Azure spot instance')
-        if plan is not None:
+        if plan is not None and use_plan:
             vm_parameters["plan"] = plan
 
         if zone is not None:
@@ -986,11 +988,17 @@ class AzureCloudAdmin():
         subnet = self.network().get_default_subnet(vnet)
         return {zone: subnet for zone in zones}
 
-    def parse_vm_info(self, vm):
+    def parse_vm_info(self, capabilities):
         vm_info = {}
-        vm_info["numCores"] = vm.get("numberOfCores")
-        vm_info["memSizeGb"] = float(vm.get("memoryInMB")) / 1000.0
-        vm_info["maxDiskCount"] = vm.get("maxDataDiskCount")
+        for capability in capabilities:
+            name = capability.name
+            value = capability.value
+            if name == "vCPUs":
+                vm_info["numCores"] = int(value or 0)
+            elif name == "MemoryGB":
+                vm_info["memSizeGb"] = float(value or 0)
+            elif name == "MaxDataDiskCount":
+                vm_info["maxDiskCount"] = int(value or 0)
         vm_info['prices'] = {}
         return vm_info
 
@@ -1004,15 +1012,22 @@ class AzureCloudAdmin():
 
         all_vms = {}
         # Base list of VMs to check for.
-        vm_list = [vm.serialize() for vm in
-                   self.compute_client.virtual_machine_sizes.list(location=regions[0])]
+        vm_list = self.compute_client.resource_skus.list(filter="location eq '{}'"
+                                                         .format(regions[0]))
         for vm in vm_list:
-            vm_size = vm.get("name")
+            # We only care about virtual machines
+            if vm.resource_type != "virtualMachines":
+                continue
+            # No capabilities
+            capabilities = vm.capabilities
+            if not capabilities:
+                continue
+            vm_size = vm.name
             # We only care about VMs that support Premium storage. Promo is pricing special.
             if (vm_size.startswith(burstable_prefix) or not regex.match(vm_size)
                     or vm_size.endswith("Promo")):
                 continue
-            vm_info = self.parse_vm_info(vm)
+            vm_info = self.parse_vm_info(capabilities)
             if vm_info["memSizeGb"] < MIN_MEM_SIZE_GB or vm_info["numCores"] < MIN_NUM_CORES:
                 continue
             all_vms[vm_size] = vm_info
@@ -1057,14 +1072,10 @@ class AzureCloudAdmin():
 
     def get_ultra_instances(self, regions, folder):
         FOLDER_FORMAT = folder + "{}.json"
-        tenant = os.environ['AZURE_TENANT_ID']
-        authority_url = 'https://login.microsoftonline.com/' + tenant
-        client_id = os.environ['AZURE_CLIENT_ID']
-        client_secret = os.environ['AZURE_CLIENT_SECRET']
         resourceURL = 'https://management.azure.com/'
-        context = adal.AuthenticationContext(authority_url)
-        token = context.acquire_token_with_client_credentials(resourceURL, client_id, client_secret)
-        headers = {'Authorization': 'Bearer ' + token['accessToken'],
+        credentials = self.credentials
+        token = credentials.get_token(resourceURL)
+        headers = {'Authorization': 'Bearer ' + token[0],
                    'Content-Type': 'application/json'}
         for region in regions:
             vms = {}
@@ -1223,3 +1234,15 @@ class AzureCloudAdmin():
         async_vm_start = self.compute_client.virtual_machines.begin_start(RESOURCE_GROUP, vm_name)
         async_vm_start.wait()
         return async_vm_start.result()
+
+    def is_public_ip_assigned(self, vm):
+        # Check if public IP configuration is present and assigned
+        if vm.network_profile and vm.network_profile.network_interfaces:
+            for nic_reference in vm.network_profile.network_interfaces:
+                if nic_reference.id:
+                    nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP,
+                                                                     id_to_name(nic_reference.id))
+                    if nic.ip_configurations and nic.ip_configurations[0].public_ip_address:
+                        return True  # Public IP is assigned
+
+        return False  # Public IP is not assigned

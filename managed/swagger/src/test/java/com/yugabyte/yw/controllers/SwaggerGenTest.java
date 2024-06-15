@@ -276,7 +276,7 @@ public class SwaggerGenTest extends FakeDBApplication {
     mapperField.set(null, mapper);
 
     Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
-    return sort(contentAsString(result, mat));
+    return sort(contentAsString(result, getApp().asScala().materializer()));
   }
 
   private String expectedFlags() {
@@ -350,7 +350,7 @@ public class SwaggerGenTest extends FakeDBApplication {
     excludeDeprecated(args);
     SwaggerGenTest swaggerGenTest = new SwaggerGenTest();
     try {
-      swaggerGenTest.startPlay();
+      swaggerGenTest.startServer();
       String expectedFlags = swaggerGenTest.expectedFlags();
       String actualFlags = swaggerGenTest.currentFlags();
       if (!actualFlags.equals(expectedFlags)) {
@@ -375,7 +375,7 @@ public class SwaggerGenTest extends FakeDBApplication {
         System.out.println("Swagger spec generated");
       }
     } finally {
-      swaggerGenTest.stopPlay();
+      swaggerGenTest.stopServer();
     }
   }
 

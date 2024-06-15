@@ -12,10 +12,12 @@ test: yb_pg_create_cast
 test: yb_pg_drop_if_exists
 test: yb_pg_case
 test: yb_pg_namespace
+test: yb_pg_security_label
 test: yb_pg_drop_operator
 test: yb_pg_alter_generic
 test: yb_pg_alter_operator
 test: yb_pg_dbsize
+test: yb_pg_misc_functions
 test: yb_pg_prepare
 test: yb_pg_truncate
 test: yb_pg_sequence

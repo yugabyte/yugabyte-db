@@ -45,7 +45,9 @@ public class DeleteKeyspace extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends BackupTableParams {}
+  public static class Params extends BackupTableParams {
+    public boolean ysqlForce;
+  }
 
   @Override
   protected DeleteKeyspace.Params taskParams() {
@@ -63,7 +65,9 @@ public class DeleteKeyspace extends UniverseTaskBase {
       try {
         // Build the query to run.
         String query = String.format("DROP DATABASE IF EXISTS \"%s\"", keyspaceName);
-
+        if (taskParams().ysqlForce) {
+          query += " WITH (FORCE)";
+        }
         // Execute the query.
         log.info("Executing query {} to drop existing DB {}", query, keyspaceName);
         ysqlQueryExecutor.runUserDbCommands(query, DB_NAME, universe);

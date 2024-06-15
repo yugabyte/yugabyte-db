@@ -11,6 +11,9 @@ spec:
     kind: SupportBundle
     shortNames:
     - sb
+    categories:
+      - all
+      - yugabyte
   versions:
     - name: v1alpha1
       subresources:
@@ -19,40 +22,58 @@ spec:
       storage: true
       schema:
         openAPIV3Schema:
+          description: >
+            Custom resource definition for YugabyteDB support bundle to capture logs,
+            events in case of failures.
           type: object
           properties:
             status:
+              description: Support bundle status for the support bundle custom resource.
               type: object
               properties:
                 status:
+                  description: >
+                    Status of the support bundle.
+                    Allowed values - generating, ready, failed
                   type: string
                   enum:
                   - generating
                   - ready
                   - failed
                 access:
+                  description: Access details for the generated support bundle to download.
                   type: string
                 resourceUUID:
+                  description: Internal UUID of the support bundle resource.
                   type: string
             spec:
               type: object
               properties:
                 universeName:
+                  description: >
+                    Name of the universe for which support bundle is to be generated,
+                    refers to a ybuniverse CR name.
                   type: string
                 collectionTimerange:
+                  description: Time range for which logs and events are to be collected.
                   type: object
                   properties:
                     startDate:
+                      description: Start date for the logs and events collection.
                       type: string
                       example: 2022-12-12T13:07:18Z,
                       format: date-time
                     endDate:
+                      description: End date for the logs and events collection.
                       type: string
                       example: 2022-12-12T13:07:18Z,
                       format: date-time
                   required:
                   - startDate
                 components:
+                  description: >
+                    Components for which logs and events are to be collected. If not provided, all
+                    components will be collected.
                   type: array
                   items:
                     type: string

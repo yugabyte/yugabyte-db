@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). The following table highlights the important differences in feature support between YCQL and Cassandra 3.4.2.
+Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). The following tables highlight the important differences in feature support between YCQL and Cassandra 3.4.2.
 
 ## Data types
 
@@ -75,7 +75,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Partial indexes              | [Partial indexes](../../../api/ycql/ddl_create_index#partial-index)                               |
 | {{<icon/yes>}} | Covering indexes             | [Covering indexes](../../../api/ycql/ddl_create_index#included-columns)                           |
 | {{<icon/yes>}} | Unique indexes               | [Unique indexes](../../../api/ycql/ddl_create_index#unique-index)                                 |
-| {{<icon/no>}}  | Adding indexes on Collection | Cannot create index on  `map/list/set/full jsonb/udt` and the keys,values,entries of a collection |
+| {{<icon/no>}}  | Adding indexes on Collection | Cannot create index on `map/list/set/full jsonb/udt` and the keys,values,entries of a collection |
 {.sno-1}
 
 ## DML

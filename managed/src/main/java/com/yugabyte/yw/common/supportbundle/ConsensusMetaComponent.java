@@ -3,6 +3,7 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -40,7 +41,12 @@ class ConsensusMetaComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponent(
-      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
+      SupportBundleTaskParams supportBundleTaskParams,
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      NodeDetails node)
+      throws Exception {
     // Downloads the /mnt/d0/master/consensus-meta and /mnt/d0/tserver/consensus-meta from each node
     // in the universe into the bundle path
     // Get source file path prefix
@@ -55,11 +61,13 @@ class ConsensusMetaComponent implements SupportBundleComponent {
         node,
         nodeHomeDir,
         sourceNodeFiles,
-        this.getClass().getSimpleName());
+        this.getClass().getSimpleName(),
+        false /* skipUntar */);
   }
 
   @Override
   public void downloadComponentBetweenDates(
+      SupportBundleTaskParams supportBundleTaskParams,
       Customer customer,
       Universe universe,
       Path bundlePath,
@@ -67,6 +75,6 @@ class ConsensusMetaComponent implements SupportBundleComponent {
       Date endDate,
       NodeDetails node)
       throws Exception {
-    this.downloadComponent(customer, universe, bundlePath, node);
+    this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
   }
 }

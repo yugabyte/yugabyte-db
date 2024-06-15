@@ -38,6 +38,7 @@
 #include "yb/tablet/transaction_coordinator.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/server_main_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -78,6 +79,10 @@ DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_bool(TEST_load_transactions_sync);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_skip_remove_intent);
 
 namespace yb {
 namespace client {
@@ -889,7 +894,7 @@ class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = -2; // kDbCacheSizeCacheDisabled;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = DB_CACHE_SIZE_CACHE_DISABLED;
     QLTransactionTest::SetUp();
   }
 };
@@ -1779,6 +1784,48 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
   }
 
   thread_holder.Stop();
+}
+
+class QLTransactionTestSingleTS : public QLTransactionTest {
+ protected:
+  void SetUp() override {
+    mini_cluster_opt_.num_tablet_servers = 1;
+    QLTransactionTest::SetUp();
+  }
+};
+
+TEST_F_EX(QLTransactionTest, TransactionsEarlyLoadedTest, QLTransactionTestSingleTS) {
+  auto txn_1 = CreateTransaction();
+  ASSERT_OK(WriteRow(
+      CreateSession(txn_1),
+      /* key = */ 0,
+      /* value = */ 0,
+      WriteOpType::INSERT,
+      Flush::kTrue));
+  auto txn_2 = CreateTransaction();
+  ASSERT_OK(WriteRow(
+      CreateSession(txn_2),
+      /* key = */ 100,
+      /* value = */ 100,
+      WriteOpType::INSERT,
+      Flush::kTrue));
+
+  // Skip applying and removing intent before stoping the cluster.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_remove_intent) = true;
+  txn_1->Abort();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = true;
+  ASSERT_OK(txn_2->CommitFuture().get());
+
+  cluster_->StopSync();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_process_apply) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_remove_intent) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_transactions_sync) = true;
+  // Replay WAL [txn_1(ABORTED), txn_2(COMMITTED)]
+  ASSERT_OK(cluster_->Start());
+  CheckAllTabletsRunning();
+  AssertNoRunningTransactions();
 }
 
 TEST_F(QLTransactionTest, DeleteTableDuringWrite) {

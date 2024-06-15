@@ -35,8 +35,7 @@ public class DeleteXClusterTableConfigEntry extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(xClusterConfig=%s,tableIds=%s)",
-        super.getName(), taskParams().getXClusterConfig(), taskParams().tableIds);
+        "%s(xClusterConfig=%s)", super.getName(), taskParams().getXClusterConfig());
   }
 
   @Override

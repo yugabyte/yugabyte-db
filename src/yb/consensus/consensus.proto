@@ -37,6 +37,7 @@ package yb.consensus;
 option java_package = "org.yb.consensus";
 
 import "yb/common/common_net.proto";
+import "yb/common/opid.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/consensus_types.proto";
 import "yb/consensus/metadata.proto";
@@ -44,7 +45,6 @@ import "yb/rpc/lightweight_message.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/backup.proto";
 import "yb/tserver/tserver_types.proto";
-import "yb/util/opid.proto";
 
 // ===========================================================================
 //  External Consensus Messages
@@ -158,6 +158,8 @@ message ReplicateMsg {
       [(yb.rpc.lightweight_field).pointer = true];
   optional HistoryCutoffPB history_cutoff = 13 [(yb.rpc.lightweight_field).pointer = true];
   optional AutoFlagsConfigPB auto_flags_config = 15
+      [(yb.rpc.lightweight_field).pointer = true];
+  optional tablet.CloneTabletRequestPB clone_tablet = 16
       [(yb.rpc.lightweight_field).pointer = true];
 
   // The Raft operation ID known to the leader to be committed at the time this message was sent.
@@ -554,6 +556,12 @@ message StartRemoteBootstrapRequestPB {
   repeated HostPortPB tablet_leader_private_addr = 11;
   repeated HostPortPB tablet_leader_broadcast_addr = 12;
   optional CloudInfoPB tablet_leader_cloud_info = 13;
+
+  // If this tablet was created by cloning, the sequence number of the operation that created it and
+  // the clone source tablet's id. This is used to reject RBS requests if the source tablet is
+  // present on the destination and has not applied the clone yet.
+  optional uint32 clone_source_seq_no = 14;
+  optional string clone_source_tablet_id = 15;
 }
 
 message StartRemoteBootstrapResponsePB {
@@ -602,7 +610,7 @@ message ClientReplicatedRetryableRequestRangesPB {
   repeated ReplicatedRetryableRequestRangePB range = 3;
 }
 
-message RetryableRequestsPB {
+message TabletBootstrapStatePB {
   optional OpIdPB last_op_id = 1;
   repeated ClientReplicatedRetryableRequestRangesPB client_requests = 2;
 }

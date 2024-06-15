@@ -325,6 +325,7 @@ search_plan_tree(PlanState *node, Oid table_oid,
 		case T_IndexScanState:
 		case T_IndexOnlyScanState:
 		case T_BitmapHeapScanState:
+		case T_YbBitmapTableScan:
 		case T_TidScanState:
 		case T_ForeignScanState:
 		case T_CustomScanState:

@@ -79,6 +79,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tablet_server_test_util.h"
@@ -542,7 +543,8 @@ Result<TabletServerMap> CreateTabletServerMap(
                           &peer->tserver_proxy,
                           &peer->tserver_admin_proxy,
                           &peer->consensus_proxy,
-                          &peer->generic_proxy);
+                          &peer->generic_proxy,
+                          &peer->backup_proxy);
 
     const auto& key = peer->instance_id.permanent_uuid();
     CHECK(result.emplace(key, std::move(peer)).second) << "duplicate key: " << key;

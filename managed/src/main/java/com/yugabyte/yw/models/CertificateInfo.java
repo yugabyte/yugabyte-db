@@ -32,7 +32,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.UniqueConstraint;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -55,6 +57,7 @@ import play.libs.Json;
 
 @ApiModel(description = "SSL certificate used by the universe")
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "label"}))
 @Getter
 @Setter
 public class CertificateInfo extends Model {
@@ -408,6 +411,10 @@ public class CertificateInfo extends Model {
 
   public static CertificateInfo get(String label) {
     return find.query().where().eq("label", label).findOne();
+  }
+
+  public static CertificateInfo get(UUID customerUUID, String label) {
+    return find.query().where().eq("label", label).eq("customer_uuid", customerUUID).findOne();
   }
 
   public static List<CertificateInfo> getAll() {

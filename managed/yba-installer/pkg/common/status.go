@@ -7,6 +7,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/viper"
+
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // IsHappyStatus will check if the given Status is "happy" - or the service is up and running.
@@ -36,7 +38,8 @@ func PrintStatus(statuses ...Status) {
 			port = strconv.Itoa(status.Port)
 		}
 		outString := status.Service + " \t" + status.Version + " \t" + port +
-			" \t" + status.LogFileLoc + " \t" + string(status.Status) + " \t"
+			" \t" + status.LogFileLoc + " \t" + status.BinaryLoc + " \t" + string(status.Status) +
+			" \t" + status.Since + " \t"
 		fmt.Fprintln(StatusOutput, outString)
 	}
 	StatusOutput.Flush()
@@ -52,14 +55,18 @@ var StatusOutput = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ',
 // status command.
 func statusHeader() {
 	outString := "Systemd service" + " \t" + "Version" + " \t" + "Port" + " \t" +
-		"Log File Locations" + " \t" + "Running Status" + " \t"
+		"Log Files" + " \t" + "Binary Directory" + " \t" + "Running Status" + " \t" + "Since" + " \t"
 	fmt.Fprintln(StatusOutput, outString)
 }
 
 func generalStatus() {
 	outString := "YBA Url" + " \t" + "Install Root" + " \t" + "yba-ctl config" + " \t" +
 		"yba-ctl Logs" + " \t"
-	ybaUrl := "https://" + viper.GetString("host")
+	hostnames := SplitInput(viper.GetString("host"))
+	if hostnames == nil || len(hostnames) == 0 {
+		log.Fatal("Could not read host in yba-ctl.yml")
+	}
+	ybaUrl := "https://" + hostnames[0]
 	if viper.GetInt("platform.port") != 443 {
 		ybaUrl += fmt.Sprintf(":%d", viper.GetInt("platform.port"))
 	}
@@ -80,6 +87,8 @@ type Status struct {
 	ServiceFileLoc string
 	Status         StatusType
 	LogFileLoc     string
+	Since					 string
+	BinaryLoc			 string
 }
 
 type StatusType string

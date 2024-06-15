@@ -28,7 +28,7 @@ import org.json.JSONObject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.TableProperties;
 import org.yb.util.YBBackupException;
@@ -46,10 +46,11 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlPartitionedBackup.class);
 
   @Before
-  public void initYBBackupUtil() {
+  public void initYBBackupUtil() throws Exception {
     YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
+    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Override
@@ -116,13 +117,17 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
         "--keyspace", "ysql.yugabyte");
-    backupDir = new JSONObject(output).getString("snapshot_url");
+    if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
     partitionedTestVerifyInsertDataHelper();
   }
 
   private void partitionedTestCleanupHelper() throws Exception {
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -412,7 +417,9 @@ public class TestYsqlPartitionedBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", String.format("ysql.%s", dbName));
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");

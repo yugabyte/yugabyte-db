@@ -1,7 +1,6 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import java.io.PrintStream
-import com.github.jk1.license.LicenseReportExtension
 import com.github.jk1.license.render.ReportRenderer
 import com.github.jk1.license.render.InventoryHtmlReportRenderer
 import com.github.jk1.license.filter.DependencyFilter
@@ -17,7 +16,9 @@ plugins {
   id("org.openapi.generator") version "6.5.0"
   id("com.github.jk1.dependency-license-report") version "2.5"
   id("java")
+  id("io.freefair.lombok") version "8.4"
   application
+  id("io.ebean") version "13.25.1"
 }
 
 group = "com.yugabyte.troubleshoot"
@@ -30,8 +31,8 @@ java {
 }
 
 repositories {
-  mavenCentral()
   maven(url = "https://nexus.dev.yugabyte.com/repository/maven-central")
+  mavenCentral()
   mavenLocal()
 }
 
@@ -48,9 +49,39 @@ application {
   mainClass.set("com.yugabyte.troubleshoot.ts.TsApplication")
 }
 
+val ebeanVersion = "13.25.1"
+val flywayVersion = "10.2.0"
+
 val dependenciesList = dependencies {
+  annotationProcessor("io.ebean:querybean-generator:$ebeanVersion")
+
   implementation("org.springframework.boot:spring-boot-starter-web")
+  implementation("org.springframework.boot:spring-boot-starter-actuator")
+  implementation("org.springframework.boot:spring-boot-starter-jdbc")
+  implementation("org.springframework.boot:spring-boot-starter-validation")
+  implementation("io.ebean:ebean-postgres:$ebeanVersion")
+  implementation("io.ebean:ebean-spring-txn:$ebeanVersion")
+  implementation("org.flywaydb:flyway-core:$flywayVersion")
+  implementation("org.flywaydb:flyway-database-postgresql:$flywayVersion")
+  implementation("org.postgresql:postgresql:42.3.3")
+  implementation("org.apache.commons:commons-lang3:3.0")
+  implementation("org.apache.commons:commons-collections4:4.4")
+  implementation("com.google.code.findbugs:jsr305:3.0.2")
+  implementation("com.google.guava:guava:32.1.3-jre")
+  implementation("io.micrometer:micrometer-registry-prometheus:1.12.1")
+  implementation("org.apache.httpcomponents.client5:httpclient5:5.3")
+  implementation("io.ebean:ebean-jackson-mapper:$ebeanVersion")
+  implementation("org.apache.commons:commons-math3:3.6.1")
+  implementation("net.sf.jsefa:jsefa:1.1.1.RELEASE")
+  implementation("org.codehaus.janino:janino:3.1.12")
+  implementation("net.logstash.logback:logstash-logback-encoder:6.6")
+
   testImplementation("org.springframework.boot:spring-boot-starter-test")
+  testImplementation("io.zonky.test:embedded-database-spring-test:2.4.0")
+  testImplementation("org.flywaydb.flyway-test-extensions:flyway-spring-test:9.5.0")
+  testImplementation("io.ebean:ebean-test:$ebeanVersion")
+  testImplementation("org.assertj:assertj-core:3.24.2")
+  testImplementation("io.zonky.test:embedded-postgres:2.0.6")
 }
 
 openApiGenerate {

@@ -12,14 +12,13 @@
 //
 
 #include "yb/master/xcluster_rpc_tasks.h"
-#include "yb/tools/yb-admin_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xcluster_util.h"
 
-#include "yb/gutil/bind.h"
+#include "yb/gutil/callback.h"
 
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
@@ -27,21 +26,19 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 
-DEFINE_UNKNOWN_int32(
-    list_snapshot_backoff_increment_ms, 1000,
+DEFINE_RUNTIME_int32(list_snapshot_backoff_increment_ms, 1000,
     "Number of milliseconds added to the delay between retries of fetching state of a snapshot. "
     "This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(list_snapshot_backoff_increment_ms, stable);
 TAG_FLAG(list_snapshot_backoff_increment_ms, advanced);
 
-DEFINE_UNKNOWN_int32(
-    list_snapshot_max_backoff_sec, 10,
+DEFINE_RUNTIME_int32(list_snapshot_max_backoff_sec, 10,
     "Maximum number of seconds to delay between retries of fetching state of a snpashot. This "
     "delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(list_snapshot_max_backoff_sec, stable);
@@ -66,7 +63,7 @@ namespace master {
 using yb::master::SysSnapshotEntryPB_State;
 
 Result<std::shared_ptr<XClusterRpcTasks>> XClusterRpcTasks::CreateWithMasterAddrs(
-    const cdc::ReplicationGroupId& replication_group_id, const std::string& master_addrs) {
+    const xcluster::ReplicationGroupId& replication_group_id, const std::string& master_addrs) {
   // NOTE: This is currently an expensive call (5+ sec). Encountered during Task #10611.
   auto xcluster_rpc_tasks = std::make_shared<XClusterRpcTasks>();
   std::string dir;
@@ -76,10 +73,10 @@ Result<std::shared_ptr<XClusterRpcTasks>> XClusterRpcTasks::CreateWithMasterAddr
     if (!FLAGS_certs_for_cdc_dir.empty()) {
       dir = JoinPathSegments(
           FLAGS_certs_for_cdc_dir,
-          cdc::GetOriginalReplicationGroupId(replication_group_id).ToString());
+          xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
     }
-    xcluster_rpc_tasks->secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        dir, "", "", server::SecureContextType::kInternal, &messenger_builder));
+    xcluster_rpc_tasks->secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
+        dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal, &messenger_builder));
     xcluster_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
   }
 

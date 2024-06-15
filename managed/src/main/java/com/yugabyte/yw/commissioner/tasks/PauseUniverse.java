@@ -49,7 +49,7 @@ public class PauseUniverse extends UniverseTaskBase {
     try {
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+      Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       if (universe.getUniverseDetails().universePaused) {
         String msg =
             "Unable to pause universe \"" + universe.getName() + "\" as it is already paused.";

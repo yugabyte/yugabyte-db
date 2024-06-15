@@ -179,7 +179,7 @@ Optionally, use the `--ask_password` flag if the sudo user requires password aut
 
 1. Repeat step 3 for every node that will participate in the universe.
 
-This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [deploy universes](../../../create-deployments/).
+This completes the on-premises cloud provider configuration.
 
 #### Setting up database nodes manually
 
@@ -196,6 +196,10 @@ For each node, perform the following:
 - [Install backup utilities](#install-backup-utilities)
 - [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+
+{{<note title="Root-level systemd or cron">}}
+You can configure nodes to use either cron or root-level systemd to provide the necessary access to system resources. All nodes in a provider need to be provisioned in the same way. If you use cron or root-level systemd on one node, be sure to provision all nodes in the provider using cron or root-level systemd, respectively.
+{{</note>}}
 
 ##### Set up time synchronization
 
@@ -303,7 +307,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
     For airgapped environments, make sure your Yum repository mirror contains these packages.
 
-1. If running on a virtual machine, execute the following to tune kernel settings (sudo is required):
+1. Execute the following to tune kernel settings (sudo is required):
 
     ```sh
     sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
@@ -345,14 +349,14 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.1.linux-amd64.tar.gz
 ```
 
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
+1. Copy the `node_exporter-1.7.0.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
@@ -361,13 +365,16 @@ On each node, perform the following as a user with sudo access:
    sudo mkdir /etc/prometheus
    sudo mkdir /var/log/prometheus
    sudo mkdir /var/run/prometheus
-   sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
-   sudo adduser prometheus # (also adds group "prometheus")
+   sudo mkdir -p /tmp/yugabyte/metrics
+   sudo mv /tmp/node_exporter-1.7.0.linux-amd64.tar.gz  /opt/prometheus
+   sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
    sudo chown -R prometheus:prometheus /opt/prometheus
    sudo chown -R prometheus:prometheus /etc/prometheus
    sudo chown -R prometheus:prometheus /var/log/prometheus
    sudo chown -R prometheus:prometheus /var/run/prometheus
-   sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
+   sudo chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
+   sudo chmod -R 755 /tmp/yugabyte/metrics
+   sudo chmod +r /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz
    sudo su - prometheus (user session is now as user "prometheus")
    ```
 
@@ -375,7 +382,7 @@ On each node, perform the following as a user with sudo access:
 
    ```sh
    cd /opt/prometheus
-   tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
+   tar zxf node_exporter-1.7.0.linux-amd64.tar.gz
    exit   # (exit from prometheus user back to previous user)
    ```
 
@@ -402,7 +409,7 @@ On each node, perform the following as a user with sudo access:
      User=prometheus
      Group=prometheus
 
-     ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+     ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
      ```
 
 1. Exit from vi, and continue, as follows:
@@ -497,7 +504,7 @@ If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user 
 YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
 
-You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/) or [deploy universes](../../../create-deployments/).
+You have finished configuring your on-premises cloud provider.
 
 ##### Install systemd-related database service unit files
 
@@ -506,7 +513,8 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
    ```sh
-   yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
+   yugabyte ALL=(ALL:ALL) NOPASSWD: \
+   /bin/systemctl start yb-master, \
    /bin/systemctl stop yb-master, \
    /bin/systemctl restart yb-master, \
    /bin/systemctl enable yb-master, \

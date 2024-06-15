@@ -62,21 +62,6 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
-// The following flags related to the cloud, region and availability zone that an instance is
-// started in. These are passed in from whatever provisioning mechanics start the servers. They
-// are used for generic placement policies on table creation and tablet load balancing, to
-// either constrain data to a certain location (table A should only live in aws.us-west2.a), or to
-// define the required level of fault tolerance expected (table B should have N replicas, across
-// two regions of AWS and one of GCE).
-//
-// These are currently for use in a cloud-based deployment, but could be retrofitted to work for
-// an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
-DEFINE_UNKNOWN_string(placement_cloud, "cloud1",
-              "The cloud in which this instance is started.");
-DEFINE_UNKNOWN_string(placement_region, "datacenter1",
-              "The cloud region in which this instance is started.");
-DEFINE_UNKNOWN_string(placement_zone, "rack1",
-              "The cloud availability zone in which this instance is started.");
 DEFINE_UNKNOWN_string(placement_uuid, "",
               "The uuid of the tservers cluster/placement.");
 
@@ -85,6 +70,10 @@ DEFINE_UNKNOWN_int32(master_discovery_timeout_ms, 3600000,
 TAG_FLAG(master_discovery_timeout_ms, hidden);
 
 DECLARE_bool(TEST_mini_cluster_mode);
+
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
 
 namespace yb {
 namespace server {
@@ -333,14 +322,6 @@ std::string MasterAddressesToString(const MasterAddresses& addresses) {
     }
     result += '}';
   }
-  return result;
-}
-
-CloudInfoPB GetPlacementFromGFlags() {
-  CloudInfoPB result;
-  result.set_placement_cloud(FLAGS_placement_cloud);
-  result.set_placement_region(FLAGS_placement_region);
-  result.set_placement_zone(FLAGS_placement_zone);
   return result;
 }
 

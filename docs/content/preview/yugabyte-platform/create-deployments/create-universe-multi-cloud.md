@@ -37,19 +37,19 @@ The following requirements must be met:
 
 ## Set up instance VMs
 
-When you create a universe, you need to import nodes that can be managed by YugabyteDB Anywhere. To set up your nodes, follow instructions in [Prepare nodes (on-premises)](../../install-yugabyte-platform/prepare-on-prem-nodes/).
+When you create a universe, you need to import nodes that can be managed by YugabyteDB Anywhere. To set up your nodes, follow instructions in [Servers for nodes (on-premises)](../../prepare/server-nodes-hardware/).
 
 Note the following:
 
 * Your nodes across different cloud providers should be of similar configuration: vCPUs, DRAM, storage, and networking.
-* For more information on ports used by YugabyteDB, refer to [Default ports](../../../reference/configuration/default-ports/).
-* Ensure that your YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](../../../deploy/checklist/), which gives an idea of [recommended instance types across public clouds](../../../deploy/checklist/#running-on-public-clouds).
+* For more information on ports used by YugabyteDB Anywhere, refer to [Networking](../../prepare/networking/).
+* Ensure that your YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](../../../deploy/checklist/), which gives an idea of [recommended instance types across public clouds](../../../deploy/checklist/#public-clouds).
 
 ## Set up VPC peering
 
 You need to set up multi-cloud VPC peering through a VPN tunnel.
 
-YugabyteDB is a distributed SQL database and requires TCP/IP communication across nodes. It also requires a particular [set of firewall ports](../../../yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/#ports) to be opened for cluster operations, which you set up in the previous section.
+YugabyteDB is a distributed SQL database and requires TCP/IP communication across nodes. It also requires a particular [set of firewall ports](../../prepare/networking/) to be opened for cluster operations, which you set up in the previous section.
 
 You should use non-overlapping Classless Inter-Domain Routing (CIDR) blocks for each subnet across different clouds.
 
@@ -61,7 +61,7 @@ Follow steps provided in [Install YugabyteDB Anywhere](../../install-yugabyte-pl
 
 ## Configure the on-premises cloud provider
 
-To deploy a multi-cloud universe, you first need to create an on-premises provider configuration. Refer to [Create provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) for more information.
+To deploy a multi-cloud universe, you first need to create an on-premises provider configuration. Refer to [Create provider configuration](../../configure-yugabyte-platform/on-premises/) for more information.
 
 ### Set up the cloud provider
 
@@ -92,8 +92,6 @@ Click **Add Instance Type** and enter a machine description that matches the nod
 
 Click **Add Instances** to add nodes in the regions you defined for the provider configuration. For each node, select the zone where you want it deployed, choose the instance type, and enter the IP address of the node. The address should be a private IP address of the VPN you configured.
 
-For more information, refer to [Configure hardware for YugabyteDB nodes](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-hardware-for-yugabytedb-nodes).
-
 ## Create a universe
 
 You can create a multi-region universe as follows:
@@ -114,7 +112,11 @@ You can create a multi-region universe as follows:
 
 1. Add the following flag to Master and T-Server:
 
-    * `leader_failure_max_missed_heartbeat_periods=10` - As the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
+    ```sh
+    leader_failure_max_missed_heartbeat_periods=10
+    ```
+
+    As the data is globally replicated, RPC latencies are higher. This flag increases the failure-detection interval to compensate.
 
 1. Click **Create**.
 
@@ -147,4 +149,4 @@ To run the TPC-C benchmark on your universe, use commands similar to the followi
     --warehouses 50
 ```
 
-Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc-ysql/) for details.
+Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc/) for details.

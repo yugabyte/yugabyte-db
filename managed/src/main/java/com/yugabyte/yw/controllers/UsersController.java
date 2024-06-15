@@ -2,10 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.models.Users.UserType;
+import static com.yugabyte.yw.common.Util.getRandomPassword;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -20,12 +19,14 @@ import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UserPasswordChangeFormData;
 import com.yugabyte.yw.forms.UserProfileFormData;
 import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
@@ -42,10 +43,10 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,11 +58,10 @@ import play.mvc.Result;
 @Api(
     value = "User management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
-  private static final List<String> specialCharacters =
-      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   @Inject private RuntimeConfGetter confGetter;
 
@@ -173,19 +173,17 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, UserRegisterFormData.class);
 
     if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
-      byte[] passwordOidc = new byte[16];
-      new Random().nextBytes(passwordOidc);
-      String generatedPassword = new String(passwordOidc, Charset.forName("UTF-8"));
-      // To be consistent with password policy
-      Integer randomInt = new Random().nextInt(26);
-      String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
-      String uppercaseLetter = lowercaseLetter.toUpperCase();
-      generatedPassword +=
-          (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
-              + lowercaseLetter
-              + uppercaseLetter
-              + String.valueOf(randomInt));
-      formData.setPassword(generatedPassword); // Password is not used.
+
+      if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Manual user creation not allowed with OIDC setup!");
+      }
+
+      formData.setPassword(getRandomPassword()); // Password is not used.
+    }
+
+    if (formData.getRole() == Users.Role.SuperAdmin) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot create an user as SuperAdmin");
     }
 
     // Validate password.
@@ -206,8 +204,6 @@ public class UsersController extends AuthenticatedController {
       // Case 1:
       // Check the role field. Original API use case. To be deprecated.
       if (formData.getRole() != null && formData.getRoleResourceDefinitions() == null) {
-        // Get the built-in role UUID by name.
-        Role role = Role.getOrBadRequest(customerUUID, formData.getRole().toString());
         // Create the user.
         user =
             Users.create(
@@ -216,21 +212,7 @@ public class UsersController extends AuthenticatedController {
                 formData.getRole(),
                 customerUUID,
                 false);
-        // Need to define all available resources in resource group as default.
-        ResourceGroup resourceGroup =
-            ResourceGroup.getSystemDefaultResourceGroup(customerUUID, user);
-        // Create a single role binding for the user.
-        List<RoleBinding> createdRoleBindings =
-            roleBindingUtil.setUserRoleBindings(
-                user.getUuid(),
-                Arrays.asList(new RoleResourceDefinition(role.getRoleUUID(), resourceGroup)),
-                RoleBindingType.Custom);
-
-        LOG.info(
-            "Created user '{}', email '{}', default role bindings '{}'.",
-            user.getUuid(),
-            user.getEmail(),
-            createdRoleBindings.toString());
+        roleBindingUtil.createRoleBindingsForSystemRole(user);
       }
 
       // Case 2:
@@ -382,10 +364,29 @@ public class UsersController extends AuthenticatedController {
     if (UserType.ldap == user.getUserType() && user.isLdapSpecifiedRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
     }
+    // If OIDC is setup, the IdP should be the single source of truth for users' roles
+    if (user.getUserType().equals(UserType.oidc)
+        && confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for OIDC user.");
+    }
     if (Users.Role.SuperAdmin == user.getRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot change super admin role.");
     }
-    user.setRole(Users.Role.valueOf(role));
+
+    Users.Role userRole = null;
+    try {
+      userRole = Users.Role.valueOf(role);
+    } catch (IllegalArgumentException ex) {
+      throw new PlatformServiceException(BAD_REQUEST, "Role name provided is not supported");
+    }
+
+    if (userRole == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Role name provided is not supported");
+    } else if (userRole == Users.Role.SuperAdmin) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot edit the user role to SuperAdmin");
+    }
+
+    user.setRole(userRole);
     user.save();
 
     boolean useNewAuthz =
@@ -423,9 +424,8 @@ public class UsersController extends AuthenticatedController {
    * @return JSON response on whether role change was successful or not.
    */
   @ApiOperation(
-      value = "Change a user's password",
-      nickname = "updateUserPassword",
-      response = YBPSuccess.class)
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.1.0.0.</b></p>",
+      value = "Change password - deprecated")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Users",
@@ -441,36 +441,64 @@ public class UsersController extends AuthenticatedController {
                   resourceType = ResourceType.USER,
                   action = Action.UPDATE_PROFILE),
           resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.1.0.0")
+  @Deprecated
   public Result changePassword(UUID customerUUID, UUID userUUID, Http.Request request) {
-    Users user = Users.getOrBadRequest(customerUUID, userUUID);
-    if (UserType.ldap == user.getUserType()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
-    }
+    throw new PlatformServiceException(
+        MOVED_PERMANENTLY, String.format("Moved to /customers/%s/reset_password", customerUUID));
+  }
 
-    if (!checkUpdateProfileAccessForPasswordChange(userUUID, request)) {
+  /**
+   * PUT endpoint for changing the password of an existing user.
+   *
+   * @return JSON response on whether role change was successful or not.
+   */
+  @ApiOperation(
+      value = "Reset the user's password",
+      nickname = "resetUserPassword",
+      response = YBPSuccess.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Users",
+        value = "User data containing the current, new password",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.UserPasswordChangeFormData",
+        paramType = "body")
+  })
+  @AuthzPath(
+      @RequiredPermissionOnResource(
+          requiredPermission =
+              @PermissionAttribute(
+                  resourceType = ResourceType.USER,
+                  action = Action.UPDATE_PROFILE),
+          resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.REQUEST_CONTEXT)))
+  public Result resetPassword(UUID customerUUID, Http.Request request) {
+    Users user = getLoggedInUser(request);
+    Form<UserPasswordChangeFormData> form =
+        formFactory.getFormDataOrBadRequest(request, UserPasswordChangeFormData.class);
+    UserPasswordChangeFormData formData = form.get();
+
+    if (user.getUserType() == UserType.ldap || user.getUserType() == UserType.oidc) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Only the User can change his/her own password.");
+          BAD_REQUEST, "Reset password not supported for LDAP/OIDC users");
     }
 
-    Form<UserRegisterFormData> form =
-        formFactory.getFormDataOrBadRequest(request, UserRegisterFormData.class);
-
-    UserRegisterFormData formData = form.get();
-    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-    if (formData.getEmail().equals(user.getEmail())) {
-      if (formData.getPassword().equals(formData.getConfirmPassword())) {
-        user.setPassword(formData.getPassword());
-        user.save();
-        auditService()
-            .createAuditEntry(
-                request,
-                Audit.TargetType.User,
-                userUUID.toString(),
-                Audit.ActionType.ChangeUserPassword);
-        return YBPSuccess.empty();
-      }
+    user = Users.authWithPassword(user.getEmail(), formData.getCurrentPassword());
+    if (user == null) {
+      throw new PlatformServiceException(UNAUTHORIZED, "Incorrect current password provided");
     }
-    throw new PlatformServiceException(BAD_REQUEST, "Invalid user credentials.");
+
+    passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getNewPassword());
+    user.setPassword(formData.getNewPassword());
+    user.save();
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.User,
+            user.getUuid().toString(),
+            Audit.ActionType.ChangeUserPassword,
+            Json.toJson(formData));
+    return YBPSuccess.empty();
   }
 
   private Users getLoggedInUser(Http.Request request) {
@@ -524,21 +552,11 @@ public class UsersController extends AuthenticatedController {
 
     // Password validation for both old RBAC and new RBAC is same.
     if (StringUtils.isNotEmpty(formData.getPassword())) {
-      if (UserType.ldap == user.getUserType()) {
-        throw new PlatformServiceException(BAD_REQUEST, "Can't change password for LDAP user.");
-      }
-
-      if (!checkUpdateProfileAccessForPasswordChange(userUUID, request)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Only the User can change his/her own password.");
-      }
-
-      passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
-      if (!formData.getPassword().equals(formData.getConfirmPassword())) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Password and confirm password do not match.");
-      }
-      user.setPassword(formData.getPassword());
+      throw new PlatformServiceException(
+          FORBIDDEN,
+          String.format(
+              "API does not support password change. Use /customers/%s/reset_password",
+              customerUUID));
     }
 
     if (useNewAuthz) {
@@ -585,7 +603,12 @@ public class UsersController extends AuthenticatedController {
 
         if (formData.getRole() == Users.Role.SuperAdmin) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
+              BAD_REQUEST, "Can't Assign the role of SuperAdmin to another user.");
+        }
+
+        if (loggedInUser.getUuid().equals(user.getUuid())) {
+          throw new PlatformServiceException(
+              FORBIDDEN, "User cannot modify their own role privileges");
         }
 
         if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {

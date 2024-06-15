@@ -147,6 +147,9 @@ public class Audit extends Model {
     @EnumValue("Telemetry Provider")
     TelemetryProvider,
 
+    @EnumValue("Troubleshooting Platform")
+    TroubleshootingPlatform,
+
     @EnumValue("GFlags")
     GFlags,
 
@@ -175,7 +178,10 @@ public class Audit extends Model {
     Role,
 
     @EnumValue("RoleBinding")
-    RoleBinding
+    RoleBinding,
+
+    @EnumValue("OIDC Group Mapping")
+    OIDCGroupMapping
   }
 
   public enum ActionType {
@@ -295,6 +301,15 @@ public class Audit extends Model {
 
     @EnumValue("Delete Telemetry Provider Config")
     DeleteTelemetryConfig,
+
+    @EnumValue("Create Troubleshooting Platform Config")
+    CreateTroubleshootingConfig,
+
+    @EnumValue("Edit Troubleshooting Platform Config")
+    EditTroubleshootingConfig,
+
+    @EnumValue("Delete Troubleshooting Platform Config")
+    DeleteTroubleshootingConfig,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,
@@ -570,7 +585,10 @@ public class Audit extends Model {
     Unlock,
 
     @EnumValue("Sync Universe with LDAP server")
-    LdapUniverseSync
+    LdapUniverseSync,
+
+    @EnumValue("Update Universe's Proxy Configuration")
+    UpdateProxyConfig
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

@@ -35,6 +35,7 @@
  *		index_getprocinfo - get a support procedure's lookup info
  *
  *		yb_index_might_recheck - could the scan possibly recheck indexquals?
+ *		yb_index_getbitmap - get all ybctids from a scan
  *
  * NOTES
  *		This file contains the index_ routines which used
@@ -589,6 +590,16 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 	 * keys, and puts the TID into scan->xs_ctup.t_self.  It should also set
 	 * scan->xs_recheck and possibly scan->xs_itup/scan->xs_hitup, though we
 	 * pay no attention to those fields here.
+	 *
+	 * YB note:
+	 * TID (t_self or t_ybctid) should not be set for YB relations since it is
+	 * not used.  The slot is filled from other sources:
+	 * - aggregate pushdown: yb_agg_slot
+	 * - Index Scan: xs_hitup
+	 * - Index Only Scan: xs_itup
+	 * Upstream PG needs TID in these cases:
+	 * - Index Only Scan: heap fetch using TID in case of invisible tuples
+	 * - Index Scan: heap fetch using TID
 	 */
 	found = scan->indexRelation->rd_amroutine->amgettuple(scan, direction);
 
@@ -606,6 +617,17 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 		}
 		return NULL;
 	}
+
+	/*
+	 * YB should not set TID (neither t_self nor t_ybctid) and should instead
+	 * set at least one of yb_agg_slot, xs_hitup, or xs_itup.  (See above note.)
+	 */
+	Assert(!IsYBRelation(scan->indexRelation) ||
+		   (!ItemPointerIsValid(&scan->xs_ctup.t_self) &&
+			scan->xs_ctup.t_ybctid == 0 &&
+			(!TupIsNull(scan->yb_agg_slot) ||
+			 scan->xs_hitup != NULL ||
+			 scan->xs_itup != NULL)));
 
 	pgstat_count_index_tuples(scan->indexRelation, 1);
 
@@ -779,6 +801,33 @@ index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap)
 	 * have the am's getbitmap proc do all the work.
 	 */
 	ntids = scan->indexRelation->rd_amroutine->amgetbitmap(scan, bitmap);
+
+	pgstat_count_index_tuples(scan->indexRelation, ntids);
+
+	return ntids;
+}
+
+/* ----------------
+ *		yb_index_getbitmap - get all tuples at once from an index scan
+ *
+ * Adds the ybctids of all tuples satisfying the scan keys to a bitmap.
+ *
+ * Returns the number of matching tuples found.  (Note: this might be only
+ * approximate, so it should only be used for statistical purposes.)
+ * ----------------
+ */
+int64
+yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm, bool recheck)
+{
+	int64		ntids;
+
+	SCAN_CHECKS;
+	CHECK_SCAN_PROCEDURE(yb_amgetbitmap);
+
+	/*
+	 * have the am's getbitmap proc do all the work.
+	 */
+	ntids = scan->indexRelation->rd_amroutine->yb_amgetbitmap(scan, ybtbm, recheck);
 
 	pgstat_count_index_tuples(scan->indexRelation, ntids);
 

@@ -38,6 +38,7 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -51,7 +52,6 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 
@@ -71,7 +71,8 @@ YB_DEFINE_ENUM(
     ((kEmpty, consensus::UNKNOWN_OP))
     ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
     ((kSplit, consensus::SPLIT_OP))
-    ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP)));
+    ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP))
+    ((kClone, consensus::CLONE_OP)))
 
 YB_STRONGLY_TYPED_BOOL(WasPending);
 YB_STRONGLY_TYPED_BOOL(IsLeaderSide);

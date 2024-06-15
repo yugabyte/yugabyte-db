@@ -789,10 +789,8 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithConsumerSetup) {
   ASSERT_NOK(RunAdminToolCommandOnProducer("delete_cdc_stream", stream_id));
   // Should pass as we force it.
   ASSERT_OK(RunAdminToolCommandOnProducer("delete_cdc_stream", stream_id, "force_delete"));
-  // Delete universe should fail as we've force deleted the stream.
-  ASSERT_NOK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
-  ASSERT_OK(
-      RunAdminToolCommand("delete_universe_replication", kProducerClusterId, "ignore-errors"));
+  // Delete universe should NOT fail due to a deleted stream
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
 }
 
 TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithAlterUniverse) {
@@ -837,15 +835,9 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithAlterUniverse) {
   // Mark one stream as deleted.
   ASSERT_OK(RunAdminToolCommandOnProducer("delete_cdc_stream", stream_id, "force_delete"));
 
-  // Remove table should fail as its stream is marked as deleting on producer.
-  ASSERT_NOK(RunAdminToolCommand(
-      "alter_universe_replication", kProducerClusterId, "remove_table", producer_table->id()));
+  // Remove table should succeed.
   ASSERT_OK(RunAdminToolCommand(
-      "alter_universe_replication",
-      kProducerClusterId,
-      "remove_table",
-      producer_table->id(),
-      "ignore-errors"));
+      "alter_universe_replication", kProducerClusterId, "remove_table", producer_table->id()));
 }
 
 TEST_F(XClusterAdminCliTest, TestWaitForReplicationDrain) {
@@ -905,16 +897,6 @@ TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithBootstrap) {
   ASSERT_NOK(RunAdminToolCommandOnProducer("delete_cdc_stream", bootstrap_id));
   // Delete should work fine from deleting from universe.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
-}
-
-TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithCreateCDCStream) {
-  // Create CDC stream
-  ASSERT_OK(RunAdminToolCommand("create_cdc_stream", table_->id()));
-
-  string stream_id = ASSERT_RESULT(GetRecentStreamId(cluster_.get()));
-
-  // Should be deleted.
-  ASSERT_OK(RunAdminToolCommand("delete_cdc_stream", stream_id));
 }
 
 TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {

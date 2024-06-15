@@ -61,9 +61,11 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/strand.h"
 
 #include "yb/server/clock.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -345,7 +347,8 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequestsManager* retryable_requests_manager,
+    rpc::ThreadPool* raft_notifications_pool,
+    RetryableRequests* retryable_requests,
     MultiRaftManager* multi_raft_manager) {
 
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
@@ -362,7 +365,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       options.tablet_id,
       clock,
       consensus_context,
-      raft_pool->NewToken(ThreadPool::ExecutionMode::SERIAL));
+      std::make_unique<rpc::Strand>(raft_notifications_pool));
 
   DCHECK(local_peer_pb.has_permanent_uuid());
   const string& peer_uuid = local_peer_pb.permanent_uuid();
@@ -371,7 +374,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
   // PeerManager. Because PeerManager is owned by RaftConsensus, it receives a
   // raw pointer to the token, to emphasize that RaftConsensus is responsible
   // for destroying the token.
-  unique_ptr<ThreadPoolToken> raft_pool_token(raft_pool->NewToken(
+  unique_ptr<ThreadPoolToken> raft_pool_concurrent_token(raft_pool->NewToken(
       ThreadPool::ExecutionMode::CONCURRENT));
 
   // A manager for the set of peers that actually send the operations both remotely
@@ -381,7 +384,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       peer_uuid,
       rpc_factory.get(),
       queue.get(),
-      raft_pool_token.get(),
+      raft_pool_concurrent_token.get(),
       multi_raft_manager);
 
   return std::make_shared<RaftConsensus>(
@@ -390,7 +393,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       std::move(rpc_factory),
       std::move(queue),
       std::move(peer_manager),
-      std::move(raft_pool_token),
+      std::move(raft_pool_concurrent_token),
       table_metric_entity,
       tablet_metric_entity,
       peer_uuid,
@@ -400,7 +403,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      retryable_requests_manager);
+      retryable_requests);
 }
 
 RaftConsensus::RaftConsensus(
@@ -408,7 +411,7 @@ RaftConsensus::RaftConsensus(
     std::unique_ptr<PeerProxyFactory> proxy_factory,
     std::unique_ptr<PeerMessageQueue> queue,
     std::unique_ptr<PeerManager> peer_manager,
-    std::unique_ptr<ThreadPoolToken> raft_pool_token,
+    std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token,
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
@@ -416,8 +419,8 @@ RaftConsensus::RaftConsensus(
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequestsManager* retryable_requests_manager)
-    : raft_pool_token_(std::move(raft_pool_token)),
+    RetryableRequests* retryable_requests)
+    : raft_pool_concurrent_token_(std::move(raft_pool_concurrent_token)),
       log_(log),
       clock_(clock),
       peer_proxy_factory_(std::move(proxy_factory)),
@@ -441,7 +444,8 @@ RaftConsensus::RaftConsensus(
       update_raft_config_dns_latency_(
           METRIC_dns_resolve_latency_during_update_raft_config.Instantiate(table_metric_entity)),
       split_parent_tablet_id_(
-          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : "") {
+          cmeta->has_split_parent_tablet_id() ? cmeta->split_parent_tablet_id() : ""),
+      clone_source_info_(cmeta->clone_source_info()) {
   DCHECK_NOTNULL(log_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests_seconds > 0)) {
@@ -455,7 +459,7 @@ RaftConsensus::RaftConsensus(
       std::move(cmeta),
       DCHECK_NOTNULL(consensus_context),
       this,
-      retryable_requests_manager,
+      retryable_requests,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -1055,7 +1059,7 @@ void RaftConsensus::ReportFailureDetected() {
         << "Returning from ReportFailureDetected as there is already an outstanding report task.";
   } else {
     // We're running on a timer thread; start an election on a different thread pool.
-    auto s = raft_pool_token_->SubmitFunc(
+    auto s = raft_pool_concurrent_token_->SubmitFunc(
         std::bind(&RaftConsensus::ReportFailureDetectedTask, shared_from_this()));
     WARN_NOT_OK(s, "Failed to submit failure detected task");
     if (!s.ok()) {
@@ -1388,7 +1392,7 @@ void RaftConsensus::UpdateMajorityReplicated(
 
   s = state_->SetMajorityReplicatedLeaseExpirationUnlocked(majority_replicated_data, flags);
   if (s.ok()) {
-    leader_lease_wait_cond_.notify_all();
+    YB_PROFILE(leader_lease_wait_cond_.notify_all());
   } else {
     LOG(WARNING) << "Leader lease expiration was not set: " << s;
   }
@@ -1496,8 +1500,9 @@ void RaftConsensus::NotifyFailedFollower(const string& uuid,
   }
 
   // Run config change on thread pool after dropping ReplicaState lock.
-  WARN_NOT_OK(raft_pool_token_->SubmitFunc(std::bind(&RaftConsensus::TryRemoveFollowerTask,
-                                               shared_from_this(), uuid, committed_config, reason)),
+  WARN_NOT_OK(raft_pool_concurrent_token_->SubmitFunc(
+                  std::bind(&RaftConsensus::TryRemoveFollowerTask,
+                            shared_from_this(), uuid, committed_config, reason)),
               state_->LogPrefix() + "Unable to start RemoteFollowerTask");
 }
 
@@ -1520,6 +1525,10 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 Status RaftConsensus::Update(
     const std::shared_ptr<LWConsensusRequestPB>& request_ptr,
     LWConsensusResponsePB* response, CoarseTimePoint deadline) {
+  if (const auto& wait_state = yb::ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->set_query_id(
+        yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForRaftUpdateConsensus));
+  }
   follower_last_update_received_time_ms_.store(
       clock_->Now().GetPhysicalValueMillis(), std::memory_order_release);
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests)) {
@@ -2876,7 +2885,7 @@ void RaftConsensus::Shutdown() {
   }
 
   // Shut down things that might acquire locks during destruction.
-  raft_pool_token_->Shutdown();
+  raft_pool_concurrent_token_->Shutdown();
   // We might not have run Start yet, so make sure we have a FD.
   if (failure_detector_) {
     DisableFailureDetector();
@@ -3212,6 +3221,10 @@ const TabletId& RaftConsensus::split_parent_tablet_id() const {
   return split_parent_tablet_id_;
 }
 
+const std::optional<CloneSourceInfo>& RaftConsensus::clone_source_info() const {
+  return clone_source_info_;
+}
+
 LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {
   auto lock = state_->LockForRead();
   LeaderLeaseStatus leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
@@ -3257,6 +3270,10 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
     }
   }
   return state_->ConsensusStateUnlocked(type);
+}
+
+ConsensusStatePB RaftConsensus::GetConsensusStateFromCache() const {
+  return state_->GetConsensusStateFromCache();
 }
 
 RaftConfigPB RaftConsensus::CommittedConfig() const {
@@ -3327,7 +3344,7 @@ void RaftConsensus::ElectionCallback(const LeaderElectionData& data,
   // The election callback runs on a reactor thread, so we need to defer to our
   // threadpool. If the threadpool is already shut down for some reason, it's OK --
   // we're OK with the callback never running.
-  WARN_NOT_OK(raft_pool_token_->SubmitFunc(
+  WARN_NOT_OK(raft_pool_concurrent_token_->SubmitFunc(
               std::bind(&RaftConsensus::DoElectionCallback, shared_from_this(), data, result)),
               state_->LogPrefix() + "Unable to run election callback");
 }
@@ -3664,28 +3681,20 @@ Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
   return state_->retryable_requests();
 }
 
+Result<std::unique_ptr<RetryableRequests>> RaftConsensus::TakeSnapshotOfRetryableRequests() {
+  return state_->TakeSnapshotOfRetryableRequests();
+}
+
 OpId RaftConsensus::GetLastFlushedOpIdInRetryableRequests() {
   return state_->GetLastFlushedOpIdInRetryableRequests();
 }
 
-Status RaftConsensus::FlushRetryableRequests() {
-  return state_->FlushRetryableRequests();
-}
-
-Status RaftConsensus::CopyRetryableRequestsTo(const std::string &dest_path) {
-  auto lock = state_->LockForRead();
-  if(state_->state() != ReplicaState::kRunning) {
-    return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
-  }
-  return state_->CopyRetryableRequestsTo(dest_path);
+Status RaftConsensus::SetLastFlushedOpIdInRetryableRequests(const OpId& op_id) {
+  return state_->SetLastFlushedOpIdInRetryableRequests(op_id);
 }
 
 int64_t RaftConsensus::follower_lag_ms() const {
   return follower_last_update_time_ms_metric_->lag_ms();
-}
-
-bool RaftConsensus::TEST_HasRetryableRequestsOnDisk() const {
-  return state_->TEST_HasRetryableRequestsOnDisk();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {

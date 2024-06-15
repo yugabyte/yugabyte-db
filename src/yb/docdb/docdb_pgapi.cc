@@ -32,12 +32,10 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "ybgate/ybgate_cpp_util.h"
 #include "ybgate/ybgate_status.h"
 
-// This file comes from this directory:
-// postgres_build/src/include/catalog
-// added as a special include path to CMakeLists.txt
-#include "pg_type_d.h" // NOLINT
+#include "catalog/pg_type_d.h"
 
 using std::string;
 
@@ -230,6 +228,12 @@ Status SetValueFromQLBinary(
       ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message));
   PG_RETURN_NOT_OK(YbgResetMemoryContext());
   return Status::OK();
+}
+
+void DeleteMemoryContextIfSet() {
+  if (YBCPgGetThreadLocalCurrentMemoryContext() != nullptr) {
+    YbgDeleteMemoryContext();
+  }
 }
 
 namespace {
@@ -1279,13 +1283,15 @@ Status SetValueFromQLBinaryHelper(
     case NUMERICOID: {
       func_name = "numeric_out";
       util::Decimal decimal;
+      string string_val;
 
-      Status s = decimal.DecodeFromComparable(ql_value.decimal_value());
-      if (!s.ok())
-        return STATUS_SUBSTITUTE(
-            InternalError, "Failed to deserialize DECIMAL from $1", ql_value.decimal_value());
-      string numeric_val = decimal.ToString();
-      cdc_datum_message->set_datum_double(std::stod(numeric_val));
+      RETURN_NOT_OK(decimal.DecodeFromComparable(ql_value.decimal_value()));
+      RETURN_NOT_OK(decimal.ToPointString(&string_val, std::numeric_limits<int32_t>::max()));
+
+      size = string_val.size();
+      val = const_cast<char *>(string_val.c_str());
+      uint64_t datum = arg_type->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
+      set_string_value(datum, func_name, cdc_datum_message);
       break;
     }
     case REGPROCEDUREOID: {

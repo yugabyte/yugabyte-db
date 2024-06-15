@@ -224,6 +224,12 @@ class FlagTagger {
 
 } // namespace yb
 
+#define _DEFINE_FLAG_IN_FILE(name) BOOST_PP_CAT(name, _DefinedInFile)
+
+#define _DEFINE_flag(type, name, default_value, description) \
+  using _DEFINE_FLAG_IN_FILE(name) = bool; \
+  DEFINE_##type(name, default_value, description)
+
 #define DEFINE_test_flag(type, name, default_value, description) \
   BOOST_PP_CAT(DEFINE_, type)(TEST_##name, default_value, description " (For testing only!)"); \
   TAG_FLAG(BOOST_PP_CAT(TEST_, name), unsafe); \
@@ -231,54 +237,54 @@ class FlagTagger {
 
 // Runtime flags.
 #define DEFINE_RUNTIME_bool(name, default_value, description) \
-  DEFINE_bool(name, default_value, description); \
+  _DEFINE_flag(bool, name, default_value, description); \
   _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_uint32(name, default_value, description) \
-  DEFINE_uint32(name, default_value, description); \
+  _DEFINE_flag(uint32, name, default_value, description); \
   _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_int32(name, default_value, description) \
-  DEFINE_int32(name, default_value, description); \
+  _DEFINE_flag(int32, name, default_value, description); \
   _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_int64(name, default_value, description) \
-  DEFINE_int64(name, default_value, description); \
+  _DEFINE_flag(int64, name, default_value, description); \
   _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_uint64(name, default_value, description) \
-  DEFINE_uint64(name, default_value, description); \
+  _DEFINE_flag(uint64, name, default_value, description); \
   _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_double(name, default_value, description) \
-  DEFINE_double(name, default_value, description); \
+  _DEFINE_flag(double, name, default_value, description); \
   _TAG_FLAG_RUNTIME(name)
 
 #define DEFINE_RUNTIME_string(name, default_value, description) \
-  DEFINE_string(name, default_value, description); \
+  _DEFINE_flag(string, name, default_value, description); \
   _TAG_FLAG_RUNTIME(name)
 
 // Non Runtime flags.
 #define DEFINE_NON_RUNTIME_bool(name, default_value, description) \
-  DEFINE_bool(name, default_value, description)
+  _DEFINE_flag(bool, name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_uint32(name, default_value, description) \
-  DEFINE_uint32(name, default_value, description)
+  _DEFINE_flag(uint32, name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_int32(name, default_value, description) \
-  DEFINE_int32(name, default_value, description)
+  _DEFINE_flag(int32, name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_int64(name, default_value, description) \
-  DEFINE_int64(name, default_value, description)
+  _DEFINE_flag(int64, name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_uint64(name, default_value, description) \
-  DEFINE_uint64(name, default_value, description)
+  _DEFINE_flag(uint64, name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_double(name, default_value, description) \
-  DEFINE_double(name, default_value, description)
+  _DEFINE_flag(double, name, default_value, description)
 
 #define DEFINE_NON_RUNTIME_string(name, default_value, description) \
-  DEFINE_string(name, default_value, description)
+  _DEFINE_flag(string, name, default_value, description)
 
 // Runtime preview flags.
 #define PREVIEW_FLAG_DESCRIPTION(description, name) \
@@ -376,22 +382,22 @@ class FlagTagger {
 // Unknown flags. !!Not to be used!!
 // Older flags need to be reviewed in order to determine if they are runtime or non-runtime.
 #define DEFINE_UNKNOWN_bool(name, default_value, description) \
-  DEFINE_bool(name, default_value, description)
+  _DEFINE_flag(bool, name, default_value, description)
 
 #define DEFINE_UNKNOWN_uint32(name, default_value, description) \
-  DEFINE_uint32(name, default_value, description)
+  _DEFINE_flag(uint32, name, default_value, description)
 
 #define DEFINE_UNKNOWN_int32(name, default_value, description) \
-  DEFINE_int32(name, default_value, description)
+  _DEFINE_flag(int32, name, default_value, description)
 
 #define DEFINE_UNKNOWN_int64(name, default_value, description) \
-  DEFINE_int64(name, default_value, description);
+  _DEFINE_flag(int64, name, default_value, description)
 
 #define DEFINE_UNKNOWN_uint64(name, default_value, description) \
-  DEFINE_uint64(name, default_value, description)
+  _DEFINE_flag(uint64, name, default_value, description)
 
 #define DEFINE_UNKNOWN_double(name, default_value, description) \
-  DEFINE_double(name, default_value, description)
+  _DEFINE_flag(double, name, default_value, description)
 
 #define DEFINE_UNKNOWN_string(name, default_value, description) \
-  DEFINE_string(name, default_value, description)
+  _DEFINE_flag(string, name, default_value, description)

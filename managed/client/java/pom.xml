@@ -39,14 +39,14 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.yugabyte</groupId>
-  <artifactId>platform-parent</artifactId>
-  <version>2.7.3.0</version>
+  <artifactId>yba</artifactId>
+  <version>2.0.0</version>
   <packaging>pom</packaging>
 
-  <name>YugaByte</name>
+  <name>Yugabyte Anywhere Java client SDK</name>
 
   <description>
-    YugaByte Platform client
+    Yugabyte Anywhere Java client SDK
   </description>
 
   <!-- Properties Management -->
@@ -60,10 +60,20 @@
   </properties>
 
   <modules>
-    <module>platform-client</module>
+    <module>v1</module>
+    <module>v2</module>
   </modules>
 
   <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <javadocExecutable>${java.home}/bin/javadoc</javadocExecutable>
+        </configuration>
+      </plugin>
+    </plugins>
     <extensions>
       <extension>
         <groupId>com.github.seahen</groupId>

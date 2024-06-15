@@ -369,3 +369,30 @@ DROP EVENT TRIGGER evt_ddl_start;
 -- The next GRANT SELECT should not cause any catalog version change.
 GRANT SELECT (rolname, rolsuper) ON pg_authid TO CURRENT_USER;
 :display_catalog_version;
+
+-- Verify REFRESH MATERIALIZED VIEW is not a breaking change.
+CREATE TABLE base (t int);
+CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
+CREATE UNIQUE INDEX ON mv(t);
+:display_catalog_version;
+-- nonconcurrent refreshes should bump catalog version.
+REFRESH MATERIALIZED VIEW mv;
+:display_catalog_version;
+-- concurrent refreshes should not bump catalog version.
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
+:display_catalog_version;
+
+-- Verify ANALYZE increments catalog version and is not a breaking change.
+CREATE TABLE analyze_table (t int);
+CREATE TABLE analyze_table2 (t int);
+INSERT INTO analyze_table select generate_series(1,100);
+INSERT INTO analyze_table2 select generate_series(1,100);
+ANALYZE analyze_table, analyze_table2;
+:display_catalog_version;
+SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
+SELECT min(t), max(t) FROM analyze_table;
+SELECT min(t), max(t) FROM analyze_table2;
+-- Without specifying tables, ANALYZE update statistics for all tables.
+-- Verify catalog version only bumps once.
+ANALYZE;
+:display_catalog_version;

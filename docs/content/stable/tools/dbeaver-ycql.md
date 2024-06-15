@@ -39,7 +39,7 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Start YugabyteDB.
 
-  For more information, see [Quick Start](../../quick-start/).
+  For more information, see [Quick Start](/preview/quick-start/).
 
 - Install JRE or JDK for Java 8 or later.
 
@@ -53,8 +53,8 @@ You can create a connection as follows:
 
 - Launch DBeaver.
 - Navigate to **Database > New Database Connection** to open the **Connect to a database** window shown in the following illustration.
-- In the **Select your database** list, select **NoSQL > Yugabyte CQL**, and then click **Next**.\
-\
+- In the **Select your database** list, select **NoSQL > Yugabyte CQL**, and then click **Next**.
+
     ![DBeaver Select Database](/images/develop/tools/dbeaver/dbeaver-select-db-ycql.png)
 
 - Use **Connection Settings** to specify the following:
@@ -65,8 +65,8 @@ You can create a connection as follows:
   - **Password**: leave blank if YCQL authentication is not enabled. If enabled, enter the password.
   - Select **Show all databases**.
 
-- Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:\
-\
+- Click **Test Connection** to verify that the connection is successful, as shown in the following illustration:
+
     ![DBeaver Test Connection](/images/develop/tools/dbeaver/dbeaver-test-conn-ycql.png)
 
 DBeaver's **Database Navigator** should display system.
@@ -77,4 +77,4 @@ You can expand the list to see all keyspaces available in YugabyteDB cluster, as
 
 ## What's Next
 
-For sample data to explore YCQL using DBeaver, see [JSON support](/preview/explore/json-support/jsonb-ycql/#root).
+For sample data to explore YCQL using DBeaver, see [JSON support](../../explore/ycql-language/jsonb-ycql/#root).

@@ -31,4 +31,5 @@ export * from './YBButton/YBButton';
 export * from './YBFormComponents/YBLabel';
 export * from './YBFormComponents/YBHelper';
 export * from './YBTextarea/YBTextarea';
+export * from './YBProgress/YBProgress';
 export * from './YBBannerComponents/YBPermissionNotFound';

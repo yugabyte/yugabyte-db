@@ -12,11 +12,11 @@
 #
 
 set(YB_PCH_PREFIX pgwrapper)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
+    yb_ash
     yb_common
     yb_pggate_flags
     yb_process_wrapper
@@ -25,13 +25,14 @@ ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
 
+include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
+
 # We indirectly use some headers that are generated while processing the protobufs below.
 add_dependencies(
   yb_pgwrapper
   gen_src_yb_tserver_backup_proto
   gen_src_yb_docdb_docdb_proto
   gen_src_yb_dockv_dockv_proto
-  gen_src_yb_util_opid_proto
   gen_src_yb_tablet_metadata_proto
   gen_src_yb_tablet_operations_proto
   gen_src_yb_tablet_tablet_proto
@@ -112,6 +113,7 @@ ADD_YB_TEST(colocation-test)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_alter_add_column_default-test)
+ADD_YB_TEST(pg_ash-test)
 ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_misc_conflicts-test)
@@ -138,6 +140,7 @@ ADD_YB_TEST(pg_namespace-test)
 ADD_YB_TEST(pg_namespace_master_restart-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
+ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
 ADD_YB_TEST(pg_read_time-test)
 ADD_YB_TEST(pg_row_lock-test)
@@ -146,8 +149,10 @@ ADD_YB_TEST(pg_shared_mem-test)
 ADD_YB_TEST(pg_single_tserver-test)
 ADD_YB_TEST(pg_stat_activity-test)
 ADD_YB_TEST(pg_table_size-test)
+ADD_YB_TEST(pg_tablespaces-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
+ADD_YB_TEST(pg_type-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)

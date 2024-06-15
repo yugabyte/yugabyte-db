@@ -58,8 +58,7 @@ PgDml::PgDml(PgSession::ScopedRefPtr pg_session,
   }
 }
 
-PgDml::~PgDml() {
-}
+PgDml::~PgDml() = default;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -253,6 +252,22 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   return Status::OK();
 }
 
+Status PgDml::ANNBindVector(PgExpr *query_vec) {
+  if (secondary_index_query_) {
+    return secondary_index_query_->ANNBindVector(query_vec);
+  }
+
+  return STATUS(IllegalState, "Secondary index scan only supports vector search");
+}
+
+Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {
+  if (secondary_index_query_) {
+    return secondary_index_query_->ANNSetPrefetchSize(prefetch_size);
+  }
+
+  return STATUS(IllegalState, "Secondary index scan only supports vector search");
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::BindTable() {
@@ -335,20 +350,27 @@ Result<bool> PgDml::ProcessSecondaryIndexRequest(const PgExecParameters *exec_pa
 
   // When INDEX has its own doc_op, execute it to fetch next batch of ybctids which is then used
   // to read data from the main table.
-  const vector<Slice> *ybctids;
-  if (!VERIFY_RESULT(secondary_index_query_->FetchYbctidBatch(&ybctids))) {
+  if (!VERIFY_RESULT(secondary_index_query_->FetchYbctidBatch(&retrieved_ybctids_))) {
     // No more rows of ybctids.
     return false;
   }
 
+  if (prepare_params_.fetch_ybctids_only)
+    return true;
+
   // Update request with the new batch of ybctids to fetch the next batch of rows.
-  auto i = ybctids->begin();
-  RETURN_NOT_OK(doc_op_->PopulateDmlByYbctidOps({make_lw_function(
-      [&i, end = ybctids->end()] {
-        return i != end ? *i++ : Slice();
-      }), ybctids->size(), secondary_index_query_->KeepOrder()}));
+  RETURN_NOT_OK(UpdateRequestWithYbctids(*retrieved_ybctids_,
+                                         KeepOrder(secondary_index_query_->KeepOrder())));
+
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
   return true;
+}
+
+Status PgDml::UpdateRequestWithYbctids(const std::vector<Slice>& ybctids, KeepOrder keep_order) {
+  auto i = ybctids.begin();
+  return doc_op_->PopulateByYbctidOps({make_lw_function([&i, end = ybctids.end()] {
+    return i != end ? *i++ : Slice();
+  }), ybctids.size()}, keep_order);
 }
 
 Status PgDml::Fetch(int32_t natts,
@@ -462,6 +484,10 @@ bool PgDml::has_aggregate_targets() const {
 
 bool PgDml::has_system_targets() const {
   return has_system_targets_;
+}
+
+bool PgDml::has_secondary_index_with_doc_op() const {
+  return secondary_index_query_ && secondary_index_query_->has_doc_op();
 }
 
 Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {

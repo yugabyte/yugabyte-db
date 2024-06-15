@@ -9,15 +9,13 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: alerts-monitoring
-weight: 660
+weight: 670
 type: indexpage
 ---
 
 YugabyteDB Anywhere provides preconfigured alerts to notify you of potential problems with universes and your YugabyteDB Anywhere installation.
 
 Use the Live Queries and Slow Queries dashboards to monitor and display current running queries and analyze statistics of past queries on your YugabyteDB universes.
-
-For information on creating and customizing alerts, both for universe and YugabyteDB Anywhere metrics, refer to [Create and configure alerts](../configure-yugabyte-platform/set-up-alerts-health-check/).
 
 <div class="row">
 

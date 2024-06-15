@@ -34,11 +34,10 @@ public class SetRestoreTime extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
+        "%s (sourceUniverse=%s, xClusterUuid=%s)",
         super.getName(),
         taskParams().getUniverseUUID(),
-        taskParams().getXClusterConfig().getUuid(),
-        taskParams().tableIds);
+        taskParams().getXClusterConfig().getUuid());
   }
 
   @Override

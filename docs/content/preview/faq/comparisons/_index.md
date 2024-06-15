@@ -7,11 +7,14 @@ image: /images/section_icons/index/comparisons.png
 headcontent: See how YugabyteDB compares with other operational databases in the distributed SQL and NoSQL categories. For a detailed comparison, click the database name.
 aliases:
   - /comparisons/
+  - /preview/faq/comparisons/references
 menu:
   preview_faq:
     identifier: comparisons
     parent: comparisons-home
     weight: 100
+cascade:
+  unversioned: true
 type: indexpage
 ---
 

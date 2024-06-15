@@ -323,14 +323,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Use spot instances instead of On-Demand during universe creation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> enableYbcOnK8s =
-      new ConfKeyInfo<>(
-          "ybc.k8s.enabled",
-          ScopeType.PROVIDER,
-          "Enable YBC on K8S",
-          "To enable ybc on k8s universe",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<String> remoteTmpDirectory =
       new ConfKeyInfo<>(
           "yb.filepaths.remoteTmpDirectory",
@@ -389,6 +381,15 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> azureIgnorePlan =
+      new ConfKeyInfo<>(
+          "yb.azure.vm.ignore_plan",
+          ScopeType.PROVIDER,
+          "Ignore VM plan information",
+          "Skip passing in any plan information when creating virtual machine, even if found.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<String> monitoredMountRoots =
       new ConfKeyInfo<>(
           "yb.provider.monitored_mount_roots",
@@ -424,4 +425,31 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Duration between retries while waiting for ysql to come up",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> geoPartitioningEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.geo_partitioning_enabled",
+          ScopeType.PROVIDER,
+          "Enable Geo-partitioning",
+          "Enables geo-partitioning for universes created with this provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> ybcEnabledForProvider =
+      new ConfKeyInfo<>(
+          "ybc.provider.enabled",
+          ScopeType.PROVIDER,
+          "Enable YBC",
+          "Enable YBC for universes created with this provider",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> otelCollectorMetricsPort =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_metrics_port",
+          ScopeType.PROVIDER,
+          "Configure OpenTelemetry metrics port",
+          "OpenTelemetry metrics port",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

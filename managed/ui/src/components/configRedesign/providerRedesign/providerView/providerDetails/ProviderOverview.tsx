@@ -13,6 +13,7 @@ import { GCPPropertiesOverview } from '../gcp/GCPPropertiesOverview';
 import { K8sPropertiesOverview } from '../k8s/K8sPropertiesOverview';
 import { OnPremPropertiesOverview } from '../onPrem/OnPremPropertiesOverview';
 import { assertUnreachableCase } from '../../../../../utils/errorHandlingUtils';
+import { LinuxVersionOverview } from '../../components/linuxVersionCatalog/LinuxVersionOverview';
 
 import { YBProvider } from '../../types';
 
@@ -38,6 +39,7 @@ export const ProviderOverview = ({ providerConfig, isProviderInUse }: ProviderOv
       <div className={styles.regionListContainer}>
         <RegionListOverview providerConfig={providerConfig} />
       </div>
+        <LinuxVersionOverview imageBundles={(providerConfig as any).imageBundles} />
     </div>
   );
 };

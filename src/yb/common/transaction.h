@@ -32,6 +32,7 @@
 #include "yb/common/transaction.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 
 #include "yb/gutil/template_util.h"
 
@@ -46,6 +47,7 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID_DECL(TransactionId);
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
+using TransactionIdApplyOpIdMap = std::unordered_map<TransactionId, OpId, TransactionIdHash>;
 using SubTransactionId = uint32_t;
 
 // By default, postgres SubTransactionId's propagated to DocDB start at 1, so we use this as a
@@ -124,7 +126,9 @@ struct TransactionStatusResult {
 
   TransactionStatusResult() {}
 
-  TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_,
+      Status expected_deadlock_status_ = Status::OK());
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
@@ -228,7 +232,7 @@ class TransactionStatusManager {
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 
-  virtual Status Cleanup(TransactionIdSet&& set) = 0;
+  virtual Status Cleanup(TransactionIdApplyOpIdMap&& set) = 0;
 
   // For each pair fills second with priority of transaction with id equals to first.
   virtual Status FillPriorities(
@@ -418,6 +422,46 @@ inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
+
+// Post-apply transaction metadata is written to intentsdb when a transactions' intents have not yet
+// been streamed by CDC but have been applied, so that we can clean the transaction from memory
+// immediately while still keeping enough information to know when it is safe to clean up its
+// intents.
+struct PostApplyTransactionMetadata {
+  TransactionId transaction_id = TransactionId::Nil();
+
+  OpId apply_op_id;
+  HybridTime commit_ht;
+  HybridTime log_ht;
+
+  static Result<PostApplyTransactionMetadata> FromPB(
+      const LWPostApplyTransactionMetadataPB& source);
+  static Result<PostApplyTransactionMetadata> FromPB(
+      const PostApplyTransactionMetadataPB& source);
+
+  void ToPB(LWPostApplyTransactionMetadataPB* dest) const;
+  void ToPB(PostApplyTransactionMetadataPB* dest) const;
+
+  void TransactionIdToPB(LWPostApplyTransactionMetadataPB* dest) const;
+  void TransactionIdToPB(PostApplyTransactionMetadataPB* dest) const;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(transaction_id, apply_op_id, commit_ht, log_ht);
+  }
+
+ private:
+  template <class PB>
+  static Result<PostApplyTransactionMetadata> DoFromPB(const PB& source);
+};
+
+bool operator==(const PostApplyTransactionMetadata& lhs, const PostApplyTransactionMetadata& rhs);
+
+inline bool operator!=(
+    const PostApplyTransactionMetadata& lhs, const PostApplyTransactionMetadata& rhs) {
+  return !(lhs == rhs);
+}
+
+std::ostream& operator<<(std::ostream& out, const PostApplyTransactionMetadata& metadata);
 
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();

@@ -891,13 +891,18 @@ def get_instance_details(instance_type, region):
     return instances[0]
 
 
-def get_device_names(instance_type, num_volumes, region):
+def get_device_names(instance_type, num_volumes, region, predefined_volumes):
     device_names = []
     instance = get_instance_details(instance_type, region)
-    for i in range(num_volumes):
+    i = 0
+    while len(device_names) < num_volumes:
         device_name_format = "nvme{}n1" if is_nvme(instance) else "xvd{}"
         index = "{}".format(i if is_nvme(instance) else chr(ord('b') + i))
-        device_names.append(device_name_format.format(index))
+        device_name = device_name_format.format(index)
+        if not (device_name in predefined_volumes):
+            device_names.append(device_name)
+        i = i + 1
+    logging.info("Device names: %s", device_names)
     return device_names
 
 
@@ -1013,8 +1018,8 @@ def create_instance(args):
         "DeviceName": root_device_name,
         "Ebs": ebs
     })
-
-    device_names = get_device_names(args.instance_type, args.num_volumes, args.region)
+    device_names = get_device_names(
+        args.instance_type, args.num_volumes, args.region, get_predefined_devices(ami_descr))
     # TODO: Clean up semantics on nvme vs "next-gen" vs ephemerals, as this is currently whack...
     for i, device_name in enumerate(device_names):
         volume = {}
@@ -1088,6 +1093,10 @@ def create_instance(args):
         vars["InstanceMarketOptions"] = options
         logging.info(f"[app] Using AWS spot instances with {options} options")
 
+    if args.imdsv2required:
+        vars["MetadataOptions"] = {"HttpTokens": "required",
+                                   "HttpEndpoint": "enabled"}
+
     # Newer instance types have Credit Specification set to unlimited by default
     if is_burstable(instance):
         vars["CreditSpecification"] = {
@@ -1150,6 +1159,18 @@ def create_instance(args):
     return instance.id
 
 
+def get_predefined_devices(ami):
+    result = []
+    root_device_name = ami.get("RootDeviceName")
+    block_device_mappings = ami.get("BlockDeviceMappings")
+    if block_device_mappings:
+        for v in block_device_mappings:
+            if v.get("DeviceName") != root_device_name:
+                result.append(v.get("DeviceName").replace("/dev/", ""))
+    logging.info("Predefined devices: %s", result)
+    return result
+
+
 def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
     instance = get_client(region).Instance(instance_id)
     # Remove all the tags we were asked to, except the internal ones.
@@ -1174,8 +1195,10 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
 
 def update_disk(args, instance_id):
     ec2_client = boto3.client('ec2', region_name=args.region)
-    device_names = set(get_device_names(args.instance_type, args.num_volumes, args.region))
     instance = get_client(args.region).Instance(instance_id)
+    ami_descr = describe_ami(args.region, args.machine_image if args.machine_image else instance.image_id)
+    device_names = set(get_device_names(args.instance_type, args.num_volumes, args.region,
+                                        get_predefined_devices(ami_descr)))
     vol_ids = list()
     for volume in instance.volumes.all():
         for attachment in volume.attachments:

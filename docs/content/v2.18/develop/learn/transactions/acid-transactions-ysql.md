@@ -65,7 +65,7 @@ For an overview of what settings can be set for a transaction, see [Session-leve
 
 ### Isolation levels
 
-The isolation level defines the level of data visibility to the transaction. YugabytedDB supports [multi-version concurrency control (MVCC)](../../../../architecture/transactions/transactions-overview/#multi-version-concurrency-control), which enables the isolation of concurrent transactions without the need for locking.
+The isolation level defines the level of data visibility to the transaction. YugabyteDB supports [multi-version concurrency control (MVCC)](../../../../architecture/transactions/transactions-overview/#multi-version-concurrency-control), which enables the isolation of concurrent transactions without the need for locking.
 
 YugabyteDB supports three kinds of isolation levels to support different application needs.
 
@@ -134,6 +134,8 @@ During transaction processing, failures can happen due to the strong [ACID](../.
 
 {{<tip>}}
 For more details on how to handle failures and retry, see [Transaction retries](../transactions-retries-ysql/).
+
+For an example application and try it out yourself, see [Designing a Retry Mechanism for Resilient Spring Boot Applications](https://www.yugabyte.com/blog/retry-mechansim-spring-boot-app/).
 {{</tip>}}
 
 ## Tuning for high performance

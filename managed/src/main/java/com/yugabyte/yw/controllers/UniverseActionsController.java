@@ -60,10 +60,14 @@ public class UniverseActionsController extends AuthenticatedController {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Configure alerts for a universe",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.5.0.</b> Deprcated since"
+              + " YBA version 2.20.5.0. Use 'Create maintenance window' API instead.",
+      value = "Configure alerts for a universe",
       nickname = "configureUniverseAlerts",
       response = YBPSuccess.class)
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.5.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -86,7 +90,8 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.6.0.0. Pause a universe",
+      notes = "Available since YBA version 2.6.0.0.",
+      value = "Pause a universe",
       nickname = "pauseUniverse",
       response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
@@ -132,7 +137,8 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.6.0.0. Resume a paused universe",
+      notes = "Available since YBA version 2.6.0.0.",
+      value = "Resume a paused universe",
       nickname = "resumeUniverse",
       response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
@@ -168,7 +174,8 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Set a universe's key",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "Set a universe's key",
       nickname = "setUniverseKey",
       response = UniverseResp.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
@@ -204,7 +211,8 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Update load balancer config",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update load balancer config",
       nickname = "updateLoadBalancerConfig",
       response = UpdateLoadBalancerConfig.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
@@ -245,7 +253,8 @@ public class UniverseActionsController extends AuthenticatedController {
    * @return Result
    */
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. Set a universe's backup flag",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "Set a universe's backup flag",
       nickname = "setUniverseBackupFlag",
       tags = {"Universe management", "Backups"},
       response = YBPSuccess.class)
@@ -278,7 +287,8 @@ public class UniverseActionsController extends AuthenticatedController {
    * @return Result
    */
   @ApiOperation(
-      value = "Deprecated since YBA version 2.20.0.0. Flag a universe as Helm 3-compatible",
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>",
+      value = "Flag a universe as Helm 3-compatible - deprecated",
       nickname = "setUniverseHelm3Compatible",
       response = YBPSuccess.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
@@ -309,7 +319,8 @@ public class UniverseActionsController extends AuthenticatedController {
    *     failure
    */
   @ApiOperation(
-      value = "YbaApi Internal. Reset universe version",
+      notes = "YbaApi Internal.",
+      value = "Reset universe version",
       nickname = "resetUniverseVersion",
       response = YBPSuccess.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.6.0.0")

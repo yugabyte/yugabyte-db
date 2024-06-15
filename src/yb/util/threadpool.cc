@@ -44,6 +44,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -513,7 +514,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   int length_at_submit = total_queued_tasks_++;
 
   guard.Unlock();
-  not_empty_.Signal();
+  YB_PROFILE(not_empty_.Signal());
 
   if (metrics_.queue_length_stats) {
     metrics_.queue_length_stats->Increment(length_at_submit);
@@ -645,7 +646,7 @@ void ThreadPool::DispatchThread(bool permanent) {
       }
     }
     if (--active_threads_ == 0) {
-      idle_cond_.Broadcast();
+      YB_PROFILE(idle_cond_.Broadcast());
     }
   }
 
@@ -717,7 +718,7 @@ void TaskRunner::CompleteTask(const Status& status) {
   }
   if (--running_tasks_ == 0 || is_first_failure) {
     std::lock_guard lock(mutex_);
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
 }
 

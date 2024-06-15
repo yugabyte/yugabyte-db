@@ -22,6 +22,7 @@
 
 #include "yb/tablet/transaction_status_resolver.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -42,6 +43,8 @@ METRIC_DEFINE_simple_counter(
     tablet, transaction_load_attempts,
     "Total number of attempts to load transaction metadata from the intents RocksDB",
     yb::MetricUnit::kTransactions);
+
+#define RSTATUS_DCHECK_RESULT(expr) RESULT_CHECKER_HELPER(expr, RSTATUS_DCHECK_OK(__result))
 
 namespace yb {
 namespace tablet {
@@ -74,6 +77,7 @@ class TransactionLoader::Executor {
     }
     regular_iterator_ = CreateFullScanIterator(db.regular);
     intents_iterator_ = CreateFullScanIterator(db.intents);
+    loader_.state_.store(TransactionLoaderState::kLoading, std::memory_order_release);
     CHECK_OK(yb::Thread::Create(
         "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))
     return true;
@@ -144,9 +148,9 @@ class TransactionLoader::Executor {
     intents_iterator_.Reset();
 
     RETURN_NOT_OK(CheckForShutdown());
-    context().CompleteLoad([this] {
-      loader_.state_ = TransactionLoaderState::kLoadCompleted;
-    });
+
+    loader_.state_ = TransactionLoaderState::kCompleted;
+
     {
       // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
       // and WaitAllLoaded. The waiting loop in those functions is equivalent to the following,
@@ -164,7 +168,7 @@ class TransactionLoader::Executor {
       // after that we would check all_loaded_ and exit the loop at line 1.
       std::lock_guard lock(loader_.mutex_);
     }
-    loader_.load_cond_.notify_all();
+    YB_PROFILE(loader_.load_cond_.notify_all());
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
     return Status::OK();
   }
@@ -266,7 +270,7 @@ class TransactionLoader::Executor {
       std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
     }
-    loader_.load_cond_.notify_all();
+    YB_PROFILE(loader_.load_cond_.notify_all());
     return Status::OK();
   }
 
@@ -393,12 +397,24 @@ constexpr auto kWaitLoadedWakeUpInterval = 10s;
 }  // namespace
 
 Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
-  if (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted) {
+  // ::WaitLoaded seems to executed in the following paths -
+  // 1. transaction handling - add/ apply/cleanup etc
+  // 2. tablet shutdown - to abort active transactions
+  //
+  // It looks like state_ != TransactionLoaderState::kNotStarted would always hold true here.
+  // In case of 1, tablet open would have succeeded => loader was successfully started.
+  // In 2, we only abort transactions in TransactionParticipant::Impl::transactions_. If tablet
+  // open failed before launching loader => transactions_ would be empty. Else loader would have
+  // been launched => state_ != TransactionLoaderState::kNotStarted.
+  //
+  // If we face a FATAL in the above 'if', it should be investigated and RSTATUS_DCHECK_RESULT
+  // should be replaced with VERIFY_RESULT.
+  if (RSTATUS_DCHECK_RESULT(Completed())) {
     return Status::OK();
   }
   std::unique_lock<std::mutex> lock(mutex_);
   // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
-  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadNotFinished) {
+  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoading) {
     if (last_loaded_ >= id) {
       break;
     }
@@ -409,14 +425,17 @@ Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_A
 
 // Disable thread safety analysis because std::unique_lock is used.
 Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
-  // Read state_ with sequential consistency to prevent subtle bugs with operation reordering.
   // WaitAllLoaded is only invoked when opening a tablet.
-  if (state_ == TransactionLoaderState::kLoadCompleted) {
+  //
+  // It appears like the loader would never be in TransactionLoaderState::kNotStarted here. If we
+  // face a FATAL in the below 'if', it should be investigated and RSTATUS_DCHECK_RESULT should be
+  // replaced with VERIFY_RESULT.
+  if (RSTATUS_DCHECK_RESULT(Completed())) {
     return Status::OK();
   }
   // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   std::unique_lock<std::mutex> lock(mutex_);
-  while (state_ == TransactionLoaderState::kLoadNotFinished) {
+  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoading) {
     load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
   return load_status_;
@@ -447,14 +466,16 @@ void TransactionLoader::CompleteShutdown() {
 }
 
 void TransactionLoader::FinishLoad(Status status) {
+  context_.LoadFinished(status);
+  // context_.LoadFinished unblocks tablet shutdown by resetting participant's' shutdown_latch_'.
+  // Hence, it is not safe to access 'context_' after this point since the corresponding transaction
+  // participant instance might be destroyed.
   if (status.ok()) {
-    context_.LoadFinished();
     return;
   }
-
   std::lock_guard lock(mutex_);
   load_status_ = status;
-  state_.store(TransactionLoaderState::kLoadFailed, std::memory_order_release);
+  state_.store(TransactionLoaderState::kFailed, std::memory_order_release);
 }
 
 ApplyStatesMap TransactionLoader::MovePendingApplies() {

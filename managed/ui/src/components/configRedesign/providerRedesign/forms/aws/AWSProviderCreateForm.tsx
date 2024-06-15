@@ -12,6 +12,7 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -22,6 +23,7 @@ import {
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   ConfigureRegionModal,
   CloudVendorRegionField
@@ -33,7 +35,8 @@ import {
   ProviderCode,
   VPCSetupType,
   KeyPairManagement,
-  KEY_PAIR_MANAGEMENT_OPTIONS
+  KEY_PAIR_MANAGEMENT_OPTIONS,
+  ProviderOperation
 } from '../../constants';
 import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -68,7 +71,14 @@ import { getInvalidFields, useValidationStyles } from './utils';
 import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 interface AWSProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -94,6 +104,7 @@ export interface AWSProviderCreateFormFieldValues {
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybImageType: YBImageType;
+  imageBundles: ImageBundle[];
 }
 
 export type QuickValidationErrorKeys = {
@@ -171,6 +182,7 @@ export const AWSProviderCreateForm = ({
     setQuickValidationErrors
   ] = useState<QuickValidationErrorKeys | null>(null);
   const validationClasses = useValidationStyles();
+  const { t } = useTranslation();
 
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
@@ -192,11 +204,19 @@ export const AWSProviderCreateForm = ({
 
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
+
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
     return <YBLoading />;
   }
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const handleFormSubmitServerError = (
@@ -326,6 +346,8 @@ export const AWSProviderCreateForm = ({
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType', defaultValues.ybImageType);
   const isFormDisabled = getIsFormDisabled(formMethods.formState) || isForceSubmitting;
+  const imagebundles = formMethods.watch('imageBundles', defaultValues.imageBundles);
+
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -407,10 +429,7 @@ export const AWSProviderCreateForm = ({
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.CREATE_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -424,15 +443,17 @@ export const AWSProviderCreateForm = ({
                 ) : null
               }
             >
-              <FormField>
-                <FieldLabel>AMI Type</FieldLabel>
-                <YBRadioGroupField
-                  name="ybImageType"
-                  control={formMethods.control}
-                  options={YB_IMAGE_TYPE_OPTIONS}
-                  orientation={RadioGroupOrientation.HORIZONTAL}
-                />
-              </FormField>
+              {!isOsPatchingEnabled && (
+                <FormField>
+                  <FieldLabel>AMI Type</FieldLabel>
+                  <YBRadioGroupField
+                    name="ybImageType"
+                    control={formMethods.control}
+                    options={YB_IMAGE_TYPE_OPTIONS}
+                    orientation={RadioGroupOrientation.HORIZONTAL}
+                  />
+                </FormField>
+              )}
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -444,12 +465,13 @@ export const AWSProviderCreateForm = ({
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message ? (
@@ -458,17 +480,24 @@ export const AWSProviderCreateForm = ({
                 </FormHelperText>
               ) : null}
             </FieldGroup>
+            <LinuxVersionCatalog
+              control={formMethods.control}
+              providerType={ProviderCode.AWS}
+              providerOperation={ProviderOperation.CREATE}
+              isDisabled={isFormDisabled}
+            />
             <FieldGroup
               heading="SSH Key Pairs"
               infoTitle="SSH Key Pairs"
               infoContent="YBA requires SSH access to DB nodes. For public clouds, YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
             >
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -479,7 +508,7 @@ export const AWSProviderCreateForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -550,7 +579,7 @@ export const AWSProviderCreateForm = ({
                   {Object.entries(quickValidationErrors).map(([keyString, errors]) => {
                     return (
                       <li key={keyString}>
-                        {keyString.replace(/^(data\.)/, '')}
+                        {keyString}
                         <ul>
                           {errors.map((error, index) => (
                             <li key={index}>{error}</li>
@@ -570,14 +599,9 @@ export const AWSProviderCreateForm = ({
               </YBBanner>
             )}
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-                {!!featureFlags.test.enableAWSProviderValidation && (
-                  <Typography variant="body2" color="primary">
-                    Validating provider configuration fields... usually take 5-30s to complete.
-                  </Typography>
-                )}
-              </Box>
+              <SubmitInProgress
+                isValidationEnabled={!!featureFlags.test.enableAWSProviderValidation}
+              />
             )}
           </Box>
           <Box marginTop="16px">
@@ -616,6 +640,10 @@ export const AWSProviderCreateForm = ({
           regionSelection={regionSelection}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
+          imageBundles={imagebundles}
+          onImageBundleSubmit={(images) => {
+            formMethods.setValue('imageBundles', images);
+          }}
         />
       )}
       <DeleteRegionModal
@@ -632,10 +660,11 @@ const constructProviderPayload = async (
   formValues: AWSProviderCreateFormFieldValues
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
+
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-        formValues.sshPrivateKeyContent
+      formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
@@ -647,6 +676,9 @@ const constructProviderPayload = async (
     sshPrivateKeyContent,
     formValues.skipKeyValidateAndUpload
   );
+
+  const imageBundles = constructImageBundlePayload(formValues, true);
+
   return {
     code: ProviderCode.AWS,
     name: formValues.providerName,
@@ -674,8 +706,8 @@ const constructProviderPayload = async (
           [ProviderCode.AWS]: {
             ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
               ? {
-                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
-              }
+                  ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+                }
               : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
             ...(regionFormValues.securityGroupId && {
               securityGroupId: regionFormValues.securityGroupId
@@ -691,6 +723,7 @@ const constructProviderPayload = async (
         name: azFormValues.code,
         subnet: azFormValues.subnet
       }))
-    }))
+    })),
+    imageBundles
   };
 };

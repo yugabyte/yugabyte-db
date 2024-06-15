@@ -75,6 +75,24 @@ var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yug
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 ```
 
+{{< warning title="Warning" >}}
+
+On every new connection, the Npgsql driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. It is recommended that you turn this behavior off to significantly reduce connection open execution time.
+
+Set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+
+Alternatively, you can add the following to your connection string:
+
+```csharp
+Server Compatibility Mode=NoTypeLoading;
+```
+
+{{< /warning >}}
+
 ### Create table
 
 Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `NpgsqlCommand` class and getting a command object, then calling the `ExecuteNonQuery()` method using this command object.

@@ -2,10 +2,15 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -14,18 +19,28 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
-  protected KubernetesUpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
+  private final OperatorStatusUpdater kubernetesStatus;
+
+  protected KubernetesUpgradeTaskBase(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -38,17 +53,101 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     return getOrCreateExecutionContext().isBlacklistLeaders();
   }
 
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
+    log.debug("Nodes to be restarted {}", nodesToBeRestarted);
+    if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
+        && nodesToBeRestarted != null
+        && !nodesToBeRestarted.isEmpty()) {
+      Optional<NodeDetails> nonLive =
+          nodesToBeRestarted.getAllNodes().stream()
+              .filter(n -> n.state != NodeDetails.NodeState.Live)
+              .findFirst();
+      if (nonLive.isEmpty()) {
+        List<MastersAndTservers> split = new ArrayList<>();
+        nodesToBeRestarted.mastersList.stream()
+            .forEach(
+                n ->
+                    split.add(
+                        new MastersAndTservers(
+                            Collections.singletonList(n), Collections.emptyList())));
+        nodesToBeRestarted.tserversList.stream()
+            .forEach(
+                n ->
+                    split.add(
+                        new MastersAndTservers(
+                            Collections.emptyList(), Collections.singletonList(n))));
+        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion());
+      }
+    }
+  }
+
+  @Override
+  protected void addBasicPrecheckTasks() {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
+  }
+
+  protected String getTargetSoftwareVersion() {
+    return null;
+  }
+
+  private MastersAndTservers nodesToBeRestarted;
+
+  // Override in child classes if required
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(UpgradeOption.ROLLING_UPGRADE /* Only Rolling support in K8s */);
+  }
+
+  protected final MastersAndTservers getNodesToBeRestarted() {
+    if (nodesToBeRestarted == null) {
+      nodesToBeRestarted = calculateNodesToBeRestarted();
+    }
+    return nodesToBeRestarted;
+  }
+
+  protected MastersAndTservers fetchNodes(UpgradeOption upgradeOption) {
+    return new MastersAndTservers(
+        fetchMasterNodes(getUniverse(), upgradeOption),
+        fetchTServerNodes(getUniverse(), upgradeOption));
+  }
+
+  private List<NodeDetails> fetchMasterNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> masterNodes = universe.getMasters();
+    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+      final String leaderMasterAddress = universe.getMasterLeaderHostText();
+      return UpgradeTaskBase.sortMastersInRestartOrder(universe, leaderMasterAddress, masterNodes);
+    }
+    return masterNodes;
+  }
+
+  private List<NodeDetails> fetchTServerNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> tServerNodes = universe.getTServers();
+    if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+      return UpgradeTaskBase.sortTServersInRestartOrder(universe, tServerNodes);
+    }
+    return tServerNodes;
+  }
+
   public abstract SubTaskGroupType getTaskSubGroupType();
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
+    Throwable th = null;
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
+    kubernetesStatus.startYBUniverseEventStatus(
+        universe,
+        taskParams().getKubernetesResourceDetails(),
+        getTaskExecutor().getTaskType(getClass()).name(),
+        getUserTaskUUID(),
+        UniverseState.EDITING);
     try {
-      checkUniverseVersion();
-      // Update the universe DB with the update to be performed and set the
-      // 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
       if (taskParams().nodePrefix == null) {
         taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
       }
@@ -74,7 +173,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
-        Universe universe = getUniverse();
+        universe = getUniverse();
         if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
             universe.getUniverseDetails().softwareUpgradeState)) {
           log.debug("Skipping universe upgrade state as actual task was not started.");
@@ -91,6 +190,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       // disabled, so we enable it again in case of errors.
       setTaskQueueAndRun(
           () -> createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType()));
+      th = t;
       throw t;
     } finally {
       try {
@@ -104,6 +204,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         try {
           unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
         } finally {
+          kubernetesStatus.updateYBUniverseStatus(
+              getUniverse(),
+              taskParams().getKubernetesResourceDetails(),
+              getTaskExecutor().getTaskType(getClass()).name(),
+              getUserTaskUUID(),
+              (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
+              th);
           unlockUniverseForUpdate();
         }
       }
@@ -118,6 +225,25 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       boolean isMasterChanged,
       boolean isTServerChanged) {
     createUpgradeTask(universe, softwareVersion, isMasterChanged, isTServerChanged, false, null);
+  }
+
+  public void createUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTserverChanged,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      UpgradeContext upgradeContext) {
+    createUpgradeTask(
+        universe,
+        softwareVersion,
+        isMasterChanged,
+        isTserverChanged,
+        CommandType.HELM_UPGRADE,
+        enableYbc,
+        ybcSoftwareVersion,
+        upgradeContext);
   }
 
   public void createUpgradeTask(
@@ -145,6 +271,26 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       CommandType commandType,
       boolean enableYbc,
       String ybcSoftwareVersion) {
+    createUpgradeTask(
+        universe,
+        softwareVersion,
+        isMasterChanged,
+        isTServerChanged,
+        commandType,
+        enableYbc,
+        ybcSoftwareVersion,
+        null);
+  }
+
+  public void createUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTServerChanged,
+      CommandType commandType,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      @Nullable UpgradeContext upgradeContext) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     PlacementInfo placementInfo = primaryCluster.placementInfo;
@@ -173,7 +319,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             universeDetails.communicationPorts.masterRpcPort,
             newNamingStyle);
 
-    if (isMasterChanged) {
+    boolean tserverFirst = (upgradeContext != null && upgradeContext.isProcessTServersFirst());
+    if (isMasterChanged && !tserverFirst) {
       upgradePodsTask(
           universe.getName(),
           placement,
@@ -190,7 +337,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           commandType,
           enableYbc,
-          ybcSoftwareVersion);
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
     }
 
     if (isTServerChanged) {
@@ -214,7 +362,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           /*isReadOnlyCluster*/ false,
           commandType,
           enableYbc,
-          ybcSoftwareVersion);
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -230,8 +379,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
-        PlacementInfo readClusterPlacementInfo =
-            universeDetails.getReadOnlyClusters().get(0).placementInfo;
+        Cluster asyncCluster = universeDetails.getReadOnlyClusters().get(0);
+        PlacementInfo readClusterPlacementInfo = asyncCluster.placementInfo;
         createSingleKubernetesExecutorTask(
             universe.getName(),
             CommandType.POD_INFO,
@@ -257,24 +406,44 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             /*isReadOnlyCluster*/ true,
             commandType,
             enableYbc,
-            ybcSoftwareVersion);
+            ybcSoftwareVersion,
+            /* addDelayAfterStartup */ true);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
-              new HashSet<NodeDetails>(
-                  universe.getNodesInCluster(
-                      universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
+              new HashSet<NodeDetails>(universe.getNodesInCluster(asyncCluster.uuid));
           installYbcOnThePods(
               universe.getName(),
               replicaTservers,
               true,
               ybcSoftwareVersion,
-              universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags);
+              asyncCluster.userIntent.ybcFlags);
           performYbcAction(replicaTservers, true, "stop");
           createWaitForYbcServerTask(replicaTservers);
         }
       }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
+    }
+
+    if (isMasterChanged && tserverFirst) {
+      upgradePodsTask(
+          universe.getName(),
+          placement,
+          masterAddresses,
+          null,
+          ServerType.MASTER,
+          softwareVersion,
+          taskParams().sleepAfterMasterRestartMillis,
+          universeOverrides,
+          azOverrides,
+          isMasterChanged,
+          isTServerChanged,
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false,
+          commandType,
+          enableYbc,
+          ybcSoftwareVersion,
+          true);
     }
   }
 
@@ -389,5 +558,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         }
       }
     }
+  }
+
+  protected void createSoftwareUpgradePrecheckTasks(String ybSoftwareVersion) {
+    createCheckUpgradeTask(ybSoftwareVersion).setSubTaskGroupType(getTaskSubGroupType());
   }
 }

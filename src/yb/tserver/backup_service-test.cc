@@ -44,13 +44,7 @@ class BackupServiceTest : public TabletServerTestBase {
   void SetUp() override {
     TabletServerTestBase::SetUp();
     StartTabletServer();
-
-    backup_proxy_.reset(
-        new TabletServerBackupServiceProxy(
-            proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr())));
   }
-
-  std::unique_ptr<TabletServerBackupServiceProxy> backup_proxy_;
 };
 
 TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
@@ -170,9 +164,7 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   LOG(INFO) << "RESTORED SNAPSHOT. CHECKING THE TABLET DATA..";
 
   // Expected the first row only from the snapshot.
-  // FIXME: Current implementation of VerifyRows() can fail due to RocksDB reset in
-  //        RestoreSnapshot(). VerifyRows() must be fixed.
-  // VerifyRows(schema_, { KeyValue(1, 11) });
+  VerifyRows(schema_, { KeyValue(1, 11) });
 
   LOG(INFO) << "THE TABLET DATA IS VALID. Test TestSnapshotData finished.";
 }

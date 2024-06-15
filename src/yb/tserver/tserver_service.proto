@@ -70,6 +70,10 @@ service TabletServerService {
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
   // Returns the oldest transactions (older than a specified age) from a specified status tablet.
   rpc GetOldTransactions(GetOldTransactionsRequestPB) returns (GetOldTransactionsResponsePB);
+  // Returns the oldest single shard waiters (older than a specified age) by querying the
+  // waiting transaction registry at the Tablet Server.
+  rpc GetOldSingleShardWaiters(GetOldSingleShardWaitersRequestPB)
+      returns (GetOldSingleShardWaitersResponsePB);
   // Returns transaction status at participant, i.e. number of replicated batches or whether it was
   // aborted.
   rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
@@ -117,6 +121,11 @@ service TabletServerService {
 
   rpc CheckTserverTabletHealth(CheckTserverTabletHealthRequestPB)
       returns (CheckTserverTabletHealthResponsePB);
+
+  rpc ClearAllMetaCachesOnServer(ClearAllMetaCachesOnServerRequestPB)
+      returns (ClearAllMetaCachesOnServerResponsePB);
+
+  rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -132,8 +141,8 @@ message GetLockStatusRequestPB {
   }
 
   // Tablets to scan. Limit per tablet results to the specified transaction_ids in
-  // TabletTransactionInfoPB when non-empty. If empty, include lock info of all transactions at that
-  // tablet.
+  // TabletTransactionInfoPB when non-empty. If empty and 'max_single_shard_waiter_start_time_us'
+  // is left at default, include lock info of all transactions at that tablet.
   map<string, TabletTransactionInfoPB> transactions_by_tablet = 1;
 
   optional bool include_trace = 2 [ default = false ];
@@ -142,6 +151,15 @@ message GetLockStatusRequestPB {
 
   // Limit results to the specified transaction_ids when transactions_by_tablet is empty.
   repeated bytes transaction_ids = 4;
+
+  // Sets the maximum start time of single shard waiters that should be returned, i.e, all
+  // single shard waiters with start time before the specified value will be returned. All
+  // tablets listed in 'transactions_by_tablet' would be scanned.
+  optional fixed64 max_single_shard_waiter_start_time_us = 5 [ default = 0 ];
+
+  // Limit number of locks returned per transaction at each tablet.
+  // If the field is set to 0, the result set isn't limited and all locks are returned.
+  optional uint32 max_txn_locks_per_tablet = 6 [ default = 0 ];
 }
 
 message GetLockStatusResponsePB {
@@ -193,6 +211,7 @@ message ListTabletsForTabletServerResponsePB {
     optional uint64 num_log_segments = 6;
     optional uint64 num_memtables_intents = 7;
     optional uint64 num_memtables_regular = 8;
+    optional bool has_leader_lease = 9;
   }
 
   repeated Entry entries = 1;
@@ -231,6 +250,7 @@ message GetTransactionStatusRequestPB {
   optional fixed64 propagated_hybrid_time = 3;
   // Reserved for xcluster deprecated field external_hybrid_time.
   reserved 4;
+  optional int64 raft_config_opid_index = 5;
 }
 
 message GetTransactionStatusResponsePB {
@@ -259,6 +279,8 @@ message GetTransactionStatusResponsePB {
   // Note: The field might not be present on older versions of YB and hence its existence
   // should be checked before usage by the reader.
   repeated AppStatusPB deadlock_reason = 8;
+
+  optional TabletConsensusInfoPB tablet_consensus_info = 9;
 }
 
 message GetOldTransactionsRequestPB {
@@ -288,6 +310,26 @@ message GetOldTransactionsResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 }
 
+message GetOldSingleShardWaitersRequestPB {
+  optional uint32 min_txn_age_ms = 1;
+  optional uint32 max_num_txns = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message GetOldSingleShardWaitersResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  message OldSingleShardWaiterMetadataPB {
+    optional bytes tablet = 1;
+    optional fixed64 start_time = 2;
+    optional string host_node_uuid = 3;
+  }
+  repeated OldSingleShardWaiterMetadataPB txn = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
 message UpdateTransactionWaitingForStatusRequestPB {
   message BlockingTransaction {
     optional bytes transaction_id = 1;
@@ -298,6 +340,7 @@ message UpdateTransactionWaitingForStatusRequestPB {
     optional bytes transaction_id = 1;
     repeated BlockingTransaction blocking_transaction = 2;
     optional fixed64 wait_start_time = 3;
+    optional int64 request_id = 4;
   }
 
   optional fixed64 propagated_hybrid_time = 1;
@@ -322,11 +365,11 @@ message ProbeTransactionDeadlockRequestPB {
 
   optional bytes tablet_id = 2;
 
-  optional bytes waiting_txn_id = 3;
+  optional bytes probe_origin_txn_id = 3;
 
   optional bytes blocking_txn_id = 4;
 
-  optional bytes detector_uuid = 5;
+  optional bytes detector_id = 5;
 
   optional fixed32 probe_num = 6;
 
@@ -343,7 +386,23 @@ message ProbeTransactionDeadlockResponsePB {
   // If empty, no deadlock was detected. Otherwise, includes reverse ordered list of the deadlock
   // participants detected by the probe recipient. The probe sender should append its own txn to
   // this list before responding to its own probe sender.
-  repeated bytes deadlocked_txn_ids = 3;
+  repeated bytes deadlocked_txn_ids = 3; // deprecated in favor of deadlock field below
+
+  message DeadlockedTxnInfo {
+    optional bytes id = 1;
+
+    optional bytes tablet_id = 2;
+
+    optional bytes detector_id = 3;
+
+    optional fixed64 txn_start_us = 4;
+  }
+
+  repeated DeadlockedTxnInfo deadlock = 4;
+
+  // If set, it indicates that the blocking transaction/sub-transaction(s) info sent in
+  // ProbeTransactionDeadlockRequestPB has been resolved.
+  optional bool should_erase_probe = 5;
 }
 
 message GetTransactionStatusAtParticipantRequestPB {
@@ -366,6 +425,9 @@ message AbortTransactionRequestPB {
   optional bytes tablet_id = 1;
   optional bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
+
+  // Status containing deadlock info if the transaction is being aborted due to deadlock.
+  optional AppStatusPB deadlock_reason = 4;
 }
 
 message AbortTransactionResponsePB {

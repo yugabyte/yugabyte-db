@@ -48,6 +48,8 @@
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
+
 DEFINE_UNKNOWN_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
              "tablet server before considering it unresponsive. Unresponsive servers are not "
@@ -73,6 +75,7 @@ Result<TSDescriptorPtr> TSDescriptor::RegisterNew(
 TSDescriptor::TSDescriptor(std::string perm_id,
                            RegisteredThroughHeartbeat registered_through_heartbeat)
     : permanent_uuid_(std::move(perm_id)),
+      report_sequence_number_(std::numeric_limits<int32_t>::min()),
       has_tablet_report_(false),
       has_faulty_drive_(false),
       recent_replica_creations_(0),
@@ -123,6 +126,7 @@ Status TSDescriptor::RegisterUnlocked(
   ts_information_->mutable_registration()->CopyFrom(registration);
   ts_information_->mutable_tserver_instance()->set_permanent_uuid(permanent_uuid_);
   ts_information_->mutable_tserver_instance()->set_instance_seqno(latest_seqno);
+  report_sequence_number_ = std::numeric_limits<int32_t>::min();
 
   placement_id_ = generate_placement_id(registration.common().cloud_info());
 
@@ -134,9 +138,6 @@ Status TSDescriptor::RegisterUnlocked(
   }
   local_cloud_info_ = std::move(local_cloud_info);
   proxy_cache_ = proxy_cache;
-
-  capabilities_.clear();
-  capabilities_.insert(registration.capabilities().begin(), registration.capabilities().end());
 
   return Status::OK();
 }
@@ -156,21 +157,28 @@ std::string TSDescriptor::placement_id() const {
   return placement_id_;
 }
 
-void TSDescriptor::UpdateHeartbeat(const TSHeartbeatRequestPB* req) {
-  DCHECK_GE(req->num_live_tablets(), 0);
-  DCHECK_GE(req->leader_count(), 0);
+Status TSDescriptor::UpdateTSMetadataFromHeartbeat(const TSHeartbeatRequestPB& req) {
+  DCHECK_GE(req.num_live_tablets(), 0);
+  DCHECK_GE(req.leader_count(), 0);
   {
     std::lock_guard l(lock_);
+    RETURN_NOT_OK(IsReportCurrentUnlocked(
+        req.common().ts_instance(), req.has_tablet_report() ? &req.tablet_report() : nullptr));
     last_heartbeat_ = MonoTime::Now();
-    num_live_replicas_ = req->num_live_tablets();
-    leader_count_ = req->leader_count();
-    physical_time_ = req->ts_physical_time();
-    hybrid_time_ = HybridTime::FromPB(req->ts_hybrid_time());
-    heartbeat_rtt_ = MonoDelta::FromMicroseconds(req->rtt_us());
-    if (req->has_faulty_drive()) {
-      has_faulty_drive_ = req->faulty_drive();
+    num_live_replicas_ = req.num_live_tablets();
+    leader_count_ = req.leader_count();
+    physical_time_ = req.ts_physical_time();
+    hybrid_time_ = HybridTime::FromPB(req.ts_hybrid_time());
+    heartbeat_rtt_ = MonoDelta::FromMicroseconds(req.rtt_us());
+    if (req.has_tablet_report()) {
+      report_sequence_number_ =
+          std::max(report_sequence_number_, req.tablet_report().sequence_number());
+    }
+    if (req.has_faulty_drive()) {
+      has_faulty_drive_ = req.faulty_drive();
     }
   }
+  return Status::OK();
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
@@ -186,6 +194,11 @@ MonoTime TSDescriptor::LastHeartbeatTime() const {
 int64_t TSDescriptor::latest_seqno() const {
   SharedLock<decltype(lock_)> l(lock_);
   return ts_information_->tserver_instance().instance_seqno();
+}
+
+int32_t TSDescriptor::latest_report_sequence_number() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return report_sequence_number_;
 }
 
 bool TSDescriptor::has_tablet_report() const {
@@ -345,19 +358,39 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
   metrics->set_disable_tablet_split_if_default_ttl(ts_metrics_.disable_tablet_split_if_default_ttl);
 }
 
+Status TSDescriptor::IsReportCurrent(
+    const NodeInstancePB& ts_instance, const TabletReportPB* report) {
+  SharedLock<decltype(lock_)> l(lock_);
+  return IsReportCurrentUnlocked(ts_instance, report);
+}
+
+Status TSDescriptor::IsReportCurrentUnlocked(
+    const NodeInstancePB& ts_instance, const TabletReportPB* report) {
+  // Check instance seqno: did this tserver restart and send us another tablet report before we
+  // finished with this one?
+  if (ts_information_->tserver_instance().instance_seqno() != ts_instance.instance_seqno()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Stale tablet report for ts $0: instance sequence number in tablet report is $1 but "
+        "current sequence number is $2",
+        permanent_uuid_, ts_instance.instance_seqno(),
+        ts_information_->tserver_instance().instance_seqno());
+  }
+  // Check report sequence number: Has the client tserver timed out on the heartbeat RPC carrying
+  // this tablet report and already sent another one?
+  if (report != nullptr && report->sequence_number() < report_sequence_number_) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Stale tablet report for ts $0: latest tablet report sequence number for this tserver is "
+        "$1, but still processing a tablet report with sequence number $2",
+        permanent_uuid_, report_sequence_number_, report->sequence_number());
+  }
+  return Status::OK();
+}
+
 bool TSDescriptor::HasTabletDeletePending() const {
   SharedLock<decltype(lock_)> l(lock_);
   return !tablets_pending_delete_.empty();
-}
-
-bool TSDescriptor::IsTabletDeletePending(const std::string& tablet_id) const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return tablets_pending_delete_.count(tablet_id);
-}
-
-std::string TSDescriptor::PendingTabletDeleteToString() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return yb::ToString(tablets_pending_delete_);
 }
 
 void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
@@ -365,9 +398,19 @@ void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
   tablets_pending_delete_.insert(tablet_id);
 }
 
-void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
+size_t TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
   std::lock_guard l(lock_);
-  tablets_pending_delete_.erase(tablet_id);
+  return tablets_pending_delete_.erase(tablet_id);
+}
+
+std::string TSDescriptor::PendingTabletDeleteToString() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return yb::ToString(tablets_pending_delete_);
+}
+
+std::set<std::string> TSDescriptor::TabletsPendingDeletion() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return tablets_pending_delete_;
 }
 
 std::size_t TSDescriptor::NumTasks() const {
@@ -382,6 +425,11 @@ bool TSDescriptor::IsLive() const {
 
 bool TSDescriptor::IsLiveAndHasReported() const {
   return IsLive() && has_tablet_report();
+}
+
+bool TSDescriptor::HasYsqlCatalogLease() const {
+  return TimeSinceHeartbeat().ToMilliseconds() <
+         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsRemoved();
 }
 
 std::string TSDescriptor::ToString() const {

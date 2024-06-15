@@ -47,8 +47,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
@@ -72,6 +72,8 @@ public class CommonUtils {
   public static final int DB_OR_CHAIN_TO_WARN = 100;
 
   public static final String MIN_PROMOTE_AUTO_FLAG_RELEASE = "2.17.0.0";
+
+  public static final String MIN_LIVE_TABLET_SERVERS_RELEASE = "2.8.0.0";
 
   private static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
@@ -678,6 +680,18 @@ public class CommonUtils {
     return compareReleases(thresholdRelease, actualRelease, false, false, true);
   }
 
+  /**
+   * This method compares 2 version strings. Make sure to only compare stable with stable and
+   * preview with preview if using this function. If you are not sure of either, use method {@link
+   * com.yugabyte.yw.common.Util#compareYBVersions}.
+   *
+   * @param thresholdRelease
+   * @param actualRelease
+   * @param beforeMatches
+   * @param afterMatches
+   * @param equalMatches
+   * @return
+   */
   private static boolean compareReleases(
       String thresholdRelease,
       String actualRelease,
@@ -798,19 +812,29 @@ public class CommonUtils {
    * response on line number 3
    */
   public static String extractJsonisedSqlResponse(ShellResponse shellResponse) {
-    String data = null;
+    StringBuilder data = new StringBuilder();
     if (StringUtils.isNotBlank(shellResponse.message)) {
       try (Scanner scanner = new Scanner(shellResponse.message)) {
-        int i = 0;
+        boolean headerStarted = false;
         while (scanner.hasNextLine()) {
-          data = scanner.nextLine();
-          if (i++ == 3) {
+          String line = scanner.nextLine();
+          if (!headerStarted && !line.startsWith("-")) {
+            // Read till header start
+            continue;
+          } else if (line.startsWith("-")) {
+            // Read '------...' header
+            headerStarted = true;
+            continue;
+          }
+          if (line.startsWith("(1 row)")) {
+            // jsonb_agg(x) always returns 1 row - it's the last line
             break;
           }
+          data.append(line);
         }
       }
     }
-    return data;
+    return data.toString();
   }
 
   /**

@@ -15,6 +15,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
@@ -40,6 +41,11 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
     // Provide correct '--fs_data_dirs' via TS Web UI.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_mode) = true;
     CqlTestBase<MiniCluster>::SetUp();
+
+    // Start Yb Controllers for backup/restore.
+    if (UseYbController()) {
+      CHECK_OK(cluster_->StartYbControllerServers());
+    }
 
     backup_dir_ = GetTempDir("backup");
     session_ = make_unique<CassandraSession>(
@@ -92,10 +98,15 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
 };
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithoutTSWebUI)) {
+  if (DisableMiniClusterBackupTests()) {
+    return;
+  }
   createTestTable();
 
-  // A thread that starts the stopped WebServer after 130 sec. as retry round = 110 sec.
-  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, 130);
+  // A thread that starts the stopped WebServer after
+  //  - 130 seconds as retry round = 110 seconds for yb_backup script
+  //  -   1 seconds as retry round =   1 second for YB Controller
+  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, UseYbController() ? 1 : 130);
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "create"}));
@@ -106,13 +117,18 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithoutTSWebUI)) {
 }
 
 TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupRestoreWithoutTSWebUI)) {
+  if (DisableMiniClusterBackupTests()) {
+    return;
+  }
   createTestTable();
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "create"}));
 
-  // A thread that starts the stopped WebServer after 110 sec. as retry round = 90 sec.
-  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, 110);
+  // A thread that starts the stopped WebServer after
+  //  - 110 seconds as retry round = 90 seconds for yb_backup script
+  //  -   1 seconds as retry round =  1 second for YB Controller
+  yb::ThreadPtr thread = stopWebServerAndStartAfter(0, UseYbController() ? 1 : 110);
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "restore"}));
@@ -242,8 +258,7 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshot)) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(CqlBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingUDT)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingUDT)) {
   DoTestImportSnapshotFailure(
     [this]() -> void { // Before backup-restore
       cql("CREATE KEYSPACE ks2");
@@ -259,8 +274,7 @@ TEST_F(CqlBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
-TEST_F(CqlBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingKS)) {
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeepExistingKS)) {
   DoTestImportSnapshotFailure(
     [this]() -> void { // Before backup-restore
       cql("CREATE KEYSPACE ks2");

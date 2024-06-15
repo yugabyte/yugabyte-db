@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 import { Component } from 'react';
-import { Alert, Row, Panel } from 'react-bootstrap';
+import { Alert, Row, Panel, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment-timezone';
 import { sortBy, values } from 'lodash';
@@ -11,7 +11,7 @@ import { YBPanelItem } from '../../../panels';
 import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
-import { isDisabled, isNotHidden } from '../../../../utils/LayoutUtils';
+import { isNotHidden } from '../../../../utils/LayoutUtils';
 import { getPrimaryCluster, isKubernetesUniverse } from '../../../../utils/UniverseUtils';
 import Wrench from '../../../../redesign/assets/wrench.svg';
 
@@ -64,7 +64,6 @@ export const UniverseHealthCheckList = (props) => {
     ));
   }
 
-  const actions_disabled = isDisabled(currentCustomer.data.features, 'universes.actions');
 
   return (
     <YBPanelItem
@@ -82,8 +81,6 @@ export const UniverseHealthCheckList = (props) => {
                     className="table-action"
                     universe={currentUniverse.data}
                     actionType="alert-config"
-                    btnClass={'btn-orange'}
-                    disabled={actions_disabled}
                   />
                 </div>
               </div>
@@ -166,6 +163,22 @@ class Timestamp extends Component {
   }
 }
 
+const IPAddressTooltip = (node) => {
+  const IPAddressSubstring = node.ipAddress.substring(0, 120);
+  return (
+    <OverlayTrigger
+      placement="top"
+      overlay={
+        <Tooltip className="high-index" id="health-check-ip-tooltip">
+          {node.ipAddress}
+        </Tooltip>
+      }
+    >
+      <span className="tree-node-main-heading">{`${IPAddressSubstring}...`}</span>
+    </OverlayTrigger>
+  );
+};
+
 const NodeList = (props) => {
   const { nodes, defaultExpanded } = props;
   return (
@@ -176,7 +189,10 @@ const NodeList = (props) => {
           defaultExpanded={defaultExpanded}
           header={
             <span>
-              <span className="tree-node-main-heading">{node.ipAddress}</span>-
+              <span className="tree-node-main-heading">
+                {node.ipAddress.length > 120 ? IPAddressTooltip(node) : node.ipAddress}
+              </span>
+              -
               {node.passingChecks.length > 0 &&
                 countFormatter(node.passingChecks, 'check', 'checks', false, false, 'OK')}
               {node.failedChecks.length > 0 &&

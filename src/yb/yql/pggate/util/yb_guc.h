@@ -107,6 +107,21 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * Guc variable that enables replication slot consumption.
+ */
+extern bool yb_enable_replication_slot_consumption;
+
+/*
+ * GUC variable that enables ALTER TABLE rewrite operations.
+ */
+extern bool yb_enable_alter_table_rewrite;
+
+/*
+ * Guc variable that enables replica identity command in Alter Table Query
+ */
+extern bool yb_enable_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -119,6 +134,7 @@ extern bool yb_enable_replication_commands;
 extern int yb_xcluster_consistency_level;
 
 extern uint64_t yb_read_time;
+extern bool yb_is_read_time_ht;
 /*
  * Allows for customizing the number of rows to be prefetched.
  */
@@ -134,6 +150,33 @@ extern int yb_locks_min_txn_age;
  * GUC flag: Maximum number of transactions to return results for in yb_lock_status().
  */
 extern int yb_locks_max_transactions;
+
+/*
+ * GUC flag: Maximum number of locks to return per transaction per tablet in yb_lock_status().
+ */
+extern int yb_locks_txn_locks_per_tablet;
+
+/*
+ * GUC flag: Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was non-empty.
+ */
+extern int yb_walsender_poll_sleep_duration_nonempty_ms;
+
+/*
+ * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
+ * buffer, which is used in streaming changes via logical replication. After that changes are
+ * spooled to disk.
+ */
+extern int yb_reorderbuffer_max_changes_in_memory;
+
+/*
+ * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was empty. The response can be
+ * empty in case there are no DMLs happening in the system.
+ */
+extern int yb_walsender_poll_sleep_duration_empty_ms;
+
+extern int yb_read_after_commit_visibility;
 
 #ifdef __cplusplus
 } // extern "C"

@@ -206,8 +206,6 @@ class DocOperationTest : public DocDBTestBase {
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = ReadOperationData(),
       .restart_read_ht = &restart_read_ht,
-      .iterator = nullptr,
-      .restart_seek = true,
       .schema_packing_provider = nullptr,
     }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
@@ -358,7 +356,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     auto pending_op = ScopedRWOperation::TEST_Create();
     EXPECT_OK(read_op.Execute(
         ql_storage, ReadOperationData::FromSingleReadTime(read_time), doc_read_context, pending_op,
-        &resultset, &read_restart_ht));
+        &resultset, &read_restart_ht, nullptr /* statistics */));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
@@ -391,8 +389,6 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = {},
       .restart_read_ht = nullptr,
-      .iterator = nullptr,
-      .restart_seek = true,
       .schema_packing_provider = nullptr,
   }));
 
@@ -1259,7 +1255,7 @@ TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   ASSERT_EQ(kTotalBatches, files.size());
 
   SetMaxFileSizeForCompaction(100_KB);
-  ASSERT_OK(ReinitDBOptions());
+  ASSERT_OK(ReinitDBOptions(tablet_id()));
 
   WaitCompactionsDone(rocksdb());
 
@@ -1276,13 +1272,13 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   GenerateFiles(kTotalBatches, this);
 
   SetMaxFileSizeForCompaction(100_KB);
-  ASSERT_OK(ReinitDBOptions());
+  ASSERT_OK(ReinitDBOptions(tablet_id()));
 
   WaitCompactionsDone(rocksdb());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_slowdown_writes_trigger) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_stop_writes_trigger) = 1;
-  ASSERT_OK(ReinitDBOptions());
+  ASSERT_OK(ReinitDBOptions(tablet_id()));
 
   std::vector<rocksdb::LiveFileMetaData> files;
   rocksdb()->GetLiveFilesMetaData(&files);
@@ -1317,7 +1313,7 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
   compaction_file_filter_factory_ =
       std::make_shared<DiscardUntilFileFilterFactory>(kAlwaysDiscard);
 
-  ASSERT_OK(ReinitDBOptions());
+  ASSERT_OK(ReinitDBOptions(tablet_id()));
 
   WaitCompactionsDone(rocksdb());
 
@@ -1361,7 +1357,7 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
       std::make_shared<DiscardUntilFileFilterFactory>(last_to_discard);
 
   // Reinitialize the DB options with the file filter factory.
-  ASSERT_OK(ReinitDBOptions());
+  ASSERT_OK(ReinitDBOptions(tablet_id()));
 
   // Compactions will be kicked off as part of options reinitialization.
   WaitCompactionsDone(rocksdb());

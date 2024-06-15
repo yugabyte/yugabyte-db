@@ -14,9 +14,12 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -38,13 +41,13 @@ public class ChangeMasterConfig extends UniverseTaskBase {
   private static final int WAIT_FOR_CHANGE_COMPLETED_MAX_ERRORS = 5;
 
   private static final Duration YBCLIENT_ADMIN_OPERATION_TIMEOUT = Duration.ofMinutes(15);
-  private final YbClientConfigFactory ybcClientConfigFactory;
+  private final YbClientConfigFactory ybClientConfigFactory;
 
   @Inject
   protected ChangeMasterConfig(
-      BaseTaskDependencies baseTaskDependencies, YbClientConfigFactory ybcConfigFactory) {
+      BaseTaskDependencies baseTaskDependencies, YbClientConfigFactory ybConfigFactory) {
     super(baseTaskDependencies);
-    this.ybcClientConfigFactory = ybcConfigFactory;
+    this.ybClientConfigFactory = ybConfigFactory;
   }
 
   // Create an enum specifying the operation type.
@@ -113,19 +116,18 @@ public class ChangeMasterConfig extends UniverseTaskBase {
         return;
       }
     }
+    // TODO cloudEnabled is supposed to be a static config but this is read from runtime config to
+    // make itests work.
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
     // If the cluster has a secondary IP, we want to ensure that we use the correct addresses.
     // The ipToUse is the address that we need to add to the config.
-    boolean hasSecondaryIp =
-        node.cloudInfo.secondary_private_ip != null
-            && !node.cloudInfo.secondary_private_ip.equals("null");
-    boolean shouldUseSecondary =
-        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("false");
+    boolean shouldUseSecondary = GFlagsUtil.isUseSecondaryIP(universe, node, cloudEnabled);
     String ipToUse =
-        hasSecondaryIp && shouldUseSecondary
-            ? node.cloudInfo.secondary_private_ip
-            : node.cloudInfo.private_ip;
+        shouldUseSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
     String certificate = universe.getCertificateNodetoNode();
-    YbClientConfig config = ybcClientConfigFactory.create(masterAddresses, certificate);
+    YbClientConfig config = ybClientConfigFactory.create(masterAddresses, certificate);
     // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
     // for a long time until it gives up if the node is already added or removed.
     // This optional check ensures that changeMasterConfig is not invoked if the operation is

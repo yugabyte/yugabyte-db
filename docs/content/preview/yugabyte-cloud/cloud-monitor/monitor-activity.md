@@ -4,11 +4,13 @@ headerTitle: Monitor cluster activity
 linkTitle: Cluster activity
 description: View the activity on your cluster.
 headcontent: View the activity on your cluster
+aliases:
+  - /preview/yugabyte-cloud/cloud-monitor/managed-integrations
 menu:
   preview_yugabyte-cloud:
     identifier: monitor-activity
     parent: cloud-monitor
-    weight: 600
+    weight: 620
 type: docs
 ---
 

@@ -27,6 +27,7 @@
 #include "catalog/objectaddress.h"
 #include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
+#include "replication/walsender.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
 #include "tcop/utility.h"
@@ -36,8 +37,8 @@
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(
-	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
-	bool *retry_on_oid_collision);
+	Oid dboid, const char *dbname, Oid src_dboid, const char *src_dbname, Oid next_oid,
+	bool colocated, bool *retry_on_oid_collision, int64 clone_time);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -52,6 +53,7 @@ extern void YBCDropTablegroup(Oid grpoid);
 /*  Table Functions ----------------------------------------------------------------------------- */
 
 extern void YBCCreateTable(CreateStmt *stmt,
+						   char *relname,
 						   char relkind,
 						   TupleDesc desc,
 						   Oid relationId,
@@ -59,7 +61,9 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid tablegroupId,
 						   Oid colocationId,
 						   Oid tablespaceId,
-						   Oid matviewPgTableId);
+						   Oid pgTableId,
+						   Oid oldRelfileNodeId,
+						   bool isTruncate);
 
 extern void YBCDropTable(Relation rel);
 
@@ -77,7 +81,15 @@ extern void YBCCreateIndex(const char *indexName,
 						   bool is_colocated,
 						   Oid tablegroupId,
 						   Oid colocationId,
-						   Oid tablespaceId);
+						   Oid tablespaceId,
+						   Oid pgTableId,
+						   Oid oldRelfileNodeId);
+
+extern void YBCBindCreateIndexColumns(YBCPgStatement handle,
+									  IndexInfo *indexInfo,
+									  TupleDesc indexTupleDesc,
+									  int16 *coloptions,
+									  int numIndexKeyAttrs);
 
 extern void YBCDropIndex(Relation index);
 
@@ -85,7 +97,8 @@ extern List* YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,
 										   Oid relationId,
 										   YBCPgStatement *rollbackHandle,
-										   bool isPartitionOfAlteredTable);
+										   bool isPartitionOfAlteredTable,
+										   int rewriteState);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
@@ -104,14 +117,35 @@ extern void YBCValidatePlacement(const char *placement_info);
 
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 
-extern void YBCCreateReplicationSlot(const char *slot_name);
+extern void YBCCreateReplicationSlot(const char *slot_name,
+									 const char *plugin_name,
+									 CRSSnapshotAction snapshot_action,
+									 uint64_t *consistent_snapshot_time);
 
 extern void
 YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots);
 
-extern void 
-YBCGetReplicationSlotStatus(const char *slot_name, 
-							bool *active);
+extern void
+YBCGetReplicationSlot(const char *slot_name,
+					  YBCReplicationSlotDescriptor **replication_slot);
 
 extern void YBCDropReplicationSlot(const char *slot_name);
+
+extern void YBCInitVirtualWalForCDC(const char *stream_id,
+									Oid *relations,
+									size_t numrelations);
+
+extern void YBCUpdatePublicationTableList(const char *stream_id,
+									Oid *relations,
+									size_t numrelations);
+
+extern void YBCDestroyVirtualWalForCDC();
+
+extern void YBCGetCDCConsistentChanges(const char *stream_id,
+									   YBCPgChangeRecordBatch **record_batch);
+
+extern void YBCUpdateAndPersistLSN(const char *stream_id,
+								   XLogRecPtr restart_lsn_hint,
+								   XLogRecPtr confirmed_flush,
+								   YBCPgXLogRecPtr *restart_lsn);

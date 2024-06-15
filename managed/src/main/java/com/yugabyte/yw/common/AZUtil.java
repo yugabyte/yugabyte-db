@@ -10,12 +10,8 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
-import com.azure.core.management.AzureEnvironment;
-import com.azure.core.management.profile.AzureProfile;
 import com.azure.core.util.BinaryData;
 import com.azure.core.util.IterableStream;
-import com.azure.identity.ClientSecretCredential;
-import com.azure.identity.ClientSecretCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.monitor.fluent.models.EventDataInner;
 import com.azure.storage.blob.BlobClient;
@@ -27,6 +23,7 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
@@ -63,8 +60,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 import play.libs.Json;
@@ -72,6 +69,8 @@ import play.libs.Json;
 @Singleton
 @Slf4j
 public class AZUtil implements CloudUtil {
+
+  public static final String AZURE_LOCATION_PREFIX = "https://";
 
   public static final String AZURE_STORAGE_SAS_TOKEN_FIELDNAME = "AZURE_STORAGE_SAS_TOKEN";
 
@@ -103,9 +102,16 @@ public class AZUtil implements CloudUtil {
    * splitLocation[2] is equal to the suffix part of string
    */
   public static String[] getSplitLocationValue(String backupLocation) {
-    backupLocation = backupLocation.substring(8);
+    backupLocation = backupLocation.substring(AZURE_LOCATION_PREFIX.length());
     String[] split = backupLocation.split("/", 3);
     return split;
+  }
+
+  @Override
+  public void checkConfigTypeAndBackupLocationSame(String backupLocation) {
+    if (!backupLocation.startsWith(AZURE_LOCATION_PREFIX)) {
+      throw new PlatformServiceException(PRECONDITION_FAILED, "Not an Azure location");
+    }
   }
 
   @Override
@@ -604,9 +610,8 @@ public class AZUtil implements CloudUtil {
   private String readBlob(
       BlobContainerClient blobContainerClient, String fileName, int bytesToRead) {
     BlobClient blobClient = blobContainerClient.getBlobClient(fileName);
-    BlobInputStream blobIS = blobClient.openInputStream();
     byte[] data = new byte[bytesToRead];
-    try {
+    try (BlobInputStream blobIS = blobClient.openInputStream()) {
       blobIS.read(data);
     } catch (IOException e) {
       throw new PlatformServiceException(
@@ -625,13 +630,13 @@ public class AZUtil implements CloudUtil {
       con.setRequestMethod("GET");
       con.setRequestProperty("Accept-Charset", StandardCharsets.UTF_8.toString());
       con.connect();
-      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-      String inputLine;
       StringBuffer content = new StringBuffer();
-      while ((inputLine = in.readLine()) != null) {
-        content.append(inputLine);
+      try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+        String inputLine;
+        while ((inputLine = in.readLine()) != null) {
+          content.append(inputLine);
+        }
       }
-      in.close();
       JsonNode response = Json.mapper().readTree(content.toString());
       Double spotPrice = response.findValue("retailPrice").asDouble();
       log.info(
@@ -676,16 +681,8 @@ public class AZUtil implements CloudUtil {
   private boolean isSpotInstanceInterrupted(String nodeName, Provider provider, String startTime) {
     try {
       AzureCloudInfo azuInfo = provider.getDetails().getCloudInfo().getAzu();
-      AzureProfile profile = new AzureProfile(AzureEnvironment.AZURE);
-      ClientSecretCredential clientSecretCredential =
-          new ClientSecretCredentialBuilder()
-              .clientId(azuInfo.getAzuClientId())
-              .clientSecret(azuInfo.getAzuClientSecret())
-              .tenantId(azuInfo.getAzuTenantId())
-              .build();
-      AzureResourceManager azure =
-          AzureResourceManager.authenticate(clientSecretCredential, profile)
-              .withSubscription(azuInfo.getAzuSubscriptionId());
+      AZUResourceGroupApiClient apiClient = new AZUResourceGroupApiClient(azuInfo);
+      AzureResourceManager azure = apiClient.getAzureResourceManager();
       String resourceID =
           String.format(
               "/SUBSCRIPTIONS/%s/RESOURCEGROUPS/%s/PROVIDERS/MICROSOFT.COMPUTE/VIRTUALMACHINES/%s",
@@ -693,7 +690,7 @@ public class AZUtil implements CloudUtil {
 
       String filter =
           String.format(
-              "eventTimestamp ge '%s' and " + "eventTimestamp le '%s' and resourceID eq '%s'",
+              "eventTimestamp ge '%s' and eventTimestamp le '%s' and resourceID eq '%s'",
               startTime, Instant.now().toString(), resourceID);
 
       PagedIterable<EventDataInner> eventList =

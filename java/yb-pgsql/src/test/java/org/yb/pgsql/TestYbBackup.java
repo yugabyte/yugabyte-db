@@ -46,6 +46,7 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.commons.io.FileUtils;
 import org.yb.client.LocatedTablet;
+import org.yb.client.TestUtils;
 import org.yb.client.YBTable;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -56,6 +57,7 @@ import org.yb.util.YBBackupUtil;
 import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.util.PSQLException;
 
 import static org.yb.AssertionWrappers.assertArrayEquals;
 import static org.yb.AssertionWrappers.assertEquals;
@@ -69,11 +71,23 @@ import static org.yb.AssertionWrappers.fail;
 public class TestYbBackup extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 
+  private static final String PERMISSION_DENIED = "permission denied";
+
+  // This constant must be synced with the same variable in `yb_backup.py` script.
+  // This temporary constant enables the features:
+  // 1. "STOP_ON_ERROR" mode in 'ysqlsh' tool
+  // 2. New API: 'backup_tablespaces'/'restore_tablespaces'+'use_tablespaces'
+  //    instead of old 'use_tablespaces'
+  // 3. If the new API 'backup_roles' is NOT used - the YSQL Dump is generated
+  //    with '--no-privileges' flag.
+  private static final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
+
   @Before
-  public void initYBBackupUtil() {
+  public void initYBBackupUtil() throws Exception {
     YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
+    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Override
@@ -134,7 +148,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql." + initialDBName);
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
 
       stmt.execute("INSERT INTO test_tbl (h, b) VALUES (9999, 8.9)");
 
@@ -156,6 +172,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE " + initialDBName);
       stmt.execute("DROP DATABASE " + restoreDBName);
     }
@@ -215,7 +233,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql." + initialDBName);
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
 
       // Insert more rows after taking the snapshot.
       for (int j = 1; j <= 3; ++j) {
@@ -273,6 +293,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute(String.format("DROP DATABASE %s", initialDBName));
       stmt.execute(String.format("DROP DATABASE %s", restoreDBName));
     }
@@ -308,7 +330,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       stmt.execute("ALTER TABLE test_tbl DROP a");
       stmt.execute("INSERT INTO test_tbl (h, b) VALUES (9999, 8.9)");
 
@@ -372,7 +396,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yb1");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
     }
     // Verify data is correct.
@@ -397,7 +423,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yb2");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb3");
     }
     // Verify data is correct.
@@ -420,6 +448,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
@@ -467,7 +497,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yb1");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
     }
     // Verify data is correct.
@@ -492,7 +524,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yb2");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb3");
     }
     // Verify data is correct.
@@ -515,6 +549,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
@@ -561,7 +597,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yb1");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
     }
     // Verify data is correct.
@@ -586,7 +624,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yb2");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb3");
     }
     // Verify data is correct.
@@ -609,6 +649,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb1");
       stmt.execute("DROP DATABASE yb2");
       stmt.execute("DROP DATABASE yb3");
@@ -634,7 +676,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -691,11 +735,13 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql." + initialDBName);
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
 
-      // Truncate tables after taking the snapshot.
+      // Delete all rows from the tables after taking a snapshot.
       for (int j = 1; j <= num_tables; ++j) {
-        stmt.execute("TRUNCATE TABLE test_tbl" + String.valueOf(j));
+        stmt.execute("DELETE FROM test_tbl" + String.valueOf(j));
       }
 
       // Restore back into this same database, this way all the ids will happen to be the same.
@@ -718,6 +764,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute(String.format("DROP DATABASE %s", initialDBName));
     }
   }
@@ -755,7 +803,9 @@ public class TestYbBackup extends BasePgSQLTest {
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       stmt.execute("INSERT INTO test_tbl (id, a, b) VALUES (9999, 9, 9)");
 
       YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -775,6 +825,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -796,7 +848,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
 
       stmt.execute("INSERT INTO test_tbl (h, a, b) VALUES (9999, 8888, 8.9)");
 
@@ -831,6 +885,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -850,7 +906,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
 
       stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES (9, 21, 22, 23, 24)");
 
@@ -886,6 +944,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -950,7 +1010,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
 
       stmt.execute("INSERT INTO test_tbl (h, c1, c2, c3, c4) VALUES ('f', 'g', 'h', 'i', 'j')");
 
@@ -966,6 +1028,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1017,7 +1081,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
       verifyPartialIndexData(stmt);
     }
 
@@ -1030,12 +1096,19 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
 
   @Test
   public void testRestoreWithRestoreTime() throws Exception {
+    // disabling this test since Yb Controller doesn't support
+    // --restore_time
+    if(TestUtils.useYbController()){
+      return;
+    }
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
 
@@ -1072,6 +1145,11 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testBackupCreateGetBackupSize() throws Exception {
+    // output from yb controller doesn't contain backup size data in json format so
+    // this test doesn't make much sense
+    if (TestUtils.useYbController()) {
+      return;
+    }
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE  test_tbl (h INT PRIMARY KEY, a INT, b FLOAT)");
 
@@ -1103,6 +1181,11 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testSedRegExpForYSQLDump() throws Exception {
+    // disabling this test since Yb Controller doesn't support
+    // --edit_ysql_dump_sed_reg_exp
+    if(TestUtils.useYbController()){
+      return;
+    }
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE ROLE  admin");
       // Default DB & table owner is ROLE 'yugabyte'.
@@ -1129,6 +1212,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1150,7 +1235,7 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public String doCreateGeoPartitionedBackup(int numRegions, boolean useTablespaces)
+  public String doCreateGeoPartitionedBackup(int numRegions, boolean backupTablespaces)
       throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(
@@ -1198,8 +1283,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
       String backupDir = YBBackupUtil.getTempBackupDir(), output = null;
       List<String> args = new ArrayList<>(Arrays.asList("--keyspace", "ysql.yugabyte"));
-      if (useTablespaces) {
-        args.add("--use_tablespaces");
+      if (backupTablespaces) {
+        args.add("--backup_tablespaces");
+
+        if (!ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+          args.add("--use_tablespaces");
+        }
       }
 
       switch (numRegions) {
@@ -1239,11 +1328,12 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public String doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
-      throws Exception {
+  public String doTestGeoPartitionedBackupAndRestore(
+      String targetDB, int numRegions, boolean backupAndRestoreTablespaces, boolean dropTablespaces,
+      String restoreFlag, boolean useTablespaces) throws Exception {
     String output = null;
     try (Statement stmt = connection.createStatement()) {
-      output = doCreateGeoPartitionedBackup(numRegions, useTablespaces);
+      output = doCreateGeoPartitionedBackup(numRegions, backupAndRestoreTablespaces);
       JSONObject json = new JSONObject(output);
       String backupDir = json.getString("snapshot_url");
 
@@ -1254,6 +1344,18 @@ public class TestYbBackup extends BasePgSQLTest {
       assertQuery(stmt, "SELECT COUNT(*) FROM tbl", new Row(2001));
 
       List<String> args = new ArrayList<>();
+      if (backupAndRestoreTablespaces) {
+        args.add("--restore_tablespaces");
+      }
+
+      if (restoreFlag != null) {
+        args.add(restoreFlag);
+      }
+
+      if (!ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+        useTablespaces = backupAndRestoreTablespaces;
+      }
+
       if (useTablespaces) {
         args.add("--use_tablespaces");
       }
@@ -1264,13 +1366,15 @@ public class TestYbBackup extends BasePgSQLTest {
         stmt.execute("DROP TABLE tbl_r2");
         stmt.execute("DROP TABLE tbl_r3");
         stmt.execute("DROP TABLE tbl");
-        stmt.execute("DROP TABLESPACE region1_ts");
-        stmt.execute("DROP TABLESPACE region2_ts");
-        stmt.execute("DROP TABLESPACE region3_ts");
+        if (dropTablespaces) {
+          stmt.execute("DROP TABLESPACE region1_ts");
+          stmt.execute("DROP TABLESPACE region2_ts");
+          stmt.execute("DROP TABLESPACE region3_ts");
 
-        // Check global TABLESPACEs.
-        assertRowSet(stmt, "SELECT spcname FROM pg_tablespace",
-            asSet(new Row("pg_default"), new Row("pg_global")));
+          // Check global TABLESPACEs.
+          assertRowSet(stmt, "SELECT spcname FROM pg_tablespace",
+              asSet(new Row("pg_default"), new Row("pg_global")));
+        }
 
         args.addAll(Arrays.asList("--keyspace", "ysql." + targetDB));
       }
@@ -1290,13 +1394,15 @@ public class TestYbBackup extends BasePgSQLTest {
       assertEquals(null, getTablespaceForTable(stmt, "tbl"));
       // Check global TABLESPACEs.
       Set<Row> expectedTablespaces = asSet(new Row("pg_default"), new Row("pg_global"));
-      if (useTablespaces || targetDB.equals("yugabyte")) {
+      if (backupAndRestoreTablespaces || targetDB.equals("yugabyte")) {
+        expectedTablespaces.addAll(
+            asSet(new Row("region1_ts"), new Row("region2_ts"), new Row("region3_ts")));
+      }
+
+      if ((backupAndRestoreTablespaces && useTablespaces) || targetDB.equals("yugabyte")) {
         assertEquals("region1_ts", getTablespaceForTable(stmt, "tbl_r1"));
         assertEquals("region2_ts", getTablespaceForTable(stmt, "tbl_r2"));
         assertEquals("region3_ts", getTablespaceForTable(stmt, "tbl_r3"));
-
-        expectedTablespaces.addAll(
-            asSet(new Row("region1_ts"), new Row("region2_ts"), new Row("region3_ts")));
       } else {
         assertEquals(null, getTablespaceForTable(stmt, "tbl_r1"));
         assertEquals(null, getTablespaceForTable(stmt, "tbl_r2"));
@@ -1308,6 +1414,8 @@ public class TestYbBackup extends BasePgSQLTest {
     if (!targetDB.equals("yugabyte")) {
       // Cleanup.
       try (Statement stmt = connection.createStatement()) {
+        if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
         stmt.execute("DROP DATABASE " + targetDB);
       }
     }
@@ -1315,49 +1423,123 @@ public class TestYbBackup extends BasePgSQLTest {
     return output;
   }
 
+  public String doTestGeoPartitionedBackupAndRestore(
+      String targetDB, int numRegions, boolean backupAndRestoreTablespaces) throws Exception {
+    return doTestGeoPartitionedBackupAndRestore(
+        targetDB, numRegions, backupAndRestoreTablespaces, /* dropTablespaces */ true,
+        /* restoreFlag */ null, /* useTablespaces */ true);
+  }
+
   @Test
   public void testGeoPartitioning() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3, false);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("db2", 3, false);
   }
 
   @Test
   public void testGeoPartitioningNoRegions() throws Exception {
-    doTestGeoPartitionedBackup("db2", 0, false);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("db2", 0, false);
   }
 
   @Test
   public void testGeoPartitioningOneRegion() throws Exception {
-    doTestGeoPartitionedBackup("db2", 1, false);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("db2", 1, false);
   }
 
   @Test
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
-    doTestGeoPartitionedBackup("yugabyte", 3, false);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("yugabyte", 3, false);
   }
 
   @Test
   public void testGeoPartitioningWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 3, true);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("db2", 3, true);
   }
 
   @Test
   public void testGeoPartitioningNoRegionsWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 0, true);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("db2", 0, true);
   }
 
   @Test
   public void testGeoPartitioningOneRegionWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("db2", 1, true);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("db2", 1, true);
   }
 
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
-    doTestGeoPartitionedBackup("yugabyte", 3, true);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore("yugabyte", 3, true);
+  }
+
+  @Test
+  public void testFailureOnExistingTablespaces() throws Exception {
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    try {
+      doTestGeoPartitionedBackupAndRestore(
+          "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
+          /* restoreFlag */ null, /* useTablespaces */ true);
+
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+        fail("Backup restoring did not fail as expected");
+      }
+    } catch (YBBackupException ex) {
+      LOG.info("Expected exception", ex);
+      assertTrue(ex.getMessage().contains("tablespace \"region1_ts\" already exists"));
+    }
+  }
+
+  @Test
+  public void testIgnoreExistingTablespaces() throws Exception {
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore(
+        "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ false,
+        "--ignore_existing_tablespaces", /* useTablespaces */ true);
+  }
+
+  @Test
+  public void testBackupRestoreTablespaces() throws Exception {
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    doTestGeoPartitionedBackupAndRestore(
+        "db2", 3, /* backupAndRestoreTablespaces */ true, /* dropTablespaces */ true,
+        /* restoreFlag */ null, /* useTablespaces */ false);
+    // Case with useTablespaces = true: testGeoPartitioningWithTablespaces().
   }
 
   @Test
   public void testGeoPartitioningDeleteBackup() throws Exception {
-    String output = doCreateGeoPartitionedBackup(3, false);
+    if (disableGeoPartitionedTests()) {
+      return;
+    }
+    String output = doCreateGeoPartitionedBackup(3, /* backupTablespaces */ false);
     JSONObject json = new JSONObject(output);
     String backupDir = json.getString("snapshot_url");
     List<String> backupDirs = new ArrayList<String>(Arrays.asList(
@@ -1381,6 +1563,103 @@ public class TestYbBackup extends BasePgSQLTest {
       assertFalse(dir.exists());
       assertEquals(dir.length(), 0L);
     }
+  }
+
+  public void doTestBackupRestoreRoles(boolean restoreRoles, boolean useRoles)
+      throws Exception {
+    // ybc doesn't support --ignore_existing_roles currently
+    if(TestUtils.useYbController()){
+      return;
+    }
+    String backupDir = null;
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table(id INT PRIMARY KEY)");
+      stmt.execute("INSERT INTO test_table (id) VALUES (1)");
+
+      stmt.execute("CREATE ROLE admin LOGIN NOINHERIT");
+      stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
+      stmt.execute("GRANT SELECT ON TABLE test_table TO admin");
+
+      backupDir = YBBackupUtil.getTempBackupDir();
+      String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+          "--keyspace", "ysql.yugabyte", "--backup_roles");
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    try (Connection connection2 = getConnectionBuilder().withUser("admin").connect();
+         Statement stmt = connection2.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+
+      runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("REVOKE ALL ON TABLE test_table FROM admin");
+      stmt.execute("DROP ROLE admin");
+    }
+
+    List<String> args = new ArrayList<>(Arrays.asList(
+        "--keyspace", "ysql.yb2", "--ignore_existing_roles"));
+    if (restoreRoles) {
+      args.add("--restore_roles");
+    }
+    if (useRoles) {
+      args.add("--use_roles");
+    }
+
+    try {
+      YBBackupUtil.runYbBackupRestore(backupDir, args);
+    } catch (YBBackupException ex) {
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR && !restoreRoles) {
+        LOG.info("Expected exception", ex);
+        assertTrue(ex.getMessage().contains("ERROR:  role \"admin\" does not exist"));
+        return;
+      } else {
+        throw ex;
+      }
+    }
+
+    try (Connection connection3 = getConnectionBuilder().withDatabase("yb2").connect();
+         Statement stmt = connection3.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+    }
+
+    try (Connection connection4 =
+             getConnectionBuilder().withDatabase("yb2").withUser("admin").connect();
+         Statement stmt = connection4.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM test_table WHERE id=1", new Row(1));
+
+      runInvalidQuery(stmt, "INSERT INTO test_table (id) VALUES (9)", PERMISSION_DENIED);
+    } catch (PSQLException ex) {
+      if (restoreRoles) {
+        throw ex;
+      } else {
+        LOG.info("Expected exception", ex);
+        assertTrue(ex.getMessage().contains("FATAL: role \"admin\" does not exist"));
+     }
+    }
+
+    // Cleanup.
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE yb2");
+    }
+  }
+
+  @Test
+  public void testBackupRestoreRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ true);
+  }
+
+  @Test
+  public void testBackupRolesWithoutUseRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ true, /* useRoles */ false);
+  }
+
+  @Test
+  public void testBackupRolesWithoutRestoreRoles() throws Exception {
+    doTestBackupRestoreRoles(/* restoreRoles */ false, /* useRoles */ false);
   }
 
   @Test
@@ -1457,7 +1736,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
 
       stmt.execute("INSERT INTO test_tb1 VALUES ('a')");
       stmt.execute("INSERT INTO test_tb2 VALUES(2)");
@@ -1566,6 +1847,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1589,7 +1872,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", String.format("ysql.%s", dbName));
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -1641,7 +1926,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", String.format("ysql.%s", dbName));
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -1679,7 +1966,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -1694,6 +1983,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1716,7 +2007,7 @@ public class TestYbBackup extends BasePgSQLTest {
                    " '', 'SeqScan(tbl1)')");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
-                  new Row("  Remote Filter: (k = 1)"));
+                  new Row("  Storage Filter: (k = 1)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),
@@ -1725,7 +2016,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -1739,10 +2032,10 @@ public class TestYbBackup extends BasePgSQLTest {
       stmt.execute("SET pg_hint_plan.enable_hint_table = on");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Seq Scan on tbl1"),
-                  new Row("  Remote Filter: (k = 1)"));
+                  new Row("  Storage Filter: (k = 1)"));
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl2 WHERE tbl2.k = 3",
                   new Row("Seq Scan on tbl2"),
-                  new Row("  Remote Filter: (k = 3)"));
+                  new Row("  Storage Filter: (k = 3)"));
       stmt.execute("SET pg_hint_plan.enable_hint_table = off");
       assertQuery(stmt, "EXPLAIN (COSTS false) SELECT * FROM tbl1 WHERE tbl1.k = 1",
                   new Row("Index Scan using tbl1_pkey on tbl1"),
@@ -1779,6 +2072,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1815,7 +2110,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -1869,6 +2166,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1885,7 +2184,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -1921,6 +2222,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -1942,7 +2245,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -2054,6 +2359,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -2087,7 +2394,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", "ysql.yugabyte");
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql.yb2");
@@ -2102,6 +2411,8 @@ public class TestYbBackup extends BasePgSQLTest {
 
     // Cleanup.
     try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
       stmt.execute("DROP DATABASE yb2");
     }
   }
@@ -2157,7 +2468,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", String.format("ysql.%s", dbname));
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     // Restore/Migrate to a colocation database.
@@ -2239,7 +2552,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", String.format("ysql.%s", dbname));
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     // Restore/Migrate to a colocation database.
@@ -2288,7 +2603,9 @@ public class TestYbBackup extends BasePgSQLTest {
       backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
           "--keyspace", String.format("ysql.%s", dbname));
-      backupDir = new JSONObject(output).getString("snapshot_url");
+      if (!TestUtils.useYbController()) {
+        backupDir = new JSONObject(output).getString("snapshot_url");
+      }
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", String.format("ysql.%s",
@@ -2303,5 +2620,15 @@ public class TestYbBackup extends BasePgSQLTest {
       // Verify data.
       assertQuery(stmt, query, new Row(200));
     }
+  }
+
+  /**
+   * Disabling geo partitioning tests when backups are run using YB Controller.
+   * This is because yb-controller-cli currently doesn't support such backups
+   * using the yb-controller-cli.
+   * Geo-partitioned backups via YB Controller are tested as part of YBA iTests.
+   */
+  private boolean disableGeoPartitionedTests() {
+    return TestUtils.useYbController();
   }
 }

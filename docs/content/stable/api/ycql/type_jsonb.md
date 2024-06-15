@@ -243,4 +243,4 @@ Note that JSONB upsert only works for JSON objects and not for other data types 
 
 - [Explore JSON documents](../../../develop/learn/data-types-ycql/#jsonb)
 - [Data types](..#data-types)
-- [Secondary indexes with JSONB](../../../explore/indexes-constraints/secondary-indexes-with-jsonb-ycql/)
+- [Secondary indexes with JSONB](../../../explore/ycql-language/indexes-constraints/secondary-indexes-with-jsonb-ycql/)

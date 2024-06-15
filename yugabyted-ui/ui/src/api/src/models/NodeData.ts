@@ -62,6 +62,12 @@ export interface NodeData  {
   is_read_replica: boolean;
   /**
    * 
+   * @type {number}
+   * @memberof NodeData
+   */
+  preference_order?: number;
+  /**
+   * 
    * @type {boolean}
    * @memberof NodeData
    */

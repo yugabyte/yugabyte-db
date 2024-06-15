@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -29,6 +31,9 @@ public class UserTaskDetails {
 
     // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
+
+    // Rolling back software upgrade on Yugabyte Clusters.
+    RollingBackSoftware,
 
     // Finalizing Yugabyte db software upgrade on Yugabyte clusters.
     FinalizingUpgrade,
@@ -146,6 +151,9 @@ public class UserTaskDetails {
     // Creating Table Backup
     CreatingTableBackup,
 
+    // Creating Universe Backup
+    CreatingUniverseBackup,
+
     // Restoring Table Backup
     RestoringTableBackup,
 
@@ -255,7 +263,16 @@ public class UserTaskDetails {
     ValidateConfigurations,
 
     // Manage Otel Collector.
-    ManageOtelCollector
+    ManageOtelCollector,
+
+    // Validating nodes.
+    ValidatingNode,
+
+    // OS Patching.
+    OSPatching,
+
+    // Update Proxy Config
+    UpdateProxyConfig
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -284,6 +301,10 @@ public class UserTaskDetails {
       case UpgradingSoftware:
         title = "Upgrading software";
         description = "Upgrading YugaByte software on existing clusters.";
+        break;
+      case RollingBackSoftware:
+        title = "Rolling back Software";
+        description = "Rolling back software upgrade on existing clusters.";
         break;
       case FinalizingUpgrade:
         title = "Finalizing upgrade";
@@ -445,6 +466,10 @@ public class UserTaskDetails {
         title = "Creating Table Backup";
         description = "Creating backup for a table.";
         break;
+      case CreatingUniverseBackup:
+        title = "Creating Universe Backup";
+        description = "Creating backup for a Universe.";
+        break;
       case RestoringTableBackup:
         title = "Restoring Table Backup";
         description = "Restoring from a backup.";
@@ -595,6 +620,18 @@ public class UserTaskDetails {
       case ManageOtelCollector:
         title = "Managing OpenTelemetry Collector";
         description = "Managing OpenTelemetry Collector";
+        break;
+      case ValidatingNode:
+        title = "Validating node status";
+        description = "Validating node's current state before proceeding";
+        break;
+      case OSPatching:
+        title = "OS Patching";
+        description = "Performing OS Patching on the universe nodes";
+        break;
+      case UpdateProxyConfig:
+        title = "Updating Proxy config";
+        description = "Updating Proxy Config for Universe nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

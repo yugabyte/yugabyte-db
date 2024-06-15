@@ -17,6 +17,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -26,6 +27,9 @@
 #include "yb/util/metrics.h"
 #include "yb/util/tsan_util.h"
 
+#include "yb/yql/pgwrapper/pg_test_utils.h"
+
+DECLARE_bool(enable_wait_queues);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
@@ -33,9 +37,11 @@ DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
+DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -57,7 +63,6 @@ void PgMiniTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
 
-
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   MiniClusterTestWithClient::SetUp();
 
@@ -74,7 +79,9 @@ void PgMiniTestBase::SetUp() {
   ASSERT_OK(WaitForInitDb(cluster_.get()));
 
   auto port = cluster_->AllocateFreePort();
-  auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(port));
+  // Use TS-0 IP for PG server. YBC process uses this IP.
+  auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(port, /* ts_idx */ 0));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = pg_host_port_.ToString();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on "
@@ -107,8 +114,8 @@ Result<master::CatalogManagerIf*> PgMiniTestBase::catalog_manager() const {
   return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
 }
 
-Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port) {
-  auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
+Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port, size_t ts_idx) {
+  auto* pg_ts = cluster_->mini_tablet_server(ts_idx);
   PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
       AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
       pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
@@ -124,9 +131,16 @@ Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port) {
 Status PgMiniTestBase::RestartCluster() {
   pg_supervisor_->Stop();
   RETURN_NOT_OK(cluster_->RestartSync());
-  pg_supervisor_ = std::make_unique<PgSupervisor>(
-      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port())), nullptr /* tserver */);
+  pg_supervisor_ = std::make_unique<PgSupervisor>(VERIFY_RESULT(
+      CreatePgProcessConf(pg_host_port_.port(), /* ts_idx */ 0)), /* tserver */ nullptr);
   return pg_supervisor_->Start();
+}
+
+Status PgMiniTestBase::RestartMaster() {
+  LOG(INFO) << "Restarting Master";
+  auto mini_master_ = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+  RETURN_NOT_OK(mini_master_->Restart());
+  return mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests();
 }
 
 void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}
@@ -167,6 +181,12 @@ Result<PGConn> PgMiniTestBase::ConnectToDB(const std::string& dbname) const {
 
 Status PgMiniTestBase::SetupConnection(PGConn* conn) const {
   return Status::OK();
+}
+
+void PgMiniTestBase::EnableFailOnConflict() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+  // Set the number of retries to 2 to speed up the test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(2);
 }
 
 } // namespace yb::pgwrapper

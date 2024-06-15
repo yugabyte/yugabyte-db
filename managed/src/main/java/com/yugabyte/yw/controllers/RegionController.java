@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
@@ -113,9 +115,10 @@ public class RegionController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.18.2.0, "
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.18.2.0.</b></p>"
               + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+      value = "Create Region - deprecated",
       response = Region.class,
       nickname = "createRegion")
   @ApiImplicitParams(
@@ -132,6 +135,7 @@ public class RegionController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Form<RegionFormData> formData =
         formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
@@ -153,7 +157,8 @@ public class RegionController extends AuthenticatedController {
    * @return JSON response of newly created region
    */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Create a new region",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create a new region",
       response = Region.class,
       nickname = "createProviderRegion")
   @ApiImplicitParams(
@@ -170,6 +175,7 @@ public class RegionController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result createRegionNew(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
@@ -195,9 +201,10 @@ public class RegionController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.18.2.0, "
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.18.2.0.</b></p>"
               + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+      value = "Edit regions - deprecated",
       response = Object.class,
       nickname = "editRegion")
   @ApiImplicitParams(
@@ -214,6 +221,7 @@ public class RegionController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     RegionEditFormData form =
         formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
@@ -234,7 +242,8 @@ public class RegionController extends AuthenticatedController {
    * @return JSON response on whether or not the operation was successful.
    */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Modify a region",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Modify a region",
       response = Region.class,
       nickname = "editProviderRegion")
   @ApiImplicitParams(
@@ -251,6 +260,7 @@ public class RegionController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result editRegionNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -280,6 +290,7 @@ public class RegionController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result delete(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Provider.getOrBadRequest(customerUUID, providerUUID);

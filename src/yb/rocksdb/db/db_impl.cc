@@ -46,15 +46,19 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/stringprintf.h"
-#include "yb/util/string_util.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/logging.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/priority_thread_pool.h"
-#include "yb/util/atomic.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/string_util.h"
 
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
@@ -339,7 +343,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     LOG_IF_WITH_PREFIX(DFATAL, db_impl_->compaction_tasks_.erase(this) != 1)
         << "Aborted unknown compaction task: " << SerialNo();
     if (db_impl_->compaction_tasks_.empty()) {
-      db_impl_->bg_cv_.SignalAll();
+      YB_PROFILE(db_impl_->bg_cv_.SignalAll());
     }
   }
 
@@ -508,7 +512,7 @@ class DBImpl::FlushTask : public ThreadPoolTask {
       delete cfd_;
     }
     if (--db_impl_->bg_flush_scheduled_ == 0) {
-      db_impl_->bg_cv_.SignalAll();
+      YB_PROFILE(db_impl_->bg_cv_.SignalAll());
     }
   }
 
@@ -770,7 +774,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
 void DBImpl::CancelAllBackgroundWork(bool wait) {
   InstrumentedMutexLock l(&mutex_);
   shutting_down_.store(true, std::memory_order_release);
-  bg_cv_.SignalAll();
+  YB_PROFILE(bg_cv_.SignalAll());
   if (!wait) {
     return;
   }
@@ -800,7 +804,7 @@ void DBImpl::StartShutdown() {
   RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log, "Shutting down RocksDB at: %s\n",
        dbname_.c_str());
 
-  bg_cv_.SignalAll();
+  YB_PROFILE(bg_cv_.SignalAll());
 
   TaskPriorityUpdater task_priority_updater(this);
   {
@@ -2449,7 +2453,7 @@ Status DBImpl::CompactFilesImpl(
 
   bg_compaction_scheduled_--;
   if (bg_compaction_scheduled_ == 0) {
-    bg_cv_.SignalAll();
+    YB_PROFILE(bg_cv_.SignalAll());
   }
 
   return status;
@@ -2842,7 +2846,7 @@ void DBImpl::MarkLogsSynced(
   }
   assert(logs_.empty() || logs_[0].number > up_to ||
          (logs_.size() == 1 && !logs_[0].getting_synced));
-  log_sync_cv_.SignalAll();
+  YB_PROFILE(log_sync_cv_.SignalAll());
 }
 
 SequenceNumber DBImpl::GetLatestSequenceNumber() const {
@@ -3014,7 +3018,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level, int o
           NotifyOnNoOpCompactionCompleted(*cfd, compaction_reason);
         }
 
-        bg_cv_.SignalAll();
+        YB_PROFILE(bg_cv_.SignalAll());
         continue;
       }
 
@@ -3039,7 +3043,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level, int o
   DCHECK(!manual_compaction.in_progress);
   DCHECK(HasPendingManualCompaction());
   RemoveManualCompaction(&manual_compaction);
-  bg_cv_.SignalAll();
+  YB_PROFILE(bg_cv_.SignalAll());
   return manual_compaction.status;
 }
 
@@ -3404,7 +3408,7 @@ void DBImpl::WaitAfterBackgroundError(
     // chew up resources for failed jobs for the duration of
     // the problem.
     uint64_t error_cnt = default_cf_internal_stats_->BumpAndGetBackgroundErrorCount();
-    bg_cv_.SignalAll();  // In case a waiter can proceed despite the error
+    YB_PROFILE(bg_cv_.SignalAll());  // In case a waiter can proceed despite the error
     mutex_.Unlock();
     log_buffer->FlushBufferToLog();
     RLOG(
@@ -3475,7 +3479,7 @@ void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
   bg_flush_scheduled_--;
   // See if there's more work to be done
   MaybeScheduleFlushOrCompaction();
-  bg_cv_.SignalAll();
+  YB_PROFILE(bg_cv_.SignalAll());
   // IMPORTANT: there should be no code after calling SignalAll. This call may
   // signal the DB destructor that it's OK to proceed with destruction. In
   // that case, all DB variables will be dealloacated and referencing them
@@ -3538,7 +3542,7 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
     // * HasPendingManualCompaction -- need to wakeup RunManualCompaction
     // If none of this is true, there is no need to signal since nobody is
     // waiting for it
-    bg_cv_.SignalAll();
+    YB_PROFILE(bg_cv_.SignalAll());
   }
   // IMPORTANT: there should be no code after calling SignalAll. This call may
   // signal the DB destructor that it's OK to proceed with destruction. In
@@ -3994,6 +3998,13 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
                                               ColumnFamilyData* cfd,
                                               SuperVersion* super_version,
                                               Arena* arena) {
+  if (!read_options.statistics && cfd->ioptions()->statistics) {
+    ReadOptions new_read_options = read_options;
+    new_read_options.statistics = cfd->ioptions()->statistics;
+    return NewInternalIterator(new_read_options, cfd, super_version, arena);
+  }
+
+  SCOPED_WAIT_STATUS(RocksDB_NewIterator);
   InternalIterator* internal_iter;
   assert(arena != nullptr);
   // Need to create internal iterator from the arena.
@@ -4016,6 +4027,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
 template <bool kSkipLastEntry>
 std::unique_ptr<InternalIterator> DBImpl::NewInternalIndexIterator(
     const ReadOptions& read_options, ColumnFamilyData* cfd, SuperVersion* super_version) {
+  SCOPED_WAIT_STATUS(RocksDB_NewIterator);
   std::unique_ptr<InternalIterator> merge_iter;
   MergeIteratorInHeapBuilder<IteratorWrapperBase<kSkipLastEntry>> merge_iter_builder(
       cfd->internal_comparator().get());
@@ -5524,8 +5536,11 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
         lfile->SetPreallocationBlockSize(
             mutable_cf_options.write_buffer_size / 10 +
             mutable_cf_options.write_buffer_size);
+        // Since Rocksdb WAL is not used, there is no need to allocate its starting buffer.
+        // TODO(remove-rocksdb-wal): https://github.com/yugabyte/yugabyte-db/issues/20851
         unique_ptr<WritableFileWriter> file_writer(
-            new WritableFileWriter(std::move(lfile), opt_env_opt));
+            new WritableFileWriter(std::move(lfile), opt_env_opt, nullptr,
+            AllocateBuffer::kFalse));
         new_log = new log::Writer(std::move(file_writer), new_log_number,
                                   db_options_.recycle_log_file_num > 0);
       }
@@ -6434,8 +6449,11 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     if (s.ok()) {
       lfile->SetPreallocationBlockSize((max_write_buffer_size / 10) + max_write_buffer_size);
       impl->logfile_number_ = new_log_number;
+      // Since Rocksdb WAL is not used, there is no need to allocate its starting buffer.
+      // TODO(remove-rocksdb-wal): https://github.com/yugabyte/yugabyte-db/issues/20851
       unique_ptr<WritableFileWriter> file_writer(
-          new WritableFileWriter(std::move(lfile), opt_env_options));
+          new WritableFileWriter(std::move(lfile), opt_env_options, nullptr,
+          AllocateBuffer::kFalse));
       impl->logs_.emplace_back(
           new_log_number,
           new log::Writer(std::move(file_writer), new_log_number,

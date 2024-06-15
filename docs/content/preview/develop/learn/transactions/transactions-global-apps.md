@@ -28,7 +28,7 @@ All reads in YugabyteDB are handled by the leader to ensure that applications fe
 - The data does not change often (for example, a movie database).
 - The application does not need the latest data (for example, reading yesterday's report).
 
-In such scenarios, you can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to read from followers instead of going to the leader, which could be far away in a different region.
+In such scenarios, you can enable [follower reads](../../../../explore/going-beyond-sql/follower-reads-ysql/) to read from followers instead of going to the leader, which could be far away in a different region.
 
 To enable follower reads, set the transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) and turn on the YSQL parameter `yb_read_from_followers`. For example:
 
@@ -39,21 +39,25 @@ BEGIN TRANSACTION READ ONLY;
 COMMIT;
 ```
 
-This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (default: 30s). This is the case even if the read goes to a leader. The staleness value can be changed using another setting like:
+This will read data from the closest follower or leader. As replicas may not be up-to-date with all updates, by design, this will return only stale data (the default staleness is 30 seconds). This is the case even if the read goes to a leader.
+
+You can change the staleness value using the following YSQL configuration parameter:
 
 ```plpgsql
 SET yb_follower_read_staleness_ms = 10000; -- 10s
 ```
 
-{{<note title="Note">}}
+Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the [raft_heartbeat_interval_ms](../../../../reference/configuration/yb-tserver/#raft-heartbeat-interval-ms) (which by default is 500 ms).
+
+{{<note>}}
 Follower reads only affect reads. All writes are still handled by the leader.
 {{</note>}}
 
 ## Use duplicate indexes
 
-Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as a duplicate index.
+Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as a duplicate index.
 
-If you are running applications from multiple regions, you can use duplicate indexes in conjunction with [tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) in a multi-region cluster to greatly improve read latencies, as follows:
+If you are running applications from multiple regions, you can use duplicate indexes in conjunction with [tablespaces](../../../../explore/going-beyond-sql/tablespaces/) in a multi-region cluster to greatly improve read latencies, as follows:
 
 - Create different tablespaces with preferred leaders set to each region.
 - Create duplicate indexes and attach them to each of the tablespaces.

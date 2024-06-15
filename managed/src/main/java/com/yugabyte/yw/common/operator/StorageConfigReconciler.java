@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
@@ -17,7 +18,6 @@ import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.StorageConfigStatus;
 import io.yugabyte.operator.v1alpha1.storageconfigspec.Data;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -31,27 +31,26 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       resourceClient;
   private final CustomerConfigService ccs;
   private final String namespace;
+  private final OperatorUtils operatorUtils;
 
   public StorageConfigReconciler(
       SharedIndexInformer<StorageConfig> scInformer,
       MixedOperation<StorageConfig, KubernetesResourceList<StorageConfig>, Resource<StorageConfig>>
           resourceClient,
       CustomerConfigService ccs,
-      String namespace) {
+      String namespace,
+      OperatorUtils operatorUtils) {
     this.resourceClient = resourceClient;
     this.informer = scInformer;
     this.lister = new Lister<>(informer.getIndexer());
     this.ccs = ccs;
     this.namespace = namespace;
+    this.operatorUtils = operatorUtils;
   }
 
-  public static String getCustomerUUID() throws Exception {
+  public String getCustomerUUID() throws Exception {
 
-    List<Customer> custList = Customer.getAll();
-    if (custList.size() != 1) {
-      throw new Exception("Customer list does not have exactly one customer.");
-    }
-    Customer cust = custList.get(0);
+    Customer cust = operatorUtils.getOperatorCustomer();
     return cust.getUuid().toString();
   }
 
@@ -72,6 +71,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     object.remove("aws_SECRET_ACCESS_KEY");
     object.remove("backup_LOCATION");
     object.remove("gcs_CREDENTIALS_JSON");
+    object.remove("azure_STORAGE_SAS_TOKEN");
 
     return dataJson;
   }
@@ -107,10 +107,10 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
         return;
       }
     }
-    log.info("Adding a storage config {} ", sc);
     String cuuid;
     String value = sc.getSpec().getConfig_type().getValue();
     String name = value.split("_")[1];
+    log.info("Adding a storage config {} ", name);
     try {
       cuuid = getCustomerUUID();
     } catch (Exception e) {

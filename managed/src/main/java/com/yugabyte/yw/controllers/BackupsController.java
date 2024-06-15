@@ -16,21 +16,11 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
-import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.DeleteBackupParams;
-import com.yugabyte.yw.forms.EditBackupParams;
-import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
-import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RestorePreflightParams;
-import com.yugabyte.yw.forms.RestorePreflightResponse;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.YbcThrottleParameters;
-import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.filters.RestoreApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -113,9 +103,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'List Backups (paginated) V2' instead. List a customer's backups",
+      value = "List a customer's backups - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'List Backups (paginated) V2' instead.",
       response = Backup.class,
       responseContainer = "List",
       nickname = "ListOfBackups")
@@ -298,6 +289,38 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create a Universe Backup",
+      nickname = "Universe Backup",
+      response = YBPTask.class)
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        name = "Backup Universe",
+        value = "Universe Backup data to be created",
+        required = true,
+        dataType = "com.yugabyte.yw.forms.UniverseBackupRequestFormData",
+        paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Result backupUniverse(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    UniverseBackupRequestFormData formData =
+        parseJsonAndValidate(request, UniverseBackupRequestFormData.class);
+    UniverseBackupRequestParams taskParams =
+        new UniverseBackupRequestParams(formData, customerUUID, universeUUID);
+    UUID taskUuid = backupHelper.createUniverseBackupTask(customerUUID, taskParams);
+    return new YBPTask(taskUuid).asResult();
+  }
+
+  @ApiOperation(
       value = "Create Backup Schedule Async",
       response = YBPTask.class,
       nickname = "createBackupScheduleAsync")
@@ -342,9 +365,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'Create Backup Schedule Async' instead. Create Backup Schedule",
+      value = "Create Backup Schedule - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'Create Backup Schedule Async' instead.",
       response = Schedule.class,
       nickname = "createBackupSchedule")
   @ApiImplicitParams(
@@ -519,9 +543,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'Restore from a backup V2' instead. Restore from a backup",
+      value = "Restore from a backup - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'Restore from a backup V2' instead.",
       response = YBPTask.class,
       responseContainer = "Restore")
   @ApiImplicitParams(
@@ -646,9 +671,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'Delete backups V2' instead. Delete backups",
+      value = "Delete Backups - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'Delete backups V2' instead.",
       response = YBPTasks.class,
       nickname = "deleteBackups")
   @AuthzPath({

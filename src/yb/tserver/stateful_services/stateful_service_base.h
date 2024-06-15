@@ -22,6 +22,7 @@
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
 
@@ -33,11 +34,17 @@ class TSTabletManager;
 
 namespace stateful_service {
 
-// Macro to ensure stateful service rpc methods are only served when the service is ready.
-// This requires the service to be in active mode and the serving tablet peer to be a leader and
-// have the lease. resp->mutable_error() will be set if the service is not ready.
-#define STATEFUL_SERVICE_IMPL_METHODS(methods) \
-  BOOST_PP_SEQ_FOR_EACH(STATEFUL_SERVICE_IMPL_METHOD_HELPER, ~, methods)
+// Input: csv list of RPC methods.
+// Creates stateful service rpc method wrappers to ensure requests are only served when the service
+// is ready. This requires the service to be in active mode and the serving tablet peer to be a
+// leader and have the lease. Also handles leadership changes during the processing of the request.
+// resp->mutable_error() will be set if the service is not ready.
+//
+// The following method is declared. It must be defined by the service.
+// Status [RpcMethod]Impl(const [RpcMethod]RequestPB&, [RpcMethod]ResponsePB*);
+#define STATEFUL_SERVICE_IMPL_METHODS(...) \
+  BOOST_PP_SEQ_FOR_EACH( \
+      STATEFUL_SERVICE_IMPL_METHOD_HELPER, ~, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))
 
 #define STATEFUL_SERVICE_IMPL_METHOD_HELPER(i, data, method_name) \
   Status BOOST_PP_CAT(method_name, Impl)( \
@@ -177,7 +184,7 @@ class StatefulRpcServiceBase : public StatefulServiceBase, public RpcServiceIf {
       status = method_impl();
 
       if (active_rpcs_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-        no_rpcs_cond_.notify_all();
+        YB_PROFILE(no_rpcs_cond_.notify_all());
       }
     }
 

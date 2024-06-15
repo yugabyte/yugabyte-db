@@ -17,7 +17,7 @@
 
 #include "yb/client/stateful_services/stateful_service_client_base.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/rpc/messenger.h"
@@ -32,8 +32,8 @@ Result<std::unique_ptr<client::YBClient>> CreateSecureClientInternal(
     const std::string& name, const std::string& host,
     std::unique_ptr<rpc::SecureContext>* secure_context, client::YBClientBuilder* builder) {
   rpc::MessengerBuilder messenger_builder("test_client");
-  *secure_context = VERIFY_RESULT(server::SetupSecureContext(
-      FLAGS_certs_dir, name, server::SecureContextType::kInternal, &messenger_builder));
+  *secure_context = VERIFY_RESULT(rpc::SetupSecureContext(
+      FLAGS_certs_dir, name, rpc::SecureContextType::kInternal, &messenger_builder));
   auto messenger = VERIFY_RESULT(messenger_builder.Build());
   messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host)));
   auto clock = make_scoped_refptr<server::HybridClock>();
@@ -82,8 +82,4 @@ Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {
   return DoGetLeaderMasterBoundRpcAddr();
 }
 
-Status MiniClusterBase::InitStatefulServiceClient(client::StatefulServiceClientBase* client) {
-  auto host_port = VERIFY_RESULT(GetLeaderMasterBoundRpcAddr());
-  return client->TESTInit("127.0.0.52", host_port.ToString());
-}
 }  // namespace yb

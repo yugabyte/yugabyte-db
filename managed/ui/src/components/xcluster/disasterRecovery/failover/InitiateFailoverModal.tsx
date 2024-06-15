@@ -4,23 +4,29 @@ import { Box, makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useSelector } from 'react-redux';
 
-import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
 import { YBInput, YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { getNamespaceIdSafetimeEpochUsMap } from '../utils';
+import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
-
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
+import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
+
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 
 interface InitiateFailoverrModalProps {
   drConfig: DrConfig;
   modalProps: YBModalProps;
+  allowedTasks: AllowedTasks;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -69,9 +75,14 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+const MODAL_NAME = 'InitiateFailoverModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.failover.initiateModal';
 
-export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailoverrModalProps) => {
+export const InitiateFailoverModal = ({
+  drConfig,
+  modalProps,
+  allowedTasks
+}: InitiateFailoverrModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [confirmationText, setConfirmationText] = useState<string>('');
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
@@ -81,6 +92,16 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const currentSafetimesQuery = useQuery(drConfigQueryKey.safetimes(drConfig.uuid), () =>
     api.fetchCurrentSafetimes(drConfig.uuid)
   );
+  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
+    reduxState?.customer?.configs?.data.filter(
+      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
+    )
+  );
+  const storageConfigName =
+    storageConfigs?.find(
+      (storageConfig) =>
+        storageConfig.configUUID === drConfig.bootstrapParams.backupRequestParams.storageConfigUUID
+    )?.configName ?? '';
 
   const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const targetUniverseQuery = useQuery(
@@ -157,44 +178,65 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     }
   );
 
-  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
-    const i18nKey = drConfig.primaryUniverseUuid
-      ? 'undefinedTargetUniverseUuid'
-      : 'undefinedSourceUniverseUuid';
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t(i18nKey, {
-          keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
-    );
-  }
-  if (targetUniverseQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchTargetuniverse', {
-          keyPrefix: 'queryError.error',
+  const modalTitle = t('title');
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  if (
+    !drConfig.primaryUniverseUuid ||
+    !drConfig.drReplicaUniverseUuid ||
+    targetUniverseQuery.isError ||
+    currentSafetimesQuery.isError
+  ) {
+    const customErrorMessage = !drConfig.primaryUniverseUuid
+      ? t('undefinedDrPrimaryUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : !drConfig.drReplicaUniverseUuid
+      ? t('undefinedDrReplicaUniveresUuid', {
+          keyPrefix: 'clusterDetail.disasterRecovery.error'
+        })
+      : targetUniverseQuery.isError
+      ? t('failedToFetchDrReplicaUniverse', {
+          keyPrefix: 'queryError',
           universeUuid: drConfig.drReplicaUniverseUuid
-        })}
-      />
-    );
-  }
-  if (currentSafetimesQuery.isError) {
-    return (
-      <YBErrorIndicator
-        customErrorMessage={t('failedToFetchCurrentSafetimes', {
+        })
+      : currentSafetimesQuery.isError
+      ? t('failedToFetchCurrentSafetimes', {
           keyPrefix: 'clusterDetail.xCluster.error'
-        })}
-      />
+        })
+      : '';
+
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        size="md"
+        {...modalProps}
+      >
+        <YBErrorIndicator customErrorMessage={customErrorMessage} />
+      </YBModal>
     );
   }
+
   if (
     targetUniverseQuery.isLoading ||
     targetUniverseQuery.isIdle ||
     currentSafetimesQuery.isLoading ||
     currentSafetimesQuery.isIdle
   ) {
-    return <YBLoading />;
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        size="md"
+        {...modalProps}
+      >
+        <YBLoading />
+      </YBModal>
+    );
   }
 
   const namespaceIdSafetimeEpochUsMap = getNamespaceIdSafetimeEpochUsMap(
@@ -212,13 +254,18 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     setConfirmationText('');
   };
 
+  const isFailoverActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.FAILOVER_DR);
   const targetUniverseName = targetUniverseQuery.data.name;
-  const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
+  const isFormDisabled =
+    isSubmitting || confirmationText !== targetUniverseName || isFailoverActionFrozen;
+
   return (
     <YBModal
-      title={t('title')}
+      title={modalTitle}
+      cancelLabel={cancelLabel}
+      submitTestId={`${MODAL_NAME}-SubmitButton`}
+      cancelTestId={`${MODAL_NAME}-CancelButton`}
       submitLabel={t('submitButton')}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={onSubmit}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={isSubmitting}
@@ -233,15 +280,41 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
           <div className={classes.propertyLabel}>
             <Typography variant="body1">{t('estimatedDataLoss.label')}</Typography>
             <YBTooltip title={t('estimatedDataLoss.tooltip')}>
-              <InfoIcon className={classes.infoIcon} />
+              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </div>
           <div>
             <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />
           </div>
         </div>
+        {storageConfigName ? (
+          <Typography variant="body2">
+            <Trans
+              i18nKey={`clusterDetail.disasterRecovery.backupStorageConfig.currentStorageConfigInfo`}
+              components={{ bold: <b /> }}
+              values={{ storageConfigName: storageConfigName }}
+            />
+          </Typography>
+        ) : (
+          <Typography variant="body2">
+            {t('missingStorageConfigInfo', {
+              keyPrefix: 'clusterDetail.disasterRecovery.backupStorageConfig'
+            })}
+          </Typography>
+        )}
       </div>
-      <Box marginTop={4}>
+      <Box marginTop={2}>
+        <Typography variant="body2">
+          <Trans
+            i18nKey={`${TRANSLATION_KEY_PREFIX}.failoverConfirmation`}
+            values={{ drReplicaName: targetUniverseName }}
+            components={{
+              bold: <b />
+            }}
+          />
+        </Typography>
+      </Box>
+      <Box marginTop={3}>
         <Typography variant="body2" className={classes.fieldLabel}>
           {t('confirmationInstructions')}
         </Typography>

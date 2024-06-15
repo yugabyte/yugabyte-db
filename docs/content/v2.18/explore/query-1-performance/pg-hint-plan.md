@@ -27,7 +27,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL configuration parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
@@ -44,7 +44,7 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
 {{<note title="Enable pg_hint_plan for all sessions">}}
-You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
+You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 {{</note>}}
 
 ### Turn on debug output
@@ -330,6 +330,7 @@ Join method hints enforce the join methods for SQL statements. Using pg_hint_pla
 | NoHashJoin(t1 t2 t3 ...) | Do not join t1, t2, and t3 using HashJoin.|
 | NestLoop(t1 t2 t3 ...) | Join t1, t2, and t3 using NestLoop join. |
 | NoNestLoop(t1 t2 t3 ...) | Do not join t1, t2, and t3 using NestLoop join.|
+| YbBatchedNL(t1 t2) | Join t1 and t2 using YbBatchedNL join.|
 
 ```sql
 /*+HashJoin(t1 t2)*/
@@ -450,34 +451,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t
 ```
 
 The joining order in the first query is `/*+Leading(t1 t2 t3)*/`, whereas the joining order for the second query is `/*+Leading(t2 t3 t1)*/`. You can see that the query plan's order of execution follows the joining order specified in the parameter lists of the hint phrases.
-
-### Setting working memory
-
-You can leverage the `work_mem` setting in PostgreSQL to improve the performance of slow queries that sort, join, or aggregate large sets of table rows. For a detailed description of the implications, refer to [Tuning work_mem Setting in PostgreSQL to Speed Up Slow SQL Queries](https://andreigridnev.com/blog/2016-04-16-increase-work_mem-parameter-in-postgresql-to-make-expensive-queries-faster/).
-
-The following example shows how to enable `work_mem` as a part of a hint plan.
-
-``` sql
-/*+Set(work_mem "1MB")*/
-EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-```
-
-```output
-LOG:  pg_hint_plan:
-used hint:
-Set(work_mem 1MB)
-not used hint:
-duplication hint:
-error hint:
-
-              QUERY PLAN
---------------------------------------
- Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(4 rows)
-```
 
 ### Configuring the planner method
 

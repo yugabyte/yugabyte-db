@@ -62,11 +62,6 @@ implementation 'org.postgresql:postgresql:42.2.14'
 
 Learn how to perform common tasks required for Java application development using the PostgreSQL JDBC driver.
 
-<!-- * [Connect to YugabyteDB Database](postgres-jdbc-fundamentals/#connect-to-yugabytedb-database)
-* [Configure SSL/TLS](postgres-jdbc-fundamentals/#configure-ssl-tls)
-* [Create Table](/postgres-jdbc-fundamentals/#create-table)
-* [Read and Write Queries](/postgres-jdbc-fundamentals/#read-and-write-queries) -->
-
 ### Connect to YugabyteDB Database
 
 Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. The `java.sql.*` package includes all the JDBC interfaces required for working with YugabyteDB.

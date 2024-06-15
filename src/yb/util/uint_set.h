@@ -12,6 +12,7 @@
 //
 #pragma once
 
+#include <boost/functional/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <google/protobuf/repeated_field.h>
@@ -84,6 +85,7 @@ class UnsignedIntSet {
 
   void ToPB(ArenaVector<T>* out) const {
     uint32_t last_unset = 0;
+    out->reserve(2 * interval_set_.size());
     for (const auto& elem : interval_set_) {
       out->push_back(elem.lower() - last_unset);
       out->push_back(elem.upper() - elem.lower() + 1);
@@ -93,6 +95,7 @@ class UnsignedIntSet {
 
   void ToPB(google::protobuf::RepeatedField<T>* mutable_container) const {
     uint32_t last_unset = 0;
+    mutable_container->Reserve(2 * static_cast<int>(interval_set_.size()));
     for (const auto& elem : interval_set_) {
       mutable_container->Add(elem.lower() - last_unset);
       mutable_container->Add(elem.upper() - elem.lower() + 1);
@@ -118,6 +121,15 @@ class UnsignedIntSet {
     return set_difference.empty();
   }
 
+  size_t hash_value() const {
+    size_t seed = 0;
+    for (const auto& elem : interval_set_) {
+      boost::hash_combine(seed, elem.lower());
+      boost::hash_combine(seed, elem.upper());
+    }
+    return seed;
+  }
+
  private:
   using ElementType = uint32_t;
   using ElementRange = boost::icl::discrete_interval<ElementType>;
@@ -125,4 +137,20 @@ class UnsignedIntSet {
   ElementRangeSet interval_set_;
 };
 
+template<class T>
+std::size_t hash_value(const UnsignedIntSet<T>& uint_set) noexcept {
+  return uint_set.hash_value();
+}
+
 } // namespace yb
+
+namespace std {
+
+template<class T>
+struct hash<yb::UnsignedIntSet<T>> {
+  size_t operator()(const yb::UnsignedIntSet<T>& uint_set) const {
+    return yb::hash_value(uint_set);
+  }
+};
+
+} // namespace std

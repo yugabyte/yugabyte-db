@@ -7,46 +7,49 @@
 import clsx from 'clsx';
 
 import { YBButton } from '../../../redesign/components';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionProps } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import styles from './EmptyListPlaceholder.module.scss';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface EmptyListPlaceholderProps {
   actionButtonText: string;
+  accessRequiredOn: ApiPermissionProps;
   descriptionText: string;
   onActionButtonClick: () => void;
+  variant: 'primary' | 'secondary';
 
   className?: string;
   dataTestIdPrefix?: string;
+  isDisabled?: boolean;
 }
 
 const PLUS_ICON = <i className={`fa fa-plus ${styles.emptyIcon}`} />;
 
 export const EmptyListPlaceholder = ({
   actionButtonText,
+  accessRequiredOn,
   className,
   descriptionText,
   dataTestIdPrefix,
-  onActionButtonClick
+  variant,
+  onActionButtonClick,
+  isDisabled
 }: EmptyListPlaceholderProps) => (
-
   <div className={clsx(styles.emptyListContainer, className)}>
-    {PLUS_ICON}
-    <RbacValidator
-      accessRequiredOn={ApiPermissionMap.CREATE_PROVIDERS}
-      isControl
-    >
+    {variant === 'primary' && PLUS_ICON}
+    <div>{descriptionText}</div>
+    <RbacValidator accessRequiredOn={accessRequiredOn} isControl>
       <YBButton
         style={{ minWidth: '200px' }}
-        variant="primary"
+        variant={variant}
         onClick={onActionButtonClick}
+        disabled={isDisabled}
         data-testid={`${dataTestIdPrefix ?? 'EmptyListPlaceholder'}-PrimaryAction`}
       >
         <i className="fa fa-plus" />
         {actionButtonText}
       </YBButton>
     </RbacValidator>
-    <div>{descriptionText}</div>
   </div>
 );

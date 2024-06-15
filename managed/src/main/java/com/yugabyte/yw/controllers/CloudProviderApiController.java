@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -114,6 +116,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result delete(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -129,8 +132,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Refresh pricing",
-      notes = "Refresh provider pricing info",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Refresh provider pricing info",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -166,6 +169,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result edit(
       UUID customerUUID,
       UUID providerUUID,
@@ -230,19 +234,15 @@ public class CloudProviderApiController extends AuthenticatedController {
        */
       KubernetesInfo k8sInfo = CloudInfoInterface.get(reqProvider);
       k8sInfo.setLegacyK8sProvider(false);
-      providerEbean =
-          Provider.create(
-              customer.getUuid(), providerCode, reqProvider.getName(), reqProvider.getDetails());
-    } else {
-      providerEbean =
-          cloudProviderHandler.createProvider(
-              customer,
-              providerCode,
-              reqProvider.getName(),
-              reqProvider,
-              validate,
-              ignoreValidationErrors);
     }
+    providerEbean =
+        cloudProviderHandler.createProvider(
+            customer,
+            providerCode,
+            reqProvider.getName(),
+            reqProvider,
+            validate,
+            ignoreValidationErrors);
 
     if (providerCode.isRequiresBootstrap()) {
       UUID taskUUID = null;
@@ -283,7 +283,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "accessKeyRotation",
-      value = "WARNING: This is a preview API that could change. Rotate access key for a provider",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Rotate access key for a provider",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -330,9 +331,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "scheduledAccessKeyRotation",
-      value =
-          "WARNING: This is a preview API that could change. Rotate access key for a provider -"
-              + " Scheduled",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Rotate access key for a provider - Scheduled",
       response = Schedule.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -379,9 +379,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. List all schedules for a provider's"
-              + " access key rotation",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all schedules for a provider's" + " access key rotation",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
@@ -404,8 +403,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Edit a access key rotation schedule",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Edit a access key rotation schedule",
       response = Schedule.class,
       nickname = "editAccessKeyRotationSchedule")
   @ApiImplicitParams({
@@ -500,6 +499,33 @@ public class CloudProviderApiController extends AuthenticatedController {
       ((ObjectNode) requestBody).remove("sshPrivateKeyContent");
     }
     String providerCode = requestBody.get("code").asText();
+    if (providerCode.equals(CloudType.gcp.name())) {
+      // This is to keep the older API clients happy in case they still continue to use
+      // JSON object.
+      ObjectMapper mapper = Json.mapper();
+      ObjectNode details = (ObjectNode) requestBody.get("details");
+      if (details != null && details.has("cloudInfo")) {
+        ObjectNode cloudInfo = (ObjectNode) details.get("cloudInfo");
+        if (cloudInfo != null && cloudInfo.has("gcp")) {
+          ObjectNode gcpCloudInfo = (ObjectNode) cloudInfo.get("gcp");
+          try {
+            if (gcpCloudInfo != null
+                && gcpCloudInfo.has("gceApplicationCredentials")
+                && !(gcpCloudInfo.get("gceApplicationCredentials").isTextual())) {
+              gcpCloudInfo.put(
+                  "gceApplicationCredentials",
+                  mapper.writeValueAsString(gcpCloudInfo.get("gceApplicationCredentials")));
+            }
+          } catch (Exception e) {
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR, "Failed to read GCP Service Account Credentials");
+          }
+          cloudInfo.set("gcp", gcpCloudInfo);
+          details.set("cloudInfo", cloudInfo);
+          ((ObjectNode) requestBody).set("details", details);
+        }
+      }
+    }
     ObjectMapper mapper = Json.mapper();
     JsonNode regions = requestBody.get("regions");
     ArrayNode regionsNode = mapper.createArrayNode();
@@ -509,6 +535,14 @@ public class CloudProviderApiController extends AuthenticatedController {
         regionWithProviderCode.put("providerCode", providerCode);
         if (region.has("config") && forEdit) {
           ((ObjectNode) region).remove("config");
+        }
+        if (forEdit) {
+          if (region.has("vnetName")) {
+            ((ObjectNode) region).remove("vnetName");
+          }
+          if (region.has("securityGroupId")) {
+            ((ObjectNode) region).remove("securityGroupId");
+          }
         }
         regionWithProviderCode.setAll((ObjectNode) region);
         JsonNode zones = region.get("zones");

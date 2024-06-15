@@ -31,6 +31,7 @@ Cluster, Domain, Bitmap join, IOT indexes, and reverse indexes are not exported.
 - [Large-sized CLOB/NCLOB data is not supported](#large-sized-clob-nclob-data-is-not-supported)
 - [%TYPE syntax is unsupported](#type-syntax-is-unsupported)
 - [TRANSLATE USING is unsupported](#translate-using-is-unsupported)
+- [Issue with importing data from tables with reserved keyword datatypes matching table names](#issue-with-importing-data-from-tables-with-reserved-keyword-datatypes-matching-table-names)
 
 ### Some numeric types are not exported
 
@@ -315,7 +316,7 @@ OR
 
 ### %TYPE syntax is unsupported
 
-**GitHub**: [Issue #19169](https://github.com/yugabyte/yb-voyager/issues/19169)
+**GitHub**: [Issue #19169](https://github.com/yugabyte/yugabyte-db/issues/19169)
 
 **Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. An equivalent does not does exist in PostgreSQL and therefore in YugabyteDB.
 
@@ -336,5 +337,60 @@ OR
 **Example**: convert('PostgreSQL' using iso_8859_1_to_utf8)
 
 **Result**: 'PostgreSQL' (in UTF8 (Unicode, 8-bit) encoding)
+
+---
+
+### Issue with importing data from tables with reserved keyword datatypes matching table names
+
+**GitHub**: [Issue #1505](https://github.com/yugabyte/yb-voyager/issues/1505)
+
+**Description**: If there's a table with a name as a reserved word of datatype, then there is an issue in dumping the incorrect data dump for that table, possibly resulting in syntax errors when importing that exported data in target.
+
+**Workaround**: Modify the data to correct syntax as per the datatype exported for that table.
+
+**Example**:
+
+An example schema on the source database is as follows:
+
+```sql
+create table "number"(id int PRIMARY KEY);
+insert into "number" values(0);
+insert into "number" values(1);
+insert into "number" values(2);
+insert into "number" values(3);
+insert into "number" values(4);
+```
+
+The exported schema and data are as follows:
+
+```sql
+create table "number"(id numeric(38) NOT NULL, PRIMARY KEY (id));
+
+COPY number (id) FROM STDIN;
+f
+t
+2
+3
+4
+\.
+```
+
+Error during data import is as follows:
+
+```sql
+ERROR: invalid input syntax for type numeric: "t" (SQLSTATE 22P02), COPY number, line 1, column id: "t"
+```
+
+Workaround for the example is to modify the data to change the `f/t` to `0/1` respectively:
+
+```sql
+COPY number (id) FROM STDIN;
+0
+1
+2
+3
+4
+\.
+```
 
 ---

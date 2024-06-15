@@ -183,6 +183,8 @@ extern struct varlena *heap_tuple_untoast_attr_slice(struct varlena *attr,
  */
 extern HeapTuple toast_flatten_tuple(HeapTuple tup, TupleDesc tupleDesc);
 
+extern HeapTuple yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc);
+
 /* ----------
  * toast_flatten_tuple_to_datum -
  *

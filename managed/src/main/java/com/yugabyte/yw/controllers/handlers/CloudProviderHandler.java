@@ -114,12 +114,10 @@ public class CloudProviderHandler {
     if (providerCode.equals(Common.CloudType.gcp)) {
       cloudProviderHelper.maybeUpdateGCPProject(reqProvider);
     }
-
+    cloudProviderHelper.maybeUpdateVPC(reqProvider);
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
-    if (cloudAPI != null
-        && !cloudAPI.isValidCreds(
-            reqProvider, CloudProviderHelper.getFirstRegionCode(reqProvider))) {
+    if (cloudAPI != null && !cloudAPI.isValidCreds(reqProvider)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format("Invalid %s Credentials.", providerCode.toString().toUpperCase()));
@@ -144,21 +142,11 @@ public class CloudProviderHandler {
     }
     Provider provider =
         Provider.create(customer.getUuid(), providerCode, providerName, reqProvider.getDetails());
-    cloudProviderHelper.maybeUpdateVPC(provider);
 
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
     if (!providerConfig.isEmpty()) {
       // Perform for all cloud providers as it does validation.
-      if (provider.getCloudCode().equals(kubernetes)) {
-        cloudProviderHelper.updateKubeConfig(provider, providerConfig, false);
-        try {
-          cloudProviderHelper.createKubernetesInstanceTypes(customer, provider);
-        } catch (PersistenceException ex) {
-          // TODO: make instance types more multi-tenant friendly...
-        }
-      } else {
-        cloudProviderHelper.maybeUpdateCloudProviderConfig(provider, providerConfig);
-      }
+      cloudProviderHelper.maybeUpdateCloudProviderConfig(provider, providerConfig);
     }
     if (!providerCode.isRequiresBootstrap()) {
       provider.setUsabilityState(Provider.UsabilityState.READY);
@@ -318,6 +306,7 @@ public class CloudProviderHandler {
               .append("provider")
               .toString();
       String cloudProviderCode = cloudProviderHelper.getCloudProvider();
+      String yugawareImageRepository = config.getString("yb.kubernetes.yugawareImageRepository");
 
       if (pullSecret != null) {
         formData.config =
@@ -331,7 +320,8 @@ public class CloudProviderHandler {
                 "KUBECONFIG_PULL_SECRET_CONTENT",
                 Serialization.asYaml(pullSecret), // Yaml formatted
                 "KUBECONFIG_IMAGE_REGISTRY",
-                cloudProviderHelper.getKubernetesImageRepository()); // Location of the registry
+                cloudProviderHelper.getKubernetesImageRepository(
+                    yugawareImageRepository)); // Location of the registry
       }
 
       for (String region : regionToAZ.keySet()) {
@@ -353,7 +343,6 @@ public class CloudProviderHandler {
         }
         formData.regionList.add(regionData);
       }
-
       return formData;
     } catch (RuntimeException e) {
       LOG.error(e.getClass() + ": " + e.getMessage(), e);
@@ -396,7 +385,6 @@ public class CloudProviderHandler {
         taskParams.perRegionMetadata.put(regionCode, new CloudBootstrap.Params.PerRegionMetadata());
       }
     }
-    cloudProviderHelper.validateInstanceTemplate(provider, taskParams);
 
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(
@@ -417,22 +405,31 @@ public class CloudProviderHandler {
       boolean ignoreValidationErrors) {
     cloudProviderHelper.validateEditProvider(
         editProviderReq, provider, validate, ignoreValidationErrors);
-    provider.setUsabilityState(Provider.UsabilityState.UPDATING);
-    provider.save();
-    editProviderReq.setVersion(provider.getVersion());
-    CloudProviderEdit.Params taskParams = new CloudProviderEdit.Params();
-    taskParams.newProviderState = editProviderReq;
-    taskParams.providerUUID = provider.getUuid();
-    taskParams.skipRegionBootstrap = false;
-    UUID taskUUID = commissioner.submit(TaskType.CloudProviderEdit, taskParams);
-    CustomerTask.create(
-        customer,
-        provider.getUuid(),
-        taskUUID,
-        CustomerTask.TargetType.Provider,
-        CustomerTask.TaskType.Update,
-        provider.getName());
-    return taskUUID;
+    Provider.UsabilityState state = provider.getUsabilityState();
+    try {
+      provider.setUsabilityState(Provider.UsabilityState.UPDATING);
+      provider.save();
+      editProviderReq.setVersion(provider.getVersion());
+      CloudProviderEdit.Params taskParams = new CloudProviderEdit.Params();
+      taskParams.newProviderState = editProviderReq;
+      taskParams.providerUUID = provider.getUuid();
+      taskParams.skipRegionBootstrap = false;
+      UUID taskUUID = commissioner.submit(TaskType.CloudProviderEdit, taskParams);
+      CustomerTask.create(
+          customer,
+          provider.getUuid(),
+          taskUUID,
+          CustomerTask.TargetType.Provider,
+          CustomerTask.TaskType.Update,
+          provider.getName());
+      return taskUUID;
+    } catch (Exception e) {
+      // In case, provider edit is tried when it is in-use by some task.
+      // we will fail the edit & restore the state to the old state.
+      provider.setUsabilityState(state);
+      provider.save();
+      throw e;
+    }
   }
 
   public void refreshPricing(UUID customerUUID, Provider provider) {

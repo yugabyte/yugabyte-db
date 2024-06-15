@@ -9,7 +9,7 @@ menu:
   stable:
     identifier: explore-ysql-language-features
     parent: explore
-    weight: 200
+    weight: 100
 type: indexpage
 showRightNav: true
 ---
@@ -36,8 +36,8 @@ The following table lists the most important YSQL features which you would find 
 | [Data Manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | [Queries and Joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
 | [Expressions and Operators](expressions-operators/) | Basic operators and boolean, numeric, date expressions |
+| [Indexes](indexes-constraints/) | Support for indexes and constraints |
 | [Stored Procedures](stored-procedures/) | Support for stored procedures |
-| [Triggers](triggers/) | Triggers (on data modification) and event triggers (on schema changes) |
 | [Extensions](pg-extensions/) | Support for PostgreSQL extensions |
 
 ## Advanced features in YSQL
@@ -52,18 +52,4 @@ The following table lists the advanced features in YSQL.
 | [Savepoints](advanced-features/savepoints/) | Savepoints in YSQL |
 | [Collations](advanced-features/collations/) | Collations in YSQL |
 | [Foreign data wrappers](advanced-features/foreign-data-wrappers/) | Foreign data wrappers in YSQL |
-
-<!--
-| <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |
-| <span style="font-size:16px">[Advanced Topics](advanced-topics/)</span>     | Using `VIEWS`, PostgreSQL extensions supported in YSQL, temporary tables, etc. |
--->
-
-## Going beyond SQL
-
-Because YugabyteDB is a distributed SQL database, YSQL has a number of features that are not present in PostgreSQL, as summarized in the following table.
-
-| YSQL Feature | Description |
-| :----------- | :---------- |
-| [Data distribution with HASH](../../architecture/docdb-sharding/sharding/) | Enables the use of `HASH` sort order, in addition to `ASC` and `DESC` for indexes |
-| [Tablespaces](going-beyond-sql/tablespaces/) | Enables pinning of data in tables and table partitions to different geographic locations |
-| [Follower Reads](going-beyond-sql/follower-reads-ysql/)| Enables more read IOPS with low latencies in YugabyteDB clusters |
+| [Triggers](advanced-features/triggers/) | Triggers (on data modification) and event triggers (on schema changes) |

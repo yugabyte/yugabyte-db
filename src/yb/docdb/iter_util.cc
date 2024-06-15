@@ -25,8 +25,14 @@
 
 // Empirically 2 is a minimal value that provides best performance on sequential scan.
 DEFINE_RUNTIME_int32(max_nexts_to_avoid_seek, 2,
-                     "The number of next calls to try before doing resorting to do a rocksdb "
-                     "seek.");
+    "The number of next calls to try before doing resorting to do a rocksdb seek.");
+
+// TODO(#22373): the value is taken from FLAGS_max_nexts_to_avoid_seek default, but it could be
+// not the optimal value for prev seeks and it is recommended to make some research and to confirm
+// the selected value or select a different value.
+DEFINE_RUNTIME_int32(max_prevs_to_avoid_seek, 2,
+    "The number of prev calls to try before doing a rocksdb seek. "
+    "Used by fast backward scan only.");
 
 namespace yb::docdb {
 
@@ -48,7 +54,8 @@ inline bool IsIterAfterOrAtKey(
 
 inline const rocksdb::KeyValueEntry& SeekPossiblyUsingNext(
     rocksdb::Iterator* iter, Slice seek_key, SeekStats* stats) {
-  int nexts = FLAGS_max_nexts_to_avoid_seek;
+  const auto max_nexts = FLAGS_max_nexts_to_avoid_seek;
+  int nexts = max_nexts;
   while (nexts-- > 0) {
     const auto& entry = iter->Next();
     ++stats->next;
@@ -58,9 +65,23 @@ inline const rocksdb::KeyValueEntry& SeekPossiblyUsingNext(
     }
   }
 
-  VTRACE(3, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
+  VTRACE(3, "Forced to do an actual Seek after $0 Next(s)", max_nexts);
   ++stats->seek;
   return iter->Seek(seek_key);
+}
+
+inline bool IsIterBeforeKey(
+    const rocksdb::KeyValueEntry& entry, rocksdb::Iterator& iter, Slice key) {
+  if (PREDICT_FALSE(!entry)) {
+    if (PREDICT_FALSE(!iter.status().ok())) {
+      VLOG(3) << "Iterator " << &iter << " error: " << iter.status();
+      // Caller should check Valid() after doing Seek*() and then check status() since
+      // Valid() == false.
+      // TODO(#16730): Add sanity check for RocksDB iterator Valid() to be checked after it is set.
+    }
+    return true;
+  }
+  return entry.key.compare(key) < 0;
 }
 
 } // namespace
@@ -160,5 +181,41 @@ const rocksdb::KeyValueEntry& SeekForward(Slice slice, rocksdb::Iterator *iter) 
   return SeekPossiblyUsingNext(iter, slice, &stats);
 }
 
+const rocksdb::KeyValueEntry& SeekBackward(Slice upper_bound_key, rocksdb::Iterator& iter) {
+  // Check if the iterator is already positioned before the given key.
+  {
+    const auto& entry = iter.Entry();
+    if (IsIterBeforeKey(entry, iter, upper_bound_key)) {
+      return entry;
+    }
+  }
+
+  // Try to reach the required position using Prev() calls only.
+  const auto max_prevs = FLAGS_max_prevs_to_avoid_seek;
+  int prevs = 0;
+  while (max_prevs > prevs++) {
+    const auto& entry = iter.Prev();
+    if (IsIterBeforeKey(entry, iter, upper_bound_key)) {
+      VTRACE(3, "Did $0 Prev(s) instead of a Seek", prevs);
+      return entry;
+    }
+  }
+
+  VTRACE(3, "Forced to do an actual Seek after $0 Prev(s)", max_prevs);
+  const auto& entry = iter.Seek(upper_bound_key);
+
+  // Sanity check. It is absolutely unexpected to get and invalid entry as the iterartor is
+  // positioned after the given key, which is confirmed by the above IsIterBeforeKey() call.
+  DCHECK(entry.Valid()); // Maybe it's even better to put a CHECK here.
+  if (PREDICT_FALSE(!entry.Valid())) {
+    LOG_WITH_FUNC(ERROR) << "Unexpected Seek() result -- invalid entry, key = '"
+                         << upper_bound_key.ToDebugHexString() << "', status: " << iter.status();
+    return entry;
+  }
+
+  // Seek() will point to the first record greater or equal to the given key, hence Prev() call
+  // is required to move to a record which is less than the upper_bound_key.
+  return iter.Prev();
+}
 
 }  // namespace yb::docdb

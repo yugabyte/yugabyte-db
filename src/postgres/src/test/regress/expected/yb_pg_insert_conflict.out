@@ -720,6 +720,8 @@ DROP TABLE dropcol;
 -- check handling of self-conflicts at various isolation levels
 create table selfconflict (f1 int primary key, f2 int);
 begin transaction isolation level read committed;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 insert into selfconflict values (1,1), (1,2) on conflict do nothing;
 commit;
 begin transaction isolation level repeatable read;
@@ -729,6 +731,8 @@ begin transaction isolation level serializable;
 insert into selfconflict values (3,1), (3,2) on conflict do nothing;
 commit;
 begin transaction isolation level read committed;
+WARNING:  read committed isolation is disabled
+DETAIL:  Set yb_enable_read_committed_isolation to enable. When disabled, read committed falls back to using repeatable read isolation.
 insert into selfconflict values (4,1), (4,2) on conflict(f1) do update set f2 = 0;
 commit;
 begin transaction isolation level repeatable read;

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -36,6 +38,22 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("invalid reconfigure: " + err.Error())
 		}
 
+		isSelfSigned := state.Config.SelfSignedCert ||
+			(viper.GetString("server_cert_path") == "" && viper.GetString("server_key_path") == "")
+		if state.Config.Hostname != viper.GetString("host") && isSelfSigned {
+			log.Info("Detected hostname change for self signed certs, regenerating the certs")
+			serverCertPath, serverKeyPath := common.RegenerateSelfSignedCerts()
+			common.SetYamlValue(common.InputFile(), "server_cert_path", serverCertPath)
+			common.SetYamlValue(common.InputFile(), "server_key_path", serverKeyPath)
+			common.InitViper()
+			state.Config.Hostname = viper.GetString("host")
+			state.Config.SelfSignedCert = true // Ensure we track self signed certs after reconfig
+		}
+
+		if err := createPemFormatKeyAndCert(); err != nil {
+			log.Fatal("failed to create server.pem: " + err.Error())
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("Stopping service " + name)
 			services[name].Stop()
@@ -46,7 +64,9 @@ var reconfigureCmd = &cobra.Command{
 		os.Chdir(common.GetBinaryDir())
 
 		// Set any necessary config values due to changes
-		common.FixConfigValues()
+		if err := common.FixConfigValues(); err != nil {
+			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
+		}
 
 		for _, name := range serviceOrder {
 			log.Info("Regenerating config for service " + name)
@@ -60,6 +80,10 @@ var reconfigureCmd = &cobra.Command{
 			}
 			log.Info("Starting service " + name)
 			services[name].Start()
+		}
+
+		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
+			log.Fatal(err.Error())
 		}
 
 		for _, name := range serviceOrder {

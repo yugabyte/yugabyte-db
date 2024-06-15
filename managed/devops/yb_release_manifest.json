@@ -19,7 +19,8 @@
     "edit_authorized_keys.yml",
     "configure_ssh2.yml",
     "install-third-party.yml",
-    "Dockerfile"
+    "Dockerfile",
+    "sudo_whitelist.txt"
   ],
   "bin": [
     "bin/ansible-playbook.sh",
@@ -41,6 +42,7 @@
     "bin/edit_universe_details.py",
     "bin/filtered_logs.sh",
     "bin/node_utils.sh",
+    "bin/yb_netprob.py",
     "bin/yb_attach_detach.py"
   ],
   "filter_plugins": [

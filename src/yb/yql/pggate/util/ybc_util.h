@@ -90,6 +90,11 @@ extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
 
 /*
+ * GUC variable to set the number of locks to return per transaction per tablet in yb_lock_status().
+ */
+extern int yb_locks_txn_locks_per_tablet;
+
+/*
  * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
  * restore, we copy the docdb SST files of those tables from the source database and reuse them
  * for a newly created target database to restore those tables.
@@ -119,6 +124,26 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * Guc variable that enables replication slot consumption.
+ */
+extern bool yb_enable_replication_slot_consumption;
+
+/*
+ * GUC variable that enables ALTER TABLE rewrite operations.
+ */
+extern bool yb_enable_alter_table_rewrite;
+
+/*
+ * GUC variable that enables replica identity command in Alter Table Query
+ */
+extern bool yb_enable_replica_identity;
+
+/*
+ * GUC variable that specifies default replica identity for tables at the time of creation.
+ */
+extern char* yb_default_replica_identity;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -132,10 +157,13 @@ extern int yb_xcluster_consistency_level;
 
 /*
  * Allows user to query a databases as of the point in time.
- * yb_read_time is UNIX timestamp in microsecond.
+ * yb_read_time can be expressed in the following 2 ways -
+ *  - UNIX timestamp in microsecond (default unit)
+ *  - as a uint64 representation of HybridTime with unit "ht"
  * Zero value means reading data as of current time.
  */
 extern uint64_t yb_read_time;
+extern bool yb_is_read_time_ht;
 
 /*
  * Allows for customizing the number of rows to be prefetched.
@@ -143,14 +171,64 @@ extern uint64_t yb_read_time;
 extern int yb_fetch_row_limit;
 extern int yb_fetch_size_limit;
 
+/*
+ * GUC flag: Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was non-empty.
+ */
+extern int yb_walsender_poll_sleep_duration_nonempty_ms;
+
+/*
+ * GUC flag:  Time in milliseconds for which Walsender waits before fetching the next batch of
+ * changes from the CDC service in case the last received response was empty. The response can be
+ * empty in case there are no DMLs happening in the system.
+ */
+extern int yb_walsender_poll_sleep_duration_empty_ms;
+
+/*
+ * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
+ * buffer, which is used in streaming changes via logical replication. After that changes are
+ * spooled to disk.
+ */
+extern int yb_reorderbuffer_max_changes_in_memory;
+
+/*
+ * Allows for customizing the maximum size of a batch of explicit row lock operations.
+ */
+extern int yb_explicit_row_locking_batch_size;
+
+/*
+ * Ease transition to YSQL by reducing read restart errors for new apps.
+ *
+ * This option doesn't affect SERIALIZABLE isolation level since
+ * SERIALIZABLE can't face read restart errors anyway.
+ *
+ * See the help text for yb_read_after_commit_visibility GUC for more
+ * information.
+ *
+ * XXX: This GUC is meant as a workaround only by relaxing the
+ * read-after-commit-visibility guarantee. Ideally,
+ * (a) Users should fix their apps to handle read restart errors, or
+ * (b) TODO(#22317): YB should use very accurate clocks to avoid read restart
+ *     errors altogether.
+ */
+typedef enum {
+  YB_STRICT_READ_AFTER_COMMIT_VISIBILITY = 0,
+  YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY = 1,
+} YBReadAfterCommitVisibilityEnum;
+
+/* GUC for the enum above. */
+extern int yb_read_after_commit_visibility;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);
+bool YBCStatusIsUnknownSession(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
 bool YBCStatusIsSnapshotTooOld(YBCStatus s);
 bool YBCStatusIsTryAgain(YBCStatus s);
 bool YBCStatusIsAlreadyPresent(YBCStatus s);
 bool YBCStatusIsReplicationSlotLimitReached(YBCStatus s);
+bool YBCStatusIsFatalError(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
@@ -169,6 +247,8 @@ bool YBCIsRestartReadError(uint16_t txn_errcode);
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
+bool YBCIsTxnAbortedError(uint16_t txn_errcode);
+const char* YBCTxnErrCodeToString(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();
@@ -250,7 +330,13 @@ void YBCInitThreading();
 
 double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 
+// Helper functions for Active Session History
 void YBCGenerateAshRootRequestId(unsigned char *root_request_id);
+const char* YBCGetWaitEventName(uint32_t wait_event_info);
+const char* YBCGetWaitEventClass(uint32_t wait_event_info);
+const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
+const char* YBCGetWaitEventType(uint32_t wait_event_info);
+uint8_t YBCGetQueryIdForCatalogRequests();
 
 #ifdef __cplusplus
 } // extern "C"

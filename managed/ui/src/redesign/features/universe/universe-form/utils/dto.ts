@@ -1,3 +1,4 @@
+import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
@@ -135,12 +136,20 @@ export interface UserIntent {
   enableIPV6?: boolean;
   ybcPackagePath?: string | null;
   instanceTags?: Record<string, string>;
-  specificGFlags?: Record<string, any>;
+  specificGFlags?: {
+    inheritFromPrimary: boolean;
+    perProcessFlags: {};
+    perAZ?: {};
+  };
   masterGFlags?: Record<string, any>;
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
-  azOverrides?: Record<string, string>;
+  userIntentOverrides?: {
+    azOverrides?: Record<string, string>;
+  };
+  proxyConfig?: {};
   useSpotInstance?: boolean | null;
+  imageBundleUUID?: string;
 }
 
 export interface Cluster {
@@ -220,9 +229,11 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  arch: ArchitectureType;
   softwareUpgradeState: string;
   prevYBSoftwareConfig: { softwareVersion: string };
   universePaused: boolean;
+  xclusterInfo: any;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -418,6 +429,7 @@ export interface UniverseDetails {
   userAZSelected: boolean;
   enableYbc: boolean;
   updateOptions: string[];
+  xclusterInfo: any;
 }
 
 export interface Resources {
@@ -501,6 +513,8 @@ export interface InstanceConfigFormValue {
   ycqlConfirmPassword?: string;
   enableYEDIS: boolean;
   kmsConfig: string | null;
+  arch?: ArchitectureType | null;
+  imageBundleUUID?: string | null;
 }
 
 export interface AdvancedConfigFormValue {
@@ -538,6 +552,8 @@ export interface UniverseFormData {
   inheritFlagsFromPrimary?: boolean;
   universeOverrides?: string;
   azOverrides?: Record<string, string>;
+  proxyConfig?: {};
+  specificGFlagsAzOverrides?: {};
 }
 
 //Default data
@@ -594,7 +610,9 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   ycqlPassword: '',
   ycqlConfirmPassword: '',
   enableYEDIS: false,
-  kmsConfig: null
+  kmsConfig: null,
+  arch: null,
+  imageBundleUUID: ''
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
@@ -706,6 +724,7 @@ export interface Provider {
   name: string;
   active: boolean;
   customerUUID: string;
+  details: Record<string, any>;
 }
 export interface RegionInfo {
   parentRegionId: string;
@@ -810,6 +829,34 @@ export interface UniverseResource {
 
 export interface UniverseFormConfigurationProps {
   runtimeConfigs: any;
+}
+
+export enum ImageBundleType {
+  YBA_ACTIVE = 'YBA_ACTIVE',
+  YBA_DEPRECATED = 'YBA_DEPRECATED',
+  CUSTOM = 'CUSTOM'
+}
+export interface ImageBundle {
+  uuid: string;
+  name: string;
+  details: {
+    arch: ArchitectureType;
+    globalYbImage: string;
+    regions: {
+      [key: string]: {
+        ybImage: string;
+      };
+    };
+    sshUser: string;
+    sshPort: number;
+    useIMDSv2?: boolean;
+  };
+  useAsDefault: boolean;
+  metadata?: {
+    type: ImageBundleType;
+    version: string;
+  };
+  active: true;
 }
 
 //-------------------------------------------------------- Remaining types - Field/API Ends -------------------------------------------------------------------

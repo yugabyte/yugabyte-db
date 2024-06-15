@@ -80,6 +80,8 @@ DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
             "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
             "when we have not had any backpressure in the recent past.");
 
+DECLARE_bool(TEST_ash_debug_aux);
+
 METRIC_DEFINE_event_stats(server, rpc_incoming_queue_time,
                         "RPC Queue Time",
                         yb::MetricUnit::kMicroseconds,
@@ -179,6 +181,7 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   void Enqueue(const InboundCallPtr& call) {
     TRACE_TO(call->trace(), "Inserting onto call queue");
+    SET_WAIT_STATUS_TO(call->wait_state(), OnCpu_Passive);
 
     auto task = call->BindTask(this);
     if (!task) {
@@ -248,6 +251,12 @@ class ServicePoolImpl final : public InboundCallHandler {
   void Handle(InboundCallPtr incoming) override {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
+    if (GetAtomicFlag(&FLAGS_TEST_ash_debug_aux) && incoming->wait_state()) {
+      incoming->wait_state()->UpdateAuxInfo(
+          ash::AshAuxInfo{.method = incoming->method_name().ToBuffer()});
+    }
+    ADOPT_WAIT_STATE(incoming->wait_state());
+    SCOPED_WAIT_STATUS(OnCpu_Active);
 
     const char* error_message;
     if (PREDICT_FALSE(incoming->ClientTimedOut())) {

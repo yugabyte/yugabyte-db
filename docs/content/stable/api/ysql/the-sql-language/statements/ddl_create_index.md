@@ -77,7 +77,7 @@ Indicates not to recurse creating indexes on partitions, if the table is partiti
 
 The name of the index access method. By default, `lsm` is used for YugabyteDB tables and `btree` is used otherwise (for example, temporary tables).
 
-[GIN indexes](../../../../../explore/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
+[GIN indexes](../../../../../explore/ysql-language-features/indexes-constraints/gin/) can be created in YugabyteDB by using the `ybgin` access method.
 
 ### INCLUDE clause
 
@@ -85,7 +85,7 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### TABLESPACE clause
 
-Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
+Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
 
 ### WHERE clause
 
@@ -232,6 +232,29 @@ yugabyte=# create table shipments(id int, delivery_status text, address text, de
 yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
 ```
 
+### Expression indexes
+
+An index column need not be just a column of the underlying table, but can be a function, or scalar expression computed from one or more columns of the table. You can also obtain fast access to tables based on the results of computations.
+
+A basic example is indexing unique emails in a users table similar to the following:
+
+```plpgsql
+CREATE TABLE users(id BIGSERIAL PRIMARY KEY, email TEXT NOT NULL);
+
+CREATE UNIQUE INDEX users_email_idx ON users(lower(email));
+```
+
+Creating a unique index prevents inserting duplicate email addresses using a different case.
+
+Note that index expressions are only evaluated at index time, so to use the index for a specific query the expression must match exactly.
+
+```plpgsql
+SELECT * FROM users WHERE lower(email)='user@example.com'; # will use the index created above
+SELECT * FROM users WHERE email='user@example.com'; # will NOT use the index
+```
+
+Expression indexes are often used to [index jsonb columns](../../../datatypes/type_json/create-indexes-check-constraints/).
+
 ## Troubleshooting
 
 If the following troubleshooting tips don't resolve your issue, ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
@@ -302,9 +325,9 @@ DROP INDEX
 
   Do any or all of the following:
 
-  - Increase [YB-Master flag][yb-master] `ysql_index_backfill_rpc_timeout_ms` from 60000 (one minute) to 300000 (five minutes).
-  - Increase [YB-TServer flag][yb-tserver] `backfill_index_timeout_grace_margin_ms` from -1 (one second) to 60000 (one minute).
-  - Decrease [YB-TServer flag][yb-tserver] `backfill_index_write_batch_size` from 128 to 32.
+  - Increase the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../../../../../reference/configuration/yb-master/#ysql-index-backfill-rpc-timeout-ms) from 60000 (one minute) to 300000 (five minutes).
+  - Increase the YB-TServer flag [backfill_index_timeout_grace_margin_ms](../../../../../reference/configuration/yb-tserver/#backfill-index-timeout-grace-margin-ms) from -1 (the system automatically calculates the value to be approximately 1 second) to 60000 (one minute).
+  - Decrease the YB-TServer flag [backfill_index_write_batch_size](../../../../../reference/configuration/yb-tserver/#backfill-index-write-batch-size) from 128 to 32.
 
 - `ERROR:  BackfillIndex RPC (request call id 123) to 127.0.0.1:9100 timed out after 86400.000s`
 

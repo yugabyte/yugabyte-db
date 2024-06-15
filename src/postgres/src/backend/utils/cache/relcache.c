@@ -103,9 +103,11 @@
 #include "utils/tqual.h"
 
 #include "access/yb_scan.h"
+#include "catalog/index.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_catalog_version.h"
+#include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
 
@@ -534,6 +536,9 @@ AllocateRelationDesc(Form_pg_class relp)
 
 	/* YB properties will be loaded lazily */
 	relation->yb_table_properties = NULL;
+
+	relation->primary_key_bms = NULL;
+	relation->full_primary_key_bms = NULL;
 
 	/*
 	 * Copy the relation tuple form
@@ -1422,7 +1427,14 @@ YbCleanupTupleCache(YbTupleCache *cache)
 	if (!cache->rel)
 		return;
 
+	if (cache->data)
+	{
+		hash_destroy(cache->data);
+		cache->data = NULL;
+	}
+
 	heap_close(cache->rel, AccessShareLock);
+	cache->rel = NULL;
 }
 
 typedef struct YbUpdateRelationCacheState {
@@ -1557,7 +1569,21 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 
 		/* if it's an index, initialize index-related information */
 		if (OidIsValid(relation->rd_rel->relam))
+		{
+			/*
+			 * We don't preload indexes on user-defined AM's for now. Doing so
+			 * results in an issue where we try to load the user-defined AM.
+			 * This AM's handler might not be loaded as pg_proc might not be
+			 * loaded.
+			 */
+			if (relation->rd_rel->relam >= FirstNormalObjectId)
+			{
+				--num_tuples;
+				continue;
+			}
+
 			RelationInitIndexAccessInfo(relation);
+		}
 
 		/* extract reloptions if any */
 		RelationParseRelOptions(relation, pg_class_tuple);
@@ -1878,6 +1904,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	/* Set up constraint/default info */
 	if (constr->has_not_null || ndef > 0 || attrmiss || relation->rd_rel->relchecks)
 	{
+		if (relation->rd_att->constr)
+			pfree(relation->rd_att->constr);
 		relation->rd_att->constr = constr;
 
 		if (ndef > 0)            /* DEFAULTs */
@@ -2729,7 +2757,7 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 	const bool preload_additional_tables =
 		*YBCGetGFlags()->ysql_catalog_preload_additional_tables;
 	const char *default_additional_tables =
-		"pg_am,pg_amproc,pg_cast,pg_tablespace";
+		"pg_am,pg_amproc,pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger";
 	const char *extra_tables = NULL;
 
 	if (!IS_NON_EMPTY_STR_FLAG(preload_cat_flag))
@@ -2875,19 +2903,6 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 			YB_PFETCH_TABLE_YB_PG_PROFILE,
 			YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE,
 			YB_PFETCH_TABLE_PG_CAST
-		};
-		YbRegisterTables(prefetcher, tables, lengthof(tables));
-	}
-
-	if (YbNeedAdditionalCatalogTables())
-	{
-		static const YbPFetchTable tables[] = {
-			YB_PFETCH_TABLE_PG_CAST,
-			YB_PFETCH_TABLE_PG_INHERITS,
-			YB_PFETCH_TABLE_PG_POLICY,
-			YB_PFETCH_TABLE_PG_PROC,
-			YB_PFETCH_TABLE_PG_TABLESPACE,
-			YB_PFETCH_TABLE_PG_TRIGGER
 		};
 		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}
@@ -4266,6 +4281,8 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_partcheck);
 	if (relation->rd_fdwroutine)
 		pfree(relation->rd_fdwroutine);
+	if (relation->yb_table_properties)
+		pfree(relation->yb_table_properties);
 	pfree(relation);
 }
 
@@ -5254,7 +5271,49 @@ RelationBuildLocalRelation(const char *relname,
 		(relkind == RELKIND_RELATION ||
 		 relkind == RELKIND_MATVIEW ||
 		 relkind == RELKIND_PARTITIONED_TABLE))
-		rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	{
+		/*
+		 * YB NOTE: The default replica identity in case of user defined tables
+		 * is set to 'CHANGE'. The flag ysql_yb_default_replica_identity can be
+		 * used to change the default replica identity at the time of table
+		 * creation for user defined tables. In all other cases the default
+		 * behaviour of PG is used, i.e. 'DEFAULT' for relations in
+		 * information_schema and 'NOTHING' for tables in pg_catalog and for
+		 * non-table objects
+		 */
+		if (IsYugaByteEnabled() && relid >= FirstNormalObjectId)
+		{
+			const char* replica_identity_name = yb_default_replica_identity;
+			char replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+			if (strcmp(replica_identity_name, "FULL") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_FULL;
+			}
+			else if (strcmp(replica_identity_name, "DEFAULT") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_DEFAULT;
+			}
+			else if (strcmp(replica_identity_name, "NOTHING") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_NOTHING;
+			}
+			else if (strcmp(replica_identity_name, "CHANGE") == 0)
+			{
+				replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+			}
+			else
+			{
+				/* 
+				 * This should never happen since we check the guc value in 
+				 * check_default_replica_identity.
+				 */
+				Assert(false);	
+			}
+			rel->rd_rel->relreplident = replica_identity;
+		}
+		else
+			rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	}
 	else
 		rel->rd_rel->relreplident = REPLICA_IDENTITY_NOTHING;
 
@@ -5346,7 +5405,8 @@ RelationBuildLocalRelation(const char *relname,
  */
 void
 RelationSetNewRelfilenode(Relation relation, char persistence,
-						  TransactionId freezeXid, MultiXactId minmulti)
+						  TransactionId freezeXid, MultiXactId minmulti,
+						  bool yb_copy_split_options)
 {
 	Oid			newrelfilenode;
 	RelFileNodeBackend newrnode;
@@ -5377,22 +5437,58 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			 RelationGetRelid(relation));
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
-	/*
-	 * Create storage for the main fork of the new relfilenode.
-	 *
-	 * NOTE: any conflict in relfilenode value will be caught here, if
-	 * GetNewRelFileNode messes up for any reason.
-	 */
-	newrnode.node = relation->rd_node;
-	newrnode.node.relNode = newrelfilenode;
-	newrnode.backend = relation->rd_backend;
-	RelationCreateStorage(newrnode.node, persistence);
-	smgrclosenode(newrnode);
+	if (IsYBRelation(relation))
+	{
+		/*
+		 * Currently, this function is only used during reindex/truncate in YB.
+		 */
+		Assert(relation->rd_rel->relkind == RELKIND_INDEX ||
+			   relation->rd_rel->relkind == RELKIND_RELATION);
 
-	/*
-	 * Schedule unlinking of the old storage at transaction commit.
-	 */
-	RelationDropStorage(relation);
+		if (relation->rd_rel->relkind == RELKIND_INDEX &&
+			!relation->rd_index->indisprimary)
+			/*
+			 * Note: caller is responsible for dropping the old DocDB table
+			 * associated with the index, if required.
+			 * Create a new DocDB table for the secondary index.
+			 * This is not required for primary indexes, as they are
+			 * an implicit part of the base table.
+			 */
+			YbIndexSetNewRelfileNode(relation, newrelfilenode,
+									 yb_copy_split_options);
+		else if (relation->rd_rel->relkind == RELKIND_RELATION)
+		{
+			/*
+			 * Drop the old DocDB table associated with this relation.
+			 * Note: The drop isn't finalized until after the txn
+			 * commits/aborts.
+			 */
+			YBCDropTable(relation);
+			/* Create a new DocDB table for the relation. */
+			YbRelationSetNewRelfileNode(relation, newrelfilenode,
+										yb_copy_split_options,
+										true /* is_truncate */);
+		}
+	}
+	else
+	{
+		/*
+		 * Create storage for the main fork of the new relfilenode.
+		 *
+		 * NOTE: any conflict in relfilenode value will be caught here, if
+		 * GetNewRelFileNode messes up for any reason.
+		 */
+		newrnode.node = relation->rd_node;
+		newrnode.node.relNode = newrelfilenode;
+		newrnode.backend = relation->rd_backend;
+		RelationCreateStorage(newrnode.node, persistence);
+		smgrclosenode(newrnode);
+
+		/*
+		 * Schedule unlinking of the old storage at transaction commit.
+		 */
+		RelationDropStorage(relation);
+	}
 
 	/*
 	 * Now update the pg_class row.  However, if we're dealing with a mapped
@@ -5604,7 +5700,7 @@ RelationCacheInitializePhase3(void)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true) && 
+		needNewCacheFile = !load_relcache_init_file(true) &&
 			!YbNeedAdditionalCatalogTables() &&
 			*YBCGetGFlags()->ysql_use_relcache_file;
 	}
@@ -5646,7 +5742,7 @@ RelationCacheInitializePhase3(void)
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
 		bool preload_rel_cache =
-			needNewCacheFile || 
+			needNewCacheFile ||
 			YBCIsInitDbModeEnvVarSet() ||
 			YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file;
@@ -7531,7 +7627,7 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		(YbNeedAdditionalCatalogTables() || 
+		(YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file))
 		return false;
 
@@ -7845,6 +7941,9 @@ load_relcache_init_file(bool shared)
 		rel->rd_newRelfilenodeSubid = InvalidSubTransactionId;
 		rel->rd_amcache = NULL;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
+
+		/* YB properties will be loaded lazily */
+		rel->yb_table_properties = NULL;
 
 		/*
 		 * Recompute lock and physical addressing info.  This is needed in

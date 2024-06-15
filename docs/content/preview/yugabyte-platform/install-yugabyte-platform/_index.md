@@ -3,88 +3,58 @@ title: Install
 headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install
 description: Install YugabyteDB Anywhere and prepare universe nodes.
-image: /images/section_icons/quick_start/install.png
-headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments.
+image: fa-thin fa-wrench
+headcontent: Install YugabyteDB Anywhere to begin creating and managing deployments
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: install-yugabyte-platform
-weight: 600
+weight: 610
 type: indexpage
 ---
 
-<div class="row">
+For on-premises and public cloud deployment, you install YugabyteDB Anywhere using YBA Installer. YBA Installer is a standalone binary that you can use to perform online or airgapped installations, as well as manage and upgrade existing installations, and migrate Replicated installations.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install/public-cloud/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Overview</div>
-      </div>
-      <div class="body">
-        Overview of the installation process.
-      </div>
-    </a>
-  </div>
+Kubernetes installations are performed and managed using the YugabyteDB Anywhere Helm chart.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prerequisites/installer/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
-        <div class="title">Prerequisites</div>
-      </div>
-      <div class="body">
-        Prerequisites for installing YugabyteDB Anywhere.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prepare-environment/aws/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Prepare the environment</div>
-      </div>
-      <div class="body">
-        Prepare your environment for installing YugabyteDB Anywhere.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Install YugabyteDB Anywhere"
+    body="Install YugabyteDB Anywhere software on a host using YBA Installer."
+    href="install-software/installer/"
+    icon="fa-thin fa-wrench">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-software/installer/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Install software</div>
-      </div>
-      <div class="body">
-        Install YugabyteDB Anywhere software on a host.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Create Admin user"
+    body="Create your YugabyteDB Anywhere Super Admin user."
+    href="create-admin-user/"
+    icon="fa-thin fa-user-crown">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prepare-on-prem-nodes/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Prepare on-premises nodes</div>
-      </div>
-      <div class="body">
-        For on-premises installations, prepare YugabyteDB nodes.
-      </div>
-    </a>
-  </div>
+{{</index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="uninstall-software/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Uninstall software</div>
-      </div>
-      <div class="body">
-        Uninstall YugabyteDB Anywhere software on a host.
-      </div>
-    </a>
-  </div>
+### Replicated
 
-</div>
+{{< warning title="Replicated end-of-life" >}}
+
+{{</warning >}}
+
+YugabyteDB Anywhere is ending support for Replicated at the end of 2024. For new installations of YugabyteDB Anywhere, use [YBA Installer](install-software/installer/).
+
+To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](migrate-replicated/).
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Migrate from Replicated"
+    body="Migrate an installation from Replicated to YBA Installer."
+    href="migrate-replicated/"
+    icon="fa-thin fa-truck">}}
+
+  {{<index/item
+    title="Replicated [Deprecated]"
+    body="Install YugabyteDB Anywhere software using Replicated."
+    href="install-replicated/"
+    icon="fa-thin fa-clone">}}
+
+{{</index/block>}}

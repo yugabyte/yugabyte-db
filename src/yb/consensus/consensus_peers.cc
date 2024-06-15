@@ -102,7 +102,7 @@ DEFINE_test_flag(int32, delay_removing_peer_with_failed_tablet_secs, 0,
                  "as failed.");
 
 DEFINE_RUNTIME_int32(consensus_stuck_peer_call_threshold_ms, 10000,
-    "Time to wait after timeout before considering a RPC call as stuck.");
+    "Time to wait after timeout before considering an RPC call as stuck.");
 TAG_FLAG(consensus_stuck_peer_call_threshold_ms, advanced);
 
 DEFINE_RUNTIME_bool(consensus_force_recover_from_stuck_peer_call, false,
@@ -186,7 +186,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
       if (last_rpc_start_time != CoarseTimePoint::min() &&
           now > last_rpc_start_time + stuck_threshold + timeout && !controller_.finished()) {
         LOG_WITH_PREFIX(INFO) << Format(
-            "Found a RPC call in stuck state - timeout: $0, last_rpc_start_time: $1, "
+            "Found an RPC call in stuck state - timeout: $0, last_rpc_start_time: $1, "
             "stuck threshold: $2, force recover: $3, call state: $4",
             timeout, last_rpc_start_time, stuck_threshold,
             FLAGS_consensus_force_recover_from_stuck_peer_call, controller_.CallStateDebugString());
@@ -296,6 +296,12 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       status = queue_->GetRemoteBootstrapRequestForPeer(peer_pb_.permanent_uuid(), &rb_request_);
       if (!consensus_->split_parent_tablet_id().empty()) {
         rb_request_.set_split_parent_tablet_id(consensus_->split_parent_tablet_id());
+      }
+
+      auto clone_source_info = consensus_->clone_source_info();
+      if (clone_source_info) {
+        rb_request_.set_clone_source_seq_no(clone_source_info->seq_no);
+        rb_request_.set_clone_source_tablet_id(clone_source_info->tablet_id);
       }
     }
     if (!status.ok()) {

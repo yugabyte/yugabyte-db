@@ -54,7 +54,8 @@ Status TabletHarness::Create(bool first_time) {
 
   auto table_info = std::make_shared<TableInfo>(
       "test-tablet", Primary::kTrue, "YBTableTest", "test", "YBTableTest", options_.table_type,
-      schema_, qlexpr::IndexMap(), boost::none, 0 /* schema_version */, partition.first);
+      schema_, qlexpr::IndexMap(), boost::none, 0 /* schema_version */, partition.first,
+      "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
   auto metadata = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
     .fs_manager = fs_manager_.get(),
     .table_info = table_info,

@@ -180,6 +180,16 @@ VoyagerAssesmentResponse:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'
+VoyagerAssessmentResponseV2:
+  description: Response for migration assessment page
+  content:
+    application/json:
+      schema:
+        title: API for migration assessment page
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/MigrationAssessmentReport'
 ConnectionsResponse:
   description: YSQL connection manager stats
   content:
@@ -192,3 +202,48 @@ NodeAddressResponse:
     text/plain:
       schema:
         type: string
+PITRScheduleListResponse:
+  description: List of PITR Schedules in the cluster
+  content:
+    application/json:
+      schema:
+        title: PITR Schedule Response
+        type: object
+        properties:
+          schedules:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/PITRSchedule'
+        required:
+          - schedules
+BackupDetailsListResponse:
+  description: Retrieve the list of databases on which backup is enabled in the YugabyteDB cluster.
+  content:
+    application/json:
+      schema:
+        title: Backup Details
+        type: object
+        properties:
+          backup:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/BackupDetails'
+        required:
+          - backup
+RestoreDetailsListResponse:
+  description: Retrieve the list of databases on which restore is run in the YugabyteDB cluster.
+  content:
+    application/json:
+      schema:
+        title: Restore Details
+        type: object
+        properties:
+          restore:
+            type: array
+            uniqueItems: true
+            items:
+              $ref: '../schemas/_index.yaml#/RestoreDetails'
+        required:
+          - restore

@@ -140,10 +140,19 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
 
     def add_extra_args(self):
         super(OnPremDestroyInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--install_node_exporter", action="store_true",
-                                 help='Check if node exporter should be stopped.')
+        self.parser.add_argument("--clean_node_exporter", action="store_true",
+                                 help='Check if node exporter should be stopped and disabled.')
         self.parser.add_argument("--provisioning_cleanup", action="store_true",
                                  help='Check if provisioned services cleanup should be skipped.')
+        self.parser.add_argument("--clean_otel_collector", action="store_true",
+                                 help='Check if OTel Collector should be stopped and disabled.')
+
+    def update_ansible_vars_with_args(self, args):
+        super(OnPremDestroyInstancesMethod, self).update_ansible_vars_with_args(args)
+        if args.clean_node_exporter:
+            self.extra_vars["clean_node_exporter"] = args.clean_node_exporter
+        if args.clean_otel_collector:
+            self.extra_vars["clean_otel_collector"] = args.clean_otel_collector
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -158,11 +167,15 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         self.update_ansible_vars_with_args(args)
 
         # First stop both tserver and master processes.
-        processes = ["tserver", "master"]
+        processes = ["tserver", "master", "controller"]
         logging.info(("[app] Running control script to stop " +
-                      "against master and tserver at {}").format(host_info['name']))
-        self.cloud.run_control_script(processes[0], "stop", args, self.extra_vars, host_info)
-        self.cloud.run_control_script(processes[1], "stop", args, self.extra_vars, host_info)
+                      "against master, tserver and controller at {}").format(host_info['name']))
+        self.cloud.run_control_script(processes[0], "stop-destroy", args,
+                                      self.extra_vars, host_info)
+        self.cloud.run_control_script(processes[1], "stop-destroy", args,
+                                      self.extra_vars, host_info)
+        self.cloud.run_control_script(processes[2], "stop-destroy", args,
+                                      self.extra_vars, host_info)
 
         # Revert the force using of user yugabyte.
         args.ssh_user = ssh_user
@@ -173,7 +186,8 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
                 "platform-services", "remove-services", args, self.extra_vars, host_info)
 
         # Run non-db related tasks.
-        if args.install_node_exporter and args.provisioning_cleanup:
+        if ((args.clean_node_exporter or args.clean_otel_collector)
+                and args.provisioning_cleanup):
             logging.info(("[app] Running control script remove-services " +
                           "against thirdparty services at {}").format(host_info['name']))
             self.cloud.run_control_script(
@@ -183,7 +197,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         args.ssh_user = "yugabyte"
         self.update_ansible_vars_with_args(args)
         logging.info(("[app] Running control script to clean and clean-logs " +
-                     "against master and tserver at {}").format(host_info['name']))
+                     "against master, tserver and controller at {}").format(host_info['name']))
         for process in processes:
             for command in ["clean", "clean-logs"]:
                 self.cloud.run_control_script(

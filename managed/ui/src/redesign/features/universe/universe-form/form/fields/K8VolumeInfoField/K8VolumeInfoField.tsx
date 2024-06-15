@@ -59,17 +59,16 @@ export const K8VolumeInfoField = ({
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs
-  const {
-    data: providerRuntimeConfigs,
-    refetch: providerConfigsRefetch
-  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, provider?.uuid)
+  const { refetch: providerConfigsRefetch } = useQuery(
+    QUERY_KEY.fetchProviderRunTimeConfigs,
+    () => api.fetchRunTimeConfigs(true, provider?.uuid),
+    { enabled: !!provider?.uuid }
   );
 
   useEffect(() => {
     const getProviderRuntimeConfigs = async () => {
-      await providerConfigsRefetch();
-      let deviceInfo = getK8DeviceInfo(providerRuntimeConfigs);
+      const providerRuntimeRefetch = await providerConfigsRefetch();
+      const deviceInfo = getK8DeviceInfo(providerRuntimeRefetch?.data);
 
       if (fieldValue && deviceInfo && isEditMode) {
         deviceInfo.volumeSize = fieldValue.volumeSize;
@@ -134,7 +133,7 @@ export const K8VolumeInfoField = ({
                       <YBInput
                         type="number"
                         fullWidth
-                        disabled={isDedicatedMasterField ? isEditMode : disableVolumeSize}
+                        disabled={isDedicatedMasterField || disableVolumeSize}
                         inputProps={{
                           min: 1,
                           'data-testid': `K8VolumeInfoField-${nodeTypeTag}-VolumeSizeInput`

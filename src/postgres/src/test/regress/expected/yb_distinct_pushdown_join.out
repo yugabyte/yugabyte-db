@@ -1,3 +1,4 @@
+SET yb_explain_hide_non_deterministic_fields = true;
 -- Split at 1, ... to ensure that the value r1 = 1 is present in more than one tablet.
 -- See #18101.
 CREATE TABLE t(r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC, r3 ASC)) SPLIT AT VALUES ((1, 1, 500));
@@ -12,11 +13,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
  Nested Loop (actual rows=4 loops=1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=2 loops=2)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (8 rows)
 
 SELECT DISTINCT t1.r1, t2.r1 FROM t t1 CROSS JOIN t t2;
@@ -36,11 +37,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
    Merge Cond: (t1.r1 = t2.r1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=2 loops=1)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (9 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
@@ -51,6 +52,7 @@ SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 USING (r1);
 (2 rows)
 
 -- In the Distinct Index Scan of t2, there are 7 rows, not 6, because the tablet split ends up with 1, 1 represented in two tablets.
+SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
@@ -59,12 +61,12 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
          Merge Cond: (t1.r1 = t2.r2)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t1.r1
          ->  Sort (actual rows=7 loops=1)
                Sort Key: t2.r2
-               Sort Method: quicksort  Memory: 25kB
+               Sort Method: quicksort
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 INNER JOIN t t2 ON t1.r1 = t2.r2;
@@ -82,12 +84,12 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
          Merge Cond: (t1.r1 = t2.r2)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t1.r1
          ->  Sort (actual rows=7 loops=1)
                Sort Key: t2.r2
-               Sort Method: quicksort  Memory: 25kB
+               Sort Method: quicksort
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 LEFT JOIN t t2 ON t1.r1 = t2.r2;
@@ -107,11 +109,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
          Hash Cond: (t1.r1 = t2.r2)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t1.r1
          ->  Hash (actual rows=7 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 RIGHT JOIN t t2 ON t1.r1 = t2.r2;
@@ -131,11 +133,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
          Hash Cond: (t1.r1 = t2.r2)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t1.r1
          ->  Hash (actual rows=7 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t2.r1, t2.r2
 (11 rows)
 
 SELECT DISTINCT t1.r1, t2.r2 FROM t t1 FULL JOIN t t2 ON t1.r1 = t2.r2;
@@ -158,10 +160,10 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM
          Rows Removed by Join Filter: 12
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t1.r1
          ->  Materialize (actual rows=7 loops=2)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t2.r1, t2.r2
 (10 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
@@ -178,10 +180,10 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1 FROM
          Join Filter: (t1.r1 < t2.r2)
          Rows Removed by Join Filter: 17
          ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t2.r1, t2.r2
          ->  Materialize (actual rows=3 loops=7)
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t1.r1
 (9 rows)
 
 SELECT DISTINCT t2.r1 FROM t t1 JOIN t t2 ON t1.r1 < t2.r2;
@@ -201,12 +203,12 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t 
          Hash Cond: (t.r2 = t_1.r1)
          ->  Unique (actual rows=6 loops=1)
                ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t.r1, t.r2
          ->  Hash (actual rows=2 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Unique (actual rows=2 loops=1)
                      ->  Distinct Index Scan using t_pkey on t t_1 (actual rows=3 loops=1)
-                           Distinct Prefix: 1
+                           Distinct Keys: t_1.r1
 (12 rows)
 
 SELECT DISTINCT r1 FROM t WHERE r2 IN (SELECT r1 FROM t);
@@ -256,11 +258,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
    Merge Cond: (t1.r1 = t2.r1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=2 loops=1)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (9 rows)
 
 /*+MergeJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
@@ -277,12 +279,12 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
    Hash Cond: (t1.r1 = t2.r1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Hash (actual rows=2 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (10 rows)
 
 /*+HashJoin(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
@@ -300,11 +302,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
    Rows Removed by Join Filter: 2
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=2 loops=2)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (10 rows)
 
 /*+Nestloop(t1 t2)*/ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1);
@@ -319,17 +321,17 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 * RANDOM() FR
 -- Require additional distinctification on top when distinct is pushed down to only one of the relations.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;
                                          QUERY PLAN
---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
  HashAggregate (actual rows=1 loops=1)
    Group Key: t1.r1
    ->  Hash Join (actual rows=3000 loops=1)
          Hash Cond: (t1.r1 = t2.r2)
          ->  Seq Scan on t t1 (actual rows=1000 loops=1)
-               Remote Filter: (((r1)::double precision + random()) < '5'::double precision)
+               Storage Filter: (((r1)::double precision + random()) < '5'::double precision)
          ->  Hash (actual rows=7 loops=1)
-               Buckets: 1024  Batches: 1  Memory Usage: 9kB
+               Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t2.r1, t2.r2
 (10 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM() < 5;
@@ -340,22 +342,22 @@ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 ON t1.r1 = t2.r2 WHERE t1.r1 + RANDOM(
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;
                                                   QUERY PLAN
---------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
    ->  Merge Join (actual rows=1000 loops=1)
          Merge Cond: (t2.r1 = t1.r1)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
          ->  Materialize (actual rows=1000 loops=1)
                ->  Merge Join (actual rows=1000 loops=1)
                      Merge Cond: (t1.r1 = t3.r1)
                      ->  Unique (actual rows=2 loops=1)
                            ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                                 Distinct Prefix: 1
+                                 Distinct Keys: t1.r1
                      ->  Materialize (actual rows=1000 loops=1)
                            ->  Index Scan using t_pkey on t t3 (actual rows=1000 loops=1)
-                                 Remote Filter: (((r1)::double precision + random()) < '5'::double precision)
+                                 Storage Filter: (((r1)::double precision + random()) < '5'::double precision)
 (15 rows)
 
 SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) JOIN t t3 USING (r1) WHERE t3.r1 + RANDOM() < 5;
@@ -374,11 +376,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
    Merge Cond: (t1.r1 = t2.r1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=2 loops=1)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (9 rows)
 
 SELECT DISTINCT t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
@@ -396,11 +398,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r1, t1.
    Merge Cond: (t1.r1 = t2.r1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=2 loops=1)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (9 rows)
 
 SELECT DISTINCT t2.r1, t1.r1 FROM t t1 JOIN t t2 USING (r1);
@@ -418,11 +420,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r1, t2.
    Merge Cond: (t2.r1 = t1.r1)
    ->  Unique (actual rows=6 loops=1)
          ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t2.r1, t2.r2
    ->  Materialize (actual rows=4 loops=1)
          ->  Unique (actual rows=2 loops=1)
                ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-                     Distinct Prefix: 1
+                     Distinct Keys: t1.r1
 (9 rows)
 
 SELECT DISTINCT t1.r1, t2.r1, t2.r2 FROM t t1 JOIN t t2 USING (r1);
@@ -444,11 +446,11 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t2.r2, t1.
    Merge Cond: (t1.r1 = t2.r1)
    ->  Unique (actual rows=2 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=3 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=6 loops=1)
          ->  Unique (actual rows=6 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=7 loops=1)
-                     Distinct Prefix: 2
+                     Distinct Keys: t2.r1, t2.r2
 (9 rows)
 
 SELECT DISTINCT t2.r2, t1.r1, t2.r1 FROM t t1 JOIN t t2 USING (r1);
@@ -471,12 +473,12 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT t1.r2 FROM
    ->  Unique (actual rows=1 loops=1)
          ->  Distinct Index Scan using t_pkey on t t1 (actual rows=2 loops=1)
                Index Cond: (r2 = 2)
-               Distinct Prefix: 1
+               Distinct Keys: t1.r1
    ->  Materialize (actual rows=1 loops=1)
          ->  Unique (actual rows=1 loops=1)
                ->  Distinct Index Scan using t_pkey on t t2 (actual rows=2 loops=1)
                      Index Cond: (r2 = 2)
-                     Distinct Prefix: 1
+                     Distinct Keys: t2.r1
 (10 rows)
 
 SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
@@ -492,12 +494,12 @@ SELECT DISTINCT t1.r2 FROM t t1 JOIN t t2 USING (r2) WHERE t2.r2 = 2;
  Unique (actual rows=1 loops=1)
    ->  Nested Loop (actual rows=1000 loops=1)
          ->  Seq Scan on t t1 (actual rows=1000 loops=1)
-               Remote Filter: (r1 = 1)
+               Storage Filter: (r1 = 1)
          ->  Materialize (actual rows=1 loops=1000)
                ->  Unique (actual rows=1 loops=1)
                      ->  Distinct Index Scan using t_pkey on t t2 (actual rows=2 loops=1)
                            Index Cond: (r1 = 1)
-                           Distinct Prefix: 1
+                           Distinct Keys: t2.r1
 (9 rows)
 
 /*+ Seqscan(t1) */ SELECT DISTINCT t1.r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1;
@@ -518,14 +520,14 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
    Merge Cond: ((t1.h1 = t2.h1) AND (t1.h2 = t2.h2))
    ->  Sort (actual rows=6 loops=1)
          Sort Key: t1.h1, t1.h2
-         Sort Method: quicksort  Memory: 25kB
+         Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th t1 (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t1.h1, t1.h2
    ->  Sort (actual rows=6 loops=1)
          Sort Key: t2.h1, t2.h2
-         Sort Method: quicksort  Memory: 25kB
+         Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th t2 (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t2.h1, t2.h2
 (12 rows)
 
 /*+ MergeJoin(t1 t2) */ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
@@ -545,11 +547,11 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
  Hash Join (actual rows=6 loops=1)
    Hash Cond: ((t1.h1 = t2.h1) AND (t1.h2 = t2.h2))
    ->  Distinct Index Scan using th_pkey on th t1 (actual rows=6 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: t1.h1, t1.h2
    ->  Hash (actual rows=6 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Distinct Index Scan using th_pkey on th t2 (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t2.h1, t2.h2
 (8 rows)
 
 /*+ HashJoin(t1 t2) */ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
@@ -570,10 +572,10 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
    Join Filter: ((t1.h1 = t2.h1) AND (t1.h2 = t2.h2))
    Rows Removed by Join Filter: 30
    ->  Distinct Index Scan using th_pkey on th t1 (actual rows=6 loops=1)
-         Distinct Prefix: 2
+         Distinct Keys: t1.h1, t1.h2
    ->  Materialize (actual rows=6 loops=6)
          ->  Distinct Index Scan using th_pkey on th t2 (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t2.h1, t2.h2
 (8 rows)
 
 /*+ Nestloop(t1 t2) */ SELECT DISTINCT h1, h2 FROM th t1 JOIN th t2 USING (h1, h2);
@@ -595,12 +597,12 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
    Merge Cond: ((t.r1 = th.h1) AND (t.r2 = th.h2))
    ->  Unique (actual rows=6 loops=1)
          ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t.r1, t.r2
    ->  Sort (actual rows=6 loops=1)
          Sort Key: th.h1, th.h2
-         Sort Method: quicksort  Memory: 25kB
+         Sort Method: quicksort
          ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: th.h1, th.h2
 (10 rows)
 
 /*+ MergeJoin(th t) */ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
@@ -621,11 +623,11 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
    Hash Cond: ((t.r1 = th.h1) AND (t.r2 = th.h2))
    ->  Unique (actual rows=6 loops=1)
          ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t.r1, t.r2
    ->  Hash (actual rows=6 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 9kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: th.h1, th.h2
 (9 rows)
 
 /*+ HashJoin(th t) */ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
@@ -647,10 +649,10 @@ INSERT INTO th (SELECT 10, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i
    Rows Removed by Join Filter: 30
    ->  Unique (actual rows=6 loops=1)
          ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: t.r1, t.r2
    ->  Materialize (actual rows=6 loops=6)
          ->  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
-               Distinct Prefix: 2
+               Distinct Keys: th.h1, th.h2
 (9 rows)
 
 /*+ Nestloop(th t) */ SELECT DISTINCT th.h1, th.h2 FROM th JOIN t ON th.h1 = t.r1 AND th.h2 = t.r2;
@@ -673,14 +675,92 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t t
  Hash Join (actual rows=334 loops=1)
    Hash Cond: (t1.v = t2.v)
    ->  Distinct Index Only Scan using irv on t t1 (actual rows=334 loops=1)
-         Distinct Prefix: 1
+         Distinct Keys: t1.v
          Heap Fetches: 0
    ->  Hash (actual rows=334 loops=1)
-         Buckets: 1024  Batches: 1  Memory Usage: 20kB
+         Buckets: 1024 (originally 1024)  Original Batches: 1
          ->  Distinct Index Only Scan using irv on t t2 (actual rows=334 loops=1)
-               Distinct Prefix: 1
+               Distinct Keys: t2.v
                Heap Fetches: 0
 (10 rows)
 
 DROP INDEX irv;
 DROP TABLE t;
+-- Regression test case for GitHub issue #20827
+CREATE TABLE t1 (col_int_key int, pad int, primary key(col_int_key asc, pad asc));
+INSERT INTO t1 (select 3, i from generate_series(1, 1000) i);
+INSERT INTO t1 (select 4, i from generate_series(1, 1000) i);
+ANALYZE t1;
+CREATE TABLE t2 (pk int, col_int int, primary key(pk asc));
+INSERT INTO t2 (SELECT i, i FROM generate_series(1, 1000) i);
+ANALYZE t2;
+/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  YB Batched Nested Loop Join (actual rows=2 loops=1)
+         Join Filter: (t1.col_int_key = t2.col_int)
+         Sort Keys: t2.pk
+         ->  Index Scan using t2_pkey on t2 (actual rows=4 loops=1)
+               Index Cond: (pk < 5)
+         ->  Unique (actual rows=2 loops=1)
+               ->  Distinct Index Scan using t1_pkey on t1 (actual rows=2 loops=1)
+                     Index Cond: (col_int_key = ANY (ARRAY[t2.col_int, $1, $2, ..., $1023]))
+                     Distinct Keys: t1.col_int_key
+(10 rows)
+
+/*+ Set(enable_mergejoin off) Set(enable_hashjoin off) Set(enable_material off) */
+SELECT DISTINCT t2.pk FROM t1 JOIN t2 ON t1.col_int_key = t2.col_int WHERE t2.pk < 5;
+ pk
+----
+  3
+  4
+(2 rows)
+
+DROP TABLE t1;
+DROP TABLE t2;
+-- Regression test for #20893
+CREATE TABLE t (k1 INT, k2 INT, PRIMARY KEY(k1 ASC, k2 ASC));
+-- Protect against memory corruption bug when not using ANALYZE.
+SELECT DISTINCT a1.k1 FROM t a1 RIGHT OUTER JOIN t a2 RIGHT OUTER JOIN t a3
+USING (k1) USING (k1) WHERE a2.k1 = 5 AND a3.k1 = 5 GROUP BY a1.k1 ORDER BY a1.k1;
+ k1
+----
+(0 rows)
+
+INSERT INTO t (SELECT i%10, i FROM GENERATE_SERIES(1, 10000) AS i);
+ANALYZE t;
+-- Protect against memory corruption bug when using ANALYZE.
+SELECT DISTINCT a1.k1 FROM t a1 RIGHT OUTER JOIN t a2 USING (k1) WHERE a2.k1 = 5 GROUP BY a1.k1 ORDER BY a1.k1;
+ k1
+----
+  5
+(1 row)
+
+-- Grouping Sets with distinct.
+SELECT DISTINCT t.k1 FROM t GROUP BY GROUPING SETS ((k1), (k1)) ORDER BY k1;
+ k1
+----
+  0
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+(10 rows)
+
+DROP TABLE t;
+CREATE TABLE th (h1 INT, r1 INT, PRIMARY KEY(h1 HASH, r1 ASC));
+-- Protect against memory corruption bug when using hash partitioned table.
+SELECT DISTINCT a1.h1 FROM th a1, th a2, th a3 where a1.h1 < a2.h1 and a2.h1 = a3.h1 and a2.h1 = 5 AND a3.h1 = 5 GROUP BY a1.h1;
+ h1
+----
+(0 rows)
+
+DROP TABLE th;

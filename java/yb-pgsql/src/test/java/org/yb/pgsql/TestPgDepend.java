@@ -32,7 +32,7 @@ import static org.yb.AssertionWrappers.*;
 public class TestPgDepend extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgDepend.class);
 
-  private static final int PG_TYPE_OID = 1247;
+  private static final int PG_ATTRDEF_OID = 2604;
   private static final int PG_CLASS_OID = 1259;
   private static final int PG_AUTH_ID_OID = 1260;
   private static final int PG_NAMESPACE_OID = 2615;
@@ -257,9 +257,9 @@ public class TestPgDepend extends BasePgSQLTest {
       rs.next();
       int oidTable = rs.getInt("oid");
 
-      // Get the OID of the table column type
+      // Get the OID of the column default's entry in pg_attrdef.
       rs = statement.executeQuery("SELECT objid FROM pg_depend WHERE " +
-                                      "classid=" + PG_TYPE_OID + " AND refobjid=" + oidSequence);
+          "classid=" + PG_ATTRDEF_OID + " AND refobjid=" + oidSequence);
       rs.next();
       int oidColType = rs.getInt("objid");
 
@@ -269,7 +269,7 @@ public class TestPgDepend extends BasePgSQLTest {
       // Test dropping the sequence (with CASCADE).
       statement.execute("DROP SEQUENCE seq_test CASCADE");
 
-      // Check that we have deleted the table column to sequence type dependency in pg_depend.
+      // Check that we have deleted the column default to sequence type dependency in pg_depend.
       rs = statement.executeQuery("SELECT * FROM pg_depend "
                                   + "WHERE objid=" + oidColType + " AND refobjid=" + oidSequence);
       assertFalse(rs.next());

@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
@@ -63,10 +64,18 @@ import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
   protected Universe defaultUniverse;
+  protected YBClient mockClient;
   protected static final String NODE_PREFIX = "demo-universe";
-  protected static final String YB_SOFTWARE_VERSION_OLD = "old-version";
-  protected static final String YB_SOFTWARE_VERSION_NEW = "new-version";
+  protected static final String YB_SOFTWARE_VERSION_OLD = "2.14.12.0-b1";
+  protected static final String YB_SOFTWARE_VERSION_NEW = "2.18.2.0-b65";
   protected Map<String, String> config = new HashMap<>();
+
+  @Before
+  public void setUp() {
+    super.setUp();
+    mockClient = mock(YBClient.class);
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+  }
 
   protected void setupUniverse(
       boolean setMasters,
@@ -110,7 +119,6 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
       } catch (Exception e) {
       }
-      YBClient mockClient = mock(YBClient.class);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
@@ -140,10 +148,8 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
         masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";
       }
-      if (mockGetLeaderMaster) {
-        when(mockClient.getLeaderMasterHostAndPort())
-            .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
-      }
+      when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
 
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
@@ -262,8 +268,11 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       assertEquals(task, tasks.get(0).getTaskType());
       JsonNode expectedResults = expectedResultsList.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
-      assertJsonEqual(expectedResults, taskDetails.get(0));
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
+      assertJsonEqual(
+          "Task details for " + task + " at position " + position,
+          expectedResults,
+          taskDetails.get(0));
       position++;
     }
   }

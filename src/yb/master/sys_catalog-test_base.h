@@ -34,15 +34,20 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/master/catalog_entity_info.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+
 #include "yb/server/rpc_server.h"
+
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
 #include "yb/util/status_fwd.h"
@@ -62,6 +67,10 @@ class SysCatalogTest : public YBTest {
                        AllocateFreePort(), 0));
     ASSERT_OK(mini_master_->Start());
     SetLocalVars();
+    rpc::MessengerBuilder builder("syscatalog-messenger");
+    builder.set_num_reactors(1);
+    messenger_ = ASSERT_RESULT(builder.Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   }
 
@@ -76,6 +85,7 @@ class SysCatalogTest : public YBTest {
 
   void TearDown() override {
     mini_master_->Shutdown();
+    messenger_->Shutdown();
     YBTest::TearDown();
   }
 
@@ -111,11 +121,26 @@ class SysCatalogTest : public YBTest {
     return tablet;
   }
 
+  Result<ChangeMasterClusterConfigResponsePB> ChangeMasterClusterConfig(
+      const ChangeMasterClusterConfigRequestPB& req) {
+    rpc::RpcController rpc;
+    ChangeMasterClusterConfigResponsePB resp;
+    auto proxy = master::MasterClusterProxy(proxy_cache_.get(), mini_master_->bound_rpc_addr());
+    RETURN_NOT_OK(proxy.ChangeMasterClusterConfig(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return resp;
+  }
+
   std::unique_ptr<MiniMaster> mini_master_;
   Master* master_;
   SysCatalogTable* sys_catalog_;
 
  private:
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+
   void SetLocalVars() {
     master_ = mini_master_->master();
     ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -243,7 +268,7 @@ class TestNamespaceLoader : public Visitor<PersistentNamespaceInfo> {
 
   Status Visit(const std::string& ns_id, const SysNamespaceEntryPB& metadata) override {
     // Setup the namespace info
-    NamespaceInfo* const ns = new NamespaceInfo(ns_id);
+    NamespaceInfo* const ns = new NamespaceInfo(ns_id, /*tasks_tracker=*/nullptr);
     auto l = ns->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();

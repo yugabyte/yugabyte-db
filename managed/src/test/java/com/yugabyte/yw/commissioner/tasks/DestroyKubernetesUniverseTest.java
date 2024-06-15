@@ -30,11 +30,13 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -46,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -72,6 +75,12 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   private YBClient mockClient;
 
+  @Before
+  public void setUp() {
+    super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+  }
+
   private void setupUniverse(boolean updateInProgress) {
     config.put("KUBECONFIG", "test");
     kubernetesProvider.setConfigMap(config);
@@ -91,7 +100,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-
+    userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -128,7 +137,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
-
+    userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -155,14 +164,28 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()));
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks) {
-    assertTaskSequence(subTasksByPosition, numTasks, numTasks);
+    assertTaskSequence(subTasksByPosition, numTasks, numTasks, false);
   }
 
   private void assertTaskSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks, int numNamespaceDelete) {
+      Map<Integer, List<TaskInfo>> subTasksByPosition, int numTasks, boolean forceDelete) {
+    assertTaskSequence(subTasksByPosition, numTasks, numTasks, forceDelete);
+  }
+
+  private void assertTaskSequence(
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      int numTasks,
+      int numNamespaceDelete,
+      boolean forceDelete) {
     int position = 0;
-    for (TaskType taskType : KUBERNETES_DESTROY_UNIVERSE_TASKS) {
-      JsonNode expectedResults = KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS.get(position);
+    if (!forceDelete) {
+      // Shift by 1 subtask due to FreezeUniverse.
+      assertEquals(
+          TaskType.FreezeUniverse, subTasksByPosition.get(position++).get(0).getTaskType());
+    }
+    for (int i = 0; i < KUBERNETES_DESTROY_UNIVERSE_TASKS.size(); i++) {
+      TaskType taskType = KUBERNETES_DESTROY_UNIVERSE_TASKS.get(i);
+      JsonNode expectedResults = KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS.get(i);
       List<TaskInfo> tasks = subTasksByPosition.get(position);
 
       if (expectedResults.equals(
@@ -184,7 +207,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -265,6 +288,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
     Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
+    TestHelper.updateUniverseVersion(xClusterUniv, "2.17.0.0-b1");
+    RuntimeConfigEntry.upsert(xClusterUniv, "yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
     XClusterConfig xClusterConfig1 =
         XClusterConfig.create(
             "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
@@ -288,6 +313,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     }
 
     Universe xClusterUniv2 = ModelFactory.createUniverse("univ-3");
+    TestHelper.updateUniverseVersion(xClusterUniv2, "2.17.0.0-b1");
+    RuntimeConfigEntry.upsert(xClusterUniv2, "yb.upgrade.auto_flag_update_sleep_time_ms", "0ms");
     XClusterConfig.create(
         "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
     DestroyKubernetesUniverse.Params taskParams = new DestroyKubernetesUniverse.Params();
@@ -344,7 +371,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, 1);
+    assertTaskSequence(subTasksByPosition, 1, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
@@ -437,7 +464,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, 3, 1);
+    assertTaskSequence(subTasksByPosition, 3, 1, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }

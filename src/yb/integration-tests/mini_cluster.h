@@ -45,11 +45,14 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/gutil/ref_counted.h"
 #include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -59,6 +62,8 @@
 #include "yb/util/env.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/tsan_util.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -157,6 +162,12 @@ class MiniCluster : public MiniClusterBase {
   // Same as above, but get options from flags.
   Status AddTabletServer();
 
+  // Start YB Controller servers for all the existing TSs.
+  Status StartYbControllerServers();
+
+  // Add a new YB Controller server for the given tablet server
+  Status AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer>);
+
   Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
@@ -219,6 +230,11 @@ class MiniCluster : public MiniClusterBase {
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(size_t idx);
 
+  // Return all YBController servers.
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
+    return yb_controller_servers_;
+  }
+
   tserver::TSTabletManager* GetTabletManager(size_t idx);
 
   // Wait for the given tablet to have 'expected_count' replicas
@@ -233,10 +249,8 @@ class MiniCluster : public MiniClusterBase {
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
-  Status WaitForTabletServerCount(size_t count);
-  Status WaitForTabletServerCount(size_t count,
-                                  std::vector<std::shared_ptr<master::TSDescriptor>>* descs,
-                                  bool live_only = false);
+  Result<std::vector<std::shared_ptr<master::TSDescriptor>>> WaitForTabletServerCount(
+      size_t count, bool live_only = false);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.
@@ -247,6 +261,9 @@ class MiniCluster : public MiniClusterBase {
   }
 
   Status WaitForLoadBalancerToStabilize(MonoDelta timeout);
+
+  template <typename T>
+  Result<T> GetLeaderMasterProxy();
 
   std::string GetClusterId() { return options_.cluster_id; }
 
@@ -268,6 +285,8 @@ class MiniCluster : public MiniClusterBase {
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
   void EnsurePortsAllocated(size_t new_num_masters = 0, size_t num_tservers = 0);
 
+  Status ChangeClusterConfig(std::function<void(master::SysClusterConfigEntryPB*)> config_changer);
+
   const MiniClusterOptions options_;
   const std::string fs_root_;
 
@@ -279,10 +298,21 @@ class MiniCluster : public MiniClusterBase {
   MiniMasters mini_masters_;
   MiniTabletServers mini_tablet_servers_;
 
-  std::vector<scoped_refptr<ExternalYbController>> yb_controllers_;
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_servers_;
 
   PortPicker port_picker_;
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
+
+// Requires that skewed clock is registered as physical clock.
+// Jumps the physical clock by delta
+// i.e. no effect on hybrid ts unless by physical clock.
+// new_clock = old_clock + delta (clocks are moving).
+// Returns an RAII structure that resets the delta change
+// when it goes out of scope.
+server::SkewedClockDeltaChanger JumpClock(
+    tserver::MiniTabletServer* server, std::chrono::milliseconds delta);
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
@@ -344,19 +374,25 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
     MonoDelta timeout = std::chrono::seconds(30) * kTimeMultiplier);
 
 Status WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const std::string& tablet_id, MonoTime deadline);
+    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline);
 
 Status WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);
 
-Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta deadline);
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline);
+
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout);
+
+Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout);
 
 YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
-    ForceStepDown force_step_down);
+    ForceStepDown force_step_down, MonoDelta timeout = 10s);
 
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.
@@ -403,8 +439,9 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 // for already created tablets.
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, size_t bytes_per_sec);
 
-Status WaitAllReplicasSynchronizedWithLeader(
-    MiniCluster* cluster, CoarseTimePoint deadline);
+Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseTimePoint deadline);
+
+Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout);
 
 Status WaitForAnySstFiles(
     tablet::TabletPeerPtr peer, MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
@@ -430,5 +467,10 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster);
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+
+template <typename T>
+Result<T> MiniCluster::GetLeaderMasterProxy() {
+  return T(proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
+}
 
 }  // namespace yb

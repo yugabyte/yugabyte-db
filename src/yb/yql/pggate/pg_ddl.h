@@ -40,7 +40,9 @@ class PgCreateDatabase : public PgDdl {
                    const char *database_name,
                    PgOid database_oid,
                    PgOid source_database_oid,
+                   const char* source_database_name,
                    PgOid next_oid,
+                   const int64_t clone_time,
                    const bool colocated);
   virtual ~PgCreateDatabase();
 
@@ -141,14 +143,17 @@ class PgCreateTable : public PgDdl {
                 const char *table_name,
                 const PgObjectId& table_id,
                 bool is_shared_table,
+                bool is_sys_catalog_table,
                 bool if_not_exist,
-                bool add_primary_key,
+                PgYbrowidMode ybrowid_mode,
                 bool is_colocated_via_database,
                 const PgObjectId& tablegroup_oid,
                 const ColocationId colocation_id,
                 const PgObjectId& tablespace_oid,
                 bool is_matview,
-                const PgObjectId& matview_pg_table_oid);
+                const PgObjectId& pg_table_oid,
+                const PgObjectId& old_relfilenode_oid,
+                bool is_truncate);
 
   void SetupIndex(
       const PgObjectId& base_table_id, bool is_unique_index, bool skip_index_backfill);
@@ -177,6 +182,8 @@ class PgCreateTable : public PgDdl {
 
   // Specify the number of tablets explicitly.
   Status SetNumTablets(int32_t num_tablets);
+
+  Status SetVectorOptions(YbPgVectorIdxOptions *options);
 
   Status AddSplitBoundary(PgExpr **exprs, int expr_count);
 
@@ -227,13 +234,16 @@ class PgTruncateTable : public PgDdl {
 
 class PgDropIndex : public PgDropTable {
  public:
-  PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist);
+  PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist,
+              bool ddl_rollback_enabled);
   virtual ~PgDropIndex();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_DROP_INDEX; }
 
   // Execute.
   Status Exec();
+ private:
+  bool ddl_rollback_enabled_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -260,7 +270,11 @@ class PgAlterTable : public PgDdl {
 
   Status SetTableId(const PgObjectId& table_id);
 
+  Status SetReplicaIdentity(const char identity_type);
+
   Status Exec();
+
+  void InvalidateTableCacheEntry();
 
   virtual ~PgAlterTable();
 
@@ -317,9 +331,11 @@ class PgCreateReplicationSlot : public PgDdl {
  public:
   PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
                           const char *slot_name,
-                          PgOid database_oid);
+                          const char *plugin_name,
+                          PgOid database_oid,
+                          YBCPgReplicationSlotSnapshotAction snapshot_action);
 
-  Status Exec();
+  Result<tserver::PgCreateReplicationSlotResponsePB> Exec();
 
   virtual ~PgCreateReplicationSlot();
 

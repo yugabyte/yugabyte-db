@@ -66,7 +66,9 @@ public class AddOnClusterDelete extends UniverseDefinitionTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       } else {
-        universe = lockUniverseForUpdate(params().expectedUniverseVersion);
+        universe =
+            lockAndFreezeUniverseForUpdate(
+                params().expectedUniverseVersion, null /* Txn callback */);
       }
 
       Cluster clusterToDelete = universe.getCluster(params().clusterUUID);
@@ -93,7 +95,8 @@ public class AddOnClusterDelete extends UniverseDefinitionTaskBase {
               nodesToBeRemoved,
               params().isForceDelete,
               true /* deleteNodeFromDB */,
-              true /* deleteRootVolumes */)
+              true /* deleteRootVolumes */,
+              false /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.

@@ -5,7 +5,9 @@ linkTitle: Docker
 headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
-  - /quick-start/docker/
+  - /preview/quick-start/docker/
+  - /preview/deploy/docker/docker-compose
+
 type: docs
 unversioned: true
 ---
@@ -89,7 +91,7 @@ To create a 1-node cluster with a replication factor (RF) of 1, run the followin
 ```sh
 docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
  yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
- --daemon=false
+ --background=false
 ```
 
 If you are running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`. This is necessary because Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail unless you forward the port as shown. Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
@@ -102,7 +104,7 @@ docker ps
 
 ```output
 CONTAINER ID   IMAGE                               COMMAND                  CREATED         STATUS         PORTS                                                                                                                                                                                               NAMES
-c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
+c1c98c29149b   yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}   "/sbin/tini -- bin/y…"   7 seconds ago   Up 5 seconds   0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 0.0.0.0:15433->15433/tcp, 12000/tcp   yugabyte
 ```
 
 Run the following command to check the cluster status:
@@ -144,7 +146,8 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
            -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
            -v ~/yb_data:/home/yugabyte/yb_data \
            yugabytedb/yugabyte:latest bin/yugabyted start \
-           --base_dir=/home/yugabyte/yb_data --daemon=false
+           --base_dir=/home/yugabyte/yb_data \
+           --background=false
   ```
 
   If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
@@ -153,8 +156,8 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
 The cluster you have created consists of two processes:
 
-- [YB-Master](../../architecture/concepts/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
-- [YB-TServer](../../architecture/concepts/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
+- [YB-Master](../../architecture/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
+- [YB-TServer](../../architecture/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
 
 Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
@@ -165,7 +168,7 @@ docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --hos
 ```
 
 ```output
-ysqlsh (11.2-YB-{{< yb-version version="preview" >}}-b0)
+ysqlsh (11.2-YB-{{< yb-version version="preview" >}}-b545)
 Type "help" for help.
 
 yugabyte=#
@@ -175,7 +178,7 @@ To load sample data and explore an example using ysqlsh, refer to [Retail Analyt
 
 ## Monitor your cluster
 
-When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](localhost:15433).
+When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [localhost:15433](http://localhost:15433).
 
 ![YugabyteDB UI Cluster Overview](/images/quick_start/quick-start-ui-overview.png)
 

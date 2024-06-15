@@ -125,6 +125,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                           GetOldTransactionsResponsePB* resp,
                           rpc::RpcContext context) override;
 
+  void GetOldSingleShardWaiters(const GetOldSingleShardWaitersRequestPB* req,
+                                GetOldSingleShardWaitersResponsePB* resp,
+                                rpc::RpcContext context) override;
+
   void GetTransactionStatusAtParticipant(const GetTransactionStatusAtParticipantRequestPB* req,
                                          GetTransactionStatusAtParticipantResponsePB* resp,
                                          rpc::RpcContext context) override;
@@ -180,6 +184,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;
 
+void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
+                       ClearUniverseUuidResponsePB* resp,
+                       rpc::RpcContext context) override;
+
   void GetLockStatus(const GetLockStatusRequestPB* req,
                      GetLockStatusResponsePB* resp,
                      rpc::RpcContext context) override;
@@ -203,6 +211,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const GetTabletKeyRangesRequestPB* req, GetTabletKeyRangesResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClearAllMetaCachesOnServer(
+      const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:
@@ -210,14 +222,8 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
 
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
     const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
-    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) override;
-
-  template<class Resp>
-  bool CheckWriteThrottlingOrRespond(
-      double score, tablet::TabletPeer* tablet_peer, Resp* resp, rpc::RpcContext* context);
-
-  template <class Req, class Resp, class F>
-  void PerformAtLeader(const Req& req, Resp* resp, rpc::RpcContext* context, const F& f);
+    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
+    tserver::ReadResponsePB* resp) override;
 
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
 
@@ -307,17 +313,33 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpdateTransactionTablesVersionResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void CloneTablet(
+      const tablet::CloneTabletRequestPB* req,
+      CloneTabletResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ClonePgSchema(
+      const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
  private:
   TabletServer* const server_;
 
-  Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
+  Status DoCreateTablet(
+      const CreateTabletRequestPB* req, CreateTabletResponsePB* resp, const MonoDelta& timeout);
 
-  Status SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
-                              ChangeMetadataResponsePB* resp,
-                              const tablet::TabletPeerPtr& peer);
+  Status DoClonePgSchema(const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp);
+
+  Status SetupCDCSDKRetention(
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      const tablet::TabletPeerPtr& peer);
+
+  Status SetupCDCSDKRetentionOnNewTablet(
+      const MonoDelta& timeout, CreateTabletResponsePB* resp,
+      const tablet::TabletPeerPtr& tablet_peer);
 
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is

@@ -31,12 +31,21 @@
 #
 
 set(YB_PCH_PREFIX integration-tests)
-set(YB_PCH_DEP_LIBS boost_regex opid_proto)
+set(YB_PCH_DEP_LIBS boost_regex)
 
-file(COPY
-  ${CMAKE_SOURCE_DIR}/test_certs DESTINATION
-  ${CMAKE_BINARY_DIR}
-  FILE_PERMISSIONS OWNER_WRITE OWNER_READ)
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/test_certs
+  WORKING_DIRECTORY ${YB_BUILD_ROOT}
+  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs)
+
+add_custom_target(generate_test_certs DEPENDS ${CMAKE_BINARY_DIR}/test_certs)
+
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf
+  WORKING_DIRECTORY ${YB_BUILD_ROOT}
+  COMMAND ${BUILD_SUPPORT_DIR}/fips_install.sh ${CMAKE_BINARY_DIR}/openssl-config)
+
+add_custom_target(fips_install DEPENDS ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf)
 
 ADD_YB_TEST_LIBRARY(
     cdc_test_util
@@ -48,6 +57,7 @@ set(INTEGRATION_TESTS_SRCS
   cluster_verifier.cc
   create-table-itest-base.cc
   external_mini_cluster.cc
+  external_daemon.cc
   external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
   external_mini_cluster_validator.cc
@@ -57,6 +67,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster_base.cc
   mini_cluster_utils.cc
   packed_row_test_base.cc
+  postgres-minicluster.cc
   redis_table_test_base.cc
   test_workload.cc
   ts_itest-base.cc
@@ -96,7 +107,9 @@ add_dependencies(integration-tests
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"
   yb-admin
   gen_auto_flags_json
-  yb-ts-cli)
+  yb-ts-cli
+  generate_test_certs
+  fips_install)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -143,6 +156,7 @@ ADD_YB_TEST(master_heartbeat-itest)
 ADD_YB_TEST(tserver_metrics_heartbeat_data_provider-itest)
 ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
+ADD_YB_TEST(clone-tablet-itest)
 ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)
 ADD_YB_TEST(tablet_health_manager-itest)
@@ -153,6 +167,7 @@ ADD_YB_TEST(tserver_path_handlers-itest)
 ADD_YB_TEST(master_failover-itest)
 ADD_YB_TEST(master_config-itest)
 ADD_YB_TEST(master_tasks-test)
+ADD_YB_TEST(metacache_refresh-itest)
 ADD_YB_TEST(network_failure-test)
 ADD_YB_TEST(system_table_fault_tolerance)
 ADD_YB_TEST(raft_consensus-itest)
@@ -161,7 +176,6 @@ ADD_YB_TEST(ts_tablet_manager-itest)
 ADD_YB_TEST(ts_recovery-itest)
 ADD_YB_TEST(create-table-stress-test)
 ADD_YB_TEST(master-partitioned-test)
-ADD_YB_TEST(minicluster-snapshot-test)
 ADD_YB_TEST(delete_table-test)
 ADD_YB_TEST(external_mini_cluster-test)
 ADD_YB_TEST(linked_list-test)
@@ -173,6 +187,7 @@ ADD_YB_TEST(placement_info-itest)
 ADD_YB_TEST(kv_table-test)
 ADD_YB_TEST(kv_table_ts_failover-test)
 ADD_YB_TEST(kv_table_ts_failover_write_if-test)
+ADD_YB_TEST(faulty_drive-itest)
 ADD_YB_TEST(flush_under_load-test)
 ADD_YB_TEST(stepdown_under_load-test)
 ADD_YB_TEST(full_stack-insert-scan-test)
@@ -198,14 +213,19 @@ ADD_YB_TEST(cdc_state_table-test)
 ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
+ADD_YB_TEST(cdcsdk_replica_identity-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
+ADD_YB_TEST(cdcsdk_consumption_consistent_changes-test)
 ADD_YB_TEST(cdcsdk_snapshot-test)
 ADD_YB_TEST(cdcsdk_tablet_split-test)
 ADD_YB_TEST(cdcsdk_consistent_snapshot-test)
 ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
+ADD_YB_TEST(pg_cron-test)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
+ADD_YB_TEST(xcluster/xcluster_db_scoped-test)
+ADD_YB_TEST(xcluster/xcluster_ddl_replication-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
 ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)
@@ -215,6 +235,7 @@ ADD_YB_TEST(xcluster/xcluster_ysql_index-test)
 ADD_YB_TEST(xcluster/xcluster_ysql-test)
 ADD_YB_TEST(xcluster/xcluster-tablet-split-itest)
 ADD_YB_TEST(xcluster/xcluster-test)
+ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
 ADD_YB_TEST(retryable_request-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
@@ -237,6 +258,15 @@ function(ADD_YB_CQL_TEST TEST_NAME)
   YB_TEST_TARGET_INCLUDE_DIRECTORIES(${TEST_NAME} PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
   YB_TEST_TARGET_LINK_LIBRARIES(${TEST_NAME} yb-cql)
 endfunction()
+
+ADD_YB_TEST(wait_states-itest)
+YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
+
+ADD_YB_TEST(minicluster-snapshot-test)
+YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
+
+ADD_YB_TEST(disk_full-test)
+YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

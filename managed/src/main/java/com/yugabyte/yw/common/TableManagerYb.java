@@ -45,7 +45,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -203,7 +203,8 @@ public class TableManagerYb extends DevopsBase {
             podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
-            commandArgs);
+            commandArgs,
+            userIntent);
         commandArgs.add("create");
         extraVars.putAll(customerConfig.dataAsMap());
 
@@ -216,17 +217,16 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add("--keyspace");
         commandArgs.add(taskParams.getKeyspace());
         BulkImportParams bulkImportParams = (BulkImportParams) taskParams;
-        ReleaseManager.ReleaseMetadata metadata =
-            releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
-        if (metadata == null) {
+        ReleaseContainer release = releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
+        if (release == null) {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
         String ybServerPackage;
         if (arch != null) {
-          ybServerPackage = metadata.getFilePath(arch);
+          ybServerPackage = release.getFilePath(arch);
         } else {
-          ybServerPackage = metadata.getFilePath(region);
+          ybServerPackage = release.getFilePath(region);
         }
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
@@ -265,7 +265,8 @@ public class TableManagerYb extends DevopsBase {
             podAddrToConfig,
             nodeToNodeTlsEnabled,
             ipToSshKeyPath,
-            commandArgs);
+            commandArgs,
+            userIntent);
         commandArgs.add("delete");
         extraVars.putAll(customerConfig.dataAsMap());
         break;
@@ -290,7 +291,8 @@ public class TableManagerYb extends DevopsBase {
       Map<String, Map<String, String>> podAddrToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
-      List<String> commandArgs) {
+      List<String> commandArgs,
+      UserIntent userIntent) {
     if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
@@ -303,6 +305,9 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add("--ip_to_ssh_key_path");
         commandArgs.add(Json.stringify(Json.toJson(ipToSshKeyPath)));
       }
+    }
+    if (region.getProviderCloudCode().equals(CloudType.kubernetes) || userIntent.dedicatedNodes) {
+      commandArgs.add("--useTserver");
     }
     Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
     boolean useServerBroadcastAddress =

@@ -63,7 +63,12 @@ class PgTableCache::Impl {
 
   void Invalidate(const TableId& table_id) {
     std::lock_guard lock(mutex_);
-    cache_.erase(table_id);
+    const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(table_id));
+    VLOG(2) << "Invalidate table " << table_id << " in table cache of database " << db_oid;
+    auto iter = caches_.find(db_oid);
+    if (iter != caches_.end()) {
+      iter->second.first.erase(table_id);
+    }
   }
 
   void InvalidateAll(CoarseTimePoint invalidation_time) {
@@ -71,8 +76,42 @@ class PgTableCache::Impl {
     if (last_cache_invalidation_ > invalidation_time) {
       return;
     }
+    VLOG(2) << "Invalidate all table caches";
     last_cache_invalidation_ = CoarseMonoClock::now();
-    cache_.clear();
+    caches_.clear();
+  }
+
+  void InvalidateDbTables(
+      const std::unordered_set<uint32_t>& db_oids_updated,
+      const std::unordered_set<uint32_t>& db_oids_deleted,
+      CoarseTimePoint invalidation_time) {
+    std::lock_guard lock(mutex_);
+    for (const auto db_oid : db_oids_updated) {
+      auto iter = caches_.find(db_oid);
+      if (iter == caches_.end()) {
+        // No need to create an empty per-database cache for db_oid just to
+        // mark its "last_cache_invalidation_".
+        continue;
+      }
+      // iter->second.second is the equivalent of last_cache_invalidation_
+      // at per database level for db_oid.
+      auto max_last_cache_invalidation =
+        std::max(iter->second.second, last_cache_invalidation_);
+      if (max_last_cache_invalidation > invalidation_time) {
+        // This requested invalidation (with invalidation_time) is stale for
+        // database db_oid.
+        continue;
+      }
+      // The catalog version of database db_oid is incremented.
+      VLOG(2) << "Invalidate table cache of database " << db_oid;
+      iter->second.first.clear();
+      iter->second.second = CoarseMonoClock::now();
+    }
+    for (const auto db_oid : db_oids_deleted) {
+      // The database db_oid is dropped.
+      VLOG(2) << "Remove table cache of dropped database " << db_oid;
+      caches_.erase(db_oid);
+    }
   }
 
  private:
@@ -90,11 +129,15 @@ class PgTableCache::Impl {
 
   std::pair<std::shared_ptr<CacheEntry>, bool> DoGetEntry(const TableId& table_id) {
     std::lock_guard lock(mutex_);
-    auto it = cache_.find(table_id);
-    if (it != cache_.end()) {
+    const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(table_id));
+    const auto iter = caches_.find(db_oid);
+    auto& entry = iter != caches_.end() ? iter->second : caches_[db_oid];
+    auto& cache = entry.first;
+    auto it = cache.find(table_id);
+    if (it != cache.end()) {
       return std::make_pair(it->second, false);
     }
-    it = cache_.emplace(table_id, std::make_shared<CacheEntry>()).first;
+    it = cache.emplace(table_id, std::make_shared<CacheEntry>()).first;
     return std::make_pair(it->second, true);
   }
 
@@ -132,7 +175,8 @@ class PgTableCache::Impl {
 
   std::shared_future<client::YBClient*> client_future_;
   std::mutex mutex_;
-  std::unordered_map<TableId, std::shared_ptr<CacheEntry>> cache_ GUARDED_BY(mutex_);
+  using PgTableMap = std::unordered_map<TableId, std::shared_ptr<CacheEntry>>;
+  std::unordered_map<uint32_t, std::pair<PgTableMap, CoarseTimePoint>> caches_ GUARDED_BY(mutex_);
   CoarseTimePoint last_cache_invalidation_ GUARDED_BY(mutex_);
 };
 
@@ -160,6 +204,13 @@ void PgTableCache::Invalidate(const TableId& table_id) {
 
 void PgTableCache::InvalidateAll(CoarseTimePoint invalidation_time) {
   impl_->InvalidateAll(invalidation_time);
+}
+
+void PgTableCache::InvalidateDbTables(
+    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_set<uint32_t>& db_oids_deleted,
+    CoarseTimePoint invalidation_time) {
+  impl_->InvalidateDbTables(db_oids_updated, db_oids_deleted, invalidation_time);
 }
 
 }  // namespace tserver

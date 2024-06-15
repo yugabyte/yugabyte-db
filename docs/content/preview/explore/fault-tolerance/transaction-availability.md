@@ -1,14 +1,14 @@
 ---
 title: High availability of transactions
 headerTitle:  High availability of transactions
-linkTitle: HA of transactions
+linkTitle: Transactions
 description: Simulate fault tolerance and resilience of transactions in a local YugabyteDB database universe.
 headcontent: Highly available and fault tolerant transactions
 menu:
   preview:
     identifier: transaction-availability-local
     parent: fault-tolerance
-    weight: 20
+    weight: 60
 type: docs
 ---
 
@@ -44,7 +44,7 @@ For more information on how YugabyteDB handles failures and its impact during tr
     ```
 
     {{< note title="Note" >}}
-The examples use tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabytedDB handles transaction failures in the same way either with or without tablespaces.
+The examples use tablespaces so that the failure scenarios run in a deterministic manner in your cluster setup. YugabyteDB handles transaction failures in the same way either with or without tablespaces.
     {{< /note >}}
 
 1. Create a table in the tablespace using the following command:
@@ -119,9 +119,8 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
 1. From another terminal of your YugabyteDB home directory, stop node-2 as follows:
 
-    ```sh
-    ./bin/yugabyted stop --base_dir=/tmp/ybd2
-    ```
+    {{%cluster/cmd op="stop" nodes="2"%}}
+
 
 1. Navigate to <http://127.0.0.1:7000/tablet-servers> to verify that node-2 is gone from the tablet list.
 
@@ -162,9 +161,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
 1. From another terminal of your YugabyteDB home directory, restart node-2 using the following command:
 
-    ```sh
-    ./bin/yugabyted start --base_dir=/tmp/ybd2
-    ```
+    {{%cluster/cmd op="stop" nodes="2"%}}
 
 ## Node failure just after a transaction executes a statement
 
@@ -204,9 +201,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
 1. From another terminal of your YugabyteDB home directory, stop node-2, as this is the node that has received the modified row.
 
-    ```sh
-    ./bin/yugabyted stop --base_dir=/tmp/ybd2
-    ```
+    {{%cluster/cmd op="stop" nodes="2" %}}
 
 1. Navigate to <http://127.0.0.1:7000/tablet-servers> to verify that node-2 is gone from the server list and that a new leader has been elected for the row with `k=1`.
 
@@ -244,9 +239,7 @@ The following diagram illustrates the high-level steps that ensure transactions 
 
 1. From another terminal of your YugabyteDB home directory, restart node-2 using the following command.
 
-    ```sh
-    ./bin/yugabyted start --base_dir=/tmp/ybd2
-    ```
+    {{%cluster/cmd op="stop" nodes="2"%}}
 
 ## Failure of the node to which a client has connected
 
@@ -288,9 +281,7 @@ For this case, you can connect to any node in the cluster; `127.0.0.1` has been 
 
 1. From another terminal of your YugabyteDB home directory, stop node-1 (the node that you have connected to) as follows:
 
-    ```sh
-    ./bin/yugabyted stop --base_dir=/tmp/ybd1
-    ```
+    {{%cluster/cmd op="stop" nodes="1"%}}
 
 1. Commit the transaction as follows:
 

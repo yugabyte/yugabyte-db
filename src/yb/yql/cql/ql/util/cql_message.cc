@@ -16,6 +16,8 @@
 #include <lz4.h>
 #include <snappy.h>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
@@ -66,6 +68,13 @@ constexpr char CQLMessage::kSnappyCompression[];
 constexpr char CQLMessage::kTopologyChangeEvent[];
 constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
+
+uint64 CQLMessage::QueryIdAsUint64(const QueryId& query_id) {
+  // Convert up to the first 16 characters of the query-id's hex representation.
+  return std::stoull(
+      b2a_hex(query_id).substr(0, std::min(static_cast<QueryId::size_type>(16), query_id.size())),
+      nullptr, 16);
+}
 
 Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
                                                          const size_t pos,
@@ -560,7 +569,11 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   RETURN_NOT_OK(ParseConsistency(&params->consistency));
   RETURN_NOT_OK(params->ValidateConsistency());
   RETURN_NOT_OK(ParseByte(&params->flags));
-  params->set_request_id(RandomUniformInt<uint64_t>());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    params->set_request_id(wait_state->rpc_request_id());
+  } else {
+    params->set_request_id(RandomUniformInt<uint64_t>());
+  }
   if (params->flags & CQLMessage::QueryParameters::kWithValuesFlag) {
     const bool with_name = (params->flags & CQLMessage::QueryParameters::kWithNamesForValuesFlag);
     uint16_t count = 0;

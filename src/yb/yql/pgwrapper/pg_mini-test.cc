@@ -12,6 +12,7 @@
 //
 
 #include <atomic>
+#include <fstream>
 #include <optional>
 #include <thread>
 
@@ -26,6 +27,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
@@ -37,6 +39,8 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -70,17 +74,21 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 
+DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tracing_level);
@@ -103,20 +111,26 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_uint64(max_clock_skew_usec);
 
 DECLARE_string(time_source);
+DECLARE_string(ysql_yb_default_replica_identity);
 
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
+DECLARE_bool(ysql_yb_ash_enable_infra);
+DECLARE_bool(ysql_yb_enable_ash);
+
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
+METRIC_DECLARE_histogram(handler_latency_outbound_transfer);
+METRIC_DECLARE_gauge_int64(rpc_busy_reactors);
 
 namespace yb::pgwrapper {
 namespace {
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    const auto db_oid = VERIFY_RESULT(conn->FetchRow<int32>(Format(
+    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
     return conn->FetchRow<PGUint64>(
         Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
@@ -128,6 +142,17 @@ Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& d
   const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
   RETURN_NOT_OK(conn->Execute(ddl_query));
   return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+}
+
+Status IsReplicaIdentityPopulatedInTabletPeers(
+    PgReplicaIdentity expected_replica_identity, std::vector<tablet::TabletPeerPtr> tablet_peers,
+    std::string table_id) {
+  for (const auto& peer : tablet_peers) {
+    auto replica_identity =
+        peer->tablet_metadata()->schema(table_id)->table_properties().replica_identity();
+    EXPECT_EQ(replica_identity, expected_replica_identity);
+  }
+  return Status::OK();
 }
 
 } // namespace
@@ -177,7 +202,7 @@ class PgMiniTestFailOnConflict : public PgMiniTest {
   void SetUp() override {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    EnableFailOnConflict();
     PgMiniTest::SetUp();
   }
 };
@@ -386,6 +411,88 @@ TEST_F(PgMiniTest, Simple) {
   ASSERT_EQ(value, "hello");
 }
 
+class PgMiniAshTest : public PgMiniTestSingleNode {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
+    // This test counts number of performed RPC calls, so turn off pg client shared memory.
+    FLAGS_pg_client_use_shared_memory = false;
+    PgMiniTestSingleNode::SetUp();
+  }
+};
+
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Ash), PgMiniAshTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 5;
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; i++) {
+      ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
+    }
+  });
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    for (int i = 0; !stop; i++) {
+      auto values = ASSERT_RESULT(
+          conn.FetchRows<std::string>(yb::Format("SELECT value FROM t where key = $0", i)));
+    }
+  });
+
+  auto pg_proxy = std::make_unique<tserver::PgClientServiceProxy>(
+      &client_->proxy_cache(),
+      HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
+
+  int kNumCalls = 100;
+  tserver::PgActiveSessionHistoryRequestPB req;
+  req.set_fetch_tserver_states(true);
+  req.set_fetch_flush_and_compaction_states(true);
+  req.set_fetch_cql_states(true);
+  tserver::PgActiveSessionHistoryResponsePB resp;
+  rpc::RpcController controller;
+  std::unordered_map<std::string, size_t> method_counts;
+  int calls_without_aux_info_details = 0;
+  for (int i = 0; i < kNumCalls; ++i) {
+    ASSERT_OK(pg_proxy->ActiveSessionHistory(req, &resp, &controller));
+    VLOG(1) << "Call " << i << " got " << yb::ToString(resp);
+    controller.Reset();
+    SleepFor(10ms);
+    int idx = 0;
+    for (auto& entry : resp.tserver_wait_states().wait_states()) {
+      VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
+      if (entry.has_aux_info() && entry.aux_info().has_method()) {
+        ++method_counts[entry.aux_info().method()];
+      } else {
+        LOG(ERROR) << "Found entry without AuxInfo/method." << entry.DebugString();
+        // If an RPC does not have the aux/method information, it shouldn't have progressed much.
+        if (entry.has_wait_state_code_as_string()) {
+          ASSERT_EQ(entry.wait_state_code_as_string(), "OnCpu_Passive");
+        }
+        ++calls_without_aux_info_details;
+      }
+    }
+  }
+  thread_holder.Stop();
+
+  ASSERT_LE(method_counts["Read"], kNumCalls);
+  ASSERT_LE(method_counts["Write"], kNumCalls);
+  ASSERT_LE(method_counts["Perform"], 2 * kNumCalls);
+  // Given that we have explicitly slowed down the WriteRpc, we hope to catch it
+  // at least half the time.
+  constexpr float kProbCatchPerform = 0.5;
+  ASSERT_GE(method_counts["Write"], kNumCalls * kProbCatchPerform);
+  ASSERT_GE(method_counts["Perform"], kNumCalls * kProbCatchPerform);
+
+  // It is acceptable that some calls may not have populated their aux_info yet.
+  // This probability should be very low.
+  constexpr float kProbNoMethod = 0.1;
+  ASSERT_LE(calls_without_aux_info_details, 2 * kNumCalls * kProbNoMethod);
+}
+
 TEST_F(PgMiniTest, Tracing) {
   class TraceLogSink : public google::LogSink {
    public:
@@ -401,10 +508,14 @@ TEST_F(PgMiniTest, Tracing) {
 
    private:
     std::atomic<size_t> last_logged_bytes_{0};
-  } trace_log_sink;
+  };
+
+  TraceLogSink trace_log_sink;
+
   google::AddLogSink(&trace_log_sink);
   size_t last_logged_trace_size;
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
   auto conn = ASSERT_RESULT(Connect());
@@ -802,6 +913,40 @@ TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
   }, 10s * kTimeMultiplier, "Intents cleanup", 200ms));
 }
 
+TEST_F_EX(PgMiniTest, SmallParallelScan, PgMiniTestSingleNode) {
+  const std::string kDatabaseName = "testdb";
+  constexpr auto kNumRows = 100;
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocation=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int, primary key(k ASC)) with (colocation=true)"));
+
+  LOG(INFO) << "Loading data";
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i FROM generate_series(1, $0) i", kNumRows));
+
+  ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 10"));
+  ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+  ASSERT_OK(conn.Execute("SET force_parallel_mode = TRUE"));
+
+  LOG(INFO) << "Starting scan";
+  auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows);
+
+  LOG(INFO) << "Starting transaction";
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i FROM generate_series($0, $1) i",
+                               kNumRows + 1, kNumRows * 2));
+  res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
+  ASSERT_EQ(res, kNumRows * 2);
+  ASSERT_OK(conn.CommitTransaction());
+}
+
 void PgMiniTest::TestForeignKey(IsolationLevel isolation_level) {
   const std::string kDataTable = "data";
   const std::string kReferenceTable = "reference";
@@ -908,21 +1053,22 @@ TEST_F(PgMiniTest, DropDBMarkDeleted) {
   auto *catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   PGConn conn = ASSERT_RESULT(Connect());
 
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // System tables should be deleting then deleted.
   int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeleting() && (num_sleeps++ != kMaxNumSleeps)) {
+  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
     LOG(INFO) << "Tables are deleting...";
     std::this_thread::sleep_for(kSleepTime);
   }
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
+      << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
   // Refresh stale local variable after RestartSync.
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
 }
 
 TEST_F(PgMiniTest, DropDBWithTables) {
@@ -950,16 +1096,17 @@ TEST_F(PgMiniTest, DropDBWithTables) {
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
   // User and system tables should be deleting then deleted.
   int num_sleeps = 0;
-  while (catalog_manager->AreTablesDeleting() && (num_sleeps++ != kMaxNumSleeps)) {
+  while (catalog_manager->AreTablesDeletingOrHiding() && (num_sleeps++ != kMaxNumSleeps)) {
     LOG(INFO) << "Tables are deleting...";
     std::this_thread::sleep_for(kSleepTime);
   }
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting()) << "Tables should have finished deleting";
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding())
+      << "Tables should have finished deleting";
   // Make sure that the table deletions are persisted.
   ASSERT_OK(RestartCluster());
   catalog_manager = &ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   sys_tablet = ASSERT_RESULT(catalog_manager->GetTabletInfo(master::kSysCatalogTabletId));
-  ASSERT_FALSE(catalog_manager->AreTablesDeleting());
+  ASSERT_FALSE(catalog_manager->AreTablesDeletingOrHiding());
   {
     auto tablet_lock = sys_tablet->LockForWrite();
     num_tables_after = tablet_lock->pb.table_ids_size();
@@ -1202,6 +1349,96 @@ TEST_F(PgMiniTest, NoRestartSecondRead) {
   ASSERT_OK(conn1.CommitTransaction());
 }
 
+TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("set yb_enable_replica_identity = true"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 3 TABLETS"));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(CHANGE, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY FULL"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(FULL, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY CHANGE"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(CHANGE, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY DEFAULT"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(DEFAULT, tablet_peers, table_id));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY NOTHING"));
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(NOTHING, tablet_peers, table_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "FULL";
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (a int primary key)"));
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("t1"));
+  tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(FULL, tablet_peers, table_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "DEFAULT";
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (a int primary key)"));
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("t2"));
+  tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(DEFAULT, tablet_peers, table_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "NOTHING";
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (a int primary key)"));
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("t3"));
+  tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(NOTHING, tablet_peers, table_id));
+
+  // If an invalid value is provided to the flag ysql_yb_default_replica_identity, table creation
+  // will fail.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "INVALID";
+  ASSERT_NOK(conn.Execute("CREATE TABLE t4 (a int primary key)"));
+}
+
+TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
+  // Setup test data.
+  const auto kNonColocatedTableName = "test";
+  const auto kColocatedTableName = "colo_test";
+  const auto kDatabaseName = "testdb";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+  conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (a int PRIMARY KEY, b int) WITH (colocation = false) SPLIT INTO 3 TABLETS",
+      kNonColocatedTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kColocatedTableName));
+
+  // Verify that skip_table_tombstone_check=true for non-colocated user tables.
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kNonColocatedTableName));
+  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  for (const auto& peer : tablet_peers) {
+    ASSERT_TRUE(peer->tablet_metadata()->primary_table_info()->skip_table_tombstone_check);
+  }
+
+  // Verify that skip_table_tombstone_check=true for colocated user tables.
+  table_id = ASSERT_RESULT(GetTableIDFromTableName(kColocatedTableName));
+  tablet_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr colocated_tablet_peer = nullptr;
+  for (const auto& peer : tablet_peers) {
+    if (peer->shared_tablet()->regular_db() && peer->tablet_metadata()->colocated()) {
+      colocated_tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(colocated_tablet_peer, nullptr);
+  ASSERT_TRUE(ASSERT_RESULT(
+      colocated_tablet_peer->tablet_metadata()->GetTableInfo(table_id))
+      ->skip_table_tombstone_check);
+
+  // Verify that skip_table_tombstone_check=false for pg system tables.
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
+  const auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  ASSERT_FALSE(ASSERT_RESULT(
+      sys_catalog.tablet_peer()->tablet_metadata()->GetTableInfo(table_id))
+      ->skip_table_tombstone_check);
+}
+
 // ------------------------------------------------------------------------------------------------
 // Tablet Splitting Tests
 // ------------------------------------------------------------------------------------------------
@@ -1287,6 +1524,31 @@ class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
   }
 
 };
+
+template <class T>
+T* GetMetricOpt(const MetricEntity& metric_entity, const MetricPrototype& prototype) {
+  const auto& map = metric_entity.UnsafeMetricsMapForTests();
+  auto it = map.find(&prototype);
+  if (it == map.end()) {
+    return nullptr;
+  }
+  return down_cast<T*>(it->second.get());
+}
+
+template <class T>
+T* GetMetricOpt(const tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
+  return GetMetricOpt<T>(server.metric_entity(), prototype);
+}
+
+template <class T>
+T* GetMetricOpt(const tablet::Tablet& tablet, const MetricPrototype& prototype) {
+  return GetMetricOpt<T>(*tablet.GetTabletMetricsEntity(), prototype);
+}
+
+template <class T>
+T& GetMetric(tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
+  return *CHECK_NOTNULL(GetMetricOpt<T>(server, prototype));
+}
 
 } // namespace
 
@@ -1449,12 +1711,10 @@ void PgMiniTest::ValidateAbortedTxnMetric() {
   auto tablet_peers = cluster_->GetTabletPeers(0);
   for(size_t i = 0; i < tablet_peers.size(); ++i) {
     auto tablet = ASSERT_RESULT(tablet_peers[i]->shared_tablet_safe());
-    const auto& metric_map = tablet->GetTabletMetricsEntity()->UnsafeMetricsMapForTests();
-    std::reference_wrapper<const MetricPrototype> metric =
-        METRIC_aborted_transactions_pending_cleanup;
-    auto item = metric_map.find(&metric.get());
-    if (item != metric_map.end()) {
-      EXPECT_EQ(0, down_cast<const AtomicGauge<uint64>&>(*item->second).value());
+    auto* gauge = GetMetricOpt<const AtomicGauge<uint64>>(
+        *tablet, METRIC_aborted_transactions_pending_cleanup);
+    if (gauge) {
+      EXPECT_EQ(0, gauge->value());
     }
   }
 }
@@ -1884,8 +2144,8 @@ int64_t PgMiniTest::GetBloomFilterCheckedMetric() {
 TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (h int, r int, primary key(h, r))"));
-  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i / 10, i % 10"
-                         "FROM generate_series(1, 500) i"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i / 10, i % 10 FROM generate_series(1, 500) i"));
 
   FlushAndCompactTablets();
 
@@ -1896,6 +2156,80 @@ TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
 
   auto after_blooms_checked = GetBloomFilterCheckedMetric();
   ASSERT_EQ(after_blooms_checked, before_blooms_checked + 1);
+}
+
+class PgMiniStreamCompressionTest : public PgMiniTest {
+ public:
+  void SetUp() override {
+    FLAGS_stream_compression_algo = 1; // gzip
+    FLAGS_gzip_stream_compression_level = 6; // old default compression level
+    PgMiniTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
+  constexpr auto kNumRows = RegularBuildVsSanitizers(10000, 100);
+  constexpr auto kValueSize = RegularBuildVsSanitizers(10000, 100);
+  constexpr auto kNumReaders = 200;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value BYTEA) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.CopyBegin("COPY t FROM STDIN WITH BINARY"));
+  for (auto key : Range(kNumRows)) {
+    conn.CopyStartRow(2);
+    conn.CopyPutInt32(key);
+    conn.CopyPutString(RandomString(kValueSize));
+  }
+  ASSERT_OK(conn.CopyEnd());
+
+  FlushAndCompactTablets();
+
+  LOG(INFO) << "Rows: " << ASSERT_RESULT(conn.FetchAllAsString("SELECT key FROM t"));
+
+  TestThreadHolder thread_holder;
+  std::atomic<int> num_reads{0};
+  for (int i = 0 ; i != kNumReaders; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &num_reads]() {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop.load()) {
+        ASSERT_RESULT(conn.FetchRow<int32_t>(
+            Format("SELECT key FROM t WHERE key = $0", RandomUniformInt(0, kNumRows - 1))));
+        ++num_reads;
+      }
+    });
+  }
+
+  // Do reads for 20 seconds. After 5 seconds, add new tserver to trigger remote bootstrap.
+  for (int i = 0; i != 20; ++i) {
+    if (i == 5) {
+      ASSERT_OK(cluster_->AddTabletServer());
+      ASSERT_OK(cluster_->AddTServerToBlacklist(0));
+    }
+
+    for (const auto& server : cluster_->mini_tablet_servers()) {
+      GetMetric<Histogram>(*server, METRIC_handler_latency_outbound_transfer).Reset();
+    }
+    auto before_reads = num_reads.load();
+    std::this_thread::sleep_for(1s);
+    auto last_reads = num_reads.load() - before_reads;
+
+    std::string suffix;
+    for (const auto& server : cluster_->mini_tablet_servers()) {
+      auto latency = MonoDelta::FromNanoseconds(
+          GetMetric<Histogram>(*server, METRIC_handler_latency_outbound_transfer).MeanValue());
+      auto busy_reactors =
+          GetMetric<AtomicGauge<int64_t>>(*server, METRIC_rpc_busy_reactors).value();
+      if (suffix.empty()) {
+        suffix += ", latency (busy reactors): ";
+      } else {
+        suffix += ", ";
+      }
+      suffix += Format("$0 ($1)", latency, busy_reactors);
+    }
+    LOG(INFO) << "Num reads/s: " << last_reads << suffix;
+  }
+
+  thread_holder.Stop();
 }
 
 } // namespace yb::pgwrapper

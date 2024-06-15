@@ -9,8 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/task"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/tools"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -60,20 +64,20 @@ func init() {
 	setDefaults()
 	rootCmd.PersistentFlags().SortFlags = false
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "",
-		"config file, defaults to $HOME/.yba-cli.yaml")
+		"Config file, defaults to $HOME/.yba-cli.yaml")
 	rootCmd.PersistentFlags().StringP("host", "H", "http://localhost:9000",
-		"YugabyteDB Anywhere Host, defaults to http://localhost:9000")
+		"YugabyteDB Anywhere Host")
 	rootCmd.PersistentFlags().StringP("apiToken", "a", "", "YugabyteDB Anywhere api token.")
 	rootCmd.PersistentFlags().StringP("output", "o", "table",
-		"select the desired output format (table, json, pretty), defaults to table.")
+		"Select the desired output format. Allowed values: table, json, pretty.")
 	rootCmd.PersistentFlags().StringP("logLevel", "l", "info",
-		"select the desired log level format, defaults to info.")
-	rootCmd.PersistentFlags().Bool("debug", false, "use debug mode, same as --logLevel debug.")
-	rootCmd.PersistentFlags().Bool("no-color", false, "disable colors in output , defaults to false.")
+		"Select the desired log level format. Allowed values: debug, info, warn, error, fatal.")
+	rootCmd.PersistentFlags().Bool("debug", false, "Use debug mode, same as --logLevel debug.")
+	rootCmd.PersistentFlags().Bool("disable-color", false, "Disable colors in output. (default false)")
 	rootCmd.PersistentFlags().Bool("wait", true,
-		"wait until the task is completed, otherwise it will exit immediately, defaults to true.")
+		"Wait until the task is completed, otherwise it will exit immediately.")
 	rootCmd.PersistentFlags().Duration("timeout", 7*24*time.Hour,
-		"wait command timeout,example: 5m, 1h.")
+		"Wait command timeout, example: 5m, 1h.")
 
 	//Bind peristents flags to viper
 	viper.BindPFlag("host", rootCmd.PersistentFlags().Lookup("host"))
@@ -81,23 +85,34 @@ func init() {
 	viper.BindPFlag("output", rootCmd.PersistentFlags().Lookup("output"))
 	viper.BindPFlag("logLevel", rootCmd.PersistentFlags().Lookup("logLevel"))
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
-	viper.BindPFlag("no-color", rootCmd.PersistentFlags().Lookup("no-color"))
+	viper.BindPFlag("disable-color", rootCmd.PersistentFlags().Lookup("disable-color"))
 	viper.BindPFlag("wait", rootCmd.PersistentFlags().Lookup("wait"))
 	viper.BindPFlag("timeout", rootCmd.PersistentFlags().Lookup("timeout"))
 
-	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(auth.AuthCmd)
+	rootCmd.AddCommand(auth.LoginCmd)
+	rootCmd.AddCommand(auth.RegisterCmd)
 	rootCmd.AddCommand(releases.ReleasesCmd)
 	rootCmd.AddCommand(provider.ProviderCmd)
 	rootCmd.AddCommand(universe.UniverseCmd)
+	rootCmd.AddCommand(storageconfiguration.StorageConfigurationCmd)
+	rootCmd.AddCommand(backup.BackupCmd)
+	rootCmd.AddCommand(task.TaskCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
+
+	// Example for adding preview commands to the list of available commands
+	// util.AddCommandIfFeatureFlag(rootCmd, exampleCmd, util.PREVIEW)
 
 }
 
 // Execute commands
 func Execute(version string) {
 	rootCmd.Version = version
+	rootCmd.SetVersionTemplate("YugabyteDB Anywhere CLI (yba) version: {{.Version}}\n")
 	if err := rootCmd.Execute(); err != nil {
-		logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		// Set log level and formatter for this error
+		log.SetLogLevel(viper.GetString("logLevel"), viper.GetBool("debug"))
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 }
 
@@ -106,10 +121,10 @@ func setDefaults() {
 	viper.SetDefault("output", "table")
 	viper.SetDefault("logLevel", "info")
 	viper.SetDefault("debug", false)
-	viper.SetDefault("no-color", false)
+	viper.SetDefault("disable-color", false)
 	viper.SetDefault("wait", true)
 	viper.SetDefault("timeout", time.Duration(7*24*time.Hour))
-	viper.SetDefault("lastVersionAvailable", "v0.0.0")
+	viper.SetDefault("lastVersionAvailable", "0.0.0")
 	viper.SetDefault("lastCheckedTime", 0)
 }
 
@@ -133,9 +148,7 @@ func initConfig() {
 	viper.SetEnvPrefix("yba")
 	//Read all enviromnent variable that match YBA_ENVNAME
 	viper.AutomaticEnv() // read in environment variables that match
-	//Set Logrus formatter options
-	log.SetFormatter()
-	// Set log level
+	// Set log level and formatter
 	log.SetLogLevel(viper.GetString("logLevel"), viper.GetBool("debug"))
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {

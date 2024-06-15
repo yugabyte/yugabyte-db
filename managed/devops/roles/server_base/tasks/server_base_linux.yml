@@ -128,12 +128,14 @@
       name: "{{ item }}"
       state: latest
       update_cache: yes
+      lock_timeout: 600
     with_items:
       - "{{ linux_packages }}"
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
     when: ansible_os_family == 'RedHat' and "item not in ansible_facts.packages"
+    tags: yb-prebuilt-ami
 
   - name: Install linux packages we need on our YugaByte clusters
     become: yes
@@ -147,16 +149,15 @@
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
     when: ansible_os_family != 'RedHat' and "item not in ansible_facts.packages"
+    tags: yb-prebuilt-ami
 
   - name: Install linux packages we need on our YugaByte clusters on RedHat aarch64 architecture
     become: yes
     become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
     package:
       name: "{{ item }}"
       state: latest
+      lock_timeout: 600
     with_items:
       - "{{ linux_packages + aarch64_packages }}"
     register: result
@@ -166,13 +167,11 @@
       ansible_architecture == 'aarch64' and
       "item not in ansible_facts.packages" and
       ansible_os_family == 'RedHat'
+    tags: yb-prebuilt-ami
 
   - name: Install linux packages we need on our YugaByte clusters on Debian aarch64 architecture
     become: yes
     become_method: sudo
-    module_defaults:
-      yum:
-        lock_timeout: 600
     package:
       name: "{{ item }}"
       state: latest
@@ -185,4 +184,5 @@
       ansible_architecture == 'aarch64' and
       "item not in ansible_facts.packages" and
       ansible_os_family == 'Debian'
+    tags: yb-prebuilt-ami
   when: not air_gap

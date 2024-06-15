@@ -6,7 +6,7 @@ description: Learn to deploy APIs using Azure API Management and YugabyteDB, cov
 image: /images/tutorials/azure/icons/API-Management-Icon.svg
 headcontent: Use YugaybteDB as the database backend for your API
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-azure-api-management
     parent: tutorials-azure
     weight: 60
@@ -43,7 +43,7 @@ Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-c
 In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/) can be used with [private service endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/managed-endpoint-azure/#create-a-pse-in-yugabytedb-managed) to create a secure connection between your application and database VPCs.
     {{< /note >}}
 
-1. Upon creation, save the credentials and [download the CA certificate](../../../develop/build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.
+1. Upon creation, save the credentials and [download the CA certificate](../../../tutorials/build-apps/cloud-add-ip/#download-your-cluster-certificate) once everything is up and running. This is essential for secure connections using the Node.js Smart Client.
 
 ## Create tables and insert records
 

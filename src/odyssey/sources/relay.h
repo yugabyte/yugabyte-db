@@ -143,6 +143,16 @@ static inline int od_relay_stop(od_relay_t *relay)
 	return 0;
 }
 
+// Skip relaying custom packets back to the client
+static inline int yb_od_skip_relay(char *data)
+{
+	kiwi_header_t *header;
+	header = (kiwi_header_t *)data;
+	if (header->type == YB_ROLE_OID_PARAMETER_STATUS)
+		return 1;
+	return 0;
+}
+
 static inline int od_relay_full_packet_required(char *data)
 {
 	kiwi_header_t *header;
@@ -151,6 +161,8 @@ static inline int od_relay_full_packet_required(char *data)
 	    header->type == KIWI_BE_READY_FOR_QUERY ||
 	    header->type == KIWI_BE_ERROR_RESPONSE ||
 	    header->type == KIWI_FE_PARSE || header->type == KIWI_FE_BIND ||
+		// For Ysql Connection Manager full packet is required for below headers as well
+		header->type == KIWI_FE_COPY_DATA || header->type == KIWI_FE_QUERY ||
 	    header->type == KIWI_FE_DESCRIBE)
 		return 1;
 	return 0;
@@ -190,6 +202,12 @@ static inline od_frontend_status_t od_relay_on_packet(od_relay_t *relay,
 	int rc;
 	od_frontend_status_t status;
 	status = relay->on_packet(relay, data, size);
+
+	/* skip relaying of custom packets back to the client */
+	if (yb_od_skip_relay(data)) {
+		relay->packet_skip = 1;
+		return OD_OK;
+	}
 
 	switch (status) {
 	case OD_OK:

@@ -6,3 +6,8 @@ test: yb-wait-queues-serializable-reads
 test: yb-lock-status-waiters
 test: concurrent-inserts-duplicate-key-error
 test: unblock-waiter-after-blocking-subtxn-rollsback
+test: yb-fk-row-locking
+test: yb-user-managed-constraint
+test: yb-fk-relationship
+test: yb-check-constraint-locking
+test: yb-insert-conflict-do-nothing-2

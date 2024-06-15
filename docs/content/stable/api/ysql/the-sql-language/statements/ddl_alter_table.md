@@ -50,7 +50,7 @@ These variants are useful only when at least one other table inherits `t`. But a
 
 Specify one of the following actions.
 
-#### ADD [ COLUMN ] *column_name* *data_type* [*constraint*](#constraints)
+#### ADD [ COLUMN ] [ IF NOT EXISTS ] *column_name* *data_type* [*constraint*](#constraints)
 
 Add the specified column with the specified data type and constraint.
 
@@ -65,7 +65,31 @@ Renaming a table is a non blocking metadata change operation.
 {{< /note >}}
 
 
-#### DROP [ COLUMN ] *column_name* [ RESTRICT | CASCADE ]
+#### SET TABLESPACE *tablespace_name*
+
+Asynchronously change the tablespace of an existing table.
+The tablespace change will immediately reflect in the config of the table, however the tablet move by the load balancer happens in the background.
+While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
+
+##### Example
+
+```sql
+yugabyte=# ALTER TABLE bank_transactions_eu SET TABLESPACE eu_central_1_tablespace;
+```
+
+```output
+NOTICE:  Data movement for table bank_transactions_eu is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+ALTER TABLE
+```
+
+
+Tables can be moved to the default tablespace using:
+```sql
+ALTER TABLE table_name SET TABLESPACE pg_default;
+```
+
+#### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table.
 
@@ -180,7 +204,17 @@ It quietly succeeds. Now `\d children` shows that the foreign key constraint `ch
 
 Add the specified constraint to the table.
 
-#### [*alter_column_type*]
+
+{{< warning >}}
+Adding a `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table.
+This happens because of the clustered storage by primary key that YugabyteDB uses to store rows and indexes.
+Tables without a `PRIMARY KEY` have a hidden one underneath and rows are stored clustered on it. The secondary indexes of the table
+link to this hidden `PRIMARY KEY`.
+While the tables and indexes are being rewritten, you may lose any modifications made to the table.
+For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
+{{< /warning >}}
+
+#### ALTER [ COLUMN ] *column_name* [ SET DATA ] TYPE *data_type* [ COLLATE *collation* ] [ USING *expression* ]
 
 Change the type of an existing column. The following semantics apply:
 - If data on disk is required to change, a full table rewrite is needed.
@@ -205,10 +239,6 @@ ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
 
 If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
 - The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
-- If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues with yb-admin commands that take table name. For example,`./bin/yb-admin list_tablets`.
-- If the operation fails, a new dangling table may exist in DocDB. Use `yb-admin delete_table` to drop it.
-- Altering the data type of a foreign key column is not supported.
-- If there are concurrent DMLs, you can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
 - The operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
 
 Following is an example of alter type with table rewrite:
@@ -244,6 +274,14 @@ Drop the named constraint from the table.
 
 - `RESTRICT` — Remove only the specified constraint.
 - `CASCADE` — Remove the specified constraint and any dependent objects.
+
+{{< warning >}}
+Dropping the `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table.
+This happens because of the clustered storage by primary key that YugabyteDB uses to store rows and indexes.
+While the tables and indexes are being rewritten, you may lose any modifications made to the table.
+For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
+{{< /warning >}}
+
 
 #### RENAME [ COLUMN ] *column_name* TO *column_name*
 

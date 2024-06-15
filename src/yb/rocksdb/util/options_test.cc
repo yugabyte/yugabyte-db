@@ -1756,6 +1756,7 @@ Status GetFromString(ColumnFamilyOptions* source, ColumnFamilyOptions* destinati
   destination->soft_rate_limit = 0;
   destination->compaction_options_fifo = CompactionOptionsFIFO();
   destination->max_mem_compaction_level = 0;
+  destination->max_flushing_bytes = 0;
 
   return Status::OK();
 }
@@ -1914,6 +1915,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, max_file_size_for_compaction),
       BLACKLIST_ENTRY(DBOptions, mem_table_flush_filter_factory),
       BLACKLIST_ENTRY(DBOptions, log_prefix),
+      BLACKLIST_ENTRY(DBOptions, tablet_id),
       BLACKLIST_ENTRY(DBOptions, mem_tracker),
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),

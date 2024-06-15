@@ -59,6 +59,7 @@ DROP TABLESPACE regress_tblspacewith;
 
 -- create a tablespace we can use
 CREATE TABLESPACE regress_tblspace LOCATION '/data';
+CREATE TABLESPACE regress_tblspace_2 LOCATION '/data';
 
 -- try setting and resetting some properties for the new tablespace
 ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
@@ -108,12 +109,16 @@ SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
 CREATE TABLE testschema.foo_pk (i int, PRIMARY KEY(i)) TABLESPACE regress_tblspace;
 \d testschema.foo_pk_pkey
 \d testschema.foo_pk;
+-- Fail, cannot ALTER INDEX SET TABLESPACE for primary key index.
+ALTER INDEX testschema.foo_pk_pkey SET TABLESPACE regress_tblspace_2;
 
 -- Create table with primary key after default tablespace is changed.
 SET default_tablespace TO regress_tblspace;
 CREATE TABLE testschema.foo_pk_default_tblspc (i int, PRIMARY KEY(i));
 \d testschema.foo_pk_default_tblspc_pkey;
 \d testschema.foo_pk_default_tblspc;
+-- Fail, cannot ALTER INDEX SET TABLESPACE for primary key index.
+ALTER INDEX testschema.foo_pk_pkey SET TABLESPACE pg_default;
 SET default_tablespace TO '';
 
 -- Verify that USING INDEX TABLESPACE is not supported for primary keys.
@@ -125,6 +130,9 @@ CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regres
 CREATE TABLE testschema.using_index3 (a int, UNIQUE(a) USING INDEX TABLESPACE regress_tblspace);
 \d testschema.using_index2;
 \d testschema.using_index3;
+
+ALTER INDEX testschema.using_index2_a_key SET TABLESPACE pg_default;
+\d testschema.using_index2;
 
 -- index
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
@@ -151,6 +159,9 @@ CREATE TEMPORARY TABLE temptest (a INT);
 ALTER TABLE temptest SET TABLESPACE regress_tblspace;
 -- Fail, cannot set tablespace for temp indexes
 CREATE INDEX temp_idx_tblspc ON temptest(a) TABLESPACE regress_tblspace;
+CREATE INDEX temp_idx ON temptest(a);
+-- Fail, cannot set tablespaces for temp tables
+ALTER INDEX temp_idx SET TABLESPACE regress_tblspace;
 DROP TABLE temptest;
 
 -- Fail, cannot set tablespaces for temp tables
@@ -167,6 +178,13 @@ CREATE INDEX part_a_idx ON testschema.part (a) TABLESPACE regress_tblspace;
 CREATE TABLE testschema.part2 PARTITION OF testschema.part FOR VALUES IN (2);
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname LIKE 'part%_idx' ORDER BY relname;
+
+CREATE TABLE testschema.part34 PARTITION OF testschema.part FOR VALUES IN (3, 4) PARTITION BY LIST (a);
+CREATE TABLE testschema.part3 PARTITION OF testschema.part34 FOR VALUES IN (3);
+ALTER INDEX testschema.part34_a_idx SET TABLESPACE pg_default;
+CREATE TABLE testschema.part4 PARTITION OF testschema.part34 FOR VALUES IN (4);
+SELECT relname, spcname FROM pg_catalog.pg_class c LEFT OUTER JOIN pg_catalog.pg_tablespace t
+    ON c.reltablespace = t.oid WHERE c.relname LIKE 'part%_idx' ORDER BY relname;
 
 -- check that default_tablespace doesn't affect ALTER TABLE index rebuilds
 CREATE TABLE testschema.test_default_tab(id bigint) TABLESPACE regress_tblspace;
@@ -215,12 +233,14 @@ DROP TABLE testschema.test_tab;
 CREATE TABLE testschema.atable AS VALUES (1), (2);
 CREATE UNIQUE INDEX anindex ON testschema.atable(column1);
 ALTER TABLE testschema.atable SET TABLESPACE regress_tblspace;
-/*
 ALTER INDEX testschema.anindex SET TABLESPACE regress_tblspace;
+\d testschema.atable
 ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_global;
+\d testschema.part
 ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_default;
+\d testschema.part
 ALTER INDEX testschema.part_a_idx SET TABLESPACE regress_tblspace;
-*/
+\d testschema.part
 INSERT INTO testschema.atable VALUES(3);
 INSERT INTO testschema.atable VALUES(1);
 SELECT COUNT(*) FROM testschema.atable;
@@ -272,11 +292,12 @@ DROP ROLE regress_tablespace_user2;
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
--- Should fail to set tablespace on a table in a colocated database
-CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
+-- Should succeed in setting tablespace on a table in a colocated database
+CREATE TABLE tab_key (a INT) TABLESPACE x;
 -- Should succeed in setting tablespace on a table in a colocated database when opted out
 CREATE TABLE tab_nonkey (a INT) WITH (COLOCATION = false) TABLESPACE x;
 -- cleanup
+DROP TABLE tab_key;
 DROP TABLE tab_nonkey;
 \c yugabyte
 DROP DATABASE colocation_test;
@@ -383,6 +404,39 @@ DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
 DROP TABLESPACE LP;
 
+-- Test ALTER TABLE/INDEX/MATERILIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ...
+
+CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');
+CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud2", "region" : "region2", "zone" : "zone2", "min_num_replicas" : 1 }]}');
+CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone2", "min_num_replicas" : 1 }]}');
+
+CREATE TABLE table_1(a int PRIMARY KEY, b int, c int) TABLESPACE tsp1;
+CREATE TABLE table_2(a int PRIMARY KEY, b int, c int) TABLESPACE tsp1;
+CREATE INDEX index_1 ON table_1(b) TABLESPACE tsp2;
+CREATE MATERIALIZED VIEW mat_view TABLESPACE tsp1 AS SELECT * FROM table_1;
+
+-- Moving Table will also move the Primary Key indexes as the primary key index is an intrinsic part of its base table itself.
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+ALTER INDEX ALL IN TABLESPACE tsp2 SET TABLESPACE tsp1;
+ALTER MATERIALIZED VIEW ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3;
+
+-- View all relations present in pg_class in tablespace tsp1, tsp2 and tsp3 and if the relations were moved to the intended tablespaces.
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+
+DROP MATERIALIZED VIEW mat_view;
+DROP INDEX index_1;
+DROP TABLE table_1;
+DROP TABLE table_2;
+DROP TABLESPACE tsp1;
+DROP TABLESPACE tsp2;
+DROP TABLESPACE tsp3;
+
 /*
 Testing that an index in a tablespace with leader preference on a closer placement is preferred
 over one on a tablespace with leader preference on a farther placement.
@@ -397,7 +451,7 @@ CREATE TABLESPACE zone_pref
     {"cloud":"cloud1","region":"region2","zone":"zone1","min_num_replicas":1},
     {"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1}]}');
 
-CREATE TABLESPACE region_pref 
+CREATE TABLESPACE region_pref
   WITH (replica_placement='{"num_replicas": 4, "placement_blocks": [
     {"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1},
     {"cloud":"cloud1","region":"region1","zone":"zone2","min_num_replicas":1,"leader_preference":1},

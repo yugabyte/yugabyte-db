@@ -20,6 +20,7 @@ import {
 } from '../features/universe/universe-form/utils/dto';
 import { TaskResponse } from './dtos';
 import { EncryptionInTransitFormValues } from '../features/universe/universe-actions/encryption-in-transit/EncryptionInTransitUtils';
+import { ReplicationSlotResponse } from '../features/universe/universe-tabs/replication-slots/utils/types';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -31,7 +32,10 @@ export enum QUERY_KEY {
   editYCQL = 'editYCQL',
   rotateDBPassword = 'rotateDBPassword',
   updateTLS = 'updateTLS',
-  getCertificates = 'getCertificates'
+  getCertificates = 'getCertificates',
+  getFinalizeInfo = 'getFinalizeInfo',
+  getReplicationSlots = 'getReplicationSlots',
+  getSessionInfo = 'getSessionInfo'
 }
 
 class ApiService {
@@ -97,7 +101,7 @@ class ApiService {
   };
 
   upgradeSoftware = (universeId: string, data: DBUpgradePayload): Promise<TaskResponse> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/software`;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/db_version`;
     return axios.post<TaskResponse>(requestUrl, data).then((resp) => resp.data);
   };
 
@@ -112,14 +116,29 @@ class ApiService {
   };
 
   getUpgradeDetails = (universeId: string, data: GetInfoPayload): Promise<GetInfoResponse> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/software/info`;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/software/precheck`;
     return axios.post<GetInfoResponse>(requestUrl, data).then((resp) => resp.data);
+  };
+
+  getFinalizeInfo = (universeId: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/finalize/info`;
+    return axios.get<any>(requestUrl).then((resp) => resp.data);
   };
 
   retryCurrentTask = (taskUUID: string): Promise<AxiosResponse> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUUID}`;
     return axios.post<AxiosResponse>(requestUrl).then((resp) => resp);
   };
+
+  getReplicationSlots = (universeId: string): Promise<ReplicationSlotResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/cdc_replication_slots`;
+    return axios.get<ReplicationSlotResponse>(requestUrl).then((resp) => resp.data);
+  };
+
+  getSessionInfo = () => {
+    const requestUrl = `${ROOT_URL}/session_info`;
+    return axios.get<any>(requestUrl).then((resp) => resp.data);
+  }
 }
 
 export const api = new ApiService();

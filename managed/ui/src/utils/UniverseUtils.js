@@ -224,6 +224,16 @@ export const isYbcInstalledInUniverse = (universeDetails) => {
   return universeDetails?.ybcInstalled;
 };
 
+export const isAsymmetricCluster = (cluster) =>
+  isNonEmptyObject(cluster.userIntent.specificGFlags?.perAZ) ||
+  (isNonEmptyObject(cluster.userIntent.userIntentOverrides?.azOverrides) &&
+    hasAsymmetricOverrides(cluster.userIntent.userIntentOverrides.azOverrides));
+
+const hasAsymmetricOverrides = (azOverrides) =>
+  Object.values(azOverrides).some(
+    (azOverride) => Object.keys(azOverride).length > 1 || azOverride.proxyConfig === undefined
+  );
+
 /**
  * Returns an array of unique regions in the universe
  */
@@ -428,10 +438,13 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
   const keywordLength = searchTerm.length;
   const isKeywordExist = GFlagInput.includes(searchTerm);
 
+  // Search term can either be JWT or LDAP
   if (isKeywordExist) {
-    const keywordIndex = GFlagInput.indexOf(searchTerm);
+    const searchTermRegex = searchTerm === CONST_VALUES.LDAP ? /\sldap\s+/ : /\sjwt\s+/;
+    const keywordList = GFlagInput.match(searchTermRegex);
+    const keywordIndex = GFlagInput.indexOf(keywordList?.[0]);
     const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
-    const attributes = keywordConf?.match(/(?:[^\s"|""]+|""[^"|""]*"|")+/g);
+    const attributes = keywordConf?.match(/(?:[^\s"|""]+|""[^"""]*"|")+/g);
 
     for (let index = 0; index < attributes?.length; index++) {
       const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);
@@ -448,7 +461,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
         !attributeValue.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
         attributeValue.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
 
-      if (searchTerm === CONST_VALUES.LDAP) {
+      if (searchTerm === CONST_VALUES.LDAP && keywordList?.length > 0) {
         // Raise error when the attribute key has any spelling mistake
         if (!LDAP_KEYS.includes(attributeKey)) {
           isAttributeInvalid = true;
@@ -463,7 +476,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
           errorMessageKey = 'universeForm.gFlags.missingQuoteAttributeValue';
           break;
         }
-      } else if (searchTerm === CONST_VALUES.JWT) {
+      } else if (searchTerm === CONST_VALUES.JWT && keywordList?.length > 0) {
         // Raise error when attribute key has any spelling mistake
         if (!JWT_KEYS.includes(attributeKey)) {
           isAttributeInvalid = true;

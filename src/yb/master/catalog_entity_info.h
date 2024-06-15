@@ -32,14 +32,13 @@
 
 #pragma once
 
-#include <shared_mutex>
 #include <mutex>
 #include <vector>
 
 #include <boost/bimap.hpp>
 
 #include "yb/cdc/cdc_types.h"
-#include "yb/common/entity_ids.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
@@ -60,7 +59,6 @@
 #include "yb/tablet/metadata.pb.h"
 
 #include "yb/util/cow_object.h"
-#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/shared_lock.h"
@@ -85,8 +83,7 @@ struct ExternalTableSnapshotData {
   size_t num_tablets = 0;
   typedef std::pair<std::string, std::string> PartitionKeys;
   typedef std::map<PartitionKeys, TabletId> PartitionToIdMap;
-  typedef std::vector<PartitionPB> Partitions;
-  Partitions partitions;
+  std::vector<std::pair<TabletId, PartitionPB>> old_tablets;
   PartitionToIdMap new_tablets_map;
   // Mapping: Old tablet ID -> New tablet ID.
   std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
@@ -123,6 +120,7 @@ struct TabletLeaderLeaseInfo {
   bool initialized = false;
   consensus::LeaderLeaseStatus leader_lease_status =
       consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  // Expiration time of leader ht lease, invalid when leader_lease_status != HAS_LEASE.
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
@@ -165,6 +163,8 @@ struct TabletReplica {
   TabletLeaderLeaseInfo leader_lease_info;
 
   FullCompactionStatus full_compaction_status;
+
+  uint32_t last_attempted_clone_seq_no;
 
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
@@ -243,6 +243,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the latest known tablet replica locations.
   // These locations include only the members of the latest-reported Raft
   // configuration whose tablet servers have ever heartbeated to this Master.
+  // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
+  // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
@@ -263,6 +265,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
+
+  // Update last_time_with_valid_leader_ to the Now().
+  void UpdateLastTimeWithValidLeader();
+  MonoTime last_time_with_valid_leader() const;
+  void TEST_set_last_time_with_valid_leader(const MonoTime& time);
 
   // Accessors for the last reported schema version.
   bool set_reported_schema_version(const TableId& table_id, uint32_t version);
@@ -328,6 +335,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Also set when the Master first attempts to create the tablet.
   MonoTime last_update_time_ GUARDED_BY(lock_);
 
+  // The last time the tablet has a valid leader, a valid leader is:
+  // 1. with peer role LEADER.
+  // 2. has not-expired lease.
+  MonoTime last_time_with_valid_leader_ GUARDED_BY(lock_);
+
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
   std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_);
@@ -347,6 +359,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // Transient, in memory list of table ids hosted by this tablet. This is not persisted.
   // Only used when FLAGS_use_parent_table_id_field is set.
   std::vector<TableId> table_ids_ GUARDED_BY(lock_);
+
+  uint32_t last_attempted_clone_seq_no_ GUARDED_BY(lock_) = 0;
 
   DISALLOW_COPY_AND_ASSIGN(TabletInfo);
 };
@@ -451,6 +465,11 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
       ysql_ddl_txn_verifier_state().contains_create_table_op();
   }
 
+  bool is_being_altered_by_ysql_ddl_txn() const {
+    return has_ysql_ddl_txn_verifier_state() &&
+      ysql_ddl_txn_verifier_state().contains_alter_table_op();
+  }
+
   std::vector<std::string> cols_marked_for_deletion() const {
     std::vector<std::string> columns;
     for (const auto& col : pb.schema().columns()) {
@@ -462,6 +481,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   }
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
+
+  // Returns the transaction-id of the DDL transaction operating on it, Nil if no such DDL is
+  // happening.
+  Result<TransactionId> GetCurrentDdlTransactionId() const;
 
   const std::string& state_name() const {
     return SysTablesEntryPB_State_Name(pb.state());
@@ -494,7 +517,8 @@ struct TabletWithSplitPartitions {
 // Currently indexed values:
 //     colocated
 class TableInfo : public RefCountedThreadSafe<TableInfo>,
-                  public MetadataCowWrapper<PersistentTableInfo> {
+                  public MetadataCowWrapper<PersistentTableInfo>,
+                  public CatalogEntityWithTasks {
  public:
   explicit TableInfo(
       TableId table_id, bool colocated, scoped_refptr<TasksTracker> tasks_tracker = nullptr);
@@ -541,7 +565,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // True if all the column schemas have pg_type_oid set.
   bool has_pg_type_oid() const;
 
-  std::string matview_pg_table_id() const;
+  TableId pg_table_id() const;
   // True if the table is a materialized view.
   bool is_matview() const;
 
@@ -566,6 +590,17 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // cached in memory separately from the underlying proto with the expectation it will never
   // change.
   bool colocated() const { return colocated_; }
+
+  // Helper for returning the relfilenode OID of the table. Relfilenode OID diverges from PG table
+  // OID after a table rewrite.
+  // Note: For system tables, this simply returns the PG table OID. Table rewrite is not permitted
+  // on system tables.
+  Result<uint32_t> GetPgRelfilenodeOid() const;
+
+  // Helper for returning the PG OID of the table. In case the table was rewritten,
+  // we cannot directly infer the PG OID from the table ID. Instead, we need to use the
+  // stored pg_table_id field.
+  Result<uint32_t> GetPgTableOid() const;
 
   // Return the table type of the table.
   TableType GetTableType() const;
@@ -688,20 +723,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   Status GetCreateTableErrorStatus() const;
 
   std::size_t NumLBTasks() const;
-  std::size_t NumTasks() const;
-  bool HasTasks() const;
-  bool HasTasks(server::MonitoredTaskType type) const;
-  void AddTask(std::shared_ptr<server::MonitoredTask> task);
-
-  // Returns true if no running tasks left.
-  bool RemoveTask(const std::shared_ptr<server::MonitoredTask>& task);
-
-  void AbortTasks();
-  void AbortTasksAndClose();
-  void WaitTasksCompletion();
-
-  // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks() const;
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
@@ -711,6 +732,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsColocatedDbParentTable() const;
   bool IsTablegroupParentTable() const;
   bool IsColocatedUserTable() const;
+  bool IsSequencesSystemTable() const;
+  bool IsXClusterDDLReplicationDDLQueueTable() const;
+  bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
+  bool IsXClusterDDLReplicationTable() const {
+    return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
+  }
 
   // Provides the ID of the tablespace that will be used to determine
   // where the tablets for this table should be placed when the table
@@ -727,6 +754,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
 
+  void AddDdlTxnWaitingForSchemaVersion(int schema_version,
+                                        const TransactionId& txn) EXCLUDES(lock_);
+
+  std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
+      int schema_version) EXCLUDES(lock_);
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
@@ -736,15 +769,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
       const TableId& tablet_id,
       DeactivateOnly deactivate_only = DeactivateOnly::kFalse) REQUIRES(lock_);
 
-  void AbortTasksAndCloseIfRequested(bool close);
-
   std::string LogPrefix() const {
     return ToString() + ": ";
   }
 
   const TableId table_id_;
-
-  scoped_refptr<TasksTracker> tasks_tracker_;
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
@@ -757,11 +786,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // 2) Tablets that are marked as HIDDEN for PITR.
   std::unordered_map<TabletId, TabletInfo*> tablets_ GUARDED_BY(lock_);
 
-  // Protects partitions_, tablets_ and pending_tasks_.
+  // Protects partitions_ and tablets_.
   mutable rw_spinlock lock_;
-
-  // If closing, requests to AddTask will be promptly aborted.
-  bool closing_ = false;
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
@@ -769,9 +795,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::atomic<bool> is_system_{false};
 
   const bool colocated_;
-
-  // List of pending tasks (e.g. create/alter tablet requests).
-  std::unordered_set<std::shared_ptr<server::MonitoredTask>> pending_tasks_ GUARDED_BY(lock_);
 
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
@@ -787,6 +810,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
   // table from completing. Not needed once D23712 lands.
   std::atomic_bool bootstrapping_xcluster_replication_ = false;
+
+  // Store a map of schema version->TransactionId of the DDL transaction that initiated the
+  // change. When a schema version n has propagated to all tablets, we use this map to signal all
+  // the DDL transactions waiting for schema version n and any k < n. The map is ordered by schema
+  // version to easily figure out all the entries for schema version < n.
+  std::map<int, TransactionId> ddl_txns_waiting_for_schema_version_ GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
@@ -843,9 +872,10 @@ struct PersistentNamespaceInfo : public Persistent<
 // This object uses copy-on-write techniques similarly to TabletInfo.
 // Please see the TabletInfo class doc above for more information.
 class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
-                      public MetadataCowWrapper<PersistentNamespaceInfo> {
+                      public MetadataCowWrapper<PersistentNamespaceInfo>,
+                      public CatalogEntityWithTasks {
  public:
-  explicit NamespaceInfo(NamespaceId ns_id);
+  explicit NamespaceInfo(NamespaceId ns_id, scoped_refptr<TasksTracker> tasks_tracker);
 
   virtual const NamespaceId& id() const override { return namespace_id_; }
 
@@ -858,6 +888,8 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
   ::yb::master::SysNamespaceEntryPB_State state() const;
 
   std::string ToString() const override;
+
+  uint32_t FetchAndIncrementCloneSeqNo();
 
  private:
   friend class RefCountedThreadSafe<NamespaceInfo>;
@@ -1142,7 +1174,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
 
+  bool IsConsistentSnapshotStream() const;
+
+  const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
+
   std::string ToString() const override;
+
+  bool IsXClusterStream() const;
+  bool IsCDCSDKStream() const;
+
+  HybridTime GetConsistentSnapshotHybridTime() const;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;
@@ -1162,12 +1203,12 @@ class UniverseReplicationInfoBase {
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
  protected:
-  explicit UniverseReplicationInfoBase(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationInfoBase(xcluster::ReplicationGroupId replication_group_id)
       : replication_group_id_(std::move(replication_group_id)) {}
 
   virtual ~UniverseReplicationInfoBase() = default;
 
-  const cdc::ReplicationGroupId replication_group_id_;
+  const xcluster::ReplicationGroupId replication_group_id_;
 
   std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks_;
   std::string master_addrs_;
@@ -1189,25 +1230,30 @@ struct PersistentUniverseReplicationInfo
   bool is_active() const {
     return pb.state() == SysUniverseReplicationEntryPB::ACTIVE;
   }
+
+  bool IsDbScoped() const;
 };
 
 class UniverseReplicationInfo : public UniverseReplicationInfoBase,
                                 public RefCountedThreadSafe<UniverseReplicationInfo>,
                                 public MetadataCowWrapper<PersistentUniverseReplicationInfo> {
  public:
-  explicit UniverseReplicationInfo(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationInfo(xcluster::ReplicationGroupId replication_group_id)
       : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
 
   const std::string& id() const override { return replication_group_id_.ToString(); }
-  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+  const xcluster::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 
-  // Set the Status related to errors on SetupUniverseReplication.
+  // Set the Status related to errors on SetupUniverseReplication. Only the first error status is
+  // preserved.
   void SetSetupUniverseReplicationErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current SetupUniverseReplication.
   Status GetSetupUniverseReplicationErrorStatus() const;
+
+  bool IsDbScoped() const;
 
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
@@ -1285,13 +1331,13 @@ class UniverseReplicationBootstrapInfo
       public RefCountedThreadSafe<UniverseReplicationBootstrapInfo>,
       public MetadataCowWrapper<PersistentUniverseReplicationBootstrapInfo> {
  public:
-  explicit UniverseReplicationBootstrapInfo(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationBootstrapInfo(xcluster::ReplicationGroupId replication_group_id)
       : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
   UniverseReplicationBootstrapInfo(const UniverseReplicationBootstrapInfo&) = delete;
   UniverseReplicationBootstrapInfo& operator=(const UniverseReplicationBootstrapInfo&) = delete;
 
   const std::string& id() const override { return replication_group_id_.ToString(); }
-  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+  const xcluster::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 

@@ -38,8 +38,10 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -58,6 +60,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected Universe defaultUniverse;
 
   protected AccessKey defaultAccessKey;
+  protected AccessKey onPremAccessKey;
 
   protected Users defaultUser;
 
@@ -76,6 +79,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultAccessKey = createAccessKeyForProvider("default-key", defaultProvider);
     defaultUniverse = createUniverseForProvider("Test Universe", defaultProvider);
+    onPremAccessKey = createAccessKeyForProvider("default-key", onPremProvider);
     onPremUniverse = createUniverseForProvider("Test onPrem Universe", onPremProvider);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
@@ -87,7 +91,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
             invocation -> {
               if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.Precheck)) {
                 NodeTaskParams params = invocation.getArgument(1);
-                NodeInstance.getByName(params.nodeName); // verify node is picked
+                assertTrue(StringUtils.isNotBlank((params.nodeName)));
+                NodeInstance.getOrBadRequest(params.nodeUuid);
                 return preflightResponse;
               }
               if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
@@ -191,14 +196,15 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
           result.getUniverseUUID(),
           u -> {
             String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
-            Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
+            Map<UUID, Set<String>> onpremAzToNodes = new HashMap<>();
             for (NodeDetails node : u.getNodes()) {
-              List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
+              Set<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new HashSet<>());
               nodeNames.add(node.nodeName);
               onpremAzToNodes.put(node.azUuid, nodeNames);
             }
+            Cluster primaryCluster = u.getUniverseDetails().getPrimaryCluster();
             Map<String, NodeInstance> nodeMap =
-                NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+                NodeInstance.pickNodes(primaryCluster.uuid, onpremAzToNodes, instanceType);
             for (NodeDetails node : u.getNodes()) {
               NodeInstance nodeInstance = nodeMap.get(node.nodeName);
               if (nodeInstance != null) {

@@ -28,16 +28,28 @@ LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_
                      CoarseTimePoint deadline)
     : data_(std::move(key_to_intent_type), lock_manager) {
   Init(deadline);
+  if (!data_.status.ok()) {
+    data_.key_to_type.clear();
+  }
+}
+
+LockBatch::LockBatch(UnlockedBatch* unlocked_batch, CoarseTimePoint deadline)
+    : data_(std::move(unlocked_batch->key_to_type_), unlocked_batch->shared_lock_manager_) {
+  Init(deadline);
+  if (!data_.status.ok()) {
+    // Move LockBatchEntries back to the supplied UnlockedBatch so as to enable
+    // support for re-locking by the caller.
+    unlocked_batch->key_to_type_ = std::move(data_.key_to_type);
+  }
 }
 
 void LockBatch::Init(CoarseTimePoint deadline) {
   if (!empty() && !data_.shared_lock_manager->Lock(&data_.key_to_type, deadline)) {
-    data_.shared_lock_manager = nullptr;
     std::string batch_str;
     if (FLAGS_dump_lock_keys) {
       batch_str = Format(", batch: $0", data_.key_to_type);
     }
-    data_.key_to_type.clear();
+    data_.shared_lock_manager = nullptr;
     data_.status = STATUS_FORMAT(
         TryAgain, "Failed to obtain locks until deadline: $0$1", deadline, batch_str);
   }
@@ -76,8 +88,8 @@ UnlockedBatch::UnlockedBatch(
     LockBatchEntries&& key_to_type, SharedLockManager* shared_lock_manager):
   key_to_type_(std::move(key_to_type)), shared_lock_manager_(shared_lock_manager) {}
 
-LockBatch UnlockedBatch::Lock(CoarseTimePoint deadline) && {
-  return LockBatch(shared_lock_manager_, std::move(key_to_type_), deadline);
+LockBatch UnlockedBatch::TryLock(CoarseTimePoint deadline) {
+  return LockBatch(this, deadline);
 }
 
 std::optional<UnlockedBatch> LockBatch::Unlock() {

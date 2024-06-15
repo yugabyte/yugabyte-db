@@ -154,7 +154,7 @@ cpu_usage:
   range: true
   operator: "* 100"
   filters:
-    mode: "user|system"
+    mode: "user|system|total"
   group_by: "mode"
   panel_group: "Node Metrics"
   layout:
@@ -165,6 +165,7 @@ cpu_usage:
       alias:
         "user": "User"
         "system": "System"
+        "total": "Total"
       ticksuffix: "&nbsp;%"
 
 disk_iops:
@@ -172,7 +173,7 @@ disk_iops:
   function: "avg_over_time|avg"
   range: true
   filters:
-    saved_name: "node_disk_reads_irate|node_disk_writes_irate"
+    saved_name: "node_disk_reads_irate|node_disk_writes_irate|ybp_universe_node_provisioned_iops"
   group_by: "saved_name"
   panel_group: "Node Metrics"
   layout:
@@ -183,6 +184,7 @@ disk_iops:
       alias:
         "node_disk_reads_irate": "Read"
         "node_disk_writes_irate": "Write"
+        "ybp_universe_node_provisioned_iops": "Provisioned"
 
 tserver_rpcs_per_sec_by_universe:
   metric: "rpc_irate_rps"
@@ -320,6 +322,63 @@ network_bytes:
         "node_network_receive_bytes_irate": "RX"
         "node_network_transmit_bytes_irate": "TX"
 
+disk_io_time:
+  metric: ""
+  function: "avg_over_time|avg"
+  operator: "* 100"
+  range: true
+  filters:
+    saved_name: "node_disk_io_time_irate"
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk active IO time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+disk_io_queue_depth:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "node_disk_io_time_weighted_seconds_total_irate"
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Average I/O Queue Depth"
+    xaxis:
+      type: "date"
+
+disk_io_read_latency:
+  metric: "node_disk_io_read_service_time_irate"
+  function: "avg_over_time|avg"
+  operator: "* 1000"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Read Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+
+disk_io_write_latency:
+  metric: "node_disk_io_write_service_time_irate"
+  function: "avg_over_time|avg"
+  operator: "* 1000"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Write Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+
 network_packets:
   metric: ""
   function: "avg_over_time|avg"
@@ -380,7 +439,7 @@ disk_bytes_per_second_per_node:
   function: "avg_over_time|avg"
   panel_group: "Node Metrics"
   layout:
-    title: "Disk Bytes / Sec / Node"
+    title: "Disk Bytes / Node"
     xaxis:
       type: "date"
     yaxis:
@@ -1942,7 +2001,7 @@ ysql_sql_advanced_latency:
   group_by: "service_method"
   panel_group: "YSQL Ops & Latency"
   layout:
-    title: "YSQL Op Latency (Avg)"
+    title: "YSQL Advanced Op Latency (Avg)"
     xaxis:
       type: "date"
     yaxis:
@@ -2293,6 +2352,62 @@ tserver_async_replication_lag_micros:
         "async_replication_sent_lag_micros": "Sent Lag"
         "async_replication_committed_lag_micros": "Committed Lag"
 
+cdcsdk_sent_lag_micros:
+  metric: "cdcsdk_sent_lag_micros"
+  operator: "/ 1000"
+  function: "max by (saved_name)"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Lag"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;ms"
+      alias:
+        "cdcsdk_sent_lag_micros": "Current Lag"
+
+cdcsdk_expiry_time_mins:
+  metric: "cdcsdk_expiry_time_ms"
+  function: "min by (saved_name)"
+  operator: "/ 60000"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Expiry Time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;min(s)"
+      alias:
+        "cdcsdk_expiry_time_ms": "Expiry Time"
+
+cdcsdk_change_event_count:
+  metric: "cdcsdk_change_event_count"
+  function: "rate|sum by (saved_name)"
+  range: true
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Messages Emitted"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "cdcsdk_change_event_count": "Messages Emitted"
+
+cdcsdk_traffic_sent:
+  metric: "cdcsdk_traffic_sent"
+  operator: "/ 1048576"
+  function: "rate|sum by (saved_name)"
+  range: true
+  panel_group: "Tablet Server"
+  layout:
+    title: "Replication Slot Messages Emitted Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+      alias:
+        "cdcsdk_traffic_sent": "Messages Emitted size"
+
 async_replication_sent_lag:
   metric: "async_replication_sent_lag_micros"
   operator: "/ 1000"
@@ -2301,13 +2416,11 @@ async_replication_sent_lag:
 
 consumer_safe_time_lag:
   metric: "consumer_safe_time_lag"
-  operator: "/ 1000"
   function: "max_over_time|max"
   range: true
 
 consumer_safe_time_skew:
   metric: "consumer_safe_time_skew"
-  operator: "/ 1000"
   function: "max_over_time|max"
   range: true
 
@@ -2646,6 +2759,38 @@ master_leaderless_and_underreplicated_tablets:
       alias:
         "yb_node_leaderless_tablet_count": "Leaderless Tablets"
         "yb_node_underreplicated_tablet_count": "Underreplicated Tablets"
+
+master_max_follower_lag:
+  metric: "follower_lag_ms"
+  filters:
+    export_type: "master_export"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Master"
+  group_by: "saved_name"
+  layout:
+    title: "Max Follower Lag (ms)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "follower_lag_ms": "Max Follower Lag (ms)"
+
+tserver_max_follower_lag:
+  metric: "follower_lag_ms"
+  filters:
+    export_type: "tserver_export"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Tablet Server"
+  group_by: "saved_name"
+  layout:
+    title: "Max Follower Lag (ms)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "follower_lag_ms": "Max Follower Lag (ms)"
 
 master_threads_running:
   metric: "threads_running"

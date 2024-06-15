@@ -40,8 +40,9 @@ DEFINE_UNKNOWN_bool(use_cassandra_authentication, false,
 DEFINE_UNKNOWN_bool(ycql_cache_login_info, false, "Use authentication information cached locally.");
 DEFINE_UNKNOWN_bool(ycql_require_drop_privs_for_truncate, false,
             "Require DROP TABLE permission in order to truncate table");
-DEFINE_UNKNOWN_bool(ycql_use_local_transaction_tables, false,
-            "Whether or not to use local transaction tables when possible for YCQL transactions.");
+DEFINE_RUNTIME_bool(ycql_use_local_transaction_tables, false,
+                    "Whether or not to use local transaction tables when possible for YCQL "
+                    "transactions.");
 DEFINE_RUNTIME_bool(ycql_allow_local_calls_in_curr_thread, true,
                     "Whether or not to allow local calls on the RPC thread.");
 

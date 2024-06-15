@@ -47,6 +47,11 @@ class TabletSplitter {
   virtual Status ApplyTabletSplit(
       SplitOperation* operation, log::Log* raft_log,
       boost::optional<consensus::RaftConfigPB> raft_config) = 0;
+
+  // See the comment for ApplyTabletSplit.
+  virtual Status ApplyCloneTablet(
+      CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> raft_config) = 0;
 };
 
 }  // namespace tablet

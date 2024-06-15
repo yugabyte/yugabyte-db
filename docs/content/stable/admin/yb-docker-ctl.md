@@ -11,7 +11,13 @@ menu:
 type: docs
 ---
 
-The `yb-docker-ctl` utility provides a basic command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
+{{< warning title="yb-docker-ctl is deprecated" >}}
+
+yb-docker-ctl is no longer maintained. The recommended method to run YugabyteDB in Docker is to use [yugabyted](../../reference/configuration/yugabyted/#create-a-multi-region-cluster-in-docker). For more information, see the [Quick Start](/preview/quick-start/docker/).
+
+{{< /warning >}}
+
+The `yb-docker-ctl` utility provides a basic command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) containers to perform the necessary administration.
 
 {{% note title="macOS Monterey" %}}
 

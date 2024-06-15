@@ -27,6 +27,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/trace.h"
@@ -41,8 +42,8 @@ DEFINE_UNKNOWN_double(transaction_pool_reserve_factor, 2,
               "During cleanup we will preserve number of transactions in pool that equals to"
                   " average number or take requests during prepration multiplied by this factor");
 
-DEFINE_UNKNOWN_bool(force_global_transactions, false,
-            "Force all transactions to be global transactions");
+DEFINE_RUNTIME_bool(force_global_transactions, false,
+                    "Force all transactions to be global transactions");
 
 DEFINE_test_flag(bool, track_last_transaction, false,
                  "Keep track of the last transaction taken from pool for testing");
@@ -228,7 +229,7 @@ class SingleLocalityPool {
       return false;
     }
     if (Idle()) {
-      cond_.notify_all();
+      YB_PROFILE(cond_.notify_all());
     }
     return true;
   }

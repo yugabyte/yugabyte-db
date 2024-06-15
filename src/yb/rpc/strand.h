@@ -16,6 +16,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/lockfree.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace rpc {
@@ -35,42 +36,63 @@ FunctorThreadPoolTask<F, StrandTask>* MakeFunctorStrandTask(F&& f) {
   return new FunctorThreadPoolTask<F, StrandTask>(std::move(f));
 }
 
+template <class F, class ErrorFunc>
+class StrandTaskWithErrorFunc : public StrandTask {
+ public:
+  explicit StrandTaskWithErrorFunc(
+      const F& f,
+      const ErrorFunc& error_handler) : f_(f), error_handler_(error_handler) {}
+  explicit StrandTaskWithErrorFunc(
+      F&& f, ErrorFunc&& error_handler)
+      : f_(std::move(f)),
+        error_handler_(std::move(error_handler)) {}
+
+  virtual ~StrandTaskWithErrorFunc() = default;
+
+ private:
+  void Run() override {
+    f_();
+  }
+
+  void Done(const Status& status) override {
+    if (!status.ok()) {
+      error_handler_(status);
+    }
+    delete this;
+  }
+
+  F f_;
+  ErrorFunc error_handler_;
+};
+
 // Strand prevent concurrent execution of enqueued tasks.
 // If task is submitted into strand and it already has enqueued tasks, new task will be executed
 // after all previously enqueued tasks.
 //
 // Submitted task should inherit StrandTask or wrapped by class that provides such inheritance.
-class Strand : public ThreadPoolTask {
+class Strand : public ThreadPoolTask,
+               public ThreadSubPoolBase,
+               public TaskRecipient<StrandTask> {
  public:
   explicit Strand(ThreadPool* thread_pool);
   virtual ~Strand();
 
-  void Enqueue(StrandTask* task);
+  bool Enqueue(StrandTask* task) override;
 
-  template <class F>
-  void EnqueueFunctor(const F& f) {
-    Enqueue(MakeFunctorStrandTask(f));
-  }
-
-  template <class F>
-  void EnqueueFunctor(F&& f) {
-    Enqueue(MakeFunctorStrandTask(std::move(f)));
-  }
-
-  void Shutdown();
+  // Do nothing. We manage active_tasks_ in a different way.
+  void OnTaskDone(ThreadPoolTask* task, const Status& status) override {}
 
  private:
   void Run() override;
 
   void Done(const Status& status) override;
 
-  void ProcessTasks(const Status& status, bool allow_closing);
+  bool IsIdle() override;
 
-  ThreadPool& thread_pool_;
-  std::atomic<size_t> active_tasks_{0};
-  MPSCQueue<StrandTask> queue_;
+  // Whether the top-level strand task is currently running in the underlying thread pool.
   std::atomic<bool> running_{false};
-  std::atomic<bool> closing_{false};
+
+  MPSCQueue<StrandTask> queue_;
 };
 
 } // namespace rpc

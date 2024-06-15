@@ -9,6 +9,7 @@ export const MetricTypes = {
   YCQL_OPS: 'ycql_ops',
   YEDIS_OPS: 'yedis_ops',
   SERVER: 'server',
+  DISK_IO: 'disk_io',
   TSERVER: 'tserver',
   MASTER: 'master',
   MASTER_ADVANCED: 'master_advanced',
@@ -85,11 +86,31 @@ export const MetricTypesWithOperations = {
       'disk_volume_usage_percent',
       'disk_volume_used',
       'disk_bytes_per_second_per_node',
+      'disk_io_time',
+      'disk_io_queue_depth',
+      'disk_io_read_latency',
+      'disk_io_write_latency',
       'network_packets',
       'network_bytes',
       'network_errors',
       'system_load_over_time',
       'node_clock_skew'
+    ]
+  },
+  disk_io: {
+    title: 'Disk I/O',
+    metrics: [
+      'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
+      'disk_volume_usage_percent',
+      'disk_volume_used',
+      'disk_bytes_per_second_per_node',
+      'lsm_rocksdb_flush_size',
+      'lsm_rocksdb_compaction',
+      'lsm_rocksdb_compaction_time',
+      'tserver_log_bytes_read',
+      'tserver_log_bytes_written',
     ]
   },
   tserver: {
@@ -121,7 +142,8 @@ export const MetricTypesWithOperations = {
       'tserver_cpu_util_secs',
       'tserver_yb_rpc_connections',
       'tserver_live_tablet_peers',
-      'raft_leader'
+      'raft_leader',
+      'tserver_max_follower_lag'
     ]
   },
   master: {
@@ -144,7 +166,8 @@ export const MetricTypesWithOperations = {
       'master_table_ops',
       'master_cpu_util_secs',
       'master_yb_rpc_connections',
-      'master_leaderless_and_underreplicated_tablets'
+      'master_leaderless_and_underreplicated_tablets',
+      'master_max_follower_lag'
     ]
   },
   master_advanced: {
@@ -265,6 +288,7 @@ export const MetricTypesByOrigin = {
       'ysql_ops',
       'ycql_ops',
       'yedis_ops',
+      'disk_io',
       'container',
       'server',
       'tserver',
@@ -279,6 +303,7 @@ export const MetricTypesByOrigin = {
       'ysql_ops',
       'ycql_ops',
       'yedis_ops',
+      'disk_io',
       'container',
       'server',
       'tserver',

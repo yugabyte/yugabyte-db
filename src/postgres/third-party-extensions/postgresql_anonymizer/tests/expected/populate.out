@@ -1,0 +1,19 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+SELECT anon.init();
+ init 
+------
+ t
+(1 row)
+
+TRUNCATE anon.email;
+COPY anon.email
+  FROM PROGRAM
+  '/usr/bin/python3 $(pg_config --sharedir)/extension/anon/populate.py --table email --lines 500';
+SELECT count(DISTINCT val)=500 FROM anon.email;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK;

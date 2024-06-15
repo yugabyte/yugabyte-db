@@ -67,8 +67,6 @@ select pg_sleep(1);
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='materialized_view_idx';
 refresh materialized view materialized_maintable_view;
 select pg_sleep(1);
--- currently, after a refresh materialized view is called, idx_scan is reset 
--- this is not consistent with upstream PG and needs to be fixed
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname='materialized_view_idx';
 
 -- test for joined table
@@ -112,8 +110,6 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'bas
 alter table basic_table add primary key (c1);
 
 select pg_sleep(1);
--- currently, alter table primary key resets the idx_scan count to zero
--- this does not happen in upstream Postgres, will need to fix
 select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'basic_table_idx.' or indexrelname='basic_table_pkey' order by (indexrelname);
 select * from basic_table where c1=6;
 select pg_sleep(1);

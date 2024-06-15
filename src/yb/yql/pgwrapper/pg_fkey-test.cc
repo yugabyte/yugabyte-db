@@ -21,8 +21,9 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/util/protobuf_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/protobuf_util.h"
+#include "yb/util/range.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
@@ -36,8 +37,9 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_Perform);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(TEST_ysql_ignore_add_fk_reference);
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 namespace {
@@ -53,14 +55,14 @@ struct RpcCountMetric {
 };
 
 struct RpcCountMetricDescriber : public MetricWatcherDeltaDescriberTraits<RpcCountMetric, 3> {
-  explicit RpcCountMetricDescriber(std::reference_wrapper<const MetricEntity::MetricMap> map)
+  explicit RpcCountMetricDescriber(std::reference_wrapper<const MetricEntity> entity)
       : descriptors{
           Descriptor{
-              &delta.read, map, METRIC_handler_latency_yb_tserver_TabletServerService_Read},
+              &delta.read, entity, METRIC_handler_latency_yb_tserver_TabletServerService_Read},
           Descriptor{
-              &delta.write, map, METRIC_handler_latency_yb_tserver_TabletServerService_Write},
+              &delta.write, entity, METRIC_handler_latency_yb_tserver_TabletServerService_Write},
           Descriptor{
-              &delta.perform, map, METRIC_handler_latency_yb_tserver_PgClientService_Perform}}
+              &delta.perform, entity, METRIC_handler_latency_yb_tserver_PgClientService_Perform}}
   {}
 
   DeltaType delta;
@@ -71,9 +73,11 @@ class PgFKeyTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     FLAGS_enable_automatic_tablet_splitting = false;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    // This test counts number of performed RPC calls, so turn off pg client shared memory.
+    FLAGS_pg_client_use_shared_memory = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
-    rpc_count_.emplace(GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
+    rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 
   size_t NumTabletServers() override {
@@ -191,14 +195,14 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
   void SetUp() override {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    FLAGS_enable_wait_queues = false;
+    EnableFailOnConflict();
     PgFKeyTest::SetUp();
     auto aux_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateTables(&aux_conn));
     ASSERT_OK(AddFKConstraint(&aux_conn));
     state_.emplace(ASSERT_RESULT(MakeConnWithPriority(true)),
                    ASSERT_RESULT(MakeConnWithPriority(false)));
-    const auto clear_tables_query = Format("TRUNCATE $0, $1", kFKTable, kPKTable);
+    const auto clear_tables_query = Format("DELETE FROM $0; DELETE FROM $1", kFKTable, kPKTable);
     // Warm up internal caches.
     for (auto* conn : {&state_->high_priority_txn_conn.conn, &state_->low_priority_txn_conn.conn}) {
       ASSERT_OK(InsertItems(conn, kPKTable, 1, 2));
@@ -385,7 +389,7 @@ TEST_F(PgFKeyTest, MultipleFKConstraintRPCCount) {
     return conn.ExecuteFormat(
       "INSERT INTO $0 VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)", kFKTable);
   })).perform;
-  ASSERT_EQ(insert_fk_rpc_count, 1);
+  ASSERT_EQ(insert_fk_rpc_count, 2);
 }
 
 // Test checks that insertion into table with large number of foreign keys doesn't fail.
@@ -535,6 +539,30 @@ TEST_P(PgFKeyTestConcurrentModification, HighPriorityDeleteBeforeLowPriorityRefe
 // in scenario when rows get referenced (high priority txn) after being deleted (low priority txn).
 TEST_P(PgFKeyTestConcurrentModification, LowPriorityDeleteBeforeHighPriorityReferencing) {
   DeleteBeforeReferencing(&state_->low_priority_txn_conn, &state_->high_priority_txn_conn);
+}
+
+// Test checks that fk may reference on entry inserted in same statement
+TEST_F(PgFKeyTest, SameTableReference) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE company(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE employee("
+      "    k INT PRIMARY KEY, company_fk INT, manager_fk INT,"
+      "    UNIQUE(k, company_fk),"
+      "    FOREIGN KEY (company_fk) REFERENCES company(k),"
+      "    FOREIGN KEY (manager_fk, company_fk) REFERENCES employee(company_fk, k))"));
+  ASSERT_OK(conn.Execute("INSERT INTO company VALUES(1)"));
+  for (auto i : Range(10)) {
+    const auto perform_count = ASSERT_RESULT(rpc_count_->Delta([&conn] {
+      return conn.Execute("INSERT INTO employee VALUES (1, 1, NULL), (2, 1, 1), (3, 1, 1)");
+    })).perform;
+    // Skip initial iteration because sys catalog on-demand loading affects number of
+    // perform requests
+    if (i) {
+      ASSERT_EQ(perform_count, 2);
+    }
+    ASSERT_OK(conn.Execute("DELETE FROM employee"));
+  }
 }
 
 } // namespace yb::pgwrapper

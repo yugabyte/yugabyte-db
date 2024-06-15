@@ -39,6 +39,12 @@ extern bool yb_is_client_ysqlconnmgr;
 extern int yb_logical_client_shmem_key;
 
 /*
+ * `ysql_conn_mgr_sticky_object_count` is the count of the database objects
+ * that require a sticky connection.
+ */
+extern int ysql_conn_mgr_sticky_object_count;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();
@@ -76,3 +82,17 @@ extern void YbHandleSetSessionParam(int yb_client_id);
 extern void YbCreateClientId();
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);
+
+extern bool yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
+												GucSource source);
+
+extern void YbSendFatalForLogicalConnectionPacket();
+
+extern bool YbGetNumYsqlConnMgrConnections(const char *db_name,
+										   const char *user_name,
+										   uint32_t *num_logical_conn,
+										   uint32_t *num_physical_conn);
+
+extern void yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extra);
+
+extern void YbSendParameterStatusForConnectionManager(const char *name, const char *value);

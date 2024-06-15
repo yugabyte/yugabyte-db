@@ -1,22 +1,23 @@
-import { FC } from 'react';
+import { isEqual } from 'lodash';
 import { ButtonGroup, makeStyles } from '@material-ui/core';
 import { YBButton } from '../YBButton/YBButton';
 import { themeVariables } from '../../theme/variables';
 import clsx from 'clsx';
 
-export interface YBButtonGroupProps {
+export interface YBButtonGroupProps<T> {
   variant?: 'outlined' | 'text' | 'contained';
   color?: 'default' | 'secondary' | 'primary';
-  values: number[];
-  selectedNum: number;
+  values: T[];
+  selectedNum: T;
   disabled?: boolean;
   dataTestId?: string;
   btnClassName?: any;
   btnGroupClassName?: any;
-  handleSelect: (selectedNum: number) => void;
+  handleSelect: (selectedNum: T) => void;
+  displayLabelFn?: (elem: T) => JSX.Element;
 }
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles((theme) => ({
   button: {
     height: themeVariables.inputHeight,
     borderWidth: '0.5px !important',
@@ -24,10 +25,21 @@ const useStyles = makeStyles(() => ({
   },
   btnGroup: {
     boxShadow: 'none'
+  },
+  overrideMuiButtonGroup: {
+    '& .MuiButton-containedSecondary': {
+      backgroundColor: 'rgba(43, 89, 195, 0.1)',
+      color: theme.palette.primary[600],
+      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+    },
+    '& .MuiButton-outlinedSecondary': {
+      color: theme.palette.ybacolors.labelBackground,
+      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
+    }
   }
 }));
 
-export const YBButtonGroup: FC<YBButtonGroupProps> = (props) => {
+export const YBButtonGroup = <T,>(props: YBButtonGroupProps<T>) => {
   const {
     variant,
     color,
@@ -37,7 +49,8 @@ export const YBButtonGroup: FC<YBButtonGroupProps> = (props) => {
     dataTestId,
     btnClassName,
     btnGroupClassName,
-    handleSelect
+    handleSelect,
+    displayLabelFn
   } = props;
   const classes = useStyles();
 
@@ -46,22 +59,26 @@ export const YBButtonGroup: FC<YBButtonGroupProps> = (props) => {
       data-testid={dataTestId ?? 'YBButtonGroup'}
       variant={variant ?? 'outlined'}
       color={color ?? 'default'}
-      className={clsx(btnGroupClassName, classes.btnGroup)}
+      className={clsx(
+        btnGroupClassName,
+        classes.btnGroup,
+        color === 'secondary' && classes.overrideMuiButtonGroup
+      )}
     >
-      {values.map((value) => {
+      {values.map((value, i) => {
         return (
           <YBButton
-            key={value}
+            key={i}
             className={btnClassName ?? classes.button}
             data-testid={`${dataTestId}-option${value}`}
-            disabled={value !== selectedNum && !!disabled}
-            variant={value === selectedNum ? 'primary' : 'secondary'}
+            disabled={!isEqual(value, selectedNum) && !!disabled}
+            variant={isEqual(value, selectedNum) ? 'primary' : 'secondary'}
             onClick={(e: any) => {
               if (!!disabled) e.preventDefault();
               else handleSelect(value);
             }}
           >
-            {value}
+            {displayLabelFn ? displayLabelFn(value) : value}
           </YBButton>
         );
       })}

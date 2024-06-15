@@ -22,20 +22,32 @@ COMMIT;
 
 -- Recreating system views that use pg_get_replication_slots to update their corresponding
 -- pg_rewrite entries.
-CREATE OR REPLACE VIEW pg_catalog.pg_replication_slots WITH (use_initdb_acl = true) AS
-    SELECT
-        L.slot_name,
-        L.plugin,
-        L.slot_type,
-        L.datoid,
-        D.datname AS database,
-        L.temporary,
-        L.active,
-        L.active_pid,
-        L.xmin,
-        L.catalog_xmin,
-        L.restart_lsn,
-        L.confirmed_flush_lsn,
-        L.yb_stream_id
-    FROM pg_get_replication_slots() AS L
-        LEFT JOIN pg_database D ON (L.datoid = D.oid);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT TRUE FROM pg_attribute
+    WHERE attrelid = 'pg_catalog.pg_replication_slots'::regclass
+          AND attname = 'yb_stream_id'
+          AND NOT attisdropped
+  ) THEN
+    CREATE OR REPLACE VIEW pg_catalog.pg_replication_slots
+    WITH (use_initdb_acl = true)
+    AS
+        SELECT
+            L.slot_name,
+            L.plugin,
+            L.slot_type,
+            L.datoid,
+            D.datname AS database,
+            L.temporary,
+            L.active,
+            L.active_pid,
+            L.xmin,
+            L.catalog_xmin,
+            L.restart_lsn,
+            L.confirmed_flush_lsn,
+            L.yb_stream_id
+        FROM pg_get_replication_slots() AS L
+            LEFT JOIN pg_database D ON (L.datoid = D.oid);
+  END IF;
+END $$;

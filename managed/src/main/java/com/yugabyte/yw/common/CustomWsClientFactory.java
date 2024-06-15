@@ -16,7 +16,12 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValue;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.stream.Materializer;
 import play.Environment;
@@ -29,10 +34,12 @@ import play.libs.ws.ahc.AhcWSClientConfigFactory;
 @Slf4j
 public class CustomWsClientFactory {
 
-  private final ApplicationLifecycle lifecycle;
   private final Materializer materializer;
   private final Environment environment;
   private final RuntimeConfigFactory runtimeConfigFactory;
+
+  private final AtomicLong currentId = new AtomicLong();
+  private final Map<Long, CustomWSClient> clients = new ConcurrentHashMap<>();
 
   @Inject
   public CustomWsClientFactory(
@@ -40,10 +47,22 @@ public class CustomWsClientFactory {
       Materializer materializer,
       Environment environment,
       RuntimeConfigFactory runtimeConfigFactory) {
-    this.lifecycle = lifecycle;
     this.materializer = materializer;
     this.environment = environment;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    lifecycle.addStopHook(
+        () -> {
+          List<CustomWSClient> toClose = new ArrayList<>(clients.values());
+          toClose.forEach(
+              client -> {
+                try {
+                  client.close();
+                } catch (Exception e) {
+                  log.warn("Failed to close WSClient with id " + client.getId(), e);
+                }
+              });
+          return CompletableFuture.completedFuture(null);
+        });
   }
 
   public WSClient forCustomConfig(ConfigValue wsOverrides) {
@@ -59,11 +78,10 @@ public class CustomWsClientFactory {
             AhcWSClientConfigFactory.forConfig(customWsConfig, environment.classLoader()),
             null, // no HTTP caching
             materializer);
-    lifecycle.addStopHook(
-        () -> {
-          customWsClient.close();
-          return CompletableFuture.completedFuture(null);
-        });
-    return customWsClient;
+    Long id = currentId.incrementAndGet();
+    CustomWSClient result =
+        new CustomWSClient(id, customWsClient, client -> clients.remove(client.getId()));
+    clients.put(id, result);
+    return result;
   }
 }

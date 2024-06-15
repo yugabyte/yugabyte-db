@@ -20,6 +20,7 @@
 
 #include "server/catalog/pg_yb_migration_d.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/util/env_util.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
@@ -65,6 +66,31 @@ Result<bool> SystemTableHasRows(PGConn* pgconn, const std::string& table_name) {
 Result<bool> FunctionExists(PGConn* pgconn, const std::string& function_name) {
   auto where_clause = Format("proname = '$0'", function_name);
   return VERIFY_RESULT(SelectCountStar(pgconn, "pg_proc", where_clause)) == 1;
+}
+
+// Return the last breaking version of template1.
+// In global catalog version mode, this is used to detect that a migration
+// script contains a breaking DDL statement if the last breaking version is
+// incremented after execution of the script. We introduce an extra delay to
+// allow the new catalog version to be propagated to tserver through heartbeat.
+// In per-database catalog version mode, there are two kinds of breaking DDLs:
+// (1) per-database breaking DDL
+// (2) global-impact breaking DDL
+// For (1), if a breaking DDL is executed on DB1 connection, because we execute
+// migration script from one DB connection to another and there are multiple
+// databases, by the time we come back to DB1 connection to execute the next
+// migration script, chances are that the DB1 breaking version has already
+// propagated so we don't need to add an extra delay which slows down the
+// upgrade process.
+// For (2), we need to introduce an extra delay. To simplify the query to detect
+// global-impact breaking DDL we also just check the last breaking version of
+// template1.
+// Note that this means for case (1) we unnecessarily introduce an extra delay
+// for template1.
+Result<uint64_t> GetBreakingCatalogVersion(PGConn* pgconn) {
+  return pgconn->FetchRow<PGUint64>(
+      Format("SELECT last_breaking_version FROM pg_yb_catalog_version WHERE "
+             "db_oid = $0", kTemplate1Oid));
 }
 
 std::string WrapSystemDml(const std::string& query) {
@@ -341,15 +367,9 @@ Status YsqlUpgradeHelper::AnalyzeMigrationFiles() {
 
 Result<std::unique_ptr<YsqlUpgradeHelper::DatabaseEntry>>
 YsqlUpgradeHelper::MakeDatabaseEntry(std::string database_name) {
-  // Note that the plain password in the connection string will be sent over the wire, but since it
-  // only goes over a unix-domain socket, there should be no eavesdropping/tampering issues.
-  auto builder = PGConnBuilder({
-    .host = PgDeriveSocketDir(ysql_proxy_addr_),
-    .port = ysql_proxy_addr_.port(),
-    .dbname = database_name,
-    .user = "postgres",
-    .password = UInt64ToString(ysql_auth_key_),
-  });
+  // Explicitly using an infinite connect_timeout here.
+  auto builder = pgwrapper::CreateInternalPGConnBuilder(
+      ysql_proxy_addr_, database_name, ysql_auth_key_, /* deadline */ std::nullopt);
 
   std::unique_ptr<DatabaseEntry> entry;
   if (use_single_connection_) {
@@ -362,6 +382,11 @@ YsqlUpgradeHelper::MakeDatabaseEntry(std::string database_name) {
   }
 
   return entry;
+}
+
+Result<bool> YsqlUpgradeHelper::HasYbCatalogVersion(DatabaseEntry* db_entry) {
+  auto conn = VERIFY_RESULT(db_entry->GetConnection());
+  return FunctionExists(conn.get(), "yb_catalog_version");
 }
 
 Status YsqlUpgradeHelper::Upgrade() {
@@ -427,12 +452,28 @@ Status YsqlUpgradeHelper::Upgrade() {
     }
   }
 
+  // Fix for https://github.com/yugabyte/yugabyte-db/issues/18507:
+  // This bug only shows up when upgrading from 2.4.x or 2.6.x, in these
+  // two releases the table pg_yb_catalog_version exists but the function
+  // yb_catalog_version does not exist. However we have skipped V1 because
+  // SystemTableHasRows(pgconn, "pg_yb_catalog_version") returns true.
+  for (auto& entry : databases) {
+    if (!VERIFY_RESULT(HasYbCatalogVersion(entry.get()))) {
+      LOG(WARNING) << "Function yb_catalog_version is missing in " << entry->database_name_;
+      // Run V1 migration script to introduce function "yb_catalog_version".
+      const Version version = {0, 0};
+      RETURN_NOT_OK(MigrateOnce(entry.get(), &version));
+    } else {
+      LOG(INFO) << "Found function yb_catalog_version in " << entry->database_name_;
+    }
+  }
+
   return Status::OK();
 }
 
-Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
+Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* historical_version) {
   const auto& db_name = db_entry->database_name_;
-  const auto& version = db_entry->version_;
+  const auto& version = historical_version ? *historical_version : db_entry->version_;
 
   auto pgconn = VERIFY_RESULT(db_entry->GetConnection());
 
@@ -455,6 +496,14 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
 
   LOG(INFO) << db_name << ": applying migration '" << next_migration_filename << "'";
 
+  const auto check_breaking_ddl =
+      catalog_version_migration_applied_ && !use_single_connection_;
+  uint64_t old_breaking_version = last_breaking_version_;
+  if (check_breaking_ddl && old_breaking_version == 0) {
+    old_breaking_version = VERIFY_RESULT(GetBreakingCatalogVersion(&*pgconn));
+    DCHECK_GE(old_breaking_version, 1UL);
+  }
+
   // We use the existence of "pg_global" to indicate that we need to wait.
   // For example, the creation of shared system relation need to be propagated
   // to invalidate its negative cache entry in other Postgres backends.
@@ -475,13 +524,29 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
                                next_migration_filename,
                                db_name));
 
+  bool has_breaking_ddl = false;
+  if (check_breaking_ddl) {
+    last_breaking_version_ = VERIFY_RESULT(GetBreakingCatalogVersion(&*pgconn));
+    DCHECK_GE(last_breaking_version_, 1UL);
+    has_breaking_ddl = old_breaking_version < last_breaking_version_;
+  }
   // Wait for the new Catalog Version to be propagated to tserver through heartbeat.
-  // This can only happen once, when the table is introduced in the first migration.
+  // (1) catalog_version_migration_applied_: this can only happen once, when the
+  // table pg_yb_catalog_version is introduced in the first migration.
+  // (2) has_breaking_ddl: last migration contains a breaking DDL as indicated
+  // by the last_breaking_version change in the pg_yb_catalog_version table.
   // Sleep here isn't guaranteed to work (see #6238), failure to propagate a catalog version
   // would lead to Catalog Version Mismatch error fixed by retrial.
-  if (!catalog_version_migration_applied_) {
+  if (!catalog_version_migration_applied_ || has_breaking_ddl) {
     SleepFor(MonoDelta::FromMilliseconds(2 * heartbeat_interval_ms_));
-    catalog_version_migration_applied_ = true;
+    if (!catalog_version_migration_applied_) {
+      catalog_version_migration_applied_ = true;
+    }
+  }
+
+  if (historical_version) {
+    LOG(INFO) << db_name << ": migration successfully applied without version bump";
+    return Status::OK();
   }
 
   RETURN_NOT_OK_PREPEND(

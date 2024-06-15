@@ -10,7 +10,9 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -18,6 +20,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+	"sort"
 
 	"github.com/spf13/viper"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
@@ -50,8 +54,6 @@ const VersionMetadataJSON = "version_metadata.json"
 const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jre_x64_linux_*.tar.gz"
 
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
-
-const tarCronDirGlob = "yba_installer-*linux*/" + CronDir
 
 // IndexOf returns the index in arr where val is present, -1 otherwise.
 func IndexOf(arr []string, val string) int {
@@ -110,8 +112,21 @@ func HasSudoAccess() bool {
 	return false
 }
 
-// Create a file at a relative path for the non-root case. Have to make the directory before
-// inserting the file in that directory.
+// SplitInput parses an input string that is either comma or space separated and returns the
+// individual elements in an array
+func SplitInput(input string) []string {
+	return strings.FieldsFunc(input, func(r rune) bool {
+		return r == ',' || r == ' '
+	})
+}
+
+// RemoveQuotes removes the quotes around the input string & returns the raw string.
+func RemoveQuotes(input string) string {
+	return strings.Trim(input, "\"")
+}
+
+// Create or truncate a file at a relative path for the non-root case. Have to make the directory
+// before inserting the file in that directory.
 func Create(p string) (*os.File, error) {
 	log.Debug("creating file (and parent directories) " + p)
 	if err := MkdirAll(filepath.Dir(p), DirMode); err != nil {
@@ -146,19 +161,106 @@ func Symlink(src string, dest string) error {
 	return out.Error
 }
 
-// ResolveSymlink will read the given symlink and move the original file to the symlinks
-// destination. This requires the given path is a symlink, and will not check if it is a real file
-// or a symlink
-func ResolveSymlink(path string) error {
-	orig, err := os.Readlink(path)
-	if err != nil {
-		return fmt.Errorf("failed to resolve symlink for %s: %w", path, err)
+func ResolveSymlink(source, target string) error {
+	_, tErr := os.Stat(target)
+	_, sErr := os.Stat(source)
+	// Handle non errNotExist errors
+	if tErr != nil && !errors.Is(tErr, fs.ErrNotExist) {
+		return fmt.Errorf("failed to stat target %s: %w", target, tErr)
 	}
-	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("failed to remove the symlink %s: %w", path, err)
+	if sErr != nil && !errors.Is(sErr, fs.ErrNotExist) {
+		return fmt.Errorf("failed to stat source %s: %w", target, sErr)
 	}
-	if err := os.Rename(orig, path); err != nil {
-		return fmt.Errorf("failed to move %s -> %s: %w", orig, path, err)
+
+	// Handle neither source nor target existing
+	if errors.Is(tErr, fs.ErrNotExist) && errors.Is(sErr, fs.ErrNotExist) {
+		msg := fmt.Sprintf("Neither source %s nor target %s exist", source, target)
+		log.Error(msg)
+		return fmt.Errorf(msg)
+		// Handle only target existing (already resolved)
+	} else if tErr == nil && errors.Is(sErr, fs.ErrNotExist) {
+		log.Debug(fmt.Sprintf("Symlink %s -> %s already resolved", source, target))
+		return nil
+	}
+
+	// Remove the target if needed
+	if tErr == nil {
+		if err := os.RemoveAll(target); err != nil {
+			log.Error("failed to delete link target " + target)
+			return fmt.Errorf("failed to remove target %s: %w", target, err)
+		}
+	}
+	// Try to do an os.Rename. This will fail across filesystems
+	if err := os.Rename(source, target); err != nil {
+		if strings.Contains(err.Error(), "invalid cross-device link") {
+			log.Debug("cross-device link detected, using fallback copy implementation")
+			return resolveSymlinkFallback(source, target)
+		}
+		log.Error(fmt.Sprintf("failed to rename %s -> %s", source, target))
+		return fmt.Errorf("resolve symlink failed to rename %s->%s: %w", source, target, err)
+	}
+	// Best effor to set permissions of resolved symlink (in case Replicated was owned by root)
+	userName := viper.GetString("service_username")
+	if err := Chown(target, userName, userName, true); err != nil {
+		log.Warn(
+			fmt.Sprintf("error changing permissions of target directory %s: %s", target, err.Error()))
+	}
+	return nil
+}
+
+// resolveSymlinkFallback will, given a source (file/dir) and target (symlink), it will move the source to
+// the target destination. This supports moving across filesystems/devices, and is idempotent.
+// Logic to be idempotent:
+// 1. if the source directory exists always copy it to the target
+// 1.A delete the target before copy if needed
+// 2. move the source to source-tmp
+// 3. Best effort to delete source-tmp.
+// Fail if neither source nor target exist
+func resolveSymlinkFallback(source, target string) error {
+	srcTmpName := fmt.Sprintf("%s-tmp", source)
+
+	// Source still exists, copy to target
+	if _, sErr := os.Stat(source); sErr == nil {
+		// Delete Target if it exists
+		if _, tErr := os.Stat(target); tErr == nil {
+			if err := RemoveAll(target); err != nil {
+				return fmt.Errorf("target directory %s could not be deleted: %w", target, err)
+			}
+		} else if errors.Is(tErr, fs.ErrNotExist) {
+			log.DebugLF("target directory already deleted")
+		} else {
+			return fmt.Errorf("could not determine status of target directory %s: %w", target, tErr)
+		}
+		log.Debug("Copy symlink source to target")
+		if out := shell.Run("cp", "-r", source, target); !out.SucceededOrLog() {
+			return fmt.Errorf("copying from %s -> %s failed while resolving symlink: %w",
+				source, target, out.Error)
+		}
+
+		log.DebugLF("Rename source to temp name")
+		if err := os.Rename(source, srcTmpName); err != nil {
+			return fmt.Errorf("rename to temp dir: %w", err)
+		}
+	} else if errors.Is(sErr, fs.ErrNotExist) {
+		log.DebugLF("no source directory found")
+		if _, tErr := os.Stat(target); errors.Is(tErr, fs.ErrNotExist) {
+			log.Error("no source or target found")
+			return fmt.Errorf("could not find source %s nor target %s directories", source, target)
+		}
+	} else {
+		return fmt.Errorf("could not determine status of source directory %s: %w", source, sErr)
+	}
+
+	// Best effor to set permissions of resolved symlink (in case Replicated was owned by root)
+	userName := viper.GetString("service_username")
+	if err := Chown(target, userName, userName, true); err != nil {
+		log.Warn(
+			fmt.Sprintf("error changing permissions of target directory %s: %s", target, err.Error()))
+	}
+
+	// Remove the temp dir if it exists. This is best effort, and can be cleaned up manually later
+	if err := RemoveAll(srcTmpName); err != nil {
+		log.Warn("failed to remove backup source directory " + srcTmpName + ": " + err.Error())
 	}
 	return nil
 }
@@ -312,6 +414,10 @@ type YBVersion struct {
 
 	// ex: foo
 	Remainder string
+
+	// Is a stable (2024.1.0.0 format OR 2.18, 2.20, etc)
+	// 2.21, 2.23, etc are preview.
+	IsStable bool
 }
 
 func NewYBVersion(versionString string) (*YBVersion, error) {
@@ -363,8 +469,27 @@ func NewYBVersion(versionString string) (*YBVersion, error) {
 		version.Remainder = matches[6]
 	}
 
+	if version.PublicVersionDigits[0] > 2000 {
+		// First, check if its the 2024.x.y.z form or 2.x.y.z form - 2024 is always stable
+		// since its year based, easy to just check > 2000
+		version.IsStable = true
+	} else if version.PublicVersionDigits[1]%2 == 0 {
+		// if its the 2.x.y.z form, even numbers for 'x' are stable
+		version.IsStable = true
+	} else {
+		// everything else is preview (not stable)
+		version.IsStable = false
+	}
+
 	return version, nil
 
+}
+
+func Exists(file string) bool {
+	if _, err := os.Stat(file); errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	return true
 }
 
 func (ybv YBVersion) String() string {
@@ -387,6 +512,25 @@ func LessVersions(version1, version2 string) bool {
 	ybversion2, err := NewYBVersion(version2)
 	if err != nil {
 		panic(err)
+	}
+
+	// If we are upgrading between stable and preview, ask the customer to continue if yba_mode=dev,
+	// otherwise fail.
+	prompt := "Upgrades between stable/preview is not supported, continue anyways?"
+	if ybversion1.IsStable != ybversion2.IsStable &&
+		((os.Getenv("YBA_MODE") == "dev" && !UserConfirm(prompt, DefaultNo)) ||
+			os.Getenv("YBA_MODE") != "dev") {
+		v1Type := "preview"
+		if ybversion1.IsStable {
+			v1Type = "stable"
+		}
+		v2Type := "preview"
+		if ybversion2.IsStable {
+			v2Type = "stable"
+		}
+		panic(fmt.Errorf(
+			"cannot compare stable and preview versions %s(%s) - %s(%s)",
+			version1, v1Type, version2, v2Type))
 	}
 
 	for i := 0; i < 4; i++ {
@@ -503,6 +647,7 @@ func setYamlValue(root *yaml.Node, findPath, setPath string, value interface{}) 
 // Function to parse an arbitrary value and set the correct tag in a yaml Node
 func setValue(node *yaml.Node, value interface{}) error {
 	node.Kind = yaml.ScalarNode
+	node.Style = 0
 	switch t := value.(type) {
 	case int:
 		vint := value.(int)
@@ -692,6 +837,52 @@ func Bool2Int(b bool) int {
 	return 0
 }
 
+// StatusSince takes a timestamp in UTC and returns the time since then in a human readable format
+func StatusSince(timestamp string) string {
+	// Define the layout of the input string
+	layout := "Mon 2006-01-02 15:04:05 MST"
+
+	// Parse the input string into a time.Time object
+	parsedTime, err := time.Parse(layout, timestamp)
+	if err != nil {
+		log.Warn("Error parsing time: " + err.Error())
+		return ""
+	}
+
+	// Get the current time
+	currentTime := time.Now()
+
+	// Calculate the duration difference
+	duration := currentTime.Sub(parsedTime)
+	return formatDuration(duration)
+}
+
+// formatDuration formats a duration into a human-readable string
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second) // Round to the nearest second
+
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	parts := []string{}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%ds", seconds))
+	}
+
+	return strings.Join(parts, " ")
+}
+
 // AbsoluteBundlePath returns the absolute path to the given file, assuming that file is a relative
 // path from the extracted yba_installer_full tgz file. This is used for installs, allowing us to
 // run yba-ctl as `./yba_installer_full-b123/yba-ctl install` and still find the binaries needed
@@ -703,4 +894,31 @@ func AbsoluteBundlePath(fp string) string {
 	}
 	rootDir := filepath.Dir(executable)
 	return filepath.Join(rootDir, fp)
+}
+
+func FindRecentBackup(dir string) string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		log.Fatal(fmt.Sprintf("error reading directory %s: %s", dir, err.Error()))
+	}
+	// Looks for most recent backup first.
+	sort.Slice(files, func(i, j int) bool {
+		iinfo, e1 := files[i].Info()
+		jinfo, e2 := files[j].Info()
+		if e1 != nil || e2 != nil {
+			log.Fatal("Error determining modification time for backups.")
+		}
+		return iinfo.ModTime().After(jinfo.ModTime())
+	})
+	// Find the old backup.
+	for _, file := range files {
+		match, _ := regexp.MatchString(`^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`, file.Name())
+		if match {
+			input := fmt.Sprintf("%s/%s", dir, file.Name())
+			log.Info(fmt.Sprintf("Found backup file %s", input))
+			return input
+		}
+	}
+	log.Fatal("Could not find backup file in " + dir)
+	return ""
 }

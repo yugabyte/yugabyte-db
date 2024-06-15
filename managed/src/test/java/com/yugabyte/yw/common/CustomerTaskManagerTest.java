@@ -33,10 +33,10 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   private CustomerTask createTask(
       CustomerTask.TargetType targetType, UUID targetUUID, CustomerTask.TaskType taskType) {
-    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
     UUID taskUUID = UUID.randomUUID();
     taskInfo.setTaskUUID(taskUUID);
-    taskInfo.setDetails(Json.newObject());
+    taskInfo.setTaskParams(Json.newObject());
     taskInfo.setOwner("");
     taskInfo.save();
     return CustomerTask.create(
@@ -93,7 +93,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     // Verify tasks have been marked as failure properly
     for (CustomerTask task : customerTasks) {
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      assertEquals("Platform restarted.", taskInfo.getDetails().get("errorString").asText());
+      assertEquals("Platform restarted.", taskInfo.getTaskError().getMessage());
       assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     }
   }
@@ -125,7 +125,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     for (CustomerTask task : customerTasks) {
       assertNotNull(task.getCompletionTime());
       TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
-      assertEquals("Platform restarted.", taskInfo.getDetails().get("errorString").asText());
+      assertEquals("Platform restarted.", taskInfo.getTaskError().getMessage());
       assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     }
   }

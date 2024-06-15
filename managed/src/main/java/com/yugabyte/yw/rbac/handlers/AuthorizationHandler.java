@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.controllers.JWTVerifier;
@@ -44,7 +45,6 @@ public class AuthorizationHandler extends Action<AuthzPath> {
   public static final String API_TOKEN_HEADER = "X-AUTH-YW-API-TOKEN";
   public static final String API_JWT_HEADER = "X-AUTH-YW-API-JWT";
   public static final String COOKIE_PLAY_SESSION = "PLAY_SESSION";
-  private static final String CUSTOMERS = "customers";
 
   private final Config config;
   private final RuntimeConfigCache runtimeConfigCache;
@@ -81,12 +81,13 @@ public class AuthorizationHandler extends Action<AuthzPath> {
       return CompletableFuture.completedFuture(Results.unauthorized("Unable To authenticate User"));
     }
     UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
-    RequestContext.put(TokenAuthenticator.CUSTOMER, Customer.get(user.getCustomerUUID()));
+    Customer customer = Customer.get(user.getCustomerUUID());
+    RequestContext.put(TokenAuthenticator.CUSTOMER, customer);
     RequestContext.put(TokenAuthenticator.USER, userWithFeatures);
 
     String endpoint = request.uri();
     UUID customerUUID = null;
-    Pattern custPattern = Pattern.compile(String.format(".*/%s/" + UUID_PATTERN, CUSTOMERS));
+    Pattern custPattern = Pattern.compile(String.format(".*/%s/" + UUID_PATTERN, Util.CUSTOMERS));
     Matcher custMatcher = custPattern.matcher(endpoint);
     if (custMatcher.find()) {
       customerUUID = UUID.fromString(custMatcher.group(1));
@@ -149,7 +150,7 @@ public class AuthorizationHandler extends Action<AuthzPath> {
             Matcher matcher = pattern.matcher(endpoint);
             if (matcher.find()) {
               resourceUUID = UUID.fromString(matcher.group(3));
-            } else if (resource.path().equals(CUSTOMERS)) {
+            } else if (resource.path().equals(Util.CUSTOMERS)) {
               resourceUUID = user.getCustomerUUID();
             }
             isPermissionPresentOnResource =
@@ -230,6 +231,46 @@ public class AuthorizationHandler extends Action<AuthzPath> {
                   attribute);
               return CompletableFuture.completedFuture(
                   Results.unauthorized("Unable to authorize user"));
+            }
+            break;
+          }
+        case REQUEST_CONTEXT:
+          {
+            switch (resource.path()) {
+              case Util.USERS:
+                {
+                  isPermissionPresentOnResource =
+                      checkResourcePermission(applicableRoleBindings, attribute, user.getUuid());
+                  if (!isPermissionPresentOnResource) {
+                    log.debug(
+                        "User {} does not have role bindings for the permission {}",
+                        user.getUuid(),
+                        attribute);
+                    return CompletableFuture.completedFuture(
+                        Results.unauthorized("Unable to authorize user"));
+                  }
+                  break;
+                }
+              case Util.CUSTOMERS:
+                {
+                  isPermissionPresentOnResource =
+                      checkResourcePermission(
+                          applicableRoleBindings, attribute, customer.getUuid());
+                  if (!isPermissionPresentOnResource) {
+                    log.debug(
+                        "User {} does not have role bindings for the permission {}",
+                        user.getUuid(),
+                        attribute);
+                    return CompletableFuture.completedFuture(
+                        Results.unauthorized("Unable to authorize user"));
+                  }
+                  break;
+                }
+              default:
+                {
+                  return CompletableFuture.completedFuture(
+                      Results.unauthorized("Unable to authorize user"));
+                }
             }
             break;
           }

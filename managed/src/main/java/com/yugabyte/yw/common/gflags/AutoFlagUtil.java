@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.collect.ImmutableSet;
@@ -12,19 +13,27 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol;
+import org.yb.WireProtocol.PromotedFlagsPerProcessPB;
 import org.yb.client.YBClient;
 
 @Singleton
+@Slf4j
 public class AutoFlagUtil {
 
   private final YBClientService ybClientService;
@@ -82,21 +91,26 @@ public class AutoFlagUtil {
       throws IOException {
     // Fetch promoted auto flags list from DB itself.
     WireProtocol.AutoFlagsConfigPB autoFlagsConfigPB = getAutoFlagConfigForUniverse(universe);
-    Set<String> autoFlags =
+
+    Optional<PromotedFlagsPerProcessPB> promotedFlagsPerProcessPB =
         autoFlagsConfigPB.getPromotedFlagsList().stream()
             .filter(
-                promotedFlagsPerProcessPB -> {
-                  return promotedFlagsPerProcessPB
+                flagsPerProcessPB -> {
+                  return flagsPerProcessPB
                       .getProcessName()
                       .equals(
                           UniverseTaskBase.ServerType.MASTER.equals(serverType)
                               ? "yb-master"
                               : "yb-tserver");
                 })
-            .findFirst()
-            .get()
-            .getFlagsList()
-            .stream()
+            .findFirst();
+
+    if (!promotedFlagsPerProcessPB.isPresent()) {
+      return new HashSet<>();
+    }
+
+    Set<String> autoFlags =
+        promotedFlagsPerProcessPB.get().getFlagsList().stream()
             .filter(flag -> !GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
             .collect(Collectors.toSet());
 
@@ -168,5 +182,75 @@ public class AutoFlagUtil {
     }
 
     return false;
+  }
+
+  /**
+   * Validates that every promoted auto flag on the source universe is also promoted on the target
+   * universe. i.e. The set of promoted autoflags on the source universe is a subset of the promoted
+   * autoflags on the target universe.
+   *
+   * @param sourceUniverse
+   * @param targetUniverse
+   * @param serverType
+   * @throws IOException
+   */
+  public void checkSourcePromotedAutoFlagsPromotedOnTarget(
+      Universe sourceUniverse, Universe targetUniverse) {
+
+    String sourceUniverseSoftwareVersion =
+        sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean isSourceUniverseAFCompatible =
+        CommonUtils.isAutoFlagSupported(sourceUniverseSoftwareVersion);
+
+    String targetUniverseSoftwareVersion =
+        targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean isTargetUniverseAFCompatible =
+        CommonUtils.isAutoFlagSupported(targetUniverseSoftwareVersion);
+
+    if (!isSourceUniverseAFCompatible && !isTargetUniverseAFCompatible) {
+      log.warn("Skipping auto flags compatibility check as both universe are not AF compatible.");
+      return;
+    }
+
+    List<ServerType> serverTypes =
+        new ArrayList<>(Arrays.asList(ServerType.MASTER, ServerType.TSERVER));
+    try {
+      for (ServerType serverType : serverTypes) {
+        Set<String> sourcePromotedAndModifiedAutoFlags = new HashSet<>();
+        Set<String> targetPromotedAndModifiedAutoFlags = new HashSet<>();
+
+        if (isSourceUniverseAFCompatible) {
+          sourcePromotedAndModifiedAutoFlags =
+              getPromotedAutoFlags(sourceUniverse, serverType, LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+        }
+        if (isTargetUniverseAFCompatible) {
+          targetPromotedAndModifiedAutoFlags =
+              getPromotedAutoFlags(targetUniverse, serverType, LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+        }
+        sourcePromotedAndModifiedAutoFlags.removeAll(targetPromotedAndModifiedAutoFlags);
+        if (sourcePromotedAndModifiedAutoFlags.size() != 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Auto Flags: "
+                  + sourcePromotedAndModifiedAutoFlags
+                  + " set on universe "
+                  + sourceUniverse.getName()
+                  + " are not set on universe "
+                  + targetUniverse.getName());
+        }
+      }
+    } catch (IOException e) {
+      log.error("Error checking auto flags: ", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  /**
+   * Validates that all promoted/modified autoflags on universe1 are equal to the promoted/modified
+   * autoflags on universe2.
+   */
+  public void checkPromotedAutoFlagsEquality(Universe universe1, Universe universe2) {
+    checkSourcePromotedAutoFlagsPromotedOnTarget(universe1, universe2);
+    checkSourcePromotedAutoFlagsPromotedOnTarget(universe2, universe1);
   }
 }

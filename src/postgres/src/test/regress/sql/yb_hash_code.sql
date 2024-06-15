@@ -46,6 +46,7 @@ DROP TYPE mood;
 -- test basic pushdown on a table with one primary hash key column
 CREATE TABLE test_table_one_primary (x INT PRIMARY KEY, y INT);
 INSERT INTO test_table_one_primary SELECT i,i FROM generate_series(1, 10000) i;
+SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;
 SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512;

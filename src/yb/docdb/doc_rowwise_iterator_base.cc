@@ -45,13 +45,7 @@
 
 using std::string;
 
-// Primary key update in table group creates copy of existing data
-// in same tablet (which uses a single RocksDB instance). During this
-// update, we are updating the source schema as well (which is not required).
-// Until we figure out the correct approach to handle it, we are disabling
-// offset based key decoding by default.
-DEFINE_RUNTIME_bool(
-    use_offset_based_key_decoding, false, "Use Offset based key decoding for reader.");
+DEPRECATE_FLAG(bool, use_offset_based_key_decoding, "02_2024");
 
 namespace yb::docdb {
 
@@ -213,7 +207,7 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
     if (is_forward_scan_) {
       Seek(bounds.lower);
     } else {
-      PrevDocKey(bounds.upper);
+      SeekPrevDocKey(bounds.upper);
     }
   }
 

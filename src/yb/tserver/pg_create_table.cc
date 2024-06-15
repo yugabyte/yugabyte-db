@@ -33,6 +33,8 @@
 
 DECLARE_bool(TEST_duplicate_create_table_request);
 
+DECLARE_string(ysql_yb_default_replica_identity);
+
 namespace yb {
 namespace tserver {
 
@@ -110,6 +112,23 @@ Status PgCreateTable::Exec(
     set_table_properties = true;
   }
   if (set_table_properties) {
+    if (req_.schema_name() == "pg_catalog") {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::NOTHING);
+    } else if (req_.schema_name() == "information_schema") {
+      table_properties.SetReplicaIdentity(PgReplicaIdentity::DEFAULT);
+    } else {
+      // TODO(#22409): Propagate the default replica identity in the request from PG rather than
+      // having the logic to set default replica identity based on the flag
+      // 'ysql_yb_default_replica_identity' at two places.
+      PgReplicaIdentity replica_identity = PgReplicaIdentity::CHANGE;
+      if (!PgReplicaIdentity_Parse(
+              FLAGS_ysql_yb_default_replica_identity, &replica_identity)) {
+        LOG(WARNING)
+            << "Invalid replica identity provided in the flag ysql_yb_default_replica_identity.";
+        return STATUS_FORMAT(InvalidArgument, "Invalid replica identity");
+      }
+      table_properties.SetReplicaIdentity(replica_identity);
+    }
     schema_builder_.SetTableProperties(table_properties);
   }
   if (!req_.schema_name().empty()) {
@@ -125,7 +144,8 @@ Status PgCreateTable::Exec(
                 .table_id(PgObjectId::GetYbTableIdFromPB(req_.table_id()))
                 .schema(&schema)
                 .is_colocated_via_database(req_.is_colocated_via_database())
-                .is_matview(req_.is_matview());
+                .is_matview(req_.is_matview())
+                .is_truncate(req_.is_truncate());
   if (req_.is_pg_catalog_table()) {
     table_creator->is_pg_catalog_table();
   }
@@ -153,9 +173,18 @@ Status PgCreateTable::Exec(
     table_creator->tablespace_id(tablespace_oid.GetYbTablespaceId());
   }
 
-  auto matview_pg_table_oid = PgObjectId::FromPB(req_.matview_pg_table_oid());
-  if (matview_pg_table_oid.IsValid()) {
-    table_creator->matview_pg_table_id(matview_pg_table_oid.GetYbTableId());
+  auto pg_table_oid = PgObjectId::FromPB(req_.pg_table_oid());
+  if (pg_table_oid.IsValid()) {
+    table_creator->pg_table_id(pg_table_oid.GetYbTableId());
+  }
+
+  auto old_relfilenode_id = PgObjectId::FromPB(req_.old_relfilenode_oid());
+  if (old_relfilenode_id.IsValid()) {
+    table_creator->old_rewrite_table_id(old_relfilenode_id.GetYbTableId());
+  }
+
+  if (req_.has_vector_idx_options()) {
+    table_creator->add_vector_options(req_.vector_idx_options());
   }
 
   // For index, set indexed (base) table id.
@@ -186,9 +215,6 @@ Status PgCreateTable::Exec(
         return Status::OK();
       }
       return STATUS(InvalidArgument, "Duplicate table");
-    }
-    if (s.IsNotFound()) {
-      return STATUS(InvalidArgument, "Database not found", table_name_.namespace_name());
     }
     return STATUS_FORMAT(
         InvalidArgument, "Invalid table definition: $0",

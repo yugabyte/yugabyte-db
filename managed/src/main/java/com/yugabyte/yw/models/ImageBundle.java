@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -19,6 +20,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -202,7 +204,40 @@ public class ImageBundle extends Model {
   @JsonIgnore
   public boolean isUpdateNeeded(ImageBundle bundle) {
     return !Objects.equals(this.getUseAsDefault(), bundle.getUseAsDefault())
-        || !Objects.equals(this.getDetails(), bundle.getDetails());
+        || !Objects.equals(this.getDetails(), bundle.getDetails())
+        || (this.getDetails().getRegions() != null
+            && bundle.getDetails().getRegions() != null
+            && !this.getDetails().getRegions().equals(bundle.getDetails().getRegions()))
+        || !this.getName().equals(bundle.getName());
+  }
+
+  @JsonIgnore
+  public boolean allowUpdateDuringUniverseAssociation(ImageBundle existingBundle) {
+    ImageBundleDetails existingDetails = existingBundle.getDetails();
+    ImageBundleDetails details = this.getDetails();
+    // We will allow fine grain edit in case the bundle is associated with
+    // the universe. We will allow addition of new AMI in the newly added
+    // region but will not allow any other edit.
+    if (existingBundle.getProvider().getCloudCode() == CloudType.aws) {
+      // Compare that AMI is not removed for any region in used bundle for AWS.
+      Map<String, ImageBundleDetails.BundleInfo> infoExistingBundle = existingDetails.getRegions();
+      Map<String, ImageBundleDetails.BundleInfo> info = details.getRegions();
+
+      // We will not allow any region AMI information to be removed from the used bundle.
+      boolean allMatch =
+          infoExistingBundle.entrySet().stream()
+              .allMatch(
+                  entry -> {
+                    String key = entry.getKey();
+                    ImageBundleDetails.BundleInfo bundleInfo = entry.getValue();
+                    return info.containsKey(key) && info.get(key).equals(bundleInfo);
+                  });
+
+      if (!allMatch) {
+        return false;
+      }
+    }
+    return details.equals(existingDetails);
   }
 
   @JsonIgnore
@@ -235,6 +270,7 @@ public class ImageBundle extends Model {
     ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, defaultBundles);
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       if (cluster.userIntent.imageBundleUUID == null
+          && defaultBundle != null
           && imageBundleUUID.equals(defaultBundle.getUuid())) {
         return true;
       } else if (cluster.userIntent.imageBundleUUID != null

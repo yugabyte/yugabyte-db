@@ -16,9 +16,11 @@
 #include <memory>
 
 #include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/util/result.h"
+#include "yb/util/metrics.h"
 
 namespace yb {
 
@@ -27,6 +29,10 @@ struct XClusterPollerStats;
 namespace cdc {
 class ConsumerRegistryPB;
 }  // namespace cdc
+
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
 
 namespace master {
 class TSHeartbeatRequestPB;
@@ -39,6 +45,7 @@ class ProxyCache;
 namespace tserver {
 
 class TabletServer;
+class TserverXClusterContextIf;
 class XClusterPoller;
 
 class XClusterConsumerIf {
@@ -57,15 +64,26 @@ class XClusterConsumerIf {
       master::TSHeartbeatRequestPB* req, bool needs_full_tablet_report) = 0;
   virtual std::vector<XClusterPollerStats> GetPollerStats() const = 0;
 
-  virtual cdc::XClusterRole TEST_GetXClusterRole() const = 0;
   virtual std::vector<TabletId> TEST_producer_tablets_running() const = 0;
   virtual uint32_t TEST_GetNumSuccessfulWriteRpcs() = 0;
   virtual std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers() const = 0;
+  virtual std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const = 0;
+  virtual void ClearAllClientMetaCaches() const = 0;
+  virtual scoped_refptr<Counter> TEST_metric_replication_error_count() const = 0;
+  virtual scoped_refptr<Counter> TEST_metric_apply_failure_count() const = 0;
+  virtual scoped_refptr<Counter> TEST_metric_poll_failure_count() const = 0;
 };
 
+typedef std::function<Result<pgwrapper::PGConn>(const std::string&, const CoarseTimePoint&)>
+    ConnectToPostgresFunc;
+typedef std::function<Result<std::pair<NamespaceId, NamespaceName>>(const TabletId&)>
+    GetNamespaceInfoFunc;
+
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
-    std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-    TabletServer* tserver);
+    std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
+    client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
+    GetNamespaceInfoFunc get_namespace_info_func, const TserverXClusterContextIf& xcluster_context,
+    const scoped_refptr<MetricEntity>& server_metric_entity);
 
 }  // namespace tserver
 }  // namespace yb

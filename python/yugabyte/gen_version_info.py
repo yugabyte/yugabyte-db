@@ -34,17 +34,18 @@
 # This script generates a header file which contains definitions
 # for the current YugaByte build (e.g. timestamp, git hash, etc)
 
+import argparse
 import json
 import logging
-import argparse
 import os
-import re
+import platform
 import pwd
+import re
 import shlex
+import socket
 import subprocess
 import sys
 import time
-import socket
 
 from typing import Optional
 
@@ -67,6 +68,12 @@ def is_git_repo_clean(git_repo_dir: str) -> bool:
 
 def boolean_to_json_str(bool_flag: bool) -> str:
     return str(bool_flag).lower()
+
+
+def get_glibc_version() -> str:
+    glibc_v = subprocess.check_output('ldd --version', shell=True).decode('utf-8').strip()
+    # We only want the version
+    return glibc_v.split("\n")[0].split()[-1]
 
 
 def get_git_sha1(git_repo_dir: str) -> Optional[str]:
@@ -154,10 +161,24 @@ def main() -> int:
     version_number = match.group(1)
     build_type = args.build_type
 
+    # The minimum YBA version required by this build.  If there is no min_yba_version.txt then
+    # default to 0.0.0 (yba uses semvar).
+    path_to_yba_min_version_file = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), "..", "..", "min_yba_version.txt")
+    if os.path.isfile(path_to_yba_min_version_file):
+        with open(path_to_yba_min_version_file) as version_file:
+            min_yba_version = version_file.read().strip()
+    else:
+        min_yba_version = '0.0.0.0'
+
     # Add the Jenkins build ID
     build_id = os.getenv("BUILD_ID", "")
     # This will be replaced by the release process.
     build_number = os.getenv("YB_RELEASE_BUILD_NUMBER") or "PRE_RELEASE"
+
+    # Fetch system platform and architecture
+    os_platform = sys.platform
+    architecture = platform.machine()
 
     d = os.path.dirname(output_path)
     if d != "" and not os.path.exists(d):
@@ -168,6 +189,7 @@ def main() -> int:
     logging.getLogger('').addHandler(file_log_handler)
 
     data = {
+            "schema": "v1",
             "git_hash": git_hash,
             "build_hostname": hostname,
             "build_timestamp": build_time,
@@ -177,8 +199,16 @@ def main() -> int:
             "build_id": build_id,
             "build_type": build_type,
             "version_number": version_number,
-            "build_number": build_number
+            "build_number": build_number,
+            "platform": os_platform,
+            "architecture": architecture,
+            "minimum_yba_version": min_yba_version
             }
+
+    # Record our glibc version.  This doesn't apply to mac/darwin.
+    if os_platform == 'linux':
+        data["glibc_v"] = get_glibc_version()
+
     content = json.dumps(data)
 
     # Frequently getting errors here when rebuilding on NFS:

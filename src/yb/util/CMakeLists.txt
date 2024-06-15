@@ -82,22 +82,6 @@ ADD_YB_LIBRARY(version_info_proto
   DEPS protobuf
   NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
 
-#######################################
-# op_id_proto
-#######################################
-
-YRPC_GENERATE(
-  OP_ID_PROTO_SRCS OP_ID_PROTO_HDRS OP_ID_PROTO_TGTS
-  MESSAGES TRUE
-  SERVICE FALSE
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES opid.proto)
-ADD_YB_LIBRARY(opid_proto
-  SRCS ${OP_ID_PROTO_SRCS}
-  DEPS protobuf yb_util yrpc
-  NONLINK_DEPS ${OP_ID_PROTO_TGTS})
-
 ############################################################
 # Version stamp
 ############################################################
@@ -143,7 +127,6 @@ set(UTIL_SRCS
   bloom_filter.cc
   bytes_formatter.cc
   cache_metrics.cc
-  capabilities.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -213,7 +196,6 @@ set(UTIL_SRCS
   oid_generator.cc
   once.cc
   operation_counter.cc
-  opid.cc
   os-util.cc
   path_util.cc
   pb_util-internal.cc
@@ -238,6 +220,7 @@ set(UTIL_SRCS
   spinlock_profiling.cc
   split.cc
   stack_trace.cc
+  stack_trace_tracker.cc
   stats/iostats_context_imp.cc
   stats/perf_level_imp.cc
   status.cc
@@ -249,6 +232,7 @@ set(UTIL_SRCS
   striped64.cc
   subprocess.cc
   sync_point.cc
+  tcmalloc_profile.cc
   tcmalloc_trace.cc
   tcmalloc_util.cc
   test_graph.cc
@@ -269,7 +253,9 @@ set(UTIL_SRCS
   version_info.cc
   write_buffer.cc
   yb_partition.cc
+  ysql_binary_runner.cc
   zlib.cc
+  callsite_profiling.cc
   )
 
 set(UTIL_LIBS
@@ -297,6 +283,7 @@ if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
   set(UTIL_LIBS
     ${UTIL_LIBS}
+    absl
     rt
     libbacktrace)
 endif()
@@ -343,7 +330,6 @@ endif()
 set(YB_TEST_LINK_LIBS yb_test_util gutil gmock gtest
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
-ADD_YB_TEST(flags/auto_flags-test)
 ADD_YB_TEST(background_task-test)
 ADD_YB_TEST(backoff_waiter-test)
 ADD_YB_TEST(bit-util-test)
@@ -351,14 +337,19 @@ ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
 ADD_YB_TEST(byte_buffer-test)
+ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
 ADD_YB_TEST(crypt-test)
+ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
+ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(env-test LABELS no_tsan)
 ADD_YB_TEST(errno-test)
 ADD_YB_TEST(failure_detector-test)
+ADD_YB_TEST(fast_varint-test)
+ADD_YB_TEST(flags/auto_flags-test)
 ADD_YB_TEST(flags/flag_tags-test)
 ADD_YB_TEST(flags/flags-test)
 ADD_YB_TEST(flags/flags_callback-test)
@@ -385,15 +376,18 @@ ADD_YB_TEST(mt-hdr_histogram-test RUN_SERIAL true)
 ADD_YB_TEST(mt-metrics-test RUN_SERIAL true)
 ADD_YB_TEST(mt-threadlocal-test RUN_SERIAL true)
 ADD_YB_TEST(net/dns_resolver-test)
+ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
 ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
 ADD_YB_TEST(once-test)
+ADD_YB_TEST(operation_counter-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
 ADD_YB_TEST(priority_queue-test)
 ADD_YB_TEST(priority_thread_pool-test)
+ADD_YB_TEST(prometheus_metric_filter-test)
 ADD_YB_TEST(pstack_watcher-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
@@ -409,6 +403,8 @@ if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
   # builds). This test involves some integer overflows.
   ADD_YB_TEST(safe_math-test)
 endif()
+ADD_YB_TEST(scope_exit-test)
+ADD_YB_TEST(shared_mem-test)
 ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)
@@ -416,27 +412,21 @@ ADD_YB_TEST(stats/iostats_context_test)
 ADD_YB_TEST(status-test)
 ADD_YB_TEST(stol_utils-test)
 ADD_YB_TEST(string_case-test)
+ADD_YB_TEST(string_trim-test)
 ADD_YB_TEST(striped64-test)
 ADD_YB_TEST(strongly_typed_uuid-test)
 ADD_YB_TEST(subprocess-test)
 ADD_YB_TEST(sync_point-test)
 ADD_YB_TEST(taskstream-test)
+ADD_YB_TEST(tcmalloc_profile-test)
 ADD_YB_TEST(thread-test)
 ADD_YB_TEST(threadpool-test)
 ADD_YB_TEST(tostring-test)
 ADD_YB_TEST(trace-test)
 ADD_YB_TEST(url-coding-test)
 ADD_YB_TEST(user-test)
-ADD_YB_TEST(bytes_formatter-test)
-ADD_YB_TEST(string_trim-test)
-ADD_YB_TEST(varint-test)
-ADD_YB_TEST(decimal-test)
-ADD_YB_TEST(date_time-test)
-ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
-ADD_YB_TEST(fast_varint-test)
-ADD_YB_TEST(shared_mem-test)
-ADD_YB_TEST(operation_counter-test)
+ADD_YB_TEST(varint-test)
 ADD_YB_TEST(write_buffer-test)
 
 #######################################

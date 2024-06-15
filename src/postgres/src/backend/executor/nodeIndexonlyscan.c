@@ -47,6 +47,7 @@ static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
 static void StoreIndexTuple(TupleTableSlot *slot, IndexTuple itup,
 				TupleDesc itupdesc);
 static void yb_init_indexonly_scandesc(IndexOnlyScanState *node);
+static void yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node);
 
 
 /* ----------------------------------------------------------------
@@ -78,8 +79,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
-	/* "Don't care about order" direction. */
-	if (IsYugaByteEnabled() &&
+	/* YB relation scans are optimized for the "Don't care about order" direction. */
+	if (IsYBRelation(node->ss.ss_currentRelation) &&
 		ScanDirectionIsNoMovement(((IndexOnlyScan *) node->ss.ps.plan)->indexorderdir))
 	{
 		direction = NoMovementScanDirection;
@@ -92,17 +93,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 	{
 		if (IsYugaByteEnabled() && node->yb_ioss_aggrefs)
 		{
-			/*
-			 * For aggregate pushdown, we only read aggregate results from
-			 * DocDB and pass that up to the aggregate node (agg pushdown
-			 * wouldn't be enabled if we needed to read other expressions). Set
-			 * up a dummy scan slot to hold as many attributes as there are
-			 * pushed aggregates.
-			 */
-			TupleDesc tupdesc =
-				CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs),
-										false /* hasoid */);
-			ExecInitScanTupleSlot(estate, &node->ss, tupdesc);
+			yb_agg_pushdown_init_scan_slot(node);
 			/* Refresh the local pointer. */
 			slot = node->ss.ss_ScanTupleSlot;
 		}
@@ -152,7 +143,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 * Set reference to slot in scan desc so that YB amgettuple can use it
 		 * during aggregate pushdown.
 		 */
-		scandesc->yb_agg_slot = slot;
+		if (scandesc->yb_aggrefs)
+			scandesc->yb_agg_slot = slot;
 	}
 
 	/*
@@ -759,6 +751,7 @@ yb_init_indexonly_scandesc(IndexOnlyScanState *node)
 			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+		scandesc->fetch_ybctids_only = false;
 	}
 }
 
@@ -815,6 +808,9 @@ ExecIndexOnlyScanInitializeDSM(IndexOnlyScanState *node,
 	node->ioss_VMBuffer = InvalidBuffer;
 	yb_init_indexonly_scandesc(node);
 
+	if (node->yb_ioss_aggrefs)
+		yb_agg_pushdown_init_scan_slot(node);
+
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
 	 * the scankeys to the index AM.
@@ -860,6 +856,9 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 	node->ioss_ScanDesc->xs_want_itup = true;
 	yb_init_indexonly_scandesc(node);
 
+	if (node->yb_ioss_aggrefs)
+		yb_agg_pushdown_init_scan_slot(node);
+
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
 	 * the scankeys to the index AM.
@@ -868,4 +867,21 @@ ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 		index_rescan(node->ioss_ScanDesc,
 					 node->ioss_ScanKeys, node->ioss_NumScanKeys,
 					 node->ioss_OrderByKeys, node->ioss_NumOrderByKeys);
+}
+
+static void
+yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node)
+{
+	Assert(node->yb_ioss_aggrefs);
+	/*
+	 * For aggregate pushdown, we only read aggregate results from
+	 * DocDB and pass that up to the aggregate node (agg pushdown
+	 * wouldn't be enabled if we needed to read other expressions). Set
+	 * up a dummy scan slot to hold as many attributes as there are
+	 * pushed aggregates.
+	 */
+	TupleDesc tupdesc =
+		CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs),
+								false /* hasoid */);
+	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc);
 }

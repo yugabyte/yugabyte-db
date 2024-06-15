@@ -49,7 +49,11 @@ class YsqlUpgradeHelper {
   Result<std::unique_ptr<DatabaseEntry>> MakeDatabaseEntry(std::string database_name);
 
   // Migrate a given database to the next version, updating it in the given database entry.
-  Status MigrateOnce(DatabaseEntry* db_entry);
+  // If historical_version isn't nullptr, use it to override db_entry->version_.
+  Status MigrateOnce(DatabaseEntry* db_entry, const Version* historical_version = nullptr);
+
+  // Check whether function yb_catalog_version exists in a database.
+  Result<bool> HasYbCatalogVersion(DatabaseEntry* db_entry);
 
   const HostPort ysql_proxy_addr_;
 
@@ -85,6 +89,10 @@ class YsqlUpgradeHelper {
   std::map<Version, std::string> migration_filenames_map_{};
 
   std::string migrations_dir_{""};
+
+  // Last breaking version in pg_yb_catalog_version before the next migration
+  // script is executed. Not used if use_single_connection_ is true.
+  uint64_t last_breaking_version_ = 0;
 };
 
 }  // namespace pgwrapper

@@ -25,6 +25,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tablet_server_interface.h"
 
 #include "yb/util/bytes_formatter.h"
@@ -52,9 +53,7 @@ DECLARE_int32(cql_update_system_query_cache_msecs);
 DEFINE_UNKNOWN_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
-DEFINE_UNKNOWN_int32(cql_ybclient_reactor_threads, 24,
-             "The number of reactor threads to be used for processing ybclient "
-             "requests originating in the cql layer");
+DEPRECATE_FLAG(int32, cql_ybclient_reactor_threads, "02_2024");
 DEFINE_UNKNOWN_int32(password_hash_cache_size, 64, "Number of password hashes to cache. 0 or "
              "negative disables caching.");
 DEFINE_UNKNOWN_int64(cql_processors_limit, -4000,
@@ -202,6 +201,8 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call.get()));
   DVLOG(4) << "Handling " << cql_call->ToString();
+  ADOPT_WAIT_STATE(cql_call->wait_state());
+  SCOPED_WAIT_STATUS(OnCpu_Active);
 
   // Process the call.
   MonoTime start = MonoTime::Now();
@@ -211,6 +212,19 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
     inbound_call->RespondFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, processor.status());
     return;
   }
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    ash::AshMetadata metadata{
+        .root_request_id = Uuid::Generate(),
+        .client_host_port = HostPort(inbound_call->remote_address()),
+        .addr_family = static_cast<uint8_t>(inbound_call->remote_address().address().is_v4()
+            ? AF_INET : AF_INET6)};
+    auto uuid_res = Uuid::FromHexStringBigEndian(server_->instance_pb().permanent_uuid());
+    if (uuid_res.ok()) {
+      metadata.yql_endpoint_tserver_uuid = *uuid_res;
+    }
+    wait_state->UpdateMetadata(metadata);
+  }
+
   MonoTime got_processor = MonoTime::Now();
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
@@ -572,6 +586,27 @@ void CQLServiceImpl::ResetPreparedStatementsCounters() {
     LOG_IF(DFATAL, stmt_counters == nullptr) << "Unexpected null pointer for statement counters";
     stmt_counters->ResetCounters();
   }
+}
+
+Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) {
+  for (const IsPrepare is_prepare : {IsPrepare::kTrue, IsPrepare::kFalse}) {
+    const StmtCountersMap stmt_counters = this->GetStatementCountersForMetrics(is_prepare);
+    for (auto &stmt : stmt_counters) {
+      auto &stmt_pb = *resp->add_statements();
+      stmt_pb.set_queryid(ql::CQLMessage::QueryIdAsUint64(stmt.first));
+      stmt_pb.set_query(stmt.second.query);
+      stmt_pb.set_is_prepared(is_prepare == IsPrepare::kTrue);
+      stmt_pb.set_calls(stmt.second.num_calls);
+      stmt_pb.set_total_time(stmt.second.total_time_in_msec);
+      stmt_pb.set_min_time(stmt.second.min_time_in_msec);
+      stmt_pb.set_max_time(stmt.second.max_time_in_msec);
+      stmt_pb.set_mean_time(stmt.second.total_time_in_msec / stmt.second.num_calls);
+      const double stddev_time = stmt.second.GetStdDevTime();
+      stmt_pb.set_stddev_time(stddev_time);
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace cqlserver

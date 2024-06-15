@@ -35,6 +35,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 
 #include "yb/gutil/ref_counted.h"
 
@@ -65,6 +66,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kBackfillTable)
   (kBackfillTabletChunk)
   (kChangeConfig)
+  (kClonePgSchema)
+  (kCloneTablet)
   (kCreateReplica)
   (kDeleteReplica)
   (kFlushTablets)
@@ -82,7 +85,12 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kTruncateTablet)
   (kTryStepDown)
   (kUpdateTransactionTablesVersion)
-  (kAddTableToXClusterReplication));
+  (kAddTableToXClusterTarget)
+  (kMarkTableAsRunning)
+  (kAddTableToXClusterSource)
+  (kAddNamespaceToXClusterSource)
+  (kNamespaceVerification)
+  (TableSchemaVerification));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:
@@ -95,7 +103,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   virtual MonitoredTaskState AbortAndReturnPrevState(const Status& status) = 0;
 
   // Task State.
-  virtual MonitoredTaskState state() const { return state_.load(std::memory_order_acquire); }
+  MonitoredTaskState state() const { return state_.load(std::memory_order_acquire); }
 
   virtual MonitoredTaskType type() const = 0;
 
@@ -131,9 +139,14 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
 };
 
+using MonitoredTaskPtr = std::shared_ptr<MonitoredTask>;
+
 class RunnableMonitoredTask : public MonitoredTask {
  public:
   virtual Status Run() = 0;
+
+  virtual Status BeforeSubmitToTaskPool();
+  virtual Status OnSubmitFailure();
 };
 
 } // namespace server

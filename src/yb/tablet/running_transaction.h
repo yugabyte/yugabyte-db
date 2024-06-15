@@ -133,6 +133,14 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return apply_record_op_id_;
   }
 
+  HybridTime GetCommitHybridTime() {
+    return apply_data_.commit_ht;
+  }
+
+  HybridTime GetApplyHybridTime() {
+    return apply_data_.log_ht;
+  }
+
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
 

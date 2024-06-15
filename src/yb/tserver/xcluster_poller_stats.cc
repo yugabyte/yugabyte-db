@@ -22,7 +22,8 @@ XClusterPollerStats::XClusterPollerStats(const std::string& replication_group_id
     : replication_group_id(replication_group_id) {}
 
 XClusterPollerStats::XClusterPollerStats(
-    const cdc::ProducerTabletInfo& producer_info, const cdc::ConsumerTabletInfo& consumer_info)
+    const xcluster::ProducerTabletInfo& producer_info,
+    const xcluster::ConsumerTabletInfo& consumer_info)
     : replication_group_id(producer_info.replication_group_id),
       stream_id_str(producer_info.stream_id.ToString()),
       producer_tablet_id(producer_info.tablet_id),

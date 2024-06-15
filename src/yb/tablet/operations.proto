@@ -156,3 +156,33 @@ message SplitTabletRequestPB {
   // Parent tablet leader UUID from SPLIT_OP term.
   optional string split_parent_leader_uuid = 8;
 }
+
+message CloneTabletRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 1;
+
+  optional fixed64 propagated_hybrid_time = 2;
+
+  // Not called source_tablet_id because some templated functions use req->tablet_id().
+  optional string tablet_id = 3;
+  optional string target_tablet_id = 4;
+
+  optional bytes source_snapshot_id = 5;
+  optional bytes target_snapshot_id = 6;
+
+  optional string target_table_id = 7;
+  optional string target_namespace_name = 8;
+
+  optional uint32 clone_request_seq_no = 9;
+
+  optional string target_pg_table_id = 10;
+  optional IndexInfoPB target_index_info = 11;
+  optional SchemaPB target_schema = 12;
+  optional PartitionSchemaPB target_partition_schema = 13;
+  optional bool target_skip_table_tombstone_check = 14;
+
+  // If set, checkout the active rocksdb folder to the target snapshot.
+  // This is set for tablets that were hidden before the snapshot that covers the clone time was
+  // taken (we do not take snapshots after hiding a tablet).
+  optional bool clone_from_active_rocksdb = 15;
+}

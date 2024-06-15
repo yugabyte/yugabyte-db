@@ -4973,8 +4973,9 @@ create_distinct_paths(PlannerInfo *root,
 											 needed_pathkeys,
 											 -1.0);
 
-		/* YB: Do not consider paths that are already distinct. */
-		if (!IsYugaByteEnabled() || !list_member_ptr(yb_distinct_paths, path))
+		/* YB: Ignore sort+uniq if cheapest_input_path is already distinct. */
+		if (!IsYugaByteEnabled() ||
+			!list_member_ptr(yb_distinct_paths, cheapest_input_path))
 		{
 			/* YB: Avoid adding UpperUniquePath twice. */
 			if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
@@ -5020,7 +5021,10 @@ create_distinct_paths(PlannerInfo *root,
 		allow_hash = (hashentrysize * numDistinctRows <= work_mem * 1024L);
 	}
 
-	if (allow_hash && grouping_is_hashable(parse->distinctClause))
+	if (allow_hash && grouping_is_hashable(parse->distinctClause) &&
+		/* YB: Ignore hashagg if cheapest_input_path is already distinct. */
+		!(IsYugaByteEnabled() && list_member_ptr(yb_distinct_paths,
+												 cheapest_input_path)))
 	{
 		/* Generate hashed aggregate path --- no sort needed */
 		add_path(distinct_rel, (Path *)
@@ -5038,7 +5042,6 @@ create_distinct_paths(PlannerInfo *root,
 
 	/*
 	 * YB: Now, add all paths that are already distinct.
-	 * We add these at the end to avoid add_path() from pfree'ing them.
 	 */
 	foreach(lc, yb_distinct_paths)
 		add_path(distinct_rel, (Path *) lfirst(lc));
@@ -6261,7 +6264,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 
 	/* Estimate the cost of index scan */
 	indexScanPath = create_index_path(root, indexInfo,
-									  NIL, NIL, NIL, NIL, NIL,
+									  NIL, NIL, NIL, NIL, NIL, NIL,
 									  ForwardScanDirection, false,
 									  NULL, 1.0, false);
 

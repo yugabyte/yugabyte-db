@@ -184,7 +184,8 @@ class TsTabletManagerTest : public YBTest {
     auto table_info = std::make_shared<tablet::TableInfo>(
         "TEST: ", tablet::Primary::kTrue, table_id, tablet_id, tablet_id,
         TableType::DEFAULT_TABLE_TYPE, full_schema, qlexpr::IndexMap(),
-        boost::none /* index_info */, 0 /* schema_version */, partition.first);
+        boost::none /* index_info */, 0 /* schema_version */, partition.first,
+        "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
     auto tablet_peer = VERIFY_RESULT(tablet_manager_->CreateNewTablet(
         table_info, tablet_id, partition.second, config_));
     if (out_tablet_peer) {

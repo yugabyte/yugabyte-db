@@ -126,12 +126,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
-    flags.put("ysql_sleep_before_retry_on_txn_conflict", "true");
-    flags.put("ysql_max_write_restart_attempts", "5");
     flags.put("yb_enable_read_committed_isolation", "true");
-    // TODO: Remove this before diff lands. This is just to have the tests run with wait queues
-    // on release builds too.
-    flags.put("enable_wait_queues", "true");
     flags.put("wait_queue_poll_interval_ms", "5");
     return flags;
   }
@@ -213,20 +208,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         "SELECT * FROM test_rr LIMIT 10",
         getShortString(),
         false /* expectRestartErrors */
-    ).runTest();
-  }
-
-  /**
-   * Doing SELECT * operation on short strings with savepoints enabled and created and expect
-   * restarts to to *not* happen transparently.
-   * <p>
-   * todo
-   */
-  @Test
-  public void selectStarShortWithSavepoints() throws Exception {
-    new SavepointStatementTester(
-        getConnectionBuilder(),
-        getShortString()
     ).runTest();
   }
 
@@ -403,6 +384,58 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
+   * No restarts expected when yb_read_after_commit_visibility is relaxed.
+   * Note that this is a long read that exceeds the output buffer size.
+   */
+  @Test
+  public void selectStarLong_relaxedReadAfterCommitVisibility() throws Exception {
+    new RegularStatementTester(
+        getConnectionBuilder(),
+        "SELECT * FROM test_rr",
+        getLongString(),
+        false /* expectRestartErrors */
+    ) {
+      @Override
+      public String getReadAfterCommitVisibility() {
+        return "relaxed";
+      }
+    }.runTest();
+  }
+
+  /*
+   * Ensures that we need not set the yb_read_after_commit_visibility GUC
+   * before the prepare statement.
+   * This test guards us against scenarios where the GUC
+   * is captured in the prepared statement to be used during execution.
+   *
+   * Example: pg_hint_plan is a planner time configuration and is to be
+   * captured in the prepare phase to be used during execution.
+   *
+   * Also, use simple query mode to test that simultaneously.
+   */
+  @Test
+  public void selectStarLongExecute_relaxedReadAfterCommitVisibility() throws Exception {
+    new RegularStatementTester(
+        getConnectionBuilder().withPreferQueryMode("simple"),
+        "EXECUTE select_stmt(0)",
+        getLongString(),
+        false /* expectRestartErrors */) {
+
+      @Override
+      public Statement createStatement(Connection conn) throws Exception {
+        Statement stmt = super.createStatement(conn);
+        stmt.execute("PREPARE select_stmt (int) AS SELECT * FROM test_rr WHERE i >= $1");
+        return stmt;
+      };
+
+      @Override
+      public String getReadAfterCommitVisibility() {
+        return "relaxed";
+      }
+    }.runTest();
+  }
+
+  /**
    * The following two methods attempt to test retries on kReadRestart for all below combinations -
    *    1. Type of statement - UPDATE/DELETE.
    *      We already have a parallel INSERT thread running. So don't need a separate insert() test.
@@ -421,7 +454,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         false /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 2: In SELECT func()
@@ -436,7 +469,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         false /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 3: Prepared statement
@@ -455,7 +488,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       }
     }.runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     try (Statement stmt = cb.connect().createStatement()) {
@@ -478,7 +511,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         true /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 2: In SELECT func()
@@ -493,7 +526,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         true /* is_deadlock_possible */
     ).runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
 
     // Case 3: Prepared statement
@@ -511,8 +544,25 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
       }
     }.runTest();
     try (Statement s = connection.createStatement()) {
-      s.execute("truncate table test_rr");
+      s.execute("DELETE FROM test_rr");
     }
+  }
+
+  /*
+   * Regression test for #22010
+   *
+   * We do not expect read restarts even in the long string case
+   * since the RETUNRING output is cached in a temporary table
+   * and only sent back to the client after the update is done.
+   */
+  @Test
+  public void testUpdateLong() throws Exception {
+    new RegularDmlStatementTester(
+        getConnectionBuilder(),
+        "UPDATE test_rr set i=1 RETURNING *",
+        getLongString(),
+        false /* is_deadlock_possible */
+    ).runTest();
   }
 
   //
@@ -905,9 +955,16 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           !is_wait_on_conflict_concurrency_control;
     }
 
+    // Override this function to set a different read window behavior.
+    public String getReadAfterCommitVisibility() {
+      return "strict";
+    }
+
     @Override
     public List<ThrowingRunnable> getRunnableThreads(
         ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
+      String setReadAfterCommitVisibility = "SET yb_read_after_commit_visibility TO ";
+
       List<ThrowingRunnable> runnables = new ArrayList<>();
       //
       // Singular SELECT statement (equal probability of being either serializable/repeatable read/
@@ -945,6 +1002,14 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             auxSerializableStatement.execute(LOG_RESTARTS_SQL);
             auxRrStatement.execute(LOG_RESTARTS_SQL);
             auxRcStatement.execute(LOG_RESTARTS_SQL);
+
+            // SET yb_read_after_commit_visibility
+            auxSerializableStatement.execute(
+              setReadAfterCommitVisibility + getReadAfterCommitVisibility());
+            auxRrStatement.execute(
+              setReadAfterCommitVisibility + getReadAfterCommitVisibility());
+            auxRcStatement.execute(
+              setReadAfterCommitVisibility + getReadAfterCommitVisibility());
           }
 
           for (/* No setup */; !isExecutionDone.getAsBoolean(); /* NOOP */) {
@@ -1023,12 +1088,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         }
       });
 
-      //
-      // Two SELECTs grouped in a transaction. Their result should match for REPEATABLE READ
-      // and SERIALIZABLE level. For READ COMMITTED, it is likely they won't match due to the
-      // parallel inserts. And so, for READ COMMITTED ensure that there is atleast one instance
-      // where the results don't match.
-      //
+      // Two SELECTs grouped in a transaction.
       for (IsolationLevel isolation : isolationLevels) {
         runnables.add(() -> {
           int txnsAttempted = 0;
@@ -1039,14 +1099,23 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           int txnsSucceeded = 0;
           int selectsWithAbortError = 0;
           int commitOfTxnThatRequiresRestart = 0;
-          int statementsresultsMatched = 0;
 
           try (Connection selectTxnConn = cb.withIsolationLevel(isolation).connect();
               Stmt stmt = createStatement(selectTxnConn)) {
             try (Statement auxStmt = selectTxnConn.createStatement()) {
               auxStmt.execute(LOG_RESTARTS_SQL);
+
+              // SET yb_read_after_commit_visibility
+              auxStmt.execute(setReadAfterCommitVisibility + getReadAfterCommitVisibility());
             }
             selectTxnConn.setAutoCommit(false);
+            // This is a read only txn, so setReadOnly.
+            // Moreover, yb_read_after_commit_visibility option relies on txn being read only.
+            if (isolation != IsolationLevel.SERIALIZABLE) {
+              // SERIALIZABLE, READ ONLY txns are not actually serializable
+              // txns and we wish to test SERIALIZABLE txns too.
+              selectTxnConn.setReadOnly(true);
+            }
             for (/* No setup */; !isExecutionDone.getAsBoolean(); ++txnsAttempted) {
               int numCompletedOps = 0;
               try {
@@ -1070,9 +1139,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 assertTrue("Two SELECTs done within same transaction mismatch" +
                            ", " + isolation + " transaction isolation breach!",
                            rows1.equals(rows2) || (isolation == IsolationLevel.READ_COMMITTED));
-                if (rows1.equals(rows2)) {
-                  statementsresultsMatched++;
-                }
                 ++txnsSucceeded;
               } catch (Exception ex) {
                 if (!isTxnError(ex)) {
@@ -1108,8 +1174,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " selectsFirstOpConflictDetected=" + selectsFirstOpConflictDetected +
               " txnsSucceeded=" + txnsSucceeded +
               " selectsWithAbortError=" + selectsWithAbortError +
-              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart +
-              " statementsresultsMatched=" + statementsresultsMatched);
+              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
 
           if (expectReadRestartErrors(isolation)) {
             // Read restart errors can never occur in serializable isolation.
@@ -1166,12 +1231,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             assertGreaterThan("No txns in " + isolation + " succeeded, ever! Flawed test?",
                 txnsSucceeded, 0);
           }
-          assertTrue("It can't be the case that results were always same in both SELECTs at " +
-                     "READ COMMITTED isolation level",
-                     (isolation != IsolationLevel.READ_COMMITTED
-                      && statementsresultsMatched == txnsSucceeded) ||
-                     (isolation == IsolationLevel.READ_COMMITTED
-                      && statementsresultsMatched < txnsSucceeded));
         });
       }
 
@@ -1224,75 +1283,6 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     @Override
     public ResultSet executeQuery(PreparedStatement stmt) throws Exception {
       return stmt.executeQuery();
-    }
-  }
-
-  /** SavepointStatementTester that uses regular Statement and savepoints in various places */
-  private class SavepointStatementTester extends ConcurrentInsertQueryTester<Statement> {
-    public SavepointStatementTester(
-        ConnectionBuilder cb,
-        String valueToInsert) {
-      super(cb, valueToInsert, 50 /* numInserts */);
-    }
-
-    private ThrowingRunnable getRunnableThread(
-        ConnectionBuilder cb, BooleanSupplier isExecutionDone, String secondSavepointOpString) {
-      return () -> {
-        int selectsAttempted = 0;
-        int selectsRestartRequired = 0;
-        int selectsSucceeded = 0;
-        try (Connection selectTxnConn =
-                 cb.withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
-             Statement stmt = selectTxnConn.createStatement()) {
-          selectTxnConn.setAutoCommit(false);
-          for (/* No setup */; !isExecutionDone.getAsBoolean(); ++selectsAttempted) {
-            try {
-              stmt.execute("SAVEPOINT a");
-              if (!secondSavepointOpString.isEmpty()) {
-                stmt.execute(secondSavepointOpString);
-              }
-              stmt.executeQuery("SELECT count(*) from test_rr");
-              selectTxnConn.commit();
-              ++selectsSucceeded;
-            } catch (Exception ex) {
-              try {
-                selectTxnConn.rollback();
-              } catch (SQLException ex1) {
-                fail("Rollback failed: " + ex1.getMessage());
-              }
-              if (isRestartReadError(ex)) {
-                ++selectsRestartRequired;
-              }
-              if (!isTxnError(ex)) {
-                throw ex;
-              }
-            }
-          }
-        } catch (Exception ex) {
-          fail("SELECT in savepoint thread failed: " + ex.getMessage());
-        }
-        LOG.info(String.format(
-            "SELECT in savepoint thread with second savepoint op: \"%s\": selectsSucceeded=%d" +
-            " selectsAttempted=%d selectsRestartRequired=%d", secondSavepointOpString,
-            selectsSucceeded, selectsAttempted, selectsRestartRequired));
-        assertTrue(
-            "No SELECTs after second savepoint statement: " + secondSavepointOpString
-                + " resulted in 'restart read required' on second operation"
-                + " - but we expected them to!"
-                + " " + selectsAttempted + " attempted, " + selectsSucceeded + " succeeded",
-                selectsRestartRequired > 0);
-      };
-    }
-
-    @Override
-    public List<ThrowingRunnable> getRunnableThreads(
-        ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
-      List<ThrowingRunnable> runnables = new ArrayList<>();
-      runnables.add(getRunnableThread(cb, isExecutionDone, ""));
-      runnables.add(getRunnableThread(cb, isExecutionDone, "SAVEPOINT b"));
-      runnables.add(getRunnableThread(cb, isExecutionDone, "ROLLBACK TO a"));
-      runnables.add(getRunnableThread(cb, isExecutionDone, "RELEASE a"));
-      return runnables;
     }
   }
 

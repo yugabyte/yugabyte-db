@@ -34,12 +34,14 @@
 
 #include <string>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
@@ -114,7 +116,10 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
   const bool initialized = leader_lease_info.initialized;
   const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
-  leader_lease_info.ht_lease_expiration = std::max(old_lease_exp, info.ht_lease_expiration);
+  leader_lease_info.ht_lease_expiration =
+      info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE
+          ? std::max(info.ht_lease_expiration, old_lease_exp)
+          : 0;
   leader_lease_info.initialized = initialized || info.initialized;
 }
 
@@ -157,6 +162,7 @@ TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
+      last_time_with_valid_leader_(MonoTime::Now()),
       reported_schema_version_({}) {
   // Have to pre-initialize to an empty map, in case of access before the first setter is called.
   replica_locations_ = std::make_shared<TabletReplicaMap>();
@@ -242,7 +248,6 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
 Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
     const std::string& ts_uuid) const {
   std::lock_guard l(lock_);
-
   auto it = replica_locations_->find(ts_uuid);
   if (it == replica_locations_->end() || it->second.role != PeerRole::LEADER) {
     return GetLeaderNotFoundStatus();
@@ -309,6 +314,21 @@ void TabletInfo::set_last_update_time(const MonoTime& ts) {
 MonoTime TabletInfo::last_update_time() const {
   std::lock_guard l(lock_);
   return last_update_time_;
+}
+
+void TabletInfo::UpdateLastTimeWithValidLeader() {
+  std::lock_guard l(lock_);
+  last_time_with_valid_leader_ = MonoTime::Now();
+}
+
+MonoTime TabletInfo::last_time_with_valid_leader() const {
+  std::lock_guard l(lock_);
+  return last_time_with_valid_leader_;
+}
+
+void TabletInfo::TEST_set_last_time_with_valid_leader(const MonoTime& time) {
+  std::lock_guard l(lock_);
+  last_time_with_valid_leader_ = time;
 }
 
 bool TabletInfo::set_reported_schema_version(const TableId& table_id, uint32_t version) {
@@ -390,13 +410,10 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // TableInfo
 // ================================================================================================
 
-TableInfo::TableInfo(TableId table_id,
-                     bool colocated,
-                     scoped_refptr<TasksTracker> tasks_tracker)
-    : table_id_(std::move(table_id)),
-      tasks_tracker_(tasks_tracker),
-      colocated_(colocated) {
-}
+TableInfo::TableInfo(TableId table_id, bool colocated, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)),
+      table_id_(std::move(table_id)),
+      colocated_(colocated) {}
 
 TableInfo::~TableInfo() {
 }
@@ -463,8 +480,8 @@ bool TableInfo::has_pg_type_oid() const {
   return true;
 }
 
-TableId TableInfo::matview_pg_table_id() const {
-  return LockForRead()->pb.matview_pg_table_id();
+TableId TableInfo::pg_table_id() const {
+  return LockForRead()->pb.pg_table_id();
 }
 
 bool TableInfo::is_matview() const {
@@ -487,13 +504,23 @@ bool TableInfo::is_unique_index() const {
                                 : l->pb.is_unique_index();
 }
 
+Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
+  return GetPgsqlTableOid(id());
+}
+
+Result<uint32_t> TableInfo::GetPgTableOid() const {
+  const auto pg_table_id = LockForRead()->pb.pg_table_id();
+  return pg_table_id.empty() ? GetPgsqlTableOid(id()) :
+                               GetPgsqlTableOid(pg_table_id);
+}
+
 TableType TableInfo::GetTableType() const {
   return LockForRead()->pb.table_type();
 }
 
-bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const {
+bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& pb_txn_id, bool txn_success) const {
   auto l = LockForRead();
-  if (l->pb_transaction_id() != txn_id_pb) {
+  if (l->pb_transaction_id() != pb_txn_id) {
     return false;
   }
   // The table can be dropped in 2 cases due to a DDL:
@@ -804,128 +831,9 @@ Status TableInfo::GetCreateTableErrorStatus() const {
 }
 
 std::size_t TableInfo::NumLBTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return std::count_if(pending_tasks_.begin(),
-                       pending_tasks_.end(),
-                       [](auto task) { return task->started_by_lb(); });
-}
-
-std::size_t TableInfo::NumTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return pending_tasks_.size();
-}
-
-bool TableInfo::HasTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  VLOG_WITH_PREFIX_AND_FUNC(3) << AsString(pending_tasks_);
-  return !pending_tasks_.empty();
-}
-
-bool TableInfo::HasTasks(server::MonitoredTaskType type) const {
-  SharedLock<decltype(lock_)> l(lock_);
-  for (auto task : pending_tasks_) {
-    if (task->type() == type) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void TableInfo::AddTask(std::shared_ptr<server::MonitoredTask> task) {
-  bool abort_task = false;
-  {
-    std::lock_guard l(lock_);
-    if (!closing_) {
-      pending_tasks_.insert(task);
-      if (tasks_tracker_) {
-        tasks_tracker_->AddTask(task);
-      }
-    } else {
-      abort_task = true;
-    }
-  }
-  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
-  // to acquire the same lock to remove itself from pending_tasks_.
-  if (abort_task) {
-    task->AbortAndReturnPrevState(STATUS(Expired, "Table closing"));
-  }
-}
-
-bool TableInfo::RemoveTask(const std::shared_ptr<server::MonitoredTask>& task) {
-  bool result;
-  {
-    std::lock_guard l(lock_);
-    pending_tasks_.erase(task);
-    result = pending_tasks_.empty();
-  }
-  VLOG(1) << "Removed task " << task.get() << " " << task->description();
-  return result;
-}
-
-// Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
-// from the pending list.
-void TableInfo::AbortTasks() {
-  AbortTasksAndCloseIfRequested( /* close */ false);
-}
-
-void TableInfo::AbortTasksAndClose() {
-  AbortTasksAndCloseIfRequested( /* close */ true);
-}
-
-void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
-  std::vector<std::shared_ptr<server::MonitoredTask>> abort_tasks;
-  {
-    std::lock_guard l(lock_);
-    if (close) {
-      closing_ = true;
-    }
-    abort_tasks.reserve(pending_tasks_.size());
-    abort_tasks.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
-  }
-  if (abort_tasks.empty()) {
-    return;
-  }
-  auto status = close ? STATUS(Expired, "Table closing") : STATUS(Aborted, "Table closing");
-  // We need to abort these tasks without holding the lock because when a task is destroyed it tries
-  // to acquire the same lock to remove itself from pending_tasks_.
-  for (const auto& task : abort_tasks) {
-    VLOG_WITH_FUNC(1)
-        << (close ? "Close and abort" : "Abort") << " task " << task.get() << " "
-        << task->description();
-    task->AbortAndReturnPrevState(status);
-  }
-}
-
-void TableInfo::WaitTasksCompletion() {
-  const int kMaxWaitMs = 30000;
-  int wait_time_ms = 5;
-  while (1) {
-    std::vector<std::shared_ptr<server::MonitoredTask>> waiting_on_for_debug;
-    bool at_max_wait = wait_time_ms >= kMaxWaitMs;
-    {
-      SharedLock<decltype(lock_)> l(lock_);
-      if (pending_tasks_.empty()) {
-        break;
-      } else if (VLOG_IS_ON(1) || at_max_wait) {
-        waiting_on_for_debug.reserve(pending_tasks_.size());
-        waiting_on_for_debug.assign(pending_tasks_.cbegin(), pending_tasks_.cend());
-      }
-    }
-    for (const auto& task : waiting_on_for_debug) {
-      if (at_max_wait) {
-        LOG(WARNING) << "Long wait for aborting task " << task.get() << " " << task->description();
-      } else {
-        VLOG(1) << "Waiting for aborting task " << task.get() << " " << task->description();
-      }
-    }
-    base::SleepForMilliseconds(wait_time_ms);
-    wait_time_ms = std::min(wait_time_ms * 5 / 4, kMaxWaitMs);
-  }
-}
-
-std::unordered_set<std::shared_ptr<server::MonitoredTask>> TableInfo::GetTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return pending_tasks_;
+  const auto tasks = GetTasks();
+  return std::count_if(
+      tasks.begin(), tasks.end(), [](const auto& task) { return task->started_by_lb(); });
 }
 
 std::size_t TableInfo::NumPartitions() const {
@@ -1054,6 +962,40 @@ bool TableInfo::IsColocatedUserTable() const {
   return colocated() && !IsColocationParentTable();
 }
 
+bool TableInfo::IsSequencesSystemTable() const {
+  if (GetTableType() == PGSQL_TABLE_TYPE && !IsColocationParentTable()) {
+    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
+    if (!IsPgsqlId(namespace_id()) || !IsPgsqlId(id())) {
+      LOG(WARNING) << "Not PGSQL IDs " << namespace_id() << ", " << id();
+      return false;
+    }
+    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(namespace_id());
+    if (!database_oid.ok()) {
+      LOG(WARNING) << "Invalid Namespace ID " << namespace_id();
+      return false;
+    }
+    Result<uint32_t> table_oid = GetPgsqlTableOid(id());
+    if (!table_oid.ok()) {
+      LOG(WARNING) << "Invalid Table ID " << id();
+      return false;
+    }
+    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLQueueTableName;
+}
+
+bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLReplicatedTableName;
+}
+
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
   SharedLock<decltype(lock_)> l(lock_);
   return tablespace_id_for_table_creation_;
@@ -1083,6 +1025,36 @@ bool TableInfo::AttachedYCQLIndexDeletionInProgress(const TableId& index_table_i
              IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING;
 }
 
+void TableInfo::AddDdlTxnWaitingForSchemaVersion(int schema_version, const TransactionId& txn) {
+  std::lock_guard l(lock_);
+  auto res = ddl_txns_waiting_for_schema_version_.emplace(schema_version, txn);
+  // There should never have existed an entry for this schema version already as only one
+  // DDL transaction is allowed on an entity at a given time.
+  LOG_IF(DFATAL, !res.second) << "Found existing entry for schema version " << schema_version
+                             << " for table " << table_id_ << " with txn " << txn
+                             << " previous transaction " << res.first->second;
+}
+
+std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int schema_version) {
+  std::lock_guard l(lock_);
+  std::vector<TransactionId> txns;
+  auto upper_bound_iter = ddl_txns_waiting_for_schema_version_.upper_bound(schema_version);
+  // Ideally we will perform this erase operation at the end of every alter table operation, and
+  // thus we should be able to return only one schema version. However, alter table is an async
+  // operation. It is possible in the case of YSQL DDL Transaction verification that while an
+  // alter operation for a rollback operation is about to start (i.e. table in ALTERING state), a
+  // new alter operation can start on the same table (this is by design and poses no correctness
+  // issues). It may be possible that the TServers respond back with the latest schema version.
+  // To handle this case, we return the transactions waiting on all schema versions less than the
+  // requested schema version as well.
+  for (auto it = ddl_txns_waiting_for_schema_version_.begin(); it != upper_bound_iter; ++it) {
+    txns.push_back(it->second);
+  }
+  ddl_txns_waiting_for_schema_version_.erase(
+      ddl_txns_waiting_for_schema_version_.begin(), upper_bound_iter);
+  return txns;
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
                     << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
@@ -1103,8 +1075,19 @@ const std::string& PersistentTableInfo::indexed_table_id() const {
 
 Result<bool> PersistentTableInfo::is_being_modified_by_ddl_transaction(
   const TransactionId& txn) const {
-  return has_ysql_ddl_txn_verifier_state() &&
-    txn == VERIFY_RESULT(FullyDecodeTransactionId(pb_transaction_id()));
+
+  return txn == VERIFY_RESULT(GetCurrentDdlTransactionId());
+}
+
+Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
+  TransactionId txn = TransactionId::Nil();
+  if (has_ysql_ddl_txn_verifier_state()) {
+    auto& pb_txn_id = pb_transaction_id();
+    RSTATUS_DCHECK(!pb_txn_id.empty(), InternalError,
+        "Table $0 has ysql_ddl_txn_verifier_state but no transaction", name());
+    txn = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
+  }
+  return txn;
 }
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
@@ -1163,7 +1146,8 @@ void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
 // NamespaceInfo
 // ================================================================================================
 
-NamespaceInfo::NamespaceInfo(NamespaceId ns_id) : namespace_id_(std::move(ns_id)) {}
+NamespaceInfo::NamespaceInfo(NamespaceId ns_id, scoped_refptr<TasksTracker> tasks_tracker)
+    : CatalogEntityWithTasks(std::move(tasks_tracker)), namespace_id_(std::move(ns_id)) {}
 
 const NamespaceName NamespaceInfo::name() const {
   return LockForRead()->pb.name();
@@ -1183,6 +1167,14 @@ bool NamespaceInfo::colocated() const {
 
 string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
+}
+
+uint32_t NamespaceInfo::FetchAndIncrementCloneSeqNo() {
+  auto lock = LockForWrite();
+  uint32_t new_clone_request_seq_no = lock->pb.clone_request_seq_no() + 1;
+  lock.mutable_data()->pb.set_clone_request_seq_no(new_clone_request_seq_no);
+  lock.Commit();
+  return new_clone_request_seq_no;
 }
 
 // ================================================================================================
@@ -1258,9 +1250,33 @@ const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
+bool CDCStreamInfo::IsXClusterStream() const { return !IsCDCSDKStream(); }
+
+bool CDCStreamInfo::IsCDCSDKStream() const {
+  auto l = LockForRead();
+  return l->pb.has_namespace_id() && !l->pb.namespace_id().empty();
+}
+
+HybridTime CDCStreamInfo::GetConsistentSnapshotHybridTime() const {
+  auto l = LockForRead();
+  return HybridTime(l->pb.cdcsdk_stream_metadata().snapshot_time());
+}
+
 const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
   auto l = LockForRead();
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
+}
+
+bool CDCStreamInfo::IsConsistentSnapshotStream() const {
+  auto l = LockForRead();
+  return l->pb.has_cdcsdk_stream_metadata() &&
+         l->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option();
+}
+
+const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity>
+CDCStreamInfo::GetReplicaIdentityMap() const {
+  auto l = LockForRead();
+  return l->pb.replica_identity_map();
 }
 
 std::string CDCStreamInfo::ToString() const {
@@ -1299,6 +1315,12 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
 }
 
 // ================================================================================================
+// PersistentUniverseReplicationInfo
+// ================================================================================================
+
+bool PersistentUniverseReplicationInfo::IsDbScoped() const { return yb::master::IsDbScoped(pb); }
+
+// ================================================================================================
 // UniverseReplicationInfo
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
@@ -1308,13 +1330,17 @@ std::string UniverseReplicationInfo::ToString() const {
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
   std::lock_guard l(lock_);
-  setup_universe_replication_error_ = status;
+  if (setup_universe_replication_error_.ok()) {
+    setup_universe_replication_error_ = status;
+  }
 }
 
 Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
   SharedLock<decltype(lock_)> l(lock_);
   return setup_universe_replication_error_;
 }
+
+bool UniverseReplicationInfo::IsDbScoped() const { return LockForRead()->IsDbScoped(); }
 
 // ================================================================================================
 // PersistentUniverseReplicationBootstrapInfo

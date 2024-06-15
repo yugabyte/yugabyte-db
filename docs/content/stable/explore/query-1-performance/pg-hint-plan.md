@@ -19,7 +19,7 @@ pg_hint_plan makes it possible to tweak execution plans using "hints", which are
 
 {{< warning title="Revisit your hint plans" >}}
 
-To use `pg_hint_plan` effectively, you need thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
+To use `pg_hint_plan` effectively, you need a thorough knowledge of how your application will be deployed. Hint plans also need to be revisited when the database grows or the deployment changes to ensure that the plan is not limiting performance rather than optimizing it.
 
 {{< /warning >}}
 
@@ -27,7 +27,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL configuration parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
@@ -44,9 +44,8 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
 {{<note title="Enable pg_hint_plan for all sessions">}}
-You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
+You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 {{</note>}}
-
 
 ### Turn on debug output
 
@@ -158,6 +157,7 @@ Scan method hints enforce the scanning method on tables when specified along wit
 | NoIndexOnlyScan(table) | Do not enable IndexOnlyScan on the table. |
 | IndexScanRegexp(table regex) | Enable index scan on the table whose indices match with the regular expression defined by `regex`. |
 | IndexOnlyScanRegexp(table regex) | Do not enable index scan on the table whose indices match with the regular expression defined by `regex`. |
+| BitmapScan(table) | Enable BitmapScan on the table. |
 
 In the following example, the hint `/*+SeqScan(t2)*/` allows table `t2` to be scanned using `SeqScan`.
 
@@ -331,6 +331,7 @@ Join method hints enforce the join methods for SQL statements. Using pg_hint_pla
 | NoHashJoin(t1 t2 t3 ...) | Do not join t1, t2, and t3 using HashJoin.|
 | NestLoop(t1 t2 t3 ...) | Join t1, t2, and t3 using NestLoop join. |
 | NoNestLoop(t1 t2 t3 ...) | Do not join t1, t2, and t3 using NestLoop join.|
+<!-- | [YbBatchedNL](../../ysql-language-features/join-strategies/#batched-nested-loop-join-bnl)(t1 t2) | Join t1 and t2 using YbBatchedNL join.| -->
 
 ```sql
 /*+HashJoin(t1 t2)*/
@@ -452,38 +453,11 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t
 
 The joining order in the first query is `/*+Leading(t1 t2 t3)*/`, whereas the joining order for the second query is `/*+Leading(t2 t3 t1)*/`. You can see that the query plan's order of execution follows the joining order specified in the parameter lists of the hint phrases.
 
-### Setting working memory
-
-You can leverage the `work_mem` setting in PostgreSQL to improve the performance of slow queries that sort, join, or aggregate large sets of table rows. For a detailed description of the implications, refer to [Tuning work_mem Setting in PostgreSQL to Speed Up Slow SQL Queries](https://andreigridnev.com/blog/2016-04-16-increase-work_mem-parameter-in-postgresql-to-make-expensive-queries-faster/).
-
-The following example shows how to enable `work_mem` as a part of a hint plan.
-
-``` sql
-/*+Set(work_mem "1MB")*/
-EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-```
-
-```output
-LOG:  pg_hint_plan:
-used hint:
-Set(work_mem 1MB)
-not used hint:
-duplication hint:
-error hint:
-
-              QUERY PLAN
---------------------------------------
- Nested Loop
-   ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(4 rows)
-```
-
 ### Configuring the planner method
 
 Planner method configuration parameters provide a crude method of influencing the query plans chosen by the query optimizer. If the default plan chosen by the optimizer for a particular query is not optimal, a temporary solution is to use one of these configuration parameters to force the optimizer to choose a different plan. YugabyteDB supports the following configuration parameters:
 
+- enable_bitmapscan
 - enable_hashagg
 - enable_hashjoin
 - enable_indexscan
@@ -602,6 +576,6 @@ This example inserts queries into the `hint_plan.hints` table, with placeholders
 ## Learn more
 
 - Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
-- Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
-- Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
+- Refer to [View live queries with pg_stat_activity](../../observability/pg-stat-activity/) to analyze live queries.
+- Refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy/) to track the COPY operation status.
 - Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.

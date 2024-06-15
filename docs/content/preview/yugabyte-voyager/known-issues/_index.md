@@ -24,7 +24,8 @@ Currently, yb-voyager doesn't support the following features:
 | :------ | :------------------------ | :----------- |
 | ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
 | USERS/GRANTS | Voyager does not support migrating the USERS and GRANTS from the source database to the target cluster. |
-| Unsupported datatypes | Data migration is unsupported for some datatypes such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of datatypes. | |
+| Unsupported data types | Data migration is unsupported for some data types, such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of data types. | |
+| Unsupported PostgreSQL features | Yugabyte currently doesn't support the PostgreSQL features listed in [PostgreSQL compatibility](../../explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features). If such schema clauses are encountered, Voyager results in an error. | |
 
 ## Manual review
 

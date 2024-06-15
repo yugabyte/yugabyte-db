@@ -28,7 +28,8 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
   storage_parameter,
   index_parameters,
   references_clause,
-  split_row
+  split_row,
+  sequence_options
 {{%/ebnf%}}
 
 ## Semantics
@@ -52,7 +53,7 @@ If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used
 
 {{<note title="Tables always have a primary key">}}
 
-PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/)), so a table isn't viable without a primary key.
+PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb)), so a table isn't viable without a primary key.
 
 Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
 
@@ -73,6 +74,7 @@ This is used to enforce that data in the specified table meets the requirements 
 ### Default
 
 This clause is used to specify a default value for the column. If an `INSERT` statement does not specify a value for the column, then the default value is used. If no default is specified for a column, then the default is NULL.
+An identity column will automatically receive a new value produced by its linked sequence.
 
 ### Deferrable constraints
 
@@ -85,13 +87,42 @@ Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row in a
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
 
+### IDENTITY columns
+
+Create the column as an identity column.
+
+An implicit sequence will be created, attached to it, and new rows will automatically have values assigned from the sequence. IDENTITY columns are implicitly `NOT NULL`.
+
+`ALWAYS` and `BY DEFAULT` will determine how user-provided values are handled in `INSERT` and `UPDATE` statements.
+
+On an `INSERT` statement:
+- when `ALWAYS` is used, a user-provided value is only accepted if the `INSERT` statement uses `OVERRIDING SYSTEM VALUE`.
+- when `BY DEFAULT` is used, then the user-provided value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the `COPY` statement, user-supplied values are always used regardless of this setting.)
+
+On an `UPDATE` statement:
+- when `ALWAYS` is used, a column update to a value other than `DEFAULT` will be rejected.
+- when `BY DEFAULT` is used, the column can be updated normally. (`OVERRIDING` clause cannot be used for the UPDATE statement)
+
+The `sequence_options` optional clause can be used to override the options of the generated sequence.
+
+See [CREATE SEQUENCE](../ddl_create_sequence) for reference.
+
+#### Multiple Identity Columns
+
+PostgreSQL and YugabyteDB allow a table to have more than one identity column. The SQL standard specifies that a table can have at most one identity column.
+
+This relaxation primarily aims to provide increased flexibility for carrying out schema modifications or migrations.
+
+Note that the [INSERT](../dml_insert/) command can only accommodate one override clause for an entire statement. As a result, having several identity columns, each exhibiting distinct behaviours, is not effectively supported.
+
+
 ### TEMPORARY or TEMP
 
 Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
 ### TABLESPACE
 
-Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
+Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this table. By default, tables are placed in the `pg_default` tablespace, which spreads the tablets of the table evenly across the cluster.
 
 ### SPLIT INTO
 

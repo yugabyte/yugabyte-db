@@ -20,13 +20,15 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
@@ -41,6 +43,7 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/filtering_iterator.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/compression.h"
@@ -104,7 +107,10 @@ DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 102
              "Threshold beyond which compaction is considered large.");
 DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
-DEFINE_UNKNOWN_int32(rocksdb_max_write_buffer_number, 2,
+
+// Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by
+// db_max_flushing_bytes will be actual default.
+DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
              "Maximum number of write buffers that are built up in memory.");
 DECLARE_int64(db_block_size_bytes);
 
@@ -122,6 +128,11 @@ DEFINE_UNKNOWN_int64(db_write_buffer_size, -1,
 
 DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
+
+// Use a value slightly less than 2 default mem store sizes.
+DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
+    "The limit for the number of bytes in immutable mem tables. "
+    "After reaching this limit new writes are blocked. 0 - unlimited.");
 
 DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
@@ -269,8 +280,9 @@ rocksdb::ReadOptions PrepareReadOptions(
   if (FLAGS_use_docdb_aware_bloom_filter &&
     bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
     DCHECK(user_key_for_filter);
-    read_opts.table_aware_file_filter = rocksdb->GetOptions().table_factory->
-        NewTableAwareReadFileFilter(read_opts, user_key_for_filter.get());
+    static const rocksdb::BloomFilterAwareFileFilter bloom_filter_aware_file_filter;
+    read_opts.table_aware_file_filter = &bloom_filter_aware_file_filter;
+    read_opts.user_key_for_filter = *user_key_for_filter;
   }
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
@@ -302,14 +314,37 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
+    const FastBackwardScan use_fast_backward_scan,
     const DocDBStatistics* statistics) {
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
       user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
       statistics ? statistics->RegularDBStatistics() : nullptr);
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, read_operation_data, txn_op_context,
+      doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan,
       statistics ? statistics->IntentsDBStatistics() : nullptr);
+}
+
+BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
+    rocksdb::DB* intentsdb,
+    const TransactionStatusManager* status_manager,
+    const KeyBounds* docdb_key_bounds,
+    const Slice* iterate_upper_bound,
+    rocksdb::Statistics* statistics) {
+  auto min_running_ht = status_manager->MinRunningHybridTime();
+  if (min_running_ht == HybridTime::kMax) {
+    VLOG(4) << "No transactions running";
+    return {};
+  }
+  return CreateRocksDBIterator(
+      intentsdb,
+      docdb_key_bounds,
+      docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+      boost::none /* user_key_for_filter */,
+      rocksdb::kDefaultQueryId,
+      CreateIntentHybridTimeFileFilter(min_running_ht),
+      iterate_upper_bound,
+      statistics);
 }
 
 namespace {
@@ -592,12 +627,14 @@ int32_t GetGlobalRocksDBPriorityThreadPoolSize() {
 
 void InitRocksDBOptions(
     rocksdb::Options* options, const string& log_prefix,
+    const TabletId& tablet_id,
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options,
     const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   SetLogPrefix(options, log_prefix);
+  options->tablet_id = tablet_id;
   options->create_if_missing = true;
   // We should always sync data to ensure we can recover rocksdb from crash.
   options->disableDataSync = false;
@@ -698,6 +735,9 @@ void InitRocksDBOptions(
   }
 
   options->max_write_buffer_number = FLAGS_rocksdb_max_write_buffer_number;
+  if (FLAGS_db_max_flushing_bytes != 0) {
+    options->max_flushing_bytes = FLAGS_db_max_flushing_bytes;
+  }
 
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);

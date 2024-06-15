@@ -86,8 +86,8 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       // DELETE action is allowed on InstanceCreated, SoftwareInstalled states etc.
       // A failed AddNodeToUniverse after ReleaseInstanceFromUniverse can leave instances
       // behind.
+      Collection<NodeDetails> currentNodeDetails = Sets.newHashSet(currentNode);
       if (instanceExists(taskParams()) || isOnprem) {
-        Collection<NodeDetails> currentNodeDetails = Sets.newHashSet(currentNode);
         // Create tasks to terminate that instance.
         // If destroy of the instance fails for some reason, this task can always be retried
         // because there is no change in the node state that can make this task move to one of
@@ -97,7 +97,11 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
                 currentNodeDetails,
                 true /* isForceDelete */,
                 false /* deleteNode */,
-                true /* deleteRootVolumes */)
+                true /* deleteRootVolumes */,
+                false /* skipDestroyPrecheck */)
+            .setSubTaskGroupType(SubTaskGroupType.DeletingNode);
+      } else {
+        createRemoveNodeAgentTasks(universe, currentNodeDetails, true /* isForceDelete */)
             .setSubTaskGroupType(SubTaskGroupType.DeletingNode);
       }
 

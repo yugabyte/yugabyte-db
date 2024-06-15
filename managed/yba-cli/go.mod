@@ -12,9 +12,10 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.16.0
 	github.com/t-tomalak/logrus-easy-formatter v0.0.0-20190827215021-c074f06c5816
-	github.com/yugabyte/platform-go-client v0.0.0-20230810122221-e283fa78cb44
+	github.com/yugabyte/platform-go-client v0.0.0-20240527085424-58f874756dfd
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/term v0.13.0
+	golang.org/x/term v0.16.0
+	gopkg.in/yaml.v2 v2.4.0
 	gotest.tools/v3 v3.5.0
 )
 
@@ -22,7 +23,6 @@ require (
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 require (
@@ -30,6 +30,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/aws/aws-sdk-go v1.45.24
+	github.com/briandowns/spinner v1.23.0
 	github.com/cpuguy83/go-md2man/v2 v2.0.3 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
@@ -54,11 +55,11 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
-	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/crypto v0.18.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect

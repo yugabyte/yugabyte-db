@@ -5,6 +5,8 @@ package com.yugabyte.yw.common.supportbundle;
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.times;
@@ -85,10 +87,12 @@ public class ConsensusMetaComponentTest extends FakeDBApplication {
         .thenReturn(fakeSupportBundleBasePath);
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .downloadNodeLevelComponent(any(), any(), any(), any(), any(), any(), any(), any());
+        .downloadNodeLevelComponent(
+            any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        .batchWiseDownload(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenAnswer(
@@ -117,7 +121,7 @@ public class ConsensusMetaComponentTest extends FakeDBApplication {
         new ConsensusMetaComponent(
             mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
     consensusMetaComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 
     // Check that the download function is called
     verify(mockUniverseInfoHandler, times(1))

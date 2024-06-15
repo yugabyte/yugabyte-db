@@ -11,60 +11,24 @@
 // under the License.
 
 #include <algorithm>
-#include <chrono>
-#include <utility>
 #include <boost/assign.hpp>
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
-
-#include "yb/client/client-test-util.h"
-#include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
-#include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
-#include "yb/client/yb_op.h"
-
+#include "yb/client/yb_table_name.h"
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/mini_master.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::vector;
 using std::string;
@@ -404,18 +368,8 @@ TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
   // Creating xCluster streams now.
   std::vector<xrepl::StreamId> created_xcluster_streams;
   for (uint32_t i = 0; i < num_of_streams; ++i) {
-    RpcController rpc;
-    CreateCDCStreamRequestPB create_req;
-    CreateCDCStreamResponsePB create_resp;
-
-    create_req.set_table_id(table.table_id());
-    ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
-
-    // Assert that there is no DB stream ID in the response while creating xCluster stream.
-    ASSERT_FALSE(create_resp.has_db_stream_id());
-
     created_xcluster_streams.emplace_back(
-        ASSERT_RESULT(xrepl::StreamId::FromString(create_resp.stream_id())));
+        ASSERT_RESULT(cdc::CreateXClusterStream(*test_client(), table.table_id())));
   }
   std::sort(created_xcluster_streams.begin(), created_xcluster_streams.end());
 
@@ -525,19 +479,47 @@ TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
   // Wait for the metadata cleanup to finish by the background thread.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        while (true) {
-          auto resp = GetDBStreamInfo(stream_id);
-          if (resp.ok() && resp->has_error()) {
-            return true;
-          }
-          continue;
+        auto resp = GetDBStreamInfo(stream_id);
+        if (!resp.ok()) {
+          return false;
         }
-        return false;
+        if (resp.ok() && resp->has_error()) {
+          LOG(INFO) << "GetDBStreamInfo response = " << resp.ToString();
+          RETURN_NOT_OK(StatusFromPB(resp->error().status()));
+        }
+        return (resp->table_info_size() == 0);
       },
-      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+      MonoDelta::FromSeconds(60),
+      "Waiting for stream metadata update with no table info."));
+}
 
-  // We should be able to create the replication slot again with the same name.
-  ASSERT_RESULT(CreateDBStreamWithReplicationSlot("test_replication_slot_with_drop_table"));
+TEST_F(CDCSDKStreamTest, TestStreamRetentionWithTableDeletion) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto resp = GetDBStreamInfo(stream_id);
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+
+  // Drop table will trigger the background thread to start the stream metadata cleanup.
+  // Wait for the metadata cleanup to finish by the background thread.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = GetDBStreamInfo(stream_id);
+        if (!resp.ok()) {
+          return false;
+        }
+        if (resp.ok() && resp->has_error()) {
+          LOG(INFO) << "GetDBStreamInfo response = " << resp.ToString();
+          RETURN_NOT_OK(StatusFromPB(resp->error().status()));
+        }
+        return (resp->table_info_size() == 0);
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update with no table info."));
 }
 
 }  // namespace cdc

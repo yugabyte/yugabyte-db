@@ -65,7 +65,9 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       } else {
-        universe = lockUniverseForUpdate(params().expectedUniverseVersion);
+        universe =
+            lockAndFreezeUniverseForUpdate(
+                params().expectedUniverseVersion, null /* Txn callback */);
       }
 
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -77,6 +79,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         log.error(msg);
         throw new RuntimeException(msg);
       }
+
+      addBasicPrecheckTasks();
 
       preTaskActions();
 
@@ -91,7 +95,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
               nodesToBeRemoved,
               params().isForceDelete,
               true /* deleteNodeFromDB */,
-              true /* deleteRootVolumes */)
+              true /* deleteRootVolumes */,
+              true /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.

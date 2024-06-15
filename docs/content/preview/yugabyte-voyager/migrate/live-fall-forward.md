@@ -9,9 +9,7 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-techPreview: /preview/releases/versioning/#feature-availability
-rightNav:
-  hideH4: true
+techPreview: /preview/releases/versioning/#feature-maturity
 type: docs
 ---
 
@@ -21,29 +19,54 @@ A fall-forward approach allows you to test the system end-to-end. This workflow 
 
 ## Fall-forward workflow
 
-![fall-forward short](/images/migrate/live-fall-forward-short.png)
+![fall-forward short](/images/migrate/live-fall-forward-short-new.png)
 
 Before starting a live migration, you set up the source-replica database (via [import data to source-replica](#import-data-to-source-replica)). During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target and source-replica databases, as shown in the following illustration:
 
-![After import data to source-replica](/images/migrate/after-import-data-to-sr.png)
+![After import data to source-replica](/images/migrate/after-import-data-to-sr-new.png)
 
 At [cutover to target](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, Voyager keeps the source-replica database synchronized with changes from the target YugabyteDB database as shown in the following illustration:
 
-![After cutover](/images/migrate/cutover-to-target.png)
+![After cutover](/images/migrate/cutover-to-target-new.png)
 
 Finally, if you need to switch to the source-replica database (because the current YugabyteDB system is not working as expected), you can initiate [cutover to your source-replica](#cutover-to-source-replica-optional).
 
-![After initiate cutover to source-replica](/images/migrate/cutover-to-source-replica.png)
+![After initiate cutover to source-replica](/images/migrate/cutover-to-source-replica-new.png)
 
 The following illustration describes the workflow for live migration using YB Voyager with the fall-forward option.
 
-![Live migration with fall-forward workflow](/images/migrate/live-fall-forward.png)
+![Live migration with fall-forward workflow](/images/migrate/live-fall-forward-new.png)
+
+| Phase | Step | Description |
+| :---- | :--- | :---|
+| PREPARE | [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
+| | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
+| | [Prepare source-replica DB](#prepare-source-replica-database) | Deploy a database (a replica of your original source database) and create a user with necessary privileges. |
+| SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
+| | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
+| | [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
+| LIVE MIGRATION | Start | Start the phases: export data, import data to target, followed by import data to source-replica, and archive changes simultaneously. |
+| | [Export data](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
+| | [Import data](#import-data-to-target) | The import data to target command first imports the snapshot, and then continuously applies the exported change events on the target. |
+| | [Import indexes and triggers to target DB](#import-indexes-and-triggers) | After the snapshot import is complete, import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
+| | [Import data to source-replica](#import-data-to-source-replica) | The import data to source-replica command imports the snapshot, and then continuously applies the exported change events on the source-replica. |
+| | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
+| CUTOVER TO TARGET | [Initiate cutover to target](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
+| | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| | [Verify target DB](#cutover-to-the-target) | Check if the live migration is successful on both the source and the target databases. |
+| CUTOVER TO SOURCE&nbsp;REPLICA | [Initiate cutover to source-replica](#cutover-to-source-replica-optional) | Perform a cutover (stop streaming changes) from the target YugabyteDB database to the source-replica database only when the target YugabyteDB database is not working as expected, allow all the change events to be applied to the source-replica database, and then restart your applications pointing to the source-replica database. |
+| | [Wait for cutover to complete](#cutover-to-source-replica-optional) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| | [(Manual)&nbsp;Import&nbsp;indexes and triggers to source-replica DB](#cutover-to-source-replica-optional) | After the snapshot import is complete, import indexes and triggers to the source-replica database manually. |
+| | [Verify source-replica DB](#cutover-to-source-replica-optional) | Check if the live migration is successful on both the target and the source-replica databases. |
+| END | [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source, source-replica, and target). |
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
 - Review the [guidelines for your migration](../../known-issues/).
-- Review [data modeling](../../reference/data-modeling/) strategies.
+- Review [data modeling](../../../develop/learn/data-modeling-ysql) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -51,28 +74,518 @@ Before proceeding with migration, ensure that you have completed the following s
 
 Create a new database user, and assign the necessary user permissions.
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#standalone-oracle" class="nav-link active" id="standalone-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+    <a href="#oracle" class="nav-link active" id="oracle-tab" data-toggle="tab"
+      role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
-      Standalone Oracle Container Database
+      Oracle
     </a>
   </li>
-    <li>
-    <a href="#rds-oracle" class="nav-link" id="rds-oracle-tab" data-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
-      <i class="icon-oracle" aria-hidden="true"></i>
-      RDS Oracle
+  <li >
+    <a href="#pg" class="nav-link" id="pg-tab" data-toggle="tab"
+      role="tab" aria-controls="pg" aria-selected="false">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL
     </a>
   </li>
 </ul>
-
 <div class="tab-content">
-  <div id="standalone-oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="standalone-oracle-tab">
-  {{% includeMarkdown "./standalone-oracle.md" %}}
+  <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Standalone Oracle Container Database" %}}
+
+1. Ensure that your database log_mode is `archivelog` as follows:
+
+    ```sql
+    SELECT LOG_MODE FROM V$DATABASE;
+    ```
+
+    ```output
+    LOG_MODE
+    ------------
+    ARCHIVELOG
+    ```
+
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+
+    ```sql
+    sqlplus /nolog
+    SQL>alter system set db_recovery_file_dest_size = 10G;
+    SQL>alter system set db_recovery_file_dest = '<oracle_path>/oradata/recovery_area' scope=spfile;
+    SQL> connect / as sysdba
+    SQL> Shutdown immediate
+    SQL> Startup mount
+    SQL> Alter database archivelog;
+    SQL> Alter database open;
+    ```
+
+1. Create the tablespaces as follows:
+
+    1. Connect to Pluggable database (PDB) as sysdba and run the following command:
+
+        ```sql
+        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/ORCLPDB1/logminer_tbs.dbf'
+          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+        ```
+
+    1. Connect to Container database (CDB) as sysdba and run the following command:
+
+        ```sql
+        CREATE TABLESPACE logminer_tbs DATAFILE '/opt/oracle/oradata/ORCLCDB/logminer_tbs.dbf'
+          SIZE 25M REUSE AUTOEXTEND ON MAXSIZE UNLIMITED;
+        ```
+
+1. Run the following commands from CDB as sysdba:
+
+    ```sql
+    CREATE USER c##ybvoyager IDENTIFIED BY password
+      DEFAULT TABLESPACE logminer_tbs
+      QUOTA UNLIMITED ON logminer_tbs
+      CONTAINER=ALL;
+
+    GRANT CREATE SESSION TO c##ybvoyager CONTAINER=ALL;
+    GRANT SET CONTAINER TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$DATABASE to c##ybvoyager CONTAINER=ALL;
+    GRANT FLASHBACK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT EXECUTE_CATALOG_ROLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ANY TRANSACTION TO c##ybvoyager CONTAINER=ALL;
+    GRANT LOGMINING TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT CREATE TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT LOCK ANY TABLE TO c##ybvoyager CONTAINER=ALL;
+    GRANT CREATE SEQUENCE TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT EXECUTE ON DBMS_LOGMNR TO c##ybvoyager CONTAINER=ALL;
+    GRANT EXECUTE ON DBMS_LOGMNR_D TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT SELECT ON V_$LOG TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOG_HISTORY TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_LOGS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_CONTENTS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGMNR_PARAMETERS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$LOGFILE TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVED_LOG TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$ARCHIVE_DEST_STATUS TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$TRANSACTION TO c##ybvoyager CONTAINER=ALL;
+
+    GRANT SELECT ON V_$MYSTAT TO c##ybvoyager CONTAINER=ALL;
+    GRANT SELECT ON V_$STATNAME TO c##ybvoyager CONTAINER=ALL;
+    ```
+
+1. Enable supplemental logging in the database as follows:
+
+    ```sql
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
+    ```
+
+  {{% /tab %}}
+
+  {{% tab header="RDS Oracle" %}}
+
+1. Ensure that your database log_mode is `archivelog` as follows:
+
+    ```sql
+    SELECT LOG_MODE FROM V$DATABASE;
+    ```
+
+    ```output
+    LOG_MODE
+    ------------
+    ARCHIVELOG
+    ```
+
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
+
+    ```sql
+    exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
+    ```
+
+1. Connect to your database as an admin user, and create the tablespaces as follows:
+
+    ```sql
+    CREATE TABLESPACE logminer_tbs DATAFILE SIZE 25M AUTOEXTEND ON MAXSIZE UNLIMITED;
+    ```
+
+1. Run the following commands connected to the admin or privileged user:
+
+    ```sql
+    CREATE USER ybvoyager IDENTIFIED BY password
+      DEFAULT TABLESPACE logminer_tbs
+      QUOTA UNLIMITED ON logminer_tbs;
+
+    GRANT CREATE SESSION TO YBVOYAGER;
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name  => 'V_$DATABASE',
+          p_grantee   => 'YBVOYAGER',
+          p_privilege => 'SELECT');
+    end;
+    /
+
+    GRANT FLASHBACK ANY TABLE TO YBVOYAGER;
+    GRANT SELECT ANY TABLE TO YBVOYAGER;
+    GRANT SELECT_CATALOG_ROLE TO YBVOYAGER;
+    GRANT EXECUTE_CATALOG_ROLE TO YBVOYAGER;
+    GRANT SELECT ANY TRANSACTION TO YBVOYAGER;
+    GRANT LOGMINING TO YBVOYAGER;
+
+    GRANT CREATE TABLE TO YBVOYAGER;
+    GRANT LOCK ANY TABLE TO YBVOYAGER;
+    GRANT CREATE SEQUENCE TO YBVOYAGER;
+
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name => 'DBMS_LOGMNR',
+          p_grantee => 'YBVOYAGER',
+          p_privilege => 'EXECUTE',
+          p_grant_option => true);
+    end;
+    /
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name => 'DBMS_LOGMNR_D',
+          p_grantee => 'YBVOYAGER',
+          p_privilege => 'EXECUTE',
+          p_grant_option => true);
+    end;
+    /
+
+    begin rdsadmin.rdsadmin_util.grant_sys_object(
+          p_obj_name  => 'V_$LOG',
+          p_grantee   => 'YBVOYAGER',
+          p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOG_HISTORY',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_LOGS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_CONTENTS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGMNR_PARAMETERS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$LOGFILE',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$ARCHIVED_LOG',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$ARCHIVE_DEST_STATUS',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$TRANSACTION',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$MYSTAT',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+
+    begin
+        rdsadmin.rdsadmin_util.grant_sys_object(
+            p_obj_name  => 'V_$STATNAME',
+            p_grantee   => 'YBVOYAGER',
+            p_privilege => 'SELECT');
+    end;
+    /
+    ```
+
+1. Enable supplemental logging in the database as follows:
+
+    ```sql
+    exec rdsadmin.rdsadmin_util.alter_supplemental_logging('ADD');
+
+    begin
+        rdsadmin.rdsadmin_util.alter_supplemental_logging(
+            p_action => 'ADD',
+            p_type   => 'ALL');
+    end;
+    /
+    ```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
   </div>
-    <div id="rds-oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="rds-oracle-tab">
-  {{% includeMarkdown "./rds-oracle.md" %}}
-  </div>
+  <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Standalone PostgreSQL" %}}
+
+1. yb_voyager requires `wal_level` to be logical. You can check this using following the steps:
+
+    1. Run the command `SHOW wal_level` on the database to check the value.
+
+    1. If the value is anything other than logical, run the command `SHOW config_file` to know the path of your configuration file.
+
+    1. Modify the configuration file by uncommenting the parameter `wal_level` and set the value to logical.
+
+    1. Restart PostgreSQL.
+
+1. Check that the replica identity is FULL (`f`)  for all tables on the database.
+
+    1. Check the replica identity using the following query:
+
+        ```sql
+        SELECT n.nspname, relname, relreplident
+        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
+        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
+        ```
+
+    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
+
+        ```sql
+        DO $$
+        DECLARE
+          r Record;
+        BEGIN
+          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
+          LOOP
+            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
+          END LOOP;
+        END $$;
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
+        ```
+
+1. Create user `ybvoyager` for the migration using the following command:
+
+    ```sql
+    CREATE USER ybvoyager PASSWORD 'password' REPLICATION;
+    ```
+
+1. Switch to the database that you want to migrate as follows:
+
+   ```sql
+   \c <database_name>
+   ```
+
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
+
+   ```sql
+   SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For earlier versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+
+1. Grant `SELECT` permission on all the tables and sequences as follows:
+
+   ```sql
+   SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+
+   SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+   The `ybvoyager` user can now be used for migration.
+
+1. Create a replication group as follows:
+
+    ```sql
+    CREATE ROLE replication_group;
+    ```
+
+1. Add the original owner of the table to the group as follows:
+
+    ```sql
+    GRANT replication_group TO <original_owner>;
+    ```
+
+1. Add the user `ybvoyager` to the replication group as follows:
+
+    ```sql
+    GRANT replication_group TO ybvoyager;
+    ```
+
+1. Transfer ownership of the tables to the role `replication_group` as follows:
+
+    ```sql
+    DO $$
+    DECLARE
+       r Record;
+    BEGIN
+       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
+      LOOP
+        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
+      END LOOP;
+    END $$;
+    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
+    ```
+
+1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
+
+    ```sql
+    GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
+    ```
+
+  {{% /tab %}}
+
+  {{% tab header="RDS PostgreSQL" %}}
+
+1. yb_voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
+
+    1. Run the command `SHOW rds.logical_replication` on the database to check whether the parameter is set.
+
+    1. If the parameter is not set, you can change the parameter value to 1 from the RDS console of the database; navigate to **Configuration** > **Parameter group** > `rds.logical_replication`.
+
+    1. If the `rds.logical_replication` errors out (after the change), create a new parameter group with the value as 1, and assign it to the database instance from the **Modify** option on the RDS console.
+
+    1. Restart RDS.
+
+1. Check that the replica identity is FULL (`f`) for all tables on the database.
+
+    1. Check the replica identity using the following query:
+
+        ```sql
+        SELECT n.nspname, relname, relreplident
+        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
+        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
+        ```
+
+    1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
+
+        ```sql
+        DO $$
+        DECLARE
+          r Record;
+        BEGIN
+          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
+          LOOP
+            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
+          END LOOP;
+        END $$;
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
+        ```
+
+1. Create user `ybvoyager` for the migration using the following command:
+
+    ```sql
+    CREATE USER ybvoyager PASSWORD 'password';
+    GRANT rds_replication to ybvoyager;
+    ```
+
+1. Switch to the database that you want to migrate as follows:
+
+   ```sql
+   \c <database_name>
+   ```
+
+1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database as follows:
+
+   ```sql
+   SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+   The preceding `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
+
+1. Grant `SELECT` permission on all the tables and sequences as follows:
+
+   ```sql
+   SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+
+   SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+   ```
+
+1. Create a replication group as follows:
+
+    ```sql
+    CREATE ROLE replication_group;
+    ```
+
+1. Add the original owner of the table to the group as follows:
+
+    ```sql
+    GRANT replication_group TO <original_owner>;
+    ```
+
+1. Add the user `ybvoyager` to the replication group as follows:
+
+    ```sql
+    GRANT replication_group TO ybvoyager;
+    ```
+
+1. Transfer ownership of the tables to the role `replication_group` as follows:
+
+    ```sql
+    DO $$
+    DECLARE
+       r Record;
+    BEGIN
+       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
+      LOOP
+        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
+      END LOOP;
+    END $$;
+    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
+    ```
+
+1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
+
+    ```sql
+    GRANT CREATE ON DATABASE <database_name> TO ybvoyager; --required to create a publication.
+    ```
+
+    The `ybvoyager` user can now be used for migration.
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
 </div>
 
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
@@ -88,6 +601,27 @@ You can use only one of the following arguments to connect to your Oracle instan
 ## Prepare the target database
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
+
+{{<note title="Important">}}
+
+Add the following flags to the cluster before starting migration, and revert them after the migration is complete.
+
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0` (or later minor versions), set the following flag:
+
+```sh
+ysql_pg_conf_csv = yb_max_query_layer_retries=0
+```
+
+For all the other target YugabyteDB versions, set the following flags:
+
+```sh
+ysql_max_read_restart_attempts = 0
+ysql_max_write_restart_attempts = 0
+```
+
+Turn off the [read-committed](../../../explore/transactions/isolation-levels/#read-committed-isolation) isolation level on the target YugabyteDB cluster during the migration.
+
+{{</note>}}
 
 ### Create the target database
 
@@ -145,6 +679,25 @@ The export directory has the following sub-directories and files:
 ## Prepare source-replica database
 
 Perform the following steps to prepare your source-replica database:
+
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#oracle-source-replica" class="nav-link active" id="oracle-source-replica-tab" data-toggle="tab"
+      role="tab" aria-controls="oracle-source-replica" aria-selected="true">
+      <i class="icon-oracle" aria-hidden="true"></i>
+      Oracle
+    </a>
+  </li>
+  <li >
+    <a href="#pg-source-replica" class="nav-link" id="pg-source-replica-tab" data-toggle="tab"
+      role="tab" aria-controls="pg-source-replica" aria-selected="false">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      PostgreSQL
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="oracle-source-replica" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
 
 1. Create `ybvoyager_metadata` schema or user, and tables as follows:
 
@@ -220,13 +773,49 @@ Perform the following steps to prepare your source-replica database:
     GRANT <SCHEMA_NAME>_writer_role TO YBVOYAGER_FF;
     ```
 
-1. Set the following variables on the client machine on where yb-voyager is running (Only if yb-voyager is installed on Ubuntu / RHEL) :
+1. If yb-voyager is installed on Ubuntu or RHEL, set the following variables on the client machine where yb-voyager is running:
 
     ```sh
     export ORACLE_HOME=/usr/lib/oracle/21/client64
     export LD_LIBRARY_PATH=$ORACLE_HOME/lib
     export PATH=$PATH:$ORACLE_HOME/bin
     ```
+
+  </div>
+  <div id="pg-source-replica" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-source-replica-tab">
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Standalone PostgreSQL" %}}
+
+Create a user `ybvoyager_ff` for the migration with superuser privileges as follows:
+
+```sql
+CREATE USER ybvoyager_ff with password 'password' superuser;
+```
+
+  {{% /tab %}}
+
+  {{% tab header="RDS PostgreSQL" %}}
+
+1. Create user `ybvoyager_ff` for the migration as follows:
+
+    ```sql
+    CREATE USER ybvoyager_ff with password 'password';
+    GRANT rds_superuser to ybvoyager_ff;
+    ```
+
+1. Grant `CREATE` privilege on the source database to `ybvoyager_ff` as follows:
+
+    ```sql
+    GRANT CREATE ON DATABASE <database_name> TO ybvoyager_ff;
+    ```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+</div>
 
 ## Migrate your database to YugabyteDB
 
@@ -323,7 +912,7 @@ yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directo
 
 {{< note title="Importing indexes and triggers" >}}
 
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-import-data` flag.
+Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes (except UNIQUE indexes to avoid any issues during import of schema because of foreign key dependencies on the index) and triggers. You should complete the data import without creating indexes and triggers. Only after data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag.
 
 {{< /note >}}
 
@@ -331,10 +920,9 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 Manually, set up the source-replica database with the same schema as that of the source database with the following considerations:
 
-- The table names on the source-replica database need to be case insensitive (YB Voyager currently does not support case-sensitivity).
 - Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the source-replica database. Create them later as described in [cutover to source-replica](#cutover-to-source-replica-optional).
 
-- Disable foreign key constraints and check constraints on the source-replica database.
+- For Oracle migrations, disable foreign key constraints and check constraints on the source-replica database.
 
 ### Export data from source
 
@@ -367,6 +955,10 @@ The export data from source command first ensures that it exports a snapshot of 
 
 Note that the CDC phase will start only after a snapshot of the entire interested table-set is completed.
 Additionally, the CDC phase is restartable. So, if yb-voyager terminates when data export is in progress, it resumes from its current state after the CDC phase is restarted.
+
+{{<note title="Important">}}
+yb-voyager creates a replication slot in the source database where disk space can be used up rapidly. To avoid this, execute the [Cutover to the target](#cutover-to-the-target) or [End Migration](#end-migration) steps to delete the replication slot. If you choose to skip these steps, then you must delete the replication slot manually to reduce disk usage.
+{{</note>}}
 
 #### Caveats
 
@@ -446,6 +1038,42 @@ yb-voyager get data-migration-report --export-dir <EXPORT_DIR> \
 
 Refer to [get data-migration-report](../../reference/data-migration/import-data/#get-data-migration-report) for details about the arguments.
 
+#### Import indexes and triggers
+
+Import indexes and triggers on the target YugabyteDB database after the `import data to target` has completed the following tasks:
+
+- The exported snapshot has been completely imported on the target.
+- All the events accumulated on local disk by [export data from source](#export-data-from-source) during the snapshot import phase and [import data to target](#import-data-to-target) have caught up in the CDC phase (you can monitor the timeline based on `Estimated Time to catch up` metric).
+
+After the preceding steps are completed, you can start importing indexes and triggers in parallel with the `import data to target` command using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true
+```
+
+If any of the CREATE INDEX DDLs fail in the preceding command, retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager import schema --export-dir <EXPORT_DIR> \
+        --target-db-host <TARGET_DB_HOST> \
+        --target-db-user <TARGET_DB_USER> \
+        --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+        --target-db-name <TARGET_DB_NAME> \
+        --target-db-schema <TARGET_DB_SCHEMA> \
+        --post-snapshot-import true \
+        --ignore-exist true
+```
+
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+
 ### Import data to source-replica
 
 Note that the import data to source-replica is applicable for data migration only (schema migration needs to be done manually).
@@ -520,21 +1148,11 @@ Perform the following steps as part of the cutover process:
     1. The [export data from target](../../reference/data-migration/export-data/#export-data-from-target) command automatically starts capturing changes from the target YugabyteDB database to the source-replica database.
     Note that the [import data to target](#import-data-to-target) process transforms to an `export data from target` process, so if it gets terminated for any reason, you need to restart process using the `export data from target` command as suggested in the `import data to target` output.
 
-1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
+       {{<note title="Event duplication">}}
+The `export data from target` command may result in duplicated events if you restart Voyager, or there is a change in the YugabyteDB database server state. Consequently, the [get data-migration-report](#get-data-migration-report) command may display additional events that have been exported from the target YugabyteDB database, and imported into the source-replica or source database. For such situations, it is recommended to manually verify data in the target and source-replica, or source database to ensure accuracy and consistency.
+       {{</note>}}
 
-    ```sh
-    # Replace the argument values with those applicable for your migration.
-    yb-voyager import schema --export-dir <EXPORT_DIR> \
-            --target-db-host <TARGET_DB_HOST> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
-            --target-db-name <TARGET_DB_NAME> \
-            --target-db-user <TARGET_DB_USER> \
-            --target-db-schema <TARGET_DB_SCHEMA> \
-            --post-import-data true
-    ```
-
-    Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
+1. If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the migration, refresh them manually after cutover.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target YugabyteDB database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
@@ -581,6 +1199,8 @@ Perform the following steps as part of the cutover process:
 
     Refer to [cutover status](../../reference/cutover-archive/cutover/#cutover-status) for details about the arguments.
 
+    **Note** that for Oracle migrations, restoring sequences after cutover on the source-replica database is currently unsupported, and you need to restore sequences manually.
+
 1. Set up indexes and triggers to the source-replica database manually. Also, re-enable the foreign key and check constraints.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the target and source-replica databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
@@ -626,4 +1246,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 
 - Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
 - [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `export data from target`.
-- yb-voyager provides limited support for datatypes during CDC of `export data from target` phase. For example, datatypes such as DECIMAL and Timestamp are not supported.
+- [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

@@ -67,11 +67,6 @@ implementation 'org.postgresql:postgresql:42.2.14'
 
 Learn how to perform common tasks required for Java application development using the PostgreSQL JDBC driver.
 
-<!-- * [Connect to YugabyteDB Database](postgres-jdbc-fundamentals/#connect-to-yugabytedb-database)
-* [Configure SSL/TLS](postgres-jdbc-fundamentals/#configure-ssl-tls)
-* [Create Table](/postgres-jdbc-fundamentals/#create-table)
-* [Read and Write Queries](/postgres-jdbc-fundamentals/#read-and-write-queries) -->
-
 ### Connect to YugabyteDB database
 
 Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. The `java.sql.*` package includes all the JDBC interfaces required for working with YugabyteDB.
@@ -273,7 +268,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 
 Steps for configuring the JDBC client for server authentication in a Kubernetes cluster are as follows:
 
-1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](../../../../quick-start/kubernetes/).
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](/preview/quick-start/kubernetes/).
 
    ```sh
    $ kubectl create namespace yb-demo

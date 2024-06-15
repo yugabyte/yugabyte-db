@@ -128,7 +128,7 @@ Replication lag is computed at the tablet level as follows:
 
 *hybrid_clock_time* is the hybrid clock timestamp on the source's tablet server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
 
-To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's YB-TServer. For information on how to set up the node exporter and Prometheus manually, see [Prometheus integration](../../../../explore/observability/prometheus-integration/macos/).
+To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's YB-TServer. For information on how to set up the Node Exporter and Prometheus manually, see [Prometheus integration](../../../../explore/observability/prometheus-integration/macos/).
 
 ### Replication status
 
@@ -608,3 +608,34 @@ Alters involving adding/removing columns or modifying data types require replica
     ```output
     Replication enabled successfully
     ```
+#### Adding a column with a non-volatile default value
+
+When adding a new column with a (non-volatile) default expression, make sure to perform the schema modification on the target with the _computed_ default value. 
+
+For example, say you have a replicated table `test_table`.
+
+1. Pause replication on both sides. 
+1. Execute add column command on the source:
+   ```sql
+   ALTER TABLE test_table ADD COLUMN test_column TIMESTAMP DEFAULT NOW()
+   ```
+1. Run the preceding `ALTER TABLE` command with the computed default value on the target as follows:
+   
+    - The computed default value can be retrieved from the `attmissingval` column in the `pg_attribute` catalog table.
+
+      Example:
+   
+      ```sql
+      SELECT attmissingval FROM pg_attribute WHERE attrelid='test'::regclass AND attname='test_column';
+      ```
+      ```output
+                attmissingval         
+       -------------------------------
+        {"2024-01-09 12:29:11.88894"}
+       (1 row)
+      ```
+   
+    - Execute the `ADD COLUMN` command on the target with the computed default value.
+      ```sql
+         ALTER TABLE test ADD COLUMN test_column TIMESTAMP DEFAULT "2024-01-09 12:29:11.88894"
+      ```

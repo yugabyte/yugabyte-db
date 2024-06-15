@@ -44,6 +44,8 @@
 #include <boost/optional/optional_io.hpp>
 #include <boost/range/adaptors.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/async_rpc.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
@@ -232,6 +234,7 @@ void Batcher::FlushAsync(
   // expected by transaction.
   if (transaction && !is_within_transaction_retry) {
     transaction->batcher_if().ExpectOperations(operations_count);
+    SetSubTransactionMetadataPB(transaction->GetSubTransactionMetadataPB());
   }
 
   ops_queue_.reserve(ops_.size());
@@ -258,6 +261,8 @@ void Batcher::FlushAsync(
     }
   }
 
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
   for (auto& op : ops_queue_) {
     VLOG_WITH_PREFIX(4) << "Looking up tablet for " << op.ToString()
                         << " partition key: " << Slice(op.partition_key).ToDebugHexString();
@@ -312,9 +317,12 @@ void Batcher::CombineError(const InFlightOp& in_flight_op) {
 void Batcher::LookupTabletFor(InFlightOp* op) {
   auto shared_this = shared_from_this();
   TracePtr trace(Trace::CurrentTrace());
+  ash::WaitStateInfoPtr wait_state{ash::WaitStateInfo::CurrentWaitState()};
+  SET_WAIT_STATUS(YBClient_LookingUpTablet);
   client_->data_->meta_cache_->LookupTabletByKey(
       op->yb_op->mutable_table(), op->partition_key, deadline_,
-      [shared_this, op, trace](const auto& lookup_result) {
+      [shared_this, op, trace, wait_state](const auto& lookup_result) {
+        ADOPT_WAIT_STATE(wait_state);
         ADOPT_TRACE(trace.get());
         shared_this->TabletLookupFinished(op, lookup_result);
       },
@@ -413,6 +421,8 @@ void Batcher::AllLookupsDone() {
   // 1. The batcher is in the "resolving tablets" state (i.e. FlushAsync was called).
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
+  SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
 
   if (state_ != BatcherState::kResolvingTablets) {
     LOG(DFATAL) << __func__ << " is invoked in wrong state: " << state_;
@@ -556,6 +566,11 @@ void Batcher::ExecuteOperations(Initial initial) {
   const auto need_consistent_read = force_consistent_read || ops_info_.groups.size() > 1;
   VLOG_WITH_PREFIX_AND_FUNC(3) << "need_consistent_read=" << need_consistent_read;
 
+  // Set batcher's 'rpcs_start_time_micros_' only when it is uninitialized, i.e, only for
+  // a new batcher and not a retry_batcher.
+  if (Clock() && rpcs_start_time_micros() == 0) {
+    SetRpcStartTime(Clock()->Now().GetPhysicalValueMicros());
+  }
   auto self = shared_from_this();
   for (const auto& group : ops_info_.groups) {
     // Allow local calls for last group only.
@@ -672,7 +687,8 @@ void Batcher::Flushed(
       // See comments for YBTransaction::Impl::running_requests_ and
       // YBSession::AddErrorsAndRunCallback.
       // https://github.com/yugabyte/yugabyte-db/issues/7984.
-      transaction->batcher_if().Flushed(ops, flush_extra_result.used_read_time, status);
+      transaction->batcher_if().Flushed(
+          ops, ops_info_.metadata.subtransaction_pb, flush_extra_result.used_read_time, status);
     }
   }
   if (status.ok() && read_point_) {
@@ -753,6 +769,29 @@ std::string Batcher::LogPrefix() const {
   const void* self = this;
   return Format(
       "Batcher ($0), session ($1): ", self, static_cast<void*>(weak_session_.lock().get()));
+}
+
+void Batcher::SetRpcStartTime(MicrosTime rpcs_start_time_micros) {
+  DCHECK_EQ(rpcs_start_time_micros_, 0) << LogPrefix() << "rpcs_start_time_micros_ being reset.";
+  rpcs_start_time_micros_ = rpcs_start_time_micros;
+}
+
+void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
+                                    const CollectedErrors& errors) {
+  SetDeadline(failed_batcher->deadline());
+  SetRpcStartTime(failed_batcher->rpcs_start_time_micros());
+  for (auto& error : errors) {
+    VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
+                      << " due to: " << error->status();
+    const auto op = error->shared_failed_op();
+    op->ResetTablet();
+    // Transmit failed request id to retry_batcher.
+    if (op->request_id()) {
+      MoveRequestDetailsFrom(failed_batcher, *op->request_id());
+    }
+    Add(op);
+  }
+  SetSubTransactionMetadataPB(failed_batcher->GetSubTransactionMetadataPB());
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

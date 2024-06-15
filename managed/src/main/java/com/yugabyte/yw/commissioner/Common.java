@@ -111,5 +111,9 @@ public class Common {
     public boolean regionBootstrapSupported() {
       return this == aws || this == azu || this == gcp;
     }
+
+    public boolean isPublicCloud() {
+      return this == aws || this == azu || this == gcp;
+    }
   }
 }

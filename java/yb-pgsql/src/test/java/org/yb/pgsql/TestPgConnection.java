@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Random;
 
 import org.junit.Test;
+import org.junit.Assume;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,10 +73,15 @@ public class TestPgConnection extends BasePgSQLTest {
   }
 
   private int getRemainingAvailableConnections() throws Exception {
-    try (Statement stmt = createConnection().createStatement()) {
+    try (Connection conn = createConnection()) {
+      Statement stmt = conn.createStatement();
       ResultSet result = stmt.executeQuery("SELECT COUNT(*) FROM pg_stat_activity");
       result.next();
-      return MAX_CONNECTIONS - result.getInt("count") + 1;
+      int count = result.getInt("count");
+      conn.close();
+      // +2: one for the connection we have just closed, one for the checkpointer process,
+      // which appears in the pg_stat_activity, but is not counted toward ysql_max_connections.
+      return MAX_CONNECTIONS - count + 2;
     }
   }
 
@@ -108,6 +114,9 @@ public class TestPgConnection extends BasePgSQLTest {
 
   @Test
   public void testConnectionKills() throws Exception {
+    Assume.assumeFalse(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
+      isTestRunningWithConnectionManager());
+
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     final Connection[] connections = createConnections(NUM_CONNECTIONS);
@@ -145,6 +154,9 @@ public class TestPgConnection extends BasePgSQLTest {
 
   @Test
   public void testConnectionKillsAndRestarts() throws Exception {
+    Assume.assumeFalse(BasePgSQLTest.LESSER_PHYSICAL_CONNS,
+      isTestRunningWithConnectionManager());
+
     final int NUM_CONNECTIONS = getRemainingAvailableConnections();
 
     // Create N connections, kill them all. Repeat this process a few times

@@ -25,6 +25,8 @@ import { readUploadedFile } from '../../../utils/UniverseUtils';
 import { change } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { getYBAHost } from '../../configRedesign/providerRedesign/utils';
+import { YBAHost } from '../../../redesign/helpers/constants';
 
 const awsRegionList = AWS_REGIONS.map((region, index) => {
   return {
@@ -88,6 +90,7 @@ class KeyManagementConfiguration extends Component {
   state = {
     listView: false,
     enabledIAMProfile: false,
+    enabledMI: false,
     hcpAuthType: DEFAULT_HCP_AUTHENTICATION_TYPE,
     useCmkPolicy: false,
     mode: 'NEW',
@@ -119,6 +122,7 @@ class KeyManagementConfiguration extends Component {
         this.setState({ listView: true });
       }
     });
+    this.props.fetchHostInfo();
     this._ismounted = true;
   }
 
@@ -226,7 +230,10 @@ class KeyManagementConfiguration extends Component {
         case 'AZU':
           if (isFieldModified('CLIENT_ID')) data['CLIENT_ID'] = values.CLIENT_ID;
 
-          if (isFieldModified('CLIENT_SECRET')) data['CLIENT_SECRET'] = values.CLIENT_SECRET;
+          if (!this.state.enabledMI) {
+            if (isFieldModified('CLIENT_SECRET'))
+              data['CLIENT_SECRET'] = values.CLIENT_SECRET;
+          }
 
           if (isFieldModified('TENANT_ID')) data['TENANT_ID'] = values.TENANT_ID;
 
@@ -319,7 +326,9 @@ class KeyManagementConfiguration extends Component {
           break;
         case 'AZU':
           data['CLIENT_ID'] = values.CLIENT_ID;
-          data['CLIENT_SECRET'] = values.CLIENT_SECRET;
+          if (!this.state.enabledMI) {
+            data['CLIENT_SECRET'] = values.CLIENT_SECRET;
+          }
           data['TENANT_ID'] = values.TENANT_ID;
           data['AZU_VAULT_URL'] = values.AZU_VAULT_URL;
           data['AZU_KEY_NAME'] = values.AZU_KEY_NAME;
@@ -366,6 +375,7 @@ class KeyManagementConfiguration extends Component {
   };
 
   getAWSForm = (values) => {
+    const { hostInfo } = this.props;
     const isEdit = this.isEditMode();
     return (
       <Fragment>
@@ -377,6 +387,7 @@ class KeyManagementConfiguration extends Component {
             <Field
               name={'enableIAMProfile'}
               component={YBCheckBox}
+              disabled={hostInfo === undefined || getYBAHost(hostInfo) !== YBAHost.AWS}
               checkState={this.state.enabledIAMProfile ? true : false}
               input={{
                 onChange: () => this.setState({ enabledIAMProfile: !this.state.enabledIAMProfile })
@@ -818,10 +829,34 @@ class KeyManagementConfiguration extends Component {
   };
 
   getAzuForm = () => {
+    const { hostInfo } = this.props;
     const isEdit = this.isEditMode();
 
     return (
       <>
+        <Row className="config-provider-row" key={'mi-enable-field'}>
+          <Col lg={3}>
+            <div className="form-item-custom-label">Use Managed Identity</div>
+          </Col>
+          <Col lg={7}>
+            <Field
+              name={'enableMI'}
+              component={YBCheckBox}
+              disabled={hostInfo === undefined || getYBAHost(hostInfo) !== YBAHost.AZU}
+              checkState={this.state.enabledMI}
+              input={{
+                onChange: (e) => this.setState({ enabledMI: e.target.checked })
+              }}
+              className={'kube-provider-input-field'}
+            />
+          </Col>
+          <Col lg={1} className="config-zone-tooltip">
+            <YBInfoTip
+              title="Use Managed Identity"
+              content="Select to use a managed identity attached to an Azu VM instance running the platform."
+            />
+          </Col>
+        </Row>
         <Row className="config-provider-row" key={'azu-client-id-field'}>
           <Col lg={3}>
             <div className="form-item-custom-label">Client ID</div>
@@ -850,6 +885,7 @@ class KeyManagementConfiguration extends Component {
             <Field
               name={'CLIENT_SECRET'}
               component={YBFormInput}
+              disabled={this.state.enabledMI}
               placeholder={''}
               className={'kube-provider-input-field'}
             />
@@ -1051,7 +1087,7 @@ class KeyManagementConfiguration extends Component {
 
   render() {
     const { configList, featureFlags, currentUserInfo } = this.props;
-    const { listView, enabledIAMProfile, formData } = this.state;
+    const { listView, enabledIAMProfile, formData, enabledMI } = this.state;
     const isAdmin = ['Admin', 'SuperAdmin'].includes(currentUserInfo.role);
     const isEdit = this.isEditMode();
     const isToken = this.isTokenMode();
@@ -1078,13 +1114,13 @@ class KeyManagementConfiguration extends Component {
         });
         configs = configs
           ? configs.filter((config) => {
-              return (
-                !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
-                (config.metadata.provider === 'HASHICORP' && isHCVaultEnabled) ||
-                (config.metadata.provider === 'GCP' && isGcpKMSEnabled) ||
-                (config.metadata.provider === 'AZU' && isAzuKMSEnabled)
-              );
-            })
+            return (
+              !['HASHICORP', 'GCP', 'AZU'].includes(config.metadata.provider) ||
+              (config.metadata.provider === 'HASHICORP' && isHCVaultEnabled) ||
+              (config.metadata.provider === 'GCP' && isGcpKMSEnabled) ||
+              (config.metadata.provider === 'AZU' && isAzuKMSEnabled)
+            );
+          })
           : [];
       }
       //feature flagging
@@ -1191,7 +1227,7 @@ class KeyManagementConfiguration extends Component {
           then: Yup.mixed().required('Client ID is required')
         }),
         CLIENT_SECRET: Yup.mixed().when('kmsProvider', {
-          is: (provider) => provider?.value === 'AZU',
+          is: (provider) => provider?.value === 'AZU' && !enabledMI,
           then: Yup.string().required('Client Secret is Required')
         }),
         TENANT_ID: Yup.mixed().when('kmsProvider', {

@@ -34,8 +34,12 @@ class ScopedWaitingTxnRegistration {
  public:
   virtual Status Register(
     const TransactionId& waiting,
+    int64_t request_id,
     std::shared_ptr<ConflictDataManager> blockers,
     const TabletId& status_tablet) = 0;
+  virtual Status RegisterSingleShardWaiter(
+      const TabletId& tablet_id,
+      uint64_t wait_start_us) = 0;
   virtual int64 GetDataUseCount() const = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
 };
@@ -49,6 +53,7 @@ class WaitingTxnRegistry {
 // Callback used by the WaitQueue to signal the result of waiting. Can be used by conflict
 // resolution to signal failure to client or retry conflict resolution.
 using WaitDoneCallback = std::function<void(const Status&, HybridTime)>;
+using IntentProviderFunc = std::function<Result<IntentTypesContainer>()>;
 
 // This class is responsible for coordinating conflict transactions which are still running. A
 // running transaction can enter the wait queue while blocking on other running transactions in
@@ -62,7 +67,8 @@ class WaitQueue {
       const std::shared_future<client::YBClient*>& client_future,
       const server::ClockPtr& clock,
       const MetricEntityPtr& metrics,
-      std::unique_ptr<ThreadPoolToken> thread_pool_token);
+      std::unique_ptr<ThreadPoolToken> thread_pool_token,
+      rpc::Messenger* messenger);
 
   ~WaitQueue();
 
@@ -76,7 +82,8 @@ class WaitQueue {
   Status WaitOn(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback);
+      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
+      CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
   // should be called as the first step in conflict resolution when processing a new request to
@@ -87,8 +94,9 @@ class WaitQueue {
   // status in case of some unresolvable error.
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
-      WaitDoneCallback callback);
+      const TabletId& status_tablet_id, uint64_t serial_no,
+      int64_t txn_start_us, uint64_t req_start_us, int64_t request_id, CoarseTimePoint deadline,
+      IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   void Poll(HybridTime now);
 
@@ -120,8 +128,10 @@ class WaitQueue {
   // from this wait queue. If transactions is not empty, restrict returned information to locks
   // which are requested by the given set of transactions.
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                       uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
-                       TransactionLockInfoManager* lock_info_manager) const;
+                       TransactionLockInfoManager* lock_info_manager,
+                       uint32_t max_txn_locks) const;
 
  private:
   class Impl;

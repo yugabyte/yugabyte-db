@@ -7,21 +7,22 @@ menu:
   preview_yugabyte-platform:
     parent: security
     identifier: customize-ports
-    weight: 15
+    weight: 20
 type: docs
 ---
 
-YugabyteDB Anywhere allows you to configure your YugabyteDB ports for security purposes, as follows:
+YugabyteDB Anywhere and the universes it manages use a set of [default ports](../../prepare/networking/) to manage access to services.
 
-- Navigate to **Universes** and click **Create Universe**.
+When deploying a universe, YugabyteDB Anywhere allows you to customize these ports.
 
-- Use the **Create universe > Primary cluster** page to navigate to **Advanced** and enable **Override Deployment Ports**, as per the following illustration:<br>
+## Customize ports
 
-  ![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)<br>
+On the **Create Universe > Primary Cluster** page, under **Advanced Configuration**, enable the **Override Deployment Ports** option, as shown in the following illustration:
 
-- Replace the default values with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned.
+![Override Deployment Ports](/images/yp/security/override-deployment-ports.png)
 
-For more information, see the following:
+Replace the default values with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned.
 
-- [Configure the on-premises provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-the-on-premises-provider) describes how to configure a node exporter port.
-- [Default ports reference](../../../reference/configuration/default-ports) provides details on YugabyteDB default ports.
+After deployment, you can modify the YCQL API and admin UI endpoint ports. To change ports, navigate to your universe, click **Actions**, choose **Edit YCQL Configuration**, and select the **Override YCQL Default Ports** option.
+
+If you change the YCQL API endpoint on an active universe, be sure to update your applications as appropriate.

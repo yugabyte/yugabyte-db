@@ -52,16 +52,15 @@ class TransactionLoaderContext {
 
   virtual TransactionStatusResolver& AddStatusResolver() = 0;
   virtual const std::string& LogPrefix() const = 0;
-  virtual void CompleteLoad(const std::function<void()>& functor) = 0;
   virtual void LoadTransaction(
       TransactionMetadata&& metadata,
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
       const ApplyStateWithCommitHt* pending_apply) = 0;
-  virtual void LoadFinished() = 0;
+  virtual void LoadFinished(Status load_status) = 0;
 };
 
-YB_DEFINE_ENUM(TransactionLoaderState, (kLoadNotFinished)(kLoadCompleted)(kLoadFailed));
+YB_DEFINE_ENUM(TransactionLoaderState, (kNotStarted)(kLoading)(kCompleted)(kFailed));
 
 class TransactionLoader {
  public:
@@ -72,8 +71,27 @@ class TransactionLoader {
       RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start,
       const docdb::DocDB& db);
 
-  bool complete() const {
-    return state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted;
+  bool Started() const {
+    return state_ != TransactionLoaderState::kNotStarted;
+  }
+
+  // Returns false when the loader thread did not complete successfully i.e. it is still running
+  // or has encountered a failure. On seeing false, the caller should check for the failure case
+  // explicitly and access the failure status in 'load_status_'.
+  //
+  // Returns a bad status if the loader thread wasn't launched at the first place.
+  Result<bool> Completed() const {
+    // Read state_ with sequential consistency to prevent subtle bugs with operation reordering.
+    switch (state_) {
+      case TransactionLoaderState::kNotStarted:
+        return STATUS_FORMAT(IllegalState, "Loader thread not started");
+      case TransactionLoaderState::kCompleted:
+        return true;
+      case TransactionLoaderState::kLoading: [[fallthrough]];
+      case TransactionLoaderState::kFailed:
+        return false;
+    }
+    FATAL_INVALID_ENUM_VALUE(TransactionLoaderState, state_.load());
   }
 
   Status WaitLoaded(const TransactionId& id);
@@ -104,7 +122,7 @@ class TransactionLoader {
   std::condition_variable load_cond_;
   TransactionId last_loaded_ GUARDED_BY(mutex_) = TransactionId::Nil();
   Status load_status_ GUARDED_BY(mutex_);
-  std::atomic<TransactionLoaderState> state_{TransactionLoaderState::kLoadNotFinished};
+  std::atomic<TransactionLoaderState> state_{TransactionLoaderState::kNotStarted};
   std::atomic<bool> shutdown_requested_{false};
   scoped_refptr<Thread> load_thread_;
 

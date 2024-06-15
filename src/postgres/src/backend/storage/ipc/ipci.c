@@ -47,6 +47,10 @@
 #include "utils/backend_random.h"
 #include "utils/snapmgr.h"
 
+/* YB includes */
+#include "common/pg_yb_common.h"
+#include "yb_ash.h"
+
 /* GUCs */
 int			shared_memory_type = DEFAULT_SHARED_MEMORY_TYPE;
 
@@ -152,6 +156,9 @@ CreateSharedMemoryAndSemaphores(int port)
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
+
+		if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+			size = add_size(size, YbAshShmemSize());
 
 		/* freeze the addin request size and include it */
 		addin_request_allowed = false;
@@ -266,6 +273,9 @@ CreateSharedMemoryAndSemaphores(int port)
 	SyncScanShmemInit();
 	AsyncShmemInit();
 	BackendRandomShmemInit();
+
+	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+		YbAshShmemInit();
 
 #ifdef EXEC_BACKEND
 

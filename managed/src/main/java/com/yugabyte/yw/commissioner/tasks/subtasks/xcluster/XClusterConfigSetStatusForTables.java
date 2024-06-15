@@ -36,11 +36,8 @@ public class XClusterConfigSetStatusForTables extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(xClusterConfig=%s,tableIds=%s,desiredStatus=%s)",
-        super.getName(),
-        taskParams().getXClusterConfig(),
-        taskParams().tableIds,
-        taskParams().desiredStatus);
+        "%s(xClusterConfig=%s,desiredStatus=%s)",
+        super.getName(), taskParams().getXClusterConfig(), taskParams().desiredStatus);
   }
 
   @Override

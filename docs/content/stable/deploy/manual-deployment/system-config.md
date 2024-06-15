@@ -23,7 +23,7 @@ In particular, the main YugabyteDB process, the YB-TServer, is multi-threaded. A
 
 ## ntp
 
- If your instance does not have public Internet access, make sure the ntp package is installed:
+If your instance does not have public Internet access, make sure the ntp package is installed:
 
 ```sh
 $ sudo yum install -y ntp
@@ -118,12 +118,41 @@ On CentOS, `/etc/security/limits.d/20-nproc.conf` must also be configured to mat
 After changing a `ulimit` setting in `/etc/security/limits.conf`, you will need to log out and back in. To update system processes, you may need to restart.
 
 {{< note title="Using other distributions" >}}
-If you're using a desktop-distribution, such as ubuntu-desktop, the settings above may not suffice. The operating system needs additional steps to change `ulimit` for GUI login.
+If you're using a desktop-distribution, such as ubuntu-desktop, the preceding settings may not suffice. The operating system needs additional steps to change `ulimit` for GUI login.
 
 In the case of ubuntu-desktop, in `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add `DefaultLimitNOFILE=64000` at the end of file.
 
 Something similar may be needed for other distributions.
 {{< /note >}}
+
+### Kernel settings
+
+If running on a virtual machine, execute the following to tune kernel settings:
+
+1. Configure the parameter `vm.swappiness` as follows:
+
+    ```sh
+    sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
+    ```
+
+1. Setup path for core files as follows:
+
+    ```sh
+    sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E
+    ```
+
+1. Configure the parameter `vm.max_map_count` as follows:
+
+    ```sh
+    sudo sysctl -w vm.max_map_count=262144
+    sudo bash -c 'sysctl vm.max_map_count=262144 >> /etc/sysctl.conf'
+    ```
+
+1. Validate the change as follows:
+
+    ```sh
+    sysctl vm.max_map_count
+    ```
 
 ### Using systemd
 

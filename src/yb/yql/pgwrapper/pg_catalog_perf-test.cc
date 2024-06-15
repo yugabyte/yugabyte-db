@@ -18,12 +18,15 @@
 #include <thread>
 #include <unordered_map>
 
+#include "yb/common/json_util.h"
+
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -36,12 +39,13 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
-METRIC_DECLARE_counter(pg_response_cache_queries);
-METRIC_DECLARE_counter(pg_response_cache_hits);
-METRIC_DECLARE_counter(pg_response_cache_renew_soft);
-METRIC_DECLARE_counter(pg_response_cache_renew_hard);
-METRIC_DECLARE_counter(pg_response_cache_gc_calls);
+METRIC_DECLARE_counter(pg_response_cache_disable_calls);
 METRIC_DECLARE_counter(pg_response_cache_entries_removed_by_gc);
+METRIC_DECLARE_counter(pg_response_cache_hits);
+METRIC_DECLARE_counter(pg_response_cache_gc_calls);
+METRIC_DECLARE_counter(pg_response_cache_queries);
+METRIC_DECLARE_counter(pg_response_cache_renew_hard);
+METRIC_DECLARE_counter(pg_response_cache_renew_soft);
 
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
@@ -53,10 +57,16 @@ DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
 DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
+DECLARE_int32(pgsql_proxy_webserver_port);
 
 using namespace std::literals;
 
+using yb::common::GetMemberAsStr;
+using yb::common::GetMemberAsArray;
+using yb::common::ParseJson;
+
 namespace yb::pgwrapper {
+
 namespace {
 
 Status EnableCatCacheEventLogging(PGConn* conn) {
@@ -81,16 +91,17 @@ struct MetricCounters {
     size_t renew_hard;
     size_t gc_calls;
     size_t entries_removed_by_gc;
+    size_t disable_calls;
   };
 
   ResponseCache cache;
   size_t master_read_rpc;
 };
 
-struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 7> {
-  explicit MetricCountersDescriber(
-      std::reference_wrapper<const MetricEntity::MetricMap> master_metric,
-      std::reference_wrapper<const MetricEntity::MetricMap> tserver_metric)
+struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 8> {
+  MetricCountersDescriber(
+      std::reference_wrapper<const MetricEntity> master_metric,
+      std::reference_wrapper<const MetricEntity> tserver_metric)
       : descriptors{
           Descriptor{
               &delta.master_read_rpc, master_metric,
@@ -107,7 +118,10 @@ struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<Metric
               &delta.cache.gc_calls, tserver_metric, METRIC_pg_response_cache_gc_calls},
           Descriptor{
               &delta.cache.entries_removed_by_gc,
-              tserver_metric, METRIC_pg_response_cache_entries_removed_by_gc}}
+              tserver_metric, METRIC_pg_response_cache_entries_removed_by_gc},
+          Descriptor{
+              &delta.cache.disable_calls,
+              tserver_metric, METRIC_pg_response_cache_disable_calls}}
   {}
 
   DeltaType delta;
@@ -138,8 +152,8 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
     PgMiniTestBase::SetUp();
-    metrics_.emplace(GetMetricMap(*cluster_->mini_master()->master()),
-                     GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
+    metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
+                     *cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 
   size_t NumTabletServers() override {
@@ -185,8 +199,7 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
   Result<uint64_t> RPCCountOnStartUp(const std::string& db_name = {}) {
     auto res = VERIFY_RESULT(metrics_->Delta([this, &db_name] {
-      VERIFY_RESULT(ConnectToDB(db_name));
-      return static_cast<Status>(Status::OK());
+      return ResultToStatus(ConnectToDB(db_name));
     })).master_read_rpc;
     return res;
   }
@@ -228,6 +241,7 @@ constexpr auto kPreloadCatalogList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger"sv;
 constexpr auto kExtendedTableList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
+constexpr auto kShortTableList = "pg_inherits"sv;
 
 constexpr Configuration kConfigDefault;
 
@@ -258,6 +272,9 @@ constexpr Configuration kConfigPredictableMemoryUsage{
     .response_cache_size_bytes = 0,
     .use_relcache_file = false};
 
+constexpr Configuration kConfigSmallPreload{
+    .preload_additional_catalog_list = kShortTableList};
+
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
  private:
@@ -280,6 +297,8 @@ using PgPreloadAdditionalCatBothTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithPreloadAdditionalCatBoth>;
 using PgPredictableMemoryUsageTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigPredictableMemoryUsage>;
+using PgSmallPreloadTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigSmallPreload>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePerfTest {
  protected:
@@ -298,8 +317,51 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
 
 constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
 constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 6;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
+
+// Helper class to fetch number of client connection via pgsql proxy webserver.
+class ClientConnectionsCountFetcher {
+ public:
+  explicit ClientConnectionsCountFetcher(const HostPort& pg_host_port, MonoDelta initial_delay)
+      : url_(Format("http://$0:$1/rpcz", pg_host_port.host(), FLAGS_pgsql_proxy_webserver_port)),
+        initial_delay_(initial_delay) {}
+
+  Result<size_t> operator()() {
+    // Webserver start processing requests with some delay after cluster start.
+    // To solve this WaitFor is used.
+    faststring buf;
+    RETURN_NOT_OK(WaitFor(
+        [this, &buf]() -> Result<bool> {
+          return curl_.FetchURL(url_, &buf).ok();
+        },
+        5s, "Requesting /rpcz", initial_delay_));
+    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.c_str(), buf.size())));
+    size_t result = 0;
+    for (const auto& conn : VERIFY_RESULT(GetMemberAsArray(doc, "connections"))) {
+      if (VERIFY_RESULT(GetMemberAsStr(conn, "backend_type")) == "client backend") {
+        ++result;
+      }
+    }
+    return result;
+  }
+
+ private:
+  EasyCurl curl_;
+  const std::string url_;
+  const MonoDelta initial_delay_;
+};
+
+Status WaitForAllClientConnectionsClosure(const HostPort& pg_host_port) {
+  static constexpr auto kInitialDelay = 100ms;
+  ClientConnectionsCountFetcher connection_count_fetcher(pg_host_port, kInitialDelay);
+
+  return WaitFor(
+      [&connection_count_fetcher]() -> Result<bool> {
+        return !VERIFY_RESULT(connection_count_fetcher());
+      }, 30s, "Client connections closure", kInitialDelay);
+}
 
 } // namespace
 
@@ -553,6 +615,13 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
 }
 
+TEST_F_EX(PgCatalogPerfTest,
+          RPCCountOnStartupSmallPreload,
+          PgSmallPreloadTest) {
+  const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithSmallPreload);
+}
+
 // Test checks that response cache is DB specific.
 // First, start up an initial connection and measure the startup RPC count (a).
 // Then, create a new database. Create a new connection to this database and
@@ -584,6 +653,86 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
+}
+
+// The test checks that response cache for specific DB is invalidated in case of closure of
+// connection with temp tables. Response cache for other DBs is not affected.
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheInvalidationOnConnectionWithTempTableClosure,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  constexpr auto* kDBName = "aux_db";
+
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+    auto conn_with_temp_table = ASSERT_RESULT(ConnectToDB(kDBName));
+    ASSERT_OK(conn_with_temp_table.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
+  }
+  ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
+
+  const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
+
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+                                  kSubsequentConnectionRPCCount}) {
+    const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
+    ASSERT_EQ(connect_rpc_count, expected_rpc_count);
+  }
+}
+
+// The test checks that response cache for specific DB is invalidated in case of discarding temp
+// tables. Response cache for other DBs is not affected.
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheInvalidationOnDiscardTempTables,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  constexpr auto* kDBName = "aux_db";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+  auto aux_conn = ASSERT_RESULT(ConnectToDB(kDBName));
+  ASSERT_OK(aux_conn.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
+
+  const auto disable_calls = ASSERT_RESULT(metrics_->Delta([&aux_conn] {
+    return aux_conn.Execute("DISCARD ALL");
+  })).cache.disable_calls;
+  ASSERT_EQ(disable_calls, 1);
+
+  const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
+
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+                                  kSubsequentConnectionRPCCount}) {
+    const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
+    ASSERT_EQ(connect_rpc_count, expected_rpc_count);
+  }
+}
+
+// The test checks that different connections can use same temp table names in case of temp
+// namespace reusing when response cache is enabled.
+TEST_F_EX(PgCatalogPerfTest,
+          SameTempTableCreationWithResponseCache,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  const auto temp_table_creator = [](PGConn* conn) {
+    return conn->Execute("CREATE TEMP TABLE temptest(k INT)");
+  };
+
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(temp_table_creator(&conn));
+    // Trigger catalog version update.
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT);DROP TABLE $0", "t"));
+    // New connection will reload catalog cache and fill response cache with the data.
+    // Response data contains info about temporary table.
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Fetch("SELECT 1"));
+  }
+  ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto disable_calls = ASSERT_RESULT(metrics_->Delta([&conn, &temp_table_creator] {
+    return temp_table_creator(&conn);
+  })).cache.disable_calls;
+  // Check that response cache has not been invalidated while temp namespace reusing.
+  ASSERT_EQ(disable_calls, 0);
 }
 
 } // namespace yb::pgwrapper

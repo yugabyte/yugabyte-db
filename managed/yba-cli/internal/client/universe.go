@@ -15,6 +15,12 @@ func (a *AuthAPIClient) ListUniverses() (
 	return a.APIClient.UniverseManagementApi.ListUniverses(a.ctx, a.CustomerUUID)
 }
 
+// GetUniverse fetches of universe associated with the universeUUID
+func (a *AuthAPIClient) GetUniverse(uUUID string) (
+	ybaclient.UniverseManagementApiApiGetUniverseRequest) {
+	return a.APIClient.UniverseManagementApi.GetUniverse(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // DeleteUniverse deletes universe associated with the universeUUID
 func (a *AuthAPIClient) DeleteUniverse(uUUID string) (
 	ybaclient.UniverseManagementApiApiDeleteUniverseRequest) {
@@ -29,15 +35,29 @@ func (a *AuthAPIClient) CreateAllClusters() (
 
 // UpgradeSoftware upgrades the universe YugabyteDB version
 func (a *AuthAPIClient) UpgradeSoftware(uUUID string) (
-	ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest,
-) {
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest) {
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// UpgradeGFlags upgrades the universe gflags
+func (a *AuthAPIClient) UpgradeGFlags(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeGFlagsRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeGFlags(a.ctx, a.CustomerUUID, uUUID)
+}
+
+// RestartUniverse for restart operation
+func (a *AuthAPIClient) RestartUniverse(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {
-	allowedVersions := []string{util.YBAAllowUniverseMinVersion}
+	allowedVersions := YBAMinimumVersion{
+		Stable: util.YBAAllowUniverseMinVersion,
+		Preview: util.YBAAllowUniverseMinVersion,
+	}
 	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
 	if err != nil {
 		return false, "", err

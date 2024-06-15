@@ -21,6 +21,10 @@
 #include "yb/util/net/net_fwd.h"
 
 namespace yb {
+
+class ExternalYbController;
+class MiniClusterBase;
+
 namespace tools {
 
 // Runs backup command against specified cluster.
@@ -30,6 +34,11 @@ Status RunBackupCommand(
     const HostPort& pg_hp, const std::string& master_addresses,
     const std::string& tserver_http_addresses, const std::string& tmp_dir,
     const std::vector<std::string>& extra_args);
+
+// Runs Backup/Restore command via YB Controller
+// The yb controller data dir(which has the logs) is present in the same directory as master/ts
+Status RunYbControllerCommand(
+    MiniClusterBase* cluster, const std::string& tmp_dir, const std::vector<std::string>& args);
 
 // A class to manage random tmp dir for test.
 class TmpDirProvider {

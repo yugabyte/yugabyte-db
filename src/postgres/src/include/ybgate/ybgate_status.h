@@ -100,6 +100,7 @@ typedef struct YbgStatusData *YbgStatus;
 		else \
 		{ \
 			YbgStatus status = (YbgStatus) YBCPgSetThreadLocalErrStatus(NULL); \
+			YBCPgSetThreadLocalJumpBuffer(NULL); \
 			return status ? status : YbgStatusErrorReportingError(); \
 		} \
 		YBCPgSetThreadLocalJumpBuffer(NULL); \

@@ -18,6 +18,8 @@
 //--------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/server/server_fwd.h"
@@ -153,6 +155,7 @@ class QLProcessor : public Rescheduler {
       stmt_ = &stmt;
       params_ = &params;
       cb_ = std::move(cb);
+      wait_state_ = ash::WaitStateInfo::CurrentWaitState();
       return *this;
     }
 
@@ -162,6 +165,8 @@ class QLProcessor : public Rescheduler {
     void Run() override {
       auto processor = processor_;
       processor_ = nullptr;
+      ADOPT_WAIT_STATE(wait_state_);
+      wait_state_ = nullptr;
       processor->RunAsync(*stmt_, *params_, std::move(cb_), true /* reparsed */);
     }
 
@@ -170,6 +175,7 @@ class QLProcessor : public Rescheduler {
     QLProcessor* processor_ = nullptr;
     const std::string* stmt_ = nullptr;
     const StatementParameters* params_ = nullptr;
+    ash::WaitStateInfoPtr wait_state_ = nullptr;
     StatementExecutedCallback cb_;
   };
 

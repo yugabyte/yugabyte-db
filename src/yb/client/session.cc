@@ -147,9 +147,12 @@ void YBSession::SetDeadline(CoarseTimePoint deadline) {
 namespace {
 
 internal::BatcherPtr CreateBatcher(const YBSession::BatcherConfig& config) {
+  auto session = config.session.lock();
+  CHECK_NOTNULL(session);
+
   auto batcher = std::make_shared<internal::Batcher>(
-      config.client, config.session.lock(), config.transaction, config.read_point(),
-      config.force_consistent_read, config.leader_term);
+      config.client, session, config.transaction, config.read_point(), config.force_consistent_read,
+      config.leader_term);
   batcher->SetRejectionScoreSource(config.rejection_score_source);
   return batcher;
 }
@@ -198,20 +201,7 @@ void BatcherFlushDone(
                     << ": (first op error: " << errors[0]->status() << ")";
 
   internal::BatcherPtr retry_batcher = CreateBatcher(batcher_config);
-  retry_batcher->SetDeadline(done_batcher->deadline());
-
-  for (auto& error : errors) {
-    VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
-                      << " due to: " << error->status();
-    const auto op = error->shared_failed_op();
-    op->ResetTablet();
-    // Transmit failed request id to retry_batcher.
-    if (op->request_id()) {
-      retry_batcher->MoveRequestDetailsFrom(done_batcher, *op->request_id());
-    }
-    retry_batcher->Add(op);
-  }
-
+  retry_batcher->InitFromFailedBatcher(done_batcher, errors);
   DEBUG_ONLY_TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
 
   FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
@@ -372,6 +362,17 @@ Status YBSession::TEST_Flush() {
               << " failed: " << error->status();
     }
   }
+
+  if (flush_status.status.IsIOError() &&
+      flush_status.status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
+      !flush_status.errors.empty()) {
+    // TODO: move away from string comparison here and use a more specific status than IOError.
+    // See https://github.com/YugaByte/yugabyte-db/issues/702
+
+    // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
+    // returns IOError. When it happens, just return the first error seen.
+    return flush_status.errors.front()->status();
+  }
   return std::move(flush_status.status);
 }
 
@@ -423,6 +424,11 @@ int YsqlClientReadWriteTimeoutMs() {
   return (FLAGS_ysql_client_read_write_timeout_ms < 0
       ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
       : FLAGS_ysql_client_read_write_timeout_ms);
+}
+
+int SysCatalogRetryableRequestTimeoutSecs() {
+  return std::max(RetryableRequestTimeoutSecs(TableType::PGSQL_TABLE_TYPE),
+                  RetryableRequestTimeoutSecs(TableType::YQL_TABLE_TYPE));
 }
 
 int RetryableRequestTimeoutSecs(TableType table_type) {

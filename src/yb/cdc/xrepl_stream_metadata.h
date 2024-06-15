@@ -114,6 +114,15 @@ class StreamMetadata {
     DCHECK(loaded_);
     return consistent_snapshot_time_.load(std::memory_order_acquire);
   }
+  std::optional<uint64_t> GetStreamCreationTime() const {
+    DCHECK(loaded_);
+    return stream_creation_time_.load(std::memory_order_acquire);
+  }
+  std::unordered_map<std::string, PgReplicaIdentity> GetReplicaIdentities() const {
+    DCHECK(loaded_);
+    SharedLock l(table_ids_mutex_);
+    return replica_identitity_map_;
+  }
 
 
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
@@ -140,12 +149,15 @@ class StreamMetadata {
   std::atomic<master::SysCDCStreamEntryPB_State> state_;
   std::atomic<StreamModeTransactional> transactional_{StreamModeTransactional::kFalse};
   std::atomic<std::optional<uint64_t>> consistent_snapshot_time_;
+  std::atomic<std::optional<uint64_t>> stream_creation_time_;
 
   std::mutex load_mutex_;  // Used to ensure only a single thread performs InitOrReload.
   std::atomic<bool> loaded_ = false;
 
   mutable std::shared_mutex table_ids_mutex_;
   std::vector<TableId> table_ids_ GUARDED_BY(table_ids_mutex_);
+  std::unordered_map<std::string, PgReplicaIdentity> replica_identitity_map_
+      GUARDED_BY(table_ids_mutex_);
 
   mutable std::shared_mutex tablet_metadata_map_mutex_;
   std::unordered_map<TabletId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_

@@ -44,6 +44,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());
     this.runtimeConfigFactory = mockBaseTaskDependencies.getRuntimeConfigFactory();
@@ -86,7 +87,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
         .thenReturn(mockSupportBundleComponent);
     doNothing()
         .when(mockSupportBundleComponent)
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if task succeeded
     TaskInfo taskInfo = submitTask(new Date(), new Date());
@@ -94,7 +95,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
 
     // Check if the components are executed
     verify(mockSupportBundleComponent, atLeast(1))
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if bundle exists in db
     List<SupportBundle> supportBundleList = SupportBundle.getAll();
@@ -111,7 +112,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
         .thenReturn(mockSupportBundleComponent);
     doNothing()
         .when(mockSupportBundleComponent)
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if task succeeded
     TaskInfo taskInfo = submitTask(new Date(), null);
@@ -119,7 +120,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
 
     // Check if the components are executed
     verify(mockSupportBundleComponent, atLeast(1))
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if bundle exists in db
     List<SupportBundle> supportBundleList = SupportBundle.getAll();
@@ -136,7 +137,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
         .thenReturn(mockSupportBundleComponent);
     doNothing()
         .when(mockSupportBundleComponent)
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if task succeeded
     TaskInfo taskInfo = submitTask(null, new Date());
@@ -144,7 +145,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
 
     // Check if the components are executed
     verify(mockSupportBundleComponent, atLeast(1))
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if bundle exists in db
     List<SupportBundle> supportBundleList = SupportBundle.getAll();
@@ -161,7 +162,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
         .thenReturn(mockSupportBundleComponent);
     doNothing()
         .when(mockSupportBundleComponent)
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if task succeeded
     TaskInfo taskInfo = submitTask(null, null);
@@ -169,7 +170,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
 
     // Check if the components are executed
     verify(mockSupportBundleComponent, atLeast(1))
-        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any());
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
 
     // Check if bundle exists in db
     List<SupportBundle> supportBundleList = SupportBundle.getAll();

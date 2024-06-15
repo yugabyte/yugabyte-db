@@ -15,6 +15,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.ConfigException;
+import com.typesafe.config.ConfigValue;
+import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -34,6 +36,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,6 +68,10 @@ public class PlatformReplicationHelper {
   static final String DB_HOST_CONFIG_KEY = "db.default.host";
   static final String DB_PORT_CONFIG_KEY = "db.default.port";
   static final String YBA_INSTALLATION_KEY = "yb.installation";
+  public static final String WS_ACCEPT_ANY_CERTIFICATE_KEY =
+      "play.ws.ssl.loose.acceptAnyCertificate";
+  static final String WS_TIMEOUT_REQUEST_KEY = "play.ws.timeout.request";
+  static final String WS_TIMEOUT_CONNECTION_KEY = "play.ws.timeout.connection";
 
   private final RuntimeConfGetter confGetter;
 
@@ -126,6 +133,14 @@ public class PlatformReplicationHelper {
 
   int getDBPort() {
     return confGetter.getStaticConf().getInt(DB_PORT_CONFIG_KEY);
+  }
+
+  Duration getTestConnectionRequestTimeout() {
+    return confGetter.getGlobalConf(GlobalConfKeys.haTestConnectionRequestTimeout);
+  }
+
+  Duration getTestConnectionConnectionTimeout() {
+    return confGetter.getGlobalConf(GlobalConfKeys.haTestConnectionConnectionTimeout);
   }
 
   String getPGDumpPath() {
@@ -223,16 +238,17 @@ public class PlatformReplicationHelper {
     }
   }
 
-  boolean demoteRemoteInstance(PlatformInstance remoteInstance) {
-    try {
+  boolean demoteRemoteInstance(PlatformInstance remoteInstance, boolean promote) {
+    HighAvailabilityConfig config = remoteInstance.getConfig();
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstance.getAddress(),
+            config.getAcceptAnyCertificateOverrides())) {
       if (remoteInstance.getIsLocal()) {
         LOG.warn("Cannot perform demoteRemoteInstance action on a local instance");
         return false;
       }
-
-      HighAvailabilityConfig config = remoteInstance.getConfig();
-      PlatformInstanceClient client =
-          this.remoteClientFactory.getClient(config.getClusterKey(), remoteInstance.getAddress());
 
       // Ensure all local records for remote instances are set to follower state.
       remoteInstance.demote();
@@ -243,7 +259,7 @@ public class PlatformReplicationHelper {
               localInstance -> {
                 // Send step down request to remote instance.
                 client.demoteInstance(
-                    localInstance.getAddress(), config.getLastFailover().getTime());
+                    localInstance.getAddress(), config.getLastFailover().getTime(), promote);
 
                 return true;
               })
@@ -255,10 +271,22 @@ public class PlatformReplicationHelper {
     return false;
   }
 
+  public void clearMetrics(HighAvailabilityConfig config, String remoteInstanceAddr) {
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstanceAddr,
+            config.getAcceptAnyCertificateOverrides())) {
+      client.clearMetrics();
+    }
+  }
+
   boolean exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
-    try {
-      PlatformInstanceClient client =
-          this.remoteClientFactory.getClient(config.getClusterKey(), remoteInstanceAddr);
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstanceAddr,
+            config.getAcceptAnyCertificateOverrides())) {
 
       // Form payload to send to remote platform instance.
       List<PlatformInstance> instances = config.getInstances();
@@ -357,14 +385,42 @@ public class PlatformReplicationHelper {
       File backupFile) {
     Optional<PlatformInstance> localInstance = config.getLocal();
     Optional<PlatformInstance> leaderInstance = config.getLeader();
-    return localInstance.isPresent()
-        && leaderInstance.isPresent()
-        && remoteClientFactory
-            .getClient(clusterKey, remoteInstanceAddr)
-            .syncBackups(
-                leaderInstance.get().getAddress(),
-                localInstance.get().getAddress(), // sender is same as leader for now.
-                backupFile);
+    try (PlatformInstanceClient client =
+        remoteClientFactory.getClient(
+            clusterKey, remoteInstanceAddr, config.getAcceptAnyCertificateOverrides())) {
+      return localInstance.isPresent()
+          && leaderInstance.isPresent()
+          && client.syncBackups(
+              leaderInstance.get().getAddress(),
+              localInstance.get().getAddress(), // sender is same as leader for now.
+              backupFile);
+    }
+  }
+
+  boolean testConnection(
+      HighAvailabilityConfig config,
+      String clusterKey,
+      String remoteInstanceAddr,
+      boolean acceptAnyCertificate) {
+    Optional<PlatformInstance> localInstance = config.getLocal();
+    Optional<PlatformInstance> leaderInstance = config.getLeader();
+    Map<String, ConfigValue> ybWsOverrides =
+        new HashMap<>(
+            Map.of(
+                WS_ACCEPT_ANY_CERTIFICATE_KEY,
+                ConfigValueFactory.fromAnyRef(acceptAnyCertificate)));
+    ybWsOverrides.put(
+        WS_TIMEOUT_REQUEST_KEY,
+        ConfigValueFactory.fromAnyRef(
+            String.format("%d seconds", getTestConnectionRequestTimeout().getSeconds())));
+    ybWsOverrides.put(
+        WS_TIMEOUT_CONNECTION_KEY,
+        ConfigValueFactory.fromAnyRef(
+            String.format("%d seconds", getTestConnectionConnectionTimeout().getSeconds())));
+    try (PlatformInstanceClient client =
+        remoteClientFactory.getClient(clusterKey, remoteInstanceAddr, ybWsOverrides)) {
+      return localInstance.isPresent() && leaderInstance.isPresent() && client.testConnection();
+    }
   }
 
   void cleanupBackups(List<File> backups, int numToRetain) {
@@ -403,7 +459,7 @@ public class PlatformReplicationHelper {
     LOG.debug("Syncing data to " + remoteAddr + "...");
 
     // Ensure that the remote instance is demoted if this instance is the most current leader.
-    if (!this.demoteRemoteInstance(remoteInstance)) {
+    if (!this.demoteRemoteInstance(remoteInstance, false)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
       return false;
     }

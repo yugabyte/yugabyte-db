@@ -170,4 +170,7 @@ message ConsensusMetadataPB {
   optional string voted_for = 3;
 
   optional bytes split_parent_tablet_id = 4;
+
+  optional uint32 clone_source_seq_no = 5;
+  optional string clone_source_tablet_id = 6;
 }

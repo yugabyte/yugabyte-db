@@ -64,7 +64,7 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 
 >**Sandbox cluster**
 >
->YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/develop/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
+>YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/tutorials/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
 >To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
@@ -146,11 +146,25 @@ Before you begin, you need the following:
 - the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
+Refer to [Before you begin](../tutorials/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
 {{< readfile "quick-start-buildapps-include.md" >}}
+
+## Migrate from PostgreSQL
+
+For PostgreSQL users seeking to transition to a modern, horizontally scalable database solution with built-in resilience, YugabyteDB offers a seamless lift-and-shift approach that ensures compatibility with PostgreSQL syntax and features while providing the scalability benefits of distributed SQL.
+
+YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
+
+[YugabyteDB Voyager](../yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Managed, Anywhere, and the core open-source database.
+
+You can [install](../yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+
+In addition to [offline migration](../yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](../yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../yugabyte-voyager/migrate/live-fall-back/) capabilities.
+
+Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
 
 ## Learn more
 
@@ -159,6 +173,8 @@ Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 [Deploy clusters in YugabyteDB Managed](../yugabyte-cloud/cloud-basics/)
 
 [Connect applications to YugabyteDB Managed](../yugabyte-cloud/cloud-connect/connect-applications/)
+
+[YugabyteDB Voyager Documentation](../yugabyte-voyager/)
 
 [Explore YugabyteDB](../explore/)
 

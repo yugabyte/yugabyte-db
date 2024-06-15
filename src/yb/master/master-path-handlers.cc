@@ -42,13 +42,17 @@
 
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
+#include "yb/cdc/xcluster_util.h"
+
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/partition.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/tablet_limits.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
@@ -57,15 +61,15 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_encryption.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
@@ -73,10 +77,14 @@
 #include "yb/master/ts_manager.h"
 
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/xcluster/xcluster_status.h"
+
+#include "yb/server/html_print_helper.h"
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/tablet_types.pb.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
@@ -88,7 +96,7 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_UNKNOWN_int32(
+DEFINE_RUNTIME_int32(
     hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
@@ -97,21 +105,20 @@ DEFINE_UNKNOWN_int32(
 DEFINE_RUNTIME_bool(master_webserver_require_https, false,
     "Require HTTPS when redirecting master UI requests to the leader.");
 
-DEFINE_RUNTIME_uint64(master_maximum_heartbeats_without_lease, 10,
-    "After this number of heartbeats without a valid lease for a tablet, treat it as leaderless.");
-
 DEFINE_test_flag(bool, master_ui_redirect_to_leader, true,
                  "Redirect master UI requests to the master leader");
 
-DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
-    "If the leader lease in master's view has expired for this amount of seconds, "
-    "report it as a leaderless tablet.");
+DEFINE_RUNTIME_uint32(leaderless_tablet_alert_delay_secs, 2 * 60,
+    "From master's view, if the tablet doesn't have a valid leader for this amount of seconds, "
+    "alert it as a leaderless tablet.");
 
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 DECLARE_string(webserver_ca_certificate_file);
 
 DECLARE_string(webserver_certificate_file);
+
+DEPRECATE_FLAG(uint64, master_maximum_heartbeats_without_lease, "12_2023");
 
 namespace yb {
 
@@ -137,6 +144,22 @@ std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& regi
   return public_http_hp;
 }
 
+std::optional<HostPortPB> GetRpcBindAddress(const ServerRegistrationPB& reg) {
+  if (reg.private_rpc_addresses().empty()) {
+    return {};
+  }
+  return reg.private_rpc_addresses(0);
+}
+
+std::string BoolToString(bool val) { return val ? "true" : "false"; }
+
+std::optional<uint64_t> ToUnsignedOrNullopt(int64_t val) {
+  if (val == std::numeric_limits<int64_t>::max()) {
+    return std::nullopt;
+  } else {
+    return val;
+  }
+}
 }  // namespace
 
 using consensus::RaftPeerPB;
@@ -162,6 +185,7 @@ void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
   user_tablet_followers += other.user_tablet_followers;
   system_tablet_leaders += other.system_tablet_leaders;
   system_tablet_followers += other.system_tablet_followers;
+  hidden_tablet_peers += other.hidden_tablet_peers;
 }
 
 MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(
@@ -371,6 +395,40 @@ bool TabletServerComparator(
 
 }  // anonymous namespace
 
+MasterPathHandlers::UniverseTabletCounts MasterPathHandlers::CalculateUniverseTabletCounts(
+    const TabletCountMap& tablet_count_map, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
+    const BlacklistSet& blacklist_set,
+    int hide_dead_node_threshold_mins) {
+  UniverseTabletCounts counts;
+  for (const auto& desc : descs) {
+    if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
+      continue;
+    }
+    const auto& placement_uuid = desc->placement_uuid();
+    PlacementClusterTabletCounts& placement_cluster_counts =
+        counts.per_placement_cluster_counts[placement_uuid];
+    if (auto* tablet_count = FindOrNull(tablet_count_map, desc->permanent_uuid())) {
+      placement_cluster_counts.counts += *tablet_count;
+    }
+    if (desc->IsBlacklisted(blacklist_set)) {
+      placement_cluster_counts.blacklisted_node_count++;
+    } else if (desc->IsLive()) {
+      placement_cluster_counts.live_node_count++;
+    } else {
+      placement_cluster_counts.dead_node_count++;
+    }
+    placement_cluster_counts.active_tablet_peer_count += desc->num_live_replicas();
+  }
+
+  auto limits = GetTabletReplicaPerResourceLimits();
+  for (auto& [placement_uuid, cluster_counts] : counts.per_placement_cluster_counts) {
+    auto cluster_info = ComputeAggregatedClusterInfo(descs, placement_uuid);
+    cluster_counts.tablet_replica_limit =
+        ToUnsignedOrNullopt(ComputeTabletReplicaLimit(cluster_info, limits));
+  }
+  return counts;
+}
+
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
                                         TabletCountMap* tablet_map,
@@ -396,7 +454,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
   // Comparator orders by cloud, region, zone and uuid fields.
   std::sort(local_descs.begin(), local_descs.end(), &TabletServerComparator);
 
-  for (auto desc : local_descs) {
+  for (const auto& desc : local_descs) {
     if (desc->placement_uuid() == current_uuid) {
       if (ShouldHideTserverNodeFromDisplay(desc.get(), hide_dead_node_threshold_mins)) {
         continue;
@@ -489,6 +547,57 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
 
       *output << "  </tr>\n";
     }
+  }
+  *output << "</table>\n";
+}
+
+void MasterPathHandlers::DisplayUniverseSummary(
+    const TabletCountMap& tablet_map, const std::vector<std::shared_ptr<TSDescriptor>>& all_descs,
+    const std::string& live_id,
+    int hide_dead_node_threshold_mins,
+    std::stringstream* output) {
+  auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
+  BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
+  auto universe_counts = CalculateUniverseTabletCounts(
+      tablet_map, all_descs, blacklist, hide_dead_node_threshold_mins);
+
+  // auto include_placement_uuids = universe_counts.per_placement_cluster_counts.size() > 1;
+  // auto placement_uuid_header = include_placement_uuids ? "<th>Cluster UUID</th>\n" : "";
+  *output << "<h2>Universe Summary</h2>\n"
+          << "<table class='table table-striped'>\n"
+          << "  <tr>\n"
+          << "    <th>Cluster UUID</th>\n"
+          << "    <th>Total Live TServers</th>\n"
+          << "    <th>Total Blacklisted TServers</th>\n"
+          << "    <th>Total Dead TServers</th>\n"
+          << "    <th>User Tablet-Peers</th>\n"
+          << "    <th>System Tablet-Peers</th>\n"
+          << "    <th>Hidden Tablet-Peers</th>\n"
+          << "    <th>Active Tablet-Peers</th>\n"
+          << "    <th>Tablet Peer Limit</th>\n"
+          << "  </tr>\n";
+  for (const auto& [placement_uuid, cluster_counts] :
+       universe_counts.per_placement_cluster_counts) {
+    auto placement_uuid_entry = Format(
+        "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
+    auto limit_entry = cluster_counts.tablet_replica_limit.has_value()
+                           ? Format("$0", *cluster_counts.tablet_replica_limit)
+                           : "N/A";
+    auto user_total =
+        cluster_counts.counts.user_tablet_followers + cluster_counts.counts.user_tablet_leaders;
+    auto system_total =
+        cluster_counts.counts.system_tablet_followers + cluster_counts.counts.system_tablet_leaders;
+    *output << "<tr>\n"
+            // << placement_uuid_entry
+            << "  <td>" << placement_uuid_entry << "</td>\n"
+            << "  <td>" << cluster_counts.live_node_count << "</td>\n"
+            << "  <td>" << cluster_counts.blacklisted_node_count << "</td>\n"
+            << "  <td>" << cluster_counts.dead_node_count << "</td>\n"
+            << "  <td>" << user_total << "</td>\n"
+            << "  <td>" << system_total << "</td>\n"
+            << "  <td>" << cluster_counts.counts.hidden_tablet_peers << "</td>\n"
+            << "  <td>" << cluster_counts.active_tablet_peer_count << "</td>\n"
+            << "  <td>" << limit_entry << "</td>\n";
   }
   *output << "</table>\n";
 }
@@ -625,19 +734,16 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     hide_dead_node_threshold_override = atoi(threshold_arg->second.c_str());
   }
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
 
-  auto live_id = config.replication_info().live_replicas().placement_uuid();
+  auto live_id = cluster_config_result->replication_info().live_replicas().placement_uuid();
 
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   // Get user and system tablet leader and follower counts for each TabletServer
   TabletCountMap tablet_map;
@@ -651,6 +757,9 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   }
 
   *output << std::setprecision(output_precision_);
+  if (viewType == TServersViewType::kTServersDefaultView) {
+    DisplayUniverseSummary(tablet_map, descs, live_id, hide_dead_node_threshold_override, output);
+  }
   *output << "<h2>Tablet Servers</h2>\n";
 
   if (!live_id.empty()) {
@@ -701,25 +810,20 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     return;
   }
-
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
-
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
   CalculateTabletMap(&tablet_map);
 
   std::unordered_set<string> cluster_uuids;
-  auto primary_uuid = config.replication_info().live_replicas().placement_uuid();
+  auto primary_uuid = cluster_config_result->replication_info().live_replicas().placement_uuid();
   cluster_uuids.insert(primary_uuid);
   for (auto desc : descs) {
     cluster_uuids.insert(desc->placement_uuid());
@@ -850,12 +954,11 @@ void MasterPathHandlers::HandleHealthCheck(
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     return;
   }
   auto replication_factor = master_->catalog_manager()->GetReplicationFactor();
@@ -866,11 +969,10 @@ void MasterPathHandlers::HandleHealthCheck(
     return;
   }
 
-  vector<std::shared_ptr<TSDescriptor> > descs;
-  const auto* ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
-  const auto& live_placement_uuid = config.replication_info().live_replicas().placement_uuid();
+  const auto& live_placement_uuid =
+      cluster_config_result->replication_info().live_replicas().placement_uuid();
   // Ignore read replica health for V1.
 
   vector<std::shared_ptr<TSDescriptor> > dead_nodes;
@@ -999,9 +1101,11 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   return disk_size_html.str();
 }
 
-void MasterPathHandlers::HandleCatalogManager(
+void MasterPathHandlers::HandleAllTables(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, bool only_user_tables) {
   std::stringstream* output = &resp->output;
+  HtmlPrintHelper html_print_helper(*output);
+
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
@@ -1041,12 +1145,14 @@ void MasterPathHandlers::HandleCatalogManager(
     string href_table_id = table_uuid;
     string table_name = table_locked->name();
     table_row[kState] = SysTablesEntryPB_State_Name(table_locked->pb.state());
-    table_row[kHidden] = table_locked->is_hidden() ? "true" : "false";
     Capitalize(&table_row[kState]);
+    if (table_locked->is_hidden()) {
+      table_row[kState] += " (HIDDEN)";
+    }
     table_row[kMessage] = EscapeForHtmlToString(table_locked->pb.state_msg());
 
     if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kParentTable) {
-      const auto result = GetPgsqlTableOid(table_uuid);
+      const auto result = table->GetPgTableOid();
       if (result.ok()) {
         table_row[kYsqlOid] = std::to_string(*result);
       } else {
@@ -1115,86 +1221,66 @@ void MasterPathHandlers::HandleCatalogManager(
       continue;
     }
 
-    (*output) << "<div class='panel panel-default'>\n"
-              << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[type_index]
-              << " tables</h2></div>\n";
-    (*output) << "<div class='panel-body table-responsive'>";
+    auto fs = html_print_helper.CreateFieldset(table_type_[type_index] + " tables");
 
     if (ordered_tables[type_index].empty()) {
       (*output) << "There are no " << static_cast<char>(tolower(table_type_[type_index][0]))
                 << table_type_[type_index].substr(1) << " tables.\n";
     } else {
-      (*output) << "<table class='table table-responsive'>\n";
-      (*output) << "  <tr><th>Keyspace</th>\n"
-                << "  <th>Table Name</th>\n"
-                << "  <th>State</th>\n"
-                << "  <th>Message</th>\n"
-                << "  <th>UUID</th>\n"
-                << "  <th>YSQL OID</th>\n"
-                << "  <th>Hidden</th>\n";
+      std::vector<std::string> columns = {"Keyspace", "Table Name", "State",
+                                          "Message",  "UUID",       "YSQL OID"};
 
       if (type_index == kUserTable || type_index == kUserIndex) {
         if (has_tablegroups[type_index]) {
-          (*output) << "  <th>Parent OID</th>\n";
+          columns.push_back("Parent OID");
         }
 
         if (has_colocated_tables[type_index]) {
-          (*output) << "  <th>Colocation ID</th>\n";
+          columns.push_back("Colocation ID");
         }
       }
 
       if (type_index != kSystemTable) {
-        (*output) << "  <th>On-disk size</th></tr>\n";
+        columns.push_back("On-disk size");
       }
 
+      auto html_table = html_print_helper.CreateTablePrinter("table", type_index, columns);
+
       for (const StringMap::value_type& table : ordered_tables[type_index]) {
-        (*output) << Format(
-            "<tr>"
-            "<td>$0</td>"
-            "<td>$1</td>"
-            "<td>$2</td>"
-            "<td>$3</td>"
-            "<td>$4</td>"
-            "<td>$5</td>"
-            "<td>$6</td>",
-            table.second[kKeyspace],
-            table.second[kTableName],
-            table.second[kState],
-            table.second[kMessage],
-            table.second[kUuid],
-            table.second[kYsqlOid],
-            table.second[kHidden]);
+        auto& row = html_table.AddRow();
+
+        row.AddColumn(table.second[kKeyspace]);
+        row.AddColumn(table.second[kTableName]);
+        row.AddColumn(table.second[kState]);
+        row.AddColumn(table.second[kMessage]);
+        row.AddColumn(table.second[kUuid]);
+        row.AddColumn(table.second[kYsqlOid]);
 
         if (type_index == kUserTable || type_index == kUserIndex) {
           if (has_tablegroups[type_index]) {
-            (*output) << Format("<td>$0</td>", table.second[kParentOid]);
+            row.AddColumn(table.second[kParentOid]);
           }
 
           if (has_colocated_tables[type_index]) {
-            (*output) << Format("<td>$0</td>", table.second[kColocationId]);
+            row.AddColumn(table.second[kColocationId]);
           }
         }
 
         if (type_index != kSystemTable) {
-          (*output) << Format("<td>$0</td>", table.second[kOnDiskSize]);
+          row.AddColumn(table.second[kOnDiskSize]);
         }
-
-        (*output) << "</tr>\n";
       }
-
-      (*output) << "</table>\n";
+      html_table.Print();
 
       if (show_missing_size_footer[type_index]) {
         (*output) << "<p>* Some tablets did not provide disk size estimates,"
                   << " and were not added to the displayed totals.</p>";
       }
     }
-    (*output) << "</div> <!-- panel-body -->\n";
-    (*output) << "</div> <!-- panel -->\n";
   }
 }
 
-void MasterPathHandlers::HandleCatalogManagerJSON(
+void MasterPathHandlers::HandleAllTablesJSON(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
@@ -1255,7 +1341,7 @@ void MasterPathHandlers::HandleCatalogManagerJSON(
     table_row.message = table_locked->pb.state_msg();
 
     if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kParentTable) {
-      const auto result = GetPgsqlTableOid(table_uuid);
+      const auto result = table->GetPgTableOid();
       if (result.ok()) {
         table_row.ysql_oid = std::to_string(*result);
       } else {
@@ -1367,6 +1453,13 @@ void MasterPathHandlers::HandleCatalogManagerJSON(
     jw.EndArray();
   }
   jw.EndObject();
+}
+
+void MasterPathHandlers::HandleGetMetaCacheJson(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  JsonWriter writer(output, JsonWriter::COMPACT);
+  master_->WriteServerMetaCacheAsJson(&writer);
 }
 
 void MasterPathHandlers::HandleNamespacesHTML(
@@ -2054,76 +2147,18 @@ std::vector<std::pair<TabletInfoPtr, std::string>> MasterPathHandlers::GetLeader
   std::vector<std::pair<TabletInfoPtr, std::string>> leaderless_tablets;
 
   auto nonsystem_tablets = GetNonSystemTablets();
-  const auto now_usec = master_->clock()->Now().GetPhysicalValueMicros();
-  const auto maximum_heartbeats =
-      GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease);
-  const auto max_lease_expired_secs =
-      GetAtomicFlag(&FLAGS_maximum_tablet_leader_lease_expired_secs);
-
   for (TabletInfoPtr t : nonsystem_tablets) {
     if (t.get()->LockForRead()->is_deleted()) {
       continue;
     }
-    auto rm = t.get()->GetReplicaLocations();
-    bool leader_only_mode = rm->size() == 1;
-
-    std::string leaderless_reason = "Leader peer not found";
-    auto has_leader = std::any_of(
-      rm->begin(), rm->end(),
-      [&leaderless_reason, max_lease_expired_secs, leader_only_mode, maximum_heartbeats, now_usec](
-          const auto &item) {
-        if (item.second.role != PeerRole::LEADER) {
-          return false;
-        }
-        const auto kReasonPrefix =
-            Format("Leader peer $0: ", item.second.ts_desc->permanent_uuid());
-        auto leader_lease_info = item.second.leader_lease_info;
-        // CHECK 1:
-        // If the leader lease info is not initialized or it's leader only mode,
-        // treat it as leaderlss if the leader node is crashed/partitioned by checking
-        // TimeSinceHeartbeat().
-        if (!leader_lease_info.initialized || leader_only_mode) {
-          const auto time_since_heartbeat_secs =
-              item.second.ts_desc->TimeSinceHeartbeat().ToSeconds();
-          if (time_since_heartbeat_secs > max_lease_expired_secs) {
-            leaderless_reason = kReasonPrefix +
-                Format("no heartbeats received from leader node in last $0 seconds, "
-                       "might be node crash or network partition",
-                       time_since_heartbeat_secs);
-            return false;
-          }
-          return true;
-        }
-
-        // CHECK 2:
-        // If the leader doesn't have valid lease for enough time, also treat it as leaderless.
-        if (leader_lease_info.leader_lease_status != consensus::LeaderLeaseStatus::HAS_LEASE &&
-            leader_lease_info.heartbeats_without_leader_lease >= maximum_heartbeats) {
-          leaderless_reason =
-               kReasonPrefix + Format("no leader lease in $0 heartbeats",
-                                      leader_lease_info.heartbeats_without_leader_lease);
-          return false;
-        }
-
-        // CHECK 3:
-        // Check if the ht_lease of leader has been expired.
-        // It's possible that the leader node is partitioned and master cannot receive any
-        // heartbeats from it and it can pass CHECK 2.
-        if (now_usec > leader_lease_info.ht_lease_expiration +
-                max_lease_expired_secs * 1000 * 1000) {
-          leaderless_reason = kReasonPrefix + Format(
-              "leader lease expired for more than $0 seconds, lease_exp: $1 now: $2, "
-              "possibly false positive if the leader just had trouble communicating with master",
-              max_lease_expired_secs,
-              leader_lease_info.ht_lease_expiration,
-              now_usec);
-          return false;
-        }
-        return true;
-      });
-
-    if (!has_leader) {
-      leaderless_tablets.push_back(std::make_pair(t, leaderless_reason));
+    const auto time_since_valid_leader_secs =
+        MonoTime::Now().GetDeltaSince(t->last_time_with_valid_leader()).ToSeconds();
+    if (time_since_valid_leader_secs >
+            GetAtomicFlag(&FLAGS_leaderless_tablet_alert_delay_secs)) {
+      leaderless_tablets.push_back(std::make_pair(
+          t,
+          Format("No valid leader reported for $0 seconds",
+                 time_since_valid_leader_secs)));
     }
   }
   return leaderless_tablets;
@@ -2158,16 +2193,25 @@ vector<string> GetTabletUnderReplicatedPlacements(
     VLOG_WITH_FUNC(1) << "Processing tablet replica on TS " << ts_desc->permanent_uuid();
     for (auto* placement : placements) {
       if (placement->placement_uuid() == ts_desc->placement_uuid()) {
-        VLOG_WITH_FUNC(1) << "TS matches placement " << placement->placement_uuid();
+        VLOG_WITH_FUNC(1) << "TS matches placement id " << placement->placement_uuid();
         placement->set_num_replicas(placement->num_replicas() - 1);
 
-        // Decrement the unique placement block within this placement.
+        // Decrement a matching placement block which has a positive min_num_replicas.
+        // There will only be one matching placement string (we cannot have c.r.z1 and c.r.*), but
+        // replication_info may contain multiple copies of that string, in which case the
+        // min_num_replicas are effectively added across the copies.
+        // I.e., {c.r.z1: min_num_replicas = 1, c.r.z1: min_num_replicas = 1} is equivalent to
+        //       {c.r.z1: min_num_replicas = 2}
         for (int i = 0; i < placement->placement_blocks_size(); ++i) {
-          if (ts_desc->MatchesCloudInfo(placement->placement_blocks(i).cloud_info())) {
-            VLOG_WITH_FUNC(1) << "TS matches placement "
-                              << placement->placement_blocks(i).ShortDebugString();
+          const auto& placement_block = placement->placement_blocks(i);
+          if (placement_block.min_num_replicas() <= 0) {
+            continue;
+          }
+          if (ts_desc->MatchesCloudInfo(placement_block.cloud_info())) {
+            VLOG_WITH_FUNC(1) << "TS matches placement block "
+                              << placement_block.ShortDebugString();
             placement->mutable_placement_blocks(i)->set_min_num_replicas(
-                placement->placement_blocks(i).min_num_replicas() - 1);
+                placement_block.min_num_replicas() - 1);
             break;
           }
         }
@@ -2357,13 +2401,13 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
     return;
   }
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
+  const auto& config = *cluster_config_result;
 
   // Get all the tables.
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
@@ -2817,16 +2861,16 @@ void MasterPathHandlers::HandleGetClusterConfig(
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   *output << "<h1>Current Cluster Config</h1>\n";
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
+            << EscapeForHtmlToString(cluster_config_result.status().ToString()) << "</div>";
     return;
   }
 
   *output << "<div class=\"alert alert-success\">Successfully got cluster config!</div>"
-  << "<pre class=\"prettyprint\">" << EscapeForHtmlToString(config.DebugString()) << "</pre>";
+          << "<pre class=\"prettyprint\">"
+          << EscapeForHtmlToString(cluster_config_result->DebugString()) << "</pre>";
 }
 
 void MasterPathHandlers::HandleGetClusterConfigJSON(
@@ -2836,74 +2880,158 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
-  SysClusterConfigEntryPB config;
-  Status s = master_->catalog_manager()->GetClusterConfig(&config);
-  if (!s.ok()) {
+  auto cluster_config_result = master_->catalog_manager_impl()->GetClusterConfig();
+  if (!cluster_config_result.ok()) {
     jw.StartObject();
     jw.String("error");
-    jw.String(s.ToString());
+    jw.String(cluster_config_result.status().ToString());
     jw.EndObject();
     return;
   }
 
   // return cluster config in JSON format
-  jw.Protobuf(config);
+  jw.Protobuf(*cluster_config_result);
 }
 
-Status MasterPathHandlers::GetClusterAndXClusterConfigStatus(
-    SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config) {
-  RETURN_NOT_OK(master_->xcluster_manager()->GetXClusterConfigEntryPB(xcluster_config));
-  return master_->catalog_manager()->GetClusterConfig(cluster_config);
-}
-
-void MasterPathHandlers::HandleGetXClusterConfig(
-    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream* output = &resp->output;
+void MasterPathHandlers::GetXClusterJSON(std::stringstream& output, bool pretty) {
+  JsonWriter jw(&output, pretty ? JsonWriter::PRETTY : JsonWriter::COMPACT);
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
-
-  *output << "<h1>Current XCluster Config</h1>\n";
-  SysXClusterConfigEntryPB xcluster_config;
-  SysClusterConfigEntryPB cluster_config;
-  Status s = GetClusterAndXClusterConfigStatus(&xcluster_config, &cluster_config);
-
-  if (!s.ok()) {
-    *output << "<div class=\"alert alert-warning\">"
-            << EscapeForHtmlToString(s.ToString()) << "</div>";
-    return;
-  }
-  *output << "<div class=\"alert alert-success\">Successfully got xcluster config!</div>"
-          << "<pre class=\"prettyprint\">" << EscapeForHtmlToString(xcluster_config.DebugString())
-          << "consumer_registry {\n"
-          << EscapeForHtmlToString(cluster_config.consumer_registry().DebugString())
-          << "}</pre>";
-}
-
-void MasterPathHandlers::HandleGetXClusterConfigJSON(
-    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream* output = &resp->output;
-  JsonWriter jw(output, JsonWriter::COMPACT);
-
-  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
-
-  SysXClusterConfigEntryPB xcluster_config;
-  SysClusterConfigEntryPB cluster_config;
-  Status s = GetClusterAndXClusterConfigStatus(&xcluster_config, &cluster_config);
-  if (!s.ok()) {
-    jw.StartObject();
-    jw.String("error");
-    jw.String(s.ToString());
-    jw.EndObject();
-    return;
-  }
 
   jw.StartObject();
-  jw.String("version");
-  jw.Int64(xcluster_config.version());
-  jw.String("xcluster_producer_registry");
-  jw.Protobuf(xcluster_config.xcluster_producer_registry());
-  jw.String("consumer_registry");
-  jw.Protobuf(cluster_config.consumer_registry());
+  auto s = master_->xcluster_manager()->PopulateXClusterStatusJson(jw);
+  if (!s.ok()) {
+    jw.String("error");
+    jw.String(s.ToString());
+  }
   jw.EndObject();
+  return;
+}
+
+void MasterPathHandlers::HandleGetXClusterJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  GetXClusterJSON(resp->output, /*pretty=*/false);
+}
+
+void MasterPathHandlers::HandleXCluster(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  HtmlPrintHelper html_print_helper(output);
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto xcluster_status_result = master_->xcluster_manager()->GetXClusterStatus();
+
+  if (!xcluster_status_result.ok()) {
+    output << "<div class=\"alert alert-warning\">"
+           << EscapeForHtmlToString(xcluster_status_result.status().ToString()) << "</div>";
+    return;
+  }
+  const auto& xcluster_status = *xcluster_status_result;
+
+  if (!xcluster_status.IsEnabled()) {
+    output << "<h3>xCluster replication is not enabled</h3 >\n";
+    return;
+  }
+  output << "<h1>xCluster state</h1>\n";
+
+  uint32 outbound_group_table_id = 0;
+  if (!xcluster_status.outbound_replication_group_statuses.empty()) {
+    output << "<br><h3>Outbound Replication Groups</h3>\n";
+    for (const auto& outbound_replication_group :
+         xcluster_status.outbound_replication_group_statuses) {
+      auto group_fs = html_print_helper.CreateFieldset(
+          Format("Group: $0", outbound_replication_group.replication_group_id));
+
+      output << "<pre class=\"prettyprint\">" << "state: " << outbound_replication_group.state;
+      if (!outbound_replication_group.target_universe_info.empty()) {
+        output << "\ntarget_universe_info: " << outbound_replication_group.target_universe_info;
+      }
+      output << "</pre>";
+
+      for (const auto& namespace_status : outbound_replication_group.namespace_statuses) {
+        auto namespace_fs = html_print_helper.CreateFieldset(
+            Format("Namespace: $0", namespace_status.namespace_name));
+
+        output << "<pre class=\"prettyprint\">";
+        output << "NamespaceId: " << namespace_status.namespace_id
+               << "\nstate: " << namespace_status.state << "\ninitial_bootstrap_required: "
+               << BoolToString(namespace_status.initial_bootstrap_required)
+               << "\nstatus: " << namespace_status.status;
+        output << "</pre>";
+
+        auto outbound_replication_group = html_print_helper.CreateTablePrinter(
+            "outbound_replication_group", outbound_group_table_id,
+            {"Table name", "Table Id", "Stream Id", "State", "Checkpointing",
+             "Part of initial bootstrap"});
+        outbound_group_table_id++;
+
+        for (const auto& table_status : namespace_status.table_statuses) {
+          outbound_replication_group.AddRow(
+              table_status.full_table_name, table_status.table_id, table_status.stream_id,
+              table_status.state, BoolToString(table_status.is_checkpointing),
+              BoolToString(table_status.is_part_of_initial_bootstrap));
+        }
+        outbound_replication_group.Print();
+      }
+    }
+  }
+
+  if (!xcluster_status.outbound_table_stream_statuses.empty()) {
+    output << "<br><h3>Outbound table streams</h3>\n";
+    auto outbound_streams = html_print_helper.CreateTablePrinter(
+        "outbound_table_streams", {"Table name", "Table Id", "Stream Id", "State"});
+    for (const auto& table_status : xcluster_status.outbound_table_stream_statuses) {
+      outbound_streams.AddRow(
+          table_status.full_table_name, table_status.table_id, table_status.stream_id,
+          table_status.state);
+    }
+    outbound_streams.Print();
+  }
+
+  output << "<br><h3>Inbound Replication Groups</h3>\n";
+
+  uint32 inbound_group_table_id = 0;
+  for (const auto& inbound_replication_group : xcluster_status.inbound_replication_group_statuses) {
+    auto group_fs = html_print_helper.CreateFieldset(
+        Format("Group: $0", inbound_replication_group.replication_group_id));
+
+    output << "<pre class=\"prettyprint\">"
+           << "state: " << inbound_replication_group.state
+           << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
+           << "\ntype: "
+           << xcluster::ShortReplicationType(inbound_replication_group.replication_type)
+           << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
+    if (!inbound_replication_group.db_scoped_info.empty()) {
+      output << "\ndb_scoped_info: " << inbound_replication_group.db_scoped_info;
+    }
+    output << "\nvalidated_local_auto_flags_config_version: "
+           << inbound_replication_group.validated_local_auto_flags_config_version
+           << "\nvalidated_remote_auto_flags_config_version: "
+           << inbound_replication_group.validated_remote_auto_flags_config_version
+           << "\ncompatible_auto_flag_config_version: "
+           << inbound_replication_group.compatible_auto_flag_config_version;
+    output << "</pre>";
+
+    for (const auto& [namespace_name, table_statuses] :
+         inbound_replication_group.table_statuses_by_namespace) {
+      auto namespace_fs = html_print_helper.CreateFieldset(Format("Namespace: $0", namespace_name));
+
+      auto inbound_replication_group = html_print_helper.CreateTablePrinter(
+          "inbound_replication_group", inbound_group_table_id,
+          {"Table name", "Producer Table Id", "Stream Id", "Consumer Table Id",
+           "Producer Tablet Count", "Consumer Tablet Count", "Local tserver optimized",
+           "Producer schema version", "Consumer schema version", "Status"});
+      inbound_group_table_id++;
+      for (const auto& table_status : table_statuses) {
+        inbound_replication_group.AddRow(
+            table_status.full_table_name, table_status.source_table_id, table_status.stream_id,
+            table_status.target_table_id, table_status.source_tablet_count,
+            table_status.target_tablet_count, BoolToString(table_status.local_tserver_optimized),
+            table_status.source_schema_version, table_status.target_schema_version,
+            table_status.status);
+      }
+      inbound_replication_group.Print();
+    }
+  }
 }
 
 void MasterPathHandlers::HandleVersionInfoDump(
@@ -2924,9 +3052,7 @@ void MasterPathHandlers::HandlePrettyLB(
   std::stringstream *output = &resp->output;
 
   // Don't render if there are more than 5 tservers.
-  vector<std::shared_ptr<TSDescriptor>> descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   if (descs.size() > 5) {
     *output << "<div class='alert alert-warning'>"
@@ -2965,15 +3091,15 @@ void MasterPathHandlers::HandlePrettyLB(
 
   // Get the TServerTree.
   // A map of tserver -> all tables with their tablets.
-  TServerTree tserver_tree;
-  Status s = CalculateTServerTree(&tserver_tree, 4 /* max_table_count */);
-  if (!s.ok()) {
+  auto tserver_tree_result = CalculateTServerTree(4 /* max_table_count */);
+  if (!tserver_tree_result.ok()) {
     *output << "<div class='alert alert-warning'>"
             << "Current placement has more than 4 tables. Not recommended"
             << " to view this pretty display as it might not be rendered properly."
             << "</div>";
     return;
   }
+  auto& tserver_tree = *tserver_tree_result;
 
   auto blacklist_result = master_->catalog_manager()->BlacklistSetFromPB();
   BlacklistSet blacklist = blacklist_result.ok() ? *blacklist_result : BlacklistSet();
@@ -3096,149 +3222,199 @@ void MasterPathHandlers::HandlePrettyLB(
 void MasterPathHandlers::HandleLoadBalancer(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream* output = &resp->output;
-  vector<std::shared_ptr<TSDescriptor>> descs;
-  const auto& ts_manager = master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
 
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kAll);
 
-  TServerTree tserver_tree;
-  Status s = CalculateTServerTree(&tserver_tree, -1 /* max_table_count */);
-  if (!s.ok()) {
+  auto tserver_tree_result = CalculateTServerTree(-1 /* max_table_count */);
+  if (!tserver_tree_result.ok()) {
     *output << "<div class='alert alert-warning'>"
             << "Cannot Calculate TServer Tree."
             << "</div>";
     return;
   }
 
-  RenderLoadBalancerViewPanel(tserver_tree, descs, tables, output);
+  RenderLoadBalancerViewPanel(*tserver_tree_result, descs, tables, output);
+}
+
+void MasterPathHandlers::HandleStatefulServices(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream& output = resp->output;
+  HtmlPrintHelper html_print_helper(output);
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  auto stateful_service_result = master_->catalog_manager_impl()->GetStatefulServicesStatus();
+
+  if (!stateful_service_result.ok()) {
+    output << "<div class=\"alert alert-warning\">"
+           << EscapeForHtmlToString(stateful_service_result.status().ToString()) << "</div>";
+    return;
+  }
+
+  output << "<h1>Stateful Services</h1>\n";
+  auto stateful_services = html_print_helper.CreateTablePrinter(
+      "stateful_services", {"Service Name", "Hosting server", "Table Id", "Tablet ID"});
+
+  for (const auto& service : *stateful_service_result) {
+    const auto& reg = service.hosting_node->GetRegistration();
+    const auto& host_port = GetHttpHostPortFromServerRegistration(reg.common());
+    const auto& cloud_info = reg.common().cloud_info();
+    const auto& host_server = Format(
+        "$0<br/>$1<br/>$2", RegistrationToHtml(reg.common(), host_port),
+        service.hosting_node->permanent_uuid(),
+        EscapeForHtmlToString(Format(
+            "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
+            cloud_info.placement_zone())));
+
+    stateful_services.AddRow(
+        service.service_name, host_server,
+        Format("<a href=\"/table?id=$0\">$0</a>", service.service_table_id),
+        service.service_tablet_id);
+  }
+  stateful_services.Print();
+}
+
+void MasterPathHandlers::HandleStatefulServicesJson(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  JsonWriter jw(&resp->output, JsonWriter::COMPACT);
+
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+  jw.StartObject();
+  auto stateful_service_result = master_->catalog_manager_impl()->GetStatefulServicesStatus();
+  if (!stateful_service_result.ok()) {
+    jw.String("error");
+    jw.String(stateful_service_result.status().ToString());
+  } else {
+    jw.String("stateful_services");
+    jw.StartArray();
+    for (const auto& service : *stateful_service_result) {
+      jw.StartObject();
+      jw.String("service_name");
+      jw.String(service.service_name);
+      jw.String("hosting_server");
+      jw.String(service.hosting_node->permanent_uuid());
+      jw.String("table_id");
+      jw.String(service.service_table_id);
+      jw.String("tablet_id");
+      jw.String(service.service_tablet_id);
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+  jw.EndObject();
 }
 
 Status MasterPathHandlers::Register(Webserver* server) {
-  bool is_styled = true;
-  bool is_on_nav_bar = true;
+  const bool is_styled = true;
+  const bool is_on_nav_bar = true;
 
   // The set of handlers visible on the nav bar.
-  server->RegisterPathHandler(
-    "/", "Home", std::bind(&MasterPathHandlers::RootHandler, this, _1, _2), is_styled,
-    is_on_nav_bar, "fa fa-home");
-  Webserver::PathHandlerCallback cb =
-      std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
-                TServersViewType::kTServersDefaultView);
-  server->RegisterPathHandler(
-      "/tablet-servers", "Tablet Servers",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar, "fa fa-server");
-  cb = std::bind(&MasterPathHandlers::HandleTabletServers, this, _1, _2,
-                 TServersViewType::kTServersClocksView);
-  server->RegisterPathHandler(
-      "/tablet-server-clocks", "Tablet Server Clocks",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false /* is_on_nav_bar */);
-  cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
-      this, _1, _2, false /* only_user_tables */);
-  server->RegisterPathHandler(
-      "/tables", "Tables",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar, "fa fa-table");
-  cb = std::bind(&MasterPathHandlers::HandleNamespacesHTML,
-      this, _1, _2, false /* only_user_namespaces */);
-  server->RegisterPathHandler(
-      "/namespaces", "Namespaces",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      is_on_nav_bar, "fa fa-table");
+  RegisterPathHandler(
+      server, "/", "Home", &MasterPathHandlers::RootHandler, is_styled, is_on_nav_bar,
+      "fa fa-home");
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/tablet-servers", "Tablet Servers", is_styled, is_on_nav_bar, "fa fa-server",
+      &MasterPathHandlers::HandleTabletServers, TServersViewType::kTServersDefaultView);
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/tablet-server-clocks", "Tablet Server Clocks", is_styled, /*is_on_nav_bar=*/false,
+      /*icon=*/"", &MasterPathHandlers::HandleTabletServers, TServersViewType::kTServersClocksView);
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/tables", "Tables", is_styled, is_on_nav_bar, "fa fa-table",
+      &MasterPathHandlers::HandleAllTables, /*only_user_tables=*/false);
+
+  RegisterLeaderOrRedirectWithArgs(
+      server, "/namespaces", "Namespaces", is_styled, is_on_nav_bar, "fa fa-table",
+      &MasterPathHandlers::HandleNamespacesHTML, /*only_user_namespaces=*/false);
 
   // The set of handlers not currently visible on the nav bar.
-  cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
-  server->RegisterPathHandler(
-      "/table", "", std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
-      is_styled, false);
-  server->RegisterPathHandler(
-      "/masters", "Masters", std::bind(&MasterPathHandlers::HandleMasters, this, _1, _2), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
-  server->RegisterPathHandler(
-      "/cluster-config", "Cluster Config",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetClusterConfigJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/cluster-config", "Cluster Config JSON",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetXClusterConfig, this, _1, _2);
-  server->RegisterPathHandler(
-      "/xcluster-config", "XCluster Config",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleGetXClusterConfigJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/xcluster-config", "XCluster Config JSON",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
-  server->RegisterPathHandler(
-      "/tasks", "Tasks",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleTabletReplicasPage, this, _1, _2);
-  server->RegisterPathHandler(
-      "/tablet-replication", "Tablet Replication Health",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandlePrettyLB, this, _1, _2);
-  server->RegisterPathHandler(
-      "/pretty-lb", "Load balancer Pretty Picture",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
-  cb = std::bind(&MasterPathHandlers::HandleLoadBalancer, this, _1, _2);
-  server->RegisterPathHandler(
-      "/load-distribution", "Load balancer View",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
-      false);
+  RegisterLeaderOrRedirect(
+      server, "/table", /*alias=*/"", &MasterPathHandlers::HandleTablePage, is_styled);
+
+  RegisterPathHandler(server, "/masters", "Masters", &MasterPathHandlers::HandleMasters, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/cluster-config", "Cluster Config", &MasterPathHandlers::HandleGetClusterConfig,
+      is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/xcluster", "xCluster", &MasterPathHandlers::HandleXCluster, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/tasks", "Tasks", &MasterPathHandlers::HandleTasksPage, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/tablet-replication", "Tablet Replication Health",
+      &MasterPathHandlers::HandleTabletReplicasPage, is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/pretty-lb", "Load balancer Pretty Picture", &MasterPathHandlers::HandlePrettyLB,
+      is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/load-distribution", "Load balancer View", &MasterPathHandlers::HandleLoadBalancer,
+      is_styled);
+
+  RegisterLeaderOrRedirect(
+      server, "/stateful-services", "Stateful Services",
+      &MasterPathHandlers::HandleStatefulServices, is_styled);
 
   // JSON Endpoints
-  cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tablet-servers", "Tserver Statuses",
+      &MasterPathHandlers::HandleGetTserverStatus);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/health-check", "Cluster Health Check",
+      &MasterPathHandlers::HandleHealthCheck);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tablet-replication", "Tablet Replication Health",
+      &MasterPathHandlers::HandleGetReplicationStatus);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tablet-under-replication", "Tablet UnderReplication Status",
+      &MasterPathHandlers::HandleGetUnderReplicationStatus);
+
+  RegisterLeaderOrRedirect(
+      server, "/dump-entities", "Dump Entities", &MasterPathHandlers::HandleDumpEntities);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/namespaces", "Namespaces", &MasterPathHandlers::HandleNamespacesJSON);
+
+  RegisterPathHandler(
+      server, "/api/v1/is-leader", "Leader Check", &MasterPathHandlers::HandleCheckIfLeader);
+
+  RegisterPathHandler(
+      server, "/api/v1/masters", "Master Statuses", &MasterPathHandlers::HandleGetMastersStatus);
+
+  RegisterPathHandler(
+      server, "/api/v1/version", "YB Version Information",
+      &MasterPathHandlers::HandleVersionInfoDump);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/table", "Table Info", &MasterPathHandlers::HandleTablePageJSON);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/tables", "Tables", &MasterPathHandlers::HandleAllTablesJSON);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/cluster-config", "Cluster Config JSON",
+      &MasterPathHandlers::HandleGetClusterConfigJSON);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/xcluster", "xCluster", &MasterPathHandlers::HandleGetXClusterJSON);
+
   server->RegisterPathHandler(
-      "/api/v1/tablet-servers", "Tserver Statuses",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleHealthCheck, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/health-check", "Cluster Health Check",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleGetReplicationStatus, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/tablet-replication", "Tablet Replication Health",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleGetUnderReplicationStatus, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/tablet-under-replication", "Tablet UnderReplication Status",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
-  server->RegisterPathHandler(
-      "/dump-entities", "Dump Entities",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleNamespacesJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/namespaces", "Namespaces",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  server->RegisterPathHandler(
-      "/api/v1/is-leader", "Leader Check",
-      std::bind(&MasterPathHandlers::HandleCheckIfLeader, this, _1, _2), false, false);
-  server->RegisterPathHandler(
-      "/api/v1/masters", "Master Statuses",
-      std::bind(&MasterPathHandlers::HandleGetMastersStatus, this, _1, _2), false, false);
-  server->RegisterPathHandler(
-      "/api/v1/version", "YB Version Information",
-      std::bind(&MasterPathHandlers::HandleVersionInfoDump, this, _1, _2), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleTablePageJSON, this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/table", "Table Info",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleCatalogManagerJSON,
-      this, _1, _2);
-  server->RegisterPathHandler(
-      "/api/v1/tables", "Tables",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+      "/api/v1/meta-cache", "MetaCache",
+      std::bind(&MasterPathHandlers::HandleGetMetaCacheJson, this, _1, _2), false, false);
+
+  RegisterLeaderOrRedirect(
+      server, "/api/v1/stateful-services", "Stateful Services",
+      &MasterPathHandlers::HandleStatefulServicesJson);
+
   return Status::OK();
 }
 
@@ -3259,13 +3435,12 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
       html << Format("  <li><b>LEADER: $0 ($1)</b></li>\n", location_html, leader_lease_status);
       if (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
         // Get the remaining milliseconds of the current valid lease.
-        boost::posix_time::ptime start(boost::gregorian::date(1970, 1, 1));
-        auto now_utc = boost::posix_time::microsec_clock::universal_time();
+        const auto now_usec = boost::posix_time::microseconds(
+            master_->clock()->Now().GetPhysicalValueMicros());
         auto ht_lease_usec = boost::posix_time::microseconds(leader_lease_info.ht_lease_expiration);
-        auto diff = ht_lease_usec - (now_utc - start);
+        auto diff = ht_lease_usec - now_usec;
         html << Format("Remaining ht_lease (may be stale): $0 ms<br>\n", diff.total_milliseconds());
-      } else if (leader_lease_info.heartbeats_without_leader_lease >=
-                     GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease)) {
+      } else if (leader_lease_info.heartbeats_without_leader_lease > 0) {
         html << Format(
             "Cannot replicate lease for past <b><font color='red'>$0</font></b> heartbeats<br>",
             leader_lease_info.heartbeats_without_leader_lease);
@@ -3299,15 +3474,22 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
 
 string MasterPathHandlers::RegistrationToHtml(
     const ServerRegistrationPB& reg, const std::string& link_text) const {
-  string link_html = EscapeForHtmlToString(link_text);
+  stringstream link_html;
   auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
-    link_html = Format("<a href=\"$0://$1/\">$2</a>",
+    link_html << Format("<a href=\"$0://$1/\">$2</a>",
                            GetProtocol(),
                            EscapeForHtmlToString(HostPortPBToString(*public_http_hp)),
-                           link_html);
+                           EscapeForHtmlToString(link_text));
   }
-  return link_html;
+  auto rpc_bind_addr = GetRpcBindAddress(reg);
+  if (rpc_bind_addr && public_http_hp &&
+      rpc_bind_addr->host() != public_http_hp->host()) {
+    link_html << Format("<br/>$0",
+      EscapeForHtmlToString(rpc_bind_addr->host()));
+  }
+
+  return link_html.str();
 }
 
 void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
@@ -3320,22 +3502,24 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
 
     TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
-
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
-
       for (const auto& replica : *replication_locations) {
+        auto& counts = (*tablet_map)[replica.first];
+        if (tablet->LockForRead()->is_hidden()) {
+          counts.hidden_tablet_peers++;
+        }
         if (is_user_table || table->IsColocationParentTable()) {
           if (replica.second.role == PeerRole::LEADER) {
-            (*tablet_map)[replica.first].user_tablet_leaders++;
+            counts.user_tablet_leaders++;
           } else {
-            (*tablet_map)[replica.first].user_tablet_followers++;
+            counts.user_tablet_followers++;
           }
         } else {
           if (replica.second.role == PeerRole::LEADER) {
-            (*tablet_map)[replica.first].system_tablet_leaders++;
+            counts.system_tablet_leaders++;
           } else {
-            (*tablet_map)[replica.first].system_tablet_followers++;
+            counts.system_tablet_followers++;
           }
         }
       }
@@ -3343,7 +3527,9 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   }
 }
 
-Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree, int max_table_count) {
+Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree(
+    int max_table_count) {
+  TServerTree tserver_tree;
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
 
   if (max_table_count != -1) {
@@ -3374,7 +3560,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree, int m
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replica_locations) {
-        (*tserver_tree)[replica.first][tablet->table()->id()].emplace_back(
+        tserver_tree[replica.first][tablet->table()->id()].emplace_back(
           replica.second.role,
           tablet->tablet_id()
         );
@@ -3382,7 +3568,7 @@ Status MasterPathHandlers::CalculateTServerTree(TServerTree* tserver_tree, int m
     }
   }
 
-  return Status::OK();
+  return tserver_tree;
 }
 
 void MasterPathHandlers::RenderLoadBalancerViewPanel(
@@ -3401,10 +3587,10 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
              "rowspan='2'>Tablet Count</th>";
   for (const auto& desc : descs) {
     const auto& reg = desc->GetRegistration();
-    const string& uuid = desc->permanent_uuid();
-    string host_port = GetHttpHostPortFromServerRegistration(reg.common());
-    *output << Format("<th>$0<br>$1</th>",
-                          RegistrationToHtml(reg.common(), host_port), uuid);
+    *output << Format(
+        "<th>$0<br>$1</th>",
+        RegistrationToHtml(reg.common(), GetHttpHostPortFromServerRegistration(reg.common())),
+        desc->permanent_uuid());
   }
   *output << "</tr>";
 
@@ -3442,18 +3628,15 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
         UrlEncodeToString(table_id),
         EscapeForHtmlToString(table_name),
         tablet_count);
-    for (auto& tserver_desc : descs) {
-      const string& tserver_id = tserver_desc->permanent_uuid();
+    for (auto& desc : descs) {
       uint64 num_replicas = 0;
       uint64 num_leaders = 0;
-
-      const auto& tserver_table_to_replicas_mapping = tserver_tree.at(tserver_id);
-      auto it = tserver_table_to_replicas_mapping.find(table_id);
-      if (it != tserver_table_to_replicas_mapping.end()) {
-        auto replicas = it->second;
-        num_replicas = replicas.size();
+      const auto* table_tree = FindOrNull(tserver_tree, desc->permanent_uuid());
+      const auto* replicas = table_tree != nullptr ? FindOrNull(*table_tree, table_id) : nullptr;
+      if (replicas != nullptr) {
+        num_replicas = replicas->size();
         num_leaders = std::count_if(
-            replicas.begin(), replicas.end(),
+            replicas->begin(), replicas->end(),
             [](const ReplicaInfo& replicate) { return replicate.role == LEADER; });
       }
       *output << Format("<td>$0/$1</td>", num_replicas, num_leaders);

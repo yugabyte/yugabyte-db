@@ -6,16 +6,14 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 @Abortable
@@ -33,6 +31,11 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
   }
 
   @Override
+  public SubTaskGroupType getTaskSubGroupType() {
+    return SubTaskGroupType.RollingBackSoftware;
+  }
+
+  @Override
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
     taskParams().verifyParams(getUniverse(), isFirstTry);
@@ -43,11 +46,33 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
   }
 
   @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    Universe universe = getUniverse();
+
+    MastersAndTservers nodes = fetchNodes(taskParams().upgradeOption);
+    return filterOutAlreadyProcessedNodes(universe, nodes, getTargetSoftwareVersion());
+  }
+
+  @Override
+  protected String getTargetSoftwareVersion() {
+    Universe universe = getUniverse();
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
+        universe.getUniverseDetails().prevYBSoftwareConfig;
+    String newVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (prevYBSoftwareConfig != null
+        && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
+      newVersion = prevYBSoftwareConfig.getSoftwareVersion();
+    }
+    return newVersion;
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          Set<NodeDetails> allNodes = toOrderedSet(nodes);
+          MastersAndTservers nodes = getNodesToBeRestarted();
+          Set<NodeDetails> allNodes = toOrderedSet(fetchNodes(taskParams().upgradeOption).asPair());
           Universe universe = getUniverse();
 
           UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
@@ -58,7 +83,7 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.RollingBack);
 
-          // Skip auto flags restore incase upgrade did not take place or succeed.
+          // Skip auto flags restore in case upgrade did not take place or succeed.
           if (prevYBSoftwareConfig != null
               && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
             newVersion = prevYBSoftwareConfig.getSoftwareVersion();
@@ -67,27 +92,13 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
           }
 
-          Pair<List<NodeDetails>, List<NodeDetails>> nodesToSkipAction =
-              filterNodesWithSameDBVersionAndLiveState(universe, nodes, newVersion);
-          Set<NodeDetails> nodesToSkipMasterActions =
-              nodesToSkipAction.getLeft().stream().collect(Collectors.toSet());
-          Set<NodeDetails> nodesToSkipTServerActions =
-              nodesToSkipAction.getRight().stream().collect(Collectors.toSet());
-
           // Download software to nodes which does not have either master or tserver with new
           // version.
-          createDownloadTasks(
-              getNodesWhichRequiresSoftwareDownload(
-                  allNodes, nodesToSkipMasterActions, nodesToSkipTServerActions),
-              newVersion);
+          createDownloadTasks(toOrderedSet(nodes.asPair()), newVersion);
 
           // Install software on nodes which require new master or tserver with new version.
           createUpgradeTaskFlowTasks(
-              nodes,
-              newVersion,
-              getRollbackUpgradeContext(
-                  newVersion, nodesToSkipMasterActions, nodesToSkipTServerActions),
-              false);
+              nodes, newVersion, getRollbackUpgradeContext(newVersion), false);
           // Check software version on each node.
           createCheckSoftwareVersionTask(allNodes, newVersion);
 

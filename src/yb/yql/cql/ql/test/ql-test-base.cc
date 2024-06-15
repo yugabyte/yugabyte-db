@@ -130,6 +130,7 @@ Status TestQLProcessor::Run(const Statement& stmt, const StatementParameters& pa
   result_ = nullptr;
   parse_tree_.reset(); // Delete previous parse tree.
 
+  ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>());
   Synchronizer s;
   // Reschedule() loop in QLProcessor class is not used here.
   RETURN_NOT_OK(stmt.ExecuteAsync(
@@ -146,6 +147,7 @@ void TestQLProcessor::RunAsyncInternal(const std::string& stmt, const StatementP
   if (PREDICT_FALSE(!s.ok())) {
     return cb.Run(s, nullptr /* result */);
   }
+  ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>());
   // Do not make a copy of stmt and params when binding to the RunAsyncDone callback because when
   // error occurs due to stale matadata, the statement needs to be reexecuted. We should pass the
   // original references which are guaranteed to still be alive when the statement is reexecuted.

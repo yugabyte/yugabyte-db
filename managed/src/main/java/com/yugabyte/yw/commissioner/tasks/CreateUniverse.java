@@ -70,7 +70,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     // Set non on-prem node UUIDs.
     setCloudNodeUuids(universe);
     // Update on-prem node UUIDs.
-    updateOnPremNodeUuidsOnTaskParams();
+    updateOnPremNodeUuidsOnTaskParams(true /* commit changes */);
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
     for (Cluster cluster : taskParams().clusters) {
@@ -151,7 +151,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       retrievePasswordsIfNeeded();
 
-      createInstanceExistsCheckTasks(universe.getUniverseUUID(), universe.getNodes());
+      createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);

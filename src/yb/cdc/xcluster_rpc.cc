@@ -38,6 +38,7 @@ DEFINE_test_flag(bool, xcluster_print_write_request, false,
 
 using namespace std::literals;
 
+using yb::tserver::TabletConsensusInfoPB;
 using yb::tserver::TabletServerErrorPB;
 using yb::tserver::TabletServerServiceProxy;
 using yb::tserver::WriteRequestPB;
@@ -176,6 +177,21 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
     return resp_.has_error() ? &resp_.error() : nullptr;
   }
 
+  bool RefreshMetaCacheWithResponse() override {
+    DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
+    if (!resp_.has_tablet_consensus_info()) {
+      VLOG(1) << "Partial refresh of tablet for XClusterWrite RPC failed because the response did "
+                 "not have a tablet_consensus_info";
+      return false;
+    }
+
+    return invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+  }
+
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override {
+    req_.set_raft_config_opid_index(opid_index);
+  }
+
  private:
   void SendRpcToTserver(int attempt_num) override {
     InvokeAsync(
@@ -266,7 +282,21 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
         // Map CDC Errors to TabletServer Errors.
         switch (resp_.error().code()) {
           case cdc::CDCErrorPB::TABLET_NOT_FOUND:
-            last_error_.set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+            // If tablet_consensus_info is present, we know the problem is actually
+            // due to making the request to a follower instead of the leader so
+            // return NOT_THE_LEADER instead of TABLET_NOT_FOUND, so the tablet invoker
+            // knows the tablet is present on this node but its leader is not.
+            //
+            // The invoker needs to know the difference because in the not-a-leader case it just
+            // tries a different participant when looking for a leader, possibly updating its
+            // MetaCache using any returned TabletConsensusInfo first, while in the other case it
+            // marks the node as not having the tablet, blocking future follower reads to that
+            // tablet.
+            if (resp_.has_tablet_consensus_info()) {
+              last_error_.set_code(tserver::TabletServerErrorPB::NOT_THE_LEADER);
+            } else {
+              last_error_.set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+            }
             if (resp_.error().has_status()) {
               last_error_.mutable_status()->CopyFrom(resp_.error().status());
             }
@@ -295,6 +325,21 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
     InvokeAsync(
         cdc_proxy_.get(), PrepareController(),
         std::bind(&GetChangesRpc::Finished, self, Status::OK()));
+  }
+
+  bool RefreshMetaCacheWithResponse() override {
+    DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
+    if (!resp_.has_tablet_consensus_info()) {
+      VLOG(1) << "Partial refresh of tablet for GetChanges RPC failed because the response did not "
+                 "have a tablet_consensus_info";
+      return false;
+    }
+
+    return invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+  }
+
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override {
+    req_.set_raft_config_opid_index(opid_index);
   }
 
  private:

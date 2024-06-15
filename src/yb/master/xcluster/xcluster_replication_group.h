@@ -18,7 +18,13 @@
 #include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class IsOperationDoneResult;
 class SysCatalogTable;
+
+namespace client {
+class XClusterRemoteClient;
+}  // namespace client
 
 namespace master {
 
@@ -53,6 +59,47 @@ Status HandleLocalAutoFlagsConfigChange(
     SysCatalogTable& sys_catalog, UniverseReplicationInfo& replication_info,
     ClusterConfigInfo& cluster_config, const AutoFlagsConfigPB& local_auto_flags_config,
     const LeaderEpoch& epoch);
+
+// Check if the table should be added to the replication group. Returns false if the table is
+// already part of the group.
+Result<bool> ShouldAddTableToReplicationGroup(
+    UniverseReplicationInfo& universe, const TableInfo& table_info,
+    CatalogManager& catalog_manager);
+
+Result<NamespaceId> GetProducerNamespaceId(
+    UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
+
+bool IncludesConsumerNamespace(
+    UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
+
+Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
+    UniverseReplicationInfo& universe);
+
+// Returns (false, Status::OK()) if the universe setup is still in progress.
+// Returns (true, status) if the setup completed. status is set to OK if it completed successfully,
+// or the error that caused it to fail.
+Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id, CatalogManager& catalog_manager);
+
+Status RemoveTablesFromReplicationGroup(
+    scoped_refptr<UniverseReplicationInfo> universe, const std::vector<TableId>& producer_table_ids,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch);
+
+Status RemoveTablesFromReplicationGroupInternal(
+    UniverseReplicationInfo& universe, UniverseReplicationInfo::WriteLock& l,
+    const std::vector<TableId>& producer_table_ids, CatalogManager& catalog_manager,
+    const LeaderEpoch& epoch, bool cleanup_source_streams);
+
+Status RemoveNamespaceFromReplicationGroup(
+    scoped_refptr<UniverseReplicationInfo> universe, const NamespaceId& producer_namespace_id,
+    CatalogManager& catalog_manager, const LeaderEpoch& epoch);
+
+Status ValidateTableListForDbScopedReplication(
+    UniverseReplicationInfo& universe, const std::vector<NamespaceId>& namespace_ids,
+    const std::set<TableId>& replicated_table_ids, const CatalogManager& catalog_manager);
+
+// Returns true if the namespace is part of the DB Scoped replication group.
+bool HasNamespace(UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
 
 }  // namespace master
 }  // namespace yb

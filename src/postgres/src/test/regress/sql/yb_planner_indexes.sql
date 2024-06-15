@@ -63,7 +63,7 @@ EXPLAIN SELECT * FROM t1 WHERE v1 = 1 AND v3 > 3;
 CREATE TABLE t4(h1 int, h2 int, v1 int, primary key((h1, h2) hash));
 INSERT INTO t4 (SELECT s, s, s FROM generate_series(1,1000) s);
 
--- Should use index scan when equality conditions use all hash columns 
+-- Should use index scan when equality conditions use all hash columns
 EXPLAIN SELECT * from t4 where h1 = 1 and h2 = 2;
 EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = 2;
 EXPLAIN SELECT * from t4 where h1 = yb_hash_code(1) and h2 = yb_hash_code(2);
@@ -140,3 +140,54 @@ DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
 DROP TABLE t4;
+
+-- Issue #21133
+CREATE TABLE bb (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT bb_pkey PRIMARY KEY(pk ASC)
+);
+
+CREATE TABLE c (
+    pk serial NOT NULL,
+    col_int_key integer,
+    CONSTRAINT c_pkey PRIMARY KEY(pk ASC)
+);
+
+CREATE TABLE cc (
+    pk serial NOT NULL,
+    col_int_nokey integer,
+    col_int_key integer,
+    CONSTRAINT cc_pkey PRIMARY KEY(pk ASC)
+);
+CREATE INDEX bb_int_key ON bb (col_int_key ASC);
+CREATE INDEX c_int_key ON c (col_int_key ASC);
+CREATE INDEX cc_int_key ON cc (col_int_key ASC);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT
+FROM
+    CC AS table1
+    JOIN CC AS table2 ON (
+        table2.col_int_key = table1.pk
+    )
+WHERE
+    table2.col_int_key < (
+        SELECT
+            col_int_nokey
+        FROM
+            CC
+        WHERE
+            col_int_nokey IN (
+                SELECT
+                    CHILD_SUBQUERY1_t1.pk
+                FROM
+                    BB AS CHILD_SUBQUERY1_t1
+                    JOIN C AS CHILD_SUBQUERY1_t2 ON (
+                        CHILD_SUBQUERY1_t2.pk = CHILD_SUBQUERY1_t1.col_int_key
+                    )
+                WHERE
+                    CHILD_SUBQUERY1_t2.col_int_key <= table1.pk
+            )
+    );
+DROP TABLE bb;
+DROP TABLE c;
+DROP TABLE cc;

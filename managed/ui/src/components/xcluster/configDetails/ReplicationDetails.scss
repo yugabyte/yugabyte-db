@@ -30,6 +30,18 @@
     font-size: 16px;
   }
 
+  .replication-lag-value {
+    &.above-threshold {
+      color: #f00000;
+    }
+    &.below-threshold {
+      color: green;
+    }
+    *.not-reported {
+      color: colors.$YB_WARNING_COLOR;
+    }
+  }
+
   .details-canvas {
     padding: 30px;
 

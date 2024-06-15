@@ -41,3 +41,67 @@ SELECT * FROM test_truncate ORDER BY k;
 (3 rows)
 
 DROP TABLE test_truncate;
+-- test TRUNCATE on partitioned tables
+CREATE TABLE test_truncate (k int, v int, PRIMARY KEY (k ASC)) PARTITION BY RANGE (k);
+CREATE TABLE test_truncate_1 PARTITION OF test_truncate FOR VALUES FROM (1) TO (5);
+CREATE TABLE test_truncate_2 PARTITION OF test_truncate FOR VALUES FROM (5) TO (11);
+INSERT INTO test_truncate(k, v) VALUES (generate_series(1, 10), generate_series(1, 10));
+TRUNCATE test_truncate;
+SELECT * FROM test_truncate;
+ k | v 
+---+---
+(0 rows)
+
+INSERT INTO test_truncate(k, v) VALUES (generate_series(1, 10), generate_series(1, 10));
+SELECT * FROM test_truncate;
+ k  | v  
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+(10 rows)
+
+DROP TABLE test_truncate;
+-- test TRUNCATE on colocated tables
+CREATE DATABASE mydb WITH colocation=true;
+\c mydb
+CREATE TABLE test_truncate (k int, v int);
+INSERT INTO test_truncate(k, v) VALUES (1, 1), (2, 2), (3, 3);
+TRUNCATE test_truncate;
+SELECT * FROM test_truncate;
+ k | v 
+---+---
+(0 rows)
+
+DROP TABLE test_truncate;
+-- test TRUNCATE CASCADE
+CREATE TABLE test_truncate (k int PRIMARY KEY, v int);
+CREATE TABLE test_truncate_child (k int, v int, FOREIGN KEY (k) REFERENCES test_truncate(k));
+INSERT INTO test_truncate(k, v) VALUES (1, 1), (2, 2), (3, 3);
+INSERT INTO test_truncate_child(k, v) VALUES (1, 1), (2, 2), (3, 3);
+SELECT * FROM test_truncate_child ORDER BY k;
+ k | v 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+TRUNCATE test_truncate CASCADE;
+NOTICE:  truncate cascades to table "test_truncate_child"
+SELECT * FROM test_truncate;
+ k | v 
+---+---
+(0 rows)
+
+SELECT * FROM test_truncate_child;
+ k | v 
+---+---
+(0 rows)

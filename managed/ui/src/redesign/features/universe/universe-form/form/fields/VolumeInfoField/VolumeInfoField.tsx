@@ -3,7 +3,7 @@ import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
-import { Box, Grid, MenuItem, makeStyles } from '@material-ui/core';
+import { Box, Grid, MenuItem, Tooltip, makeStyles } from '@material-ui/core';
 import { YBInput, YBLabel, YBSelect } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
@@ -24,14 +24,18 @@ import {
   UniverseFormData,
   VolumeType
 } from '../../../utils/dto';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
 import {
   PROVIDER_FIELD,
   DEVICE_INFO_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
-  MASTER_PLACEMENT_FIELD
+  MASTER_PLACEMENT_FIELD,
+  CPU_ARCHITECTURE_FIELD
 } from '../../../utils/constants';
+import WarningIcon from '../../../../../../assets/info-message.svg';
 
 interface VolumeInfoFieldProps {
   isEditMode: boolean;
@@ -43,6 +47,9 @@ interface VolumeInfoFieldProps {
   disableNumVolumes: boolean;
   isDedicatedMasterField?: boolean;
   maxVolumeCount: number;
+  updateOptions: string[];
+  diffInHours: number | null;
+  AwsCoolDownPeriod: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -59,6 +66,15 @@ const useStyles = makeStyles((theme) => ({
   unitLabelField: {
     marginLeft: theme.spacing(2),
     alignSelf: 'center'
+  },
+  overrideMuiHelperText: {
+    '& .MuiFormHelperText-root': {
+      color: theme.palette.orange[500]
+    }
+  },
+  coolDownTooltip: {
+    marginLeft: theme.spacing(1),
+    alignSelf: 'center'
   }
 }));
 
@@ -71,14 +87,22 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   disableVolumeSize,
   disableNumVolumes,
   isDedicatedMasterField,
-  maxVolumeCount
+  maxVolumeCount,
+  updateOptions,
+  diffInHours,
+  AwsCoolDownPeriod
 }) => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
   const dataTag = isDedicatedMasterField ? 'Master' : 'TServer';
-  const { numVolumesDisable, volumeSizeDisable, minVolumeSize } = useVolumeControls(isEditMode);
+  const { numVolumesDisable, volumeSizeDisable, minVolumeSize } = useVolumeControls(
+    isEditMode,
+    updateOptions
+  );
+  const isAwsNodeCoolingDown = diffInHours !== null && diffInHours < AwsCoolDownPeriod;
+
   //watchers
   const fieldValue = isDedicatedMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
@@ -86,6 +110,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const instanceType = isDedicatedMasterField
     ? useWatch({ name: MASTER_INSTANCE_TYPE_FIELD })
     : useWatch({ name: INSTANCE_TYPE_FIELD });
+  const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
 
@@ -100,10 +125,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   // Update field is based on master or tserver field in dedicated mode
   const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
   //get instance details
   const { data: instanceTypes } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid],
-    () => api.getInstanceTypes(provider?.uuid),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, isOsPatchingEnabled ? cpuArch : null],
+    () => api.getInstanceTypes(provider?.uuid, [], isOsPatchingEnabled ? cpuArch : null),
     { enabled: !!provider?.uuid }
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
@@ -208,6 +235,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   if (![VolumeType.EBS, VolumeType.SSD, VolumeType.NVME].includes(volumeType)) return null;
 
   const renderVolumeInfo = () => {
+    const isAWSProvider = provider?.code === CloudType.aws;
+    const isAwsNodeDisabled = isAWSProvider && isAwsNodeCoolingDown;
     const fixedVolumeSize =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
       fieldValue?.storageType === StorageType.Scratch &&
@@ -262,12 +291,14 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                         !smartResizePossible &&
                         isEditMode &&
                         !instanceTypeChanged.current) ||
-                      volumeSizeDisable
+                      volumeSizeDisable ||
+                      isAwsNodeDisabled
                     }
                     inputProps={{
                       min: 1,
                       'data-testid': `VolumeInfoField-${dataTag}-VolumeSizeInput`
                     }}
+                    className={classes.overrideMuiHelperText}
                     value={convertToString(fieldValue.volumeSize)}
                     onChange={(event) => onVolumeSizeChanged(event.target.value)}
                     onBlur={resetThroughput}
@@ -279,6 +310,17 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
                     : t('universeForm.instanceConfig.volumeSizeUnit')}
                 </span>
+                {isAwsNodeDisabled && (
+                  <Box className={classes.coolDownTooltip}>
+                    <Tooltip
+                      title={t('universeForm.instanceConfig.cooldownHours')}
+                      arrow
+                      placement="top"
+                    >
+                      <img src={WarningIcon} alt="status" />
+                    </Tooltip>
+                  </Box>
+                )}
               </Box>
             </Box>
           </Box>

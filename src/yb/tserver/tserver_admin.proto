@@ -36,13 +36,14 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tserver/tserver_types.proto";
-import "yb/util/opid.proto";
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
 // startup to avoid running initdb.
@@ -156,10 +157,23 @@ message CreateTabletRequestPB {
   repeated bytes snapshot_schedules = 16;
 
   repeated StatefulServiceKind hosted_stateful_services = 17;
+
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 18;
+
+  optional uint32 wal_retention_secs = 19;
+
+  // If set to true, retention barriers will be set on the tablet.
+  optional bool cdc_sdk_set_retention_barriers = 20;
 }
 
 message CreateTabletResponsePB {
   optional TabletServerErrorPB error = 1;
+
+  // CDC SDK Create dynamic table context. The initial safe_op_id for a tablet of a
+  // dynamically added table.
+  optional OpIdPB cdc_sdk_safe_op_id = 2;
 }
 
 message PrepareDeleteTransactionTabletRequestPB {
@@ -327,6 +341,21 @@ message UpdateTransactionTablesVersionResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message CloneTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message ClonePgSchemaRequestPB {
+  optional bytes source_db_name = 1;
+  optional bytes target_db_name = 2;
+  optional fixed64 restore_ht = 3;
+}
+
+message ClonePgSchemaResponsePB{
+  optional TabletServerErrorPB error = 1;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -371,6 +400,11 @@ service TabletServerAdminService {
 
   rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
       returns (UpdateTransactionTablesVersionResponsePB);
+
+  rpc CloneTablet(tablet.CloneTabletRequestPB) returns (CloneTabletResponsePB);
+
+  // Create PG objects (database, tables and indexes) of the clone database.
+  rpc ClonePgSchema(ClonePgSchemaRequestPB) returns (ClonePgSchemaResponsePB);
 
   // For test purposes: returns TryAgain error until specified number of calls is done.
   rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);

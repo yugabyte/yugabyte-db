@@ -36,6 +36,7 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/common/wire_protocol.pb.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_util.h"
 
@@ -56,6 +57,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
@@ -87,6 +89,14 @@ DEFINE_UNKNOWN_uint64(transaction_deadlock_detection_interval_usec, 60000000,
               "Deadlock detection interval in usec.");
 TAG_FLAG(transaction_deadlock_detection_interval_usec, advanced);
 
+DEFINE_RUNTIME_int32(
+    clear_deadlocked_txns_info_older_than_heartbeats, 10,
+    "Minimum number of transaction heartbeat periods for which a deadlocked transaction's info is "
+    "retained, after it has been reported to be aborted. This ensures the memory used to track "
+    "info of deadlocked transactions does not grow unbounded.");
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, hidden);
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, advanced);
+
 DEFINE_UNKNOWN_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
@@ -112,6 +122,10 @@ DEFINE_test_flag(bool, mock_cancel_unhosted_transactions, false,
 DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
                  "When enabled, the txn coordinator responds to all abort transaction requests "
                  "with TryAgain error status, for the set of transactions it hosts.");
+
+DEFINE_test_flag(bool, skip_returning_old_transactions, false,
+                 "When set, the coordinator returns an empty response to all GetOldTransactions "
+                 "requests.");
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
@@ -268,6 +282,27 @@ class TransactionState {
            status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
   }
 
+  bool IsRunning() const {
+    return status_ == TransactionStatus::PENDING || status_ == TransactionStatus::PROMOTED;
+  }
+
+  bool ShouldBeRetained() const {
+    if (!Completed()) {
+      return true;
+    }
+    if (!deadlock_time_) {
+      return false;
+    }
+    auto retain_until = deadlock_time_.AddMicroseconds(
+        GetAtomicFlag(&FLAGS_clear_deadlocked_txns_info_older_than_heartbeats) *
+        GetAtomicFlag(&FLAGS_transaction_heartbeat_usec));
+    return retain_until > context_.coordinator_context().clock().Now();
+  }
+
+  HybridTime GetDeadlockTime() const {
+    return deadlock_time_;
+  }
+
   // Applies new state to transaction.
   Status ProcessReplicated(const TransactionCoordinator::ReplicatedData& data) {
     VLOG_WITH_PREFIX(4)
@@ -407,7 +442,8 @@ class TransactionState {
         FillExpectedTabletBatches(expected_tablet_batches);
         return TransactionStatusResult{TransactionStatus::SEALED, commit_time_};
       case TransactionStatus::ABORTED:
-        return TransactionStatusResult{TransactionStatus::ABORTED, HybridTime::kMax};
+        return TransactionStatusResult{
+            TransactionStatus::ABORTED, HybridTime::kMax, deadlock_reason_};
       case TransactionStatus::PENDING: {
         HybridTime status_ht;
         if (replicating_) {
@@ -448,7 +484,8 @@ class TransactionState {
     NotifyAbortWaiters(TransactionStatusResult::Aborted());
   }
 
-  TransactionStatusResult Abort(TransactionAbortCallback* callback) {
+  TransactionStatusResult Abort(
+      TransactionAbortCallback* callback, const Status& deadlock_reason = Status::OK()) {
     if (status_ == TransactionStatus::COMMITTED ||
         status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
       return TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_);
@@ -460,7 +497,7 @@ class TransactionState {
       VLOG_WITH_PREFIX(1) << "External abort request";
       CHECK_EQ(TransactionStatus::PENDING, status_);
       abort_waiters_.emplace_back(std::move(*callback));
-      Abort();
+      Abort(deadlock_reason);
       return TransactionStatusResult(TransactionStatus::PENDING, HybridTime::kMax);
     }
   }
@@ -481,7 +518,7 @@ class TransactionState {
   }
 
   // Aborts this transaction.
-  void Abort() {
+  void Abort(const Status& deadlock_reason = Status::OK()) {
     if (ShouldBeCommitted()) {
       LOG_WITH_PREFIX(DFATAL) << "Transaction abort in wrong state: " << status_;
       return;
@@ -494,7 +531,7 @@ class TransactionState {
                               << TransactionStatus_Name(status_);
       return;
     }
-    SubmitUpdateStatus(TransactionStatus::ABORTED);
+    SubmitUpdateStatus(TransactionStatus::ABORTED, deadlock_reason);
   }
 
   // Returns logs prefix for this transaction.
@@ -660,13 +697,24 @@ class TransactionState {
 
     Status status;
     auto txn_status = state.status();
+    if (!deadlock_reason_.ok()) {
+      // If this transaction was aborted due to a deadlock, we should disallow any updates to it's
+      // state which are not ABORTED or cleanup-related.
+      DCHECK(deadlock_time_);
+      if (txn_status != TransactionStatus::ABORTED &&
+          txn_status != TransactionStatus::GRACEFUL_CLEANUP &&
+          txn_status != TransactionStatus::IMMEDIATE_CLEANUP) {
+        context_.CompleteWithStatus(std::move(request), deadlock_reason_);
+        return;
+      }
+    }
     if (txn_status == TransactionStatus::COMMITTED) {
       status = HandleCommit();
     } else if (txn_status == TransactionStatus::PENDING ||
                txn_status == TransactionStatus::CREATED) {
-        // Handling txn_status of CREATED when the current status (status_) is PENDING is only
-        // allowed for backward compatibility with versions prior to D11210, which could send
-        // transaction creation retries with the same id.
+      // Handling txn_status of CREATED when the current status (status_) is PENDING is only
+      // allowed for backward compatibility with versions prior to D11210, which could send
+      // transaction creation retries with the same id.
       if (status_ != TransactionStatus::PENDING) {
         status = STATUS_FORMAT(IllegalState,
             "Transaction in wrong state during heartbeat: $0",
@@ -702,7 +750,7 @@ class TransactionState {
   Status HandleCommit() {
     auto hybrid_time = context_.coordinator_context().clock().Now();
     if (ExpiredAt(hybrid_time)) {
-      auto status = STATUS(Expired, "Commit of expired transaction");
+      auto status = STATUS(Expired, "Attempted to commit expired transaction");
       VLOG_WITH_PREFIX(4) << status;
       Abort();
       return status;
@@ -716,16 +764,13 @@ class TransactionState {
     return Status::OK();
   }
 
-  void SubmitUpdateStatus(TransactionStatus status) {
+  void SubmitUpdateStatus(TransactionStatus status, const Status& deadlock_reason = Status::OK()) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
-    // TODO(wait-queues): If the transaction is being aborted due to a deadlock, replicate the
-    // deadlock specific info on status tablet followers. That would help return a consistent
-    // error message on deadlock, across status tablet leadership changes.
-    //
-    // Refer https://github.com/yugabyte/yugabyte-db/issues/19257 for more details.
     auto state = rpc::MakeSharedMessage<LWTransactionStatePB>();
     state->dup_transaction_id(id_.AsSlice());
     state->set_status(status);
+    DCHECK(deadlock_reason.ok() || status == TransactionStatus::ABORTED);
+    StatusToPB(deadlock_reason, state->mutable_deadlock_reason());
 
     auto request = context_.coordinator_context().CreateUpdateTransaction(std::move(state));
     if (replicating_) {
@@ -766,6 +811,13 @@ class TransactionState {
 
     status_ = TransactionStatus::ABORTED;
     first_entry_raft_index_ = data.op_id.index;
+    auto deadlock_reason = StatusFromPB(data.state.deadlock_reason());
+    if (!deadlock_reason.ok() && !deadlock_time_) {
+      LOG_IF(DFATAL, !deadlock_reason_.ok())
+          << "Deadlock reason already set: " << deadlock_reason_;
+      deadlock_time_ = data.hybrid_time;
+      deadlock_reason_ = deadlock_reason;
+    }
     NotifyAbortWaiters(TransactionStatusResult::Aborted());
     return Status::OK();
   }
@@ -935,6 +987,8 @@ class TransactionState {
   const TransactionId id_;
   const std::string log_prefix_;
   TransactionStatus status_ = TransactionStatus::PENDING;
+  Status deadlock_reason_ = Status::OK();
+  HybridTime deadlock_time_ = HybridTime::kInvalid;
   MicrosTime first_touch_;
   HybridTime last_touch_;
   // It should match last_touch_, but it is possible that because of some code errors it
@@ -1028,7 +1082,7 @@ std::string TransactionCoordinator::AbortedData::ToString() const {
 
 // Real implementation of transaction coordinator, as in PImpl idiom.
 class TransactionCoordinator::Impl : public TransactionStateContext,
-                                     public TransactionAbortController {
+                                     public TransactionStatusController {
  public:
   Impl(const std::string& permanent_uuid,
        TransactionCoordinatorContext* context,
@@ -1046,10 +1100,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     Shutdown();
   }
 
-  void Abort(const TransactionId& transaction_id, TransactionStatusCallback callback) override {
-    Abort(transaction_id, context_.LeaderTerm(), callback);
-  }
-
   void RemoveInactiveTransactions(Waiters* waiters) override {
     std::lock_guard lock(managed_mutex_);
     auto& sorted_txn_map = waiters->get<TransactionIdTag>();
@@ -1065,22 +1115,35 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
   }
 
-  // Note: IsAnySubtxnActive returns the result from a consistent state of the transaction, and does
-  // not reflect real time status. It could happen that the function returns true and the txn gets
-  // aborted/removed just after that. The subsequent call to IsAnySubtxnActive would return false.
-  bool IsAnySubtxnActive(const TransactionId& transaction_id,
-                         const SubtxnSet& subtxn_set) override {
-    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info;
+  // Note: CheckProbeActive returns the result from a consistent state of the transaction, and does
+  // not reflect real time status. It could happen that the function returns ok and the txn gets
+  // resolved just after that. The subsequent call to CheckProbeActive would return Aborted.
+  Status CheckProbeActive(
+      const TransactionId& transaction_id, const SubtxnSet& subtxn_set) override {
+    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info = nullptr;
     {
       std::lock_guard lock(managed_mutex_);
       auto it = managed_transactions_.find(transaction_id);
-      if (it == managed_transactions_.end()) {
-        return false;
+      if (it != managed_transactions_.end() && it->IsRunning()) {
+        aborted_subtxn_info = it->GetAbortedSubtxnInfo();
       }
-      aborted_subtxn_info = it->GetAbortedSubtxnInfo();
     }
+    if (aborted_subtxn_info && !aborted_subtxn_info->set().Contains(subtxn_set)) {
+      return Status::OK();
+    }
+    return STATUS(Aborted,
+                  Format("txn: $0, subtxn_set: $1 is inactive", transaction_id, subtxn_set));
+  }
 
-    return !aborted_subtxn_info->set().Contains(subtxn_set);
+  std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) override {
+    {
+      std::lock_guard lock(managed_mutex_);
+      auto it = managed_transactions_.find(transaction_id);
+      if (it == managed_transactions_.end() || !it->IsRunning()) {
+        return std::nullopt;
+      }
+      return it->first_touch();
+    }
   }
 
   void Shutdown() {
@@ -1108,6 +1171,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                             tserver::GetOldTransactionsResponsePB* resp,
                             CoarseTimePoint deadline) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Request to GetOldTransactions " << req->ShortDebugString();
+    if (PREDICT_FALSE(FLAGS_TEST_skip_returning_old_transactions)) {
+      return Status::OK();
+    }
 
     auto min_age = req->min_txn_age_ms() * 1ms;
     auto now = context_.clock().Now();
@@ -1162,18 +1228,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                    tserver::GetTransactionStatusResponsePB* response) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
-    std::vector<TransactionId> decoded_txn_ids;
-    decoded_txn_ids.reserve(transaction_ids.size());
-    for (auto i = 0 ; i < transaction_ids.size() ; i++) {
-      decoded_txn_ids.emplace_back(VERIFY_RESULT(FullyDecodeTransactionId(transaction_ids[i])));
-    }
 
     PostponedLeaderActions postponed_leader_actions;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
       HybridTime leader_safe_time;
       postponed_leader_actions_.leader_term = leader_term;
-      for (const auto& id : decoded_txn_ids) {
+      for (const auto& transaction_id : transaction_ids) {
+        auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
         auto it = managed_transactions_.find(id);
         std::vector<ExpectedTabletBatches> expected_tablet_batches;
         bool known_txn = it != managed_transactions_.end();
@@ -1202,6 +1264,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         }
         response->add_status(txn_status_with_ht.status);
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
+        StatusToPB(txn_status_with_ht.expected_deadlock_status, response->add_deadlock_reason());
 
         auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
         if (it != managed_transactions_.end() &&
@@ -1211,24 +1274,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
-    }
-
-    RSTATUS_DCHECK_EQ(
-        response->status().size(), decoded_txn_ids.size(), IllegalState,
-        Format("Expected to see $0 (vs $1) statuses in GetTransactionStatusResponsePB",
-               decoded_txn_ids.size(), response->status().size()));
-    // GetTransactionDeadlockStatus should be called outside the scope of managed_mutex_.
-    // Else we risk a deadlock since the detector acquires the locks in the order:
-    // detector's mutex -> coordinator's managed_mutex_, during execution of TriggerProbes().
-    for (auto i = 0 ; i < response->status().size() ; i++) {
-      // Deadlock detector stores info of transactions that might have been aborted due to a
-      // deadlock even before the coordinator cancels them. So it could happen that the detector
-      // reports a deadlock specific error for a transaction that the coordinator is/was unable
-      // to abort. Hence we query the detector for statuses of txns in ABORTED state alone.
-      Status s = response->status(i) == TransactionStatus::ABORTED
-          ? deadlock_detector_.GetTransactionDeadlockStatus(decoded_txn_ids[i])
-          : Status::OK();
-      StatusToPB(s, response->add_deadlock_reason());
     }
 
     ExecutePostponedLeaderActions(&postponed_leader_actions);
@@ -1343,7 +1388,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return TransactionStatusResult{TransactionStatus::PENDING, result.status_time.Decremented()};
   }
 
-  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
+  void Abort(
+      const TransactionId& transaction_id, int64_t term, const Status& deadlock_reason,
+      TransactionAbortCallback callback) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
 
     std::unique_lock<std::mutex> lock(managed_mutex_);
@@ -1355,7 +1402,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       return;
     }
 
-    DoAbort(it, term, std::move(callback), std::move(lock));
+    DoAbort(it, term, std::move(callback), std::move(lock), deadlock_reason);
   }
 
   bool CancelTransactionIfFound(
@@ -1405,7 +1452,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       actions.Swap(&postponed_leader_actions_);
     }
     if (last_transaction) {
-      last_transaction_finished_.notify_one();
+      YB_PROFILE(last_transaction_finished_.notify_one());
     }
     ExecutePostponedLeaderActions(&actions);
 
@@ -1440,7 +1487,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       actions.Swap(&postponed_leader_actions_);
     }
     if (last_transaction) {
-      last_transaction_finished_.notify_one();
+      YB_PROFILE(last_transaction_finished_.notify_one());
     }
     ExecutePostponedLeaderActions(&actions);
 
@@ -1459,6 +1506,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
     auto& state = *request->request();
+    DCHECK_NE(state.status(), TransactionStatus::ABORTED);
     auto id = FullyDecodeTransactionId(state.transaction_id());
     if (!id.ok()) {
       LOG(WARNING) << "Failed to decode id from " << state.ShortDebugString() << ": " << id;
@@ -1479,14 +1527,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         } else {
           lock.unlock();
           status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
-          // If the transaction was involved in a deadlock, the deadlock error takes precedence
-          // over a generic status of type Expired.
-          if (status.IsExpired()) {
-            auto s = deadlock_detector_.GetTransactionDeadlockStatus(*id);
-            if (!s.ok()) {
-              status = std::move(s);
-            }
-          }
           request->CompleteWithStatus(status);
           return;
         }
@@ -1514,7 +1554,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   // Returns logs prefix for this transaction coordinator.
-  const std::string& LogPrefix() {
+  const std::string& LogPrefix() override {
     return log_prefix_;
   }
 
@@ -1691,7 +1731,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       if (!submit_status.ok()) {
         LOG_WITH_PREFIX(DFATAL)
             << "Could not submit transaction status update operation: "
-            << update->ToString() << ", status: " << submit_status;
+            << "status: " << submit_status;
       }
     }
   }
@@ -1803,6 +1843,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
       for (auto it = index.begin(); it != index.end() && it->ExpiredAt(now);) {
         if (it->status() == TransactionStatus::ABORTED) {
+          if (it->ShouldBeRetained()) {
+            VLOG_WITH_PREFIX_AND_FUNC(4) << "Retaining recently deadlocked transaction -- "
+                << "now: " << now << ", first: " << it->id().ToString()
+                << ", expired: " << it->ExpiredAt(now) << ", deadlocked at: "
+                << it->GetDeadlockTime().ToDebugString();
+            ++it;
+            continue;
+          }
           it = index.erase(it);
         } else {
           if (leader) {
@@ -1835,13 +1883,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       managed_transactions_.modify(it, [&status](TransactionState& state) {
         state.ClearRequests(status);
       });
-      managed_transactions_.erase(it);
+      if (!it->ShouldBeRetained()) {
+        managed_transactions_.erase(it);
+      }
     }
   }
 
   void DoAbort(
-      ManagedTransactions::iterator it, int64_t term, TransactionAbortCallback callback,
-      std::unique_lock<std::mutex> lock) {
+      ManagedTransactions::iterator it, int64_t term,
+      TransactionAbortCallback callback, std::unique_lock<std::mutex> lock,
+      const Status& deadlock_reason = Status::OK()) {
     CHECK(it != managed_transactions_.end());
     VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << it->id() << " found, aborting now.";
 
@@ -1855,8 +1906,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     PostponedLeaderActions actions;
     postponed_leader_actions_.leader_term = term;
     TransactionStatusResult status;
-    managed_transactions_.modify(it, [&status, &callback](TransactionState& state) {
-      status = state.Abort(&callback);
+    managed_transactions_.modify(
+        it, [&status, &callback, &deadlock_reason](TransactionState& state) {
+      status = state.Abort(&callback, deadlock_reason);
     });
     if (callback) {
       lock.unlock();
@@ -1947,8 +1999,9 @@ Status TransactionCoordinator::GetOldTransactions(
 
 void TransactionCoordinator::Abort(const TransactionId& transaction_id,
                                    int64_t term,
+                                   const Status& deadlock_reason,
                                    TransactionAbortCallback callback) {
-  impl_->Abort(transaction_id, term, std::move(callback));
+  impl_->Abort(transaction_id, term, deadlock_reason, std::move(callback));
 }
 
 bool TransactionCoordinator::CancelTransactionIfFound(

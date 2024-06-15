@@ -64,7 +64,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
-
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     defaultUser = ModelFactory.testUser(defaultCustomer);
@@ -262,7 +262,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
     TaskInfo taskInfo =
         submitTask("InvalidKeySpace", new ArrayList<>(), TableType.PGSQL_TABLE_TYPE);
     assertEquals(Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getDetails().get("errorString").asText();
+    String errMsg = taskInfo.getTaskError().getMessage();
     assertThat(errMsg, containsString("Invalid Keyspaces or no tables to backup"));
     verify(mockTableManagerYb, times(0)).createBackup(any());
   }

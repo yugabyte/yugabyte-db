@@ -1,9 +1,13 @@
 import { FC, useEffect, useState } from 'react';
 import _ from 'lodash';
-import { Col, Grid, Row } from 'react-bootstrap';
+import { Col, DropdownButton, Grid, MenuItem, Row } from 'react-bootstrap';
+import { AxiosError } from 'axios';
+import { toast } from 'react-toastify';
+import { Typography } from '@material-ui/core';
+import { useMutation, useQueryClient } from 'react-query';
 
 import { YBButton } from '../../common/forms/fields';
-import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
+import { HaConfig, HaReplicationSchedule } from '../dtos';
 import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
@@ -17,9 +21,12 @@ import {
   PEER_CERT_SUFFIX
 } from '../modals/ManagePeerCertsModal';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
+import { api, QUERY_KEY } from '../../../redesign/helpers/api';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 
 import './HAReplicationView.scss';
+import { useTranslation } from 'react-i18next';
 
 interface DispatchProps {
   fetchRuntimeConfigs: () => void;
@@ -31,8 +38,8 @@ interface StateProps {
 }
 
 interface OwnProps {
-  config: HAConfig;
-  schedule: HAReplicationSchedule;
+  haConfig: HaConfig;
+  schedule: HaReplicationSchedule;
   editConfig(): void;
 }
 
@@ -67,39 +74,21 @@ export const getPeerCerts = (ybHAWebService: YbHAWebService) => {
   return ybHAWebService?.ssl?.trustManager?.stores;
 };
 
-/**
- * Returns a non-unique string identifier for a given peer certificate.
- * The identifier is the first 48 characters of data in the cert.
- * Whitespace is ignored.
- */
-export const getPeerCertIdentifier = (peerCert: PeerCert) => {
-  // PEM encoded certificates use base64 encoding.
-  // We can ignore whitespace when selecting data to display as
-  // an identifier.
-  const compactCertData = peerCert.data.replace(/\s/g, '');
-  const compactCertPrefix = PEER_CERT_PREFIX.replace(/\s/g, '');
-  const compactCertSuffix = PEER_CERT_SUFFIX.replace(/\s/g, '');
-
-  const identifierStartIndex = compactCertPrefix.length;
-  const identifierEndIndex = Math.min(
-    identifierStartIndex + PEER_CERT_IDENTIFIER_LENGTH,
-    compactCertData.length - compactCertSuffix.length
-  );
-
-  return compactCertData.substring(identifierStartIndex, identifierEndIndex);
-};
-
+const TRANSLATION_KEY_PREFIX = 'ha.config';
+const COMPONENT_NAME = 'HaReplicationView';
 export const HAReplicationView: FC<HAReplicationViewProps> = ({
-  config,
+  haConfig,
   schedule,
   runtimeConfigs,
-  editConfig,
+  editConfig: enterEditMode,
   fetchRuntimeConfigs,
   setRuntimeConfig
 }) => {
   const [isDeleteModalVisible, setDeleteModalVisible] = useState(false);
   const [isPromoteModalVisible, setPromoteModalVisible] = useState(false);
   const [isAddPeerCertsModalVisible, setAddPeerCertsModalVisible] = useState(false);
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const showDeleteModal = () => setDeleteModalVisible(true);
   const hideDeleteModal = () => setDeleteModalVisible(false);
@@ -123,29 +112,49 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
     fetchRuntimeConfigs();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ybHAWebService: YbHAWebService =
-    runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess()
-      ? JSON.parse(
+  const toggleCertificateValidationMutation = useMutation(
+    () =>
+      api.editHAConfig(haConfig.uuid, {
+        cluster_key: haConfig.cluster_key,
+        accept_any_certificate: !haConfig.accept_any_certificate
+      }),
+    {
+      onSuccess: (response, values) => {
+        queryClient.invalidateQueries(QUERY_KEY.getHAConfig);
+        toast.success(
+          <Typography variant="body2" component="span">
+            {response.accept_any_certificate
+              ? 'Disabled certificate validation.'
+              : 'Enabled certificate validation.'}
+          </Typography>
+        );
+      },
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Failed to toggle certificate validation.' })
+    }
+  );
+  const isRuntimeConfigLoaded = runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess();
+  const ybHAWebService: YbHAWebService = isRuntimeConfigLoaded
+    ? JSON.parse(
         runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
           .value
       )
-      : EMPTY_YB_HA_WEBSERVICE;
+    : EMPTY_YB_HA_WEBSERVICE;
 
-  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
   // sort by is_leader to show active instance on the very top, then sort other items by address
-  const sortedInstances = _.sortBy(config.instances, [(item) => !item.is_leader, 'address']);
+  const sortedInstances = _.sortBy(haConfig.instances, [(item) => !item.is_leader, 'address']);
   const currentInstance = sortedInstances.find((item) => item.is_local);
   if (currentInstance) {
     return (
       <Grid fluid className="ha-replication-view" data-testid="ha-replication-config-overview">
         <DeleteModal
-          configId={config.uuid}
+          configId={haConfig.uuid}
           isStandby={!currentInstance.is_leader}
           visible={isDeleteModalVisible}
           onClose={hideDeleteModal}
         />
         <PromoteInstanceModal
-          configId={config.uuid}
+          configId={haConfig.uuid}
           instanceId={currentInstance.uuid}
           visible={isPromoteModalVisible}
           onClose={hidePromoteModal}
@@ -166,19 +175,32 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
           <Col xs={6} className="ha-replication-view__header-buttons">
             {currentInstance.is_leader ? (
               <>
-                <YBButton btnText="Edit Configuration" onClick={editConfig} />
-                {
-                  !isCACertStoreEnabled && (
-                    <YBButton
-                      btnText={`${getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-                        } Peer Certificates`}
-                      onClick={(e: any) => {
-                        showAddPeerCertModal();
-                        e.currentTarget.blur();
-                      }}
+                <DropdownButton
+                  bsClass="dropdown"
+                  title="Actions"
+                  id={`${COMPONENT_NAME}-actionsDropdown`}
+                  data-testid={`${COMPONENT_NAME}-actionsDropdown`}
+                  pullRight
+                >
+                  <MenuItem onSelect={enterEditMode} name="Edit Configuartion">
+                    <YBMenuItemLabel label="Edit Configuration" />
+                  </MenuItem>
+                  <MenuItem
+                    onSelect={() => toggleCertificateValidationMutation.mutate()}
+                    name={`${
+                      haConfig.accept_any_certificate ? 'Enable' : 'Disable'
+                    } Certficate Validation`}
+                  >
+                    <YBMenuItemLabel
+                      label={`${
+                        haConfig.accept_any_certificate ? 'Enable' : 'Disable'
+                      } Certficate Validation`}
                     />
-                  )
-                }
+                  </MenuItem>
+                  <MenuItem onSelect={showDeleteModal} name="Delete Configuration">
+                    <YBMenuItemLabel label="Delete Configuration" />
+                  </MenuItem>
+                </DropdownButton>
               </>
             ) : (
               <>
@@ -193,9 +215,17 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
                   btnIcon="fa fa-upload"
                   onClick={showPromoteModal}
                 />
+                <YBButton btnText="Delete Configuration" onClick={showDeleteModal} />
               </>
             )}
-            <YBButton btnText="Delete Configuration" onClick={showDeleteModal} />
+          </Col>
+        </Row>
+        <Row className="ha-replication-view__row">
+          <Col xs={2} className="ha-replication-view__label">
+            HA Global State
+          </Col>
+          <Col xs={10} className="ha-replication-view__value">
+            {t(`globalState.${haConfig.global_state}`)}
           </Col>
         </Row>
         <Row className="ha-replication-view__row">
@@ -219,8 +249,8 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
             Shared Authentication Key
           </Col>
           <Col xs={10} className="ha-replication-view__value">
-            {config.cluster_key}
-            <YBCopyButton text={config.cluster_key} />
+            {haConfig.cluster_key}
+            <YBCopyButton text={haConfig.cluster_key} />
           </Col>
         </Row>
         {currentInstance.is_leader && (
@@ -265,35 +295,13 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
             ))}
           </Col>
         </Row>
-        {!isCACertStoreEnabled && currentInstance.is_leader && (
+        {currentInstance.is_leader && (
           <Row className="ha-replication-view__row">
             <Col xs={2} className="ha-replication-view__label">
-              Peer Certificates
+              Certificate Validation
             </Col>
-            <Col xs={10}>
-              {getPeerCerts(ybHAWebService).length === 0 ? (
-                <button
-                  className="ha-replication-view__no-cert--add-button"
-                  onClick={showAddPeerCertModal}
-                >
-                  Add a peer certificate
-                </button>
-              ) : (
-                getPeerCerts(ybHAWebService).map((peerCert) => {
-                  return (
-                    <>
-                      <div className="ha-replication-view__cert-container">
-                        <span className="ha-replication-view__cert-container--identifier">
-                          {getPeerCertIdentifier(peerCert)}
-                        </span>
-                        <span className="ha-replication-view__cert-container--ellipse">
-                          ( . . . )
-                        </span>
-                      </div>
-                    </>
-                  );
-                })
-              )}
+            <Col xs={10} className="ha-replication-view__value">
+              {haConfig.accept_any_certificate ? 'Disabled' : 'Enabled'}
             </Col>
           </Row>
         )}
@@ -303,7 +311,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
     return (
       <HAErrorPlaceholder
         error="Can't find an HA instance with is_local = true"
-        configUUID={config.uuid}
+        configUUID={haConfig.uuid}
       />
     );
   }

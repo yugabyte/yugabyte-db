@@ -18,10 +18,22 @@
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/dockv/intent.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 
 namespace yb::docdb {
+
+struct IntentData {
+  dockv::IntentTypeSet types;
+  bool full_doc_key;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(types, full_doc_key);
+  }
+};
+// Container holding intent type and key type info for each intent within a specific transaction.
+using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
 
 // Key and intent type info for a lock or conflicting write.
 struct LockInfo {

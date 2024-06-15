@@ -181,7 +181,11 @@ public class NodeAgentClientTest extends FakeDBApplication {
 
   @Test
   public void testExecuteCommand() {
-    String output = nodeAgentClient.executeCommand(nodeAgent, ImmutableList.of("echo", "hello"));
+    String output =
+        nodeAgentClient
+            .executeCommand(nodeAgent, ImmutableList.of("echo", "hello"))
+            .processErrors()
+            .getMessage();
     assertEquals("hello", output);
   }
 

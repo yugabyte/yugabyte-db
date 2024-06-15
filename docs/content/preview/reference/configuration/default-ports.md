@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: default-ports
     parent: configuration
-    weight: 2740
+    weight: 3100
 type: docs
 ---
 
@@ -19,7 +19,6 @@ Application clients connect to the following addresses:
 | ------- | ----- | ------- |------------------------------------------|
 | YSQL | 5433  | YB-TServer | [--pgsql_proxy_bind_address 0.0.0.0:5433](../yb-tserver/#pgsql-proxy-bind-address) |
 | YCQL | 9042  | YB-TServer | [--cql_proxy_bind_address 0.0.0.0:9042](../yb-tserver/#cql-proxy-bind-address)   |
-| YEDIS | 6379  | YB-TServer | [--redis_proxy_bind_address 0.0.0.0:6379](../yb-tserver/#redis-proxy-bind-address) |
 
 ## Internode RPC communication
 
@@ -39,7 +38,7 @@ Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB
 | Service       | Port  |
 | ------------- | ----- |
 | YB Controller | 18018 |
-| [Node agent](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent) | 9070 |
+| [Node agent](../../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#install-node-agent) | 9070 |
 
 ## Admin web server
 
@@ -79,11 +78,14 @@ YugabyteDB servers expose time series performance metrics in the [Prometheus exp
 <target>/prometheus-metrics
 ```
 
-You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node-level metrics:
+You can access the Prometheus server on port 9090 of the YugabyteDB Anywhere node, and you can see the list of targets at `http://<yugaware-ip>:9090/targets`. In particular, note port 9300 for node-level metrics:
 
-| Service      | Port |
-| ------------ | ---- |
-| Node metrics | 9300 |
+| Service           | Port |
+| ----------------- | ---- |
+| Prometheus server for YugabyteDB Anywhere | 9090 |
+| Node Exporter     | 9300 |
+
+For information on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).
 
 ### Servers
 
@@ -103,6 +105,3 @@ Use the following YB-TServer targets for the various API metrics:
 | ------- | ------------------------- |
 | YSQL    | `<yb-tserver-address>:13000` |
 | YCQL    | `<yb-tserver-address>:12000` |
-| YEDIS   | `<yb-tserver-address>:11000` |
-
-For information on using Prometheus with YugabyteDB, see [Observability with Prometheus](../../../explore/observability).

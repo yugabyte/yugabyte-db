@@ -141,7 +141,6 @@ public class UniverseTableHandler {
     boolean hasColocationInfo =
         CommonUtils.isReleaseBetween("2.18.1.0-b18", "2.19.0.0-b0", universeVersion)
             || CommonUtils.isReleaseEqualOrAfter("2.19.0.0-b168", universeVersion);
-
     final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
@@ -191,29 +190,56 @@ public class UniverseTableHandler {
                       Function.identity()));
     }
 
-    // Fetch colocated keyspaces. excludeColocatedTables effectively means
-    // 'exclude tables from colocated keyspaces'.
-    Set<String> colocatedKeySpaces = Collections.emptySet();
-    if (excludeColocatedTables) {
-      colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
+    Set<String> excludedKeyspaces = new HashSet<>();
+
+    // Do not allow xcluster replication to be set up for colocated dbs if db rpc does not contain
+    // colocated information.
+    // Note: excludeColocatedTables effectively means 'exclude tables from colocated keyspaces'.
+    if ((!hasColocationInfo && xClusterSupportedOnly) || excludeColocatedTables) {
+      excludedKeyspaces.addAll(getColocatedKeySpaces(tableInfoList));
     }
 
     Map<String, String> indexTableMainTableMap = new HashMap<>();
+    Map<String, List<String>> mainTableIndexTablesMap = new HashMap<>();
+    boolean hasIndexTable = tableInfoList.stream().anyMatch(TableInfoUtil::isIndexTable);
+    // After db versions 2.21.1.0-b168 there exists a new field indexed_table_id in table_info
+    // which gives the main table id for an index table directly. Check for the presence of that
+    // field in the response to avoid extra rpcs.
+    boolean indexedTableIdFieldExists =
+        hasIndexTable
+            && tableInfoList.stream()
+                .anyMatch(tableInfo -> !tableInfo.getIndexedTableId().isEmpty());
     // For xCluster table list, we need to also include the main table uuid for each index table.
     if (xClusterSupportedOnly) {
-      XClusterConfigTaskBase.getMainTableIndexTablesMap(
-              this.ybClientService, universe, XClusterConfigTaskBase.getTableIds(tableInfoList))
-          .forEach(
-              (mainTable, indexTables) ->
-                  indexTables.forEach(
-                      indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
+      if (indexedTableIdFieldExists) {
+        LOG.debug("Indexed table id field exists.");
+        tableInfoList.forEach(
+            tableInfo -> {
+              if (!tableInfo.getIndexedTableId().isEmpty()) {
+                final String indexTableId = tableInfo.getId().toStringUtf8();
+                final String mainTableId = tableInfo.getIndexedTableId();
+                indexTableMainTableMap.put(indexTableId, mainTableId);
+                mainTableIndexTablesMap
+                    .computeIfAbsent(mainTableId, k -> new ArrayList<>())
+                    .add(indexTableId);
+              }
+            });
+      } else if (hasIndexTable) {
+        LOG.debug("Indexed table id field does not exist. But Index tables are present.");
+        mainTableIndexTablesMap.putAll(
+            XClusterConfigTaskBase.getMainTableIndexTablesMap(
+                this.ybClientService, universe, XClusterConfigTaskBase.getTableIds(tableInfoList)));
+        mainTableIndexTablesMap.forEach(
+            (mainTable, indexTables) ->
+                indexTables.forEach(
+                    indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
+      }
     }
 
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =
           new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
-      if (excludeColocatedTables && colocatedKeySpaces.contains(table.getNamespace().getName())) {
-        // Exclude tables from colocated keyspaces, if needed.
+      if (excludedKeyspaces.contains(table.getNamespace().getName())) {
         continue;
       }
       if (!includeColocatedParentTables && colocatedParentTablesMap.containsKey(tableKey)) {
@@ -237,6 +263,7 @@ public class UniverseTableHandler {
                   table,
                   partitionInfo,
                   parentPartitionInfo,
+                  mainTableIndexTablesMap.get(XClusterConfigTaskBase.getTableId(table)),
                   indexTableMainTableMap.get(XClusterConfigTaskBase.getTableId(table)),
                   tableSizes,
                   hasColocationInfo)
@@ -580,6 +607,7 @@ public class UniverseTableHandler {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
+      List<String> indexTableIds,
       String mainTableUuid,
       Map<String, TableSizes> tableSizeMap,
       boolean hasColocationInfo) {
@@ -604,6 +632,9 @@ public class UniverseTableHandler {
     }
     if (parentTableInfo != null) {
       builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    if (indexTableIds != null) {
+      builder.indexTableIDs(indexTableIds);
     }
     if (mainTableUuid != null) {
       builder.mainTableUUID(getUUIDRepresentation(mainTableUuid));

@@ -68,6 +68,12 @@ size_t WriteCallback(void* buffer, size_t size, size_t nmemb, void* user_ptr) {
 
 } // anonymous namespace
 
+CurlGlobalInitializer::CurlGlobalInitializer() {
+  CHECK_EQ(curl_global_init(CURL_GLOBAL_ALL), CURLE_OK);
+}
+
+CurlGlobalInitializer::~CurlGlobalInitializer() { curl_global_cleanup(); }
+
 EasyCurl::EasyCurl() {
   curl_ = curl_easy_init();
   CHECK(curl_) << "Could not init curl";

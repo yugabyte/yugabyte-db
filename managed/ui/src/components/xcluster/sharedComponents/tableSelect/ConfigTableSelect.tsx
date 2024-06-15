@@ -1,86 +1,144 @@
 import { useState } from 'react';
 import {
   BootstrapTable,
-  ExpandColumnComponentProps,
   Options,
   SortOrder as ReactBSTableSortOrder,
   TableHeaderColumn
 } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
+import moment from 'moment';
+import { Typography } from '@material-ui/core';
+import { useTranslation } from 'react-i18next';
 
 import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
-import { api, universeQueryKey } from '../../../../redesign/helpers/api';
+import {
+  alertConfigQueryKey,
+  api,
+  metricQueryKey,
+  universeQueryKey
+} from '../../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
-import { formatBytes, augmentTablesWithXClusterDetails, tableSort } from '../../ReplicationUtils';
+import {
+  formatBytes,
+  augmentTablesWithXClusterDetails,
+  tableSort,
+  getStrictestReplicationLagAlertThreshold
+} from '../../ReplicationUtils';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
-import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
+import { SortOrder } from '../../../../redesign/helpers/constants';
+import {
+  liveMetricTimeRangeUnit,
+  liveMetricTimeRangeValue,
+  MetricName,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../../constants';
+import { getTableUuid } from '../../../../utils/tableUtils';
+import { getAlertConfigurations } from '../../../../actions/universe';
+import { AlertTemplate } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import { ExpandColumnComponent } from './ExpandColumnComponent';
 
-import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import {
+  MetricsQueryParams,
+  TableType,
+  Universe,
+  YBTable
+} from '../../../../redesign/helpers/dtos';
 import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
+import { NodeAggregation, SplitType } from '../../../metrics/dtos';
 
 import styles from './ConfigTableSelect.module.scss';
 
 interface RowItem {
-  keyspace: string;
+  namespace: string;
   sizeBytes: number;
   xClusterTables: XClusterTable[];
 }
 
 interface ConfigTableSelectProps {
   xClusterConfig: XClusterConfig;
-  selectedTableUUIDs: string[];
+  isDrInterface: boolean;
   setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
+  selectedTableUUIDs: string[];
   configTableType: XClusterTableType;
-  selectedKeyspaces: string[];
-  setSelectedKeyspaces: (selectedKeyspaces: string[]) => void;
+  selectedNamespaces: string[];
+  setSelectedNamespaces: (selectedNamespaces: string[]) => void;
   selectionError: { title?: string; body?: string } | undefined;
   selectionWarning: { title: string; body: string } | undefined;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
-
-const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
 /**
  * Input component for selecting tables for xCluster configuration.
- * The state of selected tables and keyspaces is controlled externally.
+ * The state of selected tables and namespaces is controlled externally.
  */
 export const ConfigTableSelect = ({
   xClusterConfig,
   selectedTableUUIDs,
   setSelectedTableUUIDs,
+  isDrInterface,
   configTableType,
-  selectedKeyspaces,
-  setSelectedKeyspaces,
+  selectedNamespaces,
+  setSelectedNamespaces,
   selectionError,
   selectionWarning
 }: ConfigTableSelectProps) => {
-  const [keyspaceSearchTerm, setKeyspaceSearchTerm] = useState('');
+  const [namespaceSearchTerm, setNamespaceSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof RowItem>('keyspace');
+  const [sortField, setSortField] = useState<keyof RowItem>('namespace');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+  );
+
+  const replicationLagMetricSettings = {
+    metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
+    nodeAggregation: NodeAggregation.MAX,
+    splitType: SplitType.TABLE
+  };
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [replicationLagMetricSettings],
+    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+    xClusterConfigUuid: xClusterConfig.uuid,
+    start: moment().subtract(liveMetricTimeRangeValue, liveMetricTimeRangeUnit).format('X'),
+    end: moment().format('X')
+  };
+  const tableReplicationLagQuery = useQuery(
+    metricQueryKey.live(
+      replicationLagMetricRequestParams,
+      liveMetricTimeRangeValue,
+      liveMetricTimeRangeUnit
+    ),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
+    {
+      enabled: !!sourceUniverseQuery.data
+    }
+  );
+  const alertConfigFilter = {
+    template: AlertTemplate.REPLICATION_LAG,
+    targetUuid: xClusterConfig.sourceUniverseUUID
+  };
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+    getAlertConfigurations(alertConfigFilter)
   );
 
   if (
@@ -107,94 +165,82 @@ export const ConfigTableSelect = ({
     return <YBErrorIndicator />;
   }
 
-  const toggleTableGroup = (isSelected: boolean, rows: XClusterTable[]) => {
+  const toggleTableGroup = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
     if (isSelected) {
-      const tableUUIDsToAdd: string[] = [];
-      const currentSelectedTableUUIDs = new Set(selectedTableUUIDs);
+      const currentSelectedTableUuids = new Set(selectedTableUUIDs);
 
-      rows.forEach((row) => {
-        if (!currentSelectedTableUUIDs.has(row.tableUUID)) {
-          tableUUIDsToAdd.push(row.tableUUID);
-        }
+      xClusterTables.forEach((xClusterTable) => {
+        currentSelectedTableUuids.add(getTableUuid(xClusterTable));
       });
 
-      setSelectedTableUUIDs([...selectedTableUUIDs, ...tableUUIDsToAdd]);
+      setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
     } else {
-      const removedTables = new Set(rows.map((row) => row.tableUUID));
+      const removedTableUuids = new Set(
+        xClusterTables.map((xClustertables) => getTableUuid(xClustertables))
+      );
 
       setSelectedTableUUIDs(
-        selectedTableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID))
+        selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
       );
     }
   };
 
-  const handleAllTableSelect = (isSelected: boolean, rows: XClusterTable[]) => {
-    toggleTableGroup(isSelected, rows);
+  const handleTableGroupToggle = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
+    toggleTableGroup(isSelected, xClusterTables);
     return true;
   };
 
-  const handleTableSelect = (row: XClusterTable, isSelected: boolean) => {
-    if (isSelected) {
-      setSelectedTableUUIDs([...selectedTableUUIDs, row.tableUUID]);
-    } else {
-      setSelectedTableUUIDs([
-        ...selectedTableUUIDs.filter((tableUUID: string) => tableUUID !== row.tableUUID)
-      ]);
-    }
+  const handleTableToggle = (xClustertable: XClusterTable, isSelected: boolean) => {
+    toggleTableGroup(isSelected, [xClustertable]);
   };
 
-  const toggleKeyspaceGroup = (isSelected: boolean, rows: RowItem[]) => {
+  const toggleNamespaceGroup = (isSelected: boolean, rows: RowItem[]) => {
     if (isSelected) {
-      const keyspacesToAdd: string[] = [];
-      const currentSelectedKeyspaces = new Set(selectedKeyspaces);
+      const currentSelectedNamespaces = new Set(selectedNamespaces);
 
       rows.forEach((row) => {
-        if (!currentSelectedKeyspaces.has(row.keyspace)) {
-          keyspacesToAdd.push(row.keyspace);
-        }
+        currentSelectedNamespaces.add(row.namespace);
       });
-      setSelectedKeyspaces([...selectedKeyspaces, ...keyspacesToAdd]);
+      setSelectedNamespaces(Array.from(currentSelectedNamespaces));
     } else {
-      const removedKeyspaces = new Set(rows.map((row) => row.keyspace));
+      const removedNamespaceUuids = new Set(rows.map((row) => row.namespace));
 
-      setSelectedKeyspaces(
-        selectedKeyspaces.filter((keyspace: string) => !removedKeyspaces.has(keyspace))
+      setSelectedNamespaces(
+        selectedNamespaces.filter((namespace: string) => !removedNamespaceUuids.has(namespace))
       );
     }
   };
 
-  const handleAllKeyspaceSelect = (isSelected: boolean, rows: RowItem[]) => {
-    const underlyingTables = rows.reduce((table: XClusterTable[], row) => {
+  const handleAllNamespaceSelect = (isSelected: boolean, rows: RowItem[]) => {
+    const selectedTables = rows.reduce((table: XClusterTable[], row) => {
       return table.concat(row.xClusterTables);
     }, []);
 
-    toggleKeyspaceGroup(isSelected, rows);
-    toggleTableGroup(isSelected, underlyingTables);
+    toggleNamespaceGroup(isSelected, rows);
+    toggleTableGroup(isSelected, selectedTables);
     return true;
   };
 
-  const handleKeyspaceSelect = (row: RowItem, isSelected: boolean) => {
-    if (isSelected) {
-      setSelectedKeyspaces([...selectedKeyspaces, row.keyspace]);
-    } else {
-      setSelectedKeyspaces(selectedKeyspaces.filter((keyspace) => keyspace !== row.keyspace));
-    }
+  const handleNamespaceSelect = (row: RowItem, isSelected: boolean) => {
+    toggleNamespaceGroup(isSelected, [row]);
     toggleTableGroup(isSelected, row.xClusterTables);
   };
 
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+    replicationLagAlertConfigQuery.data
+  );
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails
+    xClusterConfig.tableDetails,
+    maxAcceptableLag,
+    tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
+    { includeDroppedTables: false }
   );
 
   const tablesForSelection = tablesInConfig.filter(
-    (xClusterTable) =>
-      xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
-      xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
+    (xClusterTable) => xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
   );
   const rowItems = getRowItemsFromTables(tablesForSelection);
-  const sourceUniverse = sourceUniverseQuery.data;
-  const sourceUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
   const tableOptions: Options = {
     sortName: sortField,
     sortOrder: sortOrder,
@@ -204,16 +250,18 @@ export const ConfigTableSelect = ({
       setSortOrder(sortOrder);
     }
   };
-
+  const tableDescriptor = isDrInterface
+    ? t('selectionDescriptorDr')
+    : t('selectionDescriptorXCluster');
   const sourceUniverseUUID = xClusterConfig.sourceUniverseUUID;
   return (
     <>
-      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
+      <div className={styles.tableDescriptor}>{tableDescriptor}</div>
       <div className={styles.tableToolbar}>
         <YBInputField
-          containerClassName={styles.keyspaceSearchInput}
-          placeHolder="Search for keyspace.."
-          onValueChanged={(searchTerm: string) => setKeyspaceSearchTerm(searchTerm)}
+          containerClassName={styles.namespaceSearchInput}
+          placeHolder="Search for database.."
+          onValueChanged={(searchTerm: string) => setNamespaceSearchTerm(searchTerm)}
         />
       </div>
       <div className={styles.bootstrapTableContainer}>
@@ -221,8 +269,8 @@ export const ConfigTableSelect = ({
           tableContainerClass={styles.bootstrapTable}
           maxHeight="450px"
           data={rowItems
-            .filter((row) => hasSubstringMatch(row.keyspace, keyspaceSearchTerm))
-            .sort((a, b) => tableSort<RowItem>(a, b, sortField, sortOrder, 'keyspace'))
+            .filter((row) => hasSubstringMatch(row.namespace, namespaceSearchTerm))
+            .sort((a, b) => tableSort<RowItem>(a, b, sortField, sortOrder, 'namespace'))
             .slice((activePage - 1) * pageSize, activePage * pageSize)}
           expandableRow={(row: RowItem) => {
             return row.xClusterTables.length > 0;
@@ -232,27 +280,25 @@ export const ConfigTableSelect = ({
               tables={row.xClusterTables}
               selectedTableUUIDs={selectedTableUUIDs}
               tableType={configTableType}
-              sourceUniverseUUID={sourceUniverseUUID}
-              sourceUniverseNodePrefix={sourceUniverseNodePrefix}
-              handleTableSelect={handleTableSelect}
-              handleAllTableSelect={handleAllTableSelect}
+              handleTableSelect={handleTableToggle}
+              handleAllTableSelect={handleTableGroupToggle}
             />
           )}
           expandColumnOptions={{
             expandColumnVisible: true,
-            expandColumnComponent: expandColumnComponent,
+            expandColumnComponent: ExpandColumnComponent,
             columnWidth: 25
           }}
           selectRow={{
             mode: 'checkbox',
             clickToExpand: true,
-            onSelect: handleKeyspaceSelect,
-            onSelectAll: handleAllKeyspaceSelect,
-            selected: selectedKeyspaces
+            onSelect: handleNamespaceSelect,
+            onSelectAll: handleAllNamespaceSelect,
+            selected: selectedNamespaces
           }}
           options={tableOptions}
         >
-          <TableHeaderColumn dataField="keyspace" isKey={true} dataSort={true}>
+          <TableHeaderColumn dataField="namespace" isKey={true} dataSort={true}>
             Database
           </TableHeaderColumn>
           <TableHeaderColumn
@@ -287,16 +333,21 @@ export const ConfigTableSelect = ({
           />
         </div>
       )}
-      {configTableType === TableType.PGSQL_TABLE_TYPE ? (
-        <div>
-          Tables in {selectedKeyspaces.length} of {rowItems.length} database(s) selected
-        </div>
+      {configTableType === TableType.YQL_TABLE_TYPE ? (
+        <Typography variant="body2">
+          {t('tableSelectionCount', {
+            selectedTableCount: selectedTableUUIDs.length,
+            availableTableCount: tablesForSelection.length
+          })}
+        </Typography>
       ) : (
-        <div>
-          {selectedTableUUIDs.length} of {tablesForSelection.length} table(s) selected
-        </div>
+        <Typography variant="body2">
+          {t('databaseSelectionCount', {
+            selectedDatabaseCount: selectedNamespaces.length,
+            availableDatabaseCount: rowItems.length
+          })}
+        </Typography>
       )}
-
       {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>
           {selectionError && (
@@ -323,40 +374,28 @@ export const ConfigTableSelect = ({
   );
 };
 
-const expandColumnComponent = ({ isExpandableRow, isExpanded }: ExpandColumnComponentProps) => {
-  if (!isExpandableRow) {
-    return '';
-  }
-  return (
-    <div>
-      {isExpanded ? (
-        <i className="fa fa-caret-up" aria-hidden="true" />
-      ) : (
-        <i className="fa fa-caret-down" aria-hidden="true" />
-      )}
-    </div>
-  );
-};
-
 function getRowItemsFromTables(xClusterConfigTables: XClusterTable[]): RowItem[] {
   /**
-   * Map from keyspace name to keyspace details.
+   * Map from namespace name to namespace details.
    */
-  const keyspaceMap = new Map<string, { xClusterTables: XClusterTable[]; sizeBytes: number }>();
+  const namespaceToNamespaceDetails = new Map<
+    string,
+    { xClusterTables: XClusterTable[]; sizeBytes: number }
+  >();
   xClusterConfigTables.forEach((xClusterTable) => {
-    const keyspaceDetails = keyspaceMap.get(xClusterTable.keySpace);
-    if (keyspaceDetails !== undefined) {
-      keyspaceDetails.xClusterTables.push(xClusterTable);
-      keyspaceDetails.sizeBytes += xClusterTable.sizeBytes;
+    const namespaceDetails = namespaceToNamespaceDetails.get(xClusterTable.keySpace);
+    if (namespaceDetails !== undefined) {
+      namespaceDetails.xClusterTables.push(xClusterTable);
+      namespaceDetails.sizeBytes += xClusterTable.sizeBytes;
     } else {
-      keyspaceMap.set(xClusterTable.keySpace, {
+      namespaceToNamespaceDetails.set(xClusterTable.keySpace, {
         xClusterTables: [xClusterTable],
         sizeBytes: xClusterTable.sizeBytes
       });
     }
   });
-  return Array.from(keyspaceMap, ([keyspace, keyspaceDetails]) => ({
-    keyspace,
-    ...keyspaceDetails
+  return Array.from(namespaceToNamespaceDetails, ([namespace, namespaceDetails]) => ({
+    namespace: namespace,
+    ...namespaceDetails
   }));
 }

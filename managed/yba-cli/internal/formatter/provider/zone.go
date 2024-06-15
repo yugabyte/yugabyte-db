@@ -6,11 +6,13 @@ package provider
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"text/template"
 
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/kubernetes"
 )
@@ -78,7 +80,7 @@ func (z *ZoneContext) Write(providerCode string, index int) error {
 	}
 	z.PostFormat(tmpl, NewZoneContext())
 	switch providerCode {
-	case "kubernetes":
+	case util.K8sProviderType:
 		tmpl, err = z.startSubsection(kubernetes.Region1)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
@@ -129,6 +131,17 @@ func (z *ZoneContext) Write(providerCode string, index int) error {
 		z.Output.Write([]byte("\n"))
 
 		tmpl, err = z.startSubsection(kubernetes.Region5)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := z.ContextFormat(tmpl, zc.KubeZone); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		z.PostFormat(tmpl, kubernetes.NewZoneContext())
+
+		tmpl, err = z.startSubsection(kubernetes.Region6)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
 			return err
@@ -195,4 +208,9 @@ func (z *ZoneContext) Subnet() string {
 // SecondarySubnet fetches Zone SecondarySubnet
 func (z *ZoneContext) SecondarySubnet() string {
 	return z.z.GetSecondarySubnet()
+}
+
+// MarshalJSON function
+func (z *ZoneContext) MarshalJSON() ([]byte, error) {
+	return json.Marshal(z.z)
 }

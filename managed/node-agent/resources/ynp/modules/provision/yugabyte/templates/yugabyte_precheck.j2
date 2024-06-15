@@ -1,0 +1,35 @@
+
+# Check if the yugabyte user exists
+if id {{ yb_user }} &>/dev/null; then
+    echo "User {{ yb_user }} exists"
+else
+    echo "User {{ yb_user }} does not exist"
+    exit 1
+fi
+
+# Check the correct permissions for yb_home_dir
+if [ -d {{ yb_home_dir }} ]; then
+    owner=$(stat -c "%U" "{{ yb_home_dir }}")
+    group=$(stat -c "%G" {{ yb_home_dir }}")
+    permissions=$(stat -c "%a" "{{ yb_home_dir }}")
+
+    if [ "$owner" != "{{ yb_user }}" ]; then
+        echo "Ownership of {{ yb_home_dir }} is incorrect. Expected owner: {{ yb_user }}, Found: $owner"
+        exit 1
+    fi
+
+    if [ "$group" != "{{ yb_user }}" ]; then
+        echo "Group ownership of {{ yb_home_dir }} is incorrect. Expected group: {{ yb_user }}, Found: $group"
+        exit 1
+    fi
+
+    if [ "$permissions" -lt 711 ]; then
+        echo "Permissions of {{ yb_home_dir }} are too permissive. Expected: 711 or greater, Found: $permissions"
+        exit 1
+    fi
+
+    echo "{{ yb_home_dir }} has the correct ownership and acceptable permissions"
+else
+    echo "{{ yb_home_dir }} does not exist"
+    exit 1
+fi

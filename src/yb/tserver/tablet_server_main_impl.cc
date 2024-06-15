@@ -57,7 +57,7 @@
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/skewed_clock.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/tserver/factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/tablet_server.h"
@@ -103,9 +103,6 @@ DEFINE_NON_RUNTIME_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
 
-DEFINE_NON_RUNTIME_bool(start_pgsql_proxy, false,
-            "Whether to run a PostgreSQL server as a child process of the tablet server");
-
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
 DECLARE_int32(webserver_port);
@@ -131,6 +128,7 @@ DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(start_pgsql_proxy);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_uint32(ysql_conn_mgr_port);
 DECLARE_bool(ysql_conn_mgr_use_unix_conn);
@@ -193,18 +191,17 @@ void SetProxyAddresses() {
 
 Status SetSslConf(const std::unique_ptr<TabletServer> &server,
     yb::ProcessWrapperCommonConfig* config) {
-    config->certs_dir = FLAGS_certs_dir.empty()
-       ? server::DefaultCertsDir(*server->fs_manager())
-       : FLAGS_certs_dir;
-    config->certs_for_client_dir = FLAGS_certs_for_client_dir.empty()
-       ? config->certs_dir
-       : FLAGS_certs_for_client_dir;
-    config->enable_tls = FLAGS_use_client_to_server_encryption;
+  config->certs_dir = FLAGS_certs_dir.empty()
+                          ? rpc::GetCertsDir(server->fs_manager()->GetDefaultRootDir())
+                          : FLAGS_certs_dir;
+  config->certs_for_client_dir =
+      FLAGS_certs_for_client_dir.empty() ? config->certs_dir : FLAGS_certs_for_client_dir;
+  config->enable_tls = FLAGS_use_client_to_server_encryption;
 
-    // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
-    // server_broadcast_addresses then rpc_bind_addresses.
-    if (!FLAGS_cert_node_filename.empty()) {
-      config->cert_base_name = FLAGS_cert_node_filename;
+  // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
+  // server_broadcast_addresses then rpc_bind_addresses.
+  if (!FLAGS_cert_node_filename.empty()) {
+    config->cert_base_name = FLAGS_cert_node_filename;
     } else {
       const auto server_broadcast_addresses =
           HostPort::ParseStrings(server->options().server_broadcast_addresses, 0);
@@ -254,7 +251,7 @@ int TabletServerMain(int argc, char** argv) {
   }
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
-      TabletServerOptions::kServerType, &argc, &argv));
+      TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
 
   auto termination_monitor = TerminationMonitor::Create();
 
@@ -306,6 +303,8 @@ int TabletServerMain(int argc, char** argv) {
     ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
         ysql_conn_mgr_wrapper::YsqlConnMgrConf(
           tablet_server_options->fs_opts.data_paths.front());
+    ysql_conn_mgr_conf.yb_tserver_key_ = UInt64ToString(
+        server->GetSharedMemoryPostgresAuthKey());
 
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &ysql_conn_mgr_conf));
 

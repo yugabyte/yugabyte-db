@@ -55,7 +55,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -377,7 +377,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
     when(mockAWSUtil.getCloudLocationInfo(nullable(String.class), any(), nullable(String.class)))
         .thenCallRealMethod();
-    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
+    CloudStoreConfig csConfig =
+        ybcBackupUtil.createBackupConfig(storageConfig, commonDir, defaultUniverse);
     Map<String, String> s3DefaultCredsMap =
         new HashMap<String, String>() {
           {
@@ -615,6 +616,73 @@ public class YbcBackupUtilTest extends FakeDBApplication {
   }
 
   @Test(expected = Test.None.class)
+  public void testGeneratedMapToRestoreYCQLTableByTable() {
+    String backupLocation_1 = "s3://foo/univ-000/backup-001";
+    List<String> tL1 = Arrays.asList("t1");
+    String backupLocation_2 = "s3://foo/univ-000/backup-002";
+    List<String> tL2 = Arrays.asList("t2");
+    String backupLocation_3 = "s3://foo/univ-000/backup-003";
+    List<String> tL3 = Arrays.asList("t3");
+    String keyspace1 = "foo";
+    PerBackupLocationKeyspaceTables bL1_KeyspaceTables =
+        PerBackupLocationKeyspaceTables.builder()
+            .originalKeyspace(keyspace1)
+            .tableNameList(tL1)
+            .build();
+    PerBackupLocationKeyspaceTables bL2_KeyspaceTables =
+        PerBackupLocationKeyspaceTables.builder()
+            .originalKeyspace(keyspace1)
+            .tableNameList(tL2)
+            .build();
+    PerBackupLocationKeyspaceTables bL3_KeyspaceTables =
+        PerBackupLocationKeyspaceTables.builder()
+            .originalKeyspace(keyspace1)
+            .tableNameList(tL3)
+            .build();
+    PerLocationBackupInfo bInfo1 =
+        PerLocationBackupInfo.builder()
+            .backupLocation(backupLocation_1)
+            .perBackupLocationKeyspaceTables(bL1_KeyspaceTables)
+            .build();
+    PerLocationBackupInfo bInfo2 =
+        PerLocationBackupInfo.builder()
+            .backupLocation(backupLocation_2)
+            .perBackupLocationKeyspaceTables(bL2_KeyspaceTables)
+            .build();
+    PerLocationBackupInfo bInfo3 =
+        PerLocationBackupInfo.builder()
+            .backupLocation(backupLocation_3)
+            .perBackupLocationKeyspaceTables(bL3_KeyspaceTables)
+            .build();
+    Map<String, PerLocationBackupInfo> locationBInfoMap = new HashMap<>();
+    locationBInfoMap.put(backupLocation_1, bInfo1);
+    locationBInfoMap.put(backupLocation_2, bInfo2);
+    locationBInfoMap.put(backupLocation_3, bInfo3);
+
+    // Case: Table by Table backup restore
+    BackupStorageInfo rInfo_1 = new BackupStorageInfo();
+    rInfo_1.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_1.storageLocation = backupLocation_1;
+    rInfo_1.keyspace = "foo_r";
+    BackupStorageInfo rInfo_2 = new BackupStorageInfo();
+    rInfo_2.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_2.storageLocation = backupLocation_2;
+    rInfo_2.keyspace = "foo_r";
+    BackupStorageInfo rInfo_3 = new BackupStorageInfo();
+    rInfo_3.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_3.storageLocation = backupLocation_3;
+    rInfo_3.keyspace = "foo_r";
+    List<BackupStorageInfo> bInfosList = Arrays.asList(rInfo_1, rInfo_2, rInfo_3);
+    Map<TableType, Map<String, Set<String>>> restoreMap =
+        YbcBackupUtil.generateMapToRestoreNonRedisYBC(bInfosList, locationBInfoMap);
+    Map<String, Set<String>> ycqlRestore = restoreMap.get(TableType.YQL_TABLE_TYPE);
+
+    assertTrue(ycqlRestore.size() == 1);
+    assertTrue(ycqlRestore.get("foo_r").size() == 3);
+    assertTrue(restoreMap.get(TableType.PGSQL_TABLE_TYPE).size() == 0);
+  }
+
+  @Test(expected = Test.None.class)
   public void testGenerateMapToRestoreYCQLSameBackupLocationNoOverwrite() {
     String backupLocation_1 = "s3://foo/univ-000/backup-001";
     List<String> tL1 = Arrays.asList("t1", "t2", "t3", "t4");
@@ -653,6 +721,111 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     assertTrue(ycqlRestore.size() == 1);
     assertTrue(restoreMap.get(TableType.PGSQL_TABLE_TYPE).size() == 0);
     assertTrue(CollectionUtils.isEqualCollection(tL1, ycqlRestore.get("foo_r")));
+  }
+
+  @Test(expected = Test.None.class)
+  public void testGenerateMapToRestoreYCQLDifferentLocationSameKeyspaceNoOverwrite() {
+    String backupLocation_1 = "s3://foo/univ-000/backup-001";
+    List<String> tL1 = Arrays.asList("t1", "t2");
+    String keyspace1 = "foo_1";
+    PerBackupLocationKeyspaceTables bL1_KeyspaceTables =
+        PerBackupLocationKeyspaceTables.builder()
+            .originalKeyspace(keyspace1)
+            .tableNameList(tL1)
+            .build();
+    PerLocationBackupInfo bInfo1 =
+        PerLocationBackupInfo.builder()
+            .backupLocation(backupLocation_1)
+            .perBackupLocationKeyspaceTables(bL1_KeyspaceTables)
+            .build();
+    String backupLocation_2 = "s3://foo/univ-000/backup-002";
+    List<String> tL2 = Arrays.asList("t3", "t4");
+    String keyspace2 = "foo_2";
+    PerBackupLocationKeyspaceTables bL2_KeyspaceTables =
+        PerBackupLocationKeyspaceTables.builder()
+            .originalKeyspace(keyspace2)
+            .tableNameList(tL2)
+            .build();
+    PerLocationBackupInfo bInfo2 =
+        PerLocationBackupInfo.builder()
+            .backupLocation(backupLocation_2)
+            .perBackupLocationKeyspaceTables(bL2_KeyspaceTables)
+            .build();
+
+    Map<String, PerLocationBackupInfo> locationBInfoMap = new HashMap<>();
+    locationBInfoMap.put(backupLocation_1, bInfo1);
+    locationBInfoMap.put(backupLocation_2, bInfo2);
+
+    // Case 2: Partial restore
+    BackupStorageInfo rInfo_1 = new BackupStorageInfo();
+    rInfo_1.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_1.storageLocation = backupLocation_1;
+    rInfo_1.keyspace = "foo_r";
+    rInfo_1.tableNameList = Arrays.asList("t1", "t2");
+    BackupStorageInfo rInfo_2 = new BackupStorageInfo();
+    rInfo_2.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_2.storageLocation = backupLocation_2;
+    rInfo_2.keyspace = "foo_r";
+    rInfo_2.tableNameList = Arrays.asList("t3", "t4");
+    List<BackupStorageInfo> bInfosList = Arrays.asList(rInfo_1, rInfo_2);
+    Map<TableType, Map<String, Set<String>>> restoreMap =
+        YbcBackupUtil.generateMapToRestoreNonRedisYBC(bInfosList, locationBInfoMap);
+    Map<String, Set<String>> ycqlRestore = restoreMap.get(TableType.YQL_TABLE_TYPE);
+
+    assertTrue(ycqlRestore.size() == 1);
+    assertTrue(restoreMap.get(TableType.PGSQL_TABLE_TYPE).size() == 0);
+    // Should contain all tables
+    assertTrue(ycqlRestore.get("foo_r").size() == 4);
+  }
+
+  @Test
+  public void testGenerateMapToRestoreYCQLDifferentKeyspaceSameTablesOverwrite() {
+    String backupLocation_1 = "s3://foo/univ-000/backup-001";
+    List<String> tL1 = Arrays.asList("t1", "t2");
+    String keyspace1 = "foo_1";
+    PerBackupLocationKeyspaceTables bL1_KeyspaceTables =
+        PerBackupLocationKeyspaceTables.builder()
+            .originalKeyspace(keyspace1)
+            .tableNameList(tL1)
+            .build();
+    PerLocationBackupInfo bInfo1 =
+        PerLocationBackupInfo.builder()
+            .backupLocation(backupLocation_1)
+            .perBackupLocationKeyspaceTables(bL1_KeyspaceTables)
+            .build();
+    String backupLocation_2 = "s3://foo/univ-000/backup-002";
+    List<String> tL2 = Arrays.asList("t1", "t2");
+    String keyspace2 = "foo_2";
+    PerBackupLocationKeyspaceTables bL2_KeyspaceTables =
+        PerBackupLocationKeyspaceTables.builder()
+            .originalKeyspace(keyspace2)
+            .tableNameList(tL2)
+            .build();
+    PerLocationBackupInfo bInfo2 =
+        PerLocationBackupInfo.builder()
+            .backupLocation(backupLocation_2)
+            .perBackupLocationKeyspaceTables(bL2_KeyspaceTables)
+            .build();
+
+    Map<String, PerLocationBackupInfo> locationBInfoMap = new HashMap<>();
+    locationBInfoMap.put(backupLocation_1, bInfo1);
+    locationBInfoMap.put(backupLocation_2, bInfo2);
+
+    // Case 2: Partial restore
+    BackupStorageInfo rInfo_1 = new BackupStorageInfo();
+    rInfo_1.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_1.storageLocation = backupLocation_1;
+    rInfo_1.keyspace = "foo_r";
+    BackupStorageInfo rInfo_2 = new BackupStorageInfo();
+    rInfo_2.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_2.storageLocation = backupLocation_2;
+    rInfo_2.keyspace = "foo_r";
+    List<BackupStorageInfo> bInfosList = Arrays.asList(rInfo_1, rInfo_2);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> YbcBackupUtil.generateMapToRestoreNonRedisYBC(bInfosList, locationBInfoMap));
+    assertTrue(ex.getMessage().equals("Overwrite of data attempted for YCQL keyspace foo_r"));
   }
 
   @Test
@@ -738,7 +911,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         assertThrows(
             PlatformServiceException.class,
             () -> YbcBackupUtil.generateMapToRestoreNonRedisYBC(bInfosList_2, locationBInfoMap));
-    assertTrue(ex.getMessage().equals("Overwrite of data attempted for keyspace foo_r"));
+    assertTrue(ex.getMessage().equals("Overwrite of data attempted for YCQL keyspace foo_r"));
 
     // Case 3: Same keyspace and no table provided in second sub-request
     BackupStorageInfo rInfo_5 = new BackupStorageInfo();
@@ -755,7 +928,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         assertThrows(
             PlatformServiceException.class,
             () -> YbcBackupUtil.generateMapToRestoreNonRedisYBC(bInfosList_3, locationBInfoMap));
-    assertTrue(ex.getMessage().equals("Overwrite of data attempted for keyspace foo_r"));
+    assertTrue(ex.getMessage().equals("Overwrite of data attempted for YCQL keyspace foo_r"));
   }
 
   @Test
@@ -775,11 +948,11 @@ public class YbcBackupUtilTest extends FakeDBApplication {
 
     // Only case: Repeated DB name to restore.
     BackupStorageInfo rInfo_1 = new BackupStorageInfo();
-    rInfo_1.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_1.backupType = TableType.PGSQL_TABLE_TYPE;
     rInfo_1.storageLocation = backupLocation_1;
     rInfo_1.keyspace = "foo_r";
     BackupStorageInfo rInfo_2 = new BackupStorageInfo();
-    rInfo_2.backupType = TableType.YQL_TABLE_TYPE;
+    rInfo_2.backupType = TableType.PGSQL_TABLE_TYPE;
     rInfo_2.storageLocation = backupLocation_1;
     rInfo_2.keyspace = "foo_r";
     List<BackupStorageInfo> bInfosList_1 = Arrays.asList(rInfo_1, rInfo_2);
@@ -787,7 +960,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         assertThrows(
             PlatformServiceException.class,
             () -> YbcBackupUtil.generateMapToRestoreNonRedisYBC(bInfosList_1, locationBInfoMap));
-    assertTrue(ex.getMessage().equals("Overwrite of data attempted for keyspace foo_r"));
+    assertTrue(ex.getMessage().equals("Overwrite of data attempted for YSQL keyspace foo_r"));
   }
 
   @Test

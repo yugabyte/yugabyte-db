@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.supportbundle;
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -106,7 +107,8 @@ public class YbcLogsComponentTest extends FakeDBApplication {
     when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
     doCallRealMethod()
         .when(mockSupportBundleUtil)
-        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        .batchWiseDownload(
+            any(), any(), any(), any(), any(), any(), any(), any(), any(), eq(false));
 
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
     // Generate a fake shell response containing the entire list of file paths
@@ -143,10 +145,10 @@ public class YbcLogsComponentTest extends FakeDBApplication {
         new YbcLogsComponent(
             mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
     ybcLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+        null, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 
     // Check that the download function is called
-    verify(mockUniverseInfoHandler, times(1))
+    verify(mockUniverseInfoHandler, times(2))
         .downloadNodeFile(any(), any(), any(), any(), any(), any());
 
     // Check if the logs directory is created

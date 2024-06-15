@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
+import com.yugabyte.yw.forms.DatabaseUserFormData.RoleAttribute;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -38,8 +39,6 @@ import play.mvc.Http;
 @Singleton
 public class YsqlQueryExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(YsqlQueryExecutor.class);
-  private static final String DEFAULT_DB_USER = Util.DEFAULT_YSQL_USERNAME;
-  private static final String DEFAULT_DB_PASSWORD = Util.DEFAULT_YSQL_PASSWORD;
   private static final String DB_ADMIN_ROLE_NAME = Util.DEFAULT_YSQL_ADMIN_ROLE_NAME;
   private static final String PRECREATED_DB_ADMIN = "yb_db_admin";
 
@@ -70,11 +69,8 @@ public class YsqlQueryExecutor {
           + "('pg_execute_server_program', 'pg_read_server_files', "
           + "'pg_write_server_files'));";
   private static final String DEL_PG_ROLES_CMD_2 =
-      "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
-          + "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
-          + "pg_write_server_files; "
-          + "UPDATE pg_yb_catalog_version "
-          + "SET current_version = current_version + 1 WHERE db_oid = 1;";
+      "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
+          + "pg_write_server_files; ";
 
   RuntimeConfigFactory runtimeConfigFactory;
   NodeUniverseManager nodeUniverseManager;
@@ -136,17 +132,14 @@ public class YsqlQueryExecutor {
     return rows;
   }
 
-  public JsonNode executeQuery(Universe universe, RunQueryFormData queryParams) {
-    return executeQuery(universe, queryParams, DEFAULT_DB_USER, DEFAULT_DB_PASSWORD);
-  }
-
   public JsonNode executeQuery(
       Universe universe, RunQueryFormData queryParams, String username, String password) {
     ObjectNode response = newObject();
 
     String ysqlEndpoints = universe.getYSQLServerAddresses();
     String connectString =
-        String.format("jdbc:postgresql://%s/%s", ysqlEndpoints.split(",")[0], queryParams.db_name);
+        String.format(
+            "jdbc:postgresql://%s/%s", ysqlEndpoints.split(",")[0], queryParams.getDbName());
     Properties props = new Properties();
     props.put("user", username);
     props.put("password", password);
@@ -162,7 +155,7 @@ public class YsqlQueryExecutor {
       if (conn == null) {
         response.put("error", "Unable to connect to DB");
       } else {
-        PreparedStatement p = conn.prepareStatement(queryParams.query);
+        PreparedStatement p = conn.prepareStatement(queryParams.getQuery());
         boolean hasResult = p.execute();
         if (hasResult) {
           ResultSet result = p.getResultSet();
@@ -170,12 +163,12 @@ public class YsqlQueryExecutor {
           response.set("result", toJson(rows));
         } else {
           response
-              .put("queryType", getQueryType(queryParams.query))
+              .put("queryType", getQueryType(queryParams.getQuery()))
               .put("count", p.getUpdateCount());
         }
       }
     } catch (SQLException | RuntimeException e) {
-      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.query));
+      response.put("error", removeQueryFromErrorMessage(e.getMessage(), queryParams.getQuery()));
     }
     return response;
   }
@@ -206,7 +199,7 @@ public class YsqlQueryExecutor {
         universe,
         queryParams,
         node,
-        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        timeoutSec,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
   }
 
@@ -218,15 +211,15 @@ public class YsqlQueryExecutor {
       boolean authEnabled) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
-    String queryType = getQueryType(queryParams.query);
+    String queryType = getQueryType(queryParams.getQuery());
     String queryString =
-        queryType.equals("SELECT") ? wrapJsonAgg(queryParams.query) : queryParams.query;
+        queryType.equals("SELECT") ? wrapJsonAgg(queryParams.getQuery()) : queryParams.getQuery();
     ShellResponse shellResponse = new ShellResponse();
     try {
       shellResponse =
           nodeUniverseManager
               .runYsqlCommand(
-                  node, universe, queryParams.db_name, queryString, timeoutSec, authEnabled)
+                  node, universe, queryParams.getDbName(), queryString, timeoutSec, authEnabled)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
@@ -311,6 +304,15 @@ public class YsqlQueryExecutor {
             String.format(
                 "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO \"%1$s\"; ", data.username))
         .append(DEL_PG_ROLES_CMD_1);
+
+    // Construct ALTER ROLE statements based on the roleAttributes specified
+    if (data.dbRoleAttributes != null) {
+      for (RoleAttribute roleAttribute : data.dbRoleAttributes) {
+        createUserWithPrivileges.append(
+            String.format(
+                "ALTER ROLE \"%s\" %s;", data.username, roleAttribute.getName().toString()));
+      }
+    }
 
     try {
       runUserDbCommands(createUserWithPrivileges.toString(), data.dbName, universe);
@@ -415,6 +417,16 @@ public class YsqlQueryExecutor {
               "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username);
       allQueries.append(String.format("%s; ", query));
     }
+
+    // Construct ALTER ROLE statements based on the roleAttributes specified
+    if (data.dbRoleAttributes != null) {
+      for (RoleAttribute roleAttribute : data.dbRoleAttributes) {
+        allQueries.append(
+            String.format(
+                "ALTER ROLE \"%s\" %s;", data.username, roleAttribute.getName().toString()));
+      }
+    }
+
     query = "SELECT pg_stat_statements_reset();";
     allQueries.append(query);
 
@@ -431,8 +443,8 @@ public class YsqlQueryExecutor {
           Http.Status.INTERNAL_SERVER_ERROR, "DB not ready to create a user");
     }
     RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.query = query;
-    ysqlQuery.db_name = dbName;
+    ysqlQuery.setQuery(query);
+    ysqlQuery.setDbName(dbName);
 
     JsonNode ysqlResponse = executeQueryInNodeShell(universe, ysqlQuery, nodeToUse);
     if (ysqlResponse.has("error")) {
@@ -445,8 +457,8 @@ public class YsqlQueryExecutor {
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.db_name = data.dbName;
-    ysqlQuery.query = "SELECT 1";
+    ysqlQuery.setDbName(data.dbName);
+    ysqlQuery.setQuery("SELECT 1");
     JsonNode ysqlResponse =
         executeQuery(universe, ysqlQuery, data.ysqlAdminUsername, data.ysqlAdminPassword);
     if (ysqlResponse.has("error")) {

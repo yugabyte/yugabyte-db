@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: architecture-concurrency-control
     parent: architecture-acid-transactions
-    weight: 30
+    weight: 600
 type: docs
 ---
 
@@ -20,9 +20,8 @@ For information on how row-level explicit locking clauses behave with these conc
 ## Fail-on-Conflict
 
 This is the default concurrency control strategy and is applicable for `Repeatable Read` and `Serializable` isolation levels.
-It is not applicable for [Read Committed](../read-committed/) isolation.
 
-In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/).
+In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/). As an exception, all transactions in Read Committed isolation have the same priority set to the highest value (in other words, no transaction can preempt an active Read Committed isolation transaction).
 
 If a conflict occurs, a transaction with the lower priority is aborted. There are two possibilities when a transaction T1 tries to read, write, or lock a row in a mode conflicting with other concurrent transactions:
 
@@ -301,7 +300,7 @@ commit;
 
 ### Best-effort internal retries for first statement in a transaction
 
-Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `ysql_max_write_restart_attempts` YB-TServer flag and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
+Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `yb_max_query_layer_retries` YSQL configuration parameter and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
 
 Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1 and T2 would no longer be "concurrent".
 
@@ -311,7 +310,7 @@ Note that the retries will not be performed in case the amount of data to be sen
 
 {{< note >}}
 
-Wait-on-conflict is [Tech Preview](/preview/releases/versioning/#feature-availability).
+Wait-on-conflict is [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 {{</note >}}
 
@@ -325,12 +324,6 @@ In this mode, transactions are not assigned priorities. If a conflict occurs whe
 `Wait-on-Conflict` behavior can be enabled by setting the YB-TServer flag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the flag to take effect. Without this flag set, transactions operate in the priority based `Fail-on-Conflict` mode by default.
 
 Because T1 can make progress only if the conflicting transactions didn't commit any conflicting permanent modifications, there are some intricacies in the behaviour. The list of exhaustive cases possible are detailed below in the Examples section.
-
-{{< note >}}
-
-Semantics of [Read Committed](../read-committed/) isolation make sense only with the Wait-on-Conflict behaviour. Refer to [Interaction with concurrency control](../read-committed/#interaction-with-concurrency-control) for more information.
-
-{{</note >}}
 
 {{< note title="Best-effort internal retries also apply to Wait-on-Conflict policy" >}}
 
@@ -1113,9 +1106,7 @@ commit;
 
 ### Distributed deadlock detection
 
-In the Wait-on-Conflict mode, transactions can wait for each other and result in a deadlock. Setting the YB-TServer flag `enable_deadlock_detection=true` runs a distributed deadlock detection algorithm in the background to detect and break deadlocks. It is always recommended to keep deadlock detection on when `enable_wait_queues=true`, unless it is absolutely certain that the application or workload behavior makes deadlocks impossible. A rolling restart is required for the change to take effect.
-
-Add `enable_deadlock_detection=true` to the list of TServer flags and restart the cluster.
+In the Wait-on-Conflict mode, transactions can wait for each other and result in a deadlock. By default, any cluster with wait queues enabled will be running a distributed deadlock detection algorithm in the background to detect and break deadlocks. It's possible to explicitly disable deadlock detection by setting the YB-TServer flag `disable_deadlock_detection=true`, but this is generally not recommended unless it is absolutely certain that the application or workload behavior makes deadlocks impossible.
 
 <table class="no-alter-colors">
 <thead>
@@ -1179,7 +1170,7 @@ UPDATE 1
 update test set v=4 where k=2;
 ```
 
-```ouput
+```output
 UPDATE 1
 ```
 
@@ -1229,6 +1220,37 @@ commit;
   </tr>
 </tbody>
 </table>
+
+### Versioning and upgrades
+
+When turning `enable_wait_queues` on or off, or during a rolling restart, where during an update the flag could be on nodes with a more recent version, if some nodes have wait-on-conflict behavior enabled and some don't, you will experience mixed (but still correct) behavior.
+
+A mix of both fail-on-conflict and wait-on-conflict traffic results in the following additional YSQL-specific semantics:
+
+- If a transaction using fail-on-conflict encounters transactions that have conflicting writes -
+  - If there is even a single conflicting transaction that uses wait-on-conflict, the transaction aborts.
+  - Otherwise, YugabyteDB uses the regular [fail-on-conflict semantics](#fail-on-conflict), which is to abort the lower priority transaction.
+- If a transaction using wait-on-conflict encounters transactions that have conflicting writes, it waits for all conflicting transactions to end (including any using fail-on-conflict semantics).
+
+### Fairness
+
+When multiple requests are waiting on the same resource in the wait queue, and that resource becomes available, YugabyteDB generally uses the following process to decide in which order those waiting requests should get access to the contentious resource:
+
+1. Sort all waiting requests based on the _transaction start time_, with requests from the oldest transactions first.
+2. Resume requests in order:
+    1. Re-run conflict resolution and acquire locks on the requested resource.
+    2. If the resource is no longer available because another waiting request acquired it, re-enter the wait queue.
+
+YugabyteDB has two mechanisms to detect that a resource has become available:
+
+1. Direct signal from the transaction coordinator
+    - Signals are sent with best effort and may not always arrive immediately or in-order
+2. Polling from the wait queue to the transaction coordinator
+    - Ensures guaranteed/bounded detection of resource availability
+
+Polling from the wait queue is controlled by the flag `wait_queue_poll_interval_ms`, which is set to 100ms by default. Setting this higher can result in slightly lower overhead, but empirically 100ms seems to offer good performance.
+
+In highly contentious workloads, a low polling interval (around the default 100ms) is required to ensure starvation does not occur. Setting this polling interval higher in contentious settings can cause high tail latency and is not recommended.
 
 ### Metrics
 

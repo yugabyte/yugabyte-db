@@ -37,9 +37,6 @@ namespace master {
 using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;
 
-using ScheduleMinRestoreTime =
-    std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>;
-
 YB_STRONGLY_TYPED_BOOL(SendMetadata);
 
 // Context class for MasterSnapshotCoordinator.
@@ -83,8 +80,6 @@ class SnapshotCoordinatorContext {
   virtual server::Clock* Clock() = 0;
 
   virtual Result<size_t> GetNumLiveTServersForActiveCluster() = 0;
-
-  virtual void ReenableTabletSplitting(const std::string& feature) = 0;
 
   virtual Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const = 0;
 

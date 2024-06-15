@@ -2,6 +2,7 @@
 
 package db.migration.default_.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -17,10 +18,12 @@ import io.ebean.DB;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
+@Slf4j
 public class V231__ProviderDetailsPersist extends BaseJavaMigration {
 
   @Override
@@ -84,7 +87,8 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
     final Map<String, String> oldToNewConfigKeyMap =
         new HashMap<String, String>() {
           {
-            put("project_id", "host_project_id");
+            put("GCE_HOST_PROJECT", "host_project_id");
+            put("project_id", "project_id");
             put("GOOGLE_APPLICATION_CREDENTIALS", "config_file_path");
             put("CUSTOM_GCE_NETWORK", "network");
             put(CloudProviderHelper.YB_FIREWALL_TAGS, CloudProviderHelper.YB_FIREWALL_TAGS);
@@ -128,6 +132,11 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
     if (gcpCloudInfo == null) {
       return;
     }
-    gcpCloudInfo.setGceApplicationCredentials(gcpCredentials);
+    try {
+      gcpCloudInfo.setGceApplicationCredentials(mapper.writeValueAsString(gcpCredentials));
+    } catch (JsonProcessingException e) {
+      log.error(
+          String.format("Failed to populate GCP credential info, %s", e.getLocalizedMessage()));
+    }
   }
 }

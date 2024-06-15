@@ -9,58 +9,34 @@ menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
-    weight: 680
+    weight: 710
 type: indexpage
 ---
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-upgrade-issues/vm/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Install and upgrade issues</div>
-      </div>
-      <div class="body">
-        Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Install and upgrade issues"
+    body="Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere."
+    href="install-upgrade-issues/installer/"
+    icon="/images/section_icons/quick_start/install.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="universe-issues/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Universe issues</div>
-      </div>
-      <div class="body">
-        Troubleshoot a YugabyteDB universe.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Universe issues"
+    body="Troubleshoot a YugabyteDB universe."
+    href="universe-issues/"
+    icon="/images/section_icons/quick_start/create_cluster.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-provider-config-issues/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Cloud provider configuration issues</div>
-      </div>
-      <div class="body">
-        Troubleshoot issues encountered when configuring cloud providers.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Cloud provider configuration issues"
+    body="Troubleshoot issues encountered when configuring cloud providers."
+    href="cloud-provider-config-issues/"
+    icon="/images/section_icons/quick_start/create_cluster.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ldap-issues/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
-        <div class="title">LDAP issues</div>
-      </div>
-      <div class="body">
-        Troubleshoot LDAP issues.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="LDAP issues"
+    body="Troubleshoot LDAP issues."
+    href="ldap-issues/"
+    icon="/images/section_icons/secure/authentication.png">}}
 
-</div>
+{{</index/block>}}

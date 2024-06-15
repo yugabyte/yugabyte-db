@@ -1,0 +1,8 @@
+title: EncryptionAtRestSpec
+description: Encryption At Rest specification for the Universe. Part of UniverseSpec.
+type: object
+properties:
+  kms_config_uuid:
+    description: The KMS Configuration associated with the encryption keys being used on this Universe
+    type: string
+    format: uuid

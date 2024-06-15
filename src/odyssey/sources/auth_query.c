@@ -114,11 +114,19 @@ int od_auth_query(od_client_t *client, char *peer)
 	}
 
 	/* set auth query route user and database */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	yb_kiwi_var_set(&auth_client->startup.user,
+		     rule->auth_query_user, strlen(rule->auth_query_user) + 1);
+
+	yb_kiwi_var_set(&auth_client->startup.database,
+		     rule->auth_query_db, strlen(rule->auth_query_db) + 1);
+#else
 	kiwi_var_set(&auth_client->startup.user, KIWI_VAR_UNDEF,
 		     rule->auth_query_user, strlen(rule->auth_query_user) + 1);
 
 	kiwi_var_set(&auth_client->startup.database, KIWI_VAR_UNDEF,
 		     rule->auth_query_db, strlen(rule->auth_query_db) + 1);
+#endif
 
 	/* route */
 	od_router_status_t status;
@@ -196,6 +204,10 @@ int od_auth_query(od_client_t *client, char *peer)
 	/* detach and unroute */
 	od_router_detach(router, auth_client);
 	od_router_unroute(router, auth_client);
+	if (auth_client->io.io) {
+		machine_close(auth_client->io.io);
+		machine_io_free(auth_client->io.io);
+	}
 	od_client_free(auth_client);
 	return OK_RESPONSE;
 }

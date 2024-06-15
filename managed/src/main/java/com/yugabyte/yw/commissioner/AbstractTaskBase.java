@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
@@ -14,8 +13,11 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
@@ -37,6 +39,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -81,6 +84,9 @@ public abstract class AbstractTaskBase implements ITask {
   protected final NodeManager nodeManager;
   protected final BackupHelper backupHelper;
   protected final AutoFlagUtil autoFlagUtil;
+  protected final NodeUIApiHelper nodeUIApiHelper;
+  protected final ImageBundleUtil imageBundleUtil;
+  protected final ReleaseManager releaseManager;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -103,6 +109,9 @@ public abstract class AbstractTaskBase implements ITask {
     this.nodeManager = baseTaskDependencies.getNodeManager();
     this.backupHelper = baseTaskDependencies.getBackupHelper();
     this.autoFlagUtil = baseTaskDependencies.getAutoFlagUtil();
+    this.nodeUIApiHelper = baseTaskDependencies.getNodeUIApiHelper();
+    this.imageBundleUtil = baseTaskDependencies.getImageBundleUtil();
+    this.releaseManager = baseTaskDependencies.getReleaseManager();
   }
 
   protected ITaskParams taskParams() {
@@ -120,13 +129,13 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   @Override
-  public JsonNode getTaskDetails() {
+  public JsonNode getTaskParams() {
     return Json.toJson(taskParams);
   }
 
   @Override
   public String toString() {
-    return getName() + " : details=" + getTaskDetails();
+    return getName() + " : params=" + getTaskParams();
   }
 
   @Override
@@ -253,11 +262,12 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   protected boolean doWithExponentialTimeout(
-      long minDelayMs, long maxDelayMs, long totalDelayMs, Supplier<Boolean> funct) {
+      long initialDelayMs, long maxDelayMs, long totalDelayMs, Supplier<Boolean> funct) {
     AtomicInteger iteration = new AtomicInteger();
     return doWithModifyingTimeout(
         (prevDelay) ->
-            Util.getExponentialBackoffDelayMs(minDelayMs, maxDelayMs, iteration.getAndIncrement()),
+            Util.getExponentialBackoffDelayMs(
+                initialDelayMs, maxDelayMs, iteration.getAndIncrement()),
         totalDelayMs,
         funct);
   }
@@ -265,16 +275,23 @@ public abstract class AbstractTaskBase implements ITask {
   protected boolean doWithModifyingTimeout(
       Function<Long, Long> delayFunct, long totalDelayMs, Supplier<Boolean> funct) {
     long currentDelayMs = 0;
+    long startTime = System.currentTimeMillis();
     do {
       if (funct.get()) {
         return true;
       }
       currentDelayMs = delayFunct.apply(currentDelayMs);
-      log.debug("Waiting for {} ms between retries", currentDelayMs);
+      log.debug(
+          "Waiting for {} ms between retries, total delay remaining {} ms",
+          currentDelayMs,
+          (startTime + totalDelayMs - System.currentTimeMillis()));
       waitFor(Duration.ofMillis(currentDelayMs));
-      totalDelayMs -= currentDelayMs;
-    } while (totalDelayMs > 0);
+    } while (System.currentTimeMillis() < startTime + totalDelayMs);
     return false;
+  }
+
+  protected boolean doWithConstTimeout(long delayMs, long totalDelayMs, Supplier<Boolean> funct) {
+    return doWithModifyingTimeout((prevDelay) -> delayMs, totalDelayMs, funct);
   }
 
   protected UUID getUserTaskUUID() {

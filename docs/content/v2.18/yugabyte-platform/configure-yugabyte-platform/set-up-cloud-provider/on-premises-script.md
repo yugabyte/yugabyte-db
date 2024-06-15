@@ -66,7 +66,7 @@ You can manually provision each node using the pre-provisioning Python script, a
     - `--mount_points` - enter the mount point configured for the node (typically `/data`). If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
     - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
     - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
-    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere, with port 9000. For example, `http://ybahost.company.com:9000`. The node must be able to communicate with YugabyteDB Anywhere at this address.
+    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere, with port 9000. For example, `https://ybahost.company.com:9000`. The node must be able to communicate with YugabyteDB Anywhere at this address.
     - `--node_name` - enter a name for the node.
     - `--instance_type` - enter the name of the [instance type](../on-premises/#add-instance-types) to use for the node. The name must match the name of an existing instance type.
     - `--zone_name` - enter a zone name for the node.
@@ -80,7 +80,7 @@ You can manually provision each node using the pre-provisioning Python script, a
         --mount_points /data \
         --install_node_agent \
         --api_token 999bc9db-ddfb-9fec-a33d-4f8f9fd88db7 \
-        --yba_url http://100.98.0.40:9000 \
+        --yba_url http://10.98.0.40:9000 \
         --node_name onprem_node1 \
         --instance_type c5.large \
         --zone_name us-west-2a 

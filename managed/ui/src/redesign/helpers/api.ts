@@ -25,11 +25,9 @@ import {
   Certificate,
   KmsConfig,
   UniverseConfigure,
-  HAConfig,
-  HAReplicationSchedule,
-  HAPlatformInstance,
   YBPTask
 } from './dtos';
+import { HaConfig, HaReplicationSchedule, HaPlatformInstance } from '../../components/ha/dtos';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { UniverseTableFilters } from '../../actions/xClusterReplication';
 import {
@@ -40,8 +38,6 @@ import {
   DrConfig,
   DrConfigSafetimeResponse
 } from '../../components/xcluster/disasterRecovery/dtos';
-import { Metrics } from '../../components/xcluster/XClusterTypes';
-import { MetricName } from '../../components/xcluster/constants';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -117,7 +113,9 @@ export const universeQueryKey = {
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
   globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
-  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid]
+  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid],
+  universeScope: (universeUuid: string) => [...runtimeConfigQueryKey.ALL, 'universe', universeUuid],
+  providerScope: (providerUuid: string) => [...runtimeConfigQueryKey.ALL, 'provider', providerUuid]
 };
 
 export const instanceTypeQueryKey = {
@@ -146,14 +144,25 @@ export const metricQueryKey = {
     ...metricQueryKey.ALL,
     metricRequestParams
   ],
-  latest: (metricRequestParams: { [property: string]: any }, range: string, unit: string) => {
-    const { start, end, ...remainingRequestParams } = metricRequestParams;
+  /**
+   * Usage:
+   * Calling live() with no parameters returns a query key which can be used for invalidating all
+   * live queries.
+   * Invalidated queries will be refetched if the query still has observers.
+   */
+  live: (metricRequestParams?: { [property: string]: any }, range?: string, unit?: string) => {
+    const { start, end, ...remainingRequestParams } = metricRequestParams ?? {};
     // For metric queries where we are interested in the last x units of data, we should
     // use the range and unit as part of the key instead of the concrete start and end time.
     // This helps us refetch in the background while serving the most recent data from
     // the cache. This is a better experience than hitting a loading spinner constantly on a
     // metric graph which updates every x seconds.
-    return [...metricQueryKey.detail(remainingRequestParams), 'live', { range, unit }];
+    return [
+      ...metricQueryKey.ALL,
+      'live',
+      ...(metricRequestParams ? [remainingRequestParams] : []),
+      ...(range || unit ? [{ range, unit }] : [])
+    ];
   }
 };
 
@@ -162,12 +171,17 @@ export const alertConfigQueryKey = {
   list: (filters: unknown) => [...alertConfigQueryKey.ALL, { filters }]
 };
 
+export const alertTemplateQueryKey = {
+  ALL: ['alertTempalte'],
+  list: (filters: unknown) => [...alertTemplateQueryKey.ALL, { filters }]
+};
+
 // --------------------------------------------------------------------------------------
 // API Constants
 // --------------------------------------------------------------------------------------
 
 export const ApiTimeout = {
-  FETCH_TABLE_INFO: 20_000,
+  FETCH_TABLE_INFO: 90_000,
   FETCH_XCLUSTER_CONFIG: 120_000
 } as const;
 
@@ -189,16 +203,17 @@ export interface CreateDrConfigRequest {
   dryRun?: boolean; // Run the pre-checks without actually running the subtasks
 }
 
-export interface ReplaceDrReplicaRequest {
-  primaryUniverseUuid: string; // The current primary universe.
-  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
+export interface EditDrConfigRequest {
   bootstrapParams: {
-    backupRequestParams?: {
+    backupRequestParams: {
       storageConfigUUID: string;
     };
   };
+}
+
+export interface ReplaceDrReplicaRequest {
+  primaryUniverseUuid: string; // The current primary universe.
+  drReplicaUniverseUuid: string; // The newly requested DR replica universe.
 }
 
 export interface DrSwitchoverRequest {
@@ -218,24 +233,29 @@ export interface DrFailoverRequest {
 
 export interface RestartDrConfigRequest {
   dbs: string[]; // Database uuids (from the source universe) to be restarted.
-  // Bootstrap Params is required now, but it will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
 }
 
 export interface UpdateTablesInDrRequest {
   tables: string[];
-  // Bootstrap Params will be removed in future releases when
-  // we're able to save a storage config for each DR config.
-  bootstrapParams?: {
-    backupRequestParams?: {
-      storageConfigUUID: string;
-    };
-  };
+
+  autoIncludeIndexTables?: boolean;
+}
+
+export interface CreateHaConfigRequest {
+  cluster_key: string;
+
+  // `accept_any_certificate` - When true will turn off certification validation while setting up the
+  // HA config.
+  accept_any_certificate?: boolean;
+}
+
+/**
+ * Backend uses the same HAConfigFormData.class
+ * */
+export type EditHaConfigRequest = CreateHaConfigRequest;
+
+export interface PromoteHaInstanceRequest {
+  backup_file: string;
 }
 
 class ApiService {
@@ -425,9 +445,19 @@ class ApiService {
     }
   };
 
-  deleteDrConfig = (drConfigUuid: string): Promise<YBPTask> => {
+  editDrConfig = (
+    drConfigUuid: string,
+    editDrConfigRequest: EditDrConfigRequest
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/edit`;
+    return axios.post<YBPTask>(requestUrl, editDrConfigRequest).then((response) => response.data);
+  };
+
+  deleteDrConfig = (drConfigUuid: string, isForceDelete: boolean): Promise<YBPTask> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
-    return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
+    return axios
+      .delete<YBPTask>(requestUrl, { params: { isForceDelete } })
+      .then((response) => response.data);
   };
 
   initiateSwitchover = (
@@ -470,6 +500,8 @@ class ApiService {
 
   updateTablesInDr = (drConfigUuid: string, updateTablesInDrRequest: UpdateTablesInDrRequest) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}/set_tables`;
+    updateTablesInDrRequest.autoIncludeIndexTables =
+      updateTablesInDrRequest.autoIncludeIndexTables ?? true;
     return axios
       .post<YBPTask>(requestUrl, updateTablesInDrRequest)
       .then((response) => response.data);
@@ -540,70 +572,83 @@ class ApiService {
     return axios.get<KmsConfig[]>(requestUrl).then((resp) => resp.data);
   };
 
-  createHAConfig = (clusterKey: string): Promise<HAConfig> => {
+  getHAConfig = (): Promise<HaConfig> => {
     const requestUrl = `${ROOT_URL}/settings/ha/config`;
-    const payload = { cluster_key: clusterKey };
-    return axios.post<HAConfig>(requestUrl, payload).then((resp) => resp.data);
+    return axios.get<HaConfig>(requestUrl).then((resp) => resp.data);
   };
 
-  getHAConfig = (): Promise<HAConfig> => {
+  createHAConfig = (createHaConfigRequest: CreateHaConfigRequest): Promise<HaConfig> => {
     const requestUrl = `${ROOT_URL}/settings/ha/config`;
-    return axios.get<HAConfig>(requestUrl).then((resp) => resp.data);
+    return axios
+      .post<HaConfig>(requestUrl, createHaConfigRequest)
+      .then((response) => response.data);
   };
 
-  deleteHAConfig = (configId: string): Promise<void> => {
-    const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}`;
+  editHAConfig = (
+    haConfigUuid: string,
+    editHaConfigRequest: EditHaConfigRequest
+  ): Promise<HaConfig> => {
+    const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}`;
+    return axios.put<HaConfig>(requestUrl, editHaConfigRequest).then((response) => response.data);
+  };
+
+  deleteHAConfig = (haConfigUuid: string): Promise<void> => {
+    const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}`;
     return axios.delete(requestUrl);
   };
 
   createHAInstance = (
-    configId: string,
+    haConfigUuid: string,
     address: string,
     isLeader: boolean,
     isLocal: boolean
-  ): Promise<HAPlatformInstance> => {
-    const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/instance`;
+  ): Promise<HaPlatformInstance> => {
+    const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/instance`;
     const payload = {
       address,
       is_leader: isLeader,
       is_local: isLocal
     };
-    return axios.post<HAPlatformInstance>(requestUrl, payload).then((resp) => resp.data);
+    return axios.post<HaPlatformInstance>(requestUrl, payload).then((resp) => resp.data);
   };
 
-  deleteHAInstance = (configId: string, instanceId: string): Promise<void> => {
-    const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/instance/${instanceId}`;
+  deleteHAInstance = (haConfigUuid: string, instanceId: string): Promise<void> => {
+    const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/instance/${instanceId}`;
     return axios.delete(requestUrl);
   };
 
-  promoteHAInstance = (configId: string, instanceId: string, backupFile: string): Promise<void> => {
-    const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/instance/${instanceId}/promote`;
-    const payload = { backup_file: backupFile };
-    return axios.post(requestUrl, payload);
+  promoteHAInstance = (
+    haConfigUuid: string,
+    instanceId: string,
+    isForcePromote: boolean,
+    promoteHaInstanceRequest: PromoteHaInstanceRequest
+  ): Promise<void> => {
+    const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/instance/${instanceId}/promote`;
+    return axios.post(requestUrl, promoteHaInstanceRequest, { params: { isForcePromote } });
   };
 
-  getHABackups = (configId: string): Promise<string[]> => {
-    const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/backup/list`;
+  getHABackups = (haConfigUuid: string): Promise<string[]> => {
+    const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/backup/list`;
     return axios.get<string[]>(requestUrl).then((resp) => resp.data);
   };
 
-  getHAReplicationSchedule = (configId?: string): Promise<HAReplicationSchedule> => {
-    if (configId) {
-      const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/replication_schedule`;
-      return axios.get<HAReplicationSchedule>(requestUrl).then((resp) => resp.data);
+  getHAReplicationSchedule = (haConfigUuid?: string): Promise<HaReplicationSchedule> => {
+    if (haConfigUuid) {
+      const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/replication_schedule`;
+      return axios.get<HaReplicationSchedule>(requestUrl).then((resp) => resp.data);
     } else {
       return Promise.reject('Querying HA replication schedule failed. No config ID provided');
     }
   };
 
   startHABackupSchedule = (
-    configId?: string,
+    haConfigUuid?: string,
     replicationFrequency?: number
-  ): Promise<HAReplicationSchedule> => {
-    if (configId && replicationFrequency) {
-      const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/replication_schedule/start`;
+  ): Promise<HaReplicationSchedule> => {
+    if (haConfigUuid && replicationFrequency) {
+      const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/replication_schedule/start`;
       const payload = { frequency_milliseconds: replicationFrequency };
-      return axios.put<HAReplicationSchedule>(requestUrl, payload).then((resp) => resp.data);
+      return axios.put<HaReplicationSchedule>(requestUrl, payload).then((resp) => resp.data);
     } else {
       return Promise.reject(
         'Start HA backup schedule failed. No config ID or replication frequency provided'
@@ -611,14 +656,14 @@ class ApiService {
     }
   };
 
-  stopHABackupSchedule = (configId: string): Promise<HAReplicationSchedule> => {
-    const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/replication_schedule/stop`;
-    return axios.put<HAReplicationSchedule>(requestUrl).then((resp) => resp.data);
+  stopHABackupSchedule = (haConfigUuid: string): Promise<HaReplicationSchedule> => {
+    const requestUrl = `${ROOT_URL}/settings/ha/config/${haConfigUuid}/replication_schedule/stop`;
+    return axios.put<HaReplicationSchedule>(requestUrl).then((resp) => resp.data);
   };
 
-  generateHAKey = (): Promise<Pick<HAConfig, 'cluster_key'>> => {
+  generateHAKey = (): Promise<Pick<HaConfig, 'cluster_key'>> => {
     const requestUrl = `${ROOT_URL}/settings/ha/generate_key`;
-    return axios.get<Pick<HAConfig, 'cluster_key'>>(requestUrl).then((resp) => resp.data);
+    return axios.get<Pick<HaConfig, 'cluster_key'>>(requestUrl).then((resp) => resp.data);
   };
 
   // check if exception was caused by canceling previous request

@@ -16,6 +16,7 @@
 #include "yb/tserver/tserver_flags.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/monotime.h"
 
 namespace yb {
@@ -65,7 +66,7 @@ void PgSequenceCache::Entry::NotifyWaiter() {
     MutexLock lock_guard(mutex_);
     available_ = true;
   }
-  cv_.Signal();
+  YB_PROFILE(cv_.Signal());
 }
 
 Result<std::shared_ptr<PgSequenceCache::Entry>> PgSequenceCache::GetWhenAvailable(

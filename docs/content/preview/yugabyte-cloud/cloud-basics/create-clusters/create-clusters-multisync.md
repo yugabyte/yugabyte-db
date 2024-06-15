@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
+Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes across 3 regions, providing region-level [fault tolerance](../../create-clusters-overview/#fault-tolerance). You can add or remove nodes in increments of 1 per region (each region has the same number of nodes).
 
 {{< youtube id="fCjTB8IuTuA" title="Create a multi-region cluster in YugabyteDB Managed" >}}
 
@@ -25,7 +25,7 @@ When no region is preferred, YugabyteDB Managed distributes requests equally acr
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
-You can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
+You can enable [follower reads](../../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
 
 In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
@@ -33,7 +33,7 @@ In cases where the cluster has read replicas and a client connects to a read rep
 
 Multi-region replicated clusters include the following features:
 
-- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
+- Replicated synchronously across 3 to 7 regions.
 - No limit on cluster size - choose any cluster size based on your use case.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
@@ -71,6 +71,14 @@ Select **Multi-Region Deployment** and set the following options.
 
 Set **Data Distribution** to **Replicate across regions**.
 
+Select the [Fault tolerance](../../create-clusters-overview/#fault-tolerance) for the cluster, as follows:
+
+- Resilient to 1 region outage; requires a minimum of 3 nodes across 3 regions.
+- Resilient to 2 region outages; requires a minimum of 5 nodes across 5 regions.
+- Resilient to 3 region outages; requires a minimum of 7 nodes across 7 regions.
+
+Clusters can be scaled in increments of 1 node per region; for example, a cluster with fault tolerance of 2 regions can be scaled in multiples of 5 nodes, one per region.
+
 #### Select regions and node size
 
 ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
@@ -87,7 +95,7 @@ Set **Data Distribution** to **Replicate across regions**.
 
 The node throughput will be scaled according to the IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
 
-Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#replicate-across-regions-clusters).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
@@ -125,5 +133,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../../develop/build-apps/)
+- [Build an application](../../../../tutorials/build-apps/)
 - [Scale clusters](../../../cloud-clusters/configure-clusters/#replicate-across-regions-clusters)

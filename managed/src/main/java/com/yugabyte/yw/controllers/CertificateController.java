@@ -97,7 +97,7 @@ public class CertificateController extends AuthenticatedController {
     CertificateParams.CustomServerCertData customServerCertData =
         formData.get().customServerCertData;
     HashicorpVaultConfigParams hcVaultParams = formData.get().hcVaultCertParams;
-
+    checkForDuplicateCertConfig(customerUUID, label);
     switch (certType) {
       case SelfSigned:
         {
@@ -186,7 +186,10 @@ public class CertificateController extends AuthenticatedController {
     return PlatformResults.withData(certUUID);
   }
 
-  @ApiOperation(value = "YbaApi Internal. Create a self signed certificate", response = UUID.class)
+  @ApiOperation(
+      notes = "YbaApi Internal.",
+      value = "Create a self signed certificate",
+      response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "label",
@@ -227,7 +230,8 @@ public class CertificateController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Add a client certificate",
+      notes = "YbaApi Internal.",
+      value = "Add a client certificate",
       response = CertificateDetails.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -328,7 +332,8 @@ public class CertificateController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Get a certificate's UUID",
+      notes = "YbaApi Internal.",
+      value = "Get a certificate's UUID",
       response = UUID.class,
       nickname = "getCertificate")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
@@ -417,7 +422,8 @@ public class CertificateController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Update an empty certificate",
+      notes = "YbaApi Internal.",
+      value = "Update an empty certificate",
       response = CertificateInfoExt.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -460,5 +466,13 @@ public class CertificateController extends AuthenticatedController {
                     .setStartDate(backwardCompatibleDate ? info.getStartDate() : null)
                     .setExpiryDate(backwardCompatibleDate ? info.getExpiryDate() : null))
         .collect(Collectors.toList());
+  }
+
+  private void checkForDuplicateCertConfig(UUID customerUUID, String label) {
+    CertificateInfo certificateInfo = CertificateInfo.get(customerUUID, label);
+    if (certificateInfo != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Certificate with name - %s already exists", label));
+    }
   }
 }

@@ -43,11 +43,11 @@ TEST(XClusterConsumerReplicationError, TestCollector) {
 
   // Setup 3 pollers across 2 Replication Groups, 2 tables and 3 tablets.
   const XClusterPollerId poller1(
-      cdc::ReplicationGroupId("Group1"), "TableA", "Tablet1", /*leader_term=*/1);
+      xcluster::ReplicationGroupId("Group1"), "TableA", "Tablet1", /*leader_term=*/1);
   const XClusterPollerId poller2(
-      cdc::ReplicationGroupId("Group1"), "TableA", "Tablet2", /*leader_term=*/2);
+      xcluster::ReplicationGroupId("Group1"), "TableA", "Tablet2", /*leader_term=*/2);
   const XClusterPollerId poller3(
-      cdc::ReplicationGroupId("Group2"), "TableA", "Tablet1", /*leader_term=*/1);
+      xcluster::ReplicationGroupId("Group2"), "TableA", "Tablet1", /*leader_term=*/1);
   collector.AddPoller(poller1);
   collector.AddPoller(poller2);
   collector.AddPoller(poller3);

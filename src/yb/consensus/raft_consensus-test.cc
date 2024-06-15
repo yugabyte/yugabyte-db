@@ -47,6 +47,8 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/server/logical_clock.h"
 
 #include "yb/util/async_util.h"
@@ -56,6 +58,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(never_fsync);
 
@@ -90,11 +93,11 @@ class MockQueue : public PeerMessageQueue {
  public:
   explicit MockQueue(const scoped_refptr<MetricEntity>& tablet_metric_entity, log::Log* log,
                      const server::ClockPtr& clock,
-                     std::unique_ptr<ThreadPoolToken> raft_pool_observers_token)
+                     std::unique_ptr<rpc::Strand> observers_strand)
       : PeerMessageQueue(
           tablet_metric_entity, log, nullptr /* server_tracker */, nullptr /* parent_tracker */,
           FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, nullptr /* consensus_queue */,
-          std::move(raft_pool_observers_token)) {}
+          std::move(observers_strand)) {}
 
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
   MOCK_METHOD4(SetLeaderMode, void(const OpId& committed_opid,
@@ -141,7 +144,7 @@ class RaftConsensusSpy : public RaftConsensus {
                    std::unique_ptr<PeerMessageQueue> queue,
                    std::unique_ptr<PeerManager> peer_manager,
                    std::unique_ptr<ThreadPoolToken> raft_pool_token,
-                   std::unique_ptr<consensus::RetryableRequestsManager> retryable_requests_manager,
+                   std::unique_ptr<consensus::RetryableRequests> retryable_requests,
                    const scoped_refptr<MetricEntity>& table_metric_entity,
                    const scoped_refptr<MetricEntity>& tablet_metric_entity,
                    const std::string& peer_uuid,
@@ -166,7 +169,7 @@ class RaftConsensusSpy : public RaftConsensus {
                     parent_mem_tracker,
                     mark_dirty_clbk,
                     YQL_TABLE_TYPE,
-                    retryable_requests_manager.get()) {
+                    retryable_requests.get()) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))
         .WillByDefault(Invoke(this,
@@ -251,9 +254,12 @@ class RaftConsensusTest : public YBTest {
     log_->TEST_SetAllOpIdsSafe(true);
 
     ASSERT_OK(ThreadPoolBuilder("raft-pool").Build(&raft_pool_));
-    std::unique_ptr<ThreadPoolToken> raft_pool_token =
-        raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
-    queue_ = new MockQueue(tablet_metric_entity_, log_.get(), clock_, std::move(raft_pool_token));
+    raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
+      .name = "raft_notifications",
+      .max_workers = rpc::ThreadPoolOptions::kUnlimitedWorkers
+    });
+    queue_ = new MockQueue(tablet_metric_entity_, log_.get(), clock_,
+                           std::make_unique<rpc::Strand>(raft_notifications_pool_.get()));
     peer_manager_ = new MockPeerManager;
     operation_factory_.reset(new MockOperationFactory);
 
@@ -275,21 +281,19 @@ class RaftConsensusTest : public YBTest {
     std::unique_ptr<ThreadPoolToken> raft_pool_token =
         raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
 
-    std::unique_ptr<consensus::RetryableRequestsManager> retryable_requests_manager =
-        std::make_unique<consensus::RetryableRequestsManager>(
-            options_.tablet_id,
-            fs_manager_.get(),
-            fs_manager_->GetWalRootDirs()[0],
+    std::unique_ptr<consensus::RetryableRequests> retryable_requests =
+        std::make_unique<consensus::RetryableRequests>(
             MemTracker::GetRootTracker(),
             "");
-    Status s = retryable_requests_manager->Init(clock_);
+    retryable_requests->SetServerClock(clock_);
+    retryable_requests->SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
     consensus_.reset(new RaftConsensusSpy(options_,
                                           std::move(cmeta),
                                           std::move(proxy_factory),
                                           std::unique_ptr<PeerMessageQueue>(queue_),
                                           std::unique_ptr<PeerManager>(peer_manager_),
                                           std::move(raft_pool_token),
-                                          std::move(retryable_requests_manager),
+                                          std::move(retryable_requests),
                                           table_metric_entity_,
                                           tablet_metric_entity_,
                                           peer_uuid,
@@ -400,6 +404,7 @@ class RaftConsensusTest : public YBTest {
   MockQueue* queue_;
   MockPeerManager* peer_manager_;
   std::unique_ptr<MockOperationFactory> operation_factory_;
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 };
 
 ConsensusRequestPB RaftConsensusTest::MakeConsensusRequest(int64_t caller_term,

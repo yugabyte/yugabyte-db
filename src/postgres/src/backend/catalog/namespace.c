@@ -60,6 +60,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "utils/uuid.h"
 
 
 /*
@@ -192,6 +193,10 @@ static SubTransactionId myTempNamespaceSubID = InvalidSubTransactionId;
  */
 char	   *namespace_search_path = NULL;
 
+typedef struct YbTempNamespaceSuffixBuffer
+{
+	char data[UUID_LEN * 2 + 2];
+} YbTempNamespaceSuffixBuffer;
 
 /* Local functions */
 static void recomputeNamespacePath(void);
@@ -202,6 +207,7 @@ static void RemoveTempRelationsCallback(int code, Datum arg);
 static void NamespaceCallback(Datum arg, int cacheid, uint32 hashvalue);
 static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
 			   int **argnumbers);
+static char *YbBuildTempNameSuffix(YbTempNamespaceSuffixBuffer *buf);
 
 
 /*
@@ -3930,7 +3936,22 @@ InitTempTableNamespace(void)
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("cannot create temporary tables during a parallel operation")));
 
-	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%d", MyBackendId);
+
+	/*
+	 * In YB, pg_temp_<backend_id> and pg_toast_temp_<backend_id> are not
+	 * unique temp namespace names for the backend if there are multiple nodes.
+	 * So, we add the local tserver uuid as an additional suffix to
+	 * the namespace names to make them unique to the backend.
+	 * The constructed temp suffix is "<tserver_uuid>_" and the namespace
+	 * names are pg_temp_<tserver_uuid>_<backend_id> and
+	 * pg_toast_temp_<tserver_uuid>_<backend_id>.
+	 */
+	YbTempNamespaceSuffixBuffer ybSuffixBuf;
+	const char *yb_temp_namespace_suffix = IsYugaByteEnabled() ?
+		YbBuildTempNameSuffix(&ybSuffixBuf) : "";
+
+	snprintf(namespaceName, sizeof(namespaceName), "pg_temp_%s%d",
+			 yb_temp_namespace_suffix, MyBackendId);
 
 	namespaceId = get_namespace_oid(namespaceName, true);
 	if (!OidIsValid(namespaceId))
@@ -3962,8 +3983,8 @@ InitTempTableNamespace(void)
 	 * it. (We assume there is no need to clean it out if it does exist, since
 	 * dropping a parent table should make its toast table go away.)
 	 */
-	snprintf(namespaceName, sizeof(namespaceName), "pg_toast_temp_%d",
-			 MyBackendId);
+	snprintf(namespaceName, sizeof(namespaceName), "pg_toast_temp_%s%d",
+			 yb_temp_namespace_suffix, MyBackendId);
 
 	toastspaceId = get_namespace_oid(namespaceName, true);
 	if (!OidIsValid(toastspaceId))
@@ -4158,7 +4179,7 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectSubId = 0;
 
 	if (IsYugaByteEnabled())
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_SILENT_ALTERING);
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |
 					PERFORM_DELETION_QUIETLY |
@@ -4542,4 +4563,32 @@ pg_is_other_temp_schema(PG_FUNCTION_ARGS)
 	Oid			oid = PG_GETARG_OID(0);
 
 	PG_RETURN_BOOL(isOtherTempNamespace(oid));
+}
+
+static char *
+YbConvertToHex(const unsigned char *src, size_t len, char *dest)
+{
+	static const char hex_chars[] = "0123456789abcdef";
+	for (size_t i = 0; i < len; ++i)
+	{
+		const int high = src[i] >> 4;
+		const int low = src[i] & 0x0F;
+		*(dest++) = hex_chars[high];
+		*(dest++) = hex_chars[low];
+	}
+	return dest;
+}
+
+/*
+ * Used in YB to construct the temporary namespace suffix. This function
+ * returns the local tserver uuid as a regular string (without the hyphens),
+ * and an additional "_" appended at the end.
+ */
+static char *
+YbBuildTempNameSuffix(YbTempNamespaceSuffixBuffer *buf)
+{
+	char *tail = YbConvertToHex(YBCGetLocalTserverUuid(), UUID_LEN, buf->data);
+	*(tail++) = '_';
+	*tail = 0;
+	return buf->data;
 }

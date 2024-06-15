@@ -101,7 +101,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  Status Cleanup(TransactionIdSet&& set) override {
+  Status Cleanup(TransactionIdApplyOpIdMap&& set) override {
     Fail();
     return STATUS(NotSupported, "Cleanup not implemented");
   }
@@ -657,7 +657,7 @@ string DocDBRocksDBFixture::tablet_id() {
 }
 
 Status DocDBRocksDBFixture::InitRocksDBOptions() {
-  RETURN_NOT_OK(InitCommonRocksDBOptionsForTests());
+  RETURN_NOT_OK(InitCommonRocksDBOptionsForTests(tablet_id()));
   return Status::OK();
 }
 

@@ -51,23 +51,30 @@
 /* DocDB row decode and process cost */
 #define YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES 50
 
-/* DocDB Remote filter cost */
-#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 50
+/* DocDB storage filter cost */
+#define YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES 20
 
 /* Network transfer cost */
-#define YB_DEFAULT_LOCAL_LATENCY_COST 10.0
-#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 10.0
+#define YB_DEFAULT_LOCAL_LATENCY_COST 180.0
+#define YB_DEFAULT_LOCAL_THROUGHPUT_COST 80000.0
 
-/* 
- * TODO : Since we cannot currently estimate the number of key value pairs per 
- * tuple, we use a constant heuristic value of 3. 
+/*
+ * TODO : Since we cannot currently estimate the number of key value pairs per
+ * tuple, we use a constant heuristic value of 3.
  */
 #define YB_DEFAULT_NUM_KEY_VALUE_PAIRS_PER_TUPLE 3
-/* 
- * TODO : Since we cannot currently estimate the number of SST files per 
- * table, we use a constant heuristic value of 3. 
+/*
+ * TODO : Since we cannot currently estimate the number of SST files per
+ * table, we use a constant heuristic value of 3.
  */
 #define YB_DEFAULT_NUM_SST_FILES_PER_TABLE 3
+
+/*
+ * TODO : To avoid expensive seek for a key, DocDB performs a series of nexts
+ * in hope to find the key among the following tuples. This configurable
+ * parameter should be exposed in PG code to be used here.
+ */
+#define MAX_NEXTS_TO_AVOID_SEEK 2
 
 typedef enum
 {
@@ -87,7 +94,6 @@ extern PGDLLIMPORT double seq_page_cost;
 extern PGDLLIMPORT double random_page_cost;
 
 extern PGDLLIMPORT double yb_network_fetch_cost;
-
 extern PGDLLIMPORT double yb_intercloud_cost;
 extern PGDLLIMPORT double yb_interregion_cost;
 extern PGDLLIMPORT double yb_interzone_cost;
@@ -114,6 +120,7 @@ extern PGDLLIMPORT bool enable_seqscan;
 extern PGDLLIMPORT bool enable_indexscan;
 extern PGDLLIMPORT bool enable_indexonlyscan;
 extern PGDLLIMPORT bool enable_bitmapscan;
+extern PGDLLIMPORT bool yb_enable_bitmapscan;
 extern PGDLLIMPORT bool enable_tidscan;
 extern PGDLLIMPORT bool enable_sort;
 extern PGDLLIMPORT bool enable_hashagg;
@@ -135,6 +142,7 @@ extern PGDLLIMPORT bool yb_enable_geolocation_costing;
  * loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
+extern PGDLLIMPORT bool yb_enable_parallel_append;
 
 extern double clamp_row_est(double nrows);
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
@@ -152,9 +160,16 @@ extern void cost_index(IndexPath *path, PlannerInfo *root,
 extern void cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 					  ParamPathInfo *param_info,
 					  Path *bitmapqual, double loop_count);
+extern void yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+					  ParamPathInfo *param_info,
+					  Path *bitmapqual, double loop_count);
 extern void cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);
+extern void yb_cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root);
 extern void cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
+extern void yb_cost_bitmap_or_node(BitmapOrPath *path, PlannerInfo *root);
 extern void cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec);
+extern void yb_cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec,
+					  int *ybctid_width);
 extern void cost_tidscan(Path *path, PlannerInfo *root,
 			 RelOptInfo *baserel, List *tidquals, ParamPathInfo *param_info);
 extern void cost_subqueryscan(SubqueryScanPath *path, PlannerInfo *root,

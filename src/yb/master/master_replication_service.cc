@@ -62,7 +62,24 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       XClusterManager,
       (GetXClusterSafeTime)
+      (GetXClusterSafeTimeForNamespace)
       (PauseResumeXClusterProducerStreams)
+      (XClusterCreateOutboundReplicationGroup)
+      (XClusterAddNamespaceToOutboundReplicationGroup)
+      (XClusterRemoveNamespaceFromOutboundReplicationGroup)
+      (XClusterDeleteOutboundReplicationGroup)
+      (IsXClusterBootstrapRequired)
+      (GetXClusterStreams)
+      (CreateXClusterReplication)
+      (IsCreateXClusterReplicationDone)
+      (AddNamespaceToXClusterReplication)
+      (IsAlterXClusterReplicationDone)
+      (RepairOutboundXClusterReplicationGroupAddTable)
+      (RepairOutboundXClusterReplicationGroupRemoveTable)
+      (GetXClusterOutboundReplicationGroups)
+      (GetXClusterOutboundReplicationGroupInfo)
+      (GetUniverseReplications)
+      (GetUniverseReplicationInfo)
   )
 };
 

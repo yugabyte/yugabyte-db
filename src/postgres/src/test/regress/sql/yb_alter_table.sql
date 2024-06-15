@@ -40,10 +40,12 @@ DROP USER regress_alter_table_user1;
 CREATE TABLE no_pk_tbl(k INT);
 ALTER TABLE no_pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
 ALTER TABLE no_pk_tbl ADD COLUMN v1 SERIAL;
+\d no_pk_tbl;
 --- Non-empty case
 INSERT INTO no_pk_tbl VALUES(1), (2), (3);
 ALTER TABLE no_pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
 ALTER TABLE no_pk_tbl ADD COLUMN v2 SERIAL;
+\d no_pk_tbl;
 DROP TABLE no_pk_tbl;
 
 --- Table with primary key index
@@ -51,10 +53,12 @@ DROP TABLE no_pk_tbl;
 CREATE TABLE pk_tbl(k INT PRIMARY KEY);
 ALTER TABLE pk_tbl ADD COLUMN s1 TIMESTAMP DEFAULT clock_timestamp();
 ALTER TABLE pk_tbl ADD COLUMN v1 SERIAL;
+\d pk_tbl;
 --- Non-empty case
 INSERT INTO pk_tbl VALUES(1), (2), (3);
 ALTER TABLE pk_tbl ADD COLUMN s2 TIMESTAMP DEFAULT clock_timestamp();
 ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
+\d pk_tbl;
 DROP TABLE pk_tbl;
 
 -- Verify cache cleanup of table names when TABLE RENAME fails.
@@ -102,8 +106,6 @@ INSERT INTO foo(a, e) VALUES(7, 'a');
 INSERT INTO foo(a, e) VALUES(8, 'zz');
 SELECT * FROM foo ORDER BY e, a;
 SELECT * FROM foo WHERE e COLLATE "C" < 'hi' ORDER BY e;
--- Test add column with volatile default value fails.
-ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
 -- Test updating columns that have missing default values.
 UPDATE foo SET d = '01-01-2024' WHERE a = 1;
 SELECT * FROM foo ORDER BY a;
@@ -156,3 +158,18 @@ SELECT * FROM foo_part ORDER BY a, b;
 -- Verify that ADD COLUMN ... DEFAULT NOT NULL fails when the default value is
 -- null.
 ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;
+-- Test add column with volatile default value.
+ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
+
+--
+-- Tests for ALTER TABLE ... ADD COLUMN ... UNIQUE
+--
+CREATE TABLE foo_unique(a int);
+INSERT INTO foo_unique VALUES (1), (2), (3);
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE NOT NULL; -- should fail
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE;
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE DEFAULT 1.0; -- should fail
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE NOT NULL DEFAULT random();
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1) DEFAULT random(); -- should fail
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1);
+SELECT a,b,d FROM foo_unique ORDER BY a;

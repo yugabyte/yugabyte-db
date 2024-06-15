@@ -4,6 +4,8 @@ headerTitle: Build and test
 linkTitle: Build and test
 description: Build and test
 headcontent: Building and testing with yb_build.sh.
+aliases:
+  - /preview/contribute/core-database/run-unit-tests/
 menu:
   preview:
     identifier: build-and-test

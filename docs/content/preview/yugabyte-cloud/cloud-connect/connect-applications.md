@@ -13,9 +13,9 @@ type: docs
 
 Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Managed cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using.
+To connect to a YugabyteDB Managed cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../../tutorials/build-apps/).
 
-For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../../develop/build-apps/).
+You may want to add a database user specifically for your application. Refer to [Add database users](../../cloud-secure-clusters/add-users/).
 
 For more information on YugabyteDB-compatible drivers, refer to [Drivers and ORMs](../../../drivers-orms/).
 
@@ -129,4 +129,4 @@ For an example of building a Java application connected to YugabyteDB Managed us
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../develop/build-apps/)
+- [Build an application](../../../tutorials/build-apps/)

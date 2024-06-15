@@ -13,6 +13,8 @@
 
 #include "yb/client/async_rpc.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/batcher.h"
 #include "yb/client/client_error.h"
 #include "yb/client/in_flight_op.h"
@@ -28,6 +30,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -39,6 +42,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
@@ -97,11 +101,6 @@ DEFINE_test_flag(bool, asyncrpc_finished_set_timedout, false,
 DEFINE_test_flag(bool, asyncrpc_common_response_check_fail_once, false,
     "For testing only. When set to true triggers AsyncRpc::Failure() with RuntimeError status "
     "inside AsyncRpcBase::CommonResponseCheck() and returns false from this method.");
-
-// DEPRECATED. It is assumed that all t-servers and masters in the cluster has this capability.
-// Remove it completely when it won't be necessary to support upgrade from releases which checks
-// the existence on this capability.
-DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
 DECLARE_bool(collect_end_to_end_traces);
 
@@ -217,13 +216,13 @@ void AsyncRpc::SendRpc() {
 
 std::string AsyncRpc::ToString() const {
   const auto& transaction = batcher_->in_flight_ops().metadata.transaction;
-  const auto subtransaction_opt = batcher_->in_flight_ops().metadata.subtransaction;
+  const auto subtransaction_pb_opt = batcher_->in_flight_ops().metadata.subtransaction_pb;
   return Format("$0(tablet: $1, num_ops: $2, num_attempts: $3, txn: $4, subtxn: $5)",
                 ops_.front().yb_op->read_only() ? "Read" : "Write",
                 tablet().tablet_id(), ops_.size(), num_attempts(),
                 transaction.transaction_id,
-                subtransaction_opt
-                    ? Format("$0", subtransaction_opt->subtransaction_id)
+                subtransaction_pb_opt
+                    ? Format("$0", subtransaction_pb_opt->subtransaction_id())
                     : "[none]");
 }
 
@@ -262,6 +261,14 @@ void AsyncRpc::Finished(const Status& status) {
 void AsyncRpc::Failed(const Status& status) {
   VLOG_WITH_FUNC(4) << "status: " << status.ToString();
   std::string error_message = status.message().ToBuffer();
+  // Check size and truncate if needed
+  static const size_t kMaxErrorMessageSize = 1_KB;
+  if (error_message.size() > kMaxErrorMessageSize) {
+    LOG_WITH_FUNC(INFO) << Format(
+        "Found status error message exceeding $0 : $1. Truncating to prevent memory exhaustion.",
+        HumanReadableNumBytes::ToString(kMaxErrorMessageSize), error_message);
+    error_message = error_message.substr(0, kMaxErrorMessageSize) + "...";
+  }
   auto redis_error_code = status.IsInvalidCommand() || status.IsInvalidArgument() ?
       RedisResponsePB_RedisStatusCode_PARSING_ERROR : RedisResponsePB_RedisStatusCode_SERVER_ERROR;
   for (auto& op : ops_) {
@@ -348,8 +355,8 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   transaction->set_pg_txn_start_us(metadata.transaction.pg_txn_start_us);
   dest->set_deprecated_may_have_metadata(true);
 
-  if (metadata.subtransaction && !metadata.subtransaction->IsDefaultState()) {
-    metadata.subtransaction->ToPB(dest->mutable_subtransaction());
+  if (metadata.subtransaction_pb) {
+    *dest->mutable_subtransaction() = *metadata.subtransaction_pb;
   }
 }
 
@@ -374,6 +381,9 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     : AsyncRpc(data, consistency_level) {
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req_.mutable_ash_metadata());
+  }
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {
@@ -391,6 +401,10 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   }
   if (!ops_.empty()) {
     req_.set_batch_idx(ops_.front().batch_idx);
+  }
+  auto start_time_micros = batcher_->rpcs_start_time_micros();
+  if (start_time_micros > 0) {
+    req_.set_start_time_micros(start_time_micros);
   }
   const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
@@ -472,6 +486,22 @@ void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   }
 }
 
+template <class Req, class Resp>
+bool AsyncRpcBase<Req, Resp>::RefreshMetaCacheWithResponse() {
+  DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
+  if (!resp_.has_tablet_consensus_info()) {
+    VLOG(1) << "Partial refresh of tablet for " << GetRpcName()
+            << " RPC failed because the response did not have a tablet_consensus_info";
+    return false;
+  }
+
+  return tablet_invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+}
+
+template <class Req, class Resp>
+void AsyncRpcBase<Req, Resp>::SetRequestRaftConfigOpidIndex(int64_t opid_index) {
+  req_.set_raft_config_opid_index(opid_index);
+}
 
 template <class Req, class Resp>
 FlushExtraResult AsyncRpcBase<Req, Resp>::MakeFlushExtraResult() {
@@ -593,17 +623,11 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
       const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
       req_.set_request_id(*first_yb_op->request_id());
       req_.set_min_running_request_id(request_detail.min_running_request_id);
-      if (request_detail.start_time_micros > 0) {
-        req_.set_start_time_micros(request_detail.start_time_micros);
-      }
     } else {
       const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      if (batcher_->Clock()) {
-        req_.set_start_time_micros(batcher_->Clock()->Now().GetPhysicalValueMicros());
-      }
       req_.set_request_id(request_pair.first);
       req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second, req_.start_time_micros());
+      batcher_->RegisterRequest(request_pair.first, request_pair.second);
     }
     FillRequestIds(req_.request_id(), &ops_);
   }

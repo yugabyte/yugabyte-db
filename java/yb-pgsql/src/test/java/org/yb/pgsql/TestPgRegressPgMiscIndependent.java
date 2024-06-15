@@ -22,7 +22,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressPgMiscIndependent extends BasePgSQLTest {
+public class TestPgRegressPgMiscIndependent extends BasePgRegressTest {
 
   private static final int TURN_OFF_SEQUENCE_CACHE_FLAG = 0;
 

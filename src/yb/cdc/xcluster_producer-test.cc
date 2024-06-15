@@ -19,12 +19,12 @@
 #include "yb/client/schema.h"
 
 #include "yb/client/table_handle.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/session.h"
-#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
@@ -77,7 +77,8 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
         &client_->proxy_cache(), HostPort::FromBoundEndpoint(tablet_server_->bound_rpc_addr()));
 
     ASSERT_OK(CreateTable());
-    stream_id_ = ASSERT_RESULT(CreateCDCStream());
+    stream_id_ = ASSERT_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+        table_->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
   }
 
   Status CreateTable() {
@@ -96,23 +97,6 @@ class XClusterProducerTest : public MiniClusterTestWithClient<MiniCluster> {
     tablet_id_ = *tablet_ids.begin();
 
     return Status::OK();
-  }
-
-  Result<xrepl::StreamId> CreateCDCStream() {
-    CreateCDCStreamRequestPB req;
-    CreateCDCStreamResponsePB resp;
-    req.set_table_id(table_->id());
-    req.set_source_type(XCLUSTER);
-    req.set_checkpoint_type(IMPLICIT);
-    req.set_record_format(WAL);
-
-    rpc::RpcController rpc;
-    RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return StatusFromPB(resp.error().status());
-    }
-
-    return xrepl::StreamId::FromString(resp.stream_id());
   }
 
   Status InsertRows(uint32_t start, uint32_t end) {
@@ -345,7 +329,7 @@ TEST_F(XClusterProducerTest, ProducerUpgrade) {
   promote_auto_flags_req.set_force(true);
   master::PromoteAutoFlagsResponsePB promote_auto_flags_resp;
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master();
-  ASSERT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(
+  ASSERT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(
       &promote_auto_flags_req, &promote_auto_flags_resp));
   ASSERT_FALSE(promote_auto_flags_resp.has_error());
   ASSERT_EQ(promote_auto_flags_resp.new_config_version(), config_version + 1);

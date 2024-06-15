@@ -73,12 +73,12 @@ public class CreateBackup extends UniverseTaskBase {
       CustomerConfigService customerConfigService,
       YbcManager ybcManager,
       StorageUtilFactory storageUtilFactory,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
     this.storageUtilFactory = storageUtilFactory;
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   protected BackupRequestParams params() {
@@ -121,24 +121,28 @@ public class CreateBackup extends UniverseTaskBase {
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
 
-        if (ybcBackup
-            && universe.isYbcEnabled()
-            && !universe
-                .getUniverseDetails()
-                .getYbcSoftwareVersion()
-                .equals(ybcManager.getStableYbcVersion())) {
+        if (isFirstTry()) {
+          if (ybcBackup
+              && universe.isYbcEnabled()
+              && !universe
+                  .getUniverseDetails()
+                  .getYbcSoftwareVersion()
+                  .equals(ybcManager.getStableYbcVersion())) {
 
-          if (universe
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
-            createUpgradeYbcTaskOnK8s(params().getUniverseUUID(), ybcManager.getStableYbcVersion())
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
-          } else {
-            createUpgradeYbcTask(params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            if (universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(Common.CloudType.kubernetes)) {
+              createUpgradeYbcTaskOnK8s(
+                      params().getUniverseUUID(), ybcManager.getStableYbcVersion())
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            } else {
+              createUpgradeYbcTask(
+                      params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            }
           }
         }
 

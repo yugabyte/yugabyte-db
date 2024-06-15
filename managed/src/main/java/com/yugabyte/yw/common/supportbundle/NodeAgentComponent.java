@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.supportbundle;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -40,7 +41,12 @@ public class NodeAgentComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponent(
-      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
+      SupportBundleTaskParams supportBundleTaskParams,
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      NodeDetails node)
+      throws Exception {
     if (node.cloudInfo == null || StringUtils.isBlank(node.cloudInfo.private_ip)) {
       log.info("Skipping node-agent log download as node IP is not available");
       return;
@@ -89,11 +95,13 @@ public class NodeAgentComponent implements SupportBundleComponent {
         nodeTargetFile,
         nodeAgentHomeParent.toString(),
         relativeLogFilePaths,
-        getClass().getSimpleName());
+        getClass().getSimpleName(),
+        false);
   }
 
   @Override
   public void downloadComponentBetweenDates(
+      SupportBundleTaskParams supportBundleTaskParams,
       Customer customer,
       Universe universe,
       Path bundlePath,
@@ -102,6 +110,6 @@ public class NodeAgentComponent implements SupportBundleComponent {
       NodeDetails node)
       throws Exception {
     // Simply return all the logs files as this method is just an overkill for now.
-    downloadComponent(customer, universe, bundlePath, node);
+    downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
   }
 }

@@ -19,7 +19,7 @@ To run the following examples, first set up a cluster and database schema as des
 
 ## Fast single-row transactions
 
-YugabytedDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast-path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region, or globally.
+YugabyteDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast-path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region, or globally.
 
 For example, consider a common scenario in transactions where a single row is updated and the new value is fetched. This is usually done in multiple steps as follows:
 
@@ -43,25 +43,39 @@ YugabyteDB treats this as a single-row transaction, which executes much faster. 
 
 ## Minimize conflict errors
 
-The [INSERT](../../../../api/ysql/the-sql-language/statements/dml_insert/) statement has an optional [ON CONFLICT](../../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause) clause that can be helpful to circumvent certain errors and avoid multiple statements.
+Typically, when an application executes an `INSERT` on an existing key, a conflict error is returned to the application. The application can then either ignore the error or issue an update. Updating the row with new data in this case requires an extra round trip between the application and the server. To avoid the extra round trip, use one of the following techniques:
 
-For example, if concurrent transactions are inserting the same row, this could cause a UniqueViolation. Instead of letting the server throw an error and handling it in code, you could just ask the server to ignore it as follows:
+- When inserting a large number of rows, especially into a new table, use the `NOT IN` clause as follows:
 
-```plpgsql
-INSERT INTO txndemo VALUES (1,10) ON CONFLICT DO NOTHING;
-```
+  ```sql
+    INSERT INTO demo (id) SELECT id FROM
+    ( SELECT gen_random_uuid() id FROM generate_series(1,100) ) other_table
+    WHERE id NOT IN (SELECT id FROM demo)
+  ```
 
-With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip between the application and the server.
+- Use the optional [ON CONFLICT](../../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause) clause in the [INSERT](../../../../api/ysql/the-sql-language/statements/dml_insert/) statement to circumvent certain errors and avoid multiple statements.
 
-You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
+  For example, if concurrent transactions are inserting the same row, this could cause a UniqueViolation. Instead of letting the server throw an error and handling it in code, you could just ask the server to ignore it as follows:
 
-```plpgsql
-INSERT INTO txndemo VALUES (1,10)
-        ON CONFLICT (k)
-        DO UPDATE SET v=10;
-```
+  ```plpgsql
+  INSERT INTO txndemo VALUES (1,10) ON CONFLICT DO NOTHING;
+  ```
 
-Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
+    With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip.
+
+  {{<warning>}}
+The current implementation of on-conflict is row-by-row. So if you are inserting a large number of rows, each row will be validated with an additional read.
+  {{</warning>}}
+
+- Simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
+
+  ```plpgsql
+  INSERT INTO txndemo VALUES (1,10)
+    ON CONFLICT (k)
+    DO UPDATE SET v=10;
+  ```
+
+  Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
 
 ## Avoid long waits
 

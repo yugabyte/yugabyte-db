@@ -2,10 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.api.client.util.Throwables;
 import com.google.common.base.Stopwatch;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -56,6 +60,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.time.Duration;
@@ -68,21 +74,29 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
+import org.mapstruct.ap.internal.util.Strings;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
+import play.libs.Json;
 
 /** This class contains all the methods required to communicate to a node agent server. */
 @Slf4j
 @Singleton
 public class NodeAgentClient {
+  public static final String NODE_AGENT_SERVICE_CONFIG_FILE = "node_agent/service_config.json";
   public static final String NODE_AGENT_CONNECT_TIMEOUT_PROPERTY = "yb.node_agent.connect_timeout";
-  public static final Duration IDLE_CONNECT_TIMEOUT = Duration.ofMinutes(20);
+  public static final Duration IDLE_CONNECT_TIMEOUT = Duration.ofMinutes(5);
   public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
 
   // Cache of the channels for re-use.
@@ -94,21 +108,35 @@ public class NodeAgentClient {
   private final RuntimeConfGetter confGetter;
 
   @Inject
-  public NodeAgentClient(Config appConfig, RuntimeConfGetter confGetter) {
-    this(appConfig, confGetter, null);
+  public NodeAgentClient(
+      Config appConfig,
+      RuntimeConfGetter confGetter,
+      PlatformExecutorFactory platformExecutorFactory) {
+    this(
+        appConfig,
+        confGetter,
+        platformExecutorFactory.createExecutor(
+            "node_agent.grpc_executor",
+            new ThreadFactoryBuilder().setNameFormat("NodeAgentGrpcPool-%d").build()));
+  }
+
+  public NodeAgentClient(
+      Config appConfig, RuntimeConfGetter confGetter, ExecutorService executorService) {
+    this(
+        appConfig,
+        confGetter,
+        config ->
+            ChannelFactory.getDefaultChannel(
+                config,
+                new GrpcClientRequestInterceptor(config.getNodeAgent().getUuid(), confGetter),
+                executorService));
   }
 
   public NodeAgentClient(
       Config appConfig, RuntimeConfGetter confGetter, ChannelFactory channelFactory) {
     this.appConfig = appConfig;
     this.confGetter = confGetter;
-    this.channelFactory =
-        channelFactory == null
-            ? config ->
-                ChannelFactory.getDefaultChannel(
-                    config,
-                    new GrpcClientRequestInterceptor(config.getNodeAgent().getUuid(), confGetter))
-            : channelFactory;
+    this.channelFactory = channelFactory;
     this.cachedChannels =
         CacheBuilder.newBuilder()
             .removalListener(
@@ -168,11 +196,15 @@ public class NodeAgentClient {
   public interface ChannelFactory {
     ManagedChannel get(ChannelConfig config);
 
-    static ManagedChannel getDefaultChannel(ChannelConfig config, ClientInterceptor interceptor) {
+    static ManagedChannel getDefaultChannel(
+        ChannelConfig config, ClientInterceptor interceptor, ExecutorService executor) {
       NodeAgent nodeAgent = config.nodeAgent;
       NettyChannelBuilder channelBuilder =
           NettyChannelBuilder.forAddress(nodeAgent.getIp(), nodeAgent.getPort())
-              .idleTimeout(config.getIdleTimeout().toMinutes(), TimeUnit.MINUTES);
+              .idleTimeout(config.getIdleTimeout().toMinutes(), TimeUnit.MINUTES)
+              // Override the default cached pool.
+              .executor(executor)
+              .offloadExecutor(executor);
       if (config.isEnableTls()) {
         try {
           String certPath = config.getCertPath().toString();
@@ -193,7 +225,34 @@ public class NodeAgentClient {
         channelBuilder.withOption(
             ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) config.getConnectTimeout().toMillis());
       }
+      Map<String, ?> serviceConfig = getServiceConfig();
+      if (MapUtils.isNotEmpty(serviceConfig)) {
+        channelBuilder.defaultServiceConfig(serviceConfig);
+      }
       return channelBuilder.build();
+    }
+
+    static Map<String, ?> getServiceConfig() {
+      try (InputStream inputStream =
+          ChannelFactory.class
+              .getClassLoader()
+              .getResourceAsStream(NODE_AGENT_SERVICE_CONFIG_FILE)) {
+        Map<String, ?> map =
+            Json.mapper()
+                .readValue(
+                    Objects.requireNonNull(
+                        inputStream, "Node agent service config file is not found"),
+                    new TypeReference<Map<String, ?>>() {});
+        return fixMap(map);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    // A hack to convert Number to Double because ManagedChannelImplBuilder allows only Double
+    // instance type for numbers.
+    static Map<String, ?> fixMap(Map<String, ?> map) {
+      return Util.transformMap(map, x -> (x instanceof Number) ? ((Number) x).doubleValue() : x);
     }
   }
 
@@ -246,6 +305,11 @@ public class NodeAgentClient {
       }
       return true;
     }
+
+    @Override
+    public String toString() {
+      return String.format("NodeAgent{uuid: %s, ip: %s}", nodeAgent.getUuid(), nodeAgent.getIp());
+    }
   }
 
   @Slf4j
@@ -263,9 +327,9 @@ public class NodeAgentClient {
 
     @Override
     public void onError(Throwable throwable) {
-      latch.countDown();
-      log.error("Error encountered for {}", getId(), throwable);
       this.throwable = throwable;
+      latch.countDown();
+      log.error("Error encountered for {} - {}", getId(), throwable.getMessage());
     }
 
     @Override
@@ -282,40 +346,73 @@ public class NodeAgentClient {
       return throwable;
     }
 
-    public void waitFor() throws Throwable {
+    public void waitFor() {
+      waitFor(true);
+    }
+
+    public void waitFor(boolean throwOnError) {
       try {
         latch.await();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
-      if (throwable != null) {
-        throw throwable;
+      if (throwOnError && throwable != null) {
+        Throwables.propagate(throwable);
       }
     }
   }
 
   static class ExecuteCommandResponseObserver extends BaseResponseObserver<ExecuteCommandResponse> {
+    private final boolean logOutput;
     private final StringBuilder stdOut;
     private final StringBuilder stdErr;
+    private final AtomicInteger exitCode;
 
-    ExecuteCommandResponseObserver(String id) {
+    ExecuteCommandResponseObserver(String id, boolean logOutput) {
       super(id);
+      this.logOutput = logOutput;
       this.stdOut = new StringBuilder();
       this.stdErr = new StringBuilder();
+      this.exitCode = new AtomicInteger();
     }
 
     @Override
     public void onNext(ExecuteCommandResponse response) {
+      Marker fileMarker = MarkerFactory.getMarker("fileOnly");
       if (response.hasError()) {
-        stdErr.append(response.getError().getMessage());
+        exitCode.set(response.getError().getCode());
+        String errMsg = response.getError().getMessage();
+        if (logOutput) {
+          log.debug(fileMarker, errMsg);
+        }
+        stdErr.append(errMsg);
         onError(
             new RuntimeException(
                 String.format(
                     "Error(%d) %s",
                     response.getError().getCode(), response.getError().getMessage())));
       } else {
-        stdOut.append(response.getOutput());
+        String msg = response.getOutput();
+        if (logOutput) {
+          log.debug(fileMarker, msg);
+        }
+        stdOut.append(msg);
       }
+    }
+
+    public ShellResponse getResponse() {
+      waitFor(false);
+      ShellResponse response = new ShellResponse();
+      if (exitCode.get() != 0) {
+        response.code = exitCode.get();
+        response.message = getStdErr();
+      } else if (getThrowable() != null) {
+        response.code = ShellResponse.ERROR_CODE_GENERIC_ERROR;
+        response.message = getThrowable().getMessage();
+      } else {
+        response.message = getStdOut();
+      }
+      return response;
     }
 
     public String getStdOut() {
@@ -324,6 +421,10 @@ public class NodeAgentClient {
 
     public String getStdErr() {
       return stdErr.toString();
+    }
+
+    public int getExitCode() {
+      return exitCode.get();
     }
   }
 
@@ -352,7 +453,7 @@ public class NodeAgentClient {
         .setSubject("Platform")
         .claim("ses", UUID.randomUUID())
         .setExpiration(Date.from(Instant.now().plusSeconds(tokenLifetime.getSeconds())))
-        .signWith(SignatureAlgorithm.RS512, privateKey)
+        .signWith(privateKey, SignatureAlgorithm.RS512)
         .compact();
   }
 
@@ -456,7 +557,8 @@ public class NodeAgentClient {
         nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
         return response;
       } catch (StatusRuntimeException e) {
-        if (e.getStatus().getCode() != Code.UNAVAILABLE) {
+        if (e.getStatus().getCode() != Code.UNAVAILABLE
+            && e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
           log.error("Error in connecting to Node agent {} - {}", nodeAgent.getIp(), e.getStatus());
           throw e;
         }
@@ -477,36 +579,85 @@ public class NodeAgentClient {
     }
   }
 
-  public String executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, null);
+  public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
+    // Use the user of the node-agent process by not setting a specific user.
+    return executeCommand(
+        nodeAgent, command, ShellProcessContext.DEFAULT.toBuilder().useDefaultUser(false).build());
   }
 
-  public String executeCommand(NodeAgent nodeAgent, List<String> command, String user) {
+  public ShellResponse executeCommand(
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
     String id = String.format("%s-%s", nodeAgent.getUuid(), command.get(0));
-    ExecuteCommandResponseObserver responseObserver = new ExecuteCommandResponseObserver(id);
+    ExecuteCommandResponseObserver responseObserver =
+        new ExecuteCommandResponseObserver(id, context.isLogCmdOutput());
     ExecuteCommandRequest.Builder builder =
         ExecuteCommandRequest.newBuilder().addAllCommand(command);
+    String user = context.getSshUser();
     if (StringUtils.isNotBlank(user)) {
       builder.setUser(user);
     }
+    if (context.getTimeoutSecs() > 0L) {
+      stub = stub.withDeadlineAfter(context.getTimeoutSecs(), TimeUnit.SECONDS);
+    }
+    List<String> redactedCommand = context.redactCommand(command);
+    String description =
+        context.getDescription() == null
+            ? StringUtils.abbreviateMiddle(String.join(" ", redactedCommand), " ... ", 140)
+            : context.getDescription();
+    String logMsg = String.format("Starting proc (abbrev cmd) - %s", description);
+    if (context.isTraceLogging()) {
+      log.trace(logMsg);
+    } else {
+      log.info(logMsg);
+    }
     try {
+      if (context.isLogCmdOutput()) {
+        log.debug("Proc stdout for '{}' :", description);
+      }
       stub.executeCommand(builder.build(), responseObserver);
-      responseObserver.waitFor();
-      return responseObserver.getStdOut();
+      ShellResponse response = responseObserver.getResponse();
+      response.setDescription(description);
+      return response;
     } catch (Throwable e) {
-      log.error("Error in running command. Error: {}", responseObserver.stdErr);
+      log.error("Error in running command. Error: {}", e.getMessage());
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
   }
 
+  public ShellResponse executeScript(
+      NodeAgent nodeAgent, Path scriptPath, List<String> params, ShellProcessContext context) {
+    try {
+      byte[] bytes = Files.readAllBytes(scriptPath);
+      ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
+      commandBuilder.add("/bin/bash").add("-c");
+      commandBuilder.add(
+          String.format(
+              "/bin/bash -s %s <<'EOF'\n%s\nEOF",
+              Strings.join(params, " "), new String(bytes, StandardCharsets.UTF_8)));
+      List<String> command = commandBuilder.build();
+      return executeCommand(nodeAgent, command, context);
+    } catch (Exception e) {
+      log.error("Error in running script {}", scriptPath, e);
+      if (e instanceof RuntimeException) {
+        throw (RuntimeException) e;
+      }
+      throw new RuntimeException(e);
+    }
+  }
+
   public void uploadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {
-    uploadFile(nodeAgent, inputFile, outputFile, null, 0);
+    uploadFile(nodeAgent, inputFile, outputFile, null, 0, null);
   }
 
   public void uploadFile(
-      NodeAgent nodeAgent, String inputFile, String outputFile, String user, int chmod) {
+      NodeAgent nodeAgent,
+      String inputFile,
+      String outputFile,
+      String user,
+      int chmod,
+      Duration timeout) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     try (InputStream inputStream = new BufferedInputStream(new FileInputStream(inputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
@@ -520,6 +671,9 @@ public class NodeAgentClient {
       }
       if (chmod > 0) {
         builder.setChmod(chmod);
+      }
+      if (timeout != null && !timeout.isZero()) {
+        stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
       }
       UploadFileRequest request = builder.build();
       // Send metadata first.
@@ -535,7 +689,7 @@ public class NodeAgentClient {
       }
       requestObserver.onCompleted();
       responseObserver.waitFor();
-    } catch (Throwable e) {
+    } catch (Exception e) {
       throw new RuntimeException(
           String.format(
               "Error in uploading file %s to %s. Error: %s", inputFile, outputFile, e.getMessage()),
@@ -544,10 +698,11 @@ public class NodeAgentClient {
   }
 
   public void downloadFile(NodeAgent nodeAgent, String inputFile, String outputFile) {
-    downloadFile(nodeAgent, inputFile, outputFile, null);
+    downloadFile(nodeAgent, inputFile, outputFile, null, null);
   }
 
-  public void downloadFile(NodeAgent nodeAgent, String inputFile, String outputFile, String user) {
+  public void downloadFile(
+      NodeAgent nodeAgent, String inputFile, String outputFile, String user, Duration timeout) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
@@ -558,9 +713,12 @@ public class NodeAgentClient {
       if (StringUtils.isNotBlank(user)) {
         builder.setUser(user);
       }
+      if (timeout != null && !timeout.isZero()) {
+        stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      }
       stub.downloadFile(builder.build(), responseObserver);
       responseObserver.waitFor();
-    } catch (Throwable e) {
+    } catch (Exception e) {
       throw new RuntimeException(
           String.format(
               "Error in downloading file %s to %s. Error: %s",
@@ -589,5 +747,13 @@ public class NodeAgentClient {
     UpdateResponse response =
         stub.update(UpdateRequest.newBuilder().setState(State.UPGRADED.name()).build());
     return response.getHome();
+  }
+
+  public synchronized void cleanupCachedClients() {
+    try {
+      cachedChannels.cleanUp();
+    } catch (RuntimeException e) {
+      log.error("Client cache cleanup failed {}", e);
+    }
   }
 }

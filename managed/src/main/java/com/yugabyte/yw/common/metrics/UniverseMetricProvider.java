@@ -19,7 +19,9 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -61,6 +63,8 @@ public class UniverseMetricProvider implements MetricsProvider {
 
   @Inject RuntimeConfGetter confGetter;
 
+  @Inject ReleaseManager releaseManager;
+
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
           PlatformMetrics.UNIVERSE_EXISTS,
@@ -73,7 +77,8 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
           PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
           PlatformMetrics.UNIVERSE_NODE_PROVISIONED_IOPS,
-          PlatformMetrics.UNIVERSE_NODE_PROVISIONED_THROUGHPUT);
+          PlatformMetrics.UNIVERSE_NODE_PROVISIONED_THROUGHPUT,
+          PlatformMetrics.UNIVERSE_RELEASE_FILES_STATUS);
 
   @Override
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
@@ -92,6 +97,8 @@ public class UniverseMetricProvider implements MetricsProvider {
     }
 
     String ybaVersion = ConfigHelper.getCurrentVersion(environment);
+    Map<String, ReleaseContainer> releaseContainers =
+        releaseManager.getAllReleaseContainersByVersion();
     for (Customer customer : Customer.getAll()) {
       Map<UUID, NodeInstance> nodeInstances =
           NodeInstance.listByCustomer(customer.getUuid()).stream()
@@ -118,13 +125,16 @@ public class UniverseMetricProvider implements MetricsProvider {
               universe.getUniverseDetails().updateInProgress
                   ? universe.getUniverseDetails().updatingTask
                   : null;
+          String dbVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
           universeGroup.metric(
               createUniverseMetric(
                       customer,
                       universe,
                       PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE,
                       taskType != null ? taskType.getCode() : 0)
-                  .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion));
+                  .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion)
+                  .setLabel(KnownAlertLabels.DB_VERSION, dbVersion));
           universeGroup.metric(
               createUniverseMetric(
                   customer,
@@ -185,13 +195,26 @@ public class UniverseMetricProvider implements MetricsProvider {
                 }
               }
 
-              universeGroup.metric(
-                  createUniverseMetric(
-                      customer,
-                      universe,
-                      PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
-                      universeOSUpdateRequired));
+              if (universeOSUpdateRequired > 0) {
+                universeGroup.metric(
+                    createUniverseMetric(
+                        customer,
+                        universe,
+                        PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
+                        universeOSUpdateRequired));
+              }
             }
+          }
+          ReleaseContainer releaseContainer = releaseContainers.get(dbVersion);
+          if (releaseContainer != null) {
+            int universeFilepathMetric =
+                UniverseTaskBase.validateLocalFilepath(universe, releaseContainer) ? 1 : 0;
+            universeGroup.metric(
+                createUniverseMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_RELEASE_FILES_STATUS,
+                    universeFilepathMetric));
           }
 
           if (universe.getUniverseDetails().nodeDetailsSet != null) {

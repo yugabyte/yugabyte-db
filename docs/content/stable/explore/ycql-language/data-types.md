@@ -1,5 +1,6 @@
 ---
-title: Data types in YCQL
+title: YCQL data types
+headertitle: Data types
 linkTitle: Data types
 description: Data types in YCQL
 menu:
@@ -10,9 +11,9 @@ menu:
 type: docs
 ---
 
-This page describes the data types supported in YCQL, from the basic data types to collections, and user defined types.
+The following describes the data types supported in YCQL, from the basic data types to collections, and user defined types.
 
-The [JSONB document data type](../../json-support/jsonb-ycql/) is described in a separate section.
+The [JSONB document data type](../jsonb-ycql/) is described in a separate section.
 
 {{% explore-setup-single %}}
 
@@ -22,8 +23,8 @@ The following character types are supported:
 
 |   Type         |                      Description                          |
 | :------------- | :-------------------------------------------------------- |
-| VARCHAR        | String of unicode characters of unlimited length          |
-| TEXT           | String of unicode characters of unlimited length          |
+| VARCHAR        | String of Unicode characters of unlimited length          |
+| TEXT           | String of Unicode characters of unlimited length          |
 
 `varchar` and `text` are aliases.
 
@@ -35,7 +36,7 @@ The following Apache Cassandra character types are not supported:
 
 To test YugabyteDB support for character types, create a table that has columns with the following types specified:
 
-```sql
+```cql
 CREATE KEYSPACE types_test;
 USE types_test;
 
@@ -48,7 +49,7 @@ CREATE TABLE char_types (
 
 Insert the following rows into the table:
 
-```sql
+```cql
 INSERT INTO char_types (id, a, b) VALUES (
   1, 'Data for the text column', 'Data for the varchar column'
 );
@@ -70,7 +71,7 @@ The following numeric types are supported:
 
 The following example creates a table with integer type columns and inserts rows into it:
 
-```sql
+```cql
 CREATE TABLE albums (
   album_id BIGINT PRIMARY KEY,
   title VARCHAR,
@@ -84,7 +85,7 @@ values (3223372036854775808,'Funhouse', 3600,2146483645 );
 
 Similarly, the following example shows how to create a table with floating-point typed columns and insert a row into that table:
 
-```sql
+```cql
 CREATE TABLE floating_point_test (
   float_test FLOAT PRIMARY KEY,
   decimal_test DECIMAL
@@ -106,7 +107,7 @@ Temporal data types allow us to store date and time data. The following date and
 
 The following example creates a table with the temporal types:
 
-```sql
+```cql
 CREATE TABLE temporal_types (
   date_type DATE PRIMARY KEY,
   time_type TIME,
@@ -116,7 +117,7 @@ CREATE TABLE temporal_types (
 
 The following example inserts a row into the table:
 
-```sql
+```cql
 INSERT INTO temporal_types (
   date_type, time_type, timestamp_type)
 VALUES
@@ -125,7 +126,7 @@ VALUES
 
 The following shows the inserted data:
 
-```sql
+```cql
 ycqlsh> select * from temporal_types;
 ```
 
@@ -154,7 +155,7 @@ cases.
 
 The following example creates a table with the UUID types:
 
-```sql
+```cql
 CREATE TABLE iot (
   sensor_id UUID,
   measurement_id TIMEUUID,
@@ -165,7 +166,7 @@ CREATE TABLE iot (
 
 The following example inserts a row into the table:
 
-```sql
+```cql
 INSERT INTO iot (
   sensor_id, measurement_id, measurement)
 VALUES
@@ -174,7 +175,7 @@ VALUES
 
 The following shows the inserted data:
 
-```sql
+```cql
 ycqlsh> select * from iot;
 ```
 
@@ -199,7 +200,7 @@ types of collections:
 
 The following example creates a table with the collection types:
 
-```sql
+```cql
 CREATE TABLE user_profile (
   user_id UUID,
   user_name TEXT,
@@ -212,7 +213,7 @@ CREATE TABLE user_profile (
 
 The following example inserts a row into the table:
 
-```sql
+```cql
 INSERT INTO user_profile (
   user_id, user_name, recent_logins, phone_numbers, account_numbers)
 VALUES
@@ -222,7 +223,7 @@ VALUES
 
 The following shows the inserted data:
 
-```sql
+```cql
 ycqlsh> select * from user_profile;
 ```
 
@@ -234,15 +235,15 @@ ycqlsh> select * from user_profile;
 (1 rows)
 ```
 
-When the user logs in again, the 'recent_logins' LIST column can be updated as shown below:
+When the user logs in again, the `recent_logins` LIST column can be updated as shown below:
 
-```sql
+```cql
 UPDATE user_profile
 SET recent_logins = recent_logins + ['2023-04-05 09:15:08.000000+0000']
 WHERE user_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
 ```
 
-```sql
+```cql
 ycqlsh> select * from user_profile;
 ```
 
@@ -253,16 +254,17 @@ ycqlsh> select * from user_profile;
 
 (1 rows)
 ```
+
 The preceding example appends the new element to an existing list. Prepending is also possible, as
 follows:
 
-```sql
+```cql
 UPDATE user_profile
 SET recent_logins = ['2023-04-05 09:15:08.000000+0000'] + recent_logins
 WHERE user_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
 ```
 
-```sql
+```cql
 ycqlsh> select * from user_profile;
 ```
 
@@ -285,7 +287,8 @@ A user defined type is a collection of data types similar to a `struct` in a pro
 The following example shows how to create and use a user defined type.
 
 1. Create a user defined type.
-    ```sql
+
+    ```cql
     CREATE TYPE inventory_item (
        name text,
        supplier_id integer,
@@ -294,7 +297,8 @@ The following example shows how to create and use a user defined type.
     ```
 
 1. Create a table with a user defined type as follows:
-     ```sql
+
+     ```cql
      CREATE TABLE on_hand (
         item_id UUID PRIMARY KEY,
         item inventory_item,
@@ -303,11 +307,14 @@ The following example shows how to create and use a user defined type.
      ```
 
 1. Insert a row as follows:
-    ```sql
+
+    ```cql
     INSERT INTO on_hand (item_id, item, count) VALUES (28df63b7-cc57-43cb-9752-fae69d1653da, {name: 'fuzzy dice', supplier_id: 42, price: 1.99}, 1000);
     ```
+
 1. To select data from the `on_hand` example table, execute the following:
-    ```sql
+
+    ```cql
     SELECT * FROM on_hand WHERE item_id = 28df63b7-cc57-43cb-9752-fae69d1653da;
     ```
 
@@ -317,6 +324,6 @@ The following example shows how to create and use a user defined type.
      item_id                              | item                                               | count
     --------------------------------------+----------------------------------------------------+-------
      28df63b7-cc57-43cb-9752-fae69d1653da | {name: 'fuzzy dice', supplier_id: 42, price: 1.99} |  1000
-    
+
     (1 rows)
     ```

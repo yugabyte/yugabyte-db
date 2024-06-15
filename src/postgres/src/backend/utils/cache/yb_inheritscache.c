@@ -37,6 +37,7 @@
 #include "utils/inval.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
+#include "utils/resowner_private.h"
 #include "utils/yb_inheritscache.h"
 
 static HTAB *YbPgInheritsCache;
@@ -78,6 +79,34 @@ YbPgInheritsCacheRelCallback(Datum arg, Oid relid)
 {
 	elog(DEBUG1, "YbPgInheritsCacheRelCallback for relid %d", relid);
 	YbPgInheritsCacheInvalidate(relid);
+}
+
+static void
+YbPgInheritsIncrementReferenceCount(YbPgInheritsCacheEntry entry)
+{
+	entry->refcount++;
+	if (IsBootstrapProcessingMode())
+		return;
+	ResourceOwnerEnlargeYbPgInheritsRefs(CurrentResourceOwner);
+	ResourceOwnerRememberYbPgInheritsRef(CurrentResourceOwner, entry);
+}
+
+static void
+YbPgInheritsDecrementReferenceCount(YbPgInheritsCacheEntry entry)
+{
+	/*
+	 * The refcount should always be greater than 1. It should move to zero
+	 * only when the entry is invalidated from the cache for any reason.
+	 * Currently usages of tuples from the pg_inherits table does not extend
+	 * beyond a possible cache invalidation event, therefore it is never
+	 * possible for a client to call ReleaseYbPgInheritsCacheEntry after it has
+	 * been invalidated. The refcount and assertions are used to future proof
+	 * the above assumption.
+	*/
+	Assert(entry->refcount >= 1);
+	--entry->refcount;
+	if (!IsBootstrapProcessingMode())
+		ResourceOwnerForgetYbPgInheritsRef(CurrentResourceOwner, entry);
 }
 
 static Oid
@@ -130,7 +159,7 @@ YbGetChildCacheEntry(YbPgInheritsCacheEntry entry, Oid relid)
 			YbPgInheritsCacheChildEntry result =
 				palloc(sizeof(YbPgInheritsCacheChildEntryData));
 			result->cacheEntry = entry;
-			++entry->refcount;
+			YbPgInheritsIncrementReferenceCount(entry);
 			result->childTuple = tuple;
 			result->childrelid = relid;
 			return result;
@@ -186,7 +215,8 @@ YbInitPgInheritsCache()
 	 * start with a small size and let it grow as needed.
 	*/
 	YbPgInheritsCache =
-		hash_create("YbPgInheritsCache", 8, &ctl, HASH_ELEM | HASH_CONTEXT);
+		hash_create("YbPgInheritsCache", 8, &ctl,
+					HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 
 	CacheRegisterRelcacheCallback(YbPgInheritsCacheRelCallback, (Datum) 0);
 	elog(DEBUG3, "Initialized YbPgInherits cache");
@@ -196,7 +226,6 @@ void
 YbPreloadPgInheritsCache()
 {
 	Assert(YbPgInheritsCache);
-	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 	Relation relation = heap_open(InheritsRelationId, AccessShareLock);
 	HeapTuple	inheritsTuple;
 
@@ -223,13 +252,13 @@ YbPreloadPgInheritsCache()
 			entry->refcount = 1;
 			entry->parentOid = parentOid;
 		}
-
+		MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 		HeapTuple copy_inheritsTuple = heap_copytuple(inheritsTuple);
 		entry->childTuples = lappend(entry->childTuples, copy_inheritsTuple);
+		MemoryContextSwitchTo(oldcxt);
 	}
 	systable_endscan(scan);
 	heap_close(relation, AccessShareLock);
-	MemoryContextSwitchTo(oldcxt);
 }
 
 YbPgInheritsCacheEntry
@@ -250,7 +279,7 @@ GetYbPgInheritsCacheEntry(Oid parentOid)
 	{
 		elog(DEBUG3, "YbPgInheritsCache hit for parentOid %d", parentOid);
 	}
-	++entry->refcount;
+	YbPgInheritsIncrementReferenceCount(entry);
 	return entry;
 }
 
@@ -286,17 +315,7 @@ ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry)
 	elog(DEBUG3,
 		"ReleaseYbPgInheritsCacheEntry for parentOid %d", entry->parentOid);
 
-	--entry->refcount;
-	/*
-	 * The refcount should always be greater than 1. It should move to zero
-	 * only when the entry is invalidated from the cache for any reason.
-	 * Currently usages of tuples from the pg_inherits table does not extend
-	 * beyond a possible cache invalidation event, therefore it is never
-	 * possible for a client to call ReleaseYbPgInheritsCacheEntry after it has
-	 * been invalidated. The refcount and assertions are used to future proof
-	 * the above assumption.
-	*/
-	Assert(entry->refcount >= 1);
+	YbPgInheritsDecrementReferenceCount(entry);
 }
 
 void

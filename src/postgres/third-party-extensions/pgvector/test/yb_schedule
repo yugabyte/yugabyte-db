@@ -10,3 +10,4 @@ test: cast
 test: functions
 test: input
 test: yb_order_by
+test: yb_index

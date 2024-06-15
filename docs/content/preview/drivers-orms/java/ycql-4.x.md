@@ -10,6 +10,7 @@ menu:
     weight: 500
 aliases:
   - /preview/drivers-orms/java/ycql-4.6/
+  - /preview/tutorials/build-apps/java/ycql-4.6/
 type: docs
 ---
 
@@ -40,6 +41,14 @@ type: docs
     </a>
   </li>
 </ul>
+
+[YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) for [YCQL](../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+
+{{< note title="YugabyteDB Managed" >}}
+
+To use the driver's partition-aware load balancing feature in a YugabyteDB Managed cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
 
 ## Maven
 

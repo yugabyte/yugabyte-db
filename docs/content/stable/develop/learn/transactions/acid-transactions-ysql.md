@@ -1,6 +1,6 @@
 ---
 title: ACID Transactions in YSQL
-headerTitle: Transactions
+headerTitle: Transactions in YSQL
 linkTitle: Transactions
 description: Learn how to use Transactions in YSQL on YugabyteDB.
 menu:
@@ -65,14 +65,14 @@ For an overview of what settings can be set for a transaction, see [Session-leve
 
 ### Isolation levels
 
-The isolation level defines the level of data visibility to the transaction. YugabytedDB supports [multi-version concurrency control (MVCC)](../../../../architecture/transactions/transactions-overview/#multi-version-concurrency-control), which enables the isolation of concurrent transactions without the need for locking.
+The isolation level defines the level of data visibility to the transaction. YugabyteDB supports [multi-version concurrency control (MVCC)](../../../../architecture/transactions/transactions-overview/#multi-version-concurrency-control), which enables the isolation of concurrent transactions without the need for locking.
 
 YugabyteDB supports three kinds of isolation levels to support different application needs.
 
 | Level | Description |
 | :---- | :---------- |
 | [Repeatable&nbsp;Read (Snapshot)](../../../../explore/transactions/isolation-levels/#snapshot-isolation) | Only the data that is committed before the transaction began is visible to the transaction. Effectively, the transaction sees the snapshot of the database as of the start of the transaction. {{<note>}}Applications using this isolation level should be designed to [retry](../transactions-retries-ysql#client-side-retry) on serialization failures.{{</note>}} |
-| [Read Committed (beta)](../../../../explore/transactions/isolation-levels/#read-committed-isolation) | Each statement of the transaction sees the latest data committed by any concurrent transaction just before the execution of the statement. If another transaction has modified a row related to the current transaction, the current transaction waits for the other transaction to commit or rollback its changes. {{<note>}} The server internally waits and retries on conflicts, so applications [need not retry](../transactions-retries-ysql#automatic-retries) on serialization failures.{{</note>}} |
+| [Read Committed](../../../../explore/transactions/isolation-levels/#read-committed-isolation){{<badge/ea>}} | Each statement of the transaction sees the latest data committed by any concurrent transaction just before the execution of the statement. If another transaction has modified a row related to the current transaction, the current transaction waits for the other transaction to commit or rollback its changes. {{<note>}} The server internally waits and retries on conflicts, so applications [need not retry](../transactions-retries-ysql#automatic-retries) on serialization failures.{{</note>}} |
 | [Serializable](../../../../explore/transactions/isolation-levels/#serializable-isolation) | This is the strictest isolation level and has the effect of all transactions being executed in a serial manner, one after the other rather than in parallel. {{<note>}} Applications using this isolation level should be designed to [retry](../transactions-retries-ysql/#client-side-retry) on serialization failures.{{</note>}} |
 
 {{<tip title="Examples">}}
@@ -134,21 +134,23 @@ During transaction processing, failures can happen due to the strong [ACID](../.
 
 {{<tip>}}
 For more details on how to handle failures and retry, see [Transaction retries](../transactions-retries-ysql/).
+
+For an example application and try it out yourself, see [Designing a Retry Mechanism for Resilient Spring Boot Applications](https://www.yugabyte.com/blog/retry-mechansim-spring-boot-app/).
 {{</tip>}}
 
 ## Tuning for high performance
 
-All applications need to be tuned to get the best performance. YugabyteDB supports various constructs and [multiple settings](../transactions-performance-ysql/#session-level-settings) that can be adopted and tuned to your needs. Adopting the correct constructs in the right scenarios can immensely improve the performance of your application. Some examples are:
+All applications need to be tuned to get the best performance. YugabyteDB supports various constructs and [multiple settings](../transactions-performance-ysql/) that can be adopted and tuned to your needs. Adopting the correct constructs in the right scenarios can immensely improve the performance of your application. Some examples are:
 
 - Convert a multi-statement transaction affecting a single row into a [fast-path](../transactions-performance-ysql/#fast-single-row-transactions) transaction.
 - [Avoid long waits](../transactions-performance-ysql/#avoid-long-waits) with the right timeouts.
 - [Minimize conflict errors](../transactions-performance-ysql/#minimize-conflict-errors) with `ON CONFLICT` clause.
-- [Uninterrupted long scans](../transactions-performance-ysql/#long-scans-and-batch-jobs)
+- [Uninterrupted long scans](../transactions-performance-ysql/#large-scans-and-batch-jobs)
 - [Minimize round trips](../transactions-performance-ysql/#stored-procedures-minimize-round-trips) with stored procedures.
 
-{{<tip>}}
+{{<lead link="../transactions-performance-ysql/">}}
 For more examples and details on how to tune your application's performance, see [Performance tuning](../transactions-performance-ysql/).
-{{</tip>}}
+{{</lead>}}
 
 ## Observability
 
@@ -176,7 +178,7 @@ These settings impact all transactions in the current session only.
 
 ##### default_transaction_read_only
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../transactions-performance-ysql/#read-from-followers).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../transactions-global-apps/#read-from-followers).
 
 ```plpgsql
 SET default_transaction_read_only = TRUE;

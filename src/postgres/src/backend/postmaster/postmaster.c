@@ -77,7 +77,7 @@
 #include <netdb.h>
 #include <limits.h>
 
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
 
@@ -143,6 +143,7 @@
 
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -1036,6 +1037,10 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
+
+	/* Register ASH collector */
+	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
+		YbAshRegister();
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -4370,13 +4375,13 @@ BackendStartup(Port *port)
 	pid = fork_process();
 	if (pid == 0)				/* child */
 	{
-#ifdef __linux__
+#ifdef HAVE_SYS_PRCTL_H
 		/*
 		 * In YB, all backends are stateless and upon PG master termination, all
 		 * backend processes should also terminate regardless what state they are
 		 * in. No clean-up procedure is needed in the backends.
 		 */
-		if (IsYugaByteEnabled())
+		if (YBIsEnabledInPostgresEnvVar())
 			prctl(PR_SET_PDEATHSIG, SIGKILL);
 #endif
 
@@ -4639,6 +4644,11 @@ BackendInitialize(Port *port)
 	else
 		init_ps_display(port->user_name, port->database_name, remote_ps_data,
 						update_process_title ? "authentication" : "");
+
+	if (YBIsEnabledInPostgresEnvVar() && am_walsender)
+		YBC_LOG_INFO("Started Walsender backend with pid: %d, user_name: %s, "
+					 "remote_ps_data: %s",
+					 getpid(), port->user_name, remote_ps_data);
 
 	/*
 	 * Disable the timeout, and prevent SIGTERM/SIGQUIT again.

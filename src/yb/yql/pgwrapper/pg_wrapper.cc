@@ -27,6 +27,8 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
@@ -37,19 +39,24 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
 #include "yb/util/to_stream.h"
 
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
+#include "ybgate/ybgate_api.h"
+#include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(enable_ysql_conn_mgr);
 
-DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
+DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
+
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
@@ -166,6 +173,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_max_transactions, 16,
     "Sets the maximum number of transactions for which to return rows in pg_locks.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_txn_locks_per_tablet, 200,
+    "Sets the maximum number of rows to return per transaction per tablet in pg_locks.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 
@@ -177,6 +187,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1024,
     "Batch size of nested loop joins.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_explicit_row_locking_batch_size, 1,
+    "Batch size of explicit row locking.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
@@ -200,6 +213,14 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExterna
                             "Enable using the default value for existing rows after an ADD COLUMN"
                             " ... DEFAULT operation");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_alter_table_rewrite, kLocalPersisted, false, true,
+                            "Enable ALTER TABLE rewrite operations");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_optimizer_statistics, false,
+    "Enables use of the PostgreSQL selectivity estimation which utilizes table statistics "
+    "collected with ANALYZE. When disabled, a simpler heuristics based selectivity estimation is "
+    "used.");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
@@ -213,12 +234,45 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false, true,
+    "Push supported scalar array operations from ysql down to DocDB for evaluation.");
+
 // TODO(#19211): Convert this to an auto-flag.
-DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replica_identity, false,
+    "Enable replica identity command for Alter Table query");
+
+DEFINE_RUNTIME_PG_FLAG(
+    string, yb_default_replica_identity, "CHANGE",
+    "The default replica identity to be assigned to user defined tables at the time of creation. "
+    "The flag is case sensitive and can take four possible values, 'FULL', 'DEFAULT', 'NOTHING' "
+    "and 'CHANGE'. If any value other than these is assigned to the flag, the replica identity "
+    "CHANGE will be used as default at the time of table creation.");
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
     "The number of rows to plan per parallel worker, zero disables the feature");
+
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_nonempty_ms, 1,  // 1 msec
+    "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
+    "the CDC service in case the last received response was non-empty.");
+
+DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 1000,  // 1 sec
+    "Time in milliseconds for which Walsender waits before fetching the next batch of changes from "
+    "the CDC service in case the last received response was empty. The response can be empty in "
+    "case there are no DMLs happening in the system.");
+
+DEFINE_RUNTIME_PG_FLAG(
+    uint32, yb_reorderbuffer_max_changes_in_memory, 4096,
+    "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
+    "streaming changes via logical replication . After that, changes are spooled to disk.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
+    "Size threshold in bytes for a catcache tuple to be compressed.");
+
+DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
+  "Determines the behavior of read-after-commit-visibility guarantee.");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -234,6 +288,21 @@ DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistenc
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
+
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+    "Size (in KiBs) of ASH circular buffer that stores the samples");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
+    "Time (in milliseconds) between two consecutive sampling events");
+DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
+    "Number of samples captured from each component per sampling event");
+
+DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
+    "Database in which pg_cron metadata is kept.");
+
+DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -398,8 +467,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
-  if (FLAGS_TEST_yb_enable_ash) {
-    metricsLibs.push_back("yb_ash");
+
+  if (FLAGS_enable_pg_cron) {
+    metricsLibs.push_back("pg_cron");
   }
 
   vector<string> lines;
@@ -439,6 +509,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
     lines.push_back(Format("ssl_ca_file='$0/ca.crt'", conf.certs_for_client_dir));
   }
 
+  // Add cron.database_name
+  lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
+
   // Finally add gFlags.
   // If the file contains multiple entries for the same parameter, all but the last one are
   // ignored. If there are duplicates in FLAGS_ysql_pg_conf_csv then we want the values specified
@@ -460,7 +533,6 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   } else if (!FLAGS_ysql_hba_conf.empty()) {
     ReadCommaSeparatedValues(FLAGS_ysql_hba_conf, &lines);
   }
-
   // Add auto-generated config for the enable auth and enable_tls flags.
   if (FLAGS_ysql_enable_auth || conf.enable_tls) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";
@@ -650,6 +722,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("LD_LIBRARY_PATH", boost::join(ld_library_path, ":"));
   std::string stats_key = std::to_string(ysql_conn_mgr_stats_shmem_key_);
 
+  unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats)
     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, stats_key);
 
@@ -675,6 +748,11 @@ Status PgWrapper::Start() {
                 FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes);
   proc_->SetEnv("FLAGS_mem_tracker_update_consumption_interval_us",
                 FLAGS_pg_mem_tracker_update_consumption_interval_us);
+
+  proc_->SetEnv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH",
+      FLAGS_enable_ysql_conn_mgr ? "1" : "0");
+
+  rpc::SetOpenSSLEnv(&*proc_);
 
   RETURN_NOT_OK(proc_->Start());
   if (!FLAGS_postmaster_cgroup.empty()) {
@@ -705,18 +783,22 @@ Status PgWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
-Status PgWrapper::InitDb(bool yb_enabled) {
+Status PgWrapper::InitDb(const string& versioned_data_dir) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
   if (!Env::Default()->FileExists(initdb_program_path)) {
     return STATUS_FORMAT(IOError, "initdb not found at: $0", initdb_program_path);
   }
 
-  vector<string> initdb_args { initdb_program_path, "-D", conf_.data_dir, "-U", "postgres" };
+  // A set versioned_data_dir means it's local initdb, so we need to initialize in the actual
+  // directory. Otherwise, we can use the symlink.
+  const string& data_dir = versioned_data_dir.empty() ? conf_.data_dir : versioned_data_dir;
+  vector<string> initdb_args { initdb_program_path, "-D", data_dir, "-U", "postgres" };
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
+  bool yb_enabled = versioned_data_dir.empty();
   SetCommonEnv(&initdb_subprocess, yb_enabled);
   int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
@@ -733,14 +815,94 @@ Status PgWrapper::InitDb(bool yb_enabled) {
   return Status::OK();
 }
 
+namespace {
+
+constexpr auto kVersionChars = 2;
+
+Result<int32_t> GetCurrentPgVersion() {
+  const char* curr_pg_ver_cstr;
+  PG_RETURN_NOT_OK(YbgGetPgVersion(&curr_pg_ver_cstr));
+  string curr_pg_ver_str = curr_pg_ver_cstr;
+  return CheckedStoi(curr_pg_ver_str.substr(0, kVersionChars));
+}
+
+Result<int32_t> GetPgDirectoryVersion(const string& data_dir) {
+  std::unique_ptr<SequentialFile> result;
+  std::string full_path = JoinPathSegments(data_dir, "PG_VERSION");
+  RETURN_NOT_OK(Env::Default()->NewSequentialFile(full_path, &result));
+  Slice slc;
+  uint8_t buf[64];
+  RETURN_NOT_OK(result->Read(ARRAYSIZE(buf), &slc, buf));
+  // There's a trailing newline in the PG_VERSION file ("##\n").
+  return CheckedStoi(slc.Prefix(kVersionChars));
+}
+
+}  // namespace
+
+string PgWrapper::MakeVersionedDataDir(int32_t version) {
+  return conf_.data_dir + "_" + std::to_string(version);
+}
+
+// The data directory contains PG files for a particular PG version.
+// Across upgrades and rollbacks, other than briefly during initialization time, we always want a
+// valid data directory that matches the current major PG version. Also, we would like to restore
+// PG11's data in case of rollback. We do this by using a symlink to a version-specific data
+// directory.
+// This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  if (Env::Default()->FileExists(conf_.data_dir)) {
-    LOG(INFO) << "Data directory " << conf_.data_dir << " already exists, skipping initdb";
-    return Status::OK();
+  int32_t current_pg_version = VERIFY_RESULT(GetCurrentPgVersion());
+
+  // One-time migration in case this installation is not yet using a symlink
+  if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
+      !VERIFY_RESULT(Env::Default()->IsSymlink(conf_.data_dir))) {
+    int32_t directory_version = VERIFY_RESULT(GetPgDirectoryVersion(conf_.data_dir));
+    string migrated_versioned_dir = MakeVersionedDataDir(directory_version);
+    LOG(INFO) << "Data directory " << conf_.data_dir << " already exists for version "
+              << directory_version << ", performing one-time migration to "
+              << migrated_versioned_dir << ".";
+    RETURN_NOT_OK(Env::Default()->RenameFile(conf_.data_dir, migrated_versioned_dir));
+    if (current_pg_version == directory_version) {
+      LOG(INFO) << "Linking " << conf_.data_dir << " to " << migrated_versioned_dir
+                << " and skipping initdb.";
+      return Env::Default()->SymlinkPath(migrated_versioned_dir, conf_.data_dir);
+    }
   }
-  // Do not communicate with the YugaByte cluster at all. This function is only concerned with
-  // setting up the local PostgreSQL data directory on this tablet server.
-  return InitDb(/* yb_enabled */ false);
+
+  string versioned_data_dir = MakeVersionedDataDir(current_pg_version);
+  if (Env::Default()->FileExists(conf_.data_dir)) {
+    // Get version from symlink
+    string link = VERIFY_RESULT(Env::Default()->ReadLink(conf_.data_dir));
+    SCHECK_GE(link.size(), kVersionChars, InternalError,
+              Format("conf_.data_dir too short: $0 bytes", link.size()));
+    int32_t symlink_version = VERIFY_RESULT(CheckedStoi(link.substr(link.size() - kVersionChars)));
+    if (current_pg_version == symlink_version) {
+      LOG(INFO) << "Data directory " << versioned_data_dir
+                << " already exists, skipping initdb";
+      return Status::OK();
+    }
+    if (current_pg_version < symlink_version) {
+      // Looks like a rollback. If the directory exists, use it.
+      if (Env::Default()->DirExists(versioned_data_dir)) {
+        LOG(INFO) << "Data directory " << versioned_data_dir
+                  << " already exists for rollback. Linking " << conf_.data_dir
+                  << " and skipping initdb.";
+        return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
+      }
+    }
+  }
+
+  // At this point it's either an upgrade, or no symlink exists. In the upgrade case, there may
+  // have been a prior rollback, and we're trying again. In this case, we want a clean installation.
+  // If no symlink exists, the common case is that this is the first installation, but it's
+  // possible a prior installation failed before creating the symlink, so we want a clean
+  // installation here also.
+  RETURN_NOT_OK(DeleteIfExists(versioned_data_dir, Env::Default()));
+
+  // Run local initdb. Do not communicate with the YugaByte cluster at all. This function is only
+  // concerned with setting up the local PostgreSQL data directory on this tablet server. We skip
+  // local initdb if versioned_data_dir already exists.
+  RETURN_NOT_OK(InitDb(versioned_data_dir));
+  return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
 }
 
 Status PgWrapper::InitDbForYSQL(
@@ -770,7 +932,7 @@ Status PgWrapper::InitDbForYSQL(
   });
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
-  Status initdb_status = pg_wrapper.InitDb(/* yb_enabled */ true);
+  Status initdb_status = pg_wrapper.InitDb();
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
   LOG(INFO)
       << "initdb took "

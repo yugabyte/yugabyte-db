@@ -29,7 +29,9 @@ public class KubernetesInfo implements CloudInfoInterface {
   @JsonAlias("KUBECONFIG_SERVICE_ACCOUNT")
   @EditableInUseProvider(name = "Kubernetes Service Account", allowed = false)
   @ApiModelProperty(
-      value = "Deprecated since YBA version 2.17.3.0. kubernetes service account is not needed.")
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.3.0.</b> kubernetes service"
+              + " account is not needed.")
   private String kubernetesServiceAccount;
 
   @JsonAlias("KUBECONFIG_IMAGE_REGISTRY")
@@ -76,6 +78,9 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty
   @EditableInUseProvider(name = "Kubernetes Pull Secret Name", allowed = false)
   private String kubernetesPullSecretName;
+
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  public boolean isKubernetesOperatorControlled = false;
 
   // Flag for identifying the legacy k8s providers created before release 2.18.
   @ApiModelProperty(hidden = true)

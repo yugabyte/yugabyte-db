@@ -63,9 +63,10 @@ public class ScheduleController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'List schedules V2' instead. List schedules",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + " Use 'List schedules V2' instead.",
+      value = "List schedules - deprecated",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
@@ -125,9 +126,10 @@ public class ScheduleController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'Delete a schedule V2' instead. Delete a schedule",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'Delete a schedule V2' instead.",
+      value = "Delete a schedule  - deprecated",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteSchedule")
   @AuthzPath({

@@ -27,10 +27,10 @@ public class RestoreBackup extends UniverseTaskBase {
   protected RestoreBackup(
       BaseTaskDependencies baseTaskDependencies,
       YbcManager ybcManager,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
     this.ybcManager = ybcManager;
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -53,27 +53,26 @@ public class RestoreBackup extends UniverseTaskBase {
 
         if (isFirstTry()) {
           backupHelper.validateRestoreOverwrites(taskParams().backupStorageInfoList, universe);
-        }
+          if (universe.isYbcEnabled()
+              && !universe
+                  .getUniverseDetails()
+                  .getYbcSoftwareVersion()
+                  .equals(ybcManager.getStableYbcVersion())) {
 
-        if (universe.isYbcEnabled()
-            && !universe
+            if (universe
                 .getUniverseDetails()
-                .getYbcSoftwareVersion()
-                .equals(ybcManager.getStableYbcVersion())) {
-
-          if (universe
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
-            createUpgradeYbcTaskOnK8s(
-                    taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
-          } else {
-            createUpgradeYbcTask(
-                    taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(Common.CloudType.kubernetes)) {
+              createUpgradeYbcTaskOnK8s(
+                      taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion())
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            } else {
+              createUpgradeYbcTask(
+                      taskParams().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            }
           }
         }
 
@@ -87,11 +86,9 @@ public class RestoreBackup extends UniverseTaskBase {
 
         // Run all the tasks.
         getRunnableTask().runSubTasks();
-        unlockUniverseForUpdate();
         if (restore != null) {
           restore.update(getTaskUUID(), Restore.State.Completed);
         }
-
       } catch (CancellationException ce) {
         unlockUniverseForUpdate(false);
         isAbort = true;
@@ -107,9 +104,10 @@ public class RestoreBackup extends UniverseTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       handleFailedBackupAndRestore(
           null, Arrays.asList(restore), isAbort, taskParams().alterLoadBalancer);
-      unlockUniverseForUpdate();
       kubernetesStatus.updateRestoreJobStatus("Failed Restore task", getUserTaskUUID());
       throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
     kubernetesStatus.updateRestoreJobStatus("Finished Restore", getUserTaskUUID());
     log.info("Finished {} task.", getName());

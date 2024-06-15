@@ -7,8 +7,9 @@ menu:
   preview_faq:
     identifier: faq-operations
     parent: faq
-    weight: 30
+    weight: 50
 type: docs
+unversioned: true
 showRightNav: false
 ---
 

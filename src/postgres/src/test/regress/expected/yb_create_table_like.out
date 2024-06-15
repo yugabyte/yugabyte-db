@@ -190,7 +190,7 @@ UNION
 SELECT 'index' AS object_type, relname AS obj_name, obj_description(oid) AS comments FROM pg_class WHERE oid IN (SELECT indexrelid FROM pg_index WHERE indrelid=$1::regclass::oid)
 UNION
 SELECT 'constraint' AS object_type, conname AS obj_name, obj_description(oid) AS comments FROM pg_constraint WHERE conrelid=$1::regclass::oid
-ORDER BY obj_name
+ORDER BY obj_name, object_type
 $$ LANGUAGE SQL;
 -- Without specifying INCLUDING COMMENTS, comments are not copied.
 CREATE TABLE comments1 (LIKE liketest1 INCLUDING INDEXES, LIKE liketest2 INCLUDING CONSTRAINTS);
@@ -202,8 +202,8 @@ SELECT * FROM get_comments('comments1');
  column      | c                  |
  index       | comments1_b_idx    |
  index       | comments1_expr_idx |
- index       | comments1_pkey     |
  constraint  | comments1_pkey     |
+ index       | comments1_pkey     |
  column      | d                  |
  constraint  | liketest2_c_check  |
 (9 rows)
@@ -232,8 +232,8 @@ SELECT * FROM get_comments('comments3');
  column      | b                  | B
  index       | comments3_b_idx    | index b
  index       | comments3_expr_idx |
- index       | comments3_pkey     | index pkey
  constraint  | comments3_pkey     |
+ index       | comments3_pkey     | index pkey
  constraint  | liketest1_a_check  | a_check
 (7 rows)
 
@@ -366,7 +366,7 @@ Colocation: true
 -- cannot colocate hash-partitioned table.
 CREATE TABLE hash_k (i int primary key) with (colocation = false);
 CREATE TABLE hash_k_fail_test (LIKE hash_k INCLUDING ALL);
-ERROR:  Invalid table definition: Error creating table colocation_test.hash_k_fail_test on the master: Cannot colocate hash partitioned table
+ERROR:  cannot colocate hash partitioned table
 CREATE TABLE hash_k_test (LIKE hash_k INCLUDING ALL) with (colocation = false);
 \d hash_k_test
             Table "public.hash_k_test"
@@ -426,18 +426,18 @@ Check constraints:
 DROP TABLE liketemptest;
 -- Test using LIKE clause where source and target tables are temp tables.
 CREATE TEMP TABLE liketemptest (LIKE temptest INCLUDING ALL);
--- \d liketemptest has unstable output due to temporary schemaname
--- such as pg_temp_1, pg_temp_2, etc. Use regexp_replace to change
--- it to pg_temp_xxx so that the result is stable.
+-- \d liketemptest has unstable output as the temporary schemaname contains
+-- the tserver uuid. Use regexp_replace to change it to pg_temp_x so that the
+-- result is stable.
 select current_setting('data_directory') || 'describe.out' as desc_output_file
 \gset
 \o :desc_output_file
 \d liketemptest
 \o
-select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_\d+', 'pg_temp_xxx', 'g');
-                              regexp_replace
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g');
+                              regexp_replace                              
 --------------------------------------------------------------------------
-                      Table "pg_temp_xxx.liketemptest"                   +
+     Table "pg_temp_x.liketemptest"                                      +
   Column |       Type       | Collation | Nullable |       Default       +
  --------+------------------+-----------+----------+---------------------+
   k      | integer          |           | not null |                     +

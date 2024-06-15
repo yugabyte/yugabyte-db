@@ -47,8 +47,8 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
 YugabyteDB Anywhere is supported on all Linux distributions that Replicated supports. This includes, but is not limited to the following:
 
 - CentOS 7
-- Alma Linux 8
-- Alma Linux 9
+- AlmaLinux 8
+- AlmaLinux 9
 - Ubuntu 18
 - Ubuntu 20
 - RedHat Enterprise Linux 7
@@ -60,7 +60,19 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 - 4 cores
 - 8 GB memory
-- 200 GB disk space
+- 265+ GB disk space (see following table)
+
+| Path | Usage | Free Space Required |
+| :--- | :--- | :--- |
+| / | Assuming /opt/yugabyte shares a file system with / | 50 GB |
+| /tmp | Used during Install and Upgrade | 10 GB<sup>1</sup> |
+| /opt/yugabyte | Database configuration and Prometheus logs | 150+ GB<sup>1,2</sup> |
+| /var/lib/docker | Running YBA components | 40 GB<sup>1</sup> |
+| /var/lib/replicated | Images and staging | 15 GB<sup>1</sup> |
+
+<sup>1</sup> Where two or more of these paths share a file system, the free space required on that file system is the sum of the free space requirements.
+
+<sup>2</sup> YugabyteDB Anywhere installations managing many nodes, or universes with many tables may require more than 150 GB to retain Prometheus logs, depending on retention. Installations managing fewer objects may need as little as 50-100 GB for /opt/yugabyte.
 
 ## Prepare the host
 

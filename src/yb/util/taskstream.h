@@ -19,11 +19,11 @@
 #include <memory>
 #include <vector>
 
-#include "yb/util/flags.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/blocking_queue.h"
+#include "yb/util/callsite_profiling.h"
+#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
@@ -217,7 +217,7 @@ void TaskStream<T>::Run() {
     }
     if (stop_requested_.load(std::memory_order_acquire)) {
       VLOG(1) << "TaskStream task's Run() function is returning because stop is requested.";
-      stop_cond_.notify_all();
+      YB_PROFILE(stop_cond_.notify_all());
       return;
     }
     VLOG(1) << "Returning from TaskStream task after inactivity:" << this;

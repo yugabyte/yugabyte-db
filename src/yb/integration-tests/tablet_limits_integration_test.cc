@@ -14,7 +14,10 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/tablet_limits.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/tablet_creation_limits.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -33,7 +36,8 @@ namespace {
 
 const std::string kCoreLimitFlagName = "tablet_replicas_per_core_limit";
 const std::string kMemoryLimitFlagName = "tablet_replicas_per_gib_limit";
-
+const std::string kCpusFlagName = "num_cpus";
+const std::string kBlockSplittingFlagName = "split_respects_tablet_replica_limits";
 const std::string kErrorMessageFragment = "to exceed the safe system maximum";
 }  // namespace
 
@@ -111,6 +115,47 @@ class CreateTableLimitTestBase : public YBMiniClusterTestBase<ExternalMiniCluste
                {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
         .Connect();
   }
+
+  Status SplitTablet(const TabletId& tablet_id) {
+    master::SplitTabletRequestPB req;
+    req.set_tablet_id(tablet_id);
+    master::SplitTabletResponsePB resp;
+    rpc::RpcController controller;
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+    RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &controller));
+    if (resp.has_error()) {
+      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+    }
+    return Status::OK();
+  }
+
+  Result<master::GetTableLocationsResponsePB> GetTableLocations(const TableId& table_id) {
+    master::GetTableLocationsRequestPB req;
+    req.mutable_table()->set_table_id(table_id);
+    req.set_max_returned_locations(1000);
+    master::GetTableLocationsResponsePB resp;
+    rpc::RpcController controller;
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterClientProxy>();
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &controller));
+    if (resp.has_error()) {
+      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+    }
+    return resp;
+  }
+
+  Result<master::ListTablesResponsePB> ListTables(const TableName& table_name) {
+    master::ListTablesRequestPB req;
+    req.set_name_filter(table_name);
+    req.set_exclude_system_tables(true);
+    master::ListTablesResponsePB resp;
+    rpc::RpcController controller;
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    RETURN_NOT_OK(proxy.ListTables(req, &resp, &controller));
+    if (resp.has_error()) {
+      RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+    }
+    return resp;
+  }
 };
 
 class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
@@ -120,7 +165,10 @@ class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
     options.enable_ysql = true;
     options.num_tablet_servers = 1;
     options.num_masters = 1;
-    options.extra_master_flags = {"--replication_factor=1", "--enable_load_balancing=false"};
+    options.extra_master_flags = {
+        "--replication_factor=1", "--enable_load_balancing=false",
+        "--initial_tserver_registration_duration_secs=0",
+        "--enforce_tablet_replica_limits=true"};
     return options;
   }
 };
@@ -132,7 +180,7 @@ TEST_F(CreateTableLimitTestRF1, CoreLimit) {
   ASSERT_OK(conn.Execute(DDLToCreateNTabletTable("warmup")));
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
@@ -174,7 +222,7 @@ TEST_F(CreateTableLimitTestRF1, MultipleTablets) {
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName,
         std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()) + 1)}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
@@ -195,7 +243,7 @@ TEST_F(CreateTableLimitTestRF1, DeadTServer) {
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
        {"tserver_unresponsive_timeout_ms", std::to_string(3000)}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
@@ -220,7 +268,7 @@ TEST_F(CreateTableLimitTestRF1, BlacklistTServer) {
   UpdateStartupMasterFlags(
       {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
        {"tserver_unresponsive_timeout_ms", std::to_string(3000)}});
-  UpdateStartupTServerFlags({{"num_cpus", "1"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
   // Restart the cluster to ensure the master uses the new number of cores for the tserver.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
@@ -232,6 +280,30 @@ TEST_F(CreateTableLimitTestRF1, BlacklistTServer) {
   ASSERT_OK(conn.Execute("DROP TABLE t"));
   ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(0), cluster_->tablet_server(1)));
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
+}
+
+TEST_F(CreateTableLimitTestRF1, BlockTabletSplitting) {
+  std::string table_name = "test_table";
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.Execute(DDLToCreateNTabletTable(table_name)));
+  UpdateStartupMasterFlags(
+      {{kCoreLimitFlagName, std::to_string(ASSERT_RESULT(GetTServerTabletLiveReplicasCount()))},
+       {kMemoryLimitFlagName, "0"},
+       {kBlockSplittingFlagName, "true"}});
+  UpdateStartupTServerFlags({{kCpusFlagName, "1"}});
+  // Restart the cluster to ensure the master uses the new number of cores for the tserver.
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+  auto list_tables_resp = ASSERT_RESULT(ListTables(table_name));
+  ASSERT_EQ(list_tables_resp.tables_size(), 1);
+  auto table_id = list_tables_resp.tables(0).id();
+  auto locations = ASSERT_RESULT(GetTableLocations(table_id));
+  ASSERT_GT(locations.tablet_locations_size(), 0);
+  auto tablet_id = locations.tablet_locations(0).tablet_id();
+  auto status = SplitTablet(tablet_id);
+  ASSERT_OK(IsTabletLimitErrorStatus(status));
+  ASSERT_OK(cluster_->SetFlagOnMasters(kCoreLimitFlagName, "0"));
+  ASSERT_OK(SplitTablet(tablet_id));
 }
 
 }  // namespace yb

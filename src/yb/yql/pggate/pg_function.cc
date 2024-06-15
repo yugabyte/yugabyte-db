@@ -143,7 +143,7 @@ Status PgFunction::GetNext(uint64_t* values, bool* is_nulls, bool* has_data) {
 
 Result<PgTableRow> AddLock(
     const ReaderProjection& projection, const Schema& schema, const std::string& node_id,
-    const TableId& parent_table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
+    const TableId& parent_pg_table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
     const TransactionId& transaction_id, HybridTime wait_start_ht = HybridTime::kMin,
     const std::vector<TransactionId>& blocking_txn_ids = {}) {
   DCHECK_NE(lock.has_wait_end_ht(), wait_start_ht != HybridTime::kMin);
@@ -164,10 +164,10 @@ Result<PgTableRow> AddLock(
   RETURN_NOT_OK(SetColumnValue("locktype", locktype, schema, &row));
 
   RSTATUS_DCHECK(
-      lock.has_table_id() == parent_table_id.empty(), IllegalState,
+      lock.has_pg_table_id() == parent_pg_table_id.empty(), IllegalState,
       "Response must contain exactly one among LockInfoPB::table_id or TabletLockInfoPB::table_id");
   // If the lock belongs to a colocated table, use the table id populated in the lock.
-  const auto table_id = lock.has_table_id() ? lock.table_id() : parent_table_id;
+  const auto table_id = lock.has_pg_table_id() ? lock.pg_table_id() : parent_pg_table_id;
   PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_id));
   RETURN_NOT_OK(SetColumnValue("database", database_oid, schema, &row));
 
@@ -298,7 +298,8 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
 
         for (const auto& lock : transaction_locks.granted_locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
-              projection, schema, node_id, tab.table_id(), tab.tablet_id(), lock, transaction_id));
+              projection, schema, node_id, tab.pg_table_id(), tab.tablet_id(), lock,
+              transaction_id));
           data.emplace_back(row);
         }
 
@@ -307,18 +308,19 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
             GetDecodedBlockerTransactionIds(transaction_locks.waiting_locks()));
         for (const auto& lock : transaction_locks.waiting_locks().locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
-              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
-              transaction_id, wait_start_ht, blocking_txn_ids));
+              projection, schema, node_id, tab.pg_table_id(), tab.tablet_id(), lock, transaction_id,
+              wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }
       }
 
+      // TODO(#20116): Populate host node uuid for single shard waiters.
       for (const auto& waiter : tab.single_shard_waiters()) {
         auto wait_start_ht = HybridTime::FromPB(waiter.wait_start_ht());
         auto blocking_txn_ids = VERIFY_RESULT(GetDecodedBlockerTransactionIds(waiter));
         for (const auto& lock : waiter.locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
-              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
+              projection, schema, "", tab.pg_table_id(), tab.tablet_id(), lock,
               TransactionId::Nil(), wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }

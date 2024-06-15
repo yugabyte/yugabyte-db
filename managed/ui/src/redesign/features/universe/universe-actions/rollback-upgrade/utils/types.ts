@@ -20,6 +20,7 @@ export interface DBUpgradePayload {
   upgradeOption: UPGRADE_TYPE;
   clusters: Cluster[];
   nodePrefix: string;
+  enableYbc: boolean;
 }
 
 export interface DBRollbackFormFields {
@@ -38,7 +39,7 @@ export interface GetInfoPayload {
 }
 
 export interface GetInfoResponse {
-  requireFinalize: boolean;
+  finalizeRequired: boolean;
   affectedXClsuterUniversesList?: Universe[];
 }
 
@@ -57,4 +58,5 @@ export interface TaskObject {
   type: string;
   typeName: string;
   userEmail: string;
+  details: Record<string, any>;
 }

@@ -177,6 +177,7 @@ bool SnapshotOperation::ShouldAllowOpDuringRestore(consensus::OperationType op_t
     case consensus::TRUNCATE_OP: FALLTHROUGH_INTENDED;
     case consensus::SPLIT_OP: FALLTHROUGH_INTENDED;
     case consensus::CHANGE_AUTO_FLAGS_CONFIG_OP:
+    case consensus::CLONE_OP:
       return true;
     case consensus::UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
     case consensus::WRITE_OP:

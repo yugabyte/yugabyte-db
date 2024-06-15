@@ -106,7 +106,6 @@ static int MasterMain(int argc, char** argv) {
     LOG(INFO) << "Failed to get master's host name, keeping default metric_node_name";
   }
 
-  FLAGS_default_memory_limit_to_ram_ratio = 0.10;
   // For masters we always want to fsync the WAL files (except in testing).
   FLAGS_durable_wal_write = true;
   // Master has a lot less memory and relatively less data. So by default, let's keep the
@@ -122,7 +121,7 @@ static int MasterMain(int argc, char** argv) {
   FLAGS_log_min_seconds_to_retain = 2 * MonoTime::kSecondsPerHour;
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(
-      MasterTServerParseFlagsAndInit(MasterOptions::kServerType, &argc, &argv));
+      MasterTServerParseFlagsAndInit(MasterOptions::kServerType, /*is_master=*/true, &argc, &argv));
 
   auto termination_monitor = TerminationMonitor::Create();
 

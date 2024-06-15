@@ -5,27 +5,35 @@ CREATE ROLE regress_replicationslot_user LOGIN SUPERUSER;
 CREATE ROLE regress_replicationslot_replication_user WITH REPLICATION;
 CREATE ROLE regress_replicationslot_dummy;
 SET SESSION AUTHORIZATION 'regress_replicationslot_user';
-SELECT * FROM pg_create_logical_replication_slot('testslot1', 'yboutput', false);
+SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot1 |
+ testslot1 | 0/2
 (1 row)
 
-SELECT * FROM pg_create_logical_replication_slot('testslot2', 'yboutput', false);
+SELECT * FROM pg_create_logical_replication_slot('testslot2', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot2 |
+ testslot2 | 0/2
 (1 row)
 
--- Cannot do SELECT * since yb_stream_id changes across runs.
+SELECT * FROM pg_create_logical_replication_slot('testslot_test_decoding', 'test_decoding', false);
+       slot_name        | lsn
+------------------------+-----
+ testslot_test_decoding | 0/2
+(1 row)
+
+-- Cannot do SELECT * since yb_stream_id, yb_restart_commit_ht changes across runs.
 SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
-FROM pg_replication_slots;
- slot_name |  plugin  | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
------------+----------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
- testslot2 | yboutput | logical   | yugabyte | f         | f      |            |      |              |             |
- testslot1 | yboutput | logical   | yugabyte | f         | f      |            |      |              |             |
-(2 rows)
+FROM pg_replication_slots
+ORDER BY slot_name;
+       slot_name        |    plugin     | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
+------------------------+---------------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
+ testslot1              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
+ testslot2              | pgoutput      | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
+ testslot_test_decoding | test_decoding | logical   | yugabyte | f         | f      |            |    1 |            1 | 0/1         | 0/2
+(3 rows)
 
 -- drop the replication slot and create with same name again.
 SELECT * FROM pg_drop_replication_slot('testslot1');
@@ -35,36 +43,35 @@ SELECT * FROM pg_drop_replication_slot('testslot1');
 (1 row)
 
 -- TODO(#19263): Change the slot to temporary once supported.
-SELECT * FROM pg_create_logical_replication_slot('testslot1', 'yboutput', false);
+SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot1 |
+ testslot1 | 0/2
 (1 row)
 
 -- unsupported cases
 SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_plugin', 'unsupported_plugin', false);
-ERROR:  invalid output plugin
-DETAIL:  Only 'yboutput' plugin is supported
-SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_temporary', 'yboutput', true);
+ERROR:  could not access file "unsupported_plugin": No such file or directory
+SELECT * FROM pg_create_logical_replication_slot('testslot_unsupported_temporary', 'pgoutput', true);
 ERROR:  Temporary replication slot is not yet supported
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19263. React with thumbs up to raise its priority
 SELECT * FROM pg_create_physical_replication_slot('testslot_unsupported_physical', true, false);
 ERROR:  YSQL only supports logical replication slots
 -- creating replication slot with same name fails.
-SELECT * FROM pg_create_logical_replication_slot('testslot1', 'yboutput', false);
+SELECT * FROM pg_create_logical_replication_slot('testslot1', 'pgoutput', false);
 ERROR:  replication slot "testslot1" already exists
 -- success since user has 'replication' role
 SET ROLE regress_replicationslot_replication_user;
-SELECT * FROM pg_create_logical_replication_slot('testslot3', 'yboutput', false);
+SELECT * FROM pg_create_logical_replication_slot('testslot3', 'pgoutput', false);
  slot_name | lsn
 -----------+-----
- testslot3 |
+ testslot3 | 0/2
 (1 row)
 
 RESET ROLE;
 -- fail - must have replication or superuser role
 SET ROLE regress_replicationslot_dummy;
-SELECT * FROM pg_create_logical_replication_slot('testslot4', 'yboutput', false);
+SELECT * FROM pg_create_logical_replication_slot('testslot4', 'pgoutput', false);
 ERROR:  must be superuser or replication role to use replication slots
 RESET ROLE;
 -- drop replication slots
@@ -81,6 +88,12 @@ SELECT * FROM pg_drop_replication_slot('testslot2');
 (1 row)
 
 SELECT * FROM pg_drop_replication_slot('testslot3');
+ pg_drop_replication_slot
+--------------------------
+
+(1 row)
+
+SELECT * FROM pg_drop_replication_slot('testslot_test_decoding');
  pg_drop_replication_slot
 --------------------------
 

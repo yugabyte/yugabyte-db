@@ -22,6 +22,8 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_bool(ysql_yb_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 
 namespace yb {
 
@@ -100,6 +102,10 @@ int GetInitialNumTabletsPerTable(YQLDatabase db_type, size_t tserver_count) {
 
 int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count) {
   return GetInitialNumTabletsPerTable(table_type == PGSQL_TABLE_TYPE, tserver_count);
+}
+
+bool YsqlDdlRollbackEnabled() {
+  return FLAGS_ysql_yb_enable_ddl_atomicity_infra && FLAGS_ysql_yb_ddl_rollback_enabled;
 }
 
 } // namespace yb

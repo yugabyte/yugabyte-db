@@ -116,7 +116,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
           && oldBackupLocation != null
           && !StringUtils.equals(newBackupLocation.textValue(), oldBackupLocation.textValue())) {
         String errorMsg = "Field is read-only.";
-        throwBeanValidatorError(BACKUP_LOCATION_FIELDNAME, errorMsg);
+        throwBeanValidatorError("data." + BACKUP_LOCATION_FIELDNAME, errorMsg, null);
       }
     }
 

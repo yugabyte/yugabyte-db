@@ -36,11 +36,14 @@
 #include <string>
 #include <thread>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -380,7 +383,7 @@ RpcCommandPtr Rpcs::Unregister(Handle* handle) {
   {
     std::lock_guard lock(*mutex_);
     calls_.erase(*handle);
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
   *handle = calls_.end();
   return result;

@@ -8,12 +8,12 @@ import { useSelector } from 'react-redux';
 import { getAlertConfigurations } from '../../../actions/universe';
 import { fetchReplicationLag } from '../../../actions/xClusterReplication';
 import { alertConfigQueryKey, metricQueryKey } from '../../../redesign/helpers/api';
+import { getTableName, getTableUuid } from '../../../utils/tableUtils';
 import { YBButtonLink } from '../../common/forms/fields';
 import { YBErrorIndicator } from '../../common/indicators';
 import { MetricsPanelOld } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
-  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
@@ -21,9 +21,14 @@ import {
   REPLICATION_LAG_GRAPH_EMPTY_METRIC,
   TimeRangeType
 } from '../constants';
-import { getMaxNodeLagMetric, getMetricTimeRange } from '../ReplicationUtils';
+import {
+  getMaxNodeLagMetric,
+  getMetricTimeRange,
+  getStrictestReplicationLagAlertThreshold
+} from '../ReplicationUtils';
 
 import { MetricTimeRangeOption, Metrics, XClusterTable } from '../XClusterTypes';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import styles from './TableLagGraph.module.scss';
 
@@ -39,7 +44,7 @@ interface Props {
 }
 
 export const TableLagGraph: FC<Props> = ({
-  tableDetails: { tableName, tableUUID: tableId, streamId },
+  tableDetails,
   universeUUID,
   queryEnabled,
   nodePrefix
@@ -62,22 +67,22 @@ export const TableLagGraph: FC<Props> = ({
   // At the moment, we don't support a custom time range which uses the 'current time' as the end time.
   // Thus, all custom time ranges are fixed.
   const isFixedTimeRange = isCustomTimeRange;
-  const replciationLagMetricRequestParams = {
-    streamId,
-    tableId,
+  const replicationLagMetricRequestParams = {
+    streamId: tableDetails.streamId,
+    tableId: getTableUuid(tableDetails),
     nodePrefix,
     start: metricTimeRange.startMoment.format('X'),
     end: metricTimeRange.endMoment.format('X')
   };
   const tableMetricsQuery = useQuery(
     isFixedTimeRange
-      ? metricQueryKey.detail(replciationLagMetricRequestParams)
-      : metricQueryKey.latest(
-          replciationLagMetricRequestParams,
+      ? metricQueryKey.detail(replicationLagMetricRequestParams)
+      : metricQueryKey.live(
+          replicationLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
         ),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: queryEnabled && !!nodePrefix,
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
@@ -88,17 +93,13 @@ export const TableLagGraph: FC<Props> = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: universeUUID
   };
   const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
-  const maxAcceptableLag = Math.min(
-    ...alertConfigQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
-  );
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
 
   if (tableMetricsQuery.isError) {
     return <YBErrorIndicator />;
@@ -123,7 +124,7 @@ export const TableLagGraph: FC<Props> = ({
       graphMetric.tserver_async_replication_lag_micros.data = [
         trace,
         {
-          name: 'Max Acceptable Lag',
+          name: 'Lowest Replication Lag Alert Threshold',
           instanceName: trace.instanceName,
           type: 'scatter',
           line: {
@@ -160,7 +161,7 @@ export const TableLagGraph: FC<Props> = ({
 
   const graphMetric = _.cloneDeep(tableMetricsQuery.data ?? REPLICATION_LAG_GRAPH_EMPTY_METRIC);
   setTracesToPlot(graphMetric);
-
+  const tableName = getTableName(tableDetails);
   return (
     <div>
       <div className={styles.modalToolBar}>

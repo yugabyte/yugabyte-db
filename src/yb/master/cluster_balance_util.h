@@ -57,7 +57,7 @@ struct CBTabletMetadata {
     return !wrong_placement_tablet_servers.empty() || !blacklisted_tablet_servers.empty();
   }
 
-  bool has_blacklisted_leader() {
+  bool has_badly_placed_leader() {
     return !leader_blacklisted_tablet_servers.empty();
   }
 
@@ -67,8 +67,6 @@ struct CBTabletMetadata {
   // Number of running replicas for this tablet.
   int running = 0;
 
-  // TODO(bogdan): actually use this!
-  //
   // Number of starting replicas for this tablet.
   int starting = 0;
 
@@ -287,7 +285,7 @@ class GlobalLoadState {
   std::set<TabletServerId> leader_blacklisted_servers_;
 
   // List of tablet server ids that have pending deletes.
-  std::set<TabletServerId> servers_with_pending_deletes_;
+  std::unordered_map<TabletServerId, std::set<TabletId>> pending_deletes_;
 
  private:
   // Map from tablet server ids to the global metadata we store for each.
@@ -348,6 +346,11 @@ class PerTableLoadState {
 
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
 
+  void SetInitialized() {
+    DCHECK(!initialized_);
+    initialized_ = true;
+  }
+
   Result<bool> CanAddTabletToTabletServer(
     const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info);
 
@@ -381,8 +384,6 @@ class PerTableLoadState {
 
   void SortDriveLeaderLoad();
 
-  void LogSortedLeaderLoad();
-
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
   Status AddRunningTablet(const TabletId& tablet_id,
@@ -393,10 +394,12 @@ class PerTableLoadState {
 
   Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
+  // Note: this does not call SortLeaderLoad.
   Status AddLeaderTablet(const TabletId& tablet_id,
                          const TabletServerId& ts_uuid,
-                         const TabletServerId& ts_path);
+                         const std::string& ts_path);
 
+  // Note: this does not call SortLeaderLoad.
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddDisabledByTSTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
@@ -427,7 +430,8 @@ class PerTableLoadState {
     out << Format("tablets_missing_replicas: $0, ", tablets_missing_replicas_);
     out << Format("tablets_over_replicated: $0, ", tablets_over_replicated_);
     out << Format("tablets_wrong_placement: $0, ", tablets_wrong_placement_);
-    out << Format("tablets_added: $0, ", tablets_wrong_placement_);
+    out << Format("tablets_with_badly_placed_leaders: $0, ", tablets_with_badly_placed_leaders_);
+    out << Format("tablets_added: $0, ", tablets_added_);
     out << Format("leader_balance_threshold: $0, ", leader_balance_threshold_);
     out << Format("sorted_leader_load: $0, ", sorted_leader_load_);
     out << Format("use_preferred_zones: $0, ", use_preferred_zones_);
@@ -482,6 +486,9 @@ class PerTableLoadState {
   // Set of tablet ids that have been determined to have replicas in incorrect placements.
   std::set<TabletId> tablets_wrong_placement_;
 
+  // Set of tablet ids that have leaders in leader blacklisted placements.
+  std::set<TabletId> tablets_with_badly_placed_leaders_;
+
   // List of tablet ids that have been added to a new tablet server.
   std::set<TabletId> tablets_added_;
 
@@ -535,9 +542,14 @@ class PerTableLoadState {
   std::vector<AffinitizedZonesSet> affinitized_zones_;
 
  private:
+  // Whether the fields above are all initialized correctly
+  // State-modifying functions that expect to only be called before / after initialization
+  // can SCHECK initialized_ is false / true respectively.
+  bool initialized_ = false;
+
   bool ShouldSkipReplica(const TabletReplica& replica);
   size_t GetReplicaSize(std::shared_ptr<const TabletReplicaMap> replica_map);
-  const std::string uninitialized_ts_meta_format_msg =
+  const std::string uninitialized_ts_meta_format_msg_ =
       "Found uninitialized ts_meta: ts_uuid: $0, table_uuid: $1";
 
   DISALLOW_COPY_AND_ASSIGN(PerTableLoadState);

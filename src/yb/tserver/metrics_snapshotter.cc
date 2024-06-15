@@ -56,6 +56,8 @@
 
 #include "yb/master/master_defaults.h"
 
+#include "yb/server/async_client_initializer.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tablet_server.h"
@@ -64,9 +66,9 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
+#include "yb/util/callsite_profiling.h"
 
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/capabilities.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/enums.h"
@@ -100,11 +102,11 @@ DEFINE_UNKNOWN_string(metrics_snapshotter_table_metrics_whitelist,
     "Table metrics to record in native metrics storage.");
 TAG_FLAG(metrics_snapshotter_table_metrics_whitelist, advanced);
 
-constexpr int kTServerMetricsSnapshotterYbClientDefaultTimeoutMs =
+constexpr int kTServerMetricsSnapshotterYBClientDefaultTimeoutMs =
   yb::RegularBuildVsSanitizers(5, 60) * 1000;
 
 DEFINE_UNKNOWN_int32(tserver_metrics_snapshotter_yb_client_default_timeout_ms,
-    kTServerMetricsSnapshotterYbClientDefaultTimeoutMs,
+    kTServerMetricsSnapshotterYBClientDefaultTimeoutMs,
     "Default timeout for the YBClient embedded into the tablet server that is used "
     "by metrics snapshotter.");
 TAG_FLAG(tserver_metrics_snapshotter_yb_client_default_timeout_ms, advanced);
@@ -359,7 +361,8 @@ Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::Ta
     return Status::OK();
   }
   for (uint32_t itr = 0; itr < kYsqlConnMgrMaxPools; itr++) {
-    if (strcmp(shmp[itr].pool_name, "") == 0) {
+    if (strcmp(shmp[itr].database_name, "") == 0) {
+      // All the valid entries in the shmem have been processed.
       break;
     }
     stats_list.push_back(shmp[itr]);
@@ -371,7 +374,7 @@ Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::Ta
   uint64_t total_logical_connections = 0;
   uint64_t total_physical_connections = 0;
   for (const auto &stat : stats_list) {
-    if (strcmp(stat.pool_name, "control_connection") != 0) {
+    if (strcmp(stat.database_name, "control_connection") != 0) {
       total_logical_connections += stat.active_clients +
                                    stat.queued_clients +
                                    stat.idle_or_pending_clients;
@@ -611,7 +614,7 @@ Status MetricsSnapshotter::Thread::Stop() {
   {
     MutexLock l(mutex_);
     should_run_ = false;
-    cond_.Signal();
+    YB_PROFILE(cond_.Signal());
   }
   RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
   thread_ = nullptr;

@@ -95,6 +95,7 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
       consensus_(consensus),
       preparer_(preparer),
       trace_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
+      wait_state_(ash::WaitStateInfo::CurrentWaitState()),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED),
@@ -173,6 +174,9 @@ void OperationDriver::ExecuteAsync() {
   TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
   ADOPT_TRACE(trace());
   TRACE_FUNC();
+  ADOPT_WAIT_STATE(wait_state());
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state());
+  SCOPED_WAIT_STATUS(OnCpu_Active);
 
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
   if (delay != 0 && operation_type() == OperationType::kWrite) {
@@ -202,10 +206,13 @@ void OperationDriver::ExecuteAsync() {
 
 Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
+  ADOPT_WAIT_STATE(wait_state());
+  SET_WAIT_STATUS(OnCpu_Active);
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 
   RETURN_NOT_OK(operation_->AddedToLeader(op_id, committed_op_id));
+  SET_WAIT_STATUS(Raft_WaitingForReplication);
 
   StartOperation();
   return Status::OK();
@@ -233,6 +240,10 @@ bool OperationDriver::StartOperation() {
 Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   ADOPT_TRACE(trace());
   TRACE_FUNC();
+  ADOPT_WAIT_STATE(wait_state());
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state());
+  // ASH: Expect raft to update the wait state asynchronously.
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the operation.
@@ -291,6 +302,8 @@ void OperationDriver::HandleFailure(const Status& status) {
   VLOG_WITH_PREFIX(2) << "Failed operation: " << status;
   CHECK(!status.ok());
   ADOPT_TRACE(trace());
+  ADOPT_WAIT_STATE(wait_state());
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   TRACE("HandleFailure($0)", status.ToString());
 
   switch (repl_state_copy) {
@@ -389,6 +402,8 @@ void OperationDriver::TEST_Abort(const Status& status) {
 void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   TRACE_EVENT_FLOW_END0("operation", "ApplyTask", this);
   ADOPT_TRACE(trace());
+  ADOPT_WAIT_STATE(wait_state());
+  SCOPED_WAIT_STATUS(OnCpu_Active);
 
 #ifndef NDEBUG
   {
@@ -403,6 +418,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
+    SCOPED_WAIT_STATUS(Raft_ApplyingEdits);
     auto status = operation_->Replicated(leader_term, WasPending::kTrue);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
@@ -471,10 +487,6 @@ std::string OperationDriver::LogPrefix() const {
 int64_t OperationDriver::SpaceUsed() {
   if (!operation_) {
     return 0;
-  }
-  auto consensus_round = operation_->consensus_round();
-  if (consensus_round) {
-    return consensus_round->replicate_msg()->SpaceUsedLong();
   }
   return operation()->request()->SpaceUsedLong();
 }

@@ -44,9 +44,11 @@
 #include <vector>
 
 #include <boost/atomic.hpp>
-#include "yb/util/logging.h"
+
+#include "yb/ash/wait_state_fwd.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
@@ -59,9 +61,9 @@
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/opid.h"
 #include "yb/util/promise.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_callback.h"
@@ -251,6 +253,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // readable segments. Note that this assumes there is already a valid active_segment_.
   Status AllocateSegmentAndRollOver();
 
+  // If active segment is not empty, forces the Log to allocate a new segment and roll over
+  // asynchronously and won't wait for wal rotation is actually done.
+  Status AsyncAllocateSegmentAndRollover();
+
   // When WAL restarts from a crash, instead of allocating a new segment, we try to reuse the
   // left in-progress segment as writable active_segment_. If return value is false, it means
   // we fail to reuse the segment because the size of the segment is too large.
@@ -331,6 +337,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   Status TEST_WriteCorruptedEntryBatchAndSync();
 
+  bool HasSufficientDiskSpaceForWrite();
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -339,6 +347,7 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
   FRIEND_TEST(LogTest, TestLogMetrics);
+  FRIEND_TEST(LogTest, AsyncRolloverMarker);
 
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
   FRIEND_TEST(cdc::CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace);
@@ -397,6 +406,7 @@ class Log : public RefCountedThreadSafe<Log> {
   Status PreAllocateNewSegment();
 
   // Returns the desired size for the next log segment to be created.
+  // If next_max_segment_size_ is specified, return it directly.
   uint64_t NextSegmentDesiredSize();
 
   // Writes serialized contents of 'entry' to the log. Called inside AppenderThread. If
@@ -462,7 +472,7 @@ class Log : public RefCountedThreadSafe<Log> {
     return allocation_state_.load(std::memory_order_acquire);
   }
 
-  std::unique_ptr<LogEntryBatch> ReserveMarker(LogEntryTypePB type);
+  Result<std::unique_ptr<LogEntryBatch>> ReserveMarker(LogEntryTypePB type);
 
   // Returns WritableFileOptions for a new segment writable file.
   WritableFileOptions GetNewSegmentWritableFileOptions();
@@ -496,7 +506,7 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // WARNING: the caller _must_ call AsyncAppend() or else the log will "stall" and will never be
   // able to make forward progress.
-  std::unique_ptr<LogEntryBatch> Reserve(
+  Result<std::unique_ptr<LogEntryBatch>> Reserve(
       LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch);
 
   LogOptions options_;
@@ -576,6 +586,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // doubling (for each subsequent WAL segment) till it gets to max_segment_size_.
   uint64_t cur_max_segment_size_;
 
+  // The maximum segment size we want for the next WAL segment, in bytes. Use this value instead of
+  // doubling cur_max_segment_size_ if it's specifed.
+  std::optional<uint64_t> next_max_segment_size_;
+
   // Appender manages a TaskStream writing to the log. We will use one taskstream per tablet.
   std::unique_ptr<Appender> appender_;
 
@@ -653,6 +667,13 @@ class Log : public RefCountedThreadSafe<Log> {
   NewSegmentAllocationCallback new_segment_allocation_callback_;
 
   PreLogRolloverCallback pre_log_rollover_callback_;
+
+  const yb::ash::WaitStateInfoPtr background_synchronizer_wait_state_;
+
+  std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
+  std::atomic<bool> has_free_disk_space_{false};
+  std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
+  std::shared_timed_mutex disk_space_mutex_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

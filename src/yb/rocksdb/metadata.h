@@ -100,6 +100,8 @@ class UserFrontier {
   virtual void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) = 0;
   virtual yb::Status FromPB(const google::protobuf::Any& pb) = 0;
 
+  virtual uint64_t GetHybridTimeAsUInt64() const = 0;
+
   virtual ~UserFrontier() {}
 
   static void Update(const UserFrontier* rhs, UpdateUserValueType type, UserFrontierPtr* out);

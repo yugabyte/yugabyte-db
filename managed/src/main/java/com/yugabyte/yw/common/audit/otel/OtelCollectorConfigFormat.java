@@ -204,6 +204,7 @@ public class OtelCollectorConfigFormat {
   @Data
   public static class TelemetryConfig {
     private LogsConfig logs;
+    private MetricsConfig metrics;
   }
 
   @Data
@@ -216,5 +217,10 @@ public class OtelCollectorConfigFormat {
     private List<String> receivers;
     private List<String> processors;
     private List<String> exporters;
+  }
+
+  @Data
+  public static class MetricsConfig {
+    private String address;
   }
 }

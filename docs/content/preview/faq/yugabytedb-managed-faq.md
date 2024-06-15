@@ -8,8 +8,9 @@ menu:
   preview_faq:
     identifier: yugabytedb-managed-faq
     parent: faq
-    weight: 60
+    weight: 30
 type: docs
+unversioned: true
 rightNav:
   hideH3: true
   hideH4: true
@@ -107,8 +108,8 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 15 simultaneous connections | 15 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
-| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
-| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-managed-priced) |
+| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Innovation<br>Preview | Production<br>Innovation |
+| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-managed-priced)<br>[Free trial available](../../yugabyte-cloud/managed-freetrial/) |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my Sandbox cluster?
@@ -133,7 +134,7 @@ During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintena
 
 #### Cluster (YugabyteDB) version upgrade
 
-To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (Innovation or Production for dedicated clusters, or Preview for Sandbox clusters). Sandbox clusters are always in the preview track.
+To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (Innovation or Production for dedicated clusters, or Innovation or Preview for Sandbox clusters). Sandbox clusters are always in the preview track.
 
 Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email.
 
@@ -145,14 +146,14 @@ For more information, refer to [Maintenance windows](../../yugabyte-cloud/cloud-
 
 ### What version of YugabyteDB does my cluster run on?
 
-Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/versioning/#preview-releases) series.
-
-Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#release-versioning-convention-for-stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
 - Innovation, which has more frequent updates for faster access to new features.
 - Production, which has a slower update cadence and features only select stable release builds.
 
-Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production for dedicated clusters, or Preview for Sandbox clusters).
+In addition to the Innovation track, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#release-versioning-convention-for-preview-releases) series.
+
+Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production for dedicated clusters, or Innovation or Preview for Sandbox clusters).
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
@@ -262,7 +263,7 @@ For detailed steps for configuring other popular third party tools, see [Third p
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Managed clusters using smart drivers.
 
-For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../develop/build-apps/).
+For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](../../tutorials/build-apps/).
 
 For information on obtaining the connection parameters for your cluster, refer to [Connect applications](../../yugabyte-cloud/cloud-connect/connect-applications/).
 

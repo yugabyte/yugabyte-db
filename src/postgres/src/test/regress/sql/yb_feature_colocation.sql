@@ -221,11 +221,11 @@ SELECT * FROM tab_range_nonkey_noco2;
 
 -- drop index on non-colocated table
 DROP INDEX idx_range2;
-EXPLAIN SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 
 -- drop index on colocated table
 DROP INDEX idx_range5;
-EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
 
 \dt
 \di
@@ -351,7 +351,7 @@ CREATE MATERIALIZED VIEW m3 with (colocation = false) AS SELECT * FROM t1;
 \c yugabyte
 DROP DATABASE colocation_test;
 
--- Test Colocated Materialized View 
+-- Test Colocated Materialized View
 CREATE DATABASE colocation_test WITH colocation = true;
 \c colocation_test
 CREATE TABLE t1 (a INT PRIMARY KEY) WITH (colocation = true);
@@ -368,3 +368,105 @@ select is_colocated from yb_table_properties('m2'::regclass);
 select is_colocated from yb_table_properties('m3'::regclass);
 select is_colocated from yb_table_properties('m4'::regclass);
 select is_colocated from yb_table_properties('m5'::regclass);
+
+-- Test yb_use_hash_splitting_by_default=false (Postgres compatibility)
+CREATE OR REPLACE FUNCTION get_table_indexes(table_name text)
+    RETURNS TABLE(
+                     relname name,
+                     indisprimary boolean,
+                     indisunique boolean,
+                     indexdef text,
+                     constraintdef text
+                 ) AS $$
+BEGIN
+    RETURN QUERY EXECUTE
+        'SELECT c2.relname, i.indisprimary, i.indisunique, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true), ' ||
+        'pg_catalog.pg_get_constraintdef(con.oid, true) ' ||
+        'FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i ' ||
+        'LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN (''p'',''u'',''x'')) ' ||
+        'WHERE c.oid = ' || quote_literal(table_name) || '::regclass AND c.oid = i.indrelid AND i.indexrelid = c2.oid ' ||
+        'ORDER BY i.indisprimary DESC, i.indisunique DESC, c2.relname';
+END;
+$$ LANGUAGE plpgsql;
+
+-- With HASH as default, creating a colocated table or index with SPLIT AT should fail
+CREATE INDEX ON t1 (b) SPLIT AT VALUES((10), (20), (30));
+CREATE TABLE split_fail(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
+
+SET yb_use_hash_splitting_by_default = false;
+CREATE TABLE foo(a int primary key, b int, c int);
+SELECT * FROM get_table_indexes('foo');
+
+CREATE TABLE bar(a int, b int, c int, primary key(a, b));
+SELECT * FROM get_table_indexes('bar');
+
+CREATE TABLE baz(a int, b int, c int, primary key((a,b) HASH, c));
+
+
+CREATE TABLE qux(a int, b int, c int);
+
+ALTER TABLE qux ADD PRIMARY KEY(a);
+SELECT * FROM get_table_indexes('qux');
+ALTER TABLE qux DROP CONSTRAINT qux_pkey;
+
+ALTER TABLE qux ADD PRIMARY KEY(a,b);
+SELECT * FROM get_table_indexes('qux');
+ALTER TABLE qux DROP CONSTRAINT qux_pkey;
+
+ALTER TABLE qux ADD PRIMARY KEY(a,b ASC);
+SELECT * FROM get_table_indexes('qux');
+ALTER TABLE qux DROP CONSTRAINT qux_pkey;
+
+ALTER TABLE qux ADD PRIMARY KEY(a,b HASH);
+
+CREATE INDEX ON qux (b);
+CREATE INDEX ON qux (b HASH);
+CREATE INDEX ON qux (c ASC);
+CREATE INDEX ON qux ((a, c), b);
+CREATE INDEX ON qux ((a, c));
+CREATE INDEX ON qux (a, b);
+CREATE INDEX ON qux (b, c ASC);
+CREATE INDEX ON qux (b, c HASH);
+
+SELECT * FROM get_table_indexes('qux');
+
+-- With ASC as default, creating a colocated table or index with SPLIT AT should fail
+CREATE INDEX ON qux (b) SPLIT AT VALUES((10), (20), (30));
+CREATE TABLE split_table(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
+
+-- Test Table Rewrite operations with table colocation option
+CREATE TABLE non_col_tbl_without_pk (k INT) WITH (colocation=0);
+INSERT INTO non_col_tbl_without_pk SELECT generate_series(1, 100);
+ALTER TABLE non_col_tbl_without_pk ADD PRIMARY KEY(k);
+\d non_col_tbl_without_pk
+SELECT min(k), max(k) FROM non_col_tbl_without_pk;
+
+CREATE TABLE col_tbl_without_pk (k INT) WITH (colocation=1);
+INSERT INTO col_tbl_without_pk SELECT generate_series(1, 10);
+ALTER TABLE col_tbl_without_pk ADD PRIMARY KEY(k);
+\d col_tbl_without_pk
+SELECT sum(k) FROM col_tbl_without_pk;
+
+CREATE MATERIALIZED VIEW non_col_mv WITH (colocation=0) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 0;
+CREATE MATERIALIZED VIEW col_mv WITH (colocation=1) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 1;
+SELECT sum(k) FROM non_col_mv;
+SELECT sum(k) FROM col_mv;
+INSERT INTO col_tbl_without_pk VALUES (11);
+REFRESH MATERIALIZED VIEW non_col_mv;
+REFRESH MATERIALIZED VIEW col_mv;
+SELECT sum(k) FROM non_col_mv;
+SELECT sum(k) FROM col_mv;
+
+-- Test table partitions with colocation option
+CREATE TABLE partitioned_table (k INT) PARTITION BY LIST (k);
+CREATE TABLE col_table_partition PARTITION OF partitioned_table FOR VALUES IN (2) WITH (COLOCATION=TRUE);
+\d col_table_partition
+CREATE TABLE non_col_table_partition PARTITION OF partitioned_table FOR VALUES IN (4) WITH (COLOCATION=FALSE);
+\d non_col_table_partition
+
+INSERT INTO partitioned_table VALUES (2), (4);
+SELECT * FROM col_table_partition;
+SELECT * FROM non_col_table_partition;
+
+\c yugabyte
+DROP DATABASE colocation_test;

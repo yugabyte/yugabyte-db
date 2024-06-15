@@ -13,6 +13,8 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 )
 
+const SecretsDirectory = "/var/lib/replicated/secrets"
+
 // ReplicatedCtl client for using replicatedctl
 type ReplicatedCtl struct {
 	// Path to the replicatedctl executable
@@ -32,7 +34,7 @@ func New(cfg Config) *ReplicatedCtl {
 //	                                          --quiet
 func (r *ReplicatedCtl) run(commands ...string) ([]byte, error) {
 	output := shell.Run(r.Path, commands...)
-	if !output.SucceededOrLog() {
+	if !output.Succeeded() {
 		return []byte{}, output.Error
 	}
 	return output.StdoutBytes(), nil

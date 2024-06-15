@@ -39,6 +39,7 @@ import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -79,7 +80,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             runtimeConfGetter,
             mock(CertificateHelper.class),
             mock(AutoFlagUtil.class),
-            mock(XClusterUniverseService.class));
+            mock(XClusterUniverseService.class),
+            mock(TelemetryProviderService.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {
@@ -588,6 +590,50 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
                 handler.upgradeGFlags(
                     params, c, Universe.getOrBadRequest(params.getUniverseUUID())));
     assertEquals(UpgradeWithGFlags.SPECIFIC_GFLAGS_NO_CHANGES_ERROR, exception.getMessage());
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaK8sOperator() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    Map<String, String> masterGFlags = Map.of("asd", "10");
+    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    params.masterGFlags = masterGFlags;
+    params.tserverGFlags = tserverGFlags;
+    // Erasing specificGFlags in
+    params.getPrimaryCluster().userIntent.specificGFlags = null;
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams newParams = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    // Verifying that specificGFlags field is initialized.
+    assertEquals(
+        SpecificGFlags.construct(masterGFlags, tserverGFlags),
+        newParams.getPrimaryCluster().userIntent.specificGFlags);
   }
 
   private void initGflagDefaults() throws IOException {

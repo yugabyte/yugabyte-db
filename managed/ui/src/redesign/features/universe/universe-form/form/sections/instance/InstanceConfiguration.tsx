@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box, Grid, Typography, makeStyles } from '@material-ui/core';
@@ -22,9 +22,21 @@ import {
 import {
   PROVIDER_FIELD,
   MASTER_PLACEMENT_FIELD,
-  DEVICE_INFO_FIELD
+  DEVICE_INFO_FIELD,
+  LINUX_VERSION_FIELD
 } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
+import { CPUArchField } from '../../fields/CPUArchField/CPUArchField';
+import { LinuxVersionField } from '../../fields/LinuxVersionField/LinuxVersionField';
+import {
+  VM_PATCHING_RUNTIME_CONFIG,
+  isImgBundleSupportedByProvider
+} from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+import { getDiffHours } from '../../../../../../helpers/DateUtils';
+import { isNonEmptyString } from '../../../../../../../utils/ObjectUtils';
+import { useQuery } from 'react-query';
+import { fetchGlobalRunTimeConfigs } from '../../../../../../../api/admin';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
 const CONTAINER_WIDTH = '605px';
 
@@ -47,6 +59,14 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const helperClasses = useStyles();
   const { t } = useTranslation();
 
+  const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
+  const AwsCoolDownPeriod = globalRuntimeConfigs?.data?.configEntries?.find(
+    (c: any) => c.key === RuntimeConfigKey.AWS_COOLDOWN_HOURS
+  )?.value;
+
   // Value of runtime config key
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.use_k8s_custom_resources'
@@ -56,22 +76,40 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     (c: RunTimeConfigEntry) => c.key === 'yb.max_volume_count'
   )?.value;
 
+  const osPatchingEnabled = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === VM_PATCHING_RUNTIME_CONFIG
+  )?.value;
+
   //form context
-  const { getValues } = useFormContext<UniverseFormData>();
+  const { getValues, setValue } = useFormContext<UniverseFormData>();
   const { mode, clusterType, newUniverse, universeConfigureTemplate, isViewMode } = useContext(
     UniverseFormContext
   )[0];
+  const currentDateTime = new Date();
+  let diffInHours: number | null = null;
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isCreateMode = mode === ClusterModes.CREATE; //Form is in edit mode
   const isCreatePrimary = isCreateMode && isPrimary; //Creating Primary Cluster
   const isCreateRR = !newUniverse && isCreateMode && !isPrimary; //Adding Async Cluster to an existing Universe
-  const isNodeResizable = !isCreateMode ? universeConfigureTemplate?.nodesResizeAvailable : true;
+  const isNodeResizable = true;
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
   const masterPlacement = isPrimary
     ? useWatch({ name: MASTER_PLACEMENT_FIELD })
     : getValues(MASTER_PLACEMENT_FIELD);
+  const updateOptions = universeConfigureTemplate?.updateOptions;
+  let lastVolumeUpdateTime = universeConfigureTemplate?.nodeDetailsSet?.[0].lastVolumeUpdateTime;
+  if (isNonEmptyString(lastVolumeUpdateTime)) {
+    lastVolumeUpdateTime = new Date(lastVolumeUpdateTime);
+    diffInHours = getDiffHours(lastVolumeUpdateTime, currentDateTime);
+  }
+  // Reset Linux version field (ImgBundleUUID) when unsupported provider is selected
+  useEffect(() => {
+    if (osPatchingEnabled === 'true' && !isImgBundleSupportedByProvider(provider)) {
+      setValue(LINUX_VERSION_FIELD, null);
+    }
+  }, [provider?.uuid]);
 
   // Wrapper elements to get instance metadata and dedicated container element
   const getInstanceMetadataElement = (isDedicatedMasterField: boolean) => {
@@ -103,12 +141,15 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               isEditMode={!isCreateMode}
               isPrimary={isPrimary}
               disableVolumeSize={!isNodeResizable || isViewMode}
-              disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
+              disableNumVolumes={isViewMode}
               disableStorageType={!isCreatePrimary && !isCreateRR}
               disableIops={!isCreatePrimary && !isCreateRR}
               disableThroughput={!isCreatePrimary && !isCreateRR}
               isDedicatedMasterField={isDedicatedMasterField}
               maxVolumeCount={maxVolumeCount}
+              updateOptions={updateOptions}
+              diffInHours={diffInHours}
+              AwsCoolDownPeriod={AwsCoolDownPeriod}
             />
           </>
         )}
@@ -133,7 +174,17 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
       data-testid="InstanceConfiguration-Section"
     >
       <Typography variant="h4">{t('universeForm.instanceConfig.title')}</Typography>
-      <Box width="100%" display="flex" flexDirection="column" mt={4}>
+      <Box width="100%" display="flex" flexDirection="column" mt={2}>
+        {osPatchingEnabled === 'true' && isImgBundleSupportedByProvider(provider) && (
+          <Grid lg={6} item container>
+            <CPUArchField disabled={!isCreatePrimary} />
+            <Box mt={2} width={'100%'}>
+              <LinuxVersionField disabled={!isCreateMode} />
+            </Box>
+          </Grid>
+        )}
+      </Box>
+      <Box width="100%" display="flex" flexDirection="column" mt={2}>
         <Grid container spacing={3}>
           <Grid lg={6} item container>
             {/* Display separate section for Master and TServer in dedicated mode*/}

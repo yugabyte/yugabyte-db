@@ -22,6 +22,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
@@ -78,6 +79,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.ybSoftwareVersion = "2.21.1.1-b1";
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
@@ -139,6 +141,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     }
 
     setUnderReplicatedTabletsMock();
+    setLeaderlessTabletsMock();
+    setCheckNodesAreSafeToTakeDown(mockClient);
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -156,6 +161,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -173,6 +180,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -186,6 +195,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -204,6 +215,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -218,6 +231,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -244,6 +259,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -266,6 +283,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
@@ -293,6 +312,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -315,6 +336,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_DEDICATED_MASTER =
       ImmutableList.of(
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.ChangeMasterConfig,
@@ -332,6 +355,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_DEDICATED_MASTER_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of("opType", "RemoveMaster")),
@@ -397,7 +422,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = details.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }

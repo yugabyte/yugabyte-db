@@ -327,7 +327,7 @@ Use a [prepared statement](../../../api/ysql/the-sql-language/statements/perf_pr
 
 ### Indexes
 
-Use [indexes](../../../explore/indexes-constraints/secondary-indexes/) to query table values more efficiently.
+Use [indexes](../../../explore/ysql-language-features/indexes-constraints/secondary-indexes-ysql/) to query table values more efficiently.
 
 1. Create a table with randomly generated rows. You can use the `generate_series()` function to generate rows. The following uses `generate_series()` to create a table with 42 rows and a random value from 1 to 10:
 
@@ -563,7 +563,7 @@ FROM groups GROUP BY group_num;
 
 ### GIN index on documents
 
-The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a [GIN index](../../../explore/indexes-constraints/gin/). GIN indexes provide quick access to elements inside a JSON document.
+The employee skills are stored in a semi-structured JSON document. You can query them using the `@>`, `?`, `?&`, and `?|` operators. For best performance, index them using a [GIN index](../../../explore/ysql-language-features/indexes-constraints/gin/). GIN indexes provide quick access to elements inside a JSON document.
 
 (GIN indexes are only available in YugabyteDB v2.11.0 or later. If you are using an earlier version, skip this scenario.)
 
@@ -682,7 +682,7 @@ This raises the "Cannot transfer" error defined in the procedure, and automatica
 
 ### Triggers
 
-Use [triggers](../../../explore/ysql-language-features/triggers/) to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
+Use [triggers](../../../explore/ysql-language-features/advanced-features/triggers/) to automatically update data. This example uses a trigger to record the last time each row is updated automatically.
 
 1. Add a column to store the last update time.
 

@@ -1844,6 +1844,29 @@ _readBitmapIndexScan(void)
 }
 
 /*
+ * _readYbBitmapIndexScan
+ */
+static YbBitmapIndexScan *
+_readYbBitmapIndexScan(void)
+{
+	READ_LOCALS(YbBitmapIndexScan);
+
+	ReadCommonScan(&local_node->scan);
+
+	READ_OID_FIELD(indexid);
+	READ_BOOL_FIELD(isshared);
+	READ_NODE_FIELD(indexqual);
+	READ_NODE_FIELD(indexqualorig);
+
+	READ_NODE_FIELD(indextlist);
+
+	READ_NODE_FIELD(yb_idx_pushdown.quals);
+	READ_NODE_FIELD(yb_idx_pushdown.colrefs);
+
+	READ_DONE();
+}
+
+/*
  * _readBitmapHeapScan
  */
 static BitmapHeapScan *
@@ -1854,6 +1877,30 @@ _readBitmapHeapScan(void)
 	ReadCommonScan(&local_node->scan);
 
 	READ_NODE_FIELD(bitmapqualorig);
+
+	READ_DONE();
+}
+
+/*
+ * _readBitmapHeapScan
+ */
+static YbBitmapTableScan *
+_readYbBitmapTableScan(void)
+{
+	READ_LOCALS(YbBitmapTableScan);
+
+	ReadCommonScan(&local_node->scan);
+
+	READ_NODE_FIELD(rel_pushdown.quals);
+	READ_NODE_FIELD(rel_pushdown.colrefs);
+
+	READ_NODE_FIELD(recheck_pushdown.quals);
+	READ_NODE_FIELD(recheck_pushdown.colrefs);
+	READ_NODE_FIELD(recheck_local_quals);
+
+	READ_NODE_FIELD(fallback_pushdown.quals);
+	READ_NODE_FIELD(fallback_pushdown.colrefs);
+	READ_NODE_FIELD(fallback_local_quals);
 
 	READ_DONE();
 }
@@ -2111,6 +2158,16 @@ _readYbBatchedNestLoop(void)
 	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
 		local_node->hashClauseInfos[i].outerParamExpr = nodeRead(NULL, 0);
 
+	/* Ignore :orig_expr */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+		local_node->hashClauseInfos[i].orig_expr = nodeRead(NULL, 0);
+
+	READ_INT_FIELD(numSortCols);
+	READ_ATTRNUMBER_ARRAY(sortColIdx, local_node->numSortCols);
+	READ_OID_ARRAY(sortOperators, local_node->numSortCols);
+	READ_OID_ARRAY(collations, local_node->numSortCols);
+	READ_BOOL_ARRAY(nullsFirst, local_node->numSortCols);
 	READ_DONE();
 }
 
@@ -2807,8 +2864,12 @@ parseNodeString(void)
 		return_value = _readIndexOnlyScan();
 	else if (MATCH("BITMAPINDEXSCAN", 15))
 		return_value = _readBitmapIndexScan();
+	else if (MATCH("YBBITMAPINDEXSCAN", 17))
+		return_value = _readYbBitmapIndexScan();
 	else if (MATCH("BITMAPHEAPSCAN", 14))
 		return_value = _readBitmapHeapScan();
+	else if (MATCH("YBBITMAPTABLESCAN", 17))
+		return_value = _readYbBitmapTableScan();
 	else if (MATCH("TIDSCAN", 7))
 		return_value = _readTidScan();
 	else if (MATCH("SUBQUERYSCAN", 12))

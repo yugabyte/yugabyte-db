@@ -2,6 +2,7 @@
 -- <https://github.com/ossc-db/pg_hint_plan/>.
 SET search_path TO public;
 SET client_min_messages TO log;
+SET yb_enable_bitmapscan = true;
 \set SHOW_CONTEXT always
 
 -- In general, for postgres since t1.id and t2.id is sorted, merge joins should be optimal.
@@ -85,8 +86,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+SeqScan(t1)IndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
--- YB_COMMENT
--- Bitmapscan is not supported by YB
 /*+BitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+BitmapScan(t2)NoSeqScan(t1)*/
@@ -175,22 +174,32 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
 
 -- single table scan hint test
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+
 -- YB_COMMENT
--- BitmapScan is not supported by YB
+-- The following index is necessary to allow bitmap scans on these tables, since
+-- Postgres has an ASC pkey by default.
+CREATE INDEX t1_bitmap_index ON t1(id ASC);
+
 /*+BitmapScan(v_1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
--- /*+BitmapScan(v_2)*/
--- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
--- /*+BitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
--- /*+BitmapScan(v_1)BitmapScan(v_2)*/
--- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
--- /*+BitmapScan(v_1)BitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
--- /*+BitmapScan(v_2)BitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
--- /*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
--- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+/*+BitmapScan(v_2)*/
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+/*+BitmapScan(v_1)BitmapScan(v_2)*/
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+/*+BitmapScan(v_1)BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+/*+BitmapScan(v_2)BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+/*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+
+-- YB_COMMENT
+-- Drop the index created for the bitmap tests so that we don't introduce more
+-- than necessary.
+DROP INDEX t1_bitmap_index;
+
 --
 -- YB_COMMENT
 -- CTID based scans and searches not supported in Yugabyte
@@ -778,7 +787,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
 
 -- YB_COMMENT
--- Inheritance not supporte by Yugabyte
+-- Inheritance not supported by Yugabyte
 -- Inherited table test to specify the index's name
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
 -- /*+IndexScan(p2 p2_pkey)*/

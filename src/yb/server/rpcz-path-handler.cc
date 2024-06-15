@@ -62,15 +62,18 @@ bool GetBool(const Map& map, const typename Map::key_type& key, bool default_val
   return ParseLeadingBoolValue(it->second, default_value);
 }
 
-void RpczPathHandler(Messenger* messenger,
-                     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+void RpczPathHandler(
+    Messenger* messenger, bool show_local_calls, const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   DumpRunningRpcsRequestPB dump_req;
   DumpRunningRpcsResponsePB dump_resp;
 
+  dump_req.set_get_wait_state(GetBool(req.parsed_args, "get_wait_state", false));
+  dump_req.set_export_wait_state_code_as_string(true);
   dump_req.set_include_traces(GetBool(req.parsed_args, "include_traces", false));
   dump_req.set_dump_timed_out(GetBool(req.parsed_args, "timed_out", false));
-  dump_req.set_get_local_calls(true);
+  dump_req.set_get_local_calls(show_local_calls);
 
   WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
@@ -80,9 +83,10 @@ void RpczPathHandler(Messenger* messenger,
 
 } // anonymous namespace
 
-void AddRpczPathHandlers(Messenger* messenger, Webserver* webserver) {
+void AddRpczPathHandlers(Messenger* messenger, bool show_local_calls, Webserver* webserver) {
   webserver->RegisterPathHandler(
-      "/rpcz", "RPCs", std::bind(RpczPathHandler, messenger, _1, _2), false, false);
+      "/rpcz", "RPCs", std::bind(RpczPathHandler, messenger, show_local_calls, _1, _2), false,
+      false);
 }
 
 } // namespace yb

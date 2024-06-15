@@ -44,8 +44,8 @@ import {
   GET_MASTER_LEADER,
   GET_MASTER_LEADER_RESPONSE,
   RESET_MASTER_LEADER,
-  GET_MASTER_NODES_INFO,
-  GET_MASTER_NODES_INFO_RESPONSE,
+  GET_MASTER_INFO,
+  GET_MASTER_INFO_RESPONSE,
   PERFORM_UNIVERSE_NODE_ACTION,
   PERFORM_UNIVERSE_NODE_ACTION_RESPONSE,
   FETCH_UNIVERSE_BACKUPS,
@@ -63,8 +63,6 @@ import {
   DELETE_READ_REPLICA_RESPONSE,
   UPDATE_BACKUP_STATE,
   UPDATE_BACKUP_STATE_RESPONSE,
-  SET_ALERTS_CONFIG,
-  SET_ALERTS_CONFIG_RESPONSE,
   FETCH_SUPPORTED_RELEASES,
   FETCH_SUPPORTED_RELEASES_RESPONSE
 } from '../actions/universe';
@@ -95,7 +93,7 @@ const INITIAL_STATE = {
   error: null,
   formSubmitSuccess: false,
   universeConfigTemplate: getInitialState({}),
-  universeMasterNodes: getInitialState([]),
+  universeMasterInfo: getInitialState([]),
   universeResourceTemplate: getInitialState({}),
   currentPlacementStatus: null,
   fetchUniverseMetadata: false,
@@ -205,10 +203,10 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'universeMasterLeader', action);
     case RESET_MASTER_LEADER:
       return { ...state, universeMasterLeader: getInitialState({}) };
-    case GET_MASTER_NODES_INFO:
-      return setLoadingState(state, 'universeMasterNodes', []);
-    case GET_MASTER_NODES_INFO_RESPONSE:
-      return setPromiseResponse(state, 'universeMasterNodes', action);
+    case GET_MASTER_INFO:
+      return setLoadingState(state, 'universeMasterInfo', []);
+    case GET_MASTER_INFO_RESPONSE:
+      return setPromiseResponse(state, 'universeMasterInfo', action);
     case GET_NODE_INSTANCE_LIST:
       return setLoadingState(state, 'nodeInstanceList', []);
     case GET_NODE_INSTANCE_LIST_RESPONSE:
@@ -307,10 +305,6 @@ export default function (state = INITIAL_STATE, action) {
     case GET_HEALTH_CHECK_RESPONSE:
       return setPromiseResponse(state, 'healthCheck', action);
 
-    case SET_ALERTS_CONFIG:
-      return { ...state, alertsConfig: getInitialState([]) };
-    case SET_ALERTS_CONFIG_RESPONSE:
-      return setPromiseResponse(state, 'alertsConfig', action);
     case UPDATE_BACKUP_STATE:
       return { ...state, backupState: getInitialState([]) };
     case UPDATE_BACKUP_STATE_RESPONSE:

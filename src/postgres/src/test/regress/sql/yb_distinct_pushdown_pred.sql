@@ -193,6 +193,7 @@ SELECT DISTINCT r1 FROM th;
 -- Avoid classifying hash columns as sortable.
 -- Guard rails meant to prevent DISTINCT logic from
 -- marking hash columns as sortable.
+SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1 FROM th ORDER BY h1;
 SELECT DISTINCT h1 FROM th ORDER BY h1;
 -- Once all the hash columns are set, range columns are returned in sorted order as usual.
@@ -307,3 +308,12 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sam
 SELECT DISTINCT a FROM sample WHERE a > 0;
 
 DROP TABLE sample;
+
+-- See issue #22615
+CREATE TABLE t(r1 INT, r2 INT, PRIMARY KEY(r1 ASC, r2 ASC));
+INSERT INTO t (SELECT i, 1 FROM GENERATE_SERIES(1, 100) AS i);
+
+SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 10) ORDER BY r1 DESC;
+SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 10, 20) ORDER BY r1 DESC;
+
+DROP TABLE t;

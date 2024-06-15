@@ -41,6 +41,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/xrepl_stream_stats.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -55,6 +56,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_parser.h"
 
+#include "yb/server/html_print_helper.h"
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/maintenance_manager.h"
@@ -158,121 +160,6 @@ struct TableInfo {
   }
 };
 
-#define PRINT_HEADER_FIELDS(i, table_id, field) \
-  << "<th onclick=\"sortTable('" << #table_id << "_table', " << table_id##_hd_cnt++ << ")\">" \
-  << ::yb::AsString(field) << "</th>"
-#define PRINT_TABLE_WITH_HEADER_ROW(table_id, ...) \
-  *output << GenerateTableFilterBox(#table_id "_filter", #table_id "_table"); \
-  uint32 table_id##_hd_cnt = 0; \
-  *output << "<table class='table table-striped' id='" << #table_id << "_table'>\n"; \
-  *output << "<tr>" BOOST_PP_SEQ_FOR_EACH( \
-                 PRINT_HEADER_FIELDS, table_id, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) \
-          << "</tr>\n"
-
-#define PRINT_ROW_FIELDS(i, data, field) "<td>" << ::yb::AsString(field) << "</td>" <<
-#define PRINT_TABLE_ROW(...) \
-  *output << "<tr>" \
-          << BOOST_PP_SEQ_FOR_EACH( \
-                 PRINT_ROW_FIELDS, ~, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) "</tr>\n"
-
-const char* const kSortAndFilterTableScript = R"(
-<script>
-function sortTable(table_id, n) {
-  var asc_symb = ' <span style="color: grey">\u25B2</span>';
-  var desc_symb = ' <span style="color: grey">\u25BC</span>';
-  var i, swapCount = 0;
-  var table = document.getElementById(table_id);
-  if (table.rows.length < 3) {
-    return;
-  }
-  var switching = true;
-  var asc = true;
-  if (table.rows[0].getElementsByTagName("TH")[n].innerHTML.includes(asc_symb)) {
-    asc = false;
-  }
-
-  for(var j = 0; j < table.rows[0].getElementsByTagName("TH").length; j++) {
-   table.rows[0].getElementsByTagName("TH")[j].innerHTML =
-    table.rows[0].getElementsByTagName("TH")[j].innerHTML.replace(asc_symb, "").replace(desc_symb,
-      "");
-    if (j == n) {
-      sort_symb = asc ? asc_symb : desc_symb;
-      table.rows[0].getElementsByTagName("TH")[j].innerHTML =
-        table.rows[0].getElementsByTagName("TH")[j].innerHTML.concat(sort_symb);
-    }
-  }
-
-  while (switching) {
-    switching = false;
-    // Ignore header row.
-    for (i = 1; i < (table.rows.length - 1); i++) {
-      var swap = false;
-      var x = table.rows[i].getElementsByTagName("TD")[n];
-      var y = table.rows[i + 1].getElementsByTagName("TD")[n];
-      var cmpX = x.innerHTML.length?
-        isNaN(Number(x.innerHTML))? x.innerHTML.toLowerCase():Number(x.innerHTML):
-        "~";
-      var cmpY = y.innerHTML.length?
-        isNaN(Number(y.innerHTML))?y.innerHTML.toLowerCase():Number(y.innerHTML):
-        "~";
-
-      if (asc) {
-        if (cmpX > cmpY) {
-          swap= true;
-          break;
-        }
-      } else {
-        if (cmpX < cmpY) {
-          swap = true;
-          break;
-        }
-      }
-    }
-
-    if (swap) {
-      table.rows[i].parentNode.insertBefore(table.rows[i + 1], table.rows[i]);
-      switching = true;
-    }
-  }
-}
-
-function filterTableFunction(input_id, table_id) {
-  var filter = document.getElementById(input_id).value.toLowerCase();
-  var table = document.getElementById(table_id);
-  var tr = table.getElementsByTagName("tr");
-  for (var i = 0; i < tr.length; i++) {
-    if (tr[i].getElementsByTagName("th").length > 0) {
-     // Ignore header rows.
-      continue;
-    }
-    var row = tr[i].getElementsByTagName("td");
-    var found = false;
-    for (const td of row) {
-      if (td) {
-        var value = td.textContent || td.innerText;
-        if (value.toLowerCase().indexOf(filter) > -1) {
-          found = true;
-          break;
-        }
-      }
-    }
-
-    if(found) {
-      tr[i].style.display = "";
-    } else {
-      tr[i].style.display = "none";
-    }
-  }
-}
-</script>
-)";
-
-std::string GenerateTableFilterBox(const std::string& input_id, const std::string& table_id) {
-  return Substitute(
-      "<input type='text' id='$0' onkeyup='filterTableFunction(\"$0\", \"$1\")' "
-      "placeholder='Search for ...' title='Type in a text'>\n",
-      input_id, table_id);
-}
 }  // anonymous namespace
 
 namespace std {
@@ -627,7 +514,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-      "/xcluster", "xcluster",
+      "/xcluster", "xCluster",
       std::bind(&TabletServerPathHandlers::HandleXClusterPage, this, _1, _2), true /* styled */,
       false /* is_on_nav_bar */);
 
@@ -647,6 +534,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/tablets", "Tablets",
       std::bind(&TabletServerPathHandlers::HandleTabletsJSON, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/meta-cache", "MetaCache",
+      std::bind(&TabletServerPathHandlers::HandleTabletMetaCacheJSON, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
       "/api/v1/xcluster", "xcluster",
@@ -829,17 +720,14 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
 void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
                                                 Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
+  HtmlPrintHelper html_print_helper(*output);
   auto peers = tserver_->tablet_manager()->GetTabletPeers();
   auto table_map = GetTablesInfo(peers);
   bool show_missing_size_footer = false;
 
-  *output << "<h1>Tables</h1>\n"
-          << "<table class='table table-striped'>\n"
-          << "  <tr>\n"
-          << "    <th>Namespace</th><th>Table name</th><th>Table UUID</th>\n"
-          << "    <th>State</th><th>Hidden</th><th>Num SST Files</th>\n"
-          << "    <th>On-disk size</th><th>Raft roles</th>\n"
-          << "  </tr>\n";
+  auto html_table = html_print_helper.CreateTablePrinter(
+      "table", {"Namespace", "Table name", "Table UUID", "State", "Num SST Files", "On-disk size",
+                "Raft roles"});
 
   for (const auto& table_iter : table_map) {
     const auto& identifier = table_iter.first;
@@ -859,20 +747,14 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     }
     role_counts_html << "</ul>";
 
-    *output << Substitute(
-        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
-        "<td>$5</td><td>$6</td><td>$7</td></tr>\n",
-        EscapeForHtmlToString(info.namespace_name),
-        EscapeForHtmlToString(info.name),
+    html_table.AddRow(
+        EscapeForHtmlToString(info.namespace_name), EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
-        EscapeForHtmlToString(identifier.state),
-        info.is_hidden,
-        info.num_sst_files,
-        tables_disk_size_html,
-        role_counts_html.str());
+        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files,
+        tables_disk_size_html, role_counts_html.str());
   }
 
-  *output << "</table>\n";
+  html_table.Print();
 
   if (show_missing_size_footer) {
     *output << "<p>* Some tablets did not provide disk size estimates,"
@@ -1168,10 +1050,11 @@ std::vector<XClusterPollerStats> GetXClusterInboundStreamStats(TabletServer* con
 
 void TabletServerPathHandlers::HandleXClusterPage(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream* output = &resp->output;
+  std::stringstream& output = resp->output;
+  HtmlPrintHelper html_print_helper(output);
 
   if (!FLAGS_enable_xcluster_stat_collection) {
-    *output << "<h3>xCluster stats collection is not enabled. Set enable_xcluster_stat_collection "
+    output << "<h3>xCluster stats collection is not enabled. Set enable_xcluster_stat_collection "
                "to enable it.</h3 >\n";
     return;
   }
@@ -1179,56 +1062,54 @@ void TabletServerPathHandlers::HandleXClusterPage(
   const auto xcluster_outbound_stream_stats = GetXClusterOutboundStreamStats(tserver_);
   const auto xcluster_inbound_stream_stats = GetXClusterInboundStreamStats(tserver_);
   if (xcluster_outbound_stream_stats.empty() && xcluster_inbound_stream_stats.empty()) {
-    *output << "<h3>xCluster replication is not enabled</h3 >\n";
+    output << "<h3>xCluster replication is not enabled</h3 >\n";
     return;
   }
 
-  *output << "<h1>xCluster state</h1>\n";
+  output << "<h1>xCluster state</h1>\n";
 
   if (!xcluster_outbound_stream_stats.empty()) {
-    *output << "<h3>xCluster outbound streams</h3>\n";
+    output << "<h3>xCluster outbound streams</h3>\n";
 
-    PRINT_TABLE_WITH_HEADER_ROW(
-        xcluster_streams, "Stream Id", "Produce Table Id", "Producer Tablet Id", "State",
-        "Avg poll delay (ms)", "Throughput (KiBps)", "Data sent (MiB)", "Records sent",
-        "Avg GetChanges latency (ms)", "WAL index sent", "WAL end index", "Last poll at", "Status");
+    auto xcluster_streams = html_print_helper.CreateTablePrinter(
+        "xcluster_streams",
+        {"Stream Id", "Produce Table Id", "Producer Tablet Id", "State", "Avg poll delay (ms)",
+         "Throughput (KiBps)", "Data sent (MiB)", "Records sent", "Avg GetChanges latency (ms)",
+         "WAL index sent", "WAL end index", "Last poll at", "Status"});
 
     for (const auto& stat : xcluster_outbound_stream_stats) {
-      PRINT_TABLE_ROW(
+      xcluster_streams.AddRow(
           stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
           stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
           StringPrintf("%.3f", stat.mbs_sent), stat.records_sent, stat.avg_get_changes_latency_ms,
           stat.sent_index, stat.latest_index, stat.last_poll_time.ToFormattedString(), stat.status);
     }
-
-    *output << "</table>\n\n";
+    xcluster_streams.Print();
   }
 
   if (!xcluster_inbound_stream_stats.empty()) {
-    *output << "<h3>xCluster inbound streams</h3>\n";
+    output << "<h3>xCluster inbound streams</h3>\n";
 
-    PRINT_TABLE_WITH_HEADER_ROW(
-        xcluster_pollers, "ReplicationGroup Id", "Stream Id", "Consumer Table Id",
-        "Consumer Tablet Id", "Producer Tablet Id", "State", "Avg poll delay (ms)",
-        "Throughput (KiBps)", "Data received (MiB)", "Records received",
-        "Avg GetChanges latency (ms)", "Avg apply latency (ms)", "WAL index received",
-        "Last poll At", "Status");
+    auto xcluster_pollers = html_print_helper.CreateTablePrinter(
+        "xcluster_pollers",
+        {"ReplicationGroup Id", "Stream Id", "Consumer Table Id", "Consumer Tablet Id",
+         "Producer Tablet Id", "State", "Avg poll delay (ms)", "Throughput (KiBps)",
+         "Data received (MiB)", "Records received", "Avg GetChanges latency (ms)",
+         "Avg apply latency (ms)", "WAL index received", "Last poll At", "Status"});
 
     for (const auto& stat : xcluster_inbound_stream_stats) {
-      PRINT_TABLE_ROW(
+      xcluster_pollers.AddRow(
           stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
           stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
           StringPrintf("%.3f", stat.avg_throughput_kbps), StringPrintf("%.3f", stat.mbs_received),
           stat.records_received, stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms,
           stat.received_index, stat.last_poll_time.ToFormattedString(), stat.status);
     }
-
-    *output << "</table>\n";
+    xcluster_pollers.Print();
   }
 
-  *output << "\n<aside><h5>Note:</h5><p>This data is collected over the last few polls. Check "
-             "metrics or logs for older and detailed information.</p></aside>";
-  *output << kSortAndFilterTableScript;
+  output << "\n<aside><h5>Note:</h5><p>This data is collected over the last few polls. Check "
+            "metrics or logs for older and detailed information.</p></aside>";
 }
 
 void TabletServerPathHandlers::HandleXClusterJSON(
@@ -1437,6 +1318,13 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.EndObject();
   }
   jw.EndObject();
+}
+
+void TabletServerPathHandlers::HandleTabletMetaCacheJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  JsonWriter writer(output, JsonWriter::COMPACT);
+  tserver_->WriteServerMetaCacheAsJson(&writer);
 }
 
 }  // namespace tserver

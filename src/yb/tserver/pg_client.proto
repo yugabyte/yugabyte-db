@@ -25,6 +25,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
+import "yb/tablet/tablet.proto";
 
 service PgClientService {
   rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
@@ -48,8 +49,7 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
-  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
-      returns (PgGetReplicationSlotStatusResponsePB);
+  rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
@@ -88,6 +88,8 @@ service PgClientService {
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
+  rpc ActiveSessionHistory(PgActiveSessionHistoryRequestPB)
+      returns (PgActiveSessionHistoryResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 
@@ -96,6 +98,12 @@ service PgClientService {
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
 
+  rpc TabletsMetadata(PgTabletsMetadataRequestPB) returns (PgTabletsMetadataResponsePB);
+
+  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
+  // So GetReplicationSlot should be used everywhere.
+  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
+      returns (PgGetReplicationSlotStatusResponsePB);
   // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
       returns (PgSetActiveSubTransactionResponsePB);
@@ -103,6 +111,23 @@ service PgClientService {
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
+
+  rpc YCQLStatementStats(PgYCQLStatementStatsRequestPB)
+      returns (PgYCQLStatementStatsResponsePB);
+}
+
+// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
+// 'optional' in proto3
+message OptionalFixed64PB {
+  fixed64 value = 1;
+}
+
+message OptionalUint32PB {
+  uint32 value = 1;
+}
+
+message OptionalUint64PB {
+  uint64 value = 1;
 }
 
 message PgHeartbeatRequestPB {
@@ -150,6 +175,29 @@ message PgRenameTablePB {
   string table_name = 2;
 }
 
+// Available replica identity modes for use in CDC
+enum PgReplicaIdentityType {
+  // Entire updated row as new image, only key as old image for DELETE
+  // The name DEFAULT is taken from PG, however it is not the default replica identity mode
+  DEFAULT = 0;
+
+  // Both old and new images of the entire row
+  FULL = 1;
+
+  // No old image for any operation
+  NOTHING = 2;
+
+  // YB specific options
+
+  // Only the changed columns as new image, no old image except DELETE
+  // This is the default replica identity mode in YSQL
+  CHANGE = 3;
+}
+
+message PgReplicaIdentityPB {
+  PgReplicaIdentityType replica_identity = 1;
+}
+
 message PgAlterTableRequestPB {
   uint64 session_id = 1;
   bool use_transaction = 2;
@@ -159,6 +207,7 @@ message PgAlterTableRequestPB {
   repeated string drop_columns = 6;
   PgRenameTablePB rename_table = 7;
   bool increment_schema_version = 8;
+  PgReplicaIdentityPB replica_identity = 9;
 }
 
 message PgAlterTableResponsePB {
@@ -173,6 +222,8 @@ message PgCreateDatabaseRequestPB {
   uint32 source_database_oid = 5;
   uint32 next_oid = 6;
   bool colocated = 7;
+  fixed64 clone_time = 8;
+  string source_database_name = 9;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -182,15 +233,29 @@ message PgCreateDatabaseResponsePB {
 message PgCreateSequencesDataTableRequestPB {
 }
 
+// proto2 version of the CDCSDKSnapshotOption enum from yb/common/common_types.proto
+enum PgReplicationSlotSnapshotActionPB {
+  // Invalid, should not be used. This is only present here to keep the same enum tags between the
+  // proto2 (this) and the proto3 versions.
+  REPLICATION_SLOT_UNKNOWN_SNAPSHOT = 0;
+  // Client does not wish to consume snapshot.
+  REPLICATION_SLOT_NOEXPORT_SNAPSHOT = 1;
+  // Client wishes to consume snapshot from the source universe.
+  REPLICATION_SLOT_USE_SNAPSHOT = 2;
+}
+
 message PgCreateReplicationSlotRequestPB {
   uint64 session_id = 1;
   uint32 database_oid = 2;
   string replication_slot_name = 3;
+  PgReplicationSlotSnapshotActionPB snapshot_action = 4;
+  string output_plugin_name = 5;
 }
 
 message PgCreateReplicationSlotResponsePB {
   AppStatusPB status = 1;
   bytes stream_id = 2;
+  uint64 cdcsdk_consistent_snapshot_time = 3;
 }
 
 message PgCreateSequencesDataTableResponsePB {
@@ -243,8 +308,16 @@ message PgCreateTableRequestPB {
   bool skip_index_backfill = 17;
 
   bool is_matview = 21;
-  PgObjectIdPB matview_pg_table_oid = 18;
+  // Used during a table rewrite operation to explicitly store the PG table oid.
+  PgObjectIdPB pg_table_oid = 18;
   string schema_name = 19;
+  // Used during a table rewrite operation to store the relfilenode OID that maps to the old
+  // DocDB table.
+  PgObjectIdPB old_relfilenode_oid = 22;
+  // Set to true when the table is being re-written as part of a TRUNCATE operation.
+  bool is_truncate = 23;
+
+  PgVectorIdxOptionsPB vector_idx_options = 24;
 }
 
 message PgCreateTableResponsePB {
@@ -310,6 +383,7 @@ message PgFinishTransactionRequestPB {
   message DdlModePB {
     // This transaction contains changes to the DocDB schema protobufs.
     bool has_docdb_schema_changes = 1;
+    OptionalUint32PB silently_altered_db = 2;
   }
 
   uint64 session_id = 1;
@@ -357,6 +431,9 @@ message PgGetLockStatusRequestPB {
 
   // Limit number of old transactions whose lock info is retrieved.
   uint32 max_num_txns = 4;
+
+  // Limit number of locks returned per transaction at each tablet
+  uint32 max_txn_locks_per_tablet = 5;
 }
 
 message PgGetLockStatusResponsePB {
@@ -378,13 +455,24 @@ message PgGetLockStatusResponsePB {
   map<string, TransactionList> transactions_by_node = 3;
 }
 
-message PgGetReplicationSlotStatusRequestPB {
+message PgGetReplicationSlotRequestPB {
   string replication_slot_name = 1;
+
+  /* TODO(#20368): Introduce ability to acquire the slot. */
+}
+
+message PgGetReplicationSlotResponsePB {
+  AppStatusPB status = 1;
+  PgReplicationSlotInfoPB replication_slot_info = 2;
 }
 
 enum ReplicationSlotStatus {
   ACTIVE = 0;
   INACTIVE = 1;
+}
+
+message PgGetReplicationSlotStatusRequestPB {
+  string replication_slot_name = 1;
 }
 
 message PgGetReplicationSlotStatusResponsePB {
@@ -432,6 +520,15 @@ message PgReplicationSlotInfoPB {
   bytes stream_id = 2;
   uint32 database_oid = 3;
   ReplicationSlotStatus replication_slot_status = 4;
+  uint64 confirmed_flush_lsn = 5;
+  uint64 restart_lsn = 6;
+  uint32 xmin = 7;
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_oid and the value is replica identity for that table.
+  map<uint32, PgReplicaIdentityPB> replica_identity_map = 8;
+  uint64 record_id_commit_time_ht = 9;
+  uint64 last_pub_refresh_time = 10;
+  string output_plugin_name = 11;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -480,21 +577,9 @@ enum ReadTimeManipulation {
   ENSURE_READ_TIME_IS_SET = 2;
 }
 
-// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
-// 'optional' in proto3
-message OptionalFixed64PB {
-  fixed64 value = 1;
-}
-
-message OptionalUint32PB {
-  uint32 value = 1;
-}
-
-message OptionalUint64PB { uint64 value = 1; }
-
 message PgPerformOptionsPB {
   message CachingInfoPB {
-    uint64 key_group = 1;
+    uint32 key_group = 1;
     bytes key_value = 2;
     OptionalUint32PB lifetime_threshold_ms = 3;
   }
@@ -526,6 +611,12 @@ message PgPerformOptionsPB {
   int64 pg_txn_start_us = 22;
 
   AshMetadataPB ash_metadata = 23;
+
+  // When set,
+  // - Sets the read time locally.
+  // - Clamps the read uncertainty window.
+  // See the commit desc for more info.
+  bool clamp_uncertainty_window = 24;
 }
 
 message PgPerformRequestPB {
@@ -770,6 +861,28 @@ message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
+message PgActiveSessionHistoryRequestPB {
+  bool fetch_tserver_states = 1;
+  bool fetch_flush_and_compaction_states = 2;
+  bool fetch_cql_states = 3;
+  bool ignore_ash_and_perform_calls = 4;
+  bool fetch_raft_log_appender_states = 5;
+  bool export_wait_state_code_as_string = 6;
+}
+
+message WaitStatesPB {
+  repeated WaitStateInfoPB wait_states = 1;
+  uint32 component = 2;
+}
+
+message PgActiveSessionHistoryResponsePB {
+  AppStatusPB status = 1;
+  WaitStatesPB tserver_wait_states = 2;
+  WaitStatesPB flush_and_compaction_wait_states = 3;
+  WaitStatesPB raft_log_appender_wait_states = 4;
+  WaitStatesPB cql_wait_states = 5;
+}
+
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
 
 message PgGetActiveTransactionListResponsePB {
@@ -815,4 +928,32 @@ message PgFetchDataRequestPB {
 message PgFetchDataResponsePB {
   AppStatusPB status = 1;
   uint32 sidecar = 2;
+}
+
+message PgYCQLStatementStatsRequestPB {}
+
+message PgYCQLStatementStatsResponsePB {
+  AppStatusPB status = 1;
+  repeated YCQLStatementStatsPB statements = 2;
+}
+
+message YCQLStatementStatsPB {
+  int64 queryid = 1;
+  string query = 2;
+  bool is_prepared = 3;
+  int64 calls = 4;
+  // Time in ms
+  double total_time = 5;
+  double min_time = 6;
+  double max_time = 7;
+  double mean_time = 8;
+  double stddev_time = 9;
+}
+
+message PgTabletsMetadataRequestPB {
+}
+
+message PgTabletsMetadataResponsePB {
+  AppStatusPB status = 1;
+  repeated tablet.TabletStatusPB tablets = 2;
 }

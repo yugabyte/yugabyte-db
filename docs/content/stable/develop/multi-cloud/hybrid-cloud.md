@@ -52,9 +52,9 @@ As a part of your data center modernization and expansion, you could choose a pu
 
 ![Two On-Premises data centers and a Public Cloud with Yugabyte](/images/develop/multicloud/hybridcloud-move-testing-app.png)
 
-{{<tip>}}
+{{<lead link="../../../manage/backup-restore/">}}
 To replicate your production data onto your test cluster, see [Backup and Restore](../../../manage/backup-restore/).
-{{</tip>}}
+{{</lead>}}
 
 This move has multiple advantages:
 

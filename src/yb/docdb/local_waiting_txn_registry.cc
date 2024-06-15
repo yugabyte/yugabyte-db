@@ -60,10 +60,17 @@ using StatusTabletDataPtr = std::shared_ptr<StatusTabletData>;
 // StatusTabletData instance being tracked by the LocalWaitingTxnRegistry.
 struct WaitingTransactionData {
   TransactionId id;
+  int64_t request_id;
   std::shared_ptr<ConflictDataManager> blockers;
   StatusTabletDataPtr status_tablet_data;
   HybridTime wait_start_time;
   rpc::Rpcs::Handle rpc_handle;
+};
+
+// Container for metadata corresponding to a single shard waiting transaction that is being tracked.
+struct WaitingSingleShardTxnData {
+  const TabletId tablet_id = "";
+  uint64_t wait_start_us;
 };
 
 // Container for holding StatusTabletData and it's corresponding ThreadPoolToken. StatusTabletData
@@ -87,6 +94,7 @@ void AttachWaitingTransaction(
   auto* txn = req->add_waiting_transactions();
   txn->set_transaction_id(data.id.data(), data.id.size());
   txn->set_wait_start_time(data.wait_start_time.ToUint64());
+  txn->set_request_id(data.request_id);
   for (const auto& blocker : data.blockers->RemainingTransactions()) {
     auto* blocking_txn = txn->add_blocking_transaction();
     blocking_txn->set_transaction_id(blocker.id.data(), blocker.id.size());
@@ -241,13 +249,25 @@ class LocalWaitingTxnRegistry::Impl {
 
     Status Register(
         const TransactionId& waiting,
+        int64_t request_id,
         std::shared_ptr<ConflictDataManager> blockers,
         const TabletId& status_tablet) override {
-      return registry_->RegisterWaitingFor(waiting, std::move(blockers), status_tablet, this);
+      return registry_->RegisterWaitingFor(
+          waiting, request_id, std::move(blockers), status_tablet, this);
     }
 
-    void SetData(std::shared_ptr<WaitingTransactionData>&& blocked_data) {
+    Status RegisterSingleShardWaiter(
+        const TabletId& tablet_id, uint64_t wait_start_us) override {
+      return registry_->RegisterSingleShardWaiter(
+          tablet_id, wait_start_us, this);
+    }
+
+    void SetWaitingTxnData(std::shared_ptr<WaitingTransactionData>&& blocked_data) {
       blocked_data_ = std::move(blocked_data);
+    }
+
+    void SetWaitingSingleShardTxnData(std::shared_ptr<WaitingSingleShardTxnData>&& txn_data) {
+      txn_data_ = std::move(txn_data);
     }
 
     int64 GetDataUseCount() const override {
@@ -257,6 +277,7 @@ class LocalWaitingTxnRegistry::Impl {
    private:
     LocalWaitingTxnRegistry::Impl* const registry_;
     std::shared_ptr<WaitingTransactionData> blocked_data_ = nullptr;
+    std::shared_ptr<WaitingSingleShardTxnData> txn_data_ = nullptr;
   };
 
   std::unique_ptr<WaitingTransactionDataWrapper> Create() {
@@ -287,6 +308,38 @@ class LocalWaitingTxnRegistry::Impl {
         it = status_tablets_.erase(it);
       }
     }
+  }
+
+  Status GetOldSingleShardWaiters(
+      const tserver::GetOldSingleShardWaitersRequestPB& req,
+      tserver::GetOldSingleShardWaitersResponsePB* resp) EXCLUDES(mutex_) {
+    UniqueLock<decltype(mutex_)> l(mutex_);
+    if (shutting_down_) {
+      return STATUS(ShutdownInProgress, "Local Waiting Transaction Registry is shutting down.");
+    }
+    auto min_age = req.min_txn_age_ms() * 1ms;
+    auto now = clock_->Now();
+    for (auto it = single_shard_waiters_txn_data_.begin();
+         it != single_shard_waiters_txn_data_.end();) {
+      if (static_cast<uint32_t>(resp->txn_size()) >= req.max_num_txns()) {
+        break;
+      }
+      auto waiting_txn_data = it->lock();
+      if (!waiting_txn_data) {
+        it = single_shard_waiters_txn_data_.erase(it);
+        continue;
+      }
+      auto age = (now.GetPhysicalValueMicros() - waiting_txn_data->wait_start_us) * 1us;
+      if (age <= min_age) {
+        break;
+      }
+      // TODO(#20116): Populate host node uuid for single shard waiters.
+      auto* resp_txn = resp->add_txn();
+      resp_txn->set_start_time(waiting_txn_data->wait_start_us);
+      resp_txn->set_tablet(waiting_txn_data->tablet_id);
+      it++;
+    }
+    return Status::OK();
   }
 
   void StartShutdown() {
@@ -347,13 +400,15 @@ class LocalWaitingTxnRegistry::Impl {
   }
 
   Status RegisterWaitingFor(
-      const TransactionId& waiting, std::shared_ptr<ConflictDataManager> blockers,
+      const TransactionId& waiting, int64_t request_id,
+      std::shared_ptr<ConflictDataManager> blockers,
       const TabletId& status_tablet_id, WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
     DCHECK(!status_tablet_id.empty());
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
     auto blocked_data = std::make_shared<WaitingTransactionData>(WaitingTransactionData {
       .id = waiting,
+      .request_id = request_id,
       .blockers = std::move(blockers),
       .status_tablet_data = shared_tablet_data,
       .wait_start_time = clock_->Now(),
@@ -374,7 +429,27 @@ class LocalWaitingTxnRegistry::Impl {
     // See: https://github.com/yugabyte/yugabyte-db/issues/13576
     RETURN_NOT_OK(shared_tablet_data->SendPartialUpdateAsync(blocked_data, clock_->Now()));
 
-    wrapper->SetData(std::move(blocked_data));
+    wrapper->SetWaitingTxnData(std::move(blocked_data));
+    return Status::OK();
+  }
+
+  Status RegisterSingleShardWaiter(
+      const TabletId& tablet_id, uint64_t wait_start_us,
+      WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
+    UniqueLock<decltype(mutex_)> l(mutex_);
+    if (shutting_down_) {
+      return STATUS(ShutdownInProgress, "Local Waiting Transaction Registry is shutting down.");
+    }
+
+    auto txn_data = std::make_shared<WaitingSingleShardTxnData>(WaitingSingleShardTxnData {
+      .tablet_id = tablet_id,
+      .wait_start_us = wait_start_us,
+    });
+    single_shard_waiters_txn_data_.insert(txn_data);
+    // Move 'txn_data' to the wrapper so that it gets destroyed as soon as the there is no strong
+    // reference to the single shard waiter. That way, we'll be able to track all active single
+    // shard waiters at the local waiting transaction registry.
+    wrapper->SetWaitingSingleShardTxnData(std::move(txn_data));
     return Status::OK();
   }
 
@@ -395,6 +470,22 @@ class LocalWaitingTxnRegistry::Impl {
   const std::string tserver_uuid_;
 
   ThreadPool* thread_pool_;
+  struct WaitingSingleShardTxnDataComparator {
+    bool operator()(
+        const std::weak_ptr<WaitingSingleShardTxnData>& lhs,
+        const std::weak_ptr<WaitingSingleShardTxnData>& rhs) const {
+      auto shared_lhs = lhs.lock();
+      auto shared_rhs = rhs.lock();
+      if (shared_lhs && shared_rhs) {
+        if (shared_lhs->wait_start_us != shared_rhs->wait_start_us) {
+          return shared_lhs->wait_start_us < shared_rhs->wait_start_us;
+        }
+      }
+      return &lhs < &rhs;
+    }
+  };
+  std::set<std::weak_ptr<WaitingSingleShardTxnData>, WaitingSingleShardTxnDataComparator>
+      single_shard_waiters_txn_data_ GUARDED_BY(mutex_);
 };
 
 LocalWaitingTxnRegistry::LocalWaitingTxnRegistry(
@@ -410,6 +501,12 @@ std::unique_ptr<ScopedWaitingTxnRegistration> LocalWaitingTxnRegistry::Create() 
 
 void LocalWaitingTxnRegistry::SendWaitForGraph() {
   impl_->SendWaitForGraph();
+}
+
+Status LocalWaitingTxnRegistry::GetOldSingleShardWaiters(
+    const tserver::GetOldSingleShardWaitersRequestPB& req,
+    tserver::GetOldSingleShardWaitersResponsePB* resp) {
+  return impl_->GetOldSingleShardWaiters(req, resp);
 }
 
 void LocalWaitingTxnRegistry::StartShutdown() {

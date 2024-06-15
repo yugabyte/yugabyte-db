@@ -13,6 +13,7 @@ import { RuntimeConfigKey } from '../redesign/helpers/constants';
 import { hasNecessaryPerm } from '../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../redesign/features/rbac/ApiAndUserPermMapping';
 import { getWrappedChildren } from '../redesign/features/rbac/common/validator/ValidatorUtils';
+import { useTranslation } from 'react-i18next';
 
 const DataCenterConfigRedesignComponent = lazy(() =>
   import('../components/configRedesign/DataCenterConfigRedesign').then(
@@ -23,6 +24,7 @@ const DataCenterConfigRedesignComponent = lazy(() =>
 );
 
 export const DataCenterConfiguration = (props: any) => {
+  const { t } = useTranslation();
   const customerUUID = localStorage.getItem('customerId') ?? '';
   const customerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.customerScope(customerUUID),
@@ -40,7 +42,9 @@ export const DataCenterConfiguration = (props: any) => {
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
@@ -48,13 +52,20 @@ export const DataCenterConfiguration = (props: any) => {
     (config: any) =>
       config.key === RuntimeConfigKey.PROVIDER_REDESIGN_UI_FEATURE_FLAG && config.value === 'true'
   );
+  const isTroubleshootingEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING && config.value === 'true'
+  );
 
   return (
     <>
       {shouldShowRedesignedUI ? (
         <>
           <Suspense fallback={YBLoadingCircleIcon}>
-            <DataCenterConfigRedesignComponent {...props} />
+            <DataCenterConfigRedesignComponent
+              isTroubleshootingEnabled={isTroubleshootingEnabled}
+              {...props}
+            />
           </Suspense>
         </>
       ) : (

@@ -172,8 +172,11 @@ TEST_F(PgCacheRefreshTest, NewConnectionTransparentRetry) {
 
   // In a different connection to a different node, run a DDL statement.
   testConcurrentDDLFromDifferentNode("col2");
-  // TODO: Test commented out due to #14327
-  // ASSERT_OK(executeInsert());
+
+  // Wait for heartbeat to propagate across all the TServers and invalidate the table cache
+  // across all nodes.
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
+  ASSERT_OK(executeInsert());
 
   // Cause schema version increment in a different connection to the same TServer.
   testConcurrentSchemaVersionIncrement("col3");
@@ -235,12 +238,9 @@ TEST_F(PgCacheRefreshTest, NewConnectionTransparentRetryTxn) {
   // across all nodes.
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
 
-  // Test DML transaction interleaved with an operation that only causes schema version mismatch
-  // through a connection to the same TServer. Here the alter operation causes table cache
-  // invalidation on the TServer, therefore no retry is needed.
-  testSuccessfulTxnSchemaVersionMismatch([this] {
-    testConcurrentSchemaVersionIncrement("col3");
-  });
+  // Cause a schema version increment operation through the same TServer so that the table schema
+  // gets cached.
+  testConcurrentSchemaVersionIncrement("col3");
 
   // Test DML transaction interleaved with an operation that only causes schema version mismatch
   // through a connection to a different TServer.

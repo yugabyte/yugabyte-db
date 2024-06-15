@@ -1,0 +1,10 @@
+title: AWSRegionCloudInfo
+description: Region in AWS provider. Part of RegionCloudInfo.
+type: object
+properties:
+  security_group_id:
+    description: AWS security group id
+    type: string
+  vnet:
+    description: AWS vnet
+    type: string

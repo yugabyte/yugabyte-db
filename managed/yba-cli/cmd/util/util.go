@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -17,6 +18,9 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"gopkg.in/yaml.v2"
 )
 
 // StringSlice accepts array of interface and returns a pointer to slice of string
@@ -24,6 +28,15 @@ func StringSlice(in []interface{}) *[]string {
 	var out []string
 	for _, v := range in {
 		out = append(out, v.(string))
+	}
+	return &out
+}
+
+// Float64Slice accepts array of interface and returns a pointer to slice of float64
+func Float64Slice(in []interface{}) *[]float64 {
+	var out []float64
+	for _, v := range in {
+		out = append(out, v.(float64))
 	}
 	return &out
 }
@@ -110,6 +123,11 @@ func GetFloat64Pointer(in float64) *float64 {
 	return &in
 }
 
+// GetStringArrayPointer returns the pointer to a string array
+func GetArrayPointer(in []interface{}) *[]interface{} {
+	return &in
+}
+
 // CreateSingletonList returns a list of single entry from an interface
 func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
@@ -133,18 +151,18 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entityName,
 	operation string) error {
 	errorTag := fmt.Errorf("%s, Operation: %s - %w", entityName, operation, apiError)
 	if resp == nil {
-		logrus.Errorf("%s", errorTag.Error())
 		return errorTag
 	}
 	response := *resp
 	errorBlock := YbaStructuredError{}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("%w: %s", errorTag, "Error reading HTTP Response body")
+		logrus.Debug("There was an error reading the response from the API\n")
+		return errorTag
 	}
 	if err = json.Unmarshal(body, &errorBlock); err != nil {
-		return fmt.Errorf("%w: %s %s", errorTag,
-			"Failed unmarshalling HTTP Response body", err.Error())
+		logrus.Debugf("There was an error unmarshalling the response from the API\n")
+		return errorTag
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
@@ -193,22 +211,6 @@ func ConfirmCommand(message string, bypass bool) error {
 		return errAborted
 	}
 	return nil
-}
-
-// IsVersionAllowed checks if a current version (>= Min version)
-// is equal to the restricted version for the operation.
-// Used in cases where certain preview build errors are not
-// resolved and need to be blocked on YugabyteDB Anywhere Terraform
-// provider
-func IsVersionAllowed(currentVersion, restrictedVersion string) (bool, error) {
-	compare, errCompare := CompareYbVersions(restrictedVersion, currentVersion)
-	if errCompare != nil {
-		return false, errCompare
-	}
-	if compare == 0 {
-		return false, nil
-	}
-	return true, nil
 }
 
 // CompareYbVersions returns -1 if version1 < version2, 0 if version1 = version2,
@@ -280,6 +282,16 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 	return 0, errors.New("Unable to parse YB version strings")
 }
 
+func IsVersionStable(version string) bool {
+	v := strings.Split(version, ".")
+	v1, err := strconv.Atoi(v[1])
+	if err != nil {
+		logrus.Error("Unable to parse YB version strings")
+		return false
+	}
+	return v1%2 == 0 || len(v[0]) == 4
+}
+
 // IsYBVersion checks if the given string is a valid YB version string
 func IsYBVersion(v string) (bool, error) {
 	ybaVersionRegex := "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$"
@@ -296,4 +308,38 @@ func IsYBVersion(v string) (bool, error) {
 		return false, errors.New("unable to parse YB version strings")
 	}
 	return true, nil
+}
+
+// YAMLtoString reads yaml file and converts the data into a string
+func YAMLtoString(filePath string) string {
+	logrus.Debug("YAML File Path: ", filePath)
+	yamlContent, err := os.ReadFile(filePath)
+	if err != nil {
+		logrus.Fatalf(
+			formatter.Colorize("Error reading YAML file: "+err.Error()+"\n",
+				formatter.RedColor))
+	}
+	var data yaml.MapSlice
+
+	// Unmarshal the YAML content into the map
+	err = yaml.Unmarshal(yamlContent, &data)
+	if err != nil {
+		logrus.Fatalf(
+			formatter.Colorize("Error unmarshalling YAML file: "+err.Error()+"\n",
+				formatter.RedColor))
+	}
+
+	contentBytes, err := yaml.Marshal(data)
+	if err != nil {
+		logrus.Fatalf(
+			formatter.Colorize("Error marshalling YAML file: "+err.Error()+"\n",
+				formatter.RedColor))
+	}
+	return string(contentBytes)
+
+}
+
+// IsOutputType check if the output type is t
+func IsOutputType(t string) bool {
+	return viper.GetString("output") == t
 }

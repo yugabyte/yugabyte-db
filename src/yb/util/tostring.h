@@ -18,13 +18,14 @@
 #include <float.h>
 
 #include <chrono>
+#include <concepts>
 #include <functional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
-#include <boost/mpl/and.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -45,251 +46,109 @@
 namespace yb_tostring {
 
 template <class T>
-struct SupportsOutputToStream {
-  typedef int Yes;
-  typedef struct { Yes array[2]; } No;
-  typedef typename std::remove_cv<typename std::remove_reference<T>::type>::type CleanedT;
+concept TypeSupportsOutputToStream = requires (const T& t) {
+  (*static_cast<std::ostream*>(nullptr)) << t;
+}; // NOLINT
 
-  template <class U>
-  static auto Test(std::ostream* out, const U* u) -> decltype(*out << *u, Yes(0)) {}
-  static No Test(...) {}
-
-  static constexpr bool value =
-      sizeof(Test(nullptr, static_cast<const CleanedT*>(nullptr))) == sizeof(Yes);
-};
-
-HAS_FREE_FUNCTION(to_string);
+template <class T>
+concept TypeWithFree_to_string = requires (const T& t) {
+  to_string(t);
+}; // NOLINT
 
 } // namespace yb_tostring
 
-// This utility actively uses SFINAE (http://en.cppreference.com/w/cpp/language/sfinae)
-// technique to route ToString to correct implementation.
 namespace yb {
 
 // If class has ToString member function - use it.
-HAS_MEMBER_FUNCTION(ToString);
-HAS_MEMBER_FUNCTION(to_string);
+template <class T>
+concept TypeWith_ToString = requires (const T& t) {
+  t.ToString();
+}; // NOLINT
 
 template <class T>
-typename std::enable_if<HasMemberFunction_ToString<T>::value, std::string>::type
-ToString(const T& value) {
+concept TypeWith_to_string = requires (const T& t) {
+    t.to_string();
+}; // NOLINT
+
+template <TypeWith_ToString T>
+decltype(auto) ToString(const T& value) {
   return value.ToString();
 }
 
-template <class T>
-typename std::enable_if<HasMemberFunction_to_string<T>::value, std::string>::type
-ToString(const T& value) {
+template <TypeWith_to_string T>
+decltype(auto) ToString(const T& value) {
   return value.to_string();
 }
 
 // If class has ShortDebugString member function - use it. For protobuf classes mostly.
-HAS_MEMBER_FUNCTION(ShortDebugString);
-
 template <class T>
-typename std::enable_if<HasMemberFunction_ShortDebugString<T>::value, std::string>::type
-ToString(const T& value) {
+concept TypeWith_ShortDebugString = requires (const T& t) {
+  t.ShortDebugString();
+}; // NOLINT
+
+template <TypeWith_ShortDebugString T>
+decltype(auto) ToString(const T& value) {
   return value.ShortDebugString();
 }
 
 // Various variants of integer types.
 template <class Int>
-typename std::enable_if<(sizeof(Int) > 4) && std::is_signed<Int>::value, char*>::type
-IntToBuffer(Int value, char* buffer) {
-  return FastInt64ToBufferLeft(value, buffer);
+requires(std::is_signed_v<Int>)
+decltype(auto) IntToBuffer(Int value, char* buffer) {
+  if constexpr (sizeof(Int) > 4) {
+    return FastInt64ToBufferLeft(value, buffer);
+  } else {
+    return FastInt32ToBufferLeft(value, buffer);
+  }
+}
+
+template <class UInt>
+requires(!std::is_signed_v<UInt>)
+decltype(auto) IntToBuffer(UInt value, char* buffer) {
+  if constexpr (sizeof(UInt) > 4) {
+    return FastUInt64ToBufferLeft(value, buffer);
+  } else {
+    return FastUInt32ToBufferLeft(value, buffer);
+  }
 }
 
 template <class Int>
-typename std::enable_if<(sizeof(Int) > 4) && !std::is_signed<Int>::value, char*>::type
-IntToBuffer(Int value, char* buffer) {
-  return FastUInt64ToBufferLeft(value, buffer);
-}
-
-template <class Int>
-typename std::enable_if<(sizeof(Int) <= 4) && std::is_signed<Int>::value, char*>::type
-IntToBuffer(Int value, char* buffer) {
-  return FastInt32ToBufferLeft(value, buffer);
-}
-
-template <class Int>
-typename std::enable_if<(sizeof(Int) <= 4) && !std::is_signed<Int>::value, char*>::type
-IntToBuffer(Int value, char* buffer) {
-  return FastUInt32ToBufferLeft(value, buffer);
-}
-
-template <class Int>
-typename std::enable_if<std::is_integral<typename std::remove_reference<Int>::type>::value,
-                        std::string>::type ToString(Int&& value) {
+requires(std::is_integral_v<Int>)
+std::string ToString(const Int& value) {
   char buffer[kFastToBufferSize];
   auto end = IntToBuffer(value, buffer);
-  return std::string(buffer, end);
+  return {buffer, end};
 }
 
 template <class Float>
-typename std::enable_if<std::is_floating_point<typename std::remove_reference<Float>::type>::value,
-                        std::string>::type ToString(Float&& value) {
+requires(std::is_floating_point_v<Float>)
+std::string ToString(const Float& value) {
   char buffer[DBL_DIG + 10];
   snprintf(buffer, sizeof (buffer), "%.*g", DBL_DIG, value);
   return buffer;
 }
 
-template <class Pointer>
-class PointerToString {
- public:
-  template<class P>
-  static std::string Apply(P&& ptr);
-};
+template <class T>
+concept TypeWithStronglyDefinedToString =
+    TypeWith_ToString<T> || TypeWith_to_string<T> || yb_tostring::TypeWithFree_to_string<T> ||
+    TypeWith_ShortDebugString<T> || TupleLikeType<T> || OptionalType<T> ||
+    std::is_integral_v<T> || std::is_floating_point_v<T>;
 
-template <>
-class PointerToString<const void*> {
- public:
-  static std::string Apply(const void* ptr) {
-    if (ptr) {
-      char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x
-      buffer[0] = '0';
-      buffer[1] = 'x';
-      FastHex64ToBuffer(reinterpret_cast<size_t>(ptr), buffer + 2);
-      return buffer;
-    } else {
-      return "<NULL>";
-    }
-  }
-};
+template <class T>
+concept TypeForToStringAsPointer = IsPointerLike<T>::value && !TypeWithStronglyDefinedToString<T>;
 
-template <>
-class PointerToString<void*> {
- public:
-  static std::string Apply(const void* ptr) {
-    return PointerToString<const void*>::Apply(ptr);
-  }
-};
+template <class T>
+concept TypeForToStringAsCollection = IsCollection<T>::value && !TypeWithStronglyDefinedToString<T>;
 
-template <class Pointer>
-typename std::enable_if<IsPointerLike<Pointer>::value, std::string>::type
-    ToString(Pointer&& value) {
-  typedef typename std::remove_cv<typename std::remove_reference<Pointer>::type>::type CleanedT;
-  return PointerToString<CleanedT>::Apply(value);
-}
-
-template <class Value>
-auto ToString(std::reference_wrapper<Value> value) {
-  return ToString(value.get());
-}
+template <TypeForToStringAsPointer T>
+std::string ToString(const T& ptr);
 
 inline std::string_view ToString(std::string_view str) { return str; }
 inline const std::string& ToString(const std::string& str) { return str; }
 inline std::string ToString(const char* str) { return str; }
 
-template <class First, class Second>
-std::string ToString(const std::pair<First, Second>& pair);
-
-template <class Collection>
-std::string CollectionToString(const Collection& collection);
-
 template <class Collection, class Transform>
 std::string CollectionToString(const Collection& collection, const Transform& transform);
-
-std::string CStringArrayToString(char** elements, size_t length);
-
-template <class T>
-typename std::enable_if<yb_tostring::HasFreeFunction_to_string<T>::value,
-                        std::string>::type ToString(const T& value) {
-  return to_string(value);
-}
-
-template <class T>
-typename std::enable_if<IsCollection<T>::value &&
-                            !yb_tostring::HasFreeFunction_to_string<T>::value &&
-                            !HasMemberFunction_ToString<T>::value,
-                        std::string>::type ToString(const T& value) {
-  return CollectionToString(value);
-}
-
-template <class T, class Transform>
-typename std::enable_if<IsCollection<T>::value &&
-                            !yb_tostring::HasFreeFunction_to_string<T>::value &&
-                            !HasMemberFunction_ToString<T>::value,
-                        std::string>::type ToString(const T& value, const Transform& transform) {
-  return CollectionToString(value, transform);
-}
-
-template <class T>
-typename std::enable_if<
-    boost::mpl::and_<
-        boost::mpl::bool_<yb_tostring::SupportsOutputToStream<T>::value>,
-        boost::mpl::bool_<!
-            (IsPointerLike<T>::value ||
-             std::is_integral<typename std::remove_reference<T>::type>::value ||
-             std::is_floating_point<typename std::remove_reference<T>::type>::value ||
-             IsCollection<T>::value ||
-             HasMemberFunction_ToString<T>::value ||
-             HasMemberFunction_to_string<T>::value)>
-    >::value,
-    std::string>::type
-ToString(T&& value) {
-  std::ostringstream out;
-  out << value;
-  return out.str();
-}
-
-// Definition of functions that use ToString chaining should be declared after all declarations.
-template <class Pointer>
-template <class P>
-std::string PointerToString<Pointer>::Apply(P&& ptr) {
-  if (ptr) {
-    char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x and ->
-    buffer[0] = '0';
-    buffer[1] = 'x';
-    FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
-    char* end = buffer + strlen(buffer);
-    memcpy(end, " -> ", 5);
-    return buffer + ToString(*ptr);
-  } else {
-    return "<NULL>";
-  }
-}
-
-template <class First, class Second>
-std::string ToString(const std::pair<First, Second>& pair) {
-  return "{" + ToString(pair.first) + ", " + ToString(pair.second) + "}";
-}
-
-template<class Tuple, size_t index, bool exist>
-class TupleToString {
- public:
-  static void Apply(const Tuple& tuple, std::string* out) {
-    if (index) {
-      *out += ", ";
-    }
-    *out += ToString(std::get<index>(tuple));
-    TupleToString<Tuple, index + 1, (index + 1 < std::tuple_size<Tuple>::value)>::Apply(tuple, out);
-  }
-};
-
-template<class Tuple, size_t index>
-class TupleToString<Tuple, index, false> {
- public:
-  static void Apply(const Tuple& tuple, std::string* out) {}
-};
-
-template <class... Args>
-std::string ToString(const std::tuple<Args...>& tuple) {
-  typedef std::tuple<Args...> Tuple;
-  std::string result = "{";
-  TupleToString<Tuple, 0, (0 < std::tuple_size<Tuple>::value)>::Apply(tuple, &result);
-  result += "}";
-  return result;
-}
-
-std::string MillisecondsToString(int64_t milliseconds);
-
-template<class Rep, class Period>
-std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
-  return MillisecondsToString(
-      std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
-}
-
-std::string ToString(const std::chrono::steady_clock::time_point& time_point);
-std::string ToString(const std::chrono::system_clock::time_point& time_point);
 
 struct Identity {
   template <class T>
@@ -299,8 +158,101 @@ struct Identity {
 };
 
 template <class Collection>
-std::string CollectionToString(const Collection& collection) {
+decltype(auto) CollectionToString(const Collection& collection) {
   return CollectionToString(collection, Identity());
+}
+
+std::string CStringArrayToString(char** elements, size_t length);
+
+template <yb_tostring::TypeWithFree_to_string T>
+decltype(auto) ToString(const T& value) {
+  return to_string(value);
+}
+
+template <TypeForToStringAsCollection T>
+decltype(auto) ToString(const T& value) {
+  return CollectionToString(value);
+}
+
+template <TypeForToStringAsCollection T, class Transform>
+decltype(auto) ToString(const T& value, const Transform& transform) {
+  return CollectionToString(value, transform);
+}
+
+template <yb_tostring::TypeSupportsOutputToStream T>
+requires(!(TypeWithStronglyDefinedToString<T> ||
+           TypeForToStringAsCollection<T> ||
+           TypeForToStringAsPointer<T>))
+decltype(auto) ToString(const T& value) {
+  std::ostringstream out;
+  out << value;
+  return out.str();
+}
+
+template <OptionalType T>
+std::string ToString(const T& t);
+
+template <size_t Index, TupleLikeType Tuple>
+void TupleToString(const Tuple& tuple, std::string* out);
+
+template <TupleLikeType Tuple>
+std::string ToString(const Tuple& tuple) {
+  std::string result = "{";
+  TupleToString<0>(tuple, &result);
+  result += "}";
+  return result;
+}
+
+std::string MillisecondsToString(int64_t milliseconds);
+
+template <class Rep, class Period>
+decltype(auto) ToString(const std::chrono::duration<Rep, Period>& duration) {
+  return MillisecondsToString(
+      std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
+}
+
+std::string ToString(const std::chrono::steady_clock::time_point& time_point);
+std::string ToString(const std::chrono::system_clock::time_point& time_point);
+
+// Definition of functions that use ToString chaining should be declared after all declarations.
+template <class Value>
+decltype(auto) ToString(std::reference_wrapper<Value> value) {
+  return ToString(value.get());
+}
+
+template <TypeForToStringAsPointer T>
+std::string ToString(const T& ptr) {
+  if (!ptr) {
+    return "<NULL>";
+  }
+  char buffer[kFastToBufferSize]; // kFastToBufferSize has enough extra capacity for 0x and ->
+  buffer[0] = '0';
+  buffer[1] = 'x';
+  if constexpr (std::is_same_v<T, void*> || std::is_same_v<T, const void*>) {
+    FastHex64ToBuffer(reinterpret_cast<size_t>(ptr), buffer + 2);
+    return buffer;
+  } else {
+    FastHex64ToBuffer(reinterpret_cast<size_t>(&*ptr), buffer + 2);
+    auto* end = buffer + strlen(buffer);
+    memcpy(end, " -> ", 5);
+    return buffer + ToString(*ptr);
+  }
+}
+
+template <size_t Index, TupleLikeType Tuple>
+void TupleToString(const Tuple& tuple, std::string* out) {
+  if constexpr (Index) {
+    *out += ", ";
+  }
+  *out += ToString(std::get<Index>(tuple));
+  if constexpr (Index + 1 < std::tuple_size_v<Tuple>) {
+    TupleToString<Index + 1>(tuple, out);
+  }
+}
+
+template <OptionalType T>
+std::string ToString(const T& t) {
+  return t ? ToString(*t) : "<nullopt>";
 }
 
 template <class Collection, class Transform>
@@ -332,8 +284,8 @@ std::string CollectionToString(const Collection& collection, const Transform& tr
 }
 
 template <class... T>
-auto AsString(T&&... t) -> decltype(ToString(std::forward<T>(t)...)) {
-  return ToString(std::forward<T>(t)...);
+decltype(auto) AsString(const T&... t) {
+  return ToString(t...);
 }
 
 } // namespace yb
@@ -343,10 +295,21 @@ auto AsString(T&&... t) -> decltype(ToString(std::forward<T>(t)...)) {
 #define YB_FIELD_TO_STRING_NAME(elem) \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem), BOOST_PP_TUPLE_ELEM(2, 0, elem), elem)
 
+// Fake expander to make compiler happy.
+// Actually we should not get here if elem starts with (.
+// But compiler always tries to expand both argument to BOOST_PP_IF.
+#define YB_FIELD_TO_STRING_VALUE_HELPER(elem, data) \
+    BOOST_PP_CAT(                                   \
+        BOOST_PP_IF(                                \
+            BOOST_PP_IS_BEGIN_PARENS(elem),         \
+            BOOST_PP_TUPLE_ELEM(2, 0, elem),        \
+            elem),                                  \
+        BOOST_PP_APPLY(data))
+
 #define YB_FIELD_TO_STRING_VALUE(elem, data)     \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem),  \
                 (BOOST_PP_TUPLE_ELEM(2, 1, elem)), \
-                ::yb::AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))))
+                ::yb::AsString(YB_FIELD_TO_STRING_VALUE_HELPER(elem, data)))
 
 #define YB_FIELD_TO_STRING(r, data, elem) \
     " " BOOST_PP_STRINGIZE(YB_FIELD_TO_STRING_NAME(elem)) ": " + \

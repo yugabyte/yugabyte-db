@@ -1271,38 +1271,26 @@ YbBuildPinnedObjectCache(const char *name,
 	return cache;
 }
 
-static void
-YbLoadPinnedObjectsCache()
-{
-	YbPinnedObjectsCacheData cache = {
-		.shared = YbBuildPinnedObjectCache("Shared pinned objects cache",
-		                                   20, /* Number of pinned objects in pg_shdepend is 9 */
-		                                   SharedDependRelationId,
-		                                   Anum_pg_shdepend_deptype,
-		                                   SHARED_DEPENDENCY_PIN,
-		                                   YbFetchPinnedObjectKeyFromPgShdepend),
-		.regular = YbBuildPinnedObjectCache("Pinned objects cache",
-		                                    6500, /* Number of pinned object is pg_depend 6179 */
-		                                    DependRelationId,
-		                                    Anum_pg_depend_deptype,
-		                                    DEPENDENCY_PIN,
-		                                    YbFetchPinnedObjectKeyFromPgDepend)};
-	YbPinnedObjectsCache = cache;
-}
-
 /* Build the cache in case it is not yet ready. */
 void
-YbInitPinnedCacheIfNeeded()
+YbInitPinnedCacheIfNeeded(bool shared_only)
 {
-	/*
-	 * Both 'regular' and 'shared' fields are set at same time.
-	 * Checking any of them is enough.
-	 */
-	if (!YbPinnedObjectsCache.regular)
-	{
-		Assert(!YbPinnedObjectsCache.shared);
-		YbLoadPinnedObjectsCache();
-	}
+	if (!YbPinnedObjectsCache.shared)
+		YbPinnedObjectsCache.shared =
+			YbBuildPinnedObjectCache("Shared pinned objects cache",
+									 20, /* Number of pinned objects in pg_shdepend is 9 */
+									 SharedDependRelationId,
+									 Anum_pg_shdepend_deptype,
+									 SHARED_DEPENDENCY_PIN,
+									 YbFetchPinnedObjectKeyFromPgShdepend);
+	if (!shared_only && !YbPinnedObjectsCache.regular)
+		YbPinnedObjectsCache.regular =
+			YbBuildPinnedObjectCache("Pinned objects cache",
+									 6500, /* Number of pinned object is pg_depend 6179 */
+									 DependRelationId,
+									 Anum_pg_depend_deptype,
+									 DEPENDENCY_PIN,
+									 YbFetchPinnedObjectKeyFromPgDepend);
 }
 
 void
@@ -1325,7 +1313,7 @@ YbResetPinnedCache()
 bool
 YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency)
 {
-	YbInitPinnedCacheIfNeeded();
+	YbInitPinnedCacheIfNeeded(false /* shared_only */);
 
 	HTAB *cache = shared_dependency ? YbPinnedObjectsCache.shared
 									: YbPinnedObjectsCache.regular;

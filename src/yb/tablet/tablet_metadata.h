@@ -43,11 +43,13 @@
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/partition.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
 
 #include "yb/fs/fs_manager.h"
@@ -62,11 +64,11 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
-#include "yb/util/opid.h"
-#include "yb/util/opid.pb.h"
 
 namespace yb {
 namespace tablet {
+
+using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
 extern const std::string kIntentsSubdir;
@@ -78,6 +80,7 @@ const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 YB_STRONGLY_TYPED_BOOL(Primary);
 YB_STRONGLY_TYPED_BOOL(OnlyIfDirty);
 YB_STRONGLY_TYPED_BOOL(LazySuperblockFlushEnabled);
+YB_STRONGLY_TYPED_BOOL(SkipTableTombstoneCheck);
 
 struct TableInfo {
  private:
@@ -104,6 +107,14 @@ struct TableInfo {
   // Partition schema of the table.
   dockv::PartitionSchema partition_schema;
 
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  TableId pg_table_id;
+
+  // Whether we can skip table tombstone check for this table
+  // (only applies to colocated tables).
+  SkipTableTombstoneCheck skip_table_tombstone_check;
+
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
   // associated memory. As of 01/2019, deleted column IDs are persisted forever, even if all the
   // associated data has been discarded. In the future, we can garbage collect such column IDs to
@@ -114,7 +125,10 @@ struct TableInfo {
   uint32_t wal_retention_secs = 0;
 
   // Public ctor with private argument to allow std::make_shared, but prevent public usage.
-  TableInfo(const std::string& log_prefix, TableType table_type, PrivateTag);
+  TableInfo(const std::string& log_prefix,
+            TableType table_type,
+            SkipTableTombstoneCheck skip_table_tombstone_check,
+            PrivateTag);
   TableInfo(const std::string& tablet_log_prefix,
             Primary primary,
             std::string table_id,
@@ -125,7 +139,9 @@ struct TableInfo {
             const qlexpr::IndexMap& index_map,
             const boost::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
-            dockv::PartitionSchema partition_schema);
+            dockv::PartitionSchema partition_schema,
+            TableId pg_table_id,
+            SkipTableTombstoneCheck skip_table_tombstone_check);
   TableInfo(const TableInfo& other,
             const Schema& schema,
             const qlexpr::IndexMap& index_map,
@@ -239,7 +255,7 @@ struct KvStoreInfo {
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
-  std::unordered_map<TableId, TableInfoPtr> tables;
+  TableInfoMap tables;
 
   // Mapping form colocation id to table info.
   std::unordered_map<ColocationId, TableInfoPtr> colocation_to_table;
@@ -267,6 +283,9 @@ struct RaftGroupMetadataData {
 class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                           public docdb::SchemaPackingProvider {
  public:
+  using TableIdToSchemaVersionMap =
+      ::google::protobuf::Map<::std::string, ::google::protobuf::uint32>;
+
   // Create metadata for a new Raft group. This assumes that the given superblock
   // has not been written before, and writes out the initial superblock with
   // the provided parameters.
@@ -387,8 +406,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool is_under_cdc_sdk_replication() const;
 
-  Result<bool> SetAllInitialCDCSDKRetentionBarriers(
-      OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+  Result<bool> SetAllCDCRetentionBarriers(
+      int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
+      bool require_history_cutoff, bool initial_retention_barrier);
 
   Status SetIsUnderXClusterReplicationAndFlush(bool is_under_xcluster_replication);
 
@@ -489,15 +509,22 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const dockv::PartitionSchema& partition_schema,
                 const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
-                const OpId& op_id) EXCLUDES(data_mutex_);
+                const OpId& op_id,
+                const TableId& pg_table_id,
+                const SkipTableTombstoneCheck skip_table_tombstone_check) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables() const;
 
+  std::vector<TableId> GetAllColocatedTablesUnlocked() const REQUIRES(data_mutex_);
+
   // Returns the number of tables colocated on this tablet, returns 1 for non-colocated case.
   size_t GetColocatedTablesCount() const EXCLUDES(data_mutex_);
+
+  void GetTableIdToSchemaVersionMap(
+      TableIdToSchemaVersionMap* table_to_version) const;
 
   // Iterates through all the tables colocated on this tablet. In case of non-colocated tables,
   // iterates exactly one time. Use light-weight callback as it's triggered under the locked mutex;
@@ -618,6 +645,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
 
+  // Methods for handling clone requests that this tablet has applied.
+  void MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no);
+  bool HasAttemptedClone(uint32_t clone_request_seq_no);
+  uint32_t LastAttemptedCloneSeqNo();
+
   bool has_active_restoration() const;
 
   void RegisterRestoration(const TxnSnapshotRestorationId& restoration_id);
@@ -719,6 +751,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status OnBackfillDoneUnlocked(const TableId& table_id) REQUIRES(data_mutex_);
 
+  Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
+                              const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);
+
   enum State {
     kNotLoadedYet,
     kNotWrittenYet,
@@ -786,6 +821,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
+
+  uint32_t last_attempted_clone_seq_no_ GUARDED_BY(data_mutex_) = 0;
 
   // No thread safety annotations on log_prefix_ because it is a constant after the object is
   // fully created. Check the comment on raft_group_id_ for more info.

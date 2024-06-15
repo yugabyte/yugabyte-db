@@ -64,6 +64,7 @@
 #include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 
+#include "yb/common/opid.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/casts.h"
@@ -103,7 +104,6 @@
 #include "yb/util/logging_callback.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/random.h"

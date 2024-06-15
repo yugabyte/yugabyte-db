@@ -68,39 +68,42 @@ class XClusterSafeTimeService {
   Status GetXClusterSafeTimeInfoFromMap(
       const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp);
 
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch);
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const int64_t leader_term, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter);
 
   xcluster::XClusterConsumerClusterMetrics* TEST_GetMetricsForNamespace(
       const NamespaceId& namespace_id);
 
+  // Returns true if we need to run again.
+  Result<bool> ComputeSafeTime(const int64_t leader_term, bool update_metrics = false)
+      EXCLUDES(mutex_);
+
  private:
   friend class XClusterSafeTimeServiceMocked;
-  FRIEND_TEST(XClusterSafeTimeServiceTest, ComputeSafeTime);
+  friend class XClusterSafeTimeServiceTest;
 
   struct ProducerTabletInfo {
-    std::string cluster_uuid;
+    xcluster::ReplicationGroupId replication_group_id;
     TabletId tablet_id;
 
     bool operator==(const ProducerTabletInfo& rhs) const {
-      return cluster_uuid == rhs.cluster_uuid && tablet_id == rhs.tablet_id;
+      return replication_group_id == rhs.replication_group_id && tablet_id == rhs.tablet_id;
     }
 
     bool operator<(const ProducerTabletInfo& rhs) const {
-      if (cluster_uuid == rhs.cluster_uuid) {
+      if (replication_group_id == rhs.replication_group_id) {
         return tablet_id < rhs.tablet_id;
       }
-      return cluster_uuid < rhs.cluster_uuid;
+      return replication_group_id < rhs.replication_group_id;
     }
+
+    std::string ToString() const { return YB_STRUCT_TO_STRING(replication_group_id, tablet_id); }
   };
 
   void ProcessTaskPeriodically() EXCLUDES(task_enqueue_lock_);
 
   typedef std::map<ProducerTabletInfo, HybridTime> ProducerTabletToSafeTimeMap;
-
-  // Returns true if we need to run again.
-  Result<bool> ComputeSafeTime(const int64_t leader_term, bool update_metrics = false)
-      EXCLUDES(mutex_);
 
   virtual Result<ProducerTabletToSafeTimeMap> GetSafeTimeFromTable() REQUIRES(mutex_);
 
@@ -123,11 +126,16 @@ class XClusterSafeTimeService {
 
   Result<int64_t> GetLeaderTermFromCatalogManager();
 
+  virtual Result<HybridTime> GetLeaderSafeTimeFromCatalogManager();
+
   void UpdateMetrics(
       const ProducerTabletToSafeTimeMap& tablet_to_safe_time_map,
       const XClusterNamespaceToSafeTimeMap& current_safe_time_map) REQUIRES(mutex_);
 
   void EnterIdleMode(const std::string& reason);
+
+  Result<XClusterNamespaceToSafeTimeMap> GetFilteredXClusterSafeTimeMap(
+      const XClusterSafeTimeFilter& filter) REQUIRES_SHARED(mutex_);
 
   Master* const master_;
   CatalogManager* const catalog_manager_;
@@ -141,13 +149,19 @@ class XClusterSafeTimeService {
   std::unique_ptr<ThreadPool> thread_pool_;
   std::unique_ptr<ThreadPoolToken> thread_pool_token_;
 
-  std::mutex mutex_;
+  std::shared_mutex mutex_;
   bool safe_time_table_ready_ GUARDED_BY(mutex_);
 
   std::unique_ptr<client::TableHandle> safe_time_table_;
 
+  int64_t leader_term_ GUARDED_BY(mutex_);
   int32_t cluster_config_version_ GUARDED_BY(mutex_);
   std::map<ProducerTabletInfo, NamespaceId> producer_tablet_namespace_map_ GUARDED_BY(mutex_);
+
+  // List of tablet ids for ddl_queue tables, used to find safe times without this stream.
+  std::unordered_set<TabletId> ddl_queue_tablet_ids_ GUARDED_BY(mutex_);
+
+  XClusterNamespaceToSafeTimeMap safe_time_map_without_ddl_queue_ GUARDED_BY(mutex_);
 
   MetricRegistry* metric_registry_ GUARDED_BY(mutex_);
   std::unordered_map<NamespaceId, std::unique_ptr<xcluster::XClusterConsumerClusterMetrics>>

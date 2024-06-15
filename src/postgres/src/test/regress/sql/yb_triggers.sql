@@ -1,4 +1,10 @@
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+-- This test's output has temporary tables' schema names that contain the
+-- tserver uuid, which can lead to unstable results.
+-- Use replace_temp_schema_name to change the schema name to pg_temp_x so that
+-- the result is stable.
+select current_setting('data_directory') || '/describe.out' as desc_output_file
+\gset
+\set replace_temp_schema_name 'select regexp_replace(pg_read_file(:\'desc_output_file\'), \'pg_temp_.{32}_\\d+\', \'pg_temp_x\', \'g\')'
 
 -- Test views on temporary tables.
 create temp table main_table(a int, b int);
@@ -171,16 +177,25 @@ SELECT * from main_view order by a, b;
 \set QUIET true
 
 -- Describe view should list triggers
+\o :desc_output_file
 \d main_view
+\o
+:replace_temp_schema_name;
 
 -- Test dropping view triggers
 DROP TRIGGER instead_of_insert_trig ON main_view;
 DROP TRIGGER instead_of_delete_trig ON main_view;
+\o :desc_output_file
 \d main_view
+\o
+:replace_temp_schema_name;
 
 -- Test alter (rename) triggers
 ALTER TRIGGER after_ins_stmt_trig ON main_view RENAME TO after_ins_stmt_trig_new_name;
+\o :desc_output_file
 \d main_view
+\o
+:replace_temp_schema_name;
 
 DROP VIEW main_view;
 DROP TABLE main_table;
@@ -229,6 +244,10 @@ $$;
 create trigger self_ref_trigger_del_trig before delete on self_ref_trigger
   for each row execute procedure self_ref_trigger_del_func();
 
+create index nonconcurrently on self_ref_trigger (parent asc);
+create index nonconcurrently on self_ref_trigger (data asc);
+create index nonconcurrently on self_ref_trigger (nchildren asc);
+
 insert into self_ref_trigger values (1, null, 'root');
 insert into self_ref_trigger values (2, 1, 'root child A');
 insert into self_ref_trigger values (3, 1, 'root child B');
@@ -236,16 +255,29 @@ insert into self_ref_trigger values (4, 2, 'grandchild 1');
 insert into self_ref_trigger values (5, 3, 'grandchild 2');
 
 update self_ref_trigger set data = 'root!' where id = 1;
+update self_ref_trigger set nchildren = nchildren + 1;
+update self_ref_trigger set nchildren = nchildren - 1;
 
-select * from self_ref_trigger;
+-- Check that all indexes are consistent with the table (see #20648).
+\set ordering ''
+\set query 'SELECT * FROM (select * from self_ref_trigger :ordering LIMIT ALL) ybview ORDER BY id'
+\set run 'EXPLAIN (costs off) :query; :query'
+:run;
+\set ordering 'order by parent'
+:run;
+\set ordering 'order by data'
+:run;
+\set ordering 'order by nchildren'
+:run;
 
 delete from self_ref_trigger where id in (2, 4);
 
-select * from self_ref_trigger;
+\set ordering ''
+:run;
 
 delete from self_ref_trigger;
 
-select * from self_ref_trigger;
+:run;
 
 drop table self_ref_trigger;
 drop function self_ref_trigger_ins_func();

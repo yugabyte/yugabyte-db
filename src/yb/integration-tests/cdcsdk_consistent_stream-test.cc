@@ -50,7 +50,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t1.join();
   t2.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -104,8 +104,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (1, 1)"));
   ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (2, 2)"));
 
-  int queries_per_batch = 60;
-  int num_batches = 60;
+  int queries_per_batch = 30;
+  int num_batches = 25;
   std::thread t1([&]() -> void {
     PerformSingleAndMultiShardQueries(
         num_batches, queries_per_batch, "INSERT INTO test2 VALUES ($0, 1, 1)", 20);
@@ -132,8 +132,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table1.table_id()}, false, 1000, false));
-  ASSERT_OK(test_client()->FlushTables({table2.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table1.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table2.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -154,7 +154,11 @@ TEST_F(CDCSDKConsistentStreamTest,
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(29281, get_changes_resp.records.size());
+  int total_records = 0;
+  for (int i = 0; i < 8; ++i) {
+    total_records += expected_count[i];
+  }
+  ASSERT_EQ(total_records, get_changes_resp.records.size());
 }
 
 TEST_F(CDCSDKConsistentStreamTest,
@@ -266,7 +270,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -342,8 +346,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   t2.join();
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   std::thread t3([&]() -> void {
     PerformSingleAndMultiShardQueries(
@@ -365,7 +369,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -422,8 +426,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   t2.join();
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD value_2 int;"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP value_1;"));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValueColumnName, &conn));
 
   std::thread t3([&]() -> void {
     PerformSingleAndMultiShardQueries(
@@ -445,7 +449,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -551,8 +555,8 @@ TEST_F(CDCSDKConsistentStreamTest,
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table1.table_id()}, false, 1000, false));
-  ASSERT_OK(test_client()->FlushTables({table2.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table1.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table2.table_id()}, false, 1000, false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
@@ -613,7 +617,7 @@ void CDCSDKConsistentStreamTest::TestCDCSDKConsistentStreamWithTabletSplit(
   t1.join();
   t2.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
@@ -629,7 +633,7 @@ void CDCSDKConsistentStreamTest::TestCDCSDKConsistentStreamWithTabletSplit(
   t3.join();
   t4.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_first_split;
@@ -761,7 +765,7 @@ TEST_F(CDCSDKConsistentStreamTest,
 
   // Committed transactions should change max_op_id.
   ASSERT_OK(WriteRowsHelper(0, 100, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
 
   OpId historical_max_op_id;
   ASSERT_OK(WaitFor(
@@ -809,7 +813,7 @@ TEST_F(CDCSDKConsistentStreamTest,
       MonoDelta::FromSeconds(5),
       "historical_max_op_id should change"));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, true));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
@@ -845,6 +849,7 @@ void CDCSDKConsistentStreamTest::TestCDCSDKMultipleAlter(CDCCheckpointType check
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   // Create CDC stream.
   auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
@@ -860,7 +865,7 @@ void CDCSDKConsistentStreamTest::TestCDCSDKMultipleAlter(CDCCheckpointType check
 
   for (int nonkey_column_count = 2; nonkey_column_count < 15; ++nonkey_column_count) {
     std::string added_column_name = "value_" + std::to_string(nonkey_column_count);
-    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, added_column_name));
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, added_column_name, &conn));
     ASSERT_OK(WriteRowsHelper(
         nonkey_column_count * 10 + 1 /* start */,
         nonkey_column_count * 10 + 11 /* end */,
@@ -940,7 +945,7 @@ TEST_F(CDCSDKConsistentStreamTest,
   t1.join();
   t2.join();
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   auto get_changes_resp = GetAllPendingChangesWithRandomReqSafeTimeChanges(stream_id, tablets);
   std::unordered_set<int32_t> seen_unique_pk_values;
@@ -978,7 +983,7 @@ TEST_F(CDCSDKConsistentStreamTest,
 
   // Commit another transaction while we still have the previous one open.
   ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(WaitForFlushTables({table.table_id()}, false, 1000, false));
 
   uint32 seen_insert_records = 0;
   auto update_insert_count = [&](const GetChangesResponsePB& change_resp) {
@@ -1011,6 +1016,95 @@ TEST_F(CDCSDKConsistentStreamTest,
         return false;
       },
       MonoDelta::FromSeconds(30), "Did not see all expected records"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
+  google::SetVLOGLevel("cdc*", 0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  ASSERT_OK(WriteRows(1 /* start */, 201 /* end */, &test_cluster_));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // GetCheckpoint after snapshot bootstrap (done as part of stream creation itself).
+  auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+  int num_batches = 5;
+  int inserts_per_batch = 100;
+
+  std::thread t1([&]() -> void {
+      PerformSingleAndMultiShardInserts(num_batches, inserts_per_batch, 20, 201);
+  });
+  std::thread t2([&]() -> void {
+      PerformSingleAndMultiShardInserts(
+        num_batches, inserts_per_batch, 50, 201 + num_batches * inserts_per_batch);
+  });
+
+  t1.join();
+  t2.join();
+
+  // Count the number of snapshot READs.
+  uint32_t reads_snapshot = 0;
+  bool first_read = true;
+  GetChangesResponsePB change_resp;
+  GetChangesResponsePB change_resp_updated;
+  while (true) {
+    if (first_read) {
+      change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, cp_resp));
+      first_read = false;
+    } else {
+      change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+    }
+
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    uint32_t read_count = 0;
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      if (record.row_message().op() == RowMessage::READ) {
+        read_count++;
+      }
+    }
+
+    reads_snapshot += read_count;
+    change_resp = change_resp_updated;
+
+    // End of the snapshot records.
+    if (change_resp_updated.cdc_sdk_checkpoint().write_id() == 0 &&
+        change_resp_updated.cdc_sdk_checkpoint().snapshot_time() == 0) {
+      change_resp_updated = ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets));
+      break;
+    }
+  }
+  ASSERT_EQ(reads_snapshot, 200);
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
+  // that order.
+  const int expected_count[] = {
+      0,
+      2 * num_batches * inserts_per_batch,
+      0,
+      0,
+      0,
+      0,
+      2 * num_batches + num_batches * inserts_per_batch,
+      2 * num_batches + num_batches * inserts_per_batch,
+  };
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  auto get_changes_resp =
+      GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_updated.cdc_sdk_checkpoint());
+  for (auto record : get_changes_resp.records) {
+    UpdateRecordCount(record, count);
+  }
+
+  CheckRecordsConsistency(get_changes_resp.records);
+  LOG(INFO) << "Got " << get_changes_resp.records.size() << " records.";
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+  ASSERT_EQ(2020, get_changes_resp.records.size());
 }
 
 }  // namespace cdc

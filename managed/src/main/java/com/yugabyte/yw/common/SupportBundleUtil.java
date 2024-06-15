@@ -12,13 +12,20 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.KubernetesManager.RoleData;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -63,6 +70,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.joda.time.DateTime;
+import play.libs.Json;
 
 @Slf4j
 @Singleton
@@ -157,6 +165,16 @@ public class SupportBundleUtil {
     } else {
       log.info("Failed to delete file with path: {}", filePath);
     }
+  }
+
+  public void deleteSupportBundle(SupportBundle supportBundle) {
+    // Delete the actual archive file
+    Path supportBundlePath = supportBundle.getPathObject();
+    if (supportBundlePath != null) {
+      deleteFile(supportBundlePath);
+    }
+    // Deletes row from the support_bundle db table
+    SupportBundle.delete(supportBundle.getBundleUUID());
   }
 
   /**
@@ -567,36 +585,37 @@ public class SupportBundleUtil {
             "Untaring %s to dir %s.", inputFile.getAbsolutePath(), outputDir.getAbsolutePath()));
 
     final List<File> untaredFiles = new LinkedList<File>();
-    final InputStream is = new FileInputStream(inputFile);
-    final TarArchiveInputStream debInputStream =
-        (TarArchiveInputStream) new ArchiveStreamFactory().createArchiveInputStream("tar", is);
-    TarArchiveEntry entry = null;
-    while ((entry = (TarArchiveEntry) debInputStream.getNextEntry()) != null) {
-      final File outputFile = new File(outputDir, entry.getName());
-      if (entry.isDirectory()) {
-        log.info(
-            String.format(
-                "Attempting to write output directory %s.", outputFile.getAbsolutePath()));
-        if (!outputFile.exists()) {
+    try (InputStream is = new FileInputStream(inputFile);
+        TarArchiveInputStream debInputStream =
+            (TarArchiveInputStream)
+                new ArchiveStreamFactory().createArchiveInputStream("tar", is)) {
+      TarArchiveEntry entry = null;
+      while ((entry = (TarArchiveEntry) debInputStream.getNextEntry()) != null) {
+        final File outputFile = new File(outputDir, entry.getName());
+        if (entry.isDirectory()) {
           log.info(
               String.format(
-                  "Attempting to create output directory %s.", outputFile.getAbsolutePath()));
-          if (!outputFile.mkdirs()) {
-            throw new IllegalStateException(
-                String.format("Couldn't create directory %s.", outputFile.getAbsolutePath()));
+                  "Attempting to write output directory %s.", outputFile.getAbsolutePath()));
+          if (!outputFile.exists()) {
+            log.info(
+                String.format(
+                    "Attempting to create output directory %s.", outputFile.getAbsolutePath()));
+            if (!outputFile.mkdirs()) {
+              throw new IllegalStateException(
+                  String.format("Couldn't create directory %s.", outputFile.getAbsolutePath()));
+            }
+          }
+        } else {
+          // Don't log the output file here because platform logs get polluted.
+          File parent = outputFile.getParentFile();
+          if (!parent.exists()) parent.mkdirs();
+          try (OutputStream outputFileStream = new FileOutputStream(outputFile)) {
+            IOUtils.copy(debInputStream, outputFileStream);
           }
         }
-      } else {
-        // Don't log the output file here because platform logs get polluted.
-        File parent = outputFile.getParentFile();
-        if (!parent.exists()) parent.mkdirs();
-        final OutputStream outputFileStream = new FileOutputStream(outputFile);
-        IOUtils.copy(debInputStream, outputFileStream);
-        outputFileStream.close();
+        untaredFiles.add(outputFile);
       }
-      untaredFiles.add(outputFile);
     }
-    debInputStream.close();
 
     return untaredFiles;
   }
@@ -623,15 +642,11 @@ public class SupportBundleUtil {
     final File outputFile =
         new File(outputDir, inputFile.getName().substring(0, inputFile.getName().length() - 3));
 
-    final GZIPInputStream in = new GZIPInputStream(new FileInputStream(inputFile));
-    final FileOutputStream out = new FileOutputStream(outputFile);
-
-    IOUtils.copy(in, out);
-
-    in.close();
-    out.close();
-
-    return outputFile;
+    try (GZIPInputStream in = new GZIPInputStream(new FileInputStream(inputFile));
+        FileOutputStream out = new FileOutputStream(outputFile)) {
+      IOUtils.copy(in, out);
+      return outputFile;
+    }
   }
 
   public void batchWiseDownload(
@@ -643,7 +658,8 @@ public class SupportBundleUtil {
       Path nodeTargetFile,
       String nodeHomeDir,
       List<String> sourceNodeFiles,
-      String componentName) {
+      String componentName,
+      boolean skipUntar) {
     // Run command for large number of files in batches.
     List<List<String>> batchesNodeFiles = ListUtils.partition(sourceNodeFiles, 1000);
     int batchIndex = 0;
@@ -655,13 +671,15 @@ public class SupportBundleUtil {
               customer, universe, node, nodeHomeDir, batchNodeFiles, nodeTargetFile);
       try {
         if (Files.exists(targetFile)) {
-          File unZippedFile =
-              unGzip(
-                  new File(targetFile.toAbsolutePath().toString()),
-                  new File(bundlePath.toAbsolutePath().toString()));
-          Files.delete(targetFile);
-          unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
-          unZippedFile.delete();
+          if (!skipUntar) {
+            File unZippedFile =
+                unGzip(
+                    new File(targetFile.toAbsolutePath().toString()),
+                    new File(bundlePath.toAbsolutePath().toString()));
+            Files.delete(targetFile);
+            unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
+            unZippedFile.delete();
+          }
         } else {
           log.debug(
               "No files exist at the source path '{}' for universe '{}' for component '{}'.",
@@ -689,7 +707,8 @@ public class SupportBundleUtil {
       NodeDetails node,
       String nodeHomeDir,
       List<String> sourceNodeFiles,
-      String componentName)
+      String componentName,
+      boolean skipUntar)
       throws Exception {
     if (node == null) {
       String errMsg =
@@ -721,6 +740,106 @@ public class SupportBundleUtil {
         nodeTargetFile,
         nodeHomeDir,
         sourceNodeFiles,
-        componentName);
+        componentName,
+        skipUntar);
+  }
+
+  public void ignoreExceptions(Runnable r) {
+    try {
+      r.run();
+    } catch (Exception e) {
+      log.error("Error while trying to collect YBA Metadata subcomponent: ", e);
+    }
+  }
+
+  public void saveMetadata(Customer customer, String destDir, JsonNode jsonData, String fileName) {
+    // Declare file path.
+    String metadataFilePath = Paths.get(destDir, fileName).toString();
+
+    // Save the collected metadata to above file.
+    writeStringToFile(jsonData.toPrettyString(), metadataFilePath);
+    log.info(
+        "Gathered '{}' data for customer '{}', at path '{}'.",
+        fileName,
+        customer.getUuid(),
+        metadataFilePath);
+  }
+
+  public void getCustomerMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(customer), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "customer.json");
+  }
+
+  public void getUniversesMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<UniverseResp> universes =
+        customer.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(universes), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "universes.json");
+  }
+
+  public void getProvidersMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<Provider> providers = Provider.getAll(customer.getUuid());
+    providers.forEach(CloudInfoInterface::mayBeMassageResponse);
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(providers), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "providers.json");
+  }
+
+  public void getUsersMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<Users> users = Users.getAll(customer.getUuid());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(users), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "users.json");
+  }
+
+  public void getTaskMetadata(Customer customer, String destDir) {
+    // Gather metadata for customer_task table.
+    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customer.getUuid());
+    // Save the above collected metadata.
+    JsonNode customerTaskJsonData =
+        RedactingService.filterSecretFields(Json.toJson(customerTasks), RedactionTarget.APIS);
+    saveMetadata(customer, destDir, customerTaskJsonData, "customer_task.json");
+
+    // Gather metadata for task_info table later.
+  }
+
+  public void getInstanceTypeMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    Set<UUID> providerUUIDs =
+        Provider.getAll(customer.getUuid()).stream()
+            .map(Provider::getUuid)
+            .collect(Collectors.toSet());
+    List<InstanceType> instanceTypes =
+        InstanceType.getAllInstanceTypes().stream()
+            .filter(it -> providerUUIDs.contains(it.getProvider().getUuid()))
+            .collect(Collectors.toList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(instanceTypes), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "instance_type.json");
+  }
+
+  public void gatherAndSaveAllMetadata(Customer customer, String destDir) {
+    ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
+    ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
+    ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
+    ignoreExceptions(() -> getUsersMetadata(customer, destDir));
+    ignoreExceptions(() -> getTaskMetadata(customer, destDir));
+    ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
   }
 }

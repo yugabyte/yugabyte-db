@@ -53,7 +53,9 @@ set(od_src
     hashmap.c
     hba.c
     hba_reader.c
-    hba_rule.c)
+    hba_rule.c
+    yb_auth_passthrough.c
+    yb_oid_entry.c)
 
 if (PAM_FOUND)
         list(APPEND od_src pam.c)

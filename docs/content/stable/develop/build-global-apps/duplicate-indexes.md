@@ -52,7 +52,7 @@ Reduce the 60 ms access latency of applications in `us-west`
 
 By default, all reads go to the leader, so even though the replicas are available in other regions, applications incur cross-region latency if the leaders are in a different region than the application.
 
-To address this, you can create multiple [covering indexes](../../../explore/indexes-constraints/covering-index-ysql/) with the same schema as the table, and attach them to different tablespaces, with leader preference set to each region.
+To address this, you can create multiple [covering indexes](../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/) with the same schema as the table, and attach them to different tablespaces, with leader preference set to each region.
 
 To set this up, do the following:
 
@@ -161,6 +161,6 @@ In the case of zone or region failures, followers in other regions are elected l
 
 ## Learn more
 
-- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
-- [Covering Indexes](../../../explore/indexes-constraints/covering-index-ysql/)
+- [Tablespaces](../../../explore/going-beyond-sql/tablespaces/)
+- [Covering Indexes](../../../explore/ysql-language-features/indexes-constraints/covering-index-ysql/)
 - [Create Index](../../../api/ysql/the-sql-language/statements/ddl_create_index/)

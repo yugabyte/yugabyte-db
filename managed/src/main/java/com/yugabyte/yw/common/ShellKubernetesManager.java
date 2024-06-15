@@ -29,6 +29,7 @@ import io.fabric8.kubernetes.api.model.ServiceList;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
+import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -44,6 +45,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
@@ -153,6 +155,45 @@ public class ShellKubernetesManager extends KubernetesManager {
     List<String> commandList = ImmutableList.of("kubectl", "get", "namespaces", "-o", "json");
     ShellResponse response = execCommand(config, commandList).processErrors();
     return deserialize(response.message, NamespaceList.class).getItems();
+  }
+
+  /**
+   * Checks if a namespace exists in the given cluster. When a namespace is specified at the zone
+   * level for DB pods, chances are we can do operations only in that particular namespace. This
+   * method works even without get/list on namespaces at the cluster level.
+   */
+  @Override
+  public boolean dbNamespaceExists(Map<String, String> config, String namespace) {
+    String secretName = "ns-check-" + RandomStringUtils.randomAlphanumeric(20).toLowerCase();
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "create",
+            "secret",
+            "generic",
+            secretName,
+            "--from-literal=namespace=check",
+            "-n",
+            namespace,
+            "--dry-run=server");
+    try {
+      execCommand(config, commandList)
+          .processErrors("Unable to create secret (dry run) for namespace existance check");
+    } catch (RuntimeException e) {
+      if (e.getMessage()
+              .contains(
+                  "error: failed to create secret secrets \"" + secretName + "\" already exists")
+          || e.getMessage().contains("Error from server (AlreadyExists): secrets")) {
+        return true;
+      }
+      if (e.getMessage()
+              .contains("error: failed to create secret namespaces \"" + namespace + "\" not found")
+          || e.getMessage().contains("Error from server (NotFound): namespaces")) {
+        return false;
+      }
+      throw e;
+    }
+    return true;
   }
 
   @Override
@@ -358,7 +399,8 @@ public class ShellKubernetesManager extends KubernetesManager {
             "delete",
             "statefulset",
             stsName,
-            "--cascade=orphan");
+            "--cascade=orphan",
+            "--ignore-not-found=true");
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to delete StatefulSet");
     return response.isSuccess();
@@ -489,7 +531,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             "get",
             "statefulset",
             statefulSetNames[0],
-            "-o=jsonpath={.status.readyReplicas} {.status.replicas}");
+            "-o=jsonpath={.status.availableReplicas} {.status.replicas}");
     response =
         execCommand(config, commandList, false)
             .processErrors("Unable to get StatefulSet status for " + statefulSetNames[0]);
@@ -498,9 +540,9 @@ public class ShellKubernetesManager extends KubernetesManager {
     String[] replicaCounts = response.getMessage().trim().split(" ");
     boolean isReady = false;
     if (replicaCounts.length == 2) {
-      int readyReplicas = Integer.parseInt(replicaCounts[0]);
+      int availableReplicas = Integer.parseInt(replicaCounts[0]);
       int totalReplicas = Integer.parseInt(replicaCounts[1]);
-      if (readyReplicas == totalReplicas && totalReplicas == replicaCount) {
+      if (availableReplicas == totalReplicas && totalReplicas == replicaCount) {
         isReady = true;
       }
     }
@@ -608,7 +650,7 @@ public class ShellKubernetesManager extends KubernetesManager {
                 containerName,
                 "--"));
     commandList.addAll(commandArgs);
-    execCommand(config, commandList, true)
+    execCommand(config, commandList)
         .processErrors(
             String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
   }
@@ -958,7 +1000,7 @@ public class ShellKubernetesManager extends KubernetesManager {
    */
   @Override
   public String getStorageClass(
-      Map<String, String> config, String storageClassName, String namespace, String outputFormat) {
+      Map<String, String> config, String storageClassName, String outputFormat) {
     List<String> commandList =
         new ArrayList<String>(
             Arrays.asList(
@@ -967,10 +1009,14 @@ public class ShellKubernetesManager extends KubernetesManager {
                 KubernetesResourceType.STORAGECLASS.toString().toLowerCase(),
                 storageClassName));
 
-    checkAndAddFlagToCommand(commandList, "-n", namespace);
     checkAndAddFlagToCommand(commandList, "-o", outputFormat);
 
     return execCommandProcessErrors(config, commandList);
+  }
+
+  @Override
+  public StorageClass getStorageClass(Map<String, String> config, String storageClassName) {
+    return deserialize(getStorageClass(config, storageClassName, "json"), StorageClass.class);
   }
 
   /**
@@ -1024,5 +1070,34 @@ public class ShellKubernetesManager extends KubernetesManager {
     }
     // No clusters found
     return "";
+  }
+
+  /**
+   * Check if the given resource exists in the cluster by running {@code kubectl get <resourceType>
+   * <resourceName>}.
+   *
+   * @param config the environment variables to set (KUBECONFIG).
+   * @param resourceType full form of the resource type, where the name is usually plural and
+   *     lowercase form of Kind followed by the group. Example: issuers.cert-manager.io
+   * @param resourceName name of the resource.
+   * @param namespace can be null for cluster level resources.
+   * @return true if the command runs successfully, false if it errors with NotFound.
+   */
+  @Override
+  public boolean resourceExists(
+      Map<String, String> config, String resourceType, String resourceName, String namespace) {
+    List<String> commandList =
+        new ArrayList<String>(ImmutableList.of("kubectl", "get", resourceType, resourceName));
+    checkAndAddFlagToCommand(commandList, "-n", namespace);
+    try {
+      execCommand(config, commandList)
+          .processErrors(String.format("Unable to get %s/%s", resourceType, resourceName));
+    } catch (RuntimeException e) {
+      if (e.getMessage().contains("Error from server (NotFound): " + resourceType)) {
+        return false;
+      }
+      throw e;
+    }
+    return true;
   }
 }

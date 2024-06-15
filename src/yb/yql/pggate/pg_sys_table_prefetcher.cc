@@ -46,7 +46,7 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, false, "Enable read request caching");
+DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read request caching");
 DEFINE_NON_RUNTIME_uint32(
     pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,
     "Lifetime limit for response cache soft renewing process");
@@ -409,7 +409,7 @@ class Loader {
       for (const auto& column : index_target.columns()) {
         if (column.attr_num() == to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId)) {
           auto& index_req = *req.mutable_index_request();
-          index_req.dup_table_id(index->id().GetYbTableId());
+          index_req.dup_table_id(index->relfilenode_id().GetYbTableId());
           SetupPaging(&index_req);
           AddTargetColumn(&index_req, column);
           info.index_targets.push_back(column.id());
@@ -432,9 +432,9 @@ class Loader {
             auto sidecar = VERIFY_RESULT(response->GetSidecarHolder(
                 op_info.operation->response()->rows_data_sidecar()));
             InsertData(data_container,
-                       op_info.table->id(),
+                       op_info.table->relfilenode_id(),
                        &op_info.targets,
-                       op_info.index ? op_info.index->id() : PgObjectId(),
+                       op_info.index ? op_info.index->relfilenode_id() : PgObjectId(),
                        &op_info.index_targets,
                        std::move(sidecar));
             return !VERIFY_RESULT(PrepareNextRequest(*op_info.table, op_info.operation.get()));

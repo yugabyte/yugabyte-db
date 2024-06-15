@@ -69,10 +69,11 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
+import org.yb.ybc.ProxyConfig;
 import play.libs.Json;
 
 @Singleton
@@ -94,6 +95,16 @@ public class GCPUtil implements CloudUtil {
   private static final String IMAGE_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-";
   private static final int DELETE_STORAGE_BATCH_REQUEST_SIZE = 100;
 
+  public static final String NETWORK_SELFLINK =
+      "https://www.googleapis.com/compute/v1/projects/%s/global/networks/%s";
+
+  public static final List<String> YB_DEFAULT_INSTANCE_TAGS = Arrays.asList("cluster-server");
+
+  public static final String ENFORCEMENT_BEFORE_CLASSIC_FIREWALL = "BEFORE_CLASSIC_FIREWALL";
+  public static final String ENFORCEMENT_AFTER_CLASSIC_FIREWALL = "AFTER_CLASSIC_FIREWALL";
+
+  public static final String INSTANCE_LIST_PERMISSION = "compute.instances.list";
+
   public static String[] getSplitLocationValue(String location) {
     int prefixLength =
         location.startsWith(GS_PROTOCOL_PREFIX)
@@ -102,6 +113,14 @@ public class GCPUtil implements CloudUtil {
 
     location = location.substring(prefixLength);
     return location.split("/", 2);
+  }
+
+  @Override
+  public void checkConfigTypeAndBackupLocationSame(String backupLocation) {
+    if (!(backupLocation.startsWith(GS_PROTOCOL_PREFIX)
+        || backupLocation.startsWith(HTTPS_PROTOCOL_PREFIX))) {
+      throw new PlatformServiceException(PRECONDITION_FAILED, "Not a GCS location");
+    }
   }
 
   @Override
@@ -362,6 +381,11 @@ public class GCPUtil implements CloudUtil {
           INTERNAL_SERVER_ERROR, "No blob was found at the specified location: " + cloudPath);
     }
     return Channels.newInputStream(blob.reader());
+  }
+
+  @Override
+  public ProxyConfig createYbcProxyConfig(Universe universe, CustomerConfigData configData) {
+    return null;
   }
 
   /*

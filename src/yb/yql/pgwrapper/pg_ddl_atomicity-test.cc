@@ -13,6 +13,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -35,6 +36,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"
@@ -44,8 +46,18 @@
 #include "yb/yql/pgwrapper/pg_ddl_atomicity_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/master.h"
+
+using namespace std::literals;
 using std::string;
 using std::vector;
+using namespace std::literals;
+
+DECLARE_bool(TEST_hang_on_ddl_verification_progress);
+DECLARE_string(allowed_preview_flags_csv);
+DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 
 namespace yb {
 namespace pgwrapper {
@@ -107,7 +119,7 @@ TEST_F(PgDdlAtomicityTest, TestDatabaseGC) {
   VerifyNamespaceNotExists(client.get(), test_name);
 }
 
-TEST_F(PgDdlAtomicityTest, TestCreateDbFailureAndRestartGC) {
+TEST_F(PgDdlAtomicityTest, TestCreateDbAndRestartGC) {
   NamespaceName test_name = "test_pgsql";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -141,6 +153,17 @@ TEST_F(PgDdlAtomicityTest, TestIndexTableGC) {
   ASSERT_OK(conn.Execute(CreateTableStmt(test_name)));
 
   // After successfully creating the first table, set flags to delay the background task.
+  // But do not let PG wait for the ddl verification to complete otherwise it will defeat the
+  // purpopse of the following 13000ms delay to start the ddl verification task: TestFailDdl
+  // does not finish until 13000ms have passed and the ddl verification has completed. On
+  // ddl verification completion master rolls back the index table and the next VerifyTableExists
+  // fails to see the table. Do not set report_ysql_ddl_txn_status_to_master for similar
+  // reason: on receiving PG reported status without polling master rolls back the index
+  // table.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "13000"));
   ASSERT_OK(conn.TestFailDdl(CreateIndexStmt(test_name_idx, test_name, "key")));
 
@@ -217,16 +240,45 @@ TEST_F(
   threads.Stop();
 }
 
+TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
+  // Make TransactionParticipant::Impl::CheckForAbortedTransactions and TabletLoader::Visit deadlock
+  // on the mutex. GH issue #15849.
+
+  // Temporarily disable abort cleanup. This flag will be reset when we RestartMaster.
+  ASSERT_OK(cluster_->SetFlagOnMasters("transactions_poll_check_aborted", "true"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(CreateTableStmt(kDropTable)));
+
+  // Create an aborted transaction so that TransactionParticipant::Impl::CheckForAbortedTransactions
+  // has something to do.
+  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(kCreateTable)));
+
+  // Crash in the middle of a DDL so that TabletLoader::Visit will perform some writes to
+  // sys_catalog on CatalogManager startup.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
+  // Set pause rollback flag.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  ASSERT_OK(conn.Execute(DropTableStmt(kDropTable)));
+
+  ASSERT_EQ(cluster_->master_daemons().size(), 1);
+  // Give enough time for CheckForAbortedTransactions to start and get stuck.
+  cluster_->GetLeaderMaster()->mutable_flags()->push_back(
+      "--TEST_delay_sys_catalog_reload_secs=10");
+
+  RestartMaster();
+
+  VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
+}
+
 // Class for sanity test.
 class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
-    options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
     // TODO (#19975): Enable read committed isolation
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
+    options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=5,ysql_transaction_ddl=5");
   }
 };
 
@@ -255,6 +307,15 @@ TEST_F(PgDdlAtomicitySanityTest, BasicTest) {
   ASSERT_OK(VerifyRowsAfterDdlSuccess(&conn, num_rows));
 }
 
+TEST_F(PgDdlAtomicitySanityTest, BasicTest1) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(CreateTableStmt(kCreateTable)));
+  ASSERT_OK(conn.TestFailDdl(DropColumnStmt(kCreateTable)));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // ASSERT_OK(VerifySchema(client.get(), kDatabase, kCreateTable, {"key", "num"}));
+  ASSERT_OK(VerifySchema(client.get(), kDatabase, kCreateTable, {"key", "value", "num"}));
+}
+
 TEST_F(PgDdlAtomicitySanityTest, CreateFailureRollback) {
   auto conn = ASSERT_RESULT(Connect());
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -280,8 +341,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   // Test failure of alter statement with multiple subcommands.
   ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_table ALTER COLUMN key TYPE text USING key::text,"
       " ALTER COLUMN num TYPE text USING num::text"));
-  VerifyTableNotExists(client.get(), "yugabyte", table_name + "_temp_old", 10);
-  VerifyTableExists(client.get(), "yugabyte", table_name, 20);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(table_name)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
 
   // Verify that the data and schema is intact.
@@ -321,8 +385,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify failure case.
   ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   // Insert duplicate rows.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                alter_test));
@@ -330,8 +397,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify success case.
   ASSERT_OK(conn.Execute(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for old DocDB table to be dropped."));
   ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                 alter_test));
 }
@@ -608,7 +678,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_OK(VerifySchema(client.get(), kDatabase, kAddCol, {"key", "value"}));
 
   // Disable DDL rollback.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));
 
   // Verify that best effort rollback works when ysql_ddl_rollback is disabled.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kAddCol));
@@ -619,7 +689,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_OK(VerifySchema(client.get(), kDatabase, kAddCol, {"key", "value"}));
 
   // Restart the cluster with DDL rollback disabled.
-  SetFlagOnAllProcessesWithRollingRestart("--ysql_ddl_rollback_enabled=false");
+  SetFlagOnAllProcessesWithRollingRestart("--ysql_yb_ddl_rollback_enabled=false");
   // Verify that rollback did not occur even after the restart.
   client = ASSERT_RESULT(cluster_->CreateClient());
   VerifyTableExists(client.get(), kDatabase, kDropTable, 10);
@@ -634,7 +704,7 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_OK(conn.Execute(AddColumnStmt(kAddCol, "value2")));
 
   // Re-enable DDL rollback properly with restart.
-  SetFlagOnAllProcessesWithRollingRestart("--ysql_ddl_rollback_enabled=true");
+  SetFlagOnAllProcessesWithRollingRestart("--ysql_yb_ddl_rollback_enabled=true");
 
   client = ASSERT_RESULT(cluster_->CreateClient());
   conn = ASSERT_RESULT(Connect());
@@ -668,34 +738,21 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
   ASSERT_NOK(conn.Execute(DropTableStmt(kAddCol)));
 }
 
-TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
-  // Make TransactionParticipant::Impl::CheckForAbortedTransactions and TabletLoader::Visit deadlock
-  // on the mutex. GH issue #15849.
-
-  // Temporarily disable abort cleanup. This flag will be reset when we RestartMaster.
-  ASSERT_OK(cluster_->SetFlagOnMasters("transactions_poll_check_aborted", "true"));
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
+TEST_F(PgDdlAtomicitySanityTest, AddReplicaIdentityTest) {
+  ASSERT_OK(
+      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute(CreateTableStmt(kDropTable)));
+  ASSERT_OK(conn.Execute("set yb_enable_replica_identity = true"));
 
-  // Create an aborted transaction so that TransactionParticipant::Impl::CheckForAbortedTransactions
-  // has something to do.
-  ASSERT_OK(conn.TestFailDdl(CreateTableStmt(kCreateTable)));
+  CreateTable("test_table");
+  string ddl_statement = "ALTER TABLE test_table REPLICA IDENTITY FULL;";
+  ASSERT_OK(conn.TestFailDdl(ddl_statement));
 
-  // Crash in the middle of a DDL so that TabletLoader::Visit will perform some writes to
-  // sys_catalog on CatalogManager startup.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_crash_after_table_marked_deleting", "true"));
-  ASSERT_OK(conn.Execute(DropTableStmt(kDropTable)));
-
-  ASSERT_EQ(cluster_->master_daemons().size(), 1);
-  // Give enough time for CheckForAbortedTransactions to start and get stuck.
-  cluster_->GetLeaderMaster()->mutable_flags()->push_back(
-      "--TEST_delay_sys_catalog_reload_secs=10");
-
-  RestartMaster();
-
-  VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
+  // Table should exist with old (default) replica identity intact.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(VerifyReplicaIdentityMatches(
+      client.get(), kDatabase, "test_table", PgReplicaIdentity::CHANGE));
 }
 
 class PgDdlAtomicityConcurrentDdlTest : public PgDdlAtomicitySanityTest {
@@ -983,43 +1040,49 @@ TEST_F(PgDdlAtomicitySanityTest, DmlWithDropTableTest) {
 // Test that we are able to rollback DROP COLUMN on a column with a missing
 // default value.
 TEST_F(PgDdlAtomicitySanityTest, DropColumnWithMissingDefaultTest) {
-  const string& table = "drop_column_missing_default_test";
-  CreateTable(table);
+  static const std::string kTable = "drop_column_missing_default_test";
+  CreateTable(kTable);
   auto conn = ASSERT_RESULT(Connect());
   // Write some rows to the table.
-  ASSERT_OK(conn.Execute("INSERT INTO " + table + "(key) VALUES (generate_series(1, 3))"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0(key) VALUES (generate_series(1, 3))", kTable));
   // Add column with missing default value.
-  ASSERT_OK(conn.Execute(Format(AddColumnStmt(table, "value2", "default"))));
+  ASSERT_OK(conn.Execute(Format(AddColumnStmt(kTable, "value2", "default"))));
   // Insert rows with the new column set to null.
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO " + table + "(key, value2) VALUES (generate_series(4, 6), null)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0(key, value2) VALUES (generate_series(4, 6), null)", kTable));
   // Insert rows with the new column set to a non-default value.
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO " + table + "(key, value2) VALUES (generate_series(7, 9), 'not default')"));
-  auto res = ASSERT_RESULT(conn.FetchFormat("SELECT key, value2 FROM $0 ORDER BY key", table));
-  // Verify data.
-  auto check_result = [&res] {
-    for (int i = 1; i <= 9; ++i) {
-      const auto value1 = ASSERT_RESULT(GetValue<int32_t>(res.get(), i - 1, 0));
-      ASSERT_EQ(value1, i);
-      const auto value2 = ASSERT_RESULT(GetValue<std::string>(res.get(), i - 1, 1));
-      if (i <= 3) {
-        ASSERT_EQ(value2, "default");
-      } else if (i <= 6) {
-        ASSERT_EQ(value2, "");
-      } else {
-        ASSERT_EQ(value2, "not default");
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0(key, value2) VALUES (generate_series(7, 9), 'not default')", kTable));
+  auto check_table_rows = [&conn] {
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::optional<std::string>>(Format(
+        "SELECT key, value2 FROM $0 ORDER BY key", kTable))));
+    size_t idx = 0;
+    for (const auto& [key, value] : rows) {
+      ASSERT_EQ(key, idx + 1);
+      switch(key) {
+        case 4: [[fallthrough]];
+        case 5: [[fallthrough]];
+        case 6:
+          ASSERT_EQ(value, std::nullopt);
+          break;
+        case 7: [[fallthrough]];
+        case 8: [[fallthrough]];
+        case 9:
+          ASSERT_EQ(value, "not default");
+          break;
+        default:
+          ASSERT_EQ(value, "default");
+          break;
       }
+      ++idx;
     }
   };
-  check_result();
+  check_table_rows();
   // Fail drop column.
-  ASSERT_OK(conn.TestFailDdl(DropColumnStmt(table)));
+  ASSERT_OK(conn.TestFailDdl(DropColumnStmt(kTable)));
   // Insert more rows.
-  ASSERT_OK(conn.Execute(
-      "INSERT INTO " + table + "(key) VALUES (generate_series(10, 12))"));
-  res = ASSERT_RESULT(conn.FetchFormat("SELECT key, value2 FROM $0 ORDER BY key", table));
-  check_result();
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0(key) VALUES (generate_series(10, 12))", kTable));
+  check_table_rows();
 }
 
 class PgDdlAtomicityColocatedTestBase : public PgDdlAtomicitySanityTest {
@@ -1068,7 +1131,7 @@ TEST_F(PgDdlAtomicityColocatedDbTest, ColocatedTest) {
   sanityTest();
 }
 
-class PgDdlAtomiPgDdlAtomicityTablegroupTest : public PgDdlAtomicityColocatedTestBase {
+class PgDdlAtomicityTablegroupTest : public PgDdlAtomicityColocatedTestBase {
   void SetUp() override {
     LibPqTestBase::SetUp();
 
@@ -1091,11 +1154,11 @@ class PgDdlAtomiPgDdlAtomicityTablegroupTest : public PgDdlAtomicityColocatedTes
   const string kTablegroup = "test_tgroup";
 };
 
-TEST_F(PgDdlAtomiPgDdlAtomicityTablegroupTest, TablegroupTableTest) {
+TEST_F(PgDdlAtomicityTablegroupTest, TablegroupTableTest) {
   sanityTest(kTablegroup);
 }
 
-TEST_F(PgDdlAtomiPgDdlAtomicityTablegroupTest, TablegroupTest) {
+TEST_F(PgDdlAtomicityTablegroupTest, TablegroupTest) {
   const string tablegroup = "test_tgrp";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   // Test that CREATE TABLEGROUP is rolled back.
@@ -1109,6 +1172,37 @@ TEST_F(PgDdlAtomiPgDdlAtomicityTablegroupTest, TablegroupTest) {
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     return VERIFY_RESULT(NumTablegroupParentTables(client.get())) == 1;
   }, MonoDelta::FromSeconds(10), "Verify number of tablegroups"));
+
+  // Create many tables in the tablegroup.
+  const int num_tables = 10;
+  for (int i = 0; i < num_tables; ++i) {
+    ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE test_$0 (key INT PRIMARY KEY) TABLEGROUP $1",
+                                    i, kTablegroup));
+  }
+
+  // Wait for DDL verification to complete.
+  SleepFor(5 * 1s);
+
+  // Verify that DROP TABLEGROUP CASCADE can get rolled back successfully.
+  ASSERT_OK(conn_->TestFailDdl(Format("DROP TABLEGROUP $0 CASCADE", kTablegroup)));
+  // Wait to verify that the drop actually did not go through.
+  SleepFor(5 * 1s);
+  ASSERT_EQ(ASSERT_RESULT(NumTablegroupParentTables(client.get())), 1);
+  for (int i = 0; i < num_tables; ++i) {
+    VerifyTableExists(client.get(), kDatabase, Format("test_$0", i), 20);
+  }
+
+  // Verify that DROP TABLEGROUP CASCADE can finish successfully.
+  ASSERT_OK(conn_->ExecuteFormat("DROP TABLEGROUP $0 CASCADE", kTablegroup));
+  // Wait for DDL verification.
+  SleepFor(5 * 1s);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(NumTablegroupParentTables(client.get())) == 0;
+  }, MonoDelta::FromSeconds(30), "Verify number of tablegroups"));
+
+  for (int i = 0; i < num_tables; ++i) {
+    VerifyTableNotExists(client.get(), kDatabase, Format("test_$0", i), 20);
+  }
 }
 
 class PgDdlAtomicitySnapshotTest : public PgDdlAtomicitySanityTest {
@@ -1194,12 +1288,11 @@ TEST_F(PgDdlAtomicitySnapshotTest, SnapshotTest) {
     ASSERT_OK(VerifySchema(client.get(), kDatabase, table, {"key", "value", "num"}));
   }
 
-  /*
-   TODO (deepthi): Uncomment the following code after #14679 is fixed.
   // Run different failing DDL operations on the tables.
-  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(add_col_test)));
-  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(drop_table_test)));
-  */
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  ASSERT_OK(conn.TestFailDdl(RenameTableStmt(kAddCol)));
+  ASSERT_OK(conn.TestFailDdl(RenameColumnStmt(kDropTable)));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
 
   // Restore to before rollback.
   LOG(INFO) << "Start restoration to timestamp " << hybrid_time_before_rollback;
@@ -1273,7 +1366,7 @@ Status PgDdlAtomicitySnapshotTest::ListSnapshotTest(DdlErrorInjection inject_err
   RETURN_NOT_OK(testListSnapshots(&conn, inject_error, DropTableStmt(kDropTable), snapshot_id,
       ExpectSuccess::kFalse));
   // Wait for the table to be deleted before the next test.
-  client::VerifyTableNotExists(client.get(), kDatabase, kDropTable, 20);
+  client::VerifyTableNotExists(client.get(), kDatabase, kDropTable, 40);
 
   // Verify that an index marked for deletion causes ListSnapshots to fail.
   return testListSnapshots(&conn, inject_error, DropIndexStmt(kDropIndex), snapshot_id,
@@ -1291,9 +1384,7 @@ TEST_F(PgDdlAtomicitySnapshotTest, DdlRollbackListSnapshotTest) {
 class PgLibPqMatviewTest: public PgDdlAtomicitySanityTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+    options->extra_master_flags.push_back("--vmodule=ysql_ddl_handler=3,ysql_transaction_ddl=3");
   }
  protected:
   void MatviewTest();
@@ -1363,67 +1454,274 @@ TEST_F(PgLibPqMatviewTest, MatviewTestWithoutPgOptimization) {
 }
 
 TEST_F(PgLibPqMatviewTest, MatviewTest) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("report_ysql_ddl_txn_status_to_master", "true"));
   MatviewTest();
 }
 
-class PgLibPqMatviewFailure: public PgDdlAtomicitySanityTest {
+YB_STRONGLY_TYPED_BOOL(EnableDDLAtomicity);
+
+// TODO(deepthi): Remove the tests for txn GC after 'ysql_yb_ddl_rollback_enabled' is set to true
+// by default.
+class PgLibPqTableRewrite:
+  public PgDdlAtomicitySanityTest,
+  public ::testing::WithParamInterface<EnableDDLAtomicity> {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
-    options->extra_tserver_flags.push_back(
-        Format("--TEST_yb_test_fail_matview_refresh_after_creation=true"));
+    PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_enable_reindex=true");
+    if (!GetParam()) {
+      options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=10000");
+      // Disable the current version of DDL rollback so that we can test the
+      // transaction GC framework.
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=false");
+    } else {
+      options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
+    }
   }
  protected:
-  void RefreshMatviewRollback();
+  void SetupTestData() {
+    auto conn = ASSERT_RESULT(Connect());
+    for (auto table_name : {kTable, kTable2}) {
+      // Create the table.
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", table_name));
+      // Execute some rewrites so that the oid and relfilenode don't match.
+      ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTable));
+      ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD PRIMARY KEY (a ASC)", kTable));
+      // Insert some data.
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 (a, b) VALUES (generate_series(1, 5), generate_series(1, 5))",
+          table_name));
+      // Create an index.
+      ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (b DESC)",
+          table_name == kTable ? kIndex : "idx2", table_name));
+    }
+    // Create a materialized view.
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE MATERIALIZED VIEW $0 AS SELECT * FROM $1", kMaterializedView, kTable));
+    // Insert some more data into the materialized view's base table.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (a, b) VALUES (6, 6)", kTable));
+    // Set the index as invalid (so that we can test reindex).
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE pg_index SET indisvalid='f' WHERE indexrelid = '$0'::regclass", kIndex));
+  }
+  Status WaitForDroppedTablesCleanup() {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    return LoggedWaitFor([this, &client]() -> Result<bool> {
+      for (auto table_name : {kTable, kTable2, kIndex, kMaterializedView}) {
+        if (VERIFY_RESULT(client->ListTables(table_name)).size() != 1) {
+          return false;
+        }
+      }
+      return true;
+    }, MonoDelta::FromSeconds(60), "Verify that we dropped the stale DocDB tables");
+  }
+  const std::string kTable = "t1";
+  const std::string kTable2 = "t2";
+  const std::string kIndex = "idx1";
+  const std::string kMaterializedView = "mv";
 };
 
+INSTANTIATE_TEST_CASE_P(bool, PgLibPqTableRewrite,
+    ::testing::Values(EnableDDLAtomicity::kFalse, EnableDDLAtomicity::kTrue));
 
-void PgLibPqMatviewFailure::RefreshMatviewRollback() {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t(id int)"));
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Now test failure of Matview refresh.
-  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
-  // Wait for DDL verification to complete for the above statement.
-  ASSERT_OK(WaitForDdlVerification(client.get(), kDatabase, "mv"));
-  auto matview_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
-      "SELECT oid FROM pg_class WHERE relname = 'mv'"));
-  auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
-  // The following statement fails because we set 'yb_test_fail_matview_refresh_after_creation'.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_NOK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
-
-  // Wait for DocDB Table (materialized view) creation, even though it will fail in PG layer.
-  VerifyTableExists(client.get(), kDatabase, pg_temp_table_name, 20);
-
-  // This temp table is later cleaned up once the transaction failure is detected.
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
-  VerifyTableNotExists(client.get(), kDatabase, pg_temp_table_name, 20);
-}
-
-// Test that an orphaned table left after a failed refresh on a materialized view is cleaned up
-// by transaction GC.
-// TODO(deepthi): Remove this test after 'ysql_ddl_rollback_enabled' is set to true by default.
+// Test that orphaned tables left after failed rewrites are cleaned up.
 // TODO(deepthi): Re-enable both these tests in TSAN after #16055 is fixed.
-TEST_F_EX(PgDdlAtomicitySanityTest,
-          YB_DISABLE_TEST_IN_TSAN(TestMatviewRollbackWithTxnGC),
-          PgLibPqMatviewFailure) {
-  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10000"));
-  // Disable the current version of DDL rollback so that we can test the transaction GC framework.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "false"));
-  RefreshMatviewRollback();
+TEST_P(PgLibPqTableRewrite,
+       YB_DISABLE_TEST_IN_TSAN(TestTableRewriteRollback)) {
+  SetupTestData();
+  if (GetParam()) {
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
+  ASSERT_NOK(conn.ExecuteFormat("REINDEX INDEX $0", kIndex));
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c SERIAL", kTable));
+  ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMaterializedView));
+  ASSERT_NOK(conn.ExecuteFormat("TRUNCATE $0", kTable2));
+
+  // Verify that we created orphaned DocDB tables.
+  const auto client = ASSERT_RESULT(cluster_->CreateClient());
+  for (auto table_name : {kTable, kTable2, kIndex, kMaterializedView}) {
+    ASSERT_EQ(ASSERT_RESULT(client->ListTables(table_name)).size(), 2);
+  }
+
+  // Verify that we drop the new DocDB tables after failed rewrite operations.
+  if (GetParam()) {
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
+  }
+  ASSERT_OK(WaitForDroppedTablesCleanup());
+
+  // Verify the data.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE pg_index SET indisvalid = 't' WHERE indexrelid = '$0'::regclass", kIndex));
+  ASSERT_NOK(conn.ExecuteFormat("SELECT c FROM $0", kTable));
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      Format("SELECT * FROM $0", kTable))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}, {6, 6}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0 WHERE b = 1", kTable))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0 ORDER BY a", kMaterializedView))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0", kTable2))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}}));
+  rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(Format(
+      "SELECT * FROM $0 WHERE b = 1", kTable2))));
+  ASSERT_EQ(rows, (decltype(rows){{1, 1}}));
 }
 
-// Test that the DocDB tables created upon Matview creation and refresh are rolled-back
-// by the DDL Atomicity framework.
-TEST_F_EX(PgDdlAtomicitySanityTest,
-          YB_DISABLE_TEST_IN_TSAN(TestMatviewRollbackWithDdlAtomicity),
-          PgLibPqMatviewFailure) {
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_ddl_rollback_enabled", "true"));
-  RefreshMatviewRollback();
+// Test that orphaned tables left after successful rewrites are cleaned up.
+TEST_P(PgLibPqTableRewrite,
+       YB_DISABLE_TEST_IN_TSAN(TestTableRewriteSuccess)) {
+  SetupTestData();
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("REINDEX INDEX $0", kIndex));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c SERIAL", kTable));
+  ASSERT_OK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kMaterializedView));
+
+  // Verify that we drop the old DocDB tables after successful rewrite operations.
+  ASSERT_OK(WaitForDroppedTablesCleanup());
+
+  // Sanity check to ensure we can perform ALTERs on the rewritten tables/materialized view.
+  const auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN d int", kTable));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 RENAME COLUMN c TO c_serial", kTable));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", kTable, {"a", "b", "c_serial", "d"}));
+  ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 RENAME COLUMN a TO a_renamed",
+      kMaterializedView));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", kMaterializedView,
+      {"ybrowid", "a_renamed", "b"}));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c int", kTable2));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", kTable2, {"a", "b", "c"}));
 }
 
+class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry) = true;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"YsqlDdlHandler::IsYsqlDdlVerificationDone:Fail",
+        "PgDdlAtomicitySanityTest::TestWaitForRollbackWithMasterRestart:WaitForFail"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto kDropCol = "drop_col";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT, num real)",
+                               kDropCol));
+
+  TestThreadHolder thread_holder;
+
+  // Fetch the table id before starting the thread.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kDropCol));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_ddl_verification_progress) = true;
+
+  // Start the thread to drop the column.
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), &conn, kDropCol] {
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value", kDropCol));
+  });
+
+  // Wait until the alter operation hits the sync point in ysql_ddl_handler.
+  TEST_SYNC_POINT("PgDdlAtomicitySanityTest::TestWaitForRollbackWithMasterRestart:WaitForFail");
+
+  // Restart master to simulate the case where IsYsqlDdlVerificationDone poller in YSQL spans a
+  // master restart.
+  ASSERT_OK(RestartMaster());
+
+  // Allow verification to proceed and wait for thread to finish.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_ddl_verification_progress) = false;
+  thread_holder.JoinAll();
+
+  // Verify that alter table was successful.
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+
+  const auto& columns = table_info->schema.columns();
+  ASSERT_EQ(columns.size(), 2);
+  ASSERT_EQ(columns[0].name(), "key");
+  ASSERT_EQ(columns[1].name(), "num");
+}
+
+// Test that the table cache is correctly invalidated after transaction verification
+// completes for an ALTER TABLE operation that performs a table scan.
+TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
+      "PARTITION BY LIST(key)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test1 PARTITION OF test FOR VALUES IN (1)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test2 PARTITION OF test FOR VALUES IN (2, 3, 4)"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1, 'value', 1.0), (2, 'value', 2.0)"));
+  ASSERT_OK(conn.TestFailDdl(
+    "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
+  // Ensure there is no schema version mismatch after a failed ALTER operation that performs
+  // a table scan.
+  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (3, 'value', 3.0)"));
+  ASSERT_OK(conn.ExecuteFormat(
+    "ALTER TABLE test DROP COLUMN value, ADD CONSTRAINT check_num CHECK (num > 0)"));
+  // Ensure there is no schema version mismatch after a successful ALTER operation that performs
+  // a table scan.
+  ASSERT_OK(conn.Execute("INSERT INTO test2 VALUES (4, 4.0)"));
+  auto rows =
+      ASSERT_RESULT((conn.FetchRows<int32_t, float, int32_t>("SELECT * FROM test2 ORDER BY key")));
+  ASSERT_EQ(rows, (decltype(rows){{2, 2, 2}, {3, 3, 3}, {4, 4, 4}}));
+}
+
+// Test that the schema verification works correctly for partition tables and its children.
+TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // Set report_ysql_ddl_txn_status_to_master to false, so that we can test the schema verification
+  // codepaths on master.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  // Create a parent partitioned table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_parent (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
+      "PARTITION BY LIST(key)"));
+  // Create a child partition.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_child PARTITION OF test_parent FOR VALUES IN (1)"));
+
+  // Perform an unsuccessful alter table operation.
+  ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_parent DROP COLUMN value"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
+  // Perform an unsuccessful alter table rewrite operation.
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 SERIAL"));
+
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 1);
+  // Verify that the failed alter table rewrite operation created an orphaned child table.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 2);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=false"));
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(client->ListTables("test_child")).size() == 1;
+  }, MonoDelta::FromSeconds(60), "Wait for orphaned child table to be cleaned up."));
+
+  // Perform a successful alter table operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 int"));
+  // Perform a successful alter table rewrite operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col2 SERIAL"));
+
+  // Perform a successful drop table operation.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE test_parent"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 0);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 0);
+}
 } // namespace pgwrapper
 } // namespace yb

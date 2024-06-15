@@ -29,12 +29,12 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/tools/tools_test_utils.h"
 
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_string(ysql_pg_conf_csv);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
@@ -53,11 +53,11 @@ class PgReadTimeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
 
-    // TODO: Remove the below guc setting once it becomes the default.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_lock_pk_single_rpc=true";
+    // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
+    // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+        "yb_lock_pk_single_rpc=true," + MaxQueryLayerRetriesConf(0);
 
-    // for TestConflictRetriesOnDocdb
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgMiniTestBase::SetUp();
   }
 
@@ -130,7 +130,7 @@ TEST_F(PgReadTimeTest, TestConflictRetriesOnDocdb) {
     // the query layer for the below SELECT FOR UPDATE.
     //
     // If there were no retries for kConflict on docdb, then the following statement would fail
-    // because FLAGS_ysql_max_write_restart_attempts=0 and so there are no query layer retries.
+    // because yb_max_query_layer_retries=0 and so there are no query layer retries.
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.Fetch("SELECT * FROM test WHERE k=1 FOR UPDATE"));
     ASSERT_OK(conn.CommitTransaction());
@@ -333,6 +333,13 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
 // 6. Check "SELECT count(*) from t" is equal to 10 (as of t1).
 // 7. SET yb_read_time TO 0
 // 8. Check "SELECT count(*) from t" is equal to 6 (as of current time).
+// 9. Get the value of t1 as a HybridTime (t2)
+// 10. SET yb_read_time TO 't2 ht'
+// 11. Check "SELECT count(*) from t" is equal to 10 (as of t2=t1).
+// 12. SET yb_read_time TO '0ht'
+// 13. Check "SELECT count(*) from t" is equal to 2 (as of current time).
+// 14. Repeat steps 10 to 13 with some variations in unit syntax.
+// 15. Negative test case. Invalid unit.
 TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT)"));
@@ -354,6 +361,31 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
   count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
   ASSERT_EQ(count, 6);
+
+  LOG(INFO) << "Get the value of t1 as a HybridTime";
+  auto t2 = t1 << 12;
+
+  LOG(INFO) << "Setting yb_read_time to '" << t2 << " ht'";
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO '$0 ht'", t2));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 10);
+  LOG(INFO) << "Setting yb_read_time to '0ht'";
+  ASSERT_OK(conn.Execute("SET yb_read_time TO '0ht'"));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 6);
+
+  LOG(INFO) << "Testing variations in specifying the unit";
+  LOG(INFO) << "Setting yb_read_time to '  " << t2 << "   ht   '";
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO '  $0   ht   '", t2));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 10);
+  LOG(INFO) << "Setting yb_read_time to '0'";
+  ASSERT_OK(conn.Execute("SET yb_read_time TO '0'"));
+  count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
+  ASSERT_EQ(count, 6);
+
+  LOG(INFO) <<"Negative test case. Invalid unit";
+  ASSERT_NOK(conn.ExecuteFormat("SET yb_read_time TO '$0 ms'", t2));
 }
 
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t
@@ -411,6 +443,141 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   LOG(INFO) << "Tool output: " << dump_as_of_time;
   // Step 6
   ASSERT_STR_EQ(ground_truth, dump_as_of_time);
+}
+
+// Mimics the CheckReadTimePickingLocation test for the relaxed
+// yb_read_after_commit_visibility case.
+//
+// There are two primary effects of relaxed yb_read_after_commit_visibility:
+// - SELECTs now always pick their read time on local proxy.
+// - The read time is clamped whenever it is picked this way (not relevant).
+//
+// This implies the following changes compared to the vanilla test
+// - Case 1: no pipeline, single operation in first batch, no distributed txn.
+//           Read time is picked on proxy for SELECTs and not DMLs.
+// - Case 3: no pipeline, multiple operations to the same tablet in first batch, no distributed txn.
+//           Read time is picked on proxy.
+TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET DEFAULT_TRANSACTION_ISOLATION TO \"REPEATABLE READ\""));
+  constexpr auto kTable = "test"sv;
+  constexpr auto kSingleTabletTable = "test_with_single_tablet"sv;
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kSingleTabletTable));
+
+  for (const auto& table_name : {kTable, kSingleTabletTable}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT generate_series(1, 100), 0", table_name));
+    ASSERT_OK(conn.ExecuteFormat(
+      "CREATE OR REPLACE PROCEDURE insert_rows_$0(first integer, last integer) "
+      "LANGUAGE plpgsql "
+      "as $$body$$ "
+      "BEGIN "
+      "  FOR i in first..last LOOP "
+      "    INSERT INTO $0 VALUES (i, i); "
+      "  END LOOP; "
+      "END; "
+      "$$body$$", table_name));
+  }
+
+  // Relax read-after-commit-visiblity guarantee.
+  ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility TO relaxed"));
+
+  // 1. no pipeline, single operation in first batch, no distributed txn
+  //
+  // relaxed yb_read_after_commit_visibility does not affect DML queries.
+  for (const auto& table_name : {kTable, kSingleTabletTable}) {
+    CheckReadTimeProvidedToDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000, 1000)", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE k=1000", table_name));
+        });
+  }
+
+  // 2. no pipeline, multiple operations to various tablets in first batch, no distributed txn
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kTable));
+      });
+
+  // 3. no pipeline, multiple operations to the same tablet in first batch, no distributed txn
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kSingleTabletTable));
+      });
+
+  // 4. no pipeline, single operation in first batch, starts a distributed transation
+  //
+  // expected_num_picked_read_time_on_doc_db_metric is set because in case of a SELECT FOR UPDATE,
+  // a read time is picked in read_query.cc, but an extra picking is done in write_query.cc just
+  // after conflict resolution is done (see DoTransactionalConflictsResolved()).
+  //
+  // relaxed yb_read_after_commit_visibility does not affect FOR UDPATE queries.
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
+        ASSERT_OK(conn.CommitTransaction());
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+
+  // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetHighMaxBatchSize(&conn));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(101, 110)", kTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 6. no pipeline, multiple operations to the same tablet in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetHighMaxBatchSize(&conn));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(101, 110)", kSingleTabletTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 7. Pipeline, single operation in first batch, starts a distributed transation
+  ASSERT_OK(SetMaxBatchSize(&conn, 1));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(111, 120)", kTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 8. Pipeline, multiple operations to various tablets in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetMaxBatchSize(&conn, 10));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 9. Pipeline, multiple operations to the same tablet in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetMaxBatchSize(&conn, 10));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kSingleTabletTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
 }
 
 } // namespace yb::pgwrapper

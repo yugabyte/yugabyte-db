@@ -11,11 +11,11 @@ EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, depty
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid, objid, objsubid
 		LIMIT 2;
-                                                 QUERY PLAN
--------------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
  Limit
    ->  Index Scan using pg_depend_depender_index on pg_depend
-         Remote Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
+         Storage Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 
 -- We cannot run the following SELECT on test because different platforms have different system
@@ -30,11 +30,11 @@ EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, depty
 		WHERE deptype != 'p' AND deptype != 'e' AND deptype != 'i'
 		ORDER BY classid DESC, objid DESC, objsubid DESC
 		LIMIT 2;
-                                                 QUERY PLAN
--------------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
  Limit
    ->  Index Scan Backward using pg_depend_depender_index on pg_depend
-         Remote Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
+         Storage Filter: ((deptype <> 'p'::"char") AND (deptype <> 'e'::"char") AND (deptype <> 'i'::"char"))
 (3 rows)
 
 -- We cannot run the following SELECT on test because different platforms have different system
@@ -121,21 +121,21 @@ return null;
 END;
 $$ LANGUAGE plpgsql STABLE;
 -- Expect pushdown in all cases.
-EXPLAIN SELECT * FROM pg_database WHERE datname = test_null_pushdown();
+EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
                                           QUERY PLAN
 -----------------------------------------------------------------------------------------------
  Index Scan using pg_database_datname_index on pg_database  (cost=0.00..4.37 rows=1 width=254)
    Index Cond: (datname = test_null_pushdown())
 (2 rows)
 
-EXPLAIN SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
+EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
                                           QUERY PLAN
 -----------------------------------------------------------------------------------------------
  Index Scan using pg_database_datname_index on pg_database  (cost=0.00..4.37 rows=1 width=254)
    Index Cond: (datname = test_null_pushdown())
 (2 rows)
 
-EXPLAIN SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
+EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
                                             QUERY PLAN
 ---------------------------------------------------------------------------------------------------
  Index Scan using pg_database_datname_index on pg_database  (cost=0.00..4.37 rows=1 width=254)
@@ -143,18 +143,18 @@ EXPLAIN SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushd
 (2 rows)
 
 -- Test execution.
-SELECT * FROM pg_database WHERE datname = test_null_pushdown();
+/*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
  datname | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace | datacl
 ---------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+--------
 (0 rows)
 
-SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
+/*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
  datname | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace | datacl
 ---------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+--------
 (0 rows)
 
 -- Test null mixed with valid (existing) options.
-SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
+/*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
   datname  | datdba | encoding | datcollate |  datctype   | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace |               datacl
 -----------+--------+----------+------------+-------------+---------------+--------------+--------------+---------------+--------------+------------+---------------+-------------------------------------
  template0 |     10 |        6 | C          | en_US.UTF-8 | t             | f            |           -1 |             0 |            0 |          1 |          1663 | {=c/postgres,postgres=CTc/postgres}

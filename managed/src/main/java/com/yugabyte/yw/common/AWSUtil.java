@@ -61,7 +61,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLocations;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
@@ -83,14 +82,14 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
-import org.yb.ybc.S3ProxySetting;
+import org.yb.ybc.ProxySpec;
 
 @Singleton
 @Slf4j
@@ -100,6 +99,7 @@ public class AWSUtil implements CloudUtil {
   @Inject RuntimeConfGetter runtimeConfGetter;
   @Inject AWSCloudImpl awsCloudImpl;
 
+  public static final String AWS_S3_LOCATION_PREFIX = "s3://";
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
   private static final String AWS_REGION_SPECIFIC_HOST_BASE_FORMAT = "s3.%s.amazonaws.com";
@@ -237,9 +237,16 @@ public class AWSUtil implements CloudUtil {
   // splitLocation[0] gives the bucket
   // splitLocation[1] gives the suffix string
   public static String[] getSplitLocationValue(String location) {
-    location = location.substring(5);
+    location = location.substring(AWS_S3_LOCATION_PREFIX.length());
     String[] split = location.split("/", 2);
     return split;
+  }
+
+  @Override
+  public void checkConfigTypeAndBackupLocationSame(String backupLocation) {
+    if (!backupLocation.startsWith(AWS_S3_LOCATION_PREFIX)) {
+      throw new PlatformServiceException(PRECONDITION_FAILED, "Not an S3 location");
+    }
   }
 
   @Override
@@ -319,9 +326,6 @@ public class AWSUtil implements CloudUtil {
       s3ClientBuilder.withRegion(clientRegion);
     }
     ClientConfiguration clientConfig = null;
-    if (s3Data.proxySetting != null) {
-      clientConfig = getClientConfiguration(s3Data.proxySetting);
-    }
     try {
       Boolean caStoreEnabled = customCAStoreManager.isEnabled();
       Boolean caCertUploaded = customCAStoreManager.areCustomCAsPresent();
@@ -368,20 +372,6 @@ public class AWSUtil implements CloudUtil {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
-  }
-
-  private static ClientConfiguration getClientConfiguration(ProxySetting proxySetting) {
-    ClientConfiguration cc = new ClientConfiguration();
-    cc.withProxyHost(proxySetting.proxy);
-    if (proxySetting.port > 0) {
-      cc.withProxyPort(proxySetting.port);
-    }
-    if (StringUtils.isNotBlank(proxySetting.username)
-        && StringUtils.isNotBlank(proxySetting.password)) {
-      cc.withProxyUsername(proxySetting.username);
-      cc.withProxyPassword(proxySetting.password);
-    }
-    return cc;
   }
 
   public static Map<String, String> getRegionHostBaseMap(CustomerConfigData configData) {
@@ -605,9 +595,6 @@ public class AWSUtil implements CloudUtil {
         .setPrevCloudDir(previousCloudDir)
         .setCloudDir(cloudDir)
         .putAllCreds(s3CredsMap);
-    if (s3Data.proxySetting != null) {
-      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
-    }
     return cloudStoreSpecBuilder.build();
   }
 
@@ -628,9 +615,6 @@ public class AWSUtil implements CloudUtil {
       cloudStoreSpecBuilder.setCloudDir(BackupUtil.appendSlash(location));
     } else {
       cloudStoreSpecBuilder.setCloudDir(cloudDir);
-    }
-    if (s3Data.proxySetting != null) {
-      cloudStoreSpecBuilder.setProxySetting(addYbcProxySettings(s3Data.proxySetting));
     }
     return cloudStoreSpecBuilder.build();
   }
@@ -677,19 +661,31 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  private S3ProxySetting addYbcProxySettings(
-      CustomerConfigStorageS3Data.ProxySetting proxySettings) {
-    S3ProxySetting.Builder proxyBuilder = S3ProxySetting.newBuilder();
-    proxyBuilder.setProxyHost(proxySettings.proxy);
-    if (proxySettings.port > 0) {
-      proxyBuilder.setProxyPort(proxySettings.port);
+  @Override
+  public ProxySpec getOldProxySpec(CustomerConfigData configData) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    if (s3Data.proxySetting != null) {
+      ProxySpec.Builder proxyBuilder = ProxySpec.newBuilder();
+      proxyBuilder.setHost(s3Data.proxySetting.proxy);
+      if (s3Data.proxySetting.port > 0) {
+        proxyBuilder.setPort(s3Data.proxySetting.port);
+      }
+      if (StringUtils.isNotBlank(s3Data.proxySetting.username)
+          && StringUtils.isNotBlank(s3Data.proxySetting.password)) {
+        proxyBuilder.setPassword(s3Data.proxySetting.password);
+        proxyBuilder.setUsername(s3Data.proxySetting.username);
+      }
+      return proxyBuilder.build();
     }
-    if (StringUtils.isNotBlank(proxySettings.username)
-        && StringUtils.isNotBlank(proxySettings.password)) {
-      proxyBuilder.setProxyPassword(proxySettings.password);
-      proxyBuilder.setProxyUsername(proxySettings.username);
-    }
-    return proxyBuilder.build();
+    return null;
+  }
+
+  @Override
+  public boolean shouldUseHttpsProxy(CustomerConfigData configData) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    return StringUtils.isBlank(s3Data.awsHostBase)
+        || isHostBaseS3Standard(s3Data.awsHostBase)
+        || s3Data.awsHostBase.startsWith("https://");
   }
 
   @Override
@@ -918,9 +914,8 @@ public class AWSUtil implements CloudUtil {
           EXPECTATION_FAILED,
           "Created object " + objectName + " was not found in bucket " + bucketName);
     }
-    InputStream ois = object.getObjectContent();
     byte[] data = new byte[bytesToRead];
-    try {
+    try (InputStream ois = object.getObjectContent()) {
       ois.read(data);
     } catch (IOException e) {
       throw new PlatformServiceException(

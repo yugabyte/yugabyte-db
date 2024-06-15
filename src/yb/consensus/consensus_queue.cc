@@ -41,6 +41,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/cdc/cdc_error.h"
+
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log_util.h"
@@ -198,8 +200,8 @@ PeerMessageQueue::PeerMessageQueue(const scoped_refptr<MetricEntity>& metric_ent
                                    const string& tablet_id,
                                    const server::ClockPtr& clock,
                                    ConsensusContext* context,
-                                   unique_ptr<ThreadPoolToken> raft_pool_token)
-    : raft_pool_observers_token_(std::move(raft_pool_token)),
+                                   unique_ptr<rpc::Strand> raft_pool_observers_strand)
+    : notifications_strand_(std::move(raft_pool_observers_strand)),
       local_peer_pb_(local_peer_pb),
       local_peer_uuid_(local_peer_pb_.has_permanent_uuid() ? local_peer_pb_.permanent_uuid()
                                                            : string()),
@@ -767,7 +769,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
       Format("The logs from index $0 have been garbage collected and cannot be read ($1)",
              after_op_index, result.status());
     LOG_WITH_PREFIX(INFO) << premature_gc_warning;
-    return STATUS(NotFound, premature_gc_warning);
+    return STATUS(NotFound, premature_gc_warning,
+                  cdc::CDCError(cdc::CDCErrorPB::CHECKPOINT_TOO_OLD));
   }
   if (result.ok()) {
     result->have_more_messages = HaveMoreMessages(result->have_more_messages.get() ||
@@ -1472,7 +1475,7 @@ void PeerMessageQueue::Close() {
     context_->ListenNumSSTFilesChanged(std::function<void()>());
     installed_num_sst_files_changed_listener_ = false;
   }
-  raft_pool_observers_token_->Shutdown();
+  notifications_strand_->Shutdown();
   LockGuard lock(queue_lock_);
   ClearUnlocked();
 }
@@ -1544,19 +1547,21 @@ bool PeerMessageQueue::IsOpInLog(const yb::OpId& desired_op) const {
 
 void PeerMessageQueue::NotifyObserversOfMajorityReplOpChange(
     const MajorityReplicatedData& majority_replicated_data) {
-  WARN_NOT_OK(raft_pool_observers_token_->SubmitClosure(
-      Bind(&PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask,
-           Unretained(this),
-           majority_replicated_data)),
-      LogPrefix() + "Unable to notify RaftConsensus of "
-                           "majority replicated op change.");
+  notifications_strand_->Enqueue(new rpc::StrandTaskWithErrorFunc(
+    [this, majority_replicated_data]() {
+      PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(majority_replicated_data);
+    },
+    [this](const Status& status) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Unable to notify RaftConsensus of majority replicated op change: " << status;
+    }
+  ));
 }
 
 template <class Func>
 void PeerMessageQueue::NotifyObservers(const char* title, Func&& func) {
-  WARN_NOT_OK(
-      raft_pool_observers_token_->SubmitFunc(
-          [this, func = std::move(func)] {
+  notifications_strand_->Enqueue(new rpc::StrandTaskWithErrorFunc(
+      [this, func = std::move(func)] {
         MAYBE_INJECT_RANDOM_LATENCY(FLAGS_consensus_inject_latency_ms_in_notifications);
         std::vector<PeerMessageQueueObserver*> copy;
         {
@@ -1567,8 +1572,11 @@ void PeerMessageQueue::NotifyObservers(const char* title, Func&& func) {
         for (PeerMessageQueueObserver* observer : copy) {
           func(observer);
         }
-      }),
-      Format("$0Unable to notify observers for $1.", LogPrefix(), title));
+      },
+      [this, title](const Status& status) {
+        LOG_WITH_PREFIX(WARNING)
+            << "Unable to notify observers for " << title << ": " << status;
+      }));
 }
 
 void PeerMessageQueue::NotifyObserversOfTermChange(int64_t term) {
@@ -1755,6 +1763,10 @@ std::vector<FollowerCommunicationTime> PeerMessageQueue::GetFollowerCommunicatio
     result.emplace_back(peer_uuid, peer->last_successful_communication_time);
   }
   return result;
+}
+
+void PeerMessageQueue::TEST_WaitForNotificationToFinish() {
+  notifications_strand_->BusyWait();
 }
 
 }  // namespace consensus

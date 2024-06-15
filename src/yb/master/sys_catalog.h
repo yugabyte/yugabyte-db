@@ -54,6 +54,8 @@
 
 #include "yb/tserver/tablet_memory_manager.h"
 
+#include "yb/rpc/thread_pool.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
@@ -180,6 +182,7 @@ class SysCatalogTable {
   static Schema BuildTableSchema();
 
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
+  rpc::ThreadPool* raft_notifications_pool() const { return raft_notifications_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
   ThreadPool* log_sync_pool() const { return log_sync_pool_.get(); }
@@ -211,6 +214,22 @@ class SysCatalogTable {
       int64_t current_term);
 
   Status Visit(VisitorBase* visitor);
+
+  template <template <class> class Loader, typename CatalogEntityWrapper>
+  Status Load(const std::string& type, CatalogEntityWrapper& catalog_entity_wrapper) {
+    Loader<CatalogEntityWrapper> loader(catalog_entity_wrapper);
+    RETURN_NOT_OK_PREPEND(Visit(&loader), "Failed while visiting " + type + " in sys catalog");
+    return Status::OK();
+  }
+
+  template <typename Loader, typename CatalogEntityPB>
+  Status Load(
+      const std::string& type, std::function<Status(const std::string&, const CatalogEntityPB&)>
+                                   catalog_entity_inserter_func) {
+    Loader loader(catalog_entity_inserter_func);
+    RETURN_NOT_OK_PREPEND(Visit(&loader), "Failed while visiting " + type + " in sys catalog");
+    return Status::OK();
+  }
 
   typedef std::function<Status(const ReadHybridTime&, HybridTime*)> ReadRestartFn;
   Status ReadWithRestarts(
@@ -392,6 +411,9 @@ class SysCatalogTable {
 
   // Thread pool for Raft-related operations
   std::unique_ptr<ThreadPool> raft_pool_;
+
+  // Thread pool for callbacks on Raft replication events.
+  std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
 
   // Thread pool for preparing transactions, shared between all tablets.
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;

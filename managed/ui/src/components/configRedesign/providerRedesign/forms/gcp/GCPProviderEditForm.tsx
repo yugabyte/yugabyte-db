@@ -4,6 +4,7 @@ import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useQuery } from 'react-query';
 import { array, mixed, object, string } from 'yup';
+import { useTranslation } from 'react-i18next';
 
 import {
   OptionProps,
@@ -27,11 +28,14 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType,
   VPCSetupTypeLabel
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
+  UseProviderValidationEnabled,
   addItem,
   constructAccessKeysEditPayload,
   deleteItem,
@@ -39,10 +43,11 @@ import {
   generateLowerCaseAlphanumericId,
   getIsFieldDisabled,
   getIsFormDisabled,
+  handleFormSubmitServerError,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
-import { ACCEPTABLE_CHARS } from '../../../../config/constants';
+import { ACCEPTABLE_CHARS, VPC_ID_REGEX } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
@@ -72,8 +77,19 @@ import {
   GCPRegion,
   ImageBundle
 } from '../../types';
-import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
+import { GCPCreateFormErrFields } from './constants';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -94,6 +110,7 @@ export interface GCPProviderEditFormFieldValues {
   providerName: string;
   imageBundles: ImageBundle[];
   regions: CloudVendorRegionField[];
+  sharedVPCProject: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number | null;
@@ -128,7 +145,12 @@ const VALIDATION_SCHEMA = object().shape({
   destVpcId: string().when('vpcSetupType', {
     is: (vpcSetupType: VPCSetupType) =>
       ([VPCSetupType.EXISTING, VPCSetupType.NEW] as VPCSetupType[]).includes(vpcSetupType),
-    then: string().required('Custom GCE Network is required.')
+    then: string()
+      .required('Custom GCE Network is required.')
+      .matches(
+        VPC_ID_REGEX,
+        'Network name cannot contain uppercase letters or special characters other than "-"'
+      )
   }),
   sshKeypairManagement: mixed().when('editSSHKeypair', {
     is: true,
@@ -166,6 +188,8 @@ export const GCPProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
+  const { t } = useTranslation();
 
   const defaultValues = constructDefaultFormValues(providerConfig);
   const formMethods = useForm<GCPProviderEditFormFieldValues>({
@@ -180,24 +204,42 @@ export const GCPProviderEditForm = ({
   );
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.gcp);
+
   if (hostInfoQuery.isError) {
-    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchHostInfo', { keyPrefix: 'queryError' })}
+      />
+    );
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })}
+      />
     );
   }
   if (
     hostInfoQuery.isLoading ||
     hostInfoQuery.isIdle ||
     customerRuntimeConfigQuery.isLoading ||
-    customerRuntimeConfigQuery.isIdle
+    customerRuntimeConfigQuery.isIdle ||
+    isProviderValidationLoading
   ) {
     return <YBLoading />;
   }
 
-  const onFormSubmit: SubmitHandler<GCPProviderEditFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: GCPProviderEditFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -207,15 +249,39 @@ export const GCPProviderEditForm = ({
     }
 
     try {
+      setValidationErrorExist(false);
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
-        await editProvider(providerPayload);
+        await editProvider(providerPayload, {
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                GCPCreateFormErrFields
+              );
+              setValidationErrorExist(true);
+            }
+          }
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
     } catch (error: any) {
       toast.error(error.message ?? error);
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<GCPProviderEditFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<GCPProviderEditFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const onFormReset = () => {
@@ -311,11 +377,15 @@ export const GCPProviderEditForm = ({
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
-    getIsFormDisabled(formMethods.formState, providerConfig);
+    getIsFormDisabled(formMethods.formState, providerConfig) ||
+    !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="gcpProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="gcpProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           {currentProviderVersion < providerConfig.version && (
             <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
@@ -348,6 +418,16 @@ export const GCPProviderEditForm = ({
                   fullWidth
                 />
               </FormField>
+              {!!providerConfig.details.cloudInfo.gcp?.sharedVPCProject && (
+                <FormField>
+                  <FieldLabel>Current Shared VPC Project</FieldLabel>
+                  <YBInput
+                    value={providerConfig.details.cloudInfo.gcp.sharedVPCProject}
+                    disabled={true}
+                    fullWidth
+                  />
+                </FormField>
+              )}
               <FormField>
                 <FieldLabel>Change Cloud Credentials</FieldLabel>
                 <YBToggleField
@@ -397,13 +477,18 @@ export const GCPProviderEditForm = ({
                     </FormField>
                   )}
                   <FormField>
-                    <FieldLabel>GCE Project Name (Optional Override)</FieldLabel>
+                    <FieldLabel
+                      infoTitle="Shared VPC Project"
+                      infoContent="If you want to use Shared VPC to connect resources from multiple projects to a common VPC, you can specify the project for the same here."
+                    >
+                      Shared VPC Project (Optional)
+                    </FieldLabel>
                     <YBInputField
                       control={formMethods.control}
-                      name="gceProject"
+                      name="sharedVPCProject"
                       disabled={getIsFieldDisabled(
                         ProviderCode.GCP,
-                        'gceProject',
+                        'sharedVPCProject',
                         isFormDisabled,
                         isProviderInUse
                       )}
@@ -458,10 +543,7 @@ export const GCPProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -482,6 +564,7 @@ export const GCPProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.GCP}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -489,13 +572,14 @@ export const GCPProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.GCP,
                   'regions',
                   isFormDisabled,
                   isProviderInUse
                 )}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
                 linkedUniverses={linkedUniverses}
                 isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />
@@ -505,18 +589,34 @@ export const GCPProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={ProviderCode.GCP}
+              providerOperation={ProviderOperation.EDIT}
+              providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.GCP,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
+            />
             <FieldGroup heading="SSH Key Pairs">
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.GCP,
-                    'sshUser',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.GCP,
+                      'sshUser',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -527,12 +627,14 @@ export const GCPProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.GCP,
-                    'sshPort',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.GCP,
+                      'sshPort',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -659,9 +761,7 @@ export const GCPProviderEditForm = ({
               </FormField>
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-              </Box>
+              <SubmitInProgress isValidationEnabled={isValidationEnabled} />
             )}
           </Box>
           <Box marginTop="16px">
@@ -671,17 +771,35 @@ export const GCPProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText="Apply Changes"
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}
                 data-testid={`${FORM_NAME}-SubmitButton`}
               />
             </RbacValidator>
+            {isValidationEnabled && isValidationErrorExist && (
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+                isControl
+                overrideStyle={{ float: 'right' }}
+              >
+                <YBButton
+                  btnText="Ignore and save provider configuration anyway"
+                  btnClass="btn btn-default float-right mr-10"
+                  onClick={skipValidationAndSubmit}
+                  disabled={isFormDisabled || formMethods.formState.isValidating}
+                  data-testid={`${FORM_NAME}-IgnoreAndSave`}
+                />
+              </RbacValidator>
+            )}
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
-              onClick={onFormReset}
+              onClick={(e: any) => {
+                onFormReset();
+                e.currentTarget.blur();
+              }}
               disabled={isFormDisabled}
               data-testid={`${FORM_NAME}-ClearButton`}
             />
@@ -774,6 +892,8 @@ const constructProviderPayload = async (
     }
   }
 
+  const imageBundles = constructImageBundlePayload(formValues);
+
   let sshPrivateKeyContent = '';
   try {
     sshPrivateKeyContent =
@@ -812,7 +932,7 @@ const constructProviderPayload = async (
       : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
       ? {
           gceApplicationCredentials: googleServiceAccount,
-          gceProject: formValues.gceProject ?? googleServiceAccount?.project_id ?? '',
+          gceProject: googleServiceAccount?.project_id ?? '',
           useHostCredentials: false
         }
       : assertUnreachableCase(formValues.providerCredentialType);
@@ -844,12 +964,20 @@ const constructProviderPayload = async (
         [ProviderCode.GCP]: {
           ...vpcConfig,
           ...(formValues.editCloudCredentials
-            ? { ...gcpCredentials }
+            ? {
+                ...gcpCredentials,
+                ...(formValues.sharedVPCProject && {
+                  sharedVPCProject: formValues.sharedVPCProject
+                })
+              }
             : {
                 useHostCredentials: cloudInfo.gcp.useHostCredentials,
                 gceProject: cloudInfo.gcp.gceProject,
                 gceApplicationCredentials: cloudInfo.gcp.gceApplicationCredentials,
-                gceApplicationCredentialsPath: cloudInfo.gcp.gceApplicationCredentialsPath
+                gceApplicationCredentialsPath: cloudInfo.gcp.gceApplicationCredentialsPath,
+                ...(cloudInfo.gcp.sharedVPCProject && {
+                  sharedVPCProject: cloudInfo.gcp.sharedVPCProject
+                })
               }),
           ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
         }
@@ -859,7 +987,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
-    imageBundles: formValues.imageBundles,
+    imageBundles,
     regions: [
       ...formValues.regions.map<GCPRegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<GCPProvider, GCPRegion>(
@@ -867,12 +995,10 @@ const constructProviderPayload = async (
           regionFormValues.code
         );
         return {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid
-          }),
+          ...existingRegion,
           code: regionFormValues.code,
           details: {
+            ...existingRegion?.details,
             cloudInfo: {
               [ProviderCode.GCP]: {
                 ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage }),

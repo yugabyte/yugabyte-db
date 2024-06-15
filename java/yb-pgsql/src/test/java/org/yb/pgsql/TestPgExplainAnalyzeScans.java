@@ -58,6 +58,8 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
       stmt.execute(String.format("INSERT INTO %s (SELECT i, i, i %% 1024, i, i, "
         + "i %% 128 FROM generate_series(0, %d) i)", MAIN_TABLE, (NUM_PAGES * 1024 - 1)));
 
+      stmt.execute(String.format("ANALYZE %s", MAIN_TABLE));
+
       // Create table 'bar'
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, v1 INT, "
           +"v2 INT, v3 INT, PRIMARY KEY (k1 ASC, k2 DESC))", SIDE_TABLE));
@@ -73,6 +75,8 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
       // Populate the table
       stmt.execute(String.format("INSERT INTO %s (SELECT i, i %% 128, i, i %% 1024, i "
         + "FROM generate_series(0, %d) i)", SIDE_TABLE, (NUM_PAGES * 1024 - 1)));
+
+      stmt.execute(String.format("ANALYZE %s", SIDE_TABLE));
     }
   }
 
@@ -356,6 +360,34 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
 
       testExplain(String.format(hintedIndexOnlyQuery, MAIN_TABLE, MAIN_RANGE_MC_INDEX,
       MAIN_TABLE, "v1 IN (5119, 5120, 5121)"), checker);
+    }
+  }
+
+  @Test
+  public void testIndexScanConditionAndFilter() throws Exception {
+    final String query = "SELECT * FROM %1$s WHERE %2$s < 1024 AND %2$s %% 2 = 0";
+
+    // Having a condition + filter on a range index scan should produce differing number of rows
+    // scanned for the index and main table.
+    {
+      Checker checker = SCAN_TOP_LEVEL_CHECKER
+          .storageReadRequests(Checkers.equal(2))
+          .storageReadExecutionTime(Checkers.greater(0.0))
+          .plan(makePlanBuilder()
+              .nodeType(NODE_INDEX_SCAN)
+              .actualRows(Checkers.equal(512))
+              .relationName(MAIN_TABLE)
+              .alias(MAIN_TABLE)
+              .indexName(MAIN_RANGE_INDEX)
+              .storageIndexReadRequests(Checkers.equal(1))
+              .storageIndexRowsScanned(Checkers.equal(1024))
+              .storageTableReadRequests(Checkers.equal(1))
+              .storageTableRowsScanned(Checkers.equal(512))
+              .build()
+          )
+          .build();
+
+      testExplain(String.format(query, MAIN_TABLE, "v4", MAIN_RANGE_INDEX), checker);
     }
   }
 }

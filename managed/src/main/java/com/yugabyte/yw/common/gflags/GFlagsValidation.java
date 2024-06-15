@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
@@ -38,6 +39,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -70,6 +72,8 @@ public class GFlagsValidation {
 
   public static final String TSERVER_GFLAG_FILE_NAME = "tserver_flags.xml";
 
+  private static final String GLIBC_VERSION_FIELD_NAME = "glibc_v";
+
   // Skip these test auto flags while computing auto flags in YBA.
   public static final Set<String> TEST_AUTO_FLAGS =
       ImmutableSet.of("TEST_auto_flags_new_install", "TEST_auto_flags_initialized");
@@ -79,6 +83,7 @@ public class GFlagsValidation {
           MASTER_GFLAG_FILE_NAME,
           TSERVER_GFLAG_FILE_NAME,
           Util.AUTO_FLAG_FILENAME,
+          Util.DB_VERSION_METADATA_FILENAME,
           YSQL_MIGRATION_FILES_LIST_FILE_NAME);
 
   public static final String DB_BUILD_WITH_FLAG_FILES = "2.17.0.0-b1";
@@ -103,8 +108,7 @@ public class GFlagsValidation {
         flagStream = FileUtils.getInputStreamOrFail(file);
       } else if (CommonUtils.isReleaseEqualOrAfter(DB_BUILD_WITH_FLAG_FILES, version)) {
         // Fetch gFlags files from DB package if it does not exist
-        ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
-        try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+        try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
           String gFlagFileName =
               serverType.equals(ServerType.MASTER.name())
                   ? MASTER_GFLAG_FILE_NAME
@@ -136,7 +140,7 @@ public class GFlagsValidation {
       AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
       if (mostUsedGFlags) {
         InputStream inputStream =
-            environment.resourceAsStream("gflags_metadata/" + "most_used_gflags.json");
+            environment.resourceAsStream("gflags_metadata/most_used_gflags.json");
         ObjectMapper mapper = new ObjectMapper();
         MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
         List<GFlagDetails> result = new ArrayList<>();
@@ -161,18 +165,54 @@ public class GFlagsValidation {
     }
   }
 
-  public void fetchGFlagFilesFromTarGZipInputStream(
+  public List<GFlagGroup> extractGFlagGroups(String version) throws IOException {
+    InputStream flagStream = null;
+    try {
+      String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
+      flagStream =
+          environment.resourceAsStream(
+              "gflag_groups/" + majorVersion + "/" + Util.GFLAG_GROUPS_FILENAME);
+      if (flagStream == null) {
+        LOG.error("GFlag groups metadata file for " + majorVersion + " is not present");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "GFlag groups metadata file for " + majorVersion + " is not present");
+      }
+      ObjectMapper mapper = new ObjectMapper();
+      List<GFlagGroup> data =
+          mapper.readValue(flagStream, new TypeReference<List<GFlagGroup>>() {});
+      return data;
+    } finally {
+      if (flagStream != null) {
+        flagStream.close();
+      }
+    }
+  }
+
+  public synchronized void fetchGFlagFilesFromTarGZipInputStream(
       InputStream inputStream,
       String dbVersion,
       List<String> requiredGFlagFileList,
       String releasesPath)
       throws IOException {
-    LOG.info("Adding {} files for DB version {}", requiredGFlagFileList, dbVersion);
+    if (requiredGFlagFileList.isEmpty()) {
+      return;
+    }
+    List<String> missingRequiredGFlagFileList =
+        requiredGFlagFileList.stream()
+            .filter(
+                file ->
+                    !(new File(String.format("%s/%s/%s", releasesPath, dbVersion, file))).exists())
+            .collect(Collectors.toList());
+    if (missingRequiredGFlagFileList.isEmpty()) {
+      return;
+    }
+    LOG.info("Adding {} files for DB version {}", missingRequiredGFlagFileList, dbVersion);
     YsqlMigrationFilesList migrationFilesList = new YsqlMigrationFilesList();
     try (TarArchiveInputStream tarInput =
         new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
       TarArchiveEntry currentEntry;
-      while ((currentEntry = tarInput.getNextTarEntry()) != null) {
+      while ((currentEntry = tarInput.getNextEntry()) != null) {
         if (isYSQLMigrationFile(currentEntry.getName())) {
           String migrationFileName = getYsqlMigrationFiles(currentEntry.getName());
           migrationFilesList.ysqlMigrationsFilesList.add(migrationFileName);
@@ -191,7 +231,7 @@ public class GFlagsValidation {
         }
         String gFlagFileName = tarGFlagFilePathList.get(tarGFlagFilePathList.size() - 1);
         // Don't modify/re-write existing gFlags files, only add missing ones.
-        if (!requiredGFlagFileList.contains(gFlagFileName)) {
+        if (!missingRequiredGFlagFileList.contains(gFlagFileName)) {
           continue;
         }
         String absoluteGFlagFileName =
@@ -215,7 +255,7 @@ public class GFlagsValidation {
           }
         }
       }
-      if (requiredGFlagFileList.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)) {
+      if (missingRequiredGFlagFileList.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)) {
         File ysqlMigrationFileListFile =
             new File(
                 String.format(
@@ -250,15 +290,14 @@ public class GFlagsValidation {
     return null;
   }
 
-  public void addDBMetadataFiles(String version, ReleaseManager.ReleaseMetadata rm) {
+  public void addDBMetadataFiles(String version) {
     List<String> missingFiles = getMissingFlagFiles(version);
     if (missingFiles.size() == 0) {
       return;
     }
     LOG.info("Adding {} files for version: {}", missingFiles, version);
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
-    try (InputStream tarGZIPInputStream =
-        releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+    try (InputStream tarGZIPInputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
       fetchGFlagFilesFromTarGZipInputStream(
           tarGZIPInputStream, version, missingFiles, releasesPath);
     } catch (Exception e) {
@@ -301,14 +340,13 @@ public class GFlagsValidation {
     String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     File autoFlagFile = Paths.get(releasesPath, version, Util.AUTO_FLAG_FILENAME).toFile();
     if (!Files.exists(Paths.get(autoFlagFile.getAbsolutePath()))) {
-      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
-      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream, version, Collections.singletonList(Util.AUTO_FLAG_FILENAME), releasesPath);
       } catch (Exception e) {
-        LOG.error("Error in extracting flags form DB package: ", e);
+        LOG.error("Error in extracting flags from DB package: ", e);
         throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Error in extracting flags form DB package");
+            INTERNAL_SERVER_ERROR, "Error in extracting flags from DB package");
       }
     }
     ObjectMapper objectMapper = new ObjectMapper();
@@ -363,7 +401,9 @@ public class GFlagsValidation {
   }
 
   private boolean isFlagFile(String fileName) {
-    return fileName.endsWith("flags.xml") || fileName.endsWith(Util.AUTO_FLAG_FILENAME);
+    return fileName.endsWith("flags.xml")
+        || fileName.endsWith(Util.AUTO_FLAG_FILENAME)
+        || fileName.endsWith(Util.DB_VERSION_METADATA_FILENAME);
   }
 
   private boolean isYSQLMigrationFile(String fileName) {
@@ -382,8 +422,7 @@ public class GFlagsValidation {
         String.format("%s/%s/%s", releasesPath, version, YSQL_MIGRATION_FILES_LIST_FILE_NAME);
     File file = new File(filePath);
     if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
-      ReleaseManager.ReleaseMetadata rm = releaseManager.getReleaseByVersion(version);
-      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version, rm)) {
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream,
             version,
@@ -400,6 +439,34 @@ public class GFlagsValidation {
       YsqlMigrationFilesList data =
           objectMapper.readValue(inputStream, YsqlMigrationFilesList.class);
       return data.ysqlMigrationsFilesList;
+    }
+  }
+
+  public Optional<Double> getGlibcVersion(String version) throws IOException {
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    String filePath =
+        String.format("%s/%s/%s", releasesPath, version, Util.DB_VERSION_METADATA_FILENAME);
+    File file = new File(filePath);
+    if (!Files.exists(Paths.get(file.getAbsolutePath()))) {
+      try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
+        fetchGFlagFilesFromTarGZipInputStream(
+            inputStream,
+            version,
+            Collections.singletonList(Util.DB_VERSION_METADATA_FILENAME),
+            releasesPath);
+      } catch (Exception e) {
+        LOG.error("Error in extracting version metadata from DB package", e);
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error in extracting version metadata form DB package");
+      }
+    }
+    ObjectMapper objectMapper = new ObjectMapper();
+    JsonNode jsonNode = objectMapper.readTree(file);
+    if (jsonNode.has(GLIBC_VERSION_FIELD_NAME)) {
+      String glibc = jsonNode.get(GLIBC_VERSION_FIELD_NAME).asText();
+      return Optional.of(Double.parseDouble(glibc));
+    } else {
+      return Optional.empty();
     }
   }
 

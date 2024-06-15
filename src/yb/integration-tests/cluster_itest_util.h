@@ -58,6 +58,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.pb.h"
@@ -68,6 +69,7 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 
@@ -84,7 +86,6 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
-#include "yb/util/opid.h"
 
 using namespace std::literals;
 
@@ -108,6 +109,7 @@ struct TServerDetails {
   std::unique_ptr<tserver::TabletServerAdminServiceProxy> tserver_admin_proxy;
   std::unique_ptr<consensus::ConsensusServiceProxy> consensus_proxy;
   std::unique_ptr<server::GenericServiceProxy> generic_proxy;
+  std::unique_ptr<tserver::TabletServerBackupServiceProxy> backup_proxy;
 
   TServerDetails();
   ~TServerDetails();

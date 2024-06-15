@@ -269,8 +269,11 @@ class ClientStressTest_LowMemory : public ClientStressTest {
     const int kMemLimitBytes = RegularBuildVsSanitizers(64_MB, 2_MB);
     ExternalMiniClusterOptions opts;
 
-    opts.extra_tserver_flags = { Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes),
-                                 "--memory_limit_soft_percentage=0"s };
+    opts.extra_tserver_flags = {
+        Substitute("--memory_limit_hard_bytes=$0", kMemLimitBytes),
+        "--memory_limit_soft_percentage=0"s};
+    // Turn off tablet guardrail otherwise we fail due to insufficient memory for tablets:
+    opts.extra_master_flags = {"--tablet_replicas_per_gib_limit=0"s};
 
     opts.num_tablet_servers = 3;
     return opts;

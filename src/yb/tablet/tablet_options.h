@@ -43,7 +43,7 @@ struct RocksDBPriorityThreadPoolMetrics;
 
 namespace yb {
 
-class AutoFlagsManager;
+class AutoFlagsManagerBase;
 class Env;
 class MemTracker;
 class MetricRegistry;
@@ -86,13 +86,14 @@ struct TabletInitData {
   TransactionManagerProvider transaction_manager_provider;
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;
-  AutoFlagsManager* auto_flags_manager = nullptr;
+  AutoFlagsManagerBase* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
   client::YBMetaDataCache* metadata_cache;
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version = nullptr;
+  rpc::Messenger* messenger = nullptr;
 };
 
 } // namespace tablet

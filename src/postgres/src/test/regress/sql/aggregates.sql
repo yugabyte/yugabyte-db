@@ -331,6 +331,16 @@ select distinct min(f1), max(f1) from minmaxtest;
 
 drop table minmaxtest cascade;
 
+-- DISTINCT can also trigger wrong answers with hash aggregation (bug #18465)
+begin;
+set local enable_sort = off;
+explain (costs off)
+  select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+  from int4_tbl t0;
+select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+from int4_tbl t0;
+rollback;
+
 -- check for correct detection of nested-aggregate errors
 select max(min(unique1)) from tenk1;
 select (select max(min(unique1)) from int8_tbl) from tenk1;
@@ -954,3 +964,10 @@ select v||'a', case v||'a' when 'aa' then 1 else 0 end, count(*)
 select v||'a', case when v||'a' = 'aa' then 1 else 0 end, count(*)
   from unnest(array['a','b']) u(v)
  group by v||'a' order by 1;
+
+-- Make sure that generation of HashAggregate for uniqification purposes
+-- does not lead to array overflow due to unexpected duplicate hash keys
+-- see CAFeeJoKKu0u+A_A9R9316djW-YW3-+Gtgvy3ju655qRHR3jtdA@mail.gmail.com
+explain (costs off)
+  select 1 from tenk1
+   where (hundred, thousand) in (select twothousand, twothousand from onek);

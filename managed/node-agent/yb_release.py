@@ -52,8 +52,8 @@ parser.add_argument('--destination', help='Copy release to Destination directory
 parser.add_argument('--pre_release', help='Generate pre-release packages.', action='store_true')
 parser.add_argument('--include_pex', help='Include pex env for node agent',
                     action='store_true')
+# Because we don't know whats the best way to send this argument
 args = parser.parse_args()
-
 try:
     init_env(logging.INFO)
     if not os.path.exists(args.destination):

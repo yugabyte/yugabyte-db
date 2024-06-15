@@ -50,6 +50,7 @@
 #endif  // YB_GPERFTOOLS_TCMALLOC
 
 #include <fstream>
+#include <iomanip>
 #include <string>
 #include <vector>
 
@@ -62,9 +63,10 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/server/pprof-path-handlers_util.h"
 #include "yb/server/webserver.h"
+#include "yb/server/html_print_helper.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
@@ -72,10 +74,11 @@
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
 #include "yb/util/symbolize.h"
-#include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/tcmalloc_profile.h"
+#include "yb/util/tcmalloc_util.h"
+#include "yb/util/url-coding.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
-DECLARE_bool(enable_process_lifetime_heap_sampling);
 DECLARE_string(heap_profile_path);
 DECLARE_string(tmp_dir);
 
@@ -111,6 +114,77 @@ SampleOrder ParseSampleOrder(const Webserver::ArgumentMap& parsed_args) {
   return SampleOrder::kSampledCount;
 }
 
+namespace {
+std::string FormatNumericTableRow(const std::string& value) {
+  return Format("<td align=\"right\">$0</td>", value);
+}
+
+std::string FormatNumericTableRow(int64_t value) {
+  return FormatNumericTableRow(SimpleItoaWithCommas(value));
+}
+
+std::string FormatNumericTableRow(std::optional<int64_t> value) {
+  if (value) {
+    return FormatNumericTableRow(*value);
+  }
+  return FormatNumericTableRow("N/A");
+}
+
+void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples,
+    const std::string& title, size_t max_call_stacks, SampleOrder order) {
+  // Generate the output table.
+  (*output) << std::fixed;
+  (*output) << std::setprecision(2);
+  (*output) << Format("<b>Top $0 call stacks for:</b> $1<br>\n", max_call_stacks, title);
+  if (samples.size() > max_call_stacks) {
+    (*output) << Format("$0 call stacks omitted<br>\n", samples.size() - max_call_stacks);
+  }
+  (*output) << Format("<b>Ordering call stacks by:</b> $0<br>\n", order);
+  (*output) << Format(
+      "<b>Current sampling frequency:</b> $0 bytes (on average)<br>\n",
+      GetTCMallocSamplingFrequency());
+  (*output) << Format("Values shown below are for allocations still in use "
+      "(i.e., objects that have been deallocated are not included)<br>\n");
+  (*output) << "<p>\n";
+  (*output) << "<table style=\"border-collapse: collapse\" border=1>\n";
+  (*output) << "<style>td, th { padding: 5px; }</style>";
+  (*output) << "<tr>\n";
+  (*output) << "<th>Estimated Bytes</th>\n";
+  (*output) << "<th>Estimated Count</th>\n";
+  (*output) << "<th>Avg Bytes Per Allocation</th>\n";
+  (*output) << "<th>Sampled Bytes</th>\n";
+  (*output) << "<th>Sampled Count</th>\n";
+  (*output) << "<th>Call Stack</th>\n";
+  (*output) << "</tr>\n";
+
+  for (size_t i = 0; i < std::min(max_call_stacks, samples.size()); ++i) {
+    const auto& entry = samples.at(i);
+    (*output) << "<tr>";
+
+    (*output) << FormatNumericTableRow(entry.second.estimated_bytes);
+
+    (*output) << FormatNumericTableRow(entry.second.estimated_count);
+
+    std::optional<int64_t> avg_bytes;
+    if (entry.second.sampled_count > 0) {
+      avg_bytes = std::round(
+          static_cast<double>(entry.second.sampled_allocated_bytes) / entry.second.sampled_count);
+    }
+    (*output) << FormatNumericTableRow(avg_bytes);
+
+    (*output) << FormatNumericTableRow(entry.second.sampled_allocated_bytes);
+
+    (*output) << FormatNumericTableRow(entry.second.sampled_count);
+
+    // Call stack.
+    (*output) << Format("<td><pre>$0</pre></td>", EscapeForHtmlToString(entry.first));
+
+    (*output) << "</tr>";
+  }
+  (*output) << "</table>";
+}
+} // namespace
+
 // pprof asks for the url /pprof/heap to get heap information. This should be implemented
 // by calling HeapProfileStart(filename), continue to do work, and then, some number of
 // seconds later, call GetHeapProfile() followed by HeapProfilerStop().
@@ -128,6 +202,7 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
   // Whether to only report allocations that do not have a corresponding deallocation.
   bool only_growth = ParseLeadingBoolValue(
       FindWithDefault(req.parsed_args, "only_growth", ""), false);
+  SampleFilter filter = only_growth ? SampleFilter::kGrowthOnly : SampleFilter::kAllSamples;
 
   SampleOrder order = ParseSampleOrder(req.parsed_args);
 
@@ -146,7 +221,7 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
     (*output) << profile.status().message();
     return;
   }
-  auto samples = AggregateAndSortProfile(*profile, only_growth, order);
+  auto samples = AggregateAndSortProfile(*profile, filter, order);
   GenerateTable(output, samples, title, 1000 /* max_call_stacks */, order);
 #endif  // YB_GOOGLE_TCMALLOC
 
@@ -174,41 +249,21 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 #endif  // YB_TCMALLOC_ENABLED
 }
 
-void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
-                              Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-#if !YB_TCMALLOC_ENABLED
-  (*output) << "Heap snapshot is only available if tcmalloc is enabled.";
-  return;
-#else
-  if (!FLAGS_enable_process_lifetime_heap_sampling) {
-    (*output) << "FLAGS_enable_process_lifetime_heap_sampling must be set to true to for heap "
-              << "snapshot to work.";
-    return;
-  }
-
+void PprofHeapSnapshotHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
   bool peak_heap = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "peak_heap", ""), false);
   SampleOrder order = ParseSampleOrder(req.parsed_args);
 
-  string title = peak_heap ? "Peak heap snapshot" : "Current heap snapshot";
-#ifdef YB_GOOGLE_TCMALLOC
-  auto profile = GetHeapSnapshot(
-      peak_heap ? HeapSnapshotType::kPeakHeap : HeapSnapshotType::kCurrentHeap);
-  vector<Sample> samples = AggregateAndSortProfile(profile, false /* only_growth */, order);
-#elif YB_GPERFTOOLS_TCMALLOC
-  if (peak_heap) {
-    (*output) << "peak_heap is not supported with gperftools tcmalloc";
+  Result<vector<Sample>> sample_result = GetAggregateAndSortHeapSnapshot(
+      order, peak_heap ? HeapSnapshotType::kPeakHeap : HeapSnapshotType::kCurrentHeap);
+  if (!sample_result.ok()) {
+    (*output) << sample_result.status().message();
     return;
   }
-  if (order != SampleOrder::kSampledBytes && order != SampleOrder::kSampledCount) {
-    (*output) << Format("Order \"$0\" is not supported with gperftools tcmalloc", order);
-    return;
-  }
-  vector<Sample> samples = GetAggregateAndSortHeapSnapshot(order);
-#endif // YB_GPERFTOOLS_TCMALLOC
+  vector<Sample> samples = sample_result.get();
 
+  string title = peak_heap ? "Peak heap snapshot" : "Current heap snapshot";
   GenerateTable(output, samples, title, 1000 /* max_call_stacks */, order);
-#endif // YB_TCMALLOC_ENABLED
 }
 
 // pprof asks for the url /pprof/profile?seconds=XX to get cpu-profiling information.
@@ -342,6 +397,47 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
       pieces.size(), invalid_addrs, missing_symbols);
 }
 
+static void PprofCallsiteProfileHandler(
+    const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp) {
+  HtmlPrintHelper html_print_helper(resp->output);
+
+  bool reset = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "reset", ""), false);
+  if (req.request_method == "GET") {
+    if (reset) {
+      ResetCallsiteProfile();
+    }
+    auto profile = GetCallsiteProfile();
+
+    // Sort by reverse count. The user can sort by other fields by clicking header columns.
+    sort(profile.begin(), profile.end(),
+         [](const auto& a, const auto& b) {
+           return a.count > b.count;
+         });
+
+    auto timing_stats = html_print_helper.CreateTablePrinter(
+        "timing_stats",
+          {"File",
+          "Line number",
+          "Function",
+          "Code",
+          "Count",
+          "Cycles",
+          "Average Cycles",
+          "Microseconds",
+          "Avg Microseconds"});
+
+    for (const auto& entry : profile) {
+      timing_stats.AddRow(
+          EscapeForHtmlToString(entry.file_path), entry.line_number,
+          EscapeForHtmlToString(entry.function_name), EscapeForHtmlToString(entry.code_line),
+          entry.count, entry.total_cycles, StringPrintf("%.3f", entry.avg_cycles), entry.total_usec,
+          StringPrintf("%.3f", entry.avg_usec));
+    }
+    timing_stats.Print();
+  }
+}
+
 void AddPprofPathHandlers(Webserver* webserver) {
   // Path handlers for remote pprof profiling. For information see:
   // https://gperftools.googlecode.com/svn/trunk/doc/pprof_remote_servers.html
@@ -365,6 +461,8 @@ void AddPprofPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/pprof/contention", "", PprofContentionHandler,
       false /* is_styled */, false /* is_on_nav_bar */);
   webserver->RegisterPathHandler("/pprof/heap_snapshot", "", PprofHeapSnapshotHandler,
+      true /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/pprof/callsite_profile", "", PprofCallsiteProfileHandler,
       true /* is_styled */, false /* is_on_nav_bar */);
 }
 

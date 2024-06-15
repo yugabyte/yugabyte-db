@@ -65,8 +65,7 @@ CREATE INDEX NONCONCURRENTLY igin ON vectors USING ybgin (v);
 
 -- Avoid fetching primary key and fetch secondary key instead since
 --   there is already an LSM index on the primary key and LSM supports distinct index scan.
--- XXX: Explain output also shows memory consumed for sort.
---      This can be handled using regex but leave it be for readability.
+SET yb_explain_hide_non_deterministic_fields = true;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM vectors;
 SELECT DISTINCT v FROM vectors;
 

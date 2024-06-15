@@ -77,25 +77,31 @@ public class CloudRegionHelper {
     final Region region = createdRegion;
     String customImageId = metadata.customImageId;
     String architecture = metadata.architecture != null ? metadata.architecture.name() : null;
-    if (!confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
-      if (customImageId != null && !customImageId.isEmpty()) {
-        region.setYbImage(customImageId);
-        region.update();
-      } else {
-        switch (CloudType.valueOf(provider.getCode())) {
-            // Intentional fallthrough for AWS, Azure & GCP should be covered the same way.
-          case aws:
-          case gcp:
-          case azu:
-            // Setup default image, if no custom one was specified.
-            String defaultImage = queryHelper.getDefaultImage(region, architecture);
-            if (defaultImage == null || defaultImage.isEmpty()) {
-              throw new RuntimeException("Could not get default image for region: " + regionCode);
-            }
-            region.setYbImage(defaultImage);
-            region.update();
-            break;
-        }
+    if (customImageId != null && !customImageId.isEmpty()) {
+      // Backward compatiblity.
+      // In case custom image is specified use that so that imageBundle points to the correct
+      // image reference.
+      region.setYbImage(customImageId);
+      region.update();
+    } else if (!confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      /*
+       * Todo: Remove this once flag `yb.provider.vm_os_pathcing` turned on by default, else
+       * the instances will not be correctly configured for the region b/c of missing arch
+       * in the region object.
+       */
+      switch (CloudType.valueOf(provider.getCode())) {
+          // Intentional fallthrough for AWS, Azure & GCP should be covered the same way.
+        case aws:
+        case gcp:
+        case azu:
+          // Setup default image, if no custom one was specified.
+          String defaultImage = queryHelper.getDefaultImage(region, architecture);
+          if (defaultImage == null || defaultImage.isEmpty()) {
+            throw new RuntimeException("Could not get default image for region: " + regionCode);
+          }
+          region.setYbImage(defaultImage);
+          region.update();
+          break;
       }
 
       // Attempt to find architecture for AWS providers.

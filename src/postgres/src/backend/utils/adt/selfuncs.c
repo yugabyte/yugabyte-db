@@ -2238,7 +2238,8 @@ rowcomparesel(PlannerInfo *root,
 	bool		is_join_clause;
 
 	/* Build equivalent arg list for single operator */
-	opargs = list_make2(linitial(clause->largs), linitial(clause->rargs));
+	opargs = list_make2(linitial(clause->largs),
+		linitial(castNode(List, clause->rargs)));
 
 	/*
 	 * Decide if it's a join clause.  This should match clausesel.c's
@@ -6698,8 +6699,9 @@ deconstruct_indexquals(IndexPath *path)
 			}
 			else
 			{
-				Assert(match_index_to_operand((Node *) linitial(rc->rargs),
-											  indexcol, index));
+				Assert(match_index_to_operand(
+					(Node *) linitial(castNode(List, rc->rargs)),
+						indexcol, index));
 				qinfo->varonleft = false;
 				qinfo->other_operand = (Node *) rc->largs;
 			}
@@ -7606,6 +7608,20 @@ gincost_pattern(IndexOptInfo *index, int indexcol,
 		return false;
 	}
 
+	if (IsYugaByteEnabled() && index->relam == YBGIN_AM_OID &&
+		searchMode != GIN_SEARCH_MODE_DEFAULT)
+	{
+		/*
+		 * TODO(#7850): for ybgin, non-default search mode queries aren't
+		 * supported yet.
+		 *
+		 * Piggyback on haveFullScan, which the caller translates to
+		 * disable_cost.
+		 */
+		counts->haveFullScan = true;
+		return true;
+	}
+
 	for (i = 0; i < nentries; i++)
 	{
 		/*
@@ -7845,6 +7861,18 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	/* Do preliminary analysis of indexquals */
 	qinfos = deconstruct_indexquals(path);
 
+	if (IsYugaByteEnabled() && index->relam == YBGIN_AM_OID &&
+		list_length(qinfos) > 1)
+	{
+		/*
+		 * TODO(#7850): for ybgin, queries using multiple scan keys aren't
+		 * supported yet.
+		 */
+		*indexStartupCost = *indexTotalCost =
+			yb_test_ybgin_disable_cost_factor * disable_cost;
+		return;
+	}
+
 	/*
 	 * Obtain statistical information from the meta page, if possible.  Else
 	 * set ginStats to zeroes, and we'll cope below.
@@ -8008,6 +8036,16 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 
 	if (counts.haveFullScan || indexQuals == NIL)
 	{
+		if (IsYugaByteEnabled() && index->relam == YBGIN_AM_OID)
+		{
+			/*
+			 * TODO(#7850): for ybgin, full scan is not supported.
+			 */
+			*indexStartupCost = *indexTotalCost =
+				yb_test_ybgin_disable_cost_factor * disable_cost;
+			return;
+		}
+
 		/*
 		 * Full index scan will be required.  We treat this as if every key in
 		 * the index had been listed in the query; is that reasonable?

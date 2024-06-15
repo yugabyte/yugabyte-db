@@ -104,6 +104,9 @@ class MacLibraryPackager:
         extra_postgres_libs = [
             find_library_by_glob(os.path.join(extra_postgres_libs_dir_glob, lib_name))
             for lib_name in ['libedit.dylib', 'libldap-2.4.2.dylib', 'libldap_r-2.4.2.dylib']]
+
+        extra_postgres_libs.append(os.path.join(src, 'lib', 'libysql_bench_metrics_handler.dylib'))
+
         for extra_postgres_lib in extra_postgres_libs:
             logging.info("Extra library for Postgres: %s", extra_postgres_lib)
         processed_libs = []

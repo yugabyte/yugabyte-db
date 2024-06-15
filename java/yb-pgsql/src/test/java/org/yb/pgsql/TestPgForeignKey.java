@@ -37,13 +37,8 @@ public class TestPgForeignKey extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    flagMap.put("enable_wait_queues", "false");
+    flagMap.putAll(FailOnConflictTestGflags);
     return flagMap;
-  }
-
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
   }
 
   @After
@@ -51,11 +46,6 @@ public class TestPgForeignKey extends BasePgSQLTest {
     // For this test tear down entire cluster between tests.
     tearDownAfter();
     pgInitialized = false;
-  }
-
-  @Test
-  public void testPgRegress() throws Exception {
-    runPgRegressTest("yb_foreign_key_serial_schedule");
   }
 
   private void checkRows(Statement statement,

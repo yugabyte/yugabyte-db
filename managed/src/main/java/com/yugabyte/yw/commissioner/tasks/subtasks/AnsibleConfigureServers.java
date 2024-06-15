@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -33,6 +34,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -96,6 +99,19 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     public AuditLogConfig auditLogConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
+    public boolean overrideNodePorts = false;
+    // Supplier for master addresses override which is invoked only when the subtask starts
+    // execution.
+    @Nullable public Supplier<String> masterAddrsOverride;
+
+    @JsonIgnore
+    public String getMasterAddrsOverride() {
+      String masterAddresses = masterAddrsOverride == null ? null : masterAddrsOverride.get();
+      if (StringUtils.isNotBlank(masterAddresses)) {
+        log.info("Using the master addresses {} from the override", masterAddresses);
+      }
+      return masterAddresses;
+    }
   }
 
   @Override

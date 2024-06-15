@@ -64,7 +64,7 @@ Configure your `west` partition leader preference to place the leader in `us-wes
 ```plpgsql
 --  tablespace for west data
 CREATE TABLESPACE west WITH (
-    replica_placement='{"num_replicas": 3, 
+    replica_placement='{"num_replicas": 3,
     "placement_blocks":[
         {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1,"leader_preference":1},
         {"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":1,"leader_preference":2},
@@ -80,7 +80,7 @@ Similarly, set up your east partitions in `us-east-1`, `us-east-2`, and `us-west
 ```plpgsql
 --  tablespace for east data
 CREATE TABLESPACE east WITH (
-    replica_placement='{"num_replicas": 3, 
+    replica_placement='{"num_replicas": 3,
     "placement_blocks":[
         {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1,"leader_preference":1},
         {"cloud":"aws","region":"us-east-2","zone":"us-east-2a","min_num_replicas":1,"leader_preference":2},
@@ -111,6 +111,6 @@ This pattern helps applications running in different regions to have low read an
 
 ## Learn more
 
-- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
+- [Tablespaces](../../../explore/going-beyond-sql/tablespaces/)
 - [Table partitioning](../../../explore/ysql-language-features/advanced-features/partitions/)
 - [Row level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)

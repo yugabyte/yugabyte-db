@@ -109,6 +109,17 @@ public class Commissioner {
    * @param taskParams the task parameters.
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
+    return submit(taskType, taskParams, null);
+  }
+
+  /**
+   * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
+   *
+   * @param taskType the task type.
+   * @param taskParams the task parameters.
+   * @param taskUUID the task UUID
+   */
+  public UUID submit(TaskType taskType, ITaskParams taskParams, UUID taskUUID) {
     RunnableTask taskRunnable = null;
     try {
       if (runtimeConfGetter.getGlobalConf(
@@ -120,11 +131,11 @@ public class Commissioner {
             "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
       }
       // Create the task runnable object based on the various parameters passed in.
-      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
+      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       onTaskCreated(taskRunnable, taskParams);
-      UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
+      taskUUID = taskExecutor.submit(taskRunnable, executor);
       // Add this task to our queue.
       runningTasks.put(taskUUID, taskRunnable);
       return taskRunnable.getTaskUUID();
@@ -210,7 +221,7 @@ public class Commissioner {
         if (currentLatch == null || currentLatch != latch) {
           break;
         }
-        Thread.sleep(100);
+        Thread.sleep(10);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
@@ -236,6 +247,9 @@ public class Commissioner {
     // Add some generic information about the task
     responseJson.put("title", task.getFriendlyDescription());
     responseJson.put("createTime", task.getCreateTime().toString());
+    if (task.getCompletionTime() != null) {
+      responseJson.put("completionTime", task.getCompletionTime().toString());
+    }
     responseJson.put("target", task.getTargetName());
     responseJson.put("targetUUID", task.getTargetUUID().toString());
     responseJson.put("type", task.getType().name());
@@ -264,6 +278,11 @@ public class Commissioner {
     ObjectNode versionNumbers = getVersionInfo(task, taskInfo);
     if (versionNumbers != null && !versionNumbers.isEmpty()) {
       details.set("versionNumbers", versionNumbers);
+    }
+    // Add auditLogConfig from the task details if it is present.
+    // This info is useful to render the UI properly while task is in progress.
+    if (taskInfo.getTaskParams().has("auditLogConfig")) {
+      details.set("auditLogConfig", taskInfo.getTaskParams().get("auditLogConfig"));
     }
     responseJson.set("details", details);
 
@@ -298,17 +317,23 @@ public class Commissioner {
 
   public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {
     ObjectNode versionNumbers = Json.newObject();
-    JsonNode taskDetails = taskInfo.getDetails();
+    JsonNode taskParams = taskInfo.getTaskParams();
     if (ImmutableSet.of(
-                CustomerTask.TaskType.SoftwareUpgrade, CustomerTask.TaskType.RollbackUpgrade)
-            .contains(task.getType())
-        && taskDetails.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
-      versionNumbers.put(
-          Commissioner.YB_PREV_SOFTWARE_VERSION,
-          taskDetails.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
-      versionNumbers.put(
-          Commissioner.YB_SOFTWARE_VERSION,
-          taskDetails.get(Commissioner.YB_SOFTWARE_VERSION).asText());
+            CustomerTask.TaskType.SoftwareUpgrade,
+            CustomerTask.TaskType.RollbackUpgrade,
+            CustomerTask.TaskType.FinalizeUpgrade)
+        .contains(task.getType())) {
+      if (taskParams.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
+        versionNumbers.put(
+            Commissioner.YB_PREV_SOFTWARE_VERSION,
+            taskParams.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
+      }
+
+      if (taskParams.has(Commissioner.YB_SOFTWARE_VERSION)) {
+        versionNumbers.put(
+            Commissioner.YB_SOFTWARE_VERSION,
+            taskParams.get(Commissioner.YB_SOFTWARE_VERSION).asText());
+      }
     }
     return versionNumbers;
   }
@@ -374,10 +399,10 @@ public class Commissioner {
         UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD);
   }
 
-  public JsonNode getTaskDetails(UUID taskUUID) {
+  public JsonNode getTaskParams(UUID taskUUID) {
     Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
     if (optional.isPresent()) {
-      return optional.get().getDetails();
+      return optional.get().getTaskParams();
     }
     throw new PlatformServiceException(
         BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);

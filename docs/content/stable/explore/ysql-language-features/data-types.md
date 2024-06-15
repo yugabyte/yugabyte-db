@@ -1,5 +1,6 @@
 ---
-title: Data types in YSQL
+title: YSQL data types
+headertitle: Data types
 linkTitle: Data types
 description: Data types in YSQL
 menu:
@@ -12,7 +13,7 @@ type: docs
 
 This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types.
 
-The [JSONB document data type](../../json-support/jsonb-ysql/) is described in a separate section.
+The [JSONB document data type](../jsonb-ysql/) is described in a separate section.
 
 {{% explore-setup-single %}}
 

@@ -84,7 +84,7 @@ $ ./bin/yb-tserver \
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-Note that all of the master addresses have to be provided using the [`--tserver_master_addrs`](../../../reference/configuration/yb-master/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region`, and `placement_zone` values appropriately.
+Note that all of the master addresses have to be provided using the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region`, and `placement_zone` values appropriately.
 
 As with the YB-Masters, set the [`--leader_failure_max_missed_heartbeat_periods`](../../../reference/configuration/yb-tserver/#leader-failure-max-missed-heartbeat-periods) flag to `10` to account for higher RPC latencies.
 
@@ -109,9 +109,9 @@ Verify by running the following:
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-Confirm that the output looks similar to the following with [`--min_num_replicas`](../../../reference/configuration/yb-tserver/#min-num-replicas) set to `1` for each AZ:
+Confirm that the output looks similar to the following with `min_num_replicas` set to 1 for each AZ:
 
-```json
+```yaml
 replication_info {
   live_replicas {
     num_replicas: 3

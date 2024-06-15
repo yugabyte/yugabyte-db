@@ -37,13 +37,18 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
-
+    Universe universe = null;
     try {
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
-      Universe universe =
+      universe =
           lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
@@ -56,7 +61,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
                 // Set non on-prem node UUIDs.
                 setCloudNodeUuids(u);
                 // Update on-prem node UUIDs.
-                updateOnPremNodeUuidsOnTaskParams();
+                updateOnPremNodeUuidsOnTaskParams(true);
                 // Set the prepared data to universe in-memory.
                 updateUniverseNodesAndSettings(u, taskParams(), true);
                 u.getUniverseDetails()
@@ -152,17 +157,26 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      // Mark the update of the universe as done. This will allow future edits/updates to the
-      // universe to happen.
-      Universe universe = unlockUniverseForUpdate();
-      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
-        universe.updateConfig(
-            ImmutableMap.of(
-                Universe.USE_CUSTOM_IMAGE,
-                Boolean.toString(
-                    universe.getUniverseDetails().nodeDetailsSet.stream()
-                        .allMatch(n -> n.ybPrebuiltAmi))));
-        universe.save();
+      if (universe != null) {
+        // Universe is locked by this task.
+        try {
+          // Fetch the latest universe.
+          universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+          if (universe
+              .getConfig()
+              .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+              .equals("true")) {
+            universe.updateConfig(
+                ImmutableMap.of(
+                    Universe.USE_CUSTOM_IMAGE,
+                    Boolean.toString(
+                        universe.getUniverseDetails().nodeDetailsSet.stream()
+                            .allMatch(n -> n.ybPrebuiltAmi))));
+            universe.save();
+          }
+        } finally {
+          unlockUniverseForUpdate();
+        }
       }
     }
     log.info("Finished {} task.", getName());

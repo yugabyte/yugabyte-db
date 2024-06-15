@@ -122,7 +122,13 @@ export const UniverseForm: FC<UniverseFormProps> = ({
     return (
       <>
         <Typography className={classes.headerFont}>
-          {isNewUniverse ? t('universeForm.createUniverse') : getValues(UNIVERSE_NAME_FIELD)}
+          {isNewUniverse ? (
+            t('universeForm.createUniverse')
+          ) : (
+            <a href={`/universes/${universeUUID}`} className={classes.headerText}>
+              {getValues(UNIVERSE_NAME_FIELD)}
+            </a>
+          )}
         </Typography>
         {!isNewUniverse && (
           <Typography className={classes.subHeaderFont}>
@@ -132,8 +138,8 @@ export const UniverseForm: FC<UniverseFormProps> = ({
                 ? t('universeForm.viewPrimary')
                 : t('universeForm.editUniverse')
               : isViewMode
-                ? t('universeForm.viewReadReplica')
-                : t('universeForm.configReadReplica')}
+              ? t('universeForm.viewReadReplica')
+              : t('universeForm.configReadReplica')}
           </Typography>
         )}
         {onClusterTypeChange && (
@@ -247,12 +253,12 @@ export const UniverseForm: FC<UniverseFormProps> = ({
                     if (isPrimary) return hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE);
                     // if the universe is already created , then we need update universe perm
                     // or else we need universe create perm
-                    return universeUUID === undefined ?
-                      hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE) :
-                      hasNecessaryPerm({
-                        ...ApiPermissionMap.MODIFY_UNIVERSE,
-                        onResource: universeUUID
-                      });
+                    return universeUUID === undefined
+                      ? hasNecessaryPerm(ApiPermissionMap.CREATE_UNIVERSE)
+                      : hasNecessaryPerm({
+                          ...ApiPermissionMap.MODIFY_UNIVERSE,
+                          onResource: universeUUID
+                        });
                   }
                   // for edit mode , we need universe.update perm
                   return hasNecessaryPerm({
@@ -286,7 +292,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
         {isPrimary && (
           <>
             <SecurityConfiguration runtimeConfigs={runtimeConfigs} />
-            <AdvancedConfiguration />
+            <AdvancedConfiguration runtimeConfigs={runtimeConfigs} />
           </>
         )}
         <GFlags runtimeConfigs={runtimeConfigs} />

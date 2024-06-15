@@ -18,10 +18,7 @@
 #include "yb/util/flags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
-DEFINE_UNKNOWN_int32(pgsql_rpc_keepalive_time_ms, 0,
-             "If an RPC connection from a client is idle for this amount of time, the server "
-             "will disconnect the client. Setting flag to 0 disables this clean up.");
-TAG_FLAG(pgsql_rpc_keepalive_time_ms, advanced);
+DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
 DEFINE_UNKNOWN_int32(pggate_rpc_timeout_secs, 60,
              "Timeout for RPCs from pggate to YB cluster");
@@ -36,8 +33,7 @@ DEFINE_UNKNOWN_string(pggate_master_addresses, "",
 DEFINE_UNKNOWN_int32(pggate_tserver_shm_fd, -1,
               "File descriptor of the local tablet server's shared memory.");
 
-DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
-              "Ignore the shared memory of the local tablet server.");
+DEPRECATE_FLAG(bool, TEST_pggate_ignore_tserver_shm, "02_2024");
 
 DEFINE_UNKNOWN_int32(ysql_request_limit, 1024,
              "Maximum number of requests to be sent at once");
@@ -53,9 +49,6 @@ DEFINE_UNKNOWN_uint64(ysql_session_max_batch_size, 3072,
 
 DEFINE_UNKNOWN_bool(ysql_non_txn_copy, false,
             "Execute COPY inserts non-transactionally.");
-
-DEFINE_UNKNOWN_int32(ysql_max_read_restart_attempts, 20,
-             "How many read restarts can we try transparently before giving up");
 
 DEFINE_test_flag(bool, ysql_disable_transparent_cache_refresh_retry, false,
     "Never transparently retry commands that fail with cache version mismatch error");
@@ -113,11 +106,12 @@ DEFINE_UNKNOWN_int32(ysql_select_parallelism, -1,
             "Number of read requests to issue in parallel to tablets of a table "
             "for SELECT.");
 
-DEFINE_UNKNOWN_int32(ysql_max_write_restart_attempts, 20,
-             "Max number of restart attempts made for writes on transaction conflicts.");
-
 DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
+
+DEPRECATE_FLAG(int32, ysql_max_read_restart_attempts, "12_2023");
+
+DEPRECATE_FLAG(int32, ysql_max_write_restart_attempts, "12_2023");
 
 // Flag for disabling runContext to Postgres's portal. Currently, each portal has two contexts.
 // - PortalContext whose lifetime lasts for as long as the Portal object.
@@ -145,9 +139,6 @@ DEFINE_NON_RUNTIME_bool(
 DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
              "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");
 
-DEFINE_test_flag(bool, yb_test_fail_matview_refresh_after_creation, false,
-                 "Fail a refresh on a matview after the creation of a new relation.");
-
 DEFINE_UNKNOWN_int32(ysql_num_databases_reserved_in_db_catalog_version_mode, 10,
              "In per database catalog version mode, if the number of existing databases "
              "are within this number to the maximum number of databases allowed, then "
@@ -161,6 +152,3 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_create_database_oid_collision_retry, true,
 TAG_FLAG(ysql_enable_create_database_oid_collision_retry, advanced);
 
 DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
-
-DEFINE_test_flag(bool, yb_enable_ash, false,
-                 "True to enable Active Session History");

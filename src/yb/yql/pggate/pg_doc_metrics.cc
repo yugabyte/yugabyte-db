@@ -29,6 +29,10 @@ inline void IncWrite(YBCPgExecReadWriteStats* stat) {
   ++stat->writes;
 }
 
+inline void IncRowsScanned(YBCPgExecReadWriteStats* stat, uint64_t count) {
+  stat->rows_scanned += count;
+}
+
 YBCPgExecReadWriteStats& GetStat(YBCPgExecStatsState* state, TableType relation) {
   switch (relation) {
     case TableType::SYSTEM:
@@ -80,6 +84,7 @@ void PgDocMetrics::FlushRequest(uint64_t wait_time) {
 }
 
 void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) {
+  bool has_change = false;
   for (const auto& storage_metric : metrics.gauge_metrics()) {
     auto metric = storage_metric.metric();
     // If there is a rolling restart in progress, it's possible for an unknown metric to be
@@ -87,14 +92,22 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) 
     if (metric >= YB_STORAGE_GAUGE_COUNT) {
       continue;
     }
-    state_.stats.storage_gauge_metrics[metric] += storage_metric.value();
+    auto value = storage_metric.value();
+    if (value) {
+      has_change = true;
+      state_.stats.storage_gauge_metrics[metric] += value;
+    }
   }
   for (const auto& storage_metric : metrics.counter_metrics()) {
     auto metric = storage_metric.metric();
     if (metric >= YB_STORAGE_COUNTER_COUNT) {
       continue;
     }
-    state_.stats.storage_counter_metrics[metric] += storage_metric.value();
+    auto value = storage_metric.value();
+    if (value) {
+      has_change = true;
+      state_.stats.storage_counter_metrics[metric] += value;
+    }
   }
   for (const auto& storage_metric : metrics.event_metrics()) {
     auto metric = storage_metric.metric();
@@ -102,9 +115,19 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) 
       continue;
     }
     auto& stats = state_.stats.storage_event_metrics[metric];
-    stats.sum += storage_metric.sum();
-    stats.count += storage_metric.count();
+    if (storage_metric.count()) {
+      has_change = true;
+      stats.sum += storage_metric.sum();
+      stats.count += storage_metric.count();
+    }
   }
+  if (has_change) {
+    ++state_.stats.storage_metrics_version;
+  }
+}
+
+void PgDocMetrics::RecordStorageRowsRead(TableType relation, uint64_t rows) {
+  IncRowsScanned(&GetStat(&state_, relation), rows);
 }
 
 }  // namespace yb::pggate

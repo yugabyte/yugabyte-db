@@ -90,6 +90,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
@@ -168,6 +169,10 @@ public class ModelFactory {
 
   public static Provider kubernetesProvider(Customer customer) {
     return Provider.create(customer.getUuid(), Common.CloudType.kubernetes, "Kubernetes");
+  }
+
+  public static Provider kubernetesProvider(Customer customer, String name) {
+    return Provider.create(customer.getUuid(), Common.CloudType.kubernetes, name);
   }
 
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
@@ -332,6 +337,9 @@ public class ModelFactory {
           @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+            if (params.nodeDetailsSet == null) {
+              params.nodeDetailsSet = new HashSet<>();
+            }
             for (int i = 1; i <= numNodesToAdd; i++) {
               NodeDetails node = new NodeDetails();
               node.cloudInfo = new CloudSpecificInfo();
@@ -377,6 +385,11 @@ public class ModelFactory {
 
   public static CustomerConfig createNfsStorageConfig(
       Customer customer, String configName, String backupLocation) {
+    return createNfsStorageConfig(customer, configName, backupLocation, "yugabyte_backup");
+  }
+
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer, String configName, String backupLocation, String bucketName) {
     JsonNode formData =
         Json.parse(
             "{\"configName\": \""
@@ -384,6 +397,8 @@ public class ModelFactory {
                 + "\", \"name\": \"NFS\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \""
                 + backupLocation
+                + "\", \"NFS_BUCKET\": \""
+                + bucketName
                 + "\"}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
@@ -719,7 +734,14 @@ public class ModelFactory {
       UUID customerUUID, String certificate, CertConfigType certType)
       throws IOException, NoSuchAlgorithmException {
     return CertificateInfo.create(
-        UUID.randomUUID(), customerUUID, "test", new Date(), new Date(), "", certificate, certType);
+        UUID.randomUUID(),
+        customerUUID,
+        "test-" + RandomStringUtils.randomAlphanumeric(8),
+        new Date(),
+        new Date(),
+        "",
+        certificate,
+        certType);
   }
 
   // Create a universe from the configuration string. The configuration string
@@ -816,6 +838,7 @@ public class ModelFactory {
     userIntent.accessKeyCode = "akc";
     userIntent.providerType = provider.getCloudCode();
     userIntent.preferredRegion = null;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
 
     UniverseUpdater updater =
         u -> {

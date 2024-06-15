@@ -466,6 +466,19 @@ class TableProperties {
     partitioning_version_ = value;
   }
 
+  PgReplicaIdentity replica_identity() const {
+    DCHECK(HasReplicaIdentity());
+    return *ysql_replica_identity_;
+  }
+
+  void SetReplicaIdentity(PgReplicaIdentity replica_identity) {
+    ysql_replica_identity_ = replica_identity;
+  }
+
+  bool HasReplicaIdentity() const {
+    return ysql_replica_identity_.has_value();
+  }
+
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
   static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
@@ -490,9 +503,19 @@ class TableProperties {
   int num_tablets_;
   bool is_ysql_catalog_table_;
   uint32_t partitioning_version_;
+
+  // This is optional since its a ysql only field
+  std::optional<PgReplicaIdentity> ysql_replica_identity_;
 };
 
-typedef std::string PgSchemaName;
+using PgSchemaName = std::string;
+
+// Provides missing, i.e. default, value for specified column if present.
+class MissingValueProvider {
+ public:
+  virtual Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const = 0;
+  virtual ~MissingValueProvider() = default;
+};
 
 // The schema for a set of rows.
 //
@@ -504,7 +527,7 @@ typedef std::string PgSchemaName;
 // passing by pointer or reference, and functions that create new
 // Schemas should generally prefer taking a Schema pointer and using
 // Schema::swap() or Schema::Reset() rather than returning by value.
-class Schema {
+class Schema : public MissingValueProvider {
  public:
   static constexpr ssize_t kColumnNotFound = -1;
 
@@ -641,6 +664,10 @@ class Schema {
 
   auto key_column_ids() const {
     return boost::make_iterator_range(col_ids_.begin(), col_ids_.begin() + num_key_columns_);
+  }
+
+  auto value_column_ids() const {
+    return boost::make_iterator_range(col_ids_.begin() + num_key_columns_, col_ids_.end());
   }
 
   const std::vector<std::string> column_names() const {
@@ -1013,7 +1040,7 @@ class Schema {
   void UpdateMissingValuesFrom(const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& columns);
 
   // Get a column's missing default value.
-  Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const;
+  Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const final;
 
   // Should account for every field in Schema.
   // TODO: Some of them should be in Equals too?

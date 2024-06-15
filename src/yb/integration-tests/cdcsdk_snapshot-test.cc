@@ -19,7 +19,7 @@ namespace cdc {
 
 // Insert a row before snapshot. Insert a row after snapshot.
 // Expected records: (DDL, READ) and (DDL, INSERT).
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeAfterSnapshot)) {
+TEST_F(CDCSDKYsqlTest, InsertBeforeAfterSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -54,8 +54,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeAfterSnapshot)) {
 
   expected_record_count = 0;
   for (const auto& record : change_resp_after_snapshot.cdc_sdk_proto_records()) {
+    // We skip DDL records here since we sometimes get it here again in case the second GetChanges
+    // call goes to a new tablet server.
     if (record.row_message().op() == RowMessage::BEGIN ||
-        record.row_message().op() == RowMessage::COMMIT) {
+        record.row_message().op() == RowMessage::COMMIT ||
+        record.row_message().op() == RowMessage::DDL) {
       continue;
     }
     CheckRecord(record, expected_records_after_snapshot[expected_record_count++], count);
@@ -65,7 +68,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeAfterSnapshot)) {
 
 // Begin transaction, insert one row, commit transaction, enable snapshot
 // Expected records: (DDL, READ).
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertSingleRowSnapshot)) {
+TEST_F(CDCSDKYsqlTest, InsertSingleRowSnapshot) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -76,9 +79,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertSingleRowSnapshot)) {
   ASSERT_FALSE(set_resp.has_error());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ 30, /* is_compaction = */ false));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
+      /* is_compaction = */ false));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 0, 0, 0, 1, 0};
@@ -101,7 +104,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertSingleRowSnapshot)) {
 
 // Begin transaction, insert one row, commit transaction, update, enable snapshot
 // Expected records: (DDL, READ).
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpdateInsertedRowSnapshot)) {
+TEST_F(CDCSDKYsqlTest, UpdateInsertedRowSnapshot) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -112,9 +115,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpdateInsertedRowSnapshot)) {
   ASSERT_FALSE(set_resp.has_error());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ 30, /* is_compaction = */ false));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
+      /* is_compaction = */ false));
   ASSERT_OK(UpdateRows(1 /* key */, 1 /* value */, &test_cluster_));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
@@ -138,7 +141,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpdateInsertedRowSnapshot)) {
 
 // Begin transaction, insert one row, commit transaction, delete, enable snapshot
 // Expected records: (DDL).
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DeleteInsertedRowSnapshot)) {
+TEST_F(CDCSDKYsqlTest, DeleteInsertedRowSnapshot) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -149,9 +152,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DeleteInsertedRowSnapshot)) {
   ASSERT_FALSE(set_resp.has_error());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ 30, /* is_compaction = */ false));
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
+      /* is_compaction = */ false));
   ASSERT_OK(DeleteRows(1 /* key */, &test_cluster_));
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
@@ -175,7 +178,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(DeleteInsertedRowSnapshot)) {
 
 // Insert 10K rows using a thread and after a while enable snapshot.
 // Expected sum of READs and INSERTs is 10K.
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeDuringSnapshot)) {
+TEST_F(CDCSDKYsqlTest, InsertBeforeDuringSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -249,7 +252,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeDuringSnapshot)) {
 // Insert 10K rows using a thread and after a while enable snapshot.
 // After snapshot completes, insert 10K rows using threads.
 // Expected sum of READs and INSERTs is 20K.
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeDuringAfterSnapshot)) {
+TEST_F(CDCSDKYsqlTest, InsertBeforeDuringAfterSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
@@ -326,7 +329,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeDuringAfterSnapshot))
   ASSERT_EQ(reads_snapshot + inserts_snapshot, 20000);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotWithInvalidFromOpId)) {
+TEST_F(CDCSDKYsqlTest, TestSnapshotWithInvalidFromOpId) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
@@ -361,7 +364,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotWithInvalidFromOpId))
   ASSERT_EQ(reads_snapshot, 1000);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDuringSnapshot)) {
+TEST_F(CDCSDKYsqlTest, TestCompactionDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
@@ -425,32 +428,33 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDuringSnapshot)) {
   ASSERT_EQ(reads_snapshot, 200);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithSnapshot)) {
+TEST_F(CDCSDKYsqlTest, TestMultipleTableAlterWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   auto tablets = ASSERT_RESULT(SetUpCluster());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_EQ(tablets.size(), 1);
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
   // Add column value_2 column, Table Alter happen.
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
   ASSERT_OK(WriteRows(
       101 /* start */, 201 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
 
   // Drop value_2 column, Tablet Alter happen.
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(201 /* start */, 301 /* end */, &test_cluster_, {kValue3ColumnName}));
 
   // Add the 2 columns, value_2 and value_4
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(
       301 /* start */, 401 /* end */, &test_cluster_,
       {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
@@ -488,7 +492,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultipleTableAlterWithSnapsho
   ASSERT_EQ(reads_snapshot, 400);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeDuringSnapshot)) {
+TEST_F(CDCSDKYsqlTest, TestLeadershipChangeDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
@@ -538,7 +542,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeDuringSnapsho
   ASSERT_EQ(reads_snapshot, 1000);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestServerFailureDuringSnapshot)) {
+TEST_F(CDCSDKYsqlTest, TestServerFailureDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
@@ -596,7 +600,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestServerFailureDuringSnapshot))
   ASSERT_EQ(reads_snapshot, 200);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertedRowInbetweenSnapshot)) {
+TEST_F(CDCSDKYsqlTest, InsertedRowInbetweenSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
@@ -672,7 +676,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertedRowInbetweenSnapshot)) {
   ASSERT_EQ(count, 100);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveWithSnapshot)) {
+TEST_F(CDCSDKYsqlTest, TestStreamActiveWithSnapshot) {
   // This testcase is to verify during snapshot operation, active time needs to be updated in
   // cdc_state table, so that stream should not expire if the snapshot operation takes longer than
   // the stream expiry time.
@@ -721,7 +725,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveWithSnapshot)) {
   ASSERT_EQ(count, 1000);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeAndSnapshotAffectsCheckpoint)) {
+TEST_F(CDCSDKYsqlTest, TestLeadershipChangeAndSnapshotAffectsCheckpoint) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
@@ -746,8 +750,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeAndSnapshotAf
 
   ASSERT_OK(WriteRowsHelper(0 /* start */, 200 /* end */, &test_cluster_, true));
 
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
       /* is_compaction = */ true));
   std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
@@ -796,7 +800,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeAndSnapshotAf
   ASSERT_GT(checkpoint_after_leadership_change, checkpoint_after_snapshot);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointUpdatedDuringSnapshot)) {
+TEST_F(CDCSDKYsqlTest, TestCheckpointUpdatedDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
 
@@ -874,7 +878,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointUpdatedDuringSnapsh
   ASSERT_EQ(checkpoint_result.snapshot_key(), "");
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
+TEST_F(CDCSDKYsqlTest, TestSnapshotNoData) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -893,15 +897,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), "");
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, kFlushTimeoutSecs,
       /* is_compaction = */ false));
 
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   ASSERT_GT(change_resp.cdc_sdk_proto_records_size(), 1000);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotForColocatedTablet)) {
+TEST_F(CDCSDKYsqlTest, TestSnapshotForColocatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
@@ -982,7 +986,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotForColocatedTablet)) 
 
 TEST_F(
     CDCSDKYsqlTest,
-    YB_DISABLE_TEST_IN_TSAN(TestCommitTimeRecordTimeAndNoSafepointRecordForSnapshot)) {
+    TestCommitTimeRecordTimeAndNoSafepointRecordForSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
 
@@ -1038,7 +1042,7 @@ TEST_F(
 }
 
 TEST_F(
-    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnAddedColocatedTableWithNoSnapshot)) {
+    CDCSDKYsqlTest, TestGetCheckpointOnAddedColocatedTableWithNoSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -1117,7 +1121,7 @@ TEST_F(
       OpId::FromPB(added_table_checkpoint_resp.checkpoint().op_id()));
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotRecordSnapshotKey)) {
+TEST_F(CDCSDKYsqlTest, TestSnapshotRecordSnapshotKey) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_cdc_snapshot_batch_size = 10;
 

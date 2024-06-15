@@ -22,7 +22,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
@@ -290,6 +290,7 @@ public class BackupTableParams extends TableManagerParams {
     this.setTableName(tableParams.getTableName());
     this.tableUUID = tableParams.tableUUID;
     this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
+    this.tableByTableBackup = tableParams.tableByTableBackup;
   }
 
   @JsonIgnore

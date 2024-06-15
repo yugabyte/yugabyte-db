@@ -37,6 +37,7 @@
 #include "catalog/catalog.h"
 #include "common/pg_lzcompress.h"
 #include "miscadmin.h"
+#include "utils/builtins.h"
 #include "utils/expandeddatum.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
@@ -44,6 +45,7 @@
 #include "utils/typcache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 #undef TOAST_DEBUG
 
@@ -1153,6 +1155,92 @@ toast_flatten_tuple(HeapTuple tup, TupleDesc tupleDesc)
 	return new_tuple;
 }
 
+/* ----------
+ * yb_toast_compress_tuple -- given an uncompressed tuple,
+ * try to compress the varlena attributes that are above
+ * the threshold. Returns a new tuple with the compressed
+ * attributes.
+ * ----------
+ */
+HeapTuple
+yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc)
+{
+	HeapTuple	new_tuple;
+	int			numAttrs = tupleDesc->natts;
+	int			i;
+	Datum		toast_values[MaxTupleAttributeNumber];
+	bool		toast_isnull[MaxTupleAttributeNumber];
+	bool		toast_free[MaxTupleAttributeNumber];
+
+	/*
+	 * Break down the tuple into fields.
+	 */
+	Assert(numAttrs <= MaxTupleAttributeNumber);
+	heap_deform_tuple(tup, tupleDesc, toast_values, toast_isnull);
+
+	memset(toast_free, 0, numAttrs * sizeof(bool));
+
+	for (i = 0; i < numAttrs; i++)
+	{
+		/*
+		 * Look at non-null varlena attributes that are over the toast threshold in size
+		 * and whose attstorage is marked for compression.
+		 */
+		if (!toast_isnull[i] && 
+			TupleDescAttr(tupleDesc, i)->attlen == -1 && 
+			(TupleDescAttr(tupleDesc, i)->attstorage == 'm' ||
+			 TupleDescAttr(tupleDesc, i)->attstorage == 'x'))
+		{
+			struct varlena *old_value;
+			Datum compressed_value;
+
+			old_value = (struct varlena *) DatumGetPointer(toast_values[i]);
+			if (VARATT_IS_COMPRESSED(old_value))
+				continue;
+
+			compressed_value = toast_compress_datum(PointerGetDatum(old_value));
+			if (DatumGetPointer(compressed_value) != NULL) {
+				toast_values[i] = compressed_value;
+				toast_free[i] = true;
+			}
+		}
+	}
+
+	/*
+	 * Form the reconfigured tuple.
+	 */
+	new_tuple = heap_form_tuple(tupleDesc, toast_values, toast_isnull);
+
+	/*
+	 * The following block of code is copied from toast_flatten_tuple in PG, any future changes should
+	 * be sync'ed up between the two.
+	 */
+	if (tupleDesc->tdhasoid)
+		HeapTupleSetOid(new_tuple, HeapTupleGetOid(tup));
+
+	new_tuple->t_self = tup->t_self;
+	new_tuple->t_tableOid = tup->t_tableOid;
+
+	new_tuple->t_data->t_choice = tup->t_data->t_choice;
+	new_tuple->t_data->t_ctid = tup->t_data->t_ctid;
+	new_tuple->t_data->t_infomask &= ~HEAP_XACT_MASK;
+	new_tuple->t_data->t_infomask |=
+		tup->t_data->t_infomask & HEAP_XACT_MASK;
+	new_tuple->t_data->t_infomask2 &= ~HEAP2_XACT_MASK;
+		new_tuple->t_data->t_infomask2 |=
+		tup->t_data->t_infomask2 & HEAP2_XACT_MASK;
+	
+	HEAPTUPLE_COPY_YBCTID(tup->t_ybctid, new_tuple->t_ybctid);
+
+	/*
+	 * Free allocated temp values
+	 */
+	for (i = 0; i < numAttrs; i++)
+		if (toast_free[i])
+			pfree(DatumGetPointer(toast_values[i]));
+
+	return new_tuple;
+}
 
 /* ----------
  * toast_flatten_tuple_to_datum -

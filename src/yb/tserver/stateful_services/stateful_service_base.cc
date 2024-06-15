@@ -16,12 +16,18 @@
 #include <chrono>
 
 #include "yb/client/session.h"
+
 #include "yb/consensus/consensus.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/bind_helpers.h"
+
 #include "yb/master/master_defaults.h"
-#include "yb/util/backoff_waiter.h"
+
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/logging.h"
 #include "yb/util/string_case.h"
 #include "yb/util/unique_lock.h"
@@ -98,7 +104,7 @@ void StatefulServiceBase::Shutdown() {
     shutdown_ = true;
   }
 
-  task_wait_cond_.notify_all();
+  YB_PROFILE(task_wait_cond_.notify_all());
 
   {
     std::lock_guard lock(task_enqueue_mutex_);
@@ -322,7 +328,7 @@ void StatefulServiceBase::StartPeriodicTaskIfNeeded() {
   }
 
   // Wake up the thread if its sleeping and process the task immediately.
-  task_wait_cond_.notify_all();
+  YB_PROFILE(task_wait_cond_.notify_all());
 }
 
 uint32 StatefulServiceBase::PeriodicTaskIntervalMs() const {

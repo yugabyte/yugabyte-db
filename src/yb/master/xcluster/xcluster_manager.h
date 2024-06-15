@@ -22,6 +22,9 @@
 
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/xcluster/xcluster_outbound_replication_group.h"
+#include "yb/master/xcluster/xcluster_source_manager.h"
+#include "yb/master/xcluster/xcluster_target_manager.h"
 
 namespace yb {
 
@@ -30,6 +33,7 @@ class CDCStreamInfo;
 class GetMasterXClusterConfigResponsePB;
 class PauseResumeXClusterProducerStreamsRequestPB;
 class PauseResumeXClusterProducerStreamsResponsePB;
+class PostTabletCreateTaskBase;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 class XClusterConfig;
@@ -39,10 +43,12 @@ struct SysCatalogLoadingState;
 // The XClusterManager class is responsible for managing all yb-master related control logic of
 // XCluster. All XCluster related RPCs and APIs are handled by this class.
 // TODO(#19714): Move XCluster related code from CatalogManager to this class.
-class XClusterManager : public XClusterManagerIf {
+class XClusterManager : public XClusterManagerIf,
+                        public XClusterSourceManager,
+                        public XClusterTargetManager {
  public:
   explicit XClusterManager(
-      Master* master, CatalogManager* catalog_manager, SysCatalogTable* sys_catalog);
+      Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
 
   ~XClusterManager();
 
@@ -50,26 +56,29 @@ class XClusterManager : public XClusterManagerIf {
 
   void Shutdown();
 
-  Status RunLoaders();
+  void Clear();
 
-  void SysCatalogLoaded(const SysCatalogLoadingState& state);
+  Status RunLoaders(const TabletInfos& hidden_tablets);
+
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
+
+  void RunBgTasks(const LeaderEpoch& epoch) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 
-  Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const EXCLUDES(mutex_) override;
+  Result<XClusterStatus> GetXClusterStatus() const override;
+  Status PopulateXClusterStatusJson(JsonWriter& jw) const override;
 
-  Status GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp) EXCLUDES(mutex_);
+  Status GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp);
 
   Result<uint32_t> GetXClusterConfigVersion() const;
 
-  void CreateXClusterSafeTimeTableAndStartService();
-
-  Status PrepareDefaultXClusterConfig(int64_t term, bool recreate) EXCLUDES(mutex_);
+  Status PrepareDefaultXClusterConfig(int64_t term, bool recreate);
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
-  Status RemoveStreamFromXClusterProducerConfig(
+  Status RemoveStreamsFromSysCatalog(
       const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams);
 
   Status PauseResumeXClusterProducerStreams(
@@ -86,30 +95,93 @@ class XClusterManager : public XClusterManagerIf {
       rpc::RpcContext* rpc, const LeaderEpoch& epoch);
   Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const override;
 
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
-      const LeaderEpoch& epoch) override;
+  Status GetXClusterSafeTimeForNamespace(
+      const GetXClusterSafeTimeForNamespaceRequestPB* req,
+      GetXClusterSafeTimeForNamespaceResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Result<HybridTime> GetXClusterSafeTimeForNamespace(
+      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
+      const XClusterSafeTimeFilter& filter) override;
 
-  XClusterSafeTimeService* TEST_xcluster_safe_time_service() {
-    return xcluster_safe_time_service_.get();
-  }
+  Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
+
+  // OutboundReplicationGroup RPCs.
+  Status XClusterCreateOutboundReplicationGroup(
+      const XClusterCreateOutboundReplicationGroupRequestPB* req,
+      XClusterCreateOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status XClusterAddNamespaceToOutboundReplicationGroup(
+      const XClusterAddNamespaceToOutboundReplicationGroupRequestPB* req,
+      XClusterAddNamespaceToOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      const XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB* req,
+      XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status XClusterDeleteOutboundReplicationGroup(
+      const XClusterDeleteOutboundReplicationGroupRequestPB* req,
+      XClusterDeleteOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status IsXClusterBootstrapRequired(
+      const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status GetXClusterStreams(
+      const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status CreateXClusterReplication(
+      const CreateXClusterReplicationRequestPB* req, CreateXClusterReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status IsCreateXClusterReplicationDone(
+      const IsCreateXClusterReplicationDoneRequestPB* req,
+      IsCreateXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status AddNamespaceToXClusterReplication(
+      const AddNamespaceToXClusterReplicationRequestPB* req,
+      AddNamespaceToXClusterReplicationResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status IsAlterXClusterReplicationDone(
+      const IsAlterXClusterReplicationDoneRequestPB* req,
+      IsAlterXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status RepairOutboundXClusterReplicationGroupAddTable(
+      const RepairOutboundXClusterReplicationGroupAddTableRequestPB* req,
+      RepairOutboundXClusterReplicationGroupAddTableResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status RepairOutboundXClusterReplicationGroupRemoveTable(
+      const RepairOutboundXClusterReplicationGroupRemoveTableRequestPB* req,
+      RepairOutboundXClusterReplicationGroupRemoveTableResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status GetXClusterOutboundReplicationGroups(
+      const GetXClusterOutboundReplicationGroupsRequestPB* req,
+      GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status GetXClusterOutboundReplicationGroupInfo(
+      const GetXClusterOutboundReplicationGroupInfoRequestPB* req,
+      GetXClusterOutboundReplicationGroupInfoResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status GetUniverseReplications(
+      const GetUniverseReplicationsRequestPB* req, GetUniverseReplicationsResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status GetUniverseReplicationInfo(
+      const GetUniverseReplicationInfoRequestPB* req, GetUniverseReplicationInfoResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
+      const TableInfoPtr& table_info, const LeaderEpoch& epoch);
+
+  Status MarkIndexBackfillCompleted(
+      const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) override;
+
+  std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
+      const override;
 
  private:
-  template <template <class> class Loader, typename CatalogEntityWrapper>
-  Status Load(const std::string& title, CatalogEntityWrapper& catalog_entity_wrapper);
+  CatalogManager& catalog_manager_;
+  SysCatalogTable& sys_catalog_;
 
-  Master* const master_;
-  CatalogManager* const catalog_manager_;
-  SysCatalogTable* const sys_catalog_;
-
-  mutable std::shared_mutex mutex_;
+  bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
-
-  std::unique_ptr<XClusterSafeTimeService> xcluster_safe_time_service_;
-
-  // The Catalog Entity is stored outside of XClusterSafeTimeService, since we may want to move the
-  // service out of master at a later time.
-  XClusterSafeTimeInfo xcluster_safe_time_info_;
 };
 
 }  // namespace master

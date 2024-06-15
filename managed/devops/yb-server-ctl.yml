@@ -12,60 +12,91 @@
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   vars:
+    server_home: "{{ yb_home_dir | default('/home/yugabyte') }}/{{ process }}"
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
     systemd_option: "{{ systemd_services | default(false) }}"
-    is_clean_command: "{{ command == 'clean' or command == 'clean-logs'}}"
+    is_clean_command: "{{ command == 'clean' or command == 'clean-logs' or command =='clean-instance' }}"
+    is_destroy_command: "{{ is_clean_command or  command == 'stop-destroy' }}"
+    cron_command:  "{{ 'stop' if command == 'stop-destroy' else command}}"
+    remove_conf_file: "{{ deconfigure | default(false) }}"
   tasks:
-    - name: Call the ctl script with appropriate args
-      shell: "{{ script_to_run }} {{ process }} {{ command }}"
+    - block:
+      - name: Check ctl script exists
+        stat:
+          path: "{{ script_to_run }}"
+        register: ctl_script_stat
+      - name: Print ctl_script_stat
+        debug:
+          var: ctl_script_stat
+      - name: Call the ctl script with appropriate args
+        shell: "{{ script_to_run }} {{ process }} {{ cron_command }}"
+        when: not is_destroy_command or ctl_script_stat.stat.exists
+        # Always run whether or not script exists if not calling AnsibleDestroyServer.
       when:
         - not systemd_option or is_clean_command
         - process != "thirdparty" and process != "platform-services"
 
-    - name: Control the master and tserver with systemd
+    - name: Control {{ process }} process with systemd
       block:
         - name: Determine system or user scope
           stat:
-            path: /etc/systemd/system/yb-master.service
-          register: systemd_system
-
-        - name: Systemd system scope
-          block:
-            - name: Reload daemon
-              shell: "sudo systemctl daemon-reload"
-            - name: Enable the {{ process }}
-              shell: "sudo systemctl enable yb-{{ process }}"
-              when: command == 'start'
-            - name: Perform {{ command }} on the {{ process }}
-              shell: "sudo systemctl {{ command }} yb-{{ process }}"
-              when: command == 'start' or command == 'stop'
-            - name: Disable the {{ process }}
-              shell: "sudo systemctl disable yb-{{ process }}"
-              when: command == 'stop'
-            - name: Reload daemon
-              shell: "sudo systemctl daemon-reload"
-          when: systemd_system.stat.exists
-
-        - name: Systemd user scope
-          block:
-          - name: Start the {{ process }}
-            systemd:
-              name: "yb-{{ process }}"
-              state: started
-              enabled: yes
-              scope: user
-              daemon_reload: yes
+            path: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user/"
+          register: systemd_user
+        - name: Print systemd_user
+          debug:
+            var: systemd_user
+        - name: Set the systemd prefix
+          set_fact:
+            systemd_prefix: "{{ 'systemctl --user' if systemd_user.stat.exists else 'sudo systemctl'}}"
+        - name: Print systemd_prefix
+          debug:
+            var: systemd_prefix
+        - block:
+          - name: Reload daemon
+            shell: "{{ systemd_prefix }} daemon-reload"
+          - name: Enable the {{ process }}
+            shell: "{{ systemd_prefix }} enable yb-{{ process }}"
             when: command == 'start'
-          - name: Stop the {{ process }}
-            systemd:
-              name: "yb-{{ process }}"
-              state: stopped
-              enabled: no
-              scope: user
-              daemon_reload: yes
+          - name: Perform {{ command }} on the {{ process }}
+            shell: "{{ systemd_prefix }} {{ command }} yb-{{ process }}"
+            when: command == 'start' or command == 'stop'
+          - name: Disable the {{ process }}
+            shell: "{{ systemd_prefix }} disable yb-{{ process }}"
             when: command == 'stop'
-          when: not systemd_system.stat.exists
+          - name: Reload daemon
+            shell: "{{ systemd_prefix }} daemon-reload"
+          when: command != "stop-destroy"
+
+        - name: Stop the {{ process }} process with systemd on destroy
+          block:
+            - name: Reload daemon
+              shell: "{{ systemd_prefix }} daemon-reload"
+            - name: yb-{{ process }} status output
+              shell: "{{ systemd_prefix }} status yb-{{ process }}"
+              register: systemd_status_output
+              ignore_errors: True
+            - name: Print systemd_status_output.rc
+              debug:
+                msg: "{{ systemd_status_output.rc }}"
+            - name: Perform stop on the {{ process }}
+              shell: "{{ systemd_prefix }} stop yb-{{ process }}"
+              when: systemd_status_output.rc != 4
+            - name: Disable the {{ process }}
+              shell: "{{ systemd_prefix }} disable yb-{{ process }}"
+              when: systemd_status_output.rc != 4
+            - name: Reload daemon
+              shell: "{{ systemd_prefix }} daemon-reload"
+          when:
+            - command == "stop-destroy"
       when: systemd_option and process != "thirdparty" and process != "platform-services"
+
+    - name: Remove server conf file of {{ process }}
+      file:
+        path: "{{ server_home }}/conf/server.conf"
+        state: absent
+      when:
+        - remove_conf_file and process != "thirdparty" and process != "platform-services"
+        - command == 'stop' or command == 'stop-destroy'
 
 - name: Removing thirdparty services
   hosts: "{{ instance_search_pattern }}"
@@ -79,40 +110,60 @@
           otel_systemd_dir: "/etc/systemd/system"
       - set_fact:
           prometheus_systemd_unit_dir: "/usr/lib/systemd/system"
-          when: ansible_os_family == "Suse"
+        when: ansible_os_family == "Suse"
       - set_fact:
           otel_systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
-          when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
+        when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
 
-      - name: Stop node exporter service
-        service:
-          enabled: yes
-          name: node_exporter
-          state: stopped
-        become: yes
-        become_method: sudo
+      - block:
+        - name: Check node exporter service exists
+          stat:
+            path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
+          register: node_exporter_stat
+        - name: Log node_exporter_stat
+          debug:
+            var: node_exporter_stat
+        - name: Stop node exporter service
+          service:
+            enabled: yes
+            name: node_exporter
+            state: stopped
+          become: yes
+          become_method: sudo
+          when: node_exporter_stat.stat.exists
 
-      - name: Delete node exporter service
-        file:
-          path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
-          state: absent
-        become: yes
-        become_method: sudo
+        - name: Delete node exporter service
+          file:
+            path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
+            state: absent
+          become: yes
+          become_method: sudo
+        when: clean_node_exporter is defined and clean_node_exporter|bool
 
-      - name: Stop otel collector service
-        service:
-          enabled: yes
-          name: otel-collector
-          state: stopped
-        become: yes
-        become_method: sudo
+      - block:
+        - name: Check otel collector service exists
+          stat:
+            path: "{{ otel_systemd_dir }}/otel-collector.service"
+          register: otel_collector_stat
+        - name: Log otel_collector_stat
+          debug:
+            var: otel_collector_stat
+        - name: Stop otel collector service
+          service:
+            enabled: yes
+            name: otel-collector
+            state: stopped
+          become: yes
+          become_method: sudo
+          when: otel_collector_stat.stat.exists
 
-      - name: Delete otel collector service
-        file:
-          path: "{{ otel_systemd_dir }}/otel-collector.service"
-          state: absent
-        become: yes
-        become_method: sudo
+        - name: Delete otel collector service
+          file:
+            path: "{{ otel_systemd_dir }}/otel-collector.service"
+            state: absent
+          become: yes
+          become_method: sudo
+        when: clean_otel_collector is defined and clean_otel_collector|bool
 
       - name: Perform daemon-reload for removed services
         shell:

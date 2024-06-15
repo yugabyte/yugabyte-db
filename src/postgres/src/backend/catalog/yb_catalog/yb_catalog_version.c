@@ -33,6 +33,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -83,21 +84,9 @@ uint64_t YbGetMasterCatalogVersion()
 /* Modify Catalog Version */
 
 static void
-YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
+YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
+								  const char *command_tag)
 {
-	List* names =
-		list_make2(makeString("pg_catalog"),
-				   makeString("yb_increment_all_db_catalog_versions"));
-	FuncCandidateList clist = FuncnameGetCandidates(
-		names,
-		-1 /* nargs */,
-		NIL /* argnames */,
-		false /* expand_variadic */,
-		false /* expand_defaults */,
-		false /* missing_ok */);
-	/* We expect exactly one candidate. */
-	Assert(clist && clist->next == NULL);
-	Oid functionId = clist->oid;
 	FmgrInfo    flinfo;
 	FunctionCallInfoData fcinfo;
 	fmgr_info(functionId, &flinfo);
@@ -113,35 +102,121 @@ YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
 						   SECURITY_RESTRICTED_OPERATION);
+	/* Calling a user defined function requires a snapshot. */
+	bool snapshot_set = ActiveSnapshotSet();
+	if (!snapshot_set)
+		PushActiveSnapshot(GetTransactionSnapshot());
+
+	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
+	{
+		bool log_ysql_catalog_versions =
+			*YBCGetGFlags()->log_ysql_catalog_versions;
+		ereport(LOG,
+				(errmsg("%s: incrementing all master db catalog versions (%sbreaking)",
+						__func__, is_breaking_change ? "" : "non"),
+				errdetail("Node tag: %s.", command_tag ? command_tag : "n/a"),
+				errhidestmt(!log_ysql_catalog_versions),
+				errhidecontext(!log_ysql_catalog_versions)));
+	}
+
 	PG_TRY();
 	{
 		FunctionCallInvoke(&fcinfo);
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
+		if (!snapshot_set)
+			PopActiveSnapshot();
 	}
 	PG_CATCH();
 	{
 		/* Restore old values. */
 		yb_non_ddl_txn_for_sys_tables_allowed = saved;
 		SetUserIdAndSecContext(save_userid, save_sec_context);
+		if (!snapshot_set)
+			PopActiveSnapshot();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 }
 
+Oid
+YbGetSQLIncrementCatalogVersionsFunctionOid() {
+	List* names =
+		list_make2(makeString("pg_catalog"),
+				   makeString("yb_increment_all_db_catalog_versions"));
+	FuncCandidateList clist = FuncnameGetCandidates(
+		names,
+		-1 /* nargs */,
+		NIL /* argnames */,
+		false /* expand_variadic */,
+		false /* expand_defaults */,
+		false /* missing_ok */);
+	/* We expect exactly one candidate. */
+	if (clist && clist->next == NULL)
+		return clist->oid;
+	Assert(!clist);
+	/* When upgrading an old release, the function may not exist. */
+	return InvalidOid;
+}
+
 static void
 YbIncrementMasterDBCatalogVersionTableEntryImpl(
-	Oid db_oid, bool is_breaking_change, bool is_global_ddl)
+	Oid db_oid, bool is_breaking_change, bool is_global_ddl,
+	const char *command_tag)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
 	if (is_global_ddl)
 	{
 		Assert(YBIsDBCatalogVersionMode());
+		Oid func_oid = YbGetSQLIncrementCatalogVersionsFunctionOid();
+		Assert(OidIsValid(func_oid));
 		/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
-		YbCallSQLIncrementCatalogVersions(is_breaking_change);
+		YbCallSQLIncrementCatalogVersions(func_oid, is_breaking_change,
+										  command_tag);
 		return;
+	}
+
+	/*
+	 * There are two more scenarios we also call the function
+	 * yb_increment_all_db_catalog_versions(is_breaking_change), both
+	 * are related to cluster upgrade to a new release that has the
+	 * per-database catalog version mode on by default:
+	 * (1) during the tryout phase (the phase where the upgrade can be
+	 * rolled back)
+	 * (2) during the finalization phase (the phase where the upgrade can
+	 * not be rolled back)
+	 * In both cases, the gflag --ysql_enable_db_catalog_version_mode is
+	 * true but YBIsDBCatalogVersionMode() is false. PG does not
+	 * distinguish them. In (1), the table pg_yb_catalog_version has only
+	 * one row. In (2), it is possible that pg_yb_catalog_version has
+	 * already been updated to have multiple rows, but this PG backend
+	 * hasn't seen multple rows yet and still operates in global catalog
+	 * version mode. Calling yb_increment_all_db_catalog_versions ensures
+	 * that this PG's version bump has an effect to all the PG backends
+	 * including those already upgraded and are operating in per-database
+	 * catalog version mode.
+	 */
+	if (*YBCGetGFlags()->ysql_enable_db_catalog_version_mode &&
+		!YBIsDBCatalogVersionMode())
+	{
+		Oid func_oid = YbGetSQLIncrementCatalogVersionsFunctionOid();
+		if (OidIsValid(func_oid))
+		{
+			/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
+			YbCallSQLIncrementCatalogVersions(func_oid, is_breaking_change,
+											  command_tag);
+			return;
+		}
+		/*
+		 * If the function yb_increment_all_db_catalog_versions does not exist
+		 * yet, there cannot be any PG backend in the cluster running in
+		 * per-database catalog version mode. This is because the function
+		 * is introduced before the table pg_yb_catalog_version is upgraded
+		 * to have one row per database. In this case we continue to increment
+		 * catalog version in the old way below.
+		 */
 	}
 
 	YBCPgStatement update_stmt    = NULL;
@@ -209,15 +284,23 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	}
 
 	int rows_affected_count = 0;
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+
+	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
 	{
+		bool log_ysql_catalog_versions =
+			*YBCGetGFlags()->log_ysql_catalog_versions;
 		char tmpbuf[30] = "";
 		if (YBIsDBCatalogVersionMode())
 			snprintf(tmpbuf, sizeof(tmpbuf), " for database %u", db_oid);
 		ereport(LOG,
 				(errmsg("%s: incrementing master catalog version (%sbreaking)%s",
-						__func__, is_breaking_change ? "" : "non", tmpbuf)));
+						__func__, is_breaking_change ? "" : "non", tmpbuf),
+				errdetail("Local version: %" PRIu64 ", node tag: %s.",
+						  YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				errhidestmt(!log_ysql_catalog_versions),
+				errhidecontext(!log_ysql_catalog_versions)));
 	}
+
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
 	/*
 	 * Under normal situation rows_affected_count should be exactly 1. However
@@ -240,7 +323,8 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 }
 
 bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
-											   bool is_global_ddl)
+											   bool is_global_ddl,
+											   const char *command_tag)
 {
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
@@ -249,11 +333,14 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	 */
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(
 		YBIsDBCatalogVersionMode() ? MyDatabaseId : TemplateDbOid,
-		is_breaking_change, is_global_ddl);
+		is_breaking_change, is_global_ddl, command_tag);
 
 	if (yb_test_fail_next_inc_catalog_version)
 	{
 		yb_test_fail_next_inc_catalog_version = false;
+		if (YbIsClientYsqlConnMgr())
+			YbSendParameterStatusForConnectionManager("yb_test_fail_next_inc_catalog_version",
+				"false");
 		elog(ERROR, "Failed increment catalog version as requested");
 	}
 
@@ -491,7 +578,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 
 		if (has_data)
 		{
-			*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+			*version = DatumGetUInt64(values[current_version_attnum - 1]);
 			result = true;
 		}
 	}
@@ -518,10 +605,10 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 					 errmsg("catalog version for database %u was not found.", db_oid),
 					 errhint("Database might have been dropped by another user")));
 
-			uint32_t oid = (uint32_t) DatumGetInt32(values[oid_attnum - 1]);
+			uint32_t oid = DatumGetUInt32(values[oid_attnum - 1]);
 			if (oid == db_oid)
 			{
-				*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+				*version = DatumGetUInt64(values[current_version_attnum - 1]);
 				result = true;
 				break;
 			}

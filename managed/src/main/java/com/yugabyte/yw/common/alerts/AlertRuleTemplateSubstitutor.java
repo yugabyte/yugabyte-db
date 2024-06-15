@@ -23,7 +23,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 
 public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
@@ -38,6 +38,7 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
   public static final String AFFECTED_NODE_ADDRESSES = "affected_node_addresses";
   public static final String AFFECTED_NODE_IDENTIFIERS = "affected_node_identifiers";
   public static final String AFFECTED_VOLUMES = "affected_volumes";
+  public static final String AFFECTED_INSTANCE_ADDRS = "affected_instance_addrs";
 
   private final Map<String, String> labels;
 

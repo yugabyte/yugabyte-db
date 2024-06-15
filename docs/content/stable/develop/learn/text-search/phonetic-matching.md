@@ -110,6 +110,6 @@ SELECT word, dmetaphone(word) FROM words WHERE dmetaphone(word) = dmetaphone('an
 
 ## Learn more
 
-- [Understand GIN indexes](../../../../explore/indexes-constraints/gin/)
+- [Understand GIN indexes](../../../../explore/ysql-language-features/indexes-constraints/gin/)
 - [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
 - [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)

@@ -42,8 +42,7 @@
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 namespace {
 
@@ -107,6 +106,10 @@ class RowIdentifier {
     }
   }
 
+  RowIdentifier(const PgObjectId& table_id, Slice ybctid) : table_id_(table_id), ybctid_(ybctid) {
+  }
+
+
   Slice ybctid() const {
     return ybctid_.data() ? ybctid_ : ybctid_holder_;
   }
@@ -142,11 +145,60 @@ inline bool IsTableUsedByRequest(const LWPgsqlReadRequestPB& request, const Slic
 
 using RowKeys = std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>>;
 
+struct MetricContext {
+  PgDocMetrics& metrics;
+  PgWaitEventWatcher::Starter wait_starter;
+};
+
+class FlushFuture {
+ public:
+  FlushFuture(PerformFuture&& future, MetricContext* context)
+      : future_(std::move(future)), context_(context) {}
+
+  bool Ready() const {
+    return future_.Ready();
+  }
+
+  Status EnsureCompleted() {
+    uint64_t duration = 0;
+    auto& metrics = context_->metrics;
+    {
+      PgWaitEventWatcher watcher(context_->wait_starter,
+                                 ash::WaitStateCode::kStorageFlush);
+      RETURN_NOT_OK(metrics.CallWithDuration(
+          [&future = future_] { return future.Get(); }, &duration));
+    }
+    metrics.FlushRequest(duration);
+    return Status::OK();
+  }
+
+ private:
+  PerformFuture future_;
+  MetricContext* context_;
+};
+
+class Flusher {
+ public:
+  Flusher(
+      PgOperationBuffer::OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
+      PgWaitEventWatcher::Starter wait_starter)
+      : ops_flusher_(std::move(ops_flusher)),
+        context_{*metrics, wait_starter} {}
+
+  Result<FlushFuture> Flush(BufferableOperations&& ops, bool transactional) {
+    return FlushFuture{VERIFY_RESULT(ops_flusher_(std::move(ops), transactional)), &context_};
+  }
+
+ private:
+  PgOperationBuffer::OperationsFlusher ops_flusher_;
+  MetricContext context_;
+};
+
 struct InFlightOperation {
   RowKeys keys;
-  PerformFuture future;
+  FlushFuture future;
 
-  explicit InFlightOperation(PerformFuture future_)
+  explicit InFlightOperation(FlushFuture&& future_)
       : future(std::move(future_)) {}
 };
 
@@ -199,12 +251,10 @@ size_t BufferableOperations::size() const {
 class PgOperationBuffer::Impl {
  public:
   Impl(
-    const Flusher& flusher,
-    const BufferingSettings& buffering_settings,
-    PgDocMetrics* metrics)
-    : flusher_(flusher),
-      buffering_settings_(buffering_settings),
-      metrics_(*metrics) {}
+      OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
+      PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings)
+      : flusher_(std::move(ops_flusher), metrics, wait_starter),
+        buffering_settings_(buffering_settings) {}
 
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
     return ClearOnError(DoAdd(table, std::move(op), transactional));
@@ -256,24 +306,50 @@ class PgOperationBuffer::Impl {
     // see the results of first operation on DocDB side.
     // Multiple operations on same row must be performed in context of different RPC.
     // Flush is required in this case.
-    RowIdentifier row_id(table.id(), table.schema(), op->write_request());
-    if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
-      RETURN_NOT_OK(Flush());
-      keys_.insert(row_id);
-    } else {
-      // Prevent conflicts on in-flight operations which use current row_id.
-      for (auto i = in_flight_ops_.begin(); i != in_flight_ops_.end(); ++i) {
-        if (i->keys.find(row_id) != i->keys.end()) {
-          RETURN_NOT_OK(EnsureCompleted(i - in_flight_ops_.begin() + 1));
-          break;
-        }
-      }
-    }
-    auto& target = (transactional ? txn_ops_ : ops_);
+    auto& target = transactional ? txn_ops_ : ops_;
     if (target.empty()) {
       target.Reserve(buffering_settings_.max_batch_size);
     }
-    target.Add(std::move(op), table.id());
+
+    const auto& write_request = op->write_request();
+    const auto& packed_rows = write_request.packed_rows();
+    if (!packed_rows.empty()) {
+      // Optimistically assume that we don't have conflicts with existing operations.
+      bool has_conflict = false;
+      for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
+        if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second)) {
+          while (it != packed_rows.begin()) {
+            it -= 2;
+            keys_.erase(RowIdentifier(table.relfilenode_id(), *it));
+          }
+          // Have to flush because already have operations for the same key.
+          has_conflict = true;
+          break;
+        }
+      }
+      if (has_conflict) {
+        RETURN_NOT_OK(Flush());
+        for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
+          SCHECK(keys_.insert(RowIdentifier(table.relfilenode_id(), *it)).second, IllegalState,
+                 "Unable to insert key: $0", packed_rows);
+        }
+      }
+    } else {
+      RowIdentifier row_id(table.relfilenode_id(), table.schema(), write_request);
+      if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
+        RETURN_NOT_OK(Flush());
+        keys_.insert(row_id);
+      } else {
+        // Prevent conflicts on in-flight operations which use current row_id.
+        for (auto i = in_flight_ops_.begin(); i != in_flight_ops_.end(); ++i) {
+          if (i->keys.find(row_id) != i->keys.end()) {
+            RETURN_NOT_OK(EnsureCompleted(i - in_flight_ops_.begin() + 1));
+            break;
+          }
+        }
+      }
+    }
+    target.Add(std::move(op), table.relfilenode_id());
     return keys_.size() >= buffering_settings_.max_batch_size
       ? SendBuffer()
       : Status::OK();
@@ -317,10 +393,7 @@ class PgOperationBuffer::Impl {
 
   Status EnsureCompleted(size_t count) {
     for (; count && !in_flight_ops_.empty(); --count) {
-      uint64_t duration = 0;
-      auto result = VERIFY_RESULT(metrics_.CallWithDuration(
-          [&future = in_flight_ops_.front().future] { return future.Get(); }, &duration));
-      metrics_.FlushRequest(duration);
+      RETURN_NOT_OK(in_flight_ops_.front().future.EnsureCompleted());
       in_flight_ops_.pop_front();
     }
     return Status::OK();
@@ -378,7 +451,7 @@ class PgOperationBuffer::Impl {
         RETURN_NOT_OK(EnsureCompleted(1));
       }
       in_flight_ops_.push_back(
-        InFlightOperation(VERIFY_RESULT(flusher_(std::move(ops), transactional))));
+        InFlightOperation(VERIFY_RESULT(flusher_.Flush(std::move(ops), transactional))));
       return true;
     }
     return false;
@@ -388,7 +461,7 @@ class PgOperationBuffer::Impl {
     return op.is_read()
         ? IsSameTableUsedByBufferedOperations(down_cast<const PgsqlReadOp&>(op).read_request())
         : keys_.find(RowIdentifier(
-              table.id(), table.schema(),
+              table.relfilenode_id(), table.schema(),
               down_cast<const PgsqlWriteOp&>(op).write_request())) != keys_.end();
   }
 
@@ -401,20 +474,18 @@ class PgOperationBuffer::Impl {
     return false;
   }
 
-  const Flusher flusher_;
+  Flusher flusher_;
   const BufferingSettings& buffering_settings_;
   BufferableOperations ops_;
   BufferableOperations txn_ops_;
   RowKeys keys_;
   InFlightOps in_flight_ops_;
-  PgDocMetrics& metrics_;
 };
 
-PgOperationBuffer::PgOperationBuffer(const Flusher& flusher,
-                                     const BufferingSettings& buffering_settings,
-                                     PgDocMetrics* metrics)
-    : impl_(new Impl(flusher, buffering_settings, metrics)) {
-}
+PgOperationBuffer::PgOperationBuffer(
+    OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
+    PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings)
+    : impl_(new Impl(std::move(ops_flusher), metrics, wait_starter, buffering_settings)) {}
 
 PgOperationBuffer::~PgOperationBuffer() = default;
 
@@ -439,5 +510,4 @@ void PgOperationBuffer::Clear() {
     impl_->Clear();
 }
 
-} // namespace pggate
-} // namespace yb
+} // namespace yb::pggate

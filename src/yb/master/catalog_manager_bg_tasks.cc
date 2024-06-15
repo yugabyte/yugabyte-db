@@ -33,16 +33,15 @@
 
 #include <memory>
 
-#include "yb/gutil/casts.h"
-
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/tablet_split_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
@@ -78,6 +77,9 @@ DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_end, false,
                  "Pause the bg tasks thread at the end of the loop.");
 
+DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
+                "Skip finding unprocessed tables for cdcsdk streams");
+
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
 
@@ -99,7 +101,7 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
 void CatalogManagerBgTasks::Wake() {
   MutexLock lock(lock_);
   pending_updates_ = true;
-  cond_.Broadcast();
+  YB_PROFILE(cond_.Broadcast());
 }
 
 void CatalogManagerBgTasks::Wait(int msec) {
@@ -114,7 +116,7 @@ void CatalogManagerBgTasks::Wait(int msec) {
 void CatalogManagerBgTasks::WakeIfHasPendingUpdates() {
   MutexLock lock(lock_);
   if (pending_updates_) {
-    cond_.Broadcast();
+    YB_PROFILE(cond_.Broadcast());
   }
 }
 
@@ -164,6 +166,15 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
   }
 }
 
+void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
+  auto descs = catalog_manager_->master_->ts_manager()->GetAllDescriptors();
+  for (auto& ts_desc : descs) {
+    if (!ts_desc->IsLive()) {
+      ts_desc->ClearMetrics();
+    }
+  }
+}
+
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_start);
@@ -173,15 +184,7 @@ void CatalogManagerBgTasks::Run() {
       LOG(WARNING) << "Catalog manager background task thread going to sleep: "
                    << l.catalog_status().ToString();
     } else if (l.leader_status().ok()) {
-      // Clear metrics for dead tservers.
-      vector<shared_ptr<TSDescriptor>> descs;
-      const auto& ts_manager = catalog_manager_->master_->ts_manager();
-      ts_manager->GetAllDescriptors(&descs);
-      for (auto& ts_desc : descs) {
-        if (!ts_desc->IsLive()) {
-          ts_desc->ClearMetrics();
-        }
-      }
+      ClearDeadTServerMetrics();
 
       if (FLAGS_TEST_echo_service_enabled) {
         WARN_NOT_OK(
@@ -259,28 +262,36 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->tablet_split_manager()->MaybeDoSplitting(
           tables, tablet_info_map, l.epoch());
 
-      if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
+      WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
+          "Failed to run CloneStateManager: ");
+
+      if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
         catalog_manager_->CleanUpDeletedTables(l.epoch());
       }
 
       {
-        // Find if there have been any new tables added to any namespace with an active cdcsdk
-        // stream.
-        TableStreamIdsMap table_unprocessed_streams_map;
-        // In case of master leader restart of leadership changes, we will scan all streams for
-        // unprocessed tables, but from the second iteration onwards we will only consider the
-        // 'cdcsdk_unprocessed_tables' field of CDCStreamInfo object stored in the cdc_state_map.
-        Status s =
-            catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
+        if (!FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) {
+          // Find if there have been any new tables added to any namespace with an active cdcsdk
+          // stream.
+          TableStreamIdsMap table_unprocessed_streams_map;
+          // In case of master leader restart of leadership changes, we will scan all streams for
+          // unprocessed tables, but from the second iteration onwards we will only consider the
+          // 'cdcsdk_unprocessed_tables' field of CDCStreamInfo object stored in the cdc_state_map.
+          Status s =
+              catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
 
-        if (s.ok() && !table_unprocessed_streams_map.empty()) {
-          s = catalog_manager_->ProcessNewTablesForCDCSDKStreams(
-              table_unprocessed_streams_map, l.epoch());
-        }
-        if (!s.ok()) {
-          YB_LOG_EVERY_N(WARNING, 10)
-              << "Encountered failure while trying to add unprocessed tables to cdc_state table: "
-              << s.ToString();
+          if (s.ok() && !table_unprocessed_streams_map.empty()) {
+            s = catalog_manager_->ProcessNewTablesForCDCSDKStreams(
+                table_unprocessed_streams_map, l.epoch());
+          }
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to add unprocessed tables to cdc_state table: "
+                << s.ToString();
+          }
+        } else {
+          LOG(INFO) << "Skipping processing of dynamic table addition due to "
+                       "cdcsdk_skip_processing_dynamic_table_addition being true";
         }
       }
 
@@ -300,11 +311,10 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->StartPgCatalogVersionsBgTaskIfStopped();
       }
 
-      // Restart CDCSDK parent tablet deletion bg task.
-      catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
-
       // Run background tasks related to XCluster & CDC Schema.
-      catalog_manager_->RunXClusterBgTasks(l.epoch());
+      catalog_manager_->RunXReplBgTasks(l.epoch());
+
+      catalog_manager_->GetXClusterManager()->RunBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();

@@ -16,6 +16,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_statistics.h"
 
 #include "yb/rocksdb/cache.h"
@@ -67,7 +68,15 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
+    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
     const DocDBStatistics* statistics = nullptr);
+
+BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
+    rocksdb::DB* intentsdb,
+    const TransactionStatusManager* status_manager,
+    const KeyBounds* docdb_key_bounds,
+    const Slice* iterate_upper_bound = nullptr,
+    rocksdb::Statistics* statistics = nullptr);
 
 std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
     scoped_refptr<yb::MetricEntity> entity);
@@ -101,6 +110,7 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter();
 // the tablet.
 void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
+    const TabletId& tablet_id,
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions(),

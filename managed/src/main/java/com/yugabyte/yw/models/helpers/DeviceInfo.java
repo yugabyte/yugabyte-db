@@ -18,7 +18,10 @@ import java.util.Objects;
 public class DeviceInfo {
 
   // The size of each volume in each instance (if specified).
-  @ApiModelProperty(value = "The size of each volume in each instance")
+  @ApiModelProperty(
+      value =
+          "The size of each volume in each instance. "
+              + "Could be modified in payload for /resize_node API call")
   public Integer volumeSize;
 
   // Number of volumes to be mounted on this instance at the default path (if specified).

@@ -117,8 +117,8 @@ class MasterTest : public MasterTestBase {
 
 Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
     TSToMasterCommonPB common, TSRegistrationPB registration) {
-  SysClusterConfigEntryPB config;
-  RETURN_NOT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      VERIFY_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   TSHeartbeatRequestPB req;
@@ -201,8 +201,8 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
   // Start the master with FLAGS_master_enable_universe_uuid_heartbeat_check set to false,
   // restart master, and set this flag to true (to simulate autoflag behavior). Ensure that after
   // setting the flag to true, universe_uuid is eventually set.
-  master::SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  master::SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   ASSERT_EQ(config.universe_uuid(), "");
 
   ASSERT_OK(mini_master_->Restart());
@@ -211,11 +211,12 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
   FLAGS_master_enable_universe_uuid_heartbeat_check = true;
 
   config.Clear();
-  ASSERT_OK(WaitFor([&]() {
-    if (!mini_master_->catalog_manager().GetClusterConfig(&config).ok()) {
+  ASSERT_OK(WaitFor([this]() {
+    auto config_result = mini_master_->catalog_manager().GetClusterConfig();
+    if (!config_result.ok()) {
       return false;
     }
-    return !config.universe_uuid().empty();
+    return !config_result->universe_uuid().empty();
   }, MonoDelta::FromSeconds(30), "Wait for universe_uuid set in cluster config"));
 }
 
@@ -268,8 +269,8 @@ TEST_F(MasterTest, TestNoUniverseUuid) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -292,8 +293,8 @@ TEST_F(MasterTest, TestEmptyStringUniverseUuid) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -317,8 +318,8 @@ TEST_F(MasterTest, TestMatchingUniverseUuid) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
   ASSERT_NE(universe_uuid, "");
   {
@@ -339,8 +340,8 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Try a heartbeat. The server hasn't heard of us, so should ask us to re-register.
@@ -355,8 +356,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  vector<shared_ptr<TSDescriptor> > descs;
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
 
   shared_ptr<TSDescriptor> ts_desc;
@@ -377,22 +377,16 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_FALSE(resp.has_tablet_report_limit()); // No limit unless capability registered.
+    ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
-  descs.clear();
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
   TSRegistrationPB reg = descs[0]->GetRegistration();
   ASSERT_EQ(fake_reg.DebugString(), reg.DebugString()) << "Master got different registration";
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
   ASSERT_EQ(ts_desc, descs[0]);
-
-  // Add capabilities in next registration.
-  auto cap = Capabilities();
-  *fake_reg.mutable_capabilities() =
-      google::protobuf::RepeatedField<CapabilityId>(cap.begin(), cap.end());
 
   // If the tablet server somehow lost the response to its registration RPC, it would
   // attempt to register again. In that case, we shouldn't reject it -- we should
@@ -407,7 +401,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
     ASSERT_FALSE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_TRUE(resp.has_tablet_report_limit()); // Limit given, since TS capability registered.
+    ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
   // Now begin sending full tablet report
@@ -442,8 +436,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_FALSE(resp.needs_full_tablet_report());
   }
 
-  descs.clear();
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should still only have one TS registered";
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
@@ -490,8 +483,8 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
   *cloud_info_ts4.mutable_placement_region() = "region-pqr";
   *cloud_info_ts4.mutable_placement_zone() = "zone-anything";
 
-  SysClusterConfigEntryPB config;
-  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  SysClusterConfigEntryPB config =
+      ASSERT_RESULT(mini_master_->catalog_manager().GetClusterConfig());
   auto universe_uuid = config.universe_uuid();
 
   // Try heartbeat from all the tservers. The master hasn't heard of them, so should ask them to
@@ -510,9 +503,8 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  vector<shared_ptr<TSDescriptor> > descs;
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
-  ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
+  ASSERT_EQ(mini_master_->master()->ts_manager()->NumDescriptors(), 0)
+      << "Should not have registered anything";
 
   shared_ptr<TSDescriptor> ts_desc;
   for (auto& uuid : tsUUIDs) {
@@ -563,8 +555,8 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
     }
   }
 
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
-  ASSERT_EQ(expected_registration_uuids.size(), descs.size())
+  ASSERT_EQ(
+      mini_master_->master()->ts_manager()->NumDescriptors(), expected_registration_uuids.size())
       << "Should have registered the expected number of TServers";
 
   // Ensure that the ListTabletServers shows the faked servers.
@@ -625,9 +617,8 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   // master process can handle re-registering tservers with uuids it has previously removed.
   const std::string first_uuid = "uuid1";
   const std::string second_uuid = "uuid2";
-  vector<shared_ptr<TSDescriptor>> descs;
   int seqno = 1;
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   EXPECT_EQ(descs.size(), 0);
   TSToMasterCommonPB original_common;
   TSRegistrationPB registration;
@@ -640,7 +631,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   auto resp = ASSERT_RESULT(SendHeartbeat(original_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
 
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(descs.size(), 1);
   auto original_desc = descs[0];
 
@@ -649,7 +640,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   new_common.mutable_ts_instance()->set_instance_seqno(seqno++);
   resp = ASSERT_RESULT(SendHeartbeat(new_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   // This function filters out descriptors of removed tservers so we still expect just 1 descriptor.
   ASSERT_EQ(descs.size(), 1);
   auto new_desc = descs[0];
@@ -661,7 +652,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   resp = ASSERT_RESULT(SendHeartbeat(updated_original_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
 
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(descs.size(), 1);
   EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
   EXPECT_TRUE(new_desc->IsRemoved());
@@ -866,6 +857,55 @@ TEST_F(MasterTest, TestCatalog) {
     req.add_relation_type_filter(USER_TABLE_RELATION);
     DoListTables(req, &tables);
     ASSERT_EQ(kNumSystemTables + 2, tables.tables_size());
+  }
+}
+
+TEST_F(MasterTest, TestListTablesIncludesIndexedTableId) {
+  // Create a new PGSQL namespace.
+  NamespaceName test_name = "test_pgsql";
+  CreateNamespaceResponsePB resp;
+  NamespaceId nsid;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  nsid = resp.id();
+
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
+  const TableName kTableNamePgsql = "testtb_pgsql";
+  ASSERT_OK(CreatePgsqlTable(nsid, kTableNamePgsql, kTableSchema));
+
+  ListTablesResponsePB tables;
+  TableId id;
+  {
+    ListTablesRequestPB req;
+    req.set_name_filter("testtb_pgsql");
+    DoListTables(req, &tables);
+    ASSERT_EQ(1, tables.tables_size());
+    id = tables.tables(0).id();
+  }
+
+  master::CreateTableRequestPB req;
+  IndexInfoPB index_info;
+  index_info.set_indexed_table_id(id);
+  index_info.set_hash_column_count(1);
+  index_info.add_indexed_hash_column_ids(10);
+  auto *col = index_info.add_columns();
+  col->set_column_name("v1");
+  col->set_indexed_column_id(10);
+  req.mutable_index_info()->CopyFrom(index_info);
+  req.set_indexed_table_id(id);
+  const TableName kIndexNamePgsql = "testin_pgsql";
+  const Schema kIndexSchema(
+      {ColumnSchema("v1", DataType::UINT64, ColumnKind::RANGE_ASC_NULL_FIRST)});
+  ASSERT_OK(CreatePgsqlTable(nsid, kIndexNamePgsql, kIndexSchema, &req));
+  {
+    ListTablesRequestPB req;
+    req.set_name_filter("testin_pgsql");
+    DoListTables(req, &tables);
+    ASSERT_EQ(1, tables.tables_size());
+    ASSERT_TRUE(tables.tables(0).has_indexed_table_id());
+    ASSERT_EQ(id, tables.tables(0).indexed_table_id());
   }
 }
 

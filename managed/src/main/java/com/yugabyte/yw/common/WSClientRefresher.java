@@ -58,6 +58,10 @@ public class WSClientRefresher implements CustomTrustStoreListener {
     return customWsClients.computeIfAbsent(ybWsConfigPath, this::newClient);
   }
 
+  public WSClient getClient(String ybWsConfigPath, Map<String, ConfigValue> wsOverrides) {
+    return newClient(ybWsConfigPath, wsOverrides);
+  }
+
   private void closePreviousClient(WSClient previousWsClient) {
     if (previousWsClient != null) {
       try {
@@ -68,33 +72,50 @@ public class WSClientRefresher implements CustomTrustStoreListener {
     }
   }
 
+  private WSClient newClient(String ybWsConfigPath, Map<String, ConfigValue> wsOverrides) {
+    Config customWsConfig = getWsConfig(ybWsConfigPath);
+    if (wsOverrides != null) {
+      for (Map.Entry<String, ConfigValue> entry : wsOverrides.entrySet()) {
+        customWsConfig = customWsConfig.withValue(entry.getKey(), entry.getValue());
+      }
+    }
+    ConfigValue ybWsOverrides = customWsConfig.getValue("play.ws");
+    return customWsClientFactory.forCustomConfig(ybWsOverrides);
+  }
+
   private WSClient newClient(String ybWsConfigPath) {
+    Config customWsConfig = getWsConfig(ybWsConfigPath);
+    ConfigValue ybWsOverrides = customWsConfig.getValue("play.ws");
+
+    if (ybWsOverrides != null) {
+      log.debug(
+          "Creating ws client with config override: {}",
+          ybWsOverrides.render(ConfigRenderOptions.concise()));
+    }
+
+    return customWsClientFactory.forCustomConfig(ybWsOverrides);
+  }
+
+  private Config getWsConfig(String ybWsConfigPath) {
     ConfigValue ybWsOverrides = runtimeConfigFactory.globalRuntimeConf().getValue(ybWsConfigPath);
+    Config customWsConfig = ConfigFactory.empty().withValue("play.ws", ybWsOverrides);
 
     // Add the custom CA truststore config if applicable.
     List<Map<String, String>> ybaStoreConfig = customCAStoreManager.getPemStoreConfig();
     if (!ybaStoreConfig.isEmpty() && !customCAStoreManager.isEnabled()) {
       log.warn("Skipping to add YBA's custom trust-store config as the feature is disabled");
     }
+
     if (!ybaStoreConfig.isEmpty() && customCAStoreManager.isEnabled()) {
       // Add JRE default cert paths as well in this case.
       ybaStoreConfig.add(customCAStoreManager.getJavaDefaultConfig());
       ybaStoreConfig.addAll(customCAStoreManager.getYBAJavaKeyStoreConfig());
-
-      Config customWsConfig =
-          ConfigFactory.empty()
-              .withValue("play.ws", ybWsOverrides)
-              .withValue(
-                  "play.ws.ssl.trustManager.stores",
-                  ConfigValueFactory.fromIterable(ybaStoreConfig));
-      ybWsOverrides = customWsConfig.getValue("play.ws");
+      customWsConfig =
+          customWsConfig.withValue(
+              "play.ws.ssl.trustManager.stores", ConfigValueFactory.fromIterable(ybaStoreConfig));
     }
 
-    log.debug(
-        "Creating ws client with config override: {}",
-        ybWsOverrides.render(ConfigRenderOptions.concise()));
-
-    return customWsClientFactory.forCustomConfig(ybWsOverrides);
+    return customWsConfig;
   }
 
   public void truststoreUpdated() {

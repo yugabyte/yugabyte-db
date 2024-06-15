@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.supportbundle;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -206,7 +207,7 @@ class K8sInfoComponent implements SupportBundleComponent {
   public void runCommandsOnPlatformNamespace(String platformNamespace, String destDir)
       throws IOException {
     // Create the platform namespace directory
-    String platformNamespaceDirPath = destDir + "/" + "platform_namespace_" + platformNamespace;
+    String platformNamespaceDirPath = destDir + "/platform_namespace_" + platformNamespace;
     supportBundleUtil.createDirectories(platformNamespaceDirPath);
 
     // Get pods, events, configmaps, services with full output to the platform namespace directory
@@ -298,14 +299,19 @@ class K8sInfoComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponent(
-      Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws Exception {
+      SupportBundleTaskParams supportBundleTaskParams,
+      Customer customer,
+      Universe universe,
+      Path bundlePath,
+      NodeDetails node)
+      throws Exception {
     try {
       log.debug("Starting downloadComponent() on K8sInfoComponent");
 
       KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
 
       // Create the component directory in the support bundle.
-      String destDir = bundlePath.toString() + "/" + "k8s_info";
+      String destDir = bundlePath.toString() + "/k8s_info";
       supportBundleUtil.createDirectories(destDir);
 
       // Get all clusters in the universe (primary, read replicas).
@@ -410,7 +416,6 @@ class K8sInfoComponent implements SupportBundleComponent {
                   kubernetesManager.getStorageClass(
                       kubernetesCluster.config,
                       storageClassName,
-                      null,
                       SupportBundleUtil.kubectlOutputFormat);
               supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
             } catch (Exception e) {
@@ -437,6 +442,7 @@ class K8sInfoComponent implements SupportBundleComponent {
 
   @Override
   public void downloadComponentBetweenDates(
+      SupportBundleTaskParams supportBundleTaskParams,
       Customer customer,
       Universe universe,
       Path bundlePath,
@@ -444,6 +450,6 @@ class K8sInfoComponent implements SupportBundleComponent {
       Date endDate,
       NodeDetails node)
       throws Exception {
-    this.downloadComponent(customer, universe, bundlePath, node);
+    this.downloadComponent(supportBundleTaskParams, customer, universe, bundlePath, node);
   }
 }

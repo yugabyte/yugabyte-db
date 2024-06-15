@@ -30,6 +30,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/type_traits.h"
 #include "yb/util/uuid.h"
 
 namespace yb::pgwrapper {
@@ -44,6 +45,10 @@ struct PGResultClear {
 
 typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
+
+// FetchRow/GetValue<MonoDelta> return MonoDelta since POSTGRES_EPOCH_DATE
+// The PGPostgresEpoch function returns this moment as MonoTime
+const MonoTime& PGPostgresEpoch();
 
 struct PGOid {};
 
@@ -75,11 +80,10 @@ template<class T>
 concept BasePGType =
     IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
     std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
-    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
+    std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta>;
 
 template<class T>
-concept OptionalPGType =
-    std::is_same_v<T, std::optional<typename T::value_type>> && BasePGType<typename T::value_type>;
+concept OptionalPGType = StdOptionalType<T> && BasePGType<typename T::value_type>;
 
 template<class T>
 concept AllowedPGType = BasePGType<T> || OptionalPGType<T>;
@@ -113,22 +117,38 @@ using PGUint64 = PGNonNeg<int64_t>;
 template<AllowedPGType T>
 using GetValueResult = Result<typename PGTypeTraits<T>::ReturnType>;
 
+namespace libpq_utils::internal {
+
 template<BasePGType T>
-GetValueResult<T> GetValue(const PGresult* result, int row, int column);
+struct GetValueHelper {
+  static Status CheckType(const PGresult* result, int column);
+  static GetValueResult<T> Get(const PGresult* result, int row, int column);
+};
+
+} // namespace libpq_utils::internal
+
+template<BasePGType T>
+GetValueResult<T> GetValue(const PGresult* result, int row, int column) {
+  using Helper = libpq_utils::internal::GetValueHelper<T>;
+  RETURN_NOT_OK(Helper::CheckType(result, column));
+  return Helper::Get(result, row, column);
+}
 
 template<OptionalPGType T>
 GetValueResult<T> GetValue(const PGresult* result, int row, int column) {
+  using Helper = libpq_utils::internal::GetValueHelper<typename T::value_type>;
+  RETURN_NOT_OK(Helper::CheckType(result, column));
   if (PQgetisnull(result, row, column)) {
     return std::nullopt;
   }
-  return GetValue<typename T::value_type>(result, row, column);
+  return Helper::Get(result, row, column);
 }
 
 const std::string& DefaultColumnSeparator();
 const std::string& DefaultRowSeparator();
 
 // DEPRECATED: use FetchRows instead.
-Result<std::string> ToString(PGresult* result, int row, int column);
+Result<std::string> ToString(const PGresult* result, int row, int column);
 
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);
@@ -254,6 +274,8 @@ class PGConn {
 
   bool IsBusy();
 
+  ConnStatusType ConnStatus();
+
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>
@@ -274,6 +296,15 @@ class PGConn {
   auto FetchRows(const std::string& query) {
     return libpq_utils::internal::FetchHelper<Args...>::FetchRows(Fetch(query));
   }
+
+  // The following two methods are really important because they convenient way for checking table
+  // content and debugging tests.
+  // Please do not remove them. Consult @sergei if you have any questions.
+  Result<std::string> FetchRowAsString(
+      const std::string& command, const std::string& sep = DefaultColumnSeparator());
+  Result<std::string> FetchAllAsString(const std::string& command,
+      const std::string& column_sep = DefaultColumnSeparator(),
+      const std::string& row_sep = DefaultRowSeparator());
 
   Status StartTransaction(IsolationLevel isolation_level);
   Status CommitTransaction();
@@ -355,5 +386,11 @@ class PGConnPerf {
  private:
   Subprocess process_;
 };
+
+// Utility function for creating internal pg connections (ie local connection using yb-tserver-key
+// authentication).
+PGConnBuilder CreateInternalPGConnBuilder(
+    const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline);
 
 } // namespace yb::pgwrapper

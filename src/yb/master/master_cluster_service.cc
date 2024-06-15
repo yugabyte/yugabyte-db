@@ -15,15 +15,17 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/tablet_health_manager.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.service.h"
+#include "yb/master/master_cluster_handler.h"
 #include "yb/master/master_heartbeat.pb.h"
-#include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_service_base.h"
+#include "yb/master/tablet_health_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/master/xcluster/xcluster_manager.h"
+
 #include "yb/util/service_util.h"
 #include "yb/util/flags.h"
 
@@ -54,9 +56,9 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       return;
     }
 
-    std::vector<std::shared_ptr<TSDescriptor> > descs;
+    std::vector<std::shared_ptr<TSDescriptor>> descs;
     if (!req->primary_only()) {
-      server_->ts_manager()->GetAllDescriptors(&descs);
+      descs = server_->ts_manager()->GetAllDescriptors();
     } else {
       auto uuid_result = server_->catalog_manager_impl()->placement_uuid();
       if (!uuid_result.ok()) {
@@ -137,8 +139,14 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
       auto last_heartbeat = desc->LastHeartbeatTime();
       if (last_heartbeat) {
-        entry->set_millis_since_heartbeat(narrow_cast<int>(
-            MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds()));
+        auto ms_since_heartbeat = MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds();
+        if (ms_since_heartbeat > std::numeric_limits<int32_t>::max()) {
+          LOG(DFATAL) << entry->instance_id().permanent_uuid()
+                      << " has not heartbeated since "
+                      << ms_since_heartbeat;
+          ms_since_heartbeat = std::numeric_limits<int32_t>::max();
+        }
+        entry->set_millis_since_heartbeat(narrow_cast<int>(ms_since_heartbeat));
       }
       entry->set_alive(desc->IsLive());
       desc->GetMetrics(entry->mutable_metrics());
@@ -337,38 +345,25 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
   void ChangeMasterClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
     rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, SetClusterConfig);
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, SetClusterConfig);
   }
 
   void GetMasterClusterConfig(
       const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
       rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetClusterConfig);
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, GetClusterConfig);
   }
 
   void GetLeaderBlacklistCompletion(
       const GetLeaderBlacklistPercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLeaderBlacklistCompletionPercent);
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, GetLeaderBlacklistCompletionPercent);
   }
 
   void GetLoadMoveCompletion(
       const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLoadMoveCompletionPercent);
-  }
-
-  void GetAutoFlagsConfig(
-      const GetAutoFlagsConfigRequestPB* req, GetAutoFlagsConfigResponsePB* resp,
-      rpc::RpcContext rpc) override {
-    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
-    if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
-      return;
-    }
-
-    *resp->mutable_config() = server_->GetAutoFlagsConfig();
-
-    rpc.RespondSuccess();
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, GetLoadMoveCompletionPercent);
   }
 
   MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
@@ -377,11 +372,20 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
-    CatalogManager,
+    MasterClusterHandler,
     (AreLeadersOnPreferredOnly)
+    (SetPreferredZones)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+    CatalogManager,
     (IsLoadBalanced)
     (IsLoadBalancerIdle)
-    (SetPreferredZones)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+    MasterAutoFlagsManager,
+    (GetAutoFlagsConfig)
     (PromoteAutoFlags)
     (RollbackAutoFlags)
     (PromoteSingleAutoFlag)

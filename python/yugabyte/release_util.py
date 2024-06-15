@@ -9,7 +9,9 @@ import json
 import logging
 import os
 import platform
+import shlex
 import shutil
+import subprocess
 import sys
 import re
 import distro  # type: ignore
@@ -29,6 +31,7 @@ from typing import Dict, Any, Optional, cast, List
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
+VERSION_METADATA_FILE = "version_metadata.json"
 THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
@@ -145,13 +148,34 @@ class ReleaseUtil:
         - Replace ${project.version} with the Java version from pom.xml.
         - Replace the leading "thirdparty/" with the respective YB_THIRDPARTY_DIR from the build.
         - Replace $BUILD_ROOT with the actual build_root.
+        - Replace $ARCH with the machine's arch (x86_64/aarch64)
         """
+        # Filter out lines that are platform specific
+        if old_value.startswith('Linux-only:') or old_value.startswith('Darwin-only:'):
+            if old_value.startswith('{}-only'.format(platform.system())):
+                new_value = old_value.split(':', maxsplit=1)[1]
+            else:
+                return ''
+        else:
+            new_value = old_value
         # Substitution for Java.
-        new_value = old_value.replace('${project.version}', self.java_project_version)
+        new_value = new_value.replace('${project.version}', self.java_project_version)
         # Substitution for thirdparty.
         thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
         if thirdparty_prefix_match:
             new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
+        # Substitution for ARCH.
+        new_value = new_value.replace("${ARCH}", platform.machine())
+        # Substitution for YBCOS.  This doesn't map cleanly yet.
+        # we don't provide Mac native binaries for YBC yet, so just include the linux package
+        # of the appropriate arch.
+        new_value = new_value.replace("${YBCOS}",
+                                      {"aarch64-Linux": "el8",
+                                       "x86_64-Linux": "linux",
+                                       "arm64-Darwin": "el8",
+                                       "x86_64-Darwin": "linux"
+                                       }['-'.join([platform.machine(), platform.system()])]
+                                      )
         # Substitution for BUILD_ROOT.
         new_value = new_value.replace("$BUILD_ROOT", self.build_root)
         thirdparty_intrumentation = "uninstrumented"
@@ -201,6 +225,8 @@ class ReleaseUtil:
             mkdir_p(current_dest_dir)
 
             for elem in self.release_manifest[dir_from_manifest]:
+                if not elem:
+                    continue
                 elem = self.repo_expand_path(elem)
                 files = glob.glob(elem)
                 for file_path in files:
@@ -264,7 +290,7 @@ class ReleaseUtil:
             if distro.id() == "centos" and distro.major_version() == "7" \
                     or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
                 system = "centos"
-            elif distro.id == "ubuntu":
+            elif distro.id() == "ubuntu":
                 system = distro.id() + distro.version()
             else:
                 system = distro.id() + distro.major_version()

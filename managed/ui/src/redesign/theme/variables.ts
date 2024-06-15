@@ -148,6 +148,7 @@ export const colors = {
     pillWarningIcon: '#FFA400',
     pillWarningText: '#9D6C00',
     success: '#289B42',
+    textGray: '#818182',
     textDarkGray: '#67666C',
     textInProgress: '#44518B',
     warning: '#FF9933',

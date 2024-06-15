@@ -13,15 +13,9 @@
 
 #pragma once
 
-#include "yb/util/strongly_typed_uuid.h"
-
 namespace yb {
-namespace xrepl {
-YB_STRONGLY_TYPED_UUID_DECL(StreamId);
-}
 namespace cdc {
 
-class CDCServiceContext;
 class CDCServiceImpl;
 
 } // namespace cdc

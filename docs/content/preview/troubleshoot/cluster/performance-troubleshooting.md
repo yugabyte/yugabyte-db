@@ -3,6 +3,8 @@ title: Troubleshoot performance issues
 headerTitle: Performance issues
 linkTitle: Performance issues
 description: Investigate and troubleshoot performance issues in YugabyteDB clusters
+aliases:
+  - /preview/benchmark/performance-troubleshooting/
 menu:
   preview:
     identifier: performance-troubleshooting
@@ -15,13 +17,13 @@ There is a number of steps you can take to investigate and troubleshoot the perf
 
 ## Files on a YugabyteDB cluster
 
-Learning about the default locations of files on a YugabyteDB cluster can help with troubleshooting the cluster performance issues. 
+Learning about the default locations of files on a YugabyteDB cluster can help with troubleshooting the cluster performance issues.
 
 Note that the following locations are applicable to clusters installed via YugabyteDB Anywhere.
 
 ### YugabyteDB software and binary files
 
-The software packages are symlinked at `/home/yugabyte/{master|tserver}`. 
+The software packages are symlinked at `/home/yugabyte/{master|tserver}`.
 
 Note that YB-Master and YB-TServer may be different versions of the software (for example, this could be a result of rolling software upgrades).
 
@@ -143,7 +145,6 @@ You can view metrics of various YugabyteDB processes at a particular node (for e
 | :------ | :------ |
 | Master | 127.0.0.1:7000 |
 | TServer | 127.0.0.1:9000 |
-| Yedis | 127.0.0.1:11000 |
 | YCQL | 127.0.0.1:12000 |
 | YSQL | 127.0.0.1:13000 |
 
@@ -170,7 +171,7 @@ To enable tracing for all RPCs (not just the slow ones) including the `enable_tr
 
 ## Dynamic settings for gflags
 
-Although setting string gflags dynamically is not recommended as it is not thread-safe, the `yb-ts-cli` utility allows you to do that. 
+Although setting string gflags dynamically is not recommended as it is not thread-safe, the `yb-ts-cli` utility allows you to do that.
 
 Before attempting to set gflags, you need to identify the server using its Remote Procedure Call (RPC) port, as opposed to the HTTP port.
 

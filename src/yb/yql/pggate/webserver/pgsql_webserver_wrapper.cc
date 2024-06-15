@@ -15,6 +15,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <math.h>
+#include <cassert>
 
 #include <map>
 #include <vector>
@@ -70,6 +71,7 @@ static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connect
 
 // YSQL Connection Manager-specific metric labels
 static const char *DATABASE = "database";
+static const char *USER = "user";
 
 namespace {
 
@@ -134,7 +136,8 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
   ysql_conn_mgr_prometheus_attr = prometheus_attr;
 }
 
-static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
+static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
+                                uint64_t *last_updated_timestamp) {
   char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if(stats_shm_key == NULL)
     return;
@@ -156,9 +159,15 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
   }
 
   for (uint32_t itr = 0; itr < num_pools; itr++) {
-    if (strcmp(shmp[itr].pool_name, "") == 0)
+    if (strcmp(shmp[itr].database_name, "") == 0
+      || strcmp(shmp[itr].user_name, "") == 0 )
       break;
     stats->push_back(shmp[itr]);
+  }
+
+  if (last_updated_timestamp != NULL) {
+    // Read last updated timestamp from control connection pool struct, present at index 0.
+    *last_updated_timestamp = shmp[0].last_updated_timestamp;
   }
 
   shmdt(shmp);
@@ -167,7 +176,27 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
 void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list);
+  uint64_t num_pools = 0, last_updated_timestamp = 0;
+
+  GetYsqlConnMgrStats(&stats_list, &last_updated_timestamp);
+  num_pools = stats_list.size();
+
+  ysql_conn_mgr_prometheus_attr.erase(DATABASE);
+  ysql_conn_mgr_prometheus_attr.erase(USER);
+
+  // Publish the count for number of pools.
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_num_pools", num_pools,
+      AggregationFunction::kSum, kServerLevel),
+        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+
+  // Publish the last time ysql conn mgr metrics are emitted.
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_updated_timestamp",
+      last_updated_timestamp, AggregationFunction::kSum, kServerLevel),
+      "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
@@ -180,7 +209,8 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_transaction_rate", stats.transaction_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns});
-    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.pool_name;
+    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.database_name;
+    ysql_conn_mgr_prometheus_attr[USER] = stats.user_name;
 
     // Publish collected metrics for the current pool.
     for (auto entry : ysql_conn_mgr_metrics) {
@@ -231,6 +261,12 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
 }
 
 static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *stat) {
+  writer->String("userid");
+  writer->Int64(stat->userid);
+
+  writer->String("dbid");
+  writer->Int64(stat->dbid);
+
   writer->String("query_id");
   // Use Int64 for this uint64 field to keep consistent output with PG.
   writer->Int64(stat->query_id);
@@ -260,6 +296,24 @@ static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *st
 
   writer->String("rows");
   writer->Int64(stat->rows);
+
+  writer->String("local_blks_hit");
+  writer->Int64(stat->local_blks_hit);
+
+  writer->String("local_blks_read");
+  writer->Int64(stat->local_blks_read);
+
+  writer->String("local_blks_dirtied");
+  writer->Int64(stat->local_blks_dirtied);
+
+  writer->String("local_blks_written");
+  writer->Int64(stat->local_blks_written);
+
+  writer->String("temp_blks_read");
+  writer->Int64(stat->temp_blks_read);
+
+  writer->String("temp_blks_written");
+  writer->Int64(stat->temp_blks_written);
 }
 
 static void PgStatStatementsHandler(
@@ -396,7 +450,7 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list);
+  GetYsqlConnMgrStats(&stats_list, NULL);
 
   writer.StartObject();
   writer.String("pools");
@@ -407,8 +461,11 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 
     // The type of pool. There are two types of pool in Ysql Connection Manager, "gloabl" and
     // "control".
-    writer.String("pool");
-    writer.String(stat.pool_name);
+    writer.String("database_name");
+    writer.String(stat.database_name);
+
+    writer.String("user_name");
+    writer.String(stat.user_name);
 
     // Number of logical connections that are attached to any physical connection. A logical
     // connection gets attached to a physical connection during lifetime of a transaction.
@@ -567,6 +624,11 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
 }
 
+void DestroyWebserver(struct WebserverWrapper *webserver) {
+  Webserver *webserver_impl = reinterpret_cast<Webserver *>(webserver);
+  delete webserver_impl;
+}
+
 void SetWebserverConfig(
     WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
     int webserver_profiler_sample_freq_bytes) {
@@ -574,8 +636,6 @@ void SetWebserverConfig(
   webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
 
   if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
-    LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
-        webserver_profiler_sample_freq_bytes);
     SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
   }
 }

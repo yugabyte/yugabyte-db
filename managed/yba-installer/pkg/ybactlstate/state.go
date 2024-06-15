@@ -10,7 +10,7 @@ import (
 
 const (
 	StateFileName     = ".yba_installer.state"
-	schemaVersion int = 3
+	schemaVersion int = 6
 )
 
 type State struct {
@@ -21,6 +21,7 @@ type State struct {
 	Ybdb            YbdbState                `json:"ybdb"`
 	CurrentStatus   status                   `json:"current_status"`
 	Replicated      ReplicatedMigrationState `json:"replicated_migration"`
+	Config          Config                   `json:"config"`
 	_internalFields internalFields
 }
 
@@ -35,6 +36,11 @@ type ReplicatedMigrationState struct {
 	PrometheusFileGroup uint32 `json:"prometheus_file_group"`
 	StoragePath         string `json:"storage_path"`
 	OriginalVersion     string `json:"original_version"`
+}
+
+type Config struct {
+	Hostname       string `json:"hostname"`
+	SelfSignedCert bool   `json:"self_signed_cert"`
 }
 
 func New() *State {
@@ -52,6 +58,9 @@ func New() *State {
 		},
 		Replicated:    ReplicatedMigrationState{},
 		CurrentStatus: UninstalledStatus,
+		Config: Config{
+			SelfSignedCert: false, // Default to false
+		},
 		_internalFields: internalFields{
 			ChangeID:      0,
 			SchemaVersion: schemaVersion,

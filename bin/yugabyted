@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import unicode_literals
 
 import argparse
@@ -10,7 +10,6 @@ import os
 import re
 import resource
 import shutil
-from distutils.spawn import find_executable
 import subprocess
 import sys
 import time
@@ -21,7 +20,9 @@ import socket
 import tarfile
 import operator
 import string
-from datetime import datetime
+import glob
+import tarfile
+from datetime import datetime, timedelta
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
 
@@ -82,24 +83,24 @@ YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yuga
 YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
 GENERATE_SERVER_CERTS = "https://docs.yugabyte.com/preview/secure/tls-encryption/\
 server-certificates/#create-the-server-certificates"
+YBC_DOWNLOAD_LINK = "https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/" + \
+"2.0.0.0-b20/ybc-2.0.0.0-b20-linux-x86_64.tar.gz"
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
 DEFAULT_START_FAULT_TOLERANCE = "none"
+DEAFULT_RETENTION_PERIOD = 7
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
     "sports": "https://docs.yugabyte.com/latest/sample-data/sportsdb/",
     "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
 }
-EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
-REQUIRED_LOOPBACK_ADDRESSES = [
-    '127\.0\.0\.2',
-    '127\.0\.0\.3',
-    '127\.0\.0\.4',
-    '127\.0\.0\.5',
-    '127\.0\.0\.6',
-    '127\.0\.0\.7'
+SYSTEM_NAMESPACES = [
+    "system_schema", "system_auth", "system",
+    "system_platform", "template0", "template1"
 ]
+EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
+
 MAX_PROC = {
     'Linux' : 12000,
     'Darwin' : 2500,
@@ -143,10 +144,13 @@ PREFIX = {
     'configure data_placement': "",
     'configure encrypt_at_rest': "",
     'configure admin_operation': "",
+    'configure point_in_time_recovery': "",
     'configure_read_replica' : "",
     'configure_read_replica new': "",
     'configure_read_replica modify': "",
     'configure_read_replica delete': "",
+    'backup': "",
+    'restore': "",
     'connect' : "",
     'connect ycql' : "",
     'connect ysql' : "",
@@ -155,6 +159,7 @@ PREFIX = {
     'demo destroy' : "",
     'cert' : "",
     'cert generate_server_certs' : "",
+    'finalize_upgrade' : "",
 }
 
 USAGE = {
@@ -169,10 +174,13 @@ USAGE = {
     'configure data_placement': "yugabyted configure data_placement [flags]",
     'configure encrypt_at_rest': "yugabyted configure encrypt_at_rest [flags]",
     'configure admin_operation' : "yugabyted configure admin_operation [flags]",
+    'configure point_in_time_recovery' : "yugabyted configure point_in_time_recovery [flags]",
     'configure_read_replica' : "yugabyted configure_read_replica [command] [flags]",
     'configure_read_replica new': "yugabyted configure_read_replica new [flags]",
     'configure_read_replica modify': "yugabyted configure_read_replica modify [flags]",
     'configure_read_replica delete' : "yugabyted configure_read_replica delete",
+    'backup' : "yugabyted backup [flags]",
+    'restore' : "yugabyted restore [flags]",
     'connect' : "yugabyted connect [command] [flags]",
     'connect ycql' : "yugabyted connect ycql [flags]",
     'connect ysql' : "yugabyted connect ysql [flags]",
@@ -181,6 +189,7 @@ USAGE = {
     'demo destroy' : "yugabyted demo destroy [flags]",
     'cert' : "yugabyted cert [command] [flags]",
     'cert generate_server_certs' : "yugabyted cert generate_server_certs [flag]",
+    'finalize_upgrade': "yugabyted finalize_upgrade [flags]",
 }
 
 EXAMPLE = {
@@ -198,6 +207,15 @@ EXAMPLE = {
     'collect_logs' : "",
     'cert' : "# Create node sever certificates:\n" +
              "yugabyted cert generate_server_certs --hostnames=<comma_seperated_hostnames>\n\n",
+    'backup' : "# Backup a YSQL Database into AWS S3 Bucket: \n" +
+               "yugabyted backup --database=northwind --cloud_storage_uri=s3://\n\n" +
+               "# Backup a YCQL namespace into AWS S3 Bucket: \n" +
+               "yugabyted backup --namespace=default --cloud_storage_uri=s3://\n\n",
+    'restore' : "# Restore a YSQL Database into AWS S3 Bucket: \n" +
+                "yugabyted restore --database=northwind --cloud_storage_uri=s3://\n\n" +
+                "# Recover to a point in time for a database:\n" +
+                "yugabyted restore " + \
+                "--recover_to_point_in_time '2024-01-29 9:30:00 PM' --database yugabyte \n\n",
     'configure_read_replica' : "# Configure a new read replica cluster:\n" +
                   "yugabyted configure_read_replica new --rf=<replication_factor> " +
                   "--data_placement_constraint=<placement_policy_for_rr_cluster>\n\n" +
@@ -215,12 +233,15 @@ EXAMPLE = {
     "delete" : "# Delete an existing read replica cluster:\n" +
                "yugabyted configure_read_replica delete",
     'configure' : "# Configure a multi-zone cluster:\n" +
-                  "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
-                  "# Enable encryption at rest:\n" +
-                  "yugabyted configure encrypt_at_rest --enable\n\n" +
-                  "For more examples use 'yugabyted configure [command] -h'\n\n" +
-                  "# Execute yb-admin command on the YugabyteDB cluster:\n" +
-                  "yugabyted configure admin_operation --command <yb-admin_coomand>",
+                "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
+                "# Enable encryption at rest:\n" +
+                "yugabyted configure encrypt_at_rest --enable\n\n" +
+                "# Execute yb-admin command on the YugabyteDB cluster:\n" +
+                "yugabyted configure admin_operation --command <yb-admin_command> \n\n" +
+                "# Enable point-in-time recovery for a database:\n" +
+                "yugabyted configure point_in_time_recovery --enable" + \
+                " --retention <retention_period> --database <database_name> \n\n" +
+                "For more examples use 'yugabyted configure [command] -h'\n\n",
     'data_placement' : "# Configure a multi-zone cluster:\n" +
                        "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
                        "# Configure a multi-region cluster:\n" +
@@ -241,7 +262,21 @@ EXAMPLE = {
                         "# Disable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --disable\n\n",
     'admin_operation' : "# Execute yb-admin command on the YugabyteDB cluster:\n" +
-                         "yugabyted configure admin_operation --command 'get_universe_config'\n\n",
+                        "yugabyted configure admin_operation --command 'get_universe_config'\n\n",
+    'point_in_time_recovery' : "# Enable point-in-time recovery for a database:\n" +
+                        "yugabyted configure point_in_time_recovery --enable" + \
+                        " --retention <retention_period> --database <database_name> \n\n" +
+                        "# Disable point-in-time recovery for a database:\n" +
+                        "yugabyted configure point_in_time_recovery --disable" + \
+                        " --database <database_name> \n\n" +
+                        "# Display point-in-time recovery status for a YugabyteDB cluster:\n" +
+                        "yugabyted configure point_in_time_recovery " + \
+                        "--status \n\n",
+    'finalize_upgrade': "# Finalize the cluster upgrade process:\n" +
+                         "yugabyted finalize_upgrade\n\n" +
+                        "# Finalize the cluster upgrade by specifying a timeout value for" +
+                         " the YSQL catalog upgrade:\n" +
+                         "yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>\n\n",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -256,6 +291,9 @@ EPILOG_SPECIFIC = {
     'collect_logs' : "",
     'configure' : "",
     'cert' : "",
+    "backup" : "",
+    "restore" : "",
+    "finalize_upgrade" : "",
 }
 
 # YugabyteDB configs.
@@ -272,6 +310,7 @@ DEFAULT_YSQL_METRIC_PORT = 13000
 DEFAULT_YCQL_METRIC_PORT = 12000
 DEFAULT_WEBSERVER_PORT = 7200
 DEFAULT_YUGABYTED_UI_PORT = 15433
+DEFAULT_UPGRADE_YSQL_TIMEOUT = 60000
 DEFAULT_CALLHOME = True
 DEFAULT_YSQL_USER = "yugabyte"
 DEFAULT_YSQL_PASSWORD = "yugabyte"
@@ -298,6 +337,18 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
     "disk_usage", "cpu_usage", "node_up"
 ]
+PG_PARITY_FLAGS_LIST = [
+    "yb_enable_read_committed_isolation=true",
+    "ysql_enable_read_request_caching=true"
+]
+PG_PARITY_FLAGS_DICT = {
+"ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,"
+                      "yb_enable_optimizer_statistics=true,"
+                      "yb_bnl_batch_size=1024,"
+                      "yb_fetch_row_limit=0,"
+                      "yb_fetch_size_limit=1MB,"
+                      "yb_use_hash_splitting_by_default=false"
+                    }
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
@@ -305,6 +356,7 @@ YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
 YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.yugabyted.conf")
 WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
+YBC_NFS_DIR  = "/tmp/nfs"
 
 BREW_CONF_FILE = "/usr/local/etc/yugabyted.conf"
 
@@ -373,6 +425,98 @@ def find_binary_location(binary_name):
     ]
 
     return search_file_in_paths(dir_candidates, binary_name)
+
+# Extract or Download YBC package
+def download_extract_ybc_binary():
+
+    # Check for existence of YBC package
+    ybc_file_pattern = "ybc-*.tar.gz"
+    matching_files = glob.glob(ybc_file_pattern)
+    result = True
+    if len(matching_files) == 0:
+        Output.log(
+            "YBC binary archive file not found in {}.".
+                format(YUGABYTE_DIR), logging.WARN
+        )
+        # check if Development environment
+        if os.path.exists(os.path.join(YUGABYTE_DIR, "build", "latest", "bin")):
+            Output.log(
+                "Downloading YBC binary from {}.".
+                    format(YBC_DOWNLOAD_LINK), logging.INFO)
+            result = download_ybc_package()
+            if result:
+                matching_files = glob.glob(ybc_file_pattern)
+            else:
+                result = False
+                return result
+        else:
+            # YBC binary not found in the YugabyteDB release package.
+            result = False
+            return result
+
+    if len(matching_files) > 1:
+        Output.log(
+            "More than one YBC archive file found. Extracting the following {}.".
+            format(matching_files[0], logging.WARN)
+        )
+
+    # Extract the YBC package into /ybc folder
+    ybc_archive_path = YUGABYTE_DIR + "/" + matching_files[0]
+    ybc_untar_path = YUGABYTE_DIR + "/ybc"
+    with tarfile.open(ybc_archive_path, 'r:gz') as tar:
+        for member in tar.getmembers():
+            # Check if the member is a file (not a directory)
+            if member.isfile():
+                path_components = member.path.split(os.path.sep)
+                # Remove the first folder path
+                member.path = os.path.sep.join(path_components[1:])
+                tar.extract(member, path=ybc_untar_path)
+
+    return result
+
+# Download YBC release from S3 bucket in dev environment
+def download_ybc_package():
+    try:
+        response = urlopen(YBC_DOWNLOAD_LINK)
+        CHUNK_SIZE = 1 << 20
+        fileName = 'ybc-2.0.0.0-b20-linux-x86_64.tar.gz'
+        Output.log('Downloading YBC Package: {}', YBC_DOWNLOAD_LINK)
+        with open(fileName, 'wb') as f:
+            while True:
+                chunk = response.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                f.write(chunk)
+    except HTTPError as http_err:
+        Output.log('HTTP error occurred while downloading YBC package: {}', http_err)
+        return False
+    except Exception as err:
+        Output.log('Other error occurred while downloading YBC package current: {}', err)
+        return False
+    return True
+
+# Find the yb controller binary
+def find_ybc_binary_location(binary_name):
+    # Default if tar is downloaded
+    dir_candidates = [
+        os.path.join(YUGABYTE_DIR, "ybc", "bin")
+    ]
+
+    return search_file_in_paths(dir_candidates, binary_name)
+
+# Find the path of a particular postgres binary
+def find_postgres_binary_location(binary_name):
+    # Default if tar is downloaded
+    dir_candidates = [
+        os.path.join(YUGABYTE_DIR, "postgres", "bin"),
+    ]
+
+    # Development environment
+    dir_candidates += [
+        os.path.join(YUGABYTE_DIR, "build", "latest", "postgres", "bin"),
+    ]
+    return search_file_in_paths(dir_candidates, binary_name)
+
 
 # Finds the path of the sample data
 def find_sample_data_location(data_file):
@@ -475,10 +619,363 @@ class ControlScript(object):
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         sys.exit(0)
 
+    # Back up a database.
+    def backup(self):
+
+        status_details = []
+        status_display_info = {}
+
+        if not self.configs.saved_data.get("backup_daemon"):
+            final_status = "Backup daemon process not found. " + \
+                            "Please restart the node with --backup_daemon=true."
+            status_details = [
+                (Output.make_red("Error"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+        else:
+            YBControllerCLIProxy.init()
+
+        ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
+        ybc_task_type = "backup"
+
+        backup_args = dict()
+        backup_args["cloud_type"] = self.configs.temp_data.get("ybc_cloud_type")
+        backup_args["bucket"] = self.configs.temp_data.get("ybc_cloud_storage_bucket")
+        backup_args["cloud_dir"] = self.configs.temp_data.get("ybc_cloud_storage_dir")
+        backup_args["ybc_task"] = ybc_task_type
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            backup_args["ns"] = self.configs.temp_data.get("database_name_backup_restore")
+            backup_args["ns_type"] = "ysql"
+        if self.configs.temp_data.get("keyspace_name_backup_restore"):
+            backup_args["ns"] = self.configs.temp_data.get("keyspace_name_backup_restore")
+            backup_args["ns_type"] = "ycql"
+
+        if OS_NAME != "Linux":
+            final_status = "Backup command is not supported in {} enviroments.".format(OS_NAME)
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        if self.configs.temp_data.get("ybc_status"):
+            final_status = ""
+            backup_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+                backup_args, ybc_server_dir)
+            if backup_status is not None:
+                if backup_status == "OK":
+                    final_status = "Backup is complete."
+                elif backup_status == "COMMAND_FAILED":
+                    final_status = "Backup has failed. " + \
+                        "Check the logs for more details."
+                    status_display_info[final_status] = Output.make_red
+                elif len(backup_status) == 0:
+                    final_status = "Backup is in Progress. Check the logs for more details."
+                else:
+                    final_status = "Backup status: {}".format(backup_status)
+            else:
+                if YBControllerCLIProxy.check_for_existing_backup(backup_args):
+                    final_status = "Backup is complete."
+                else:
+                    final_status = "Backup not found in the given cloud location."
+                    status_display_info[final_status] = Output.make_red
+
+            status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        # Check if there is a currently running backup task on the local node.
+        backup_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+            backup_args, ybc_server_dir)
+        if backup_status is not None:
+            if backup_status in ["OK", "NOT_FOUND", "COMMAND_FAILED"]:
+                YBControllerCLIProxy.rename_ybc_lock_file(backup_args, ybc_server_dir)
+            else:
+                final_status = "Backup is in progress."
+                status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+                Output.print_out(self.get_status_string_common(status_details))
+                return
+
+        # Todo: check if there is any ongoing backup tasks on other nodes.
+
+        # Check if the cloud location has any other previous backup.
+        if YBControllerCLIProxy.check_for_existing_backup(backup_args):
+            final_status = "Already a backup is present " +  \
+                            "in the cloud location {}. Abort!!".format( backup_args["cloud_dir"])
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+
+        advertise_ip = self.advertise_ip()
+        backup_task_id = YBControllerCLIProxy.backup_to_cloud(
+            advertise_ip, backup_args
+        )
+        if not backup_task_id:
+            final_status = "Backup failed. Check the logs."
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        YBControllerCLIProxy.write_ybc_lock_file(
+            backup_args, backup_task_id, ybc_server_dir, advertise_ip
+        )
+        final_status = "Backup started successfully."
+        Output.log("Backup started successfully with Task UUID: {}".format(backup_task_id))
+        status_details = [
+            (Output.make_yellow("Status"), final_status)
+        ]
+        Output.print_out(self.get_status_string_common(status_details))
+
+    # PITR restore
+    def restore_pitr(self):
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            pitr_object = "ysql.{}".format(self.configs.temp_data.get(
+                                                "database_name_backup_restore"))
+            pitr_object_name = pitr_object.split('.', 1)[1]
+            pitr_yb_api_type = "database"
+        elif self.configs.temp_data.get("keyspace_name_backup_restore"):
+            pitr_object = "ycql.{}".format(self.configs.temp_data.get(
+                                                "keyspace_name_backup_restore"))
+            pitr_object_name = pitr_object.split('.', 1)[1]
+            pitr_yb_api_type = "keyspace"
+
+        Output.init_animation("Verifying Point-In-Time Recovery configs...")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        schedules = YBAdminProxy.list_schedules(master_addresses)
+        if schedules is None:
+            Output.log_error_and_exit(Output.update_animation("Failed to verify"
+            " Point-In-Time Recovery configs.", status=Output.ANIMATION_FAIL))
+
+        pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+        if not pitr_object_exists:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+            "specify a valid {} to recover to a point in time.".format(
+                                        pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+            )
+        if not is_pitr_enabled:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": Point-in-time recovery is not enabled"
+            " for {} {}. Please enable point-in-time recovery"
+            " before recovering to a point in time.".format(pitr_yb_api_type, pitr_object_name)
+            )
+        restore_time = self.configs.temp_data.get("restore_time")
+        # Get the schedule ID to perform pitr
+        pitr_object_id, earliest_recoverable_time, _ = self.get_pitr_object_details(
+                                                        pitr_object, schedules)
+        valid, error_message = self.validate_restore_time(earliest_recoverable_time, restore_time)
+        if not valid:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                    status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": " + error_message)
+
+        Output.update_animation("Verified Point-In-Time Recovery configs.")
+        Output.init_animation("Recovering to a Point-In-Time...")
+        restore_time_object = datetime.strptime(restore_time, "%Y-%m-%d %I:%M:%S %p")
+        ret_code, err = YBAdminProxy.restore_snapshot_schedule(master_addresses,
+                pitr_object_id, restore_time_object.strftime("%Y-%m-%d %H:%M:%S"))
+
+        # Catch specific errors
+        if ret_code:
+            if "Cannot perform a forward restore" in err:
+                # Extract the specific times using regex
+                times = re.findall(r'\{ days: (\d+) time: ([^}]+) \}', err)
+                # Convert and format the times
+                collected_times = []
+                for days, time in times:
+                    days = int(days)
+                    date = datetime(1970, 1, 1) + timedelta(days=days)
+                    # Check if the time string includes fractional seconds
+                    has_fractional = '.' in time
+                    if has_fractional:
+                        time_format = "%Y-%m-%d %H:%M:%S.%f"
+                    else:
+                        time_format = "%Y-%m-%d %H:%M:%S"
+
+                    date_time = datetime.strptime('{} {}'.format(date.date(), time), time_format)
+                    # If there is a fractional part, zero out the microseconds
+                    if has_fractional:
+                        date_time = date_time.replace(microsecond=0)
+                    collected_times.append(date_time.strftime("%Y-%m-%d %I:%M:%S %p"))
+
+                Output.update_animation("Recovery Failed.",
+                        status=Output.ANIMATION_FAIL)
+                Output.log_error_and_exit(Output.make_red("FAILED") +
+                    ": The requested restoration time {} "
+                    "is in between a previous restored to and restored from time. "
+                    "Please do not specify a time between {} and {}."
+                    .format(collected_times[2], collected_times[0], collected_times[1])
+                )
+            elif "YSQL upgrade" in err:
+                Output.update_animation("Recovery Failed.",
+                        status=Output.ANIMATION_FAIL)
+                Output.log_error_and_exit(Output.make_red("FAILED") +
+                    ": The requested restoration time {} is before performing a"
+                    " YSQl upgrade. Please specify a restoration time after the upgrade"
+                    " was completed.".format(restore_time)
+                )
+            else:
+                Output.log(err)
+                Output.log_error_and_exit(Output.update_animation("Recovery Failed.",
+                        status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Successfully recovered to a point in time.")
+
+        Output.update_animation("Successfully recovered to the specified Point-In-Time.")
+        status_details = self.get_pitr_config_details(pitr_object, restore_time = restore_time)
+
+        Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
+        sys.exit(0)
+
+    # Restore a database.
+    def restore(self):
+
+        status_details = []
+        status_display_info = {}
+
+        if self.configs.temp_data.get("restore_time"):
+            self.restore_pitr()
+
+        if not self.configs.saved_data.get("backup_daemon"):
+            final_status = "Backup daemon process not found. " + \
+                            "Please restart the node with --backup_daemon=true."
+            status_details = [
+                (Output.make_red("Error"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+        else:
+            YBControllerCLIProxy.init()
+
+        ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
+        ybc_task_type = "restore"
+
+        restore_args = dict()
+        restore_args["cloud_type"] = self.configs.temp_data.get("ybc_cloud_type")
+        restore_args["bucket"] = self.configs.temp_data.get("ybc_cloud_storage_bucket")
+        restore_args["cloud_dir"] = self.configs.temp_data.get("ybc_cloud_storage_dir")
+        restore_args["ybc_task"] = ybc_task_type
+
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            restore_args["ns"] = self.configs.temp_data.get("database_name_backup_restore")
+            restore_args["ns_type"] = "ysql"
+        if self.configs.temp_data.get("keyspace_name_backup_restore"):
+            restore_args["ns"] = self.configs.temp_data.get("keyspace_name_backup_restore")
+            restore_args["ns_type"] = "ycql"
+
+        if OS_NAME != "Linux":
+            final_status = "Restore command is not supported in {} enviroments.".format(OS_NAME)
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        if self.configs.temp_data.get("ybc_status"):
+            final_status = ""
+            restore_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+                restore_args, ybc_server_dir)
+            if restore_status is not None:
+                if restore_status == "OK":
+                    final_status = "Restore is complete."
+                elif restore_status == "COMMAND_FAILED":
+                    final_status = "Restore has failed. Check the logs for more details."
+                    status_display_info[final_status] = Output.make_red
+                elif not restore_status:
+                    final_status = "Restore is in progress."
+                else:
+                    final_status = "Restore status: {}".format(restore_status)
+            else:
+                final_status = "No restore task found for {}".format(restore_args["ns"])
+                status_display_info[final_status] = Output.make_red
+
+            status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        # Check if the cloud location has a backup.
+        if not YBControllerCLIProxy.check_for_existing_backup(restore_args):
+            final_status = "Backup not present in the given " + \
+                "cloud location {}. Abort!!".format(restore_args["cloud_dir"])
+            status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+            return
+
+        # Check if there is a currently running backup task on the local node.
+        ybc_task_status = YBControllerCLIProxy.check_for_ongoing_ybc_task(
+            restore_args, ybc_server_dir)
+        if ybc_task_status is not None:
+            if ybc_task_status in ["OK"]:
+                YBControllerCLIProxy.rename_ybc_lock_file(restore_args, ybc_server_dir)
+            else:
+                final_status = "backup/restore operation is in progress. " + \
+                        "Check the logs for more details."
+                status_details = [
+                    (Output.make_yellow("Status"), final_status)
+                ]
+                status_display_info[final_status] = Output.make_red
+                Output.print_out(self.get_status_string_common(status_details,
+                                                               status_display_info))
+                return
+
+
+        advertise_ip = self.advertise_ip()
+        restore_task_id = YBControllerCLIProxy.restore_from_cloud(
+            advertise_ip, restore_args
+        )
+        if not restore_task_id:
+            final_status = "Restore has failed. Check the logs for more details."
+            status_details = [
+                (Output.make_yellow("Status"), final_status)
+            ]
+            status_display_info[final_status] = Output.make_red
+            Output.print_out(self.get_status_string_common(status_details,
+                                                            status_display_info))
+            return
+
+        YBControllerCLIProxy.write_ybc_lock_file(
+            restore_args, restore_task_id, ybc_server_dir, advertise_ip
+        )
+        final_status = "Restore started successfully."
+        Output.log("Restore started successfully with Task UUID: {}".format(restore_task_id))
+        status_details = [
+            (Output.make_yellow("Status"), final_status)
+        ]
+        Output.print_out(self.get_status_string_common(status_details))
+
+
     # Prints status of YugabyteDB.
     def status(self):
         if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
-            Output.print_out(self.get_status_string())
+            Output.init_animation("Fetching status...")
+            status_output = self.get_status_string().strip()
+            Output.update_animation("")
+            Output.print_out(status_output)
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
 
@@ -494,14 +991,11 @@ class ControlScript(object):
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         logpath = self.configs.saved_data.get("log_dir")
         datapath = self.configs.saved_data.get("data_dir")
+        additional_datapaths = self.configs.saved_data.get(
+                                            "additional_data_dir").split(',')
         gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
         certs_dir = self.configs.saved_data.get("certs_dir")
         config_path = os.path.dirname(self.conf_file)
-        is_config_passed=False
-        for arg in sys.argv[1:]:
-            if (arg.startswith("--config")):
-                is_config_passed=True
-                break
 
         if (self.conf_file == BREW_CONF_FILE):
             Output.print_out("{} destroy is not supported for brew installations.".format(
@@ -516,6 +1010,16 @@ class ControlScript(object):
             shutil.rmtree(datapath)
             Output.print_out("Deleted data at {}.".format(datapath))
 
+        is_additional_datapath_deleted = False
+        for path in additional_datapaths:
+            if os.path.isdir(path):
+                is_additional_datapath_deleted = True
+                shutil.rmtree(path)
+
+        if is_additional_datapath_deleted:
+            Output.print_out("Deleted additional data at {}".format(
+                                                ", ".join(additional_datapaths)))
+
         if os.path.isdir(gen_certs_dir):
             shutil.rmtree(gen_certs_dir)
             Output.print_out("Deleted generated certs at {}.".format(gen_certs_dir))
@@ -524,21 +1028,15 @@ class ControlScript(object):
             shutil.rmtree(certs_dir)
             Output.print_out("Deleted certs at {}.".format(certs_dir))
 
-        if is_config_passed:
-            if os.path.exists(self.conf_file):
-                os.remove(self.conf_file)
-                Output.print_out("Deleted conf file at {}.".format(self.conf_file))
-        else:
-            if os.path.isdir(config_path):
-                shutil.rmtree(config_path)
-                Output.print_out("Deleted conf at {}.".format(config_path))
+        if os.path.isdir(config_path):
+            shutil.rmtree(config_path)
+            Output.print_out("Deleted conf at {}.".format(config_path))
 
         sys.exit(0)
 
     # Prints YugabyteDB version.
     def version(self):
         VERSION_METADATA_PATH = find_version_metadata_location("version_metadata.json")
-        print(VERSION_METADATA_PATH)
         with open(VERSION_METADATA_PATH) as metadata:
             data = json.load(metadata)
             title = "Version".format(SCRIPT_NAME)
@@ -559,6 +1057,64 @@ class ControlScript(object):
                 output += ("| {:" + str(15 + extra_len) + "}: {:<49} |\n").format(output_k, v)
             output += "-" * 70 + "\n"
             Output.print_out(output)
+
+    # Finalize YugabyteDB cluster upgrade
+    def finalize_upgrade(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        tserver_addresses = self.get_tserver_addresses()
+
+        # Verify if all nodes were upgraded successfully
+        Output.init_animation("Verifying version compatibility across all nodes...")
+        node_versions = self.get_all_nodes_version(tserver_addresses)
+        highest_version = self.get_highest_version(node_versions)
+        mismatched_nodes_version = self.verify_all_nodes_version(node_versions,
+                                                            highest_version)
+
+        if len(mismatched_nodes_version) > 0:
+            mismatched_nodes = ', '.join(mismatched_nodes_version)
+            Output.update_animation("Version compatibility verification failed.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("Error") + ": Version mismatch detected in the " +
+            "following nodes: {}. Please upgrade these".format(mismatched_nodes) +
+            " nodes to version {} and then rerun the".format(highest_version) +
+            Output.make_yellow(" yugabyted finalize_upgrade") + " command."
+        )
+
+        # All nodes match the correct version
+        # Run post-upgrade tasks
+        Output.update_animation("Verified version compatibility across all nodes.")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        upgrade_ysql_timeout = self.configs.temp_data.get("upgrade_ysql_timeout")
+
+        Output.init_animation("Promoting Auto Flags...")
+        if not YBAdminProxy.promote_auto_flags(master_addresses):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "Promote Auto Flags.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Promote auto flags step was successful.")
+
+        Output.update_animation("Successfully Promoted Auto Flags.")
+        Output.init_animation("Upgrading YSQL...")
+        if not YBAdminProxy.upgrade_ysql(master_addresses,
+                                    upgrade_ysql_timeout):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "Upgrade YSQL.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Upgrade YSQL step was successful.")
+
+        Output.update_animation("Successfully Upgraded YSQL.")
+        status_details = []
+        status_display_info = {}
+        final_status = "Post-upgrade tasks completed successfully."
+        status_details = [
+                    (Output.make_yellow("Status"), final_status)]
+        status_display_info[final_status] = Output.make_green
+        status_details.append((Output.make_yellow("Version"), highest_version))
+        Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
@@ -744,6 +1300,42 @@ class ControlScript(object):
                 (Output.make_yellow("Collected logs path"), display_msg)
         ])
         Output.print_and_log(self.get_status_string_common(status_details))
+
+    # Configuring PITR in YugabyteDB cluster
+    def configure_point_in_time_recovery(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            pitr_object = "ysql.{}".format(self.configs.temp_data.get(
+                                                "database_name_backup_restore"))
+            pitr_yb_api_type = "database"
+        elif self.configs.temp_data.get("keyspace_name_backup_restore"):
+            pitr_object = "ycql.{}".format(self.configs.temp_data.get(
+                                                "keyspace_name_backup_restore"))
+            pitr_yb_api_type = "keyspace"
+        else:
+            pitr_object = None
+            pitr_yb_api_type = None
+
+        Output.init_animation("Verifying Point-In-Time Recovery configs...")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        schedules = YBAdminProxy.list_schedules(master_addresses)
+        if schedules is None:
+            Output.log("Failed to retrieve Point-In-Time Recovery schedules")
+            Output.log_error_and_exit(Output.update_animation("Failed to verify"
+            " Point-In-Time Recovery configs.", status=Output.ANIMATION_FAIL))
+
+        # Enable PITR
+        if self.configs.temp_data.get("enable_pitr"):
+            self.enable_pitr(pitr_object, pitr_yb_api_type, schedules)
+        # Disable PITR
+        elif self.configs.temp_data.get("disable_pitr"):
+            self.disable_pitr(pitr_object, pitr_yb_api_type, schedules)
+        # Show PITR status
+        else:
+            self.display_pitr(pitr_object, pitr_yb_api_type, schedules)
 
     # Configuring the primary cluster data placement policy
     def configure_data_placement(self):
@@ -1360,7 +1952,7 @@ class ControlScript(object):
     # Check that `openssl` binary is in our PATH
     # This actually returns true when it is _not_ present!
     def check_openssl(self):
-        return find_executable('openssl') == None
+        return shutil.which('openssl') == None
 
     # Transparent Hugepage check.  Not all distros have this enabled so we need to check for
     # /sys/kernel/mm/transparent_hugepage before checking enabled
@@ -1370,7 +1962,7 @@ class ControlScript(object):
         if os.path.exists(thp_dir):
             with open(os.path.join(thp_dir, 'enabled'), 'r') as thp_enabled:
                 thp_enabled = thp_enabled.read()
-                thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
+                thp_mode = re.search(r"\[(.*)\]", thp_enabled).group(1)
         return thp_mode == 'always'
 
     def check_ports(self):
@@ -1411,8 +2003,8 @@ class ControlScript(object):
             prereqs_warn.add('transparent_hugepages')
             prereqs_warn_flag = True
 
-        ntp_check = find_executable('ntpd')
-        chrony_check = find_executable('chronyd')
+        ntp_check = shutil.which('ntpd')
+        chrony_check = shutil.which('chronyd')
         if not ntp_check and not chrony_check:
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
@@ -1617,6 +2209,14 @@ class ControlScript(object):
         # exit no matter what
         os._exit(os.EX_OK)
 
+    def start_ybc_server(self):
+
+        ybc_server_cmd = self.get_ybc_cmd(self.configs.saved_data.get("data_dir"))
+        self.processes["ybc-server"] = YBProcessManager(
+                "ybc-server", ybc_server_cmd, self.configs.saved_data.get("log_dir"),
+                        self.configs.saved_data.get("data_dir"))
+        self.processes.get("ybc-server").start()
+
     def start_first_master_tserver(self):
         self.processes.get("master").start()
 
@@ -1638,6 +2238,7 @@ class ControlScript(object):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
+            self.configs.saved_data["cluster_member"] = True
             master_addresses = self.configs.saved_data.get("current_masters")
             universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
             if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
@@ -1657,6 +2258,7 @@ class ControlScript(object):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
+            self.configs.saved_data["cluster_member"] = True
             master_addresses = self.configs.saved_data.get("current_masters")
             universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
             if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
@@ -1665,10 +2267,10 @@ class ControlScript(object):
 
         return None
 
-
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
+
         advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
@@ -1705,6 +2307,8 @@ class ControlScript(object):
         is_first_run = True
         callhome_thread = None
         masters_list_update_thread = None
+        #Start the different thread for extracting the YBC binaries
+        ybc_extract_thread = None
         self.stop_callhome = False
         while True:
             should_callhome = False
@@ -1726,6 +2330,12 @@ class ControlScript(object):
                     ("Found files {} in data dir {} from possibly failed initialization."
                     " Removing...").format(data_dir_files, data_dir))
                 rmcontents(data_dir, exclude_names=[pid_file_name])
+
+            if self.configs.saved_data.get("backup_daemon"):
+                if not os.path.exists(os.path.join(YUGABYTE_DIR, "ybc")):
+                    ybc_extract_thread = Thread(target=download_extract_ybc_binary)
+                    ybc_extract_thread.daemon = True
+                    ybc_extract_thread.start()
 
             # Start or initialize yb-master and yb-tserver.
             if is_first_run:
@@ -1826,17 +2436,36 @@ class ControlScript(object):
                                                             get("master_webserver_port")),
                                 "-tserver_ui_port={}".format(self.configs.saved_data.
                                                             get("tserver_webserver_port")),
+                                "-data_dir={}".format(self.configs.saved_data.
+                                                            get("data_dir")),
                                 "-warnings={}".format("|".join(warnings_for_ui))
                             ]
                         if self.configs.saved_data.get("secure"):
                             yugabyted_ui_cmd.extend(["-secure=true",
-                                "-database_password={}".format(
+                                "-ysql_password={}".format(
+                                self.configs.saved_data.get("database_password")),
+                                "-ycql_password={}".format(
                                 self.configs.saved_data.get("database_password"))])
+
+                        if self.configs.saved_data.get("ysql_port"):
+                            yugabyted_ui_cmd.append("-ysql_port={}".format(
+                                self.configs.saved_data.get("ysql_port")))
+                        if self.configs.saved_data.get("ycql_port"):
+                            yugabyted_ui_cmd.append("-ycql_port={}".format(
+                                self.configs.saved_data.get("ycql_port")))
 
                         self.processes["yugabyted-ui"] = ProcessManager(
                             "yugabyted-ui", yugabyted_ui_cmd,
                             self.configs.saved_data.get("log_dir"),
                             self.configs.saved_data.get("data_dir"))
+
+
+            if ybc_extract_thread is not None:
+                ybc_extract_thread.join()
+
+            if self.configs.saved_data.get("backup_daemon"):
+                if self.processes.get("ybc-server") is None:
+                    self.start_ybc_server()
 
             if self.configs.saved_data.get("ui") and ui_port_available:
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
@@ -2146,10 +2775,17 @@ class ControlScript(object):
         if tserver_flags.find("enable_ysql_conn_mgr") != -1:
             METRICS_SNAPSHOT_LIST.append("ysql_conn_mgr")
 
+        # Check for multiple data directories
+        fs_data_dirs = self.configs.saved_data.get("data_dir")
+        additional_data_dirs = self.configs.saved_data.get(
+                                        "additional_data_dir")
+        if additional_data_dirs:
+            fs_data_dirs += "," + additional_data_dirs
+
         common_gflags = [
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
-            "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
+            "--fs_data_dirs={}".format(fs_data_dirs),
             "--webserver_interface={}".format(advertise_ip),
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
@@ -2192,16 +2828,52 @@ class ControlScript(object):
                 "--default_memory_limit_to_ram_ratio=0.35",
                 "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
             ]
+
+        master_flags = self.configs.saved_data.get("master_flags","")
+
+        if self.configs.temp_data.get("enable_pg_parity"):
+            # Process simple flags from PG_PARITY_FLAGS_LIST
+            existing_flags = {}
+            current_flags = master_flags.split(',')
+            for flag in current_flags:
+                if '=' in flag:
+                    key, value = flag.split('=', 1)
+                    existing_flags[key] = value
+
+            for flag in PG_PARITY_FLAGS_LIST:
+                key = flag.split('=')[0]
+                if existing_flags.get(key) is None:
+                    if master_flags and not master_flags.endswith(","):
+                        master_flags += ","
+                    # Add the missing flag to the master flags
+                    master_flags += flag
+
+            # Update the master_flags in self.configs.saved_data with pg_parity flags
+            self.configs.saved_data["master_flags"] = master_flags
+
+        if master_flags:
+            # This will split the simple and complex flags
+            # Now we can parse and append the master flags
+            master_flags_list = re.split(r',\s*(?![^{}]*\})',
+                                                master_flags)
+
+            for master_flag in master_flags_list:
+                # If it's just empty braces, skip appending to the command list
+                if re.search(r'=\{\}$', master_flag):
+                    continue
+                # Check for complex flags and remove curly brackets
+                elif re.search(r'={.*}$', master_flag):
+                    complex_flag = re.sub(r'({|})', '', master_flag)
+                    yb_master_cmd.append("--{}".format(complex_flag))
+                else:
+                    # Handle simple flags
+                    yb_master_cmd.append("--{}".format(master_flag))
+
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
             yb_master_cmd.append("--cluster_uuid={}".format(
                 self.configs.saved_data.get("universe_uuid")))
-
-        if self.configs.saved_data.get("master_flags"):
-            yb_master_cmd.extend(
-                ["--{}".format(flag) for flag in \
-                    self.configs.saved_data.get("master_flags").split(",")])
 
         return yb_master_cmd
 
@@ -2235,91 +2907,105 @@ class ControlScript(object):
                 "--placement_uuid={}".format(self.configs.saved_data.get("placement_uuid")),
             ]
 
-        tserver_flags = self.configs.saved_data.get("tserver_flags")
+        tserver_flags = self.configs.saved_data.get("tserver_flags","")
 
-        # If ysql_hba_conf_csv is present
-        # Extract the value of ysql_hba_conf_csv
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_hba_conf_csv") != -1:
-            ysql_hba_conf_csv_start_index = tserver_flags.find('ysql_hba_conf_csv')
-            ysql_hba_conf_csv_end_index = tserver_flags.find('}', ysql_hba_conf_csv_start_index) + 1
-            ysql_hba_conf_csv_flag = tserver_flags[ysql_hba_conf_csv_start_index:\
-                    ysql_hba_conf_csv_end_index]
-            ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[ysql_hba_conf_csv_flag.find("{")+1:-1]
+        if self.configs.temp_data.get("enable_pg_parity"):
+            # Process simple flags from PG_PARITY_FLAGS_LIST
+            existing_flags = {}
+            current_flags = tserver_flags.split(',')
+            for flag in current_flags:
+                if '=' in flag:
+                    key, value = flag.split('=', 1)
+                    existing_flags[key] = value
 
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_hba_conf_csv_flag[0] == "'" and ysql_hba_conf_csv_flag[-1] == "'":
-                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
-            elif ysql_hba_conf_csv_flag[0] == '"' and ysql_hba_conf_csv_flag[-1] == '"':
-                ysql_hba_conf_csv_flag = ysql_hba_conf_csv_flag[1:-1]
+            for flag in PG_PARITY_FLAGS_LIST:
+                key = flag.split('=')[0]
+                if existing_flags.get(key) is None:
+                    if tserver_flags and not tserver_flags.endswith(","):
+                        tserver_flags += ","
+                    # Add the missing flag to the tserver flags
+                    tserver_flags += flag
 
-            # Remove the flag present in tserver_flags
-            if ysql_hba_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_hba_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_hba_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_hba_conf_csv_end_index:]
+            # Process CSV flags from PG_PARITY_FLAGS_DICT
+            for pg_parity_flag, pg_parity_flag_values in PG_PARITY_FLAGS_DICT.items():
+                # If pg_parity_flag present in tserver_flags
+                # Extract the value and append any default missing pg_parity_flag_values
+                pg_parity_flag_start_index = tserver_flags.find(pg_parity_flag)
+                tserver_pg_parity_flag_values = ""
+                if pg_parity_flag_start_index != -1:
+                    pg_parity_flag_end_index = \
+                        tserver_flags.find('}', pg_parity_flag_start_index) + 1
+                    tserver_pg_parity_flag = \
+                        tserver_flags[pg_parity_flag_start_index:pg_parity_flag_end_index]
+                    tserver_pg_parity_flag_values = \
+                        tserver_pg_parity_flag[tserver_pg_parity_flag.find("{")+1:-1]
 
-            yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
+                    # Parse the tserver_pg_parity_flag_values into a dictionary
+                    tserver_pg_parity_flag_values_dict = {}
+                    for item in tserver_pg_parity_flag_values.split(','):
+                        if '=' in item:
+                            key, value = item.split('=')
+                            tserver_pg_parity_flag_values_dict[key] = value
 
-        # If ysql_ident_conf_csv is present
-        # Extract the value of ysql_ident_conf_csv
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_ident_conf_csv") != -1:
-            ysql_ident_conf_csv_start_index = tserver_flags.find('ysql_ident_conf_csv')
-            ysql_ident_conf_csv_end_index = \
-                tserver_flags.find('}', ysql_ident_conf_csv_start_index) + 1
-            ysql_ident_conf_csv_flag = tserver_flags[ysql_ident_conf_csv_start_index:\
-                    ysql_ident_conf_csv_end_index]
-            ysql_ident_conf_csv_flag = \
-                ysql_ident_conf_csv_flag[ysql_ident_conf_csv_flag.find("{")+1:-1]
+                    # Parse the PG_PARITY_FLAGS_DICT values into a dictionary
+                    pg_parity_flag_values_dict = {}
+                    for item in pg_parity_flag_values.split(','):
+                        if '=' in item:
+                            key, value = item.split('=')
+                            pg_parity_flag_values_dict[key] = value
 
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_ident_conf_csv_flag[0] == "'" and ysql_ident_conf_csv_flag[-1] == "'":
-                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
-            elif ysql_ident_conf_csv_flag[0] == '"' and ysql_ident_conf_csv_flag[-1] == '"':
-                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+                    # Identify missing flags in tserver_pg_parity_flag_values
+                    missing_pg_parity_flag_values_dict = {}
+                    for key, value in pg_parity_flag_values_dict.items():
+                        if tserver_pg_parity_flag_values_dict.get(key) is None:
+                            missing_pg_parity_flag_values_dict[key] = value
 
-            # Remove the flag present in tserver_flags
-            if ysql_ident_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_ident_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_ident_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_ident_conf_csv_end_index:]
+                    # If there are missing pg_parity_flag_values, append them to
+                    # tserver_pg_parity_flag_values
+                    if len(missing_pg_parity_flag_values_dict) > 0:
+                        missing_pg_parity_flag_values = ",".join("{}={}".format(k, v) \
+                                    for k, v in missing_pg_parity_flag_values_dict.items())
+                        if tserver_pg_parity_flag_values:
+                            updated_tserver_pg_parity_flag_values = tserver_pg_parity_flag_values \
+                                                            + "," + missing_pg_parity_flag_values
+                        else:
+                            updated_tserver_pg_parity_flag_values = missing_pg_parity_flag_values
 
-            yb_tserver_cmd.extend(["--ysql_ident_conf_csv={}".format(ysql_ident_conf_csv_flag)])
+                        updated_tserver_pg_parity_flag = "{}={{{}}}".format(
+                                        pg_parity_flag, updated_tserver_pg_parity_flag_values)
+                        tserver_flags = tserver_flags[:pg_parity_flag_start_index] \
+                                        + updated_tserver_pg_parity_flag \
+                                        + tserver_flags[pg_parity_flag_end_index:]
+                    # No missing pg_parity_flag values found in tserver_flag
+                    else:
+                        pass
+                else:
+                    # If the pg_parity_flag is not present,
+                    # append the entire flag with its default values
+                    if tserver_flags and not tserver_flags.endswith(","):
+                        tserver_flags += ","
+                    tserver_flags += "{}={{{}}}".format(pg_parity_flag, pg_parity_flag_values)
 
-        # If ysql_pg_conf_csv is present
-        # Extract the value of ysql_pg_conf_csv given through CLI
-        # Remove the flag present in the tserver_flags string
-        if tserver_flags.find("ysql_pg_conf_csv") != -1:
-            ysql_pg_conf_csv_start_index = tserver_flags.find('ysql_pg_conf_csv')
-            ysql_pg_conf_csv_end_index = tserver_flags.find('}', ysql_pg_conf_csv_start_index) + 1
-            ysql_pg_conf_csv_flag = tserver_flags[ysql_pg_conf_csv_start_index:\
-                    ysql_pg_conf_csv_end_index]
-            ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[ysql_pg_conf_csv_flag.find("{")+1:-1]
-
-            # If the value was given through the config file
-            # remove the starting and ending quotes.
-            if ysql_pg_conf_csv_flag[0] == "'" and ysql_pg_conf_csv_flag[-1] == "'":
-                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
-            elif ysql_pg_conf_csv_flag[0] == '"' and ysql_pg_conf_csv_flag[-1] == '"':
-                ysql_pg_conf_csv_flag = ysql_pg_conf_csv_flag[1:-1]
-
-            # Remove the flag present in tserver_flags
-            if ysql_pg_conf_csv_start_index == 0:
-                tserver_flags = tserver_flags[ysql_pg_conf_csv_end_index+1:]
-            else:
-                tserver_flags = tserver_flags[:ysql_pg_conf_csv_start_index-1] + \
-                    tserver_flags[ysql_pg_conf_csv_end_index:]
-
-            yb_tserver_cmd.extend(["--ysql_pg_conf_csv={}".format(ysql_pg_conf_csv_flag)])
+            # Update the tserver_flags in self.configs.saved_data with pg_parity flags
+            self.configs.saved_data["tserver_flags"] = tserver_flags
 
         if tserver_flags:
-            yb_tserver_cmd.extend(
-                ["--{}".format(flag) for flag in tserver_flags.split(",")])
+            # This will split the simple and complex flags
+            # Now we can parse and append the tserver flags
+            tserver_flags_list = re.split(r',\s*(?![^{}]*\})',
+                                                tserver_flags)
+
+            for tserver_flag in tserver_flags_list:
+                # If it's just empty braces, skip appending to the command list
+                if re.search(r'=\{\}$', tserver_flag):
+                    continue
+                # Check for complex flags and remove curly brackets
+                elif re.search(r'={.*}$', tserver_flag):
+                    complex_flag = re.sub(r'({|})', '', tserver_flag)
+                    yb_tserver_cmd.append("--{}".format(complex_flag))
+                else:
+                    # Handle simple flags
+                    yb_tserver_cmd.append("--{}".format(tserver_flag))
 
         # Add authentication flags in tserver
         if self.configs.saved_data.get("secure"):
@@ -2336,6 +3022,37 @@ class ControlScript(object):
             yb_tserver_cmd.extend(["--use_node_hostname_for_local_tserver=true"])
 
         return yb_tserver_cmd
+
+    # Returns the ybc-server start command
+    def get_ybc_cmd(self, data_dir):
+
+        # yb-controller-server requires the log directory to be
+        # created before hand.
+        ybc_server_logdir = "{}/yb-data/ybc/logs".format(self.configs.saved_data.get("data_dir"))
+        if not os.path.exists(ybc_server_logdir):
+            os.makedirs(ybc_server_logdir, 0o755)
+            if not os.path.exists(ybc_server_logdir):
+                Output.log("Error: YBC logs dir didn't get created.")
+
+
+        advertise_ip = self.advertise_ip()
+
+        ybc_cmd = [find_ybc_binary_location("yb-controller-server")] + \
+            [
+                "--server_address={}".format(advertise_ip),
+                "--yb_tserver_address={}".format(advertise_ip),
+                "--yb_master_address={}".format(advertise_ip),
+                "--log_dir={}".format(ybc_server_logdir),
+                "--yb_admin={}".format(find_binary_location("yb-admin")),
+                "--yb_ctl={}".format(find_binary_location("yb-ctl")),
+                "--ysql_dump={}".format(find_postgres_binary_location("ysql_dump")),
+                "--ysql_dumpall={}".format(find_postgres_binary_location("ysql_dumpall")),
+                "--ysqlsh={}".format(find_binary_location("ysqlsh")),
+                "--ycqlsh={}".format(find_binary_location("ycqlsh")),
+                "--redis_cli={}".format(find_binary_location("redis-cli")),
+            ]
+        return ybc_cmd
+
 
     # Returns (error string, yw_started).
     # yw_started is True if YW was actually started
@@ -2529,7 +3246,7 @@ class ControlScript(object):
     def is_yw_initialized(self):
         # Check Play evolutions table was created.
         Output.log("Checking play_evolutions table")
-        list_tables_cmd = [find_binary_location("ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
+        list_tables_cmd = [find_binary_location("ysqlsh"), "-d", WEBSERVER_DB, "-c", r"\d"]
         out, err, ret_code = run_process(list_tables_cmd)
         Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
@@ -2660,6 +3377,10 @@ class ControlScript(object):
             Output.log('HTTP error occurred while fetching current' +
                     'masters from tserver: {}', http_err)
             return ''
+        except URLError as url_err:
+            Output.log('URL error occurred while fetching current' +
+                    'masters from tserver: {}', url_err)
+            return ''
         except Exception as err:
             Output.log('Other error occurred while fetching current' +
                     'masters from tserver: {}', err)
@@ -2726,6 +3447,86 @@ class ControlScript(object):
                 "http://{}/api/v1/tablet-servers: {}".format(master_hostport, err))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
                 "present at {} is not reachable.".format(master_hostport))
+
+    # Get tserver addresses
+    def get_tserver_addresses(self):
+        leader_master = self.get_leader_master().split(':')[0]
+        leader_master_http_endpoint = "{}:{}".format(
+            leader_master, self.configs.saved_data.get("master_webserver_port"))
+        all_tserver_info = self.get_all_tserver_info(leader_master_http_endpoint)
+
+        tserver_addresses = []
+        for uuid in all_tserver_info:
+            tservers = all_tserver_info[uuid]
+            for tserver in tservers:
+                tserver_addresses.append(tserver)
+
+        return tserver_addresses
+
+    # Get node version
+    def get_node_version(self, tserver_hostport):
+        try:
+            versionURL = "http://{}/api/v1/version".format(tserver_hostport)
+            response = urlopen(Request(versionURL))
+            jsonResponse = json.load(response)
+            return jsonResponse.get("version_number")
+
+        except HTTPError as http_err:
+            Output.log_error_and_exit("HTTP error occurred while fetching version from " +
+                                    "tserver {}: {}".format(tserver_hostport, http_err))
+        except Exception as err:
+            Output.log_error_and_exit("Other error occurred while fetching version from " +
+                                    "tserver {}: {}".format(tserver_hostport, err))
+
+    # Get all nodes version
+    def get_all_nodes_version(self, tserver_addresses):
+        node_versions = {}
+        for tserver_addr in tserver_addresses:
+            version = self.get_node_version(tserver_addr)
+            node_versions[tserver_addr] = version
+
+        return node_versions
+
+    # Get highest nodes version
+    def get_highest_version(self, node_versions):
+        highest_version = ""
+        for _, version in node_versions.items():
+            if highest_version == "" or self.compare_versions(
+                                    version, highest_version) == 1:
+                highest_version = version
+
+        return highest_version
+
+    # Compare Versions
+    def compare_versions(self, versionA, versionB):
+        int_version_a = self.get_int_version(versionA)
+        int_version_b = self.get_int_version(versionB)
+
+        for a, b in zip(int_version_a, int_version_b):
+            if a < b:
+                return -1
+            elif a > b:
+                return 1
+
+        return 0
+
+    # Convert Version to Integer for comparision
+    def get_int_version(self, version_number):
+        parts = version_number.split(".")[:3]
+        int_versions = []
+        for part in parts:
+            int_versions.append(int(part))
+
+        return int_versions
+
+    # Get mismatched nodes
+    def verify_all_nodes_version(self, node_versions, highest_version):
+        mismatched_nodes = []
+        for node, version in node_versions.items():
+            if self.compare_versions(version, highest_version) != 0:
+                mismatched_nodes.append(node.split(':')[0])
+
+        return mismatched_nodes
 
     # Get all masters placement locations
     def get_all_nodes_locations(self, all_tserver_info, placement_uuid):
@@ -2859,7 +3660,286 @@ class ControlScript(object):
         placement_str = ",".join(placement_constraints)
         return placement_str, priority_constraints
 
-    # Get status details to print after configure data_placement was run
+    def enable_pitr(self, pitr_object, pitr_yb_api_type, schedules):
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+        if not pitr_object_exists:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+            "specify a valid {} to enable point-in-time recovery.".format(
+                                    pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+            )
+        if is_pitr_enabled:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                    status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": Point-in-time recovery already enabled"
+            " for {} {}. Please disable point-in-time recovery"
+            " before attempting to enable it.".format(pitr_yb_api_type, pitr_object_name)
+            )
+        Output.update_animation("Verified Point-In-Time Recovery configs.")
+        # Run YBAdmin command to enable pitr
+        retention_period = self.configs.temp_data.get("retention_period")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        Output.init_animation("Enabling Point-In-Time Recovery...")
+        if not YBAdminProxy.create_snapshot_schedule(master_addresses,
+            retention_period, pitr_object):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "enable Point-In-Time Recovery.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Successful in enabling point-in-time recovery.")
+
+        Output.update_animation("Successfully enabled Point-In-Time recovery for {} {}.".format(
+                                                            pitr_yb_api_type, pitr_object_name))
+        status_details = self.get_pitr_config_details(pitr_object, retention = retention_period)
+
+        Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
+
+    def disable_pitr(self, pitr_object, pitr_yb_api_type, schedules):
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+        if not pitr_object_exists:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+            "specify a valid {} to disable point-in-time recovery.".format(
+                                        pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+            )
+        if not is_pitr_enabled:
+            Output.update_animation("Failed to verify Point-In-Time Rcovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": Point-in-time recovery is not enabled"
+            " for {} {}. Please enable point-in-time recovery"
+            " before attempting to disable it.".format(pitr_yb_api_type, pitr_object_name)
+            )
+        Output.update_animation("Verified Point-In-Time Recovery configs.")
+        # Get the schedule ID to disable pitr
+        pitr_object_id, _, _ = self.get_pitr_object_details(pitr_object, schedules)
+        master_addresses = self.configs.saved_data.get("current_masters")
+        Output.init_animation("Disabling Point-In-Time Recovery...")
+        if not YBAdminProxy.delete_snapshot_schedule(master_addresses, pitr_object_id):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "disable Point-In-Time Recovery.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Successful in disabling point-in-time recovery.")
+
+        Output.update_animation("Successfully disabled Point-In-Time recovery for {} {}.".format(
+                                                            pitr_yb_api_type, pitr_object_name))
+        status_details = self.get_pitr_config_details(pitr_object)
+
+        Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
+
+
+    def display_pitr(self, pitr_object, pitr_yb_api_type, schedules):
+
+        status_details = []
+        status_display_info = {}
+
+        # Case Scenario: When either database or keyspace is specified
+        if pitr_object:
+            pitr_object_name = pitr_object.split('.', 1)[1]
+            pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+            if not pitr_object_exists:
+                Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+                Output.log_error_and_exit(
+                Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+                "specify a valid {} to display point-in-time recovery status.".format(
+                                pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+                )
+            Output.update_animation("Verified Point-In-Time Recovery configs.")
+            Output.init_animation("Fetching info from Point-In-Time Recovery configs...")
+            if is_pitr_enabled:
+                final_status = "Point-In-Time recovery enabled for {} {}.".format(
+                                        pitr_yb_api_type, pitr_object_name)
+                status_display_info[final_status] = Output.make_green
+                # Get earliest recoverable time and retention
+                _,earliest_recoverable_time, retention = self.get_pitr_object_details(
+                                                            pitr_object, schedules)
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+                status_details.append((Output.make_yellow("Recovery Schedule"),
+                                        "Schedule:"))
+                additional_status_details = self.display_pitr_helper(pitr_object,
+                                                    earliest_recoverable_time, retention)
+                status_details.extend(additional_status_details)
+            else:
+                final_status = "Point-In-Time recovery not enabled for {} {}.".format(
+                                                        pitr_yb_api_type, pitr_object_name)
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+
+        # Case Scenario: When neither database or keyspace is specified
+        else:
+            Output.update_animation("Verified Point-In-Time Recovery configs.")
+            Output.init_animation("Fetching info from Point-In-Time Recovery configs...")
+            active_schedules = False
+            for schedule in reversed(schedules):
+                options = schedule.get("options", {})
+                if "delete_time" not in options:
+                    active_schedules = True
+                    break
+
+            if active_schedules:
+                final_status = "Point-In-Time recovery enabled."
+                status_display_info[final_status] = Output.make_green
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+                status_details.append((Output.make_yellow("Recovery Schedule"), "Following are the"
+                                            " recovery schedules:"))
+
+                # Display status detail for each schedule
+                valid_schedule_count = 0
+                for schedule in schedules:
+                    options = schedule.get("options", {})
+                    if options.get("delete_time"):
+                        continue
+
+                    valid_schedule_count += 1
+                    pitr_object = options.get("filter", "")
+                    retention = options.get("retention")
+                    earliest_recoverable_time = schedule["snapshots"][0]["snapshot_time"]
+                    schedule_entry = "Schedule " + str(valid_schedule_count) + ":"
+                    status_display_info[schedule_entry] = Output.make_yellow
+                    status_details.append((Output.make_yellow(""), schedule_entry))
+                    additional_status_details = self.display_pitr_helper(pitr_object,
+                                                    earliest_recoverable_time, retention)
+                    status_details.extend(additional_status_details)
+
+            else:
+                final_status = "Point-In-Time recovery not enabled."
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+
+        Output.update_animation("Successful in Fetching Point-In-Time Recovery configs.")
+        Output.print_out(self.get_status_string_common(status_details, status_display_info))
+
+    # Validate PITR configs
+    def validate_pitr_configs(self, pitr_object, schedules):
+        pitr_object_exists = False
+        is_pitr_enabled = False
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        # Validate database or keyspace
+        if pitr_object.startswith("ysql."):
+            ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
+            pitr_object_exists = ysql_proxy.db_exists(pitr_object_name)
+        else:
+            ycql_proxy = YcqlProxy(self.advertise_ip(), self.configs.saved_data.get("ycql_port"))
+            pitr_object_exists = ycql_proxy.keyspace_exists(pitr_object_name)
+        # Check if pitr is already configured
+        if pitr_object_exists:
+            is_pitr_enabled = self.is_pitr_enabled_for_object(pitr_object, schedules)
+
+        return pitr_object_exists, is_pitr_enabled
+
+    # Check if PITR is enabled or not
+    def is_pitr_enabled_for_object(self, pitr_object, schedules):
+        # Check the most recent schedule
+        for schedule in reversed(schedules):
+            options = schedule.get("options", {})
+            target_object = options.get("filter", "")
+            if pitr_object == target_object:
+                return not options.get("delete_time")
+
+        return False
+
+    # Get the schedule details
+    def get_pitr_object_details(self, pitr_object, schedules):
+        for schedule in reversed(schedules):
+            options = schedule.get("options", {})
+            target_object = options.get("filter", "")
+            if pitr_object == target_object:
+                schedule_id = schedule.get("id", " ")
+                earliest_recoverable_time = schedule["snapshots"][0]["snapshot_time"]
+                retention = options.get("retention")
+                break
+
+        return schedule_id, earliest_recoverable_time, retention
+
+    # Print output for enabling, disabling and restoring pitr
+    def get_pitr_config_details(self, pitr_object, retention = None, restore_time = None):
+        status_details = []
+        status_display_info = {}
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        final_status = "Success"
+
+        status_details = [
+            (Output.make_yellow("Status"), final_status),
+        ]
+        status_display_info[final_status] = Output.make_green
+        if pitr_object.startswith("ysql."):
+            status_details.append((Output.make_yellow("Database"), pitr_object_name))
+        else:
+            status_details.append((Output.make_yellow("Keyspace"), pitr_object_name))
+
+        if retention is not None:
+            retention_days = "{} days".format(retention)
+            status_details.append((Output.make_yellow("Retention Period"), retention_days))
+            status_details.append((Output.make_yellow("Interval"), "24 hours"))
+
+        if restore_time is not None:
+            status_details.append((Output.make_yellow("Recovery Point"), restore_time))
+
+        return [status_details, status_display_info]
+
+    # Format PITR status details
+    def display_pitr_helper(self, pitr_object, earliest_recoverable_time, retention):
+
+        status_details = []
+        # Parsing and formatting the earliest recoverable time and retention
+        earliest_recoverable_time_object = \
+            datetime.strptime(earliest_recoverable_time, "%Y-%m-%d %H:%M:%S.%f")
+        earliest_recoverable_time_object = \
+            (earliest_recoverable_time_object + timedelta(seconds=1)).replace(microsecond=0)
+        retention_days = int(retention.split(' ')[0]) // 1440
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        if pitr_object.startswith("ysql."):
+            status_details.append((Output.make_yellow(""), "Database: " + pitr_object_name))
+        else:
+            status_details.append((Output.make_yellow(""), "Keyspace: " + pitr_object_name))
+        status_details.append((Output.make_yellow(""), "Interval: " + "24 hours"))
+        status_details.append((Output.make_yellow(""), "Retention: " +
+                                                        str(retention_days) + " days"))
+        status_details.append((Output.make_yellow(""), "Earliest Recoverable Time: "
+                    + earliest_recoverable_time_object.strftime("%Y-%m-%d %I:%M:%S %p")))
+
+        return status_details
+
+    # Validate restore time
+    def validate_restore_time(self, earliest_recoverable_time, restore_time):
+        # Convert string times to datetime objects
+        earliest_recoverable_time_object = \
+            datetime.strptime(earliest_recoverable_time, "%Y-%m-%d %H:%M:%S.%f")
+        earliest_recoverable_time_object = \
+            (earliest_recoverable_time_object + timedelta(seconds=1)).replace(microsecond=0)
+        restore_time_object = datetime.strptime(restore_time, "%Y-%m-%d %I:%M:%S %p")
+        curr_time_object = datetime.now()
+
+        # Restore time should be earlier than current time
+        if restore_time_object > curr_time_object:
+            error_msg = ("The specified restore time {} is in the future." + \
+            " Please provide a time that is not later than the current time.").format(
+                restore_time)
+            return False, error_msg
+
+        # Check if restore time is earlier than the earliest recoverable time
+        if restore_time_object < earliest_recoverable_time_object:
+            error_msg = ("The specified restore time {} is earlier than"
+            " the earliest recoverable time. Please provide a time after {}.").format(
+            restore_time, earliest_recoverable_time_object.strftime("%Y-%m-%d %I:%M:%S %p"))
+            return False, error_msg
+
+        # Restore time is valid
+        return True, ""
+
     def get_configure_status_details(self, placement_locations, new_masters, priority_info):
 
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
@@ -3498,7 +4578,6 @@ class ControlScript(object):
             # join_ip, let's try to add ourselves to it, otherwise
             # it is a hard failure.
             if current_node_master_uuid in master_uuids:
-                self.configs.saved_data["cluster_member"] = True
                 if not join_ip:
                     placement_uuid = self.configs.saved_data.get("placement_uuid")
                     placement_info = list()
@@ -3543,7 +4622,6 @@ class ControlScript(object):
 
         try:
             if retry_op_with_argument(self.get_master_uuids, master_addrs, timeout):
-                self.configs.saved_data["cluster_member"] = True
                 Output.log("Completed setup and wait for master.")
                 return True
         except RuntimeError:
@@ -3691,6 +4769,8 @@ class ControlScript(object):
             if was_already_setup:
                 if master_addrs:
                     status = "Running."
+                else:
+                    status = "Bootstrapping."
             else:
                 if self.wait_get_all_masters(timeout=10):
                     status = "Running."
@@ -3723,10 +4803,10 @@ class ControlScript(object):
                 Output.update_animation("Data placement constraint successfully verified")
             else:
                 rf = YBAdminProxy.get_cluster_rf(master_addrs)
-            status_info = [
-                (Output.make_yellow("Status"), status),
-                (Output.make_yellow("Replication Factor"), rf),
-            ]
+
+            status_info = [(Output.make_yellow("Status"), status)]
+            if rf:
+                status_info.append((Output.make_yellow("Replication Factor"), rf))
 
             if enabled_security_features:
                 status_info += [
@@ -3924,7 +5004,6 @@ class ControlScript(object):
             # Persist the config if masters have changed
             self.configs.save_configs()
 
-
     # Calls func after receiving certain exit signals.
     def set_signals(self, func):
         for sig in EXIT_SIGNALS:
@@ -3945,14 +5024,14 @@ class ControlScript(object):
     # Check whether the hostnames or IP provided is in correct format.
     def validate_hostname_ip(self, ip):
         # Regex expression for validating IPv4
-        ipv4_regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
+        ipv4_regex = r"^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
             "[0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
 
         # Regex expression for validating IPv6
         ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
 
         # Regex expression for validating DNS names
-        dns_regex = "^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
+        dns_regex = r"^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
 
         # Regex expression for validating hostname
         hostname_regex = "^[a-zA-Z0-9.-]+$"
@@ -4032,8 +5111,61 @@ class ControlScript(object):
             Output.log_error_and_exit("Other error occurred while checking for security of " +
                                     "leader master: {}".format(err))
 
+    def handle_config_files(self, args, conf_dir, config_file, base_dir):
+        if not os.path.isdir(conf_dir):
+            if args.parser == "start":
+                os.makedirs(conf_dir)
+
+        if os.path.exists(config_file):
+            # Load already saved configs if yugabyted.conf exists
+            self.configs = Configs.parse_config_file(config_file, base_dir)
+        else:
+            # Initialise configs
+            self.configs = Configs(config_file, base_dir)
+            if args.parser == "start":
+                open(config_file, 'a').close()
+
+        if args.parser == "start" and args.config:
+            args.config = \
+                os.path.realpath(
+                os.path.abspath(
+                os.path.expanduser(args.config)))
+            user_configs = Configs.parse_user_config_file(args.config)
+            # User should not be able to override data_dir
+            if (self.configs.saved_data.get("cluster_member")
+                                    and args.data_dir is None):
+                user_configs_data_dir = [
+                    path for path in user_configs.get("data_dir").split(',')
+                ]
+                config_data_dir = [self.configs.saved_data.get("data_dir")] + \
+                  [x for x in self.configs.saved_data.get(
+                    "additional_data_dir").split(',') if x]
+                # Existing data directories cannot be removed or changed
+                # through changing the user config file during restart
+                if len(user_configs_data_dir) < len(config_data_dir) or \
+                    user_configs_data_dir[:len(config_data_dir)] != config_data_dir:
+                    Output.print_out(
+                        "Data directory already exists at: {}.".format(
+                                                ", ".join(config_data_dir))
+                    )
+                    sys.exit(1)
+
+            data_dir = self.configs.saved_data.get("data_dir")
+            additional_data_dir = self.configs.saved_data.get(
+                                            "additional_data_dir")
+            # Update saved configs with user configurations
+            self.configs.saved_data.update(user_configs)
+            # If args.data_dir is given then do not
+            # change the data_path with user configs
+            if (args.data_dir is not None and
+                        self.configs.saved_data.get("cluster_member")):
+                self.configs.saved_data["data_dir"] = data_dir
+                self.configs.saved_data["additional_data_dir"] = \
+                                                    additional_data_dir
+
+        return self.configs
     # Parse the config file and input parent flags to validate and set them.
-    # Parent flags: --config, --data_dir, --log_dir
+    # Parent flags: --data_dir, --log_dir
     def validate_and_set_parent_configs(self, args):
 
         home_dir = os.path.expanduser("~")
@@ -4047,62 +5179,66 @@ class ControlScript(object):
 
         has_errors = False
 
-        self.conf_file = args.config or base_dir_conf or \
+        self.conf_file = base_dir_conf or \
                          Configs.get_brew_config() or default_conf_path
         self.conf_file = os.path.realpath(os.path.expanduser(self.conf_file))
 
         conf_dir = os.path.dirname(self.conf_file)
-        if not os.path.isdir(conf_dir):
-            os.makedirs(conf_dir)
+        self.configs = self.handle_config_files(args, conf_dir, self.conf_file, base_dir)
 
-        self.configs = Configs.parse_config_file(self.conf_file, base_dir)
-
-        for path_args in ("data_dir", "log_dir"):
-            path = getattr(args, path_args, None)
-            if path:
-                setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
-
-        if args.data_dir is not None:
-            args.data_dir = os.path.expanduser(args.data_dir)
-
-            config_data_dir = self.configs.saved_data.get("data_dir")
-            if (config_data_dir and os.path.exists(config_data_dir) and
-                    config_data_dir != args.data_dir):
-                has_errors = True
-                # TODO: Gradefully handle this case... User should be able to override config.
-                Output.print_out(
-                    "Data directory already exists at {}.".format(config_data_dir))
-
-        if args.log_dir is not None:
-            args.log_dir = os.path.expanduser(args.log_dir)
-
-            config_log_dir = self.configs.saved_data.get("log_dir")
-            if (config_log_dir and os.path.exists(config_log_dir) and
-                    config_log_dir != args.log_dir):
-                Output.print_out(
-                    "Old log directory already exists at {}. New logs will go to {}".format(
-                        config_log_dir, args.log_dir))
+        if self.configs.saved_data.get("cluster_member"):
+            if args.data_dir is not None:
+                data_dir_list = [
+                    os.path.abspath(os.path.realpath(os.path.expanduser(path)))
+                    for path in args.data_dir.split(',')
+                ]
+                config_data_dir = [self.configs.saved_data.get("data_dir")] + \
+                  [x for x in self.configs.saved_data.get(
+                    "additional_data_dir").split(',') if x]
+                # Existing data directories cannot be removed or changed
+                if len(data_dir_list) < len(config_data_dir) or \
+                    data_dir_list[:len(config_data_dir)] != config_data_dir:
+                    has_errors = True
+                    Output.print_out(
+                        "Data directory already exists at: {}.".format(
+                                                ", ".join(config_data_dir))
+                    )
+            if args.log_dir is not None:
+                args.log_dir = os.path.abspath(os.path.realpath(
+                                                os.path.expanduser(args.log_dir)))
+                config_log_dir = self.configs.saved_data.get("log_dir")
+                # Existing log directory can be changed
+                if config_log_dir != args.log_dir:
+                    Output.print_out(
+                        "Old log directory already exists at {}. New logs will go to {}".format(
+                            config_log_dir, args.log_dir))
 
         if has_errors:
             sys.exit(1)
 
-        parent_flags = ["config", "log_dir", "data_dir"]
+        parent_flags = ["log_dir", "data_dir"]
         # Override configs and defaults with user specified variables
         for k, v in get_kv(args.__dict__):
-            if (v is not None and k in parent_flags and k in self.configs.saved_data
-                    and v != self.configs.saved_data.get(k)):
+            if (v is not None and k in parent_flags and k in self.configs.saved_data):
                 self.configs.saved_data[k] = v
 
         data_dir = self.configs.saved_data["data_dir"]
+        data_dir_paths = data_dir.split(',')
+        self.configs.saved_data["data_dir"] = data_dir_paths[0]
+        if len(data_dir_paths) > 1:
+            self.configs.saved_data["additional_data_dir"] = \
+                                            ','.join(data_dir_paths[1:])
         log_dir = self.configs.saved_data["log_dir"]
         self.configs.save_configs()
 
-        if not os.path.isdir(data_dir):
-            os.makedirs(data_dir)
+        for dir_path in data_dir_paths:
+            if not os.path.isdir(dir_path):
+                os.makedirs(dir_path)
         if not os.path.isdir(log_dir):
             os.makedirs(log_dir)
 
-        self.script = ScriptProcessManager(log_dir, data_dir)
+        self.script = ScriptProcessManager(log_dir,
+                            self.configs.saved_data.get("data_dir"))
 
     # Check and validate the flags regarding the secure deployment of the node.
     # Check whether the certs files are present or not.
@@ -4316,6 +5452,122 @@ class ControlScript(object):
                 "provided is not reachable.")
 
 
+
+    def validate_ybc_cloud_uri(self, cloud_storage_uri):
+
+        if cloud_storage_uri.startswith("s3://"):
+            pattern = r'^s3://[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*$'
+            if re.match(pattern, cloud_storage_uri) is not None:
+
+                if os.environ.get("AWS_ACCESS_KEY_ID") is None or \
+                   os.environ.get("AWS_SECRET_ACCESS_KEY") is None or \
+                   os.environ.get("AWS_DEFAULT_REGION") is None:
+
+                    Output.print_and_log(
+                        Output.make_red("Error: ") + "AWS credentials are not provided. " + \
+                            "Environment variables AWS_ACCESS_KEY_ID, " + \
+                            "AWS_SECRET_ACCESS_KEY and AWS_DEFAULT_REGION " + \
+                            "needs to be set."
+                    )
+                    return False
+
+                self.configs.temp_data["ybc_cloud_type"] = "s3"
+                bucket_dir = cloud_storage_uri[5:].split("/", 1)
+                # s3 bucket
+                self.configs.temp_data["ybc_cloud_storage_bucket"] = bucket_dir[0]
+                # s3 directory
+                self.configs.temp_data["ybc_cloud_storage_dir"] = bucket_dir[1]
+                return True
+        elif cloud_storage_uri.startswith("gs://"):
+            pattern = r'^gs://[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)*$'
+            if re.match(pattern, cloud_storage_uri) is not None:
+                self.configs.temp_data["ybc_cloud_type"] = "google"
+                bucket_dir = cloud_storage_uri[5:].split("/", 1)
+                # gcp bucket
+                self.configs.temp_data["ybc_cloud_storage_bucket"] = bucket_dir[0]
+                # gcp directory
+                self.configs.temp_data["ybc_cloud_storage_dir"] = bucket_dir[1]
+                return True
+        elif cloud_storage_uri.find('blob.core.windows.net') !=  -1:
+            Output.print_and_log(
+                Output.make_red("Error: ") + "Azure support is comming soon!"
+            )
+            return False
+        else:
+            # check if nfs path is valid
+            pattern = r'^/([a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+$'
+            if re.match(pattern, cloud_storage_uri) is not None:
+                if not os.environ.get("YBC_NFS_DIR"):
+                    os.environ["YBC_NFS_DIR"] = YBC_NFS_DIR
+                    if not os.path.exists(YBC_NFS_DIR):
+                        os.mkdir(YBC_NFS_DIR)
+                self.configs.temp_data["ybc_cloud_type"] = "nfs"
+                bucket_dir = cloud_storage_uri[0:].split("/")[-2:]
+                self.configs.temp_data["ybc_cloud_storage_bucket"] = bucket_dir[0]
+                self.configs.temp_data["ybc_cloud_storage_dir"] = bucket_dir[1]
+                return True
+            return False
+
+    def validate_ybc_args(self, args):
+
+        if args.cloud_storage_uri is not None:
+            if not self.validate_ybc_cloud_uri(args.cloud_storage_uri):
+                Output.print_and_log(
+                    Output.make_red("Error: ") + "--cloud_storage_uri is invalid."
+                )
+                return False
+        else:
+            Output.print_and_log(
+                Output.make_red("Error: ") + "--cloud_storage_uri is empty."
+            )
+            return False
+
+        if args.status:
+            self.configs.temp_data["ybc_status"] = True
+
+        if args.database is not None and args.keyspace is not None:
+            Output.print_and_log(
+                    Output.make_red("Error: ") +
+                    "Cannot specify both database and keyspace args. " +
+                    "Specify either the database or the keyspace argument for the command."
+                )
+            return False
+        elif args.database is None and args.keyspace is None:
+            Output.print_and_log(
+                Output.make_red("Error: ") +
+                "Specify either the database or the keyspace argument for the command."
+            )
+            return False
+        elif args.database is not None and args.keyspace is None:
+            self.configs.temp_data["database_name_backup_restore"] = args.database
+            return True
+        elif args.keyspace is not None and args.database is None:
+            self.configs.temp_data["keyspace_name_backup_restore"] = args.keyspace
+            return True
+
+        return False
+
+    # Validate time format
+    def validate_time_format(self, restore_time):
+        try:
+            # Check for value errors
+            datetime.strptime(restore_time, "%Y-%m-%d %I:%M:%S %p")
+            # Split the restore_time string to directly check the length of each component.
+            date, time = restore_time.split(' ')[0:2]
+            _, month, day = date.split('-')
+            hour, minute, second = time.split(':')
+
+            for component in [month, day, hour, minute, second]:
+                if len(component) != 2:
+                    return False
+
+            return True
+
+        except ValueError:
+        # The time string does not match the expected format.
+            return False
+
+
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
 
@@ -4323,6 +5575,69 @@ class ControlScript(object):
 
         if self.configs.saved_data.get("database_password") is not None:
             self.setup_env_init.update_passwords(self.configs.saved_data.get("database_password"))
+
+        if args.parser == "backup":
+            if not self.validate_ybc_args(args):
+                has_errors = True
+
+        if args.parser == "restore":
+            if not args.cloud_storage_uri and not args.recover_to_point_in_time:
+                Output.print_out(Output.make_red("Error") + ": Specify either " +
+                    "--cloud_storage_uri or --recover_to_point_in_time " +
+                    "to perform a restore operation.")
+                sys.exit(1)
+
+            # PITR operation
+            if args.recover_to_point_in_time is not None:
+
+                restore_error = []
+
+                if not self.validate_time_format(args.recover_to_point_in_time):
+                    restore_error.append(
+                    "* Invalid time format specified for --recover_to_point_in_time flag: {}. " \
+                    "Please follow the format: 'YYYY-MM-DD HH:MM:SS AM/PM'." \
+                                    .format(args.recover_to_point_in_time)
+                    )
+                if not (args.database or args.keyspace):
+                    restore_error.append(
+                    "* Specify either database or keyspace to" \
+                    " restore to a point in time."
+                    )
+                if args.database and args.keyspace:
+                    restore_error.append(
+                    "* Cannot specify both database and keyspace args." \
+                    " Please specify either database or keyspace name."
+                    )
+                if (args.database in SYSTEM_NAMESPACES) or (args.keyspace in SYSTEM_NAMESPACES):
+                        restore_error.append(
+                        "* Cannot specify system namespaces to recover to a point" \
+                        " in time. Please specify a non-system namespace."
+                    )
+                if args.cloud_storage_uri:
+                    restore_error.append(
+                        "* --recover_to_point_in_time flag can't be used with " \
+                        "--cloud_storage_uri flag. Please remove the --cloud_storage_uri flag" \
+                        " when specifying the --recover_to_point_in_time flag."
+                    )
+                if args.status:
+                    restore_error.append(
+                        "* --recover_to_point_in_time flag can't be used with " \
+                        "--status flag. Please remove the --status flag" \
+                        " when specifying the --recover_to_point_in_time flag."
+                    )
+                if restore_error:
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while restoring to a point in time:\n" +
+                                "\n".join(restore_error))
+                # No errors found in PITR restore args
+                else:
+                    self.configs.temp_data["database_name_backup_restore"] = args.database
+                    self.configs.temp_data["keyspace_name_backup_restore"] = args.keyspace
+                    self.configs.temp_data["restore_time"] = args.recover_to_point_in_time
+            else:
+                if not self.validate_ybc_args(args):
+                    has_errors = True
 
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
@@ -4337,19 +5652,144 @@ class ControlScript(object):
             if not os.path.isdir(collect_at_dir):
                 os.makedirs(collect_at_dir)
 
+        if args.parser == "point_in_time_recovery":
+            # All three action flags namely --enable,--disable
+            # and --status must be mutually exclusive
+            if not args.enable and not args.disable and not args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": Specify either the --enable, --disable or --status flag."
+                )
+            elif args.enable and args.disable and args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --enable, --disable and --status flags can't be used together."
+                )
+            elif args.enable and args.disable:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --enable flag can't be used together with --disable flag."
+                )
+            elif args.enable and args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --enable flag can't be used together with --status flag."
+                )
+            elif args.disable and args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --disable flag can't be used together with --status flag."
+                )
+            # Validation checks for each PITR action
+            else:
+                pitr_error_map = {
+                        'enable': [],
+                        'disable': [],
+                        'status': [],
+                    }
+                if args.enable:
+                    action = 'enable'
+                    self.configs.temp_data["enable_pitr"] = args.enable
+                elif args.disable:
+                    action = 'disable'
+                    self.configs.temp_data["disable_pitr"] = args.disable
+                elif args.status:
+                    action = 'status'
+
+                # Case Scenario: When database or keyspace is not specified
+                # with --enable or --disable flag
+                if not (args.database or args.keyspace) and action != 'status':
+                    pitr_error_map[action].append(
+                    "* Specify either database or keyspace to " \
+                    "{} point-in-time recovery.".format(action)
+                )
+                # Case Scenario: When both database and keyspace are specified
+                if args.database and args.keyspace:
+                        pitr_error_map[action].append(
+                        "* Cannot specify both database and keyspace args." \
+                        " Please specify either database or keyspace name."
+                        )
+                # Case Scenario: When a system namespace is specified
+                if (args.database in SYSTEM_NAMESPACES) or (args.keyspace in SYSTEM_NAMESPACES):
+                        pitr_error_map[action].append(
+                        "* Cannot specify system namespaces to configure point" \
+                        "-in-time recovery. Please specify a non-system namespace."
+                        )
+
+                if args.retention:
+                    # Case Scenario: When retention flag is specified
+                    # with --disable or status flag
+                    if action in ["disable", "status"]:
+                        pitr_error_map[action].append(
+                        "* --retention flag can't be used with --{} flag." \
+                        " Please remove the --retention flag when specifying" \
+                        " the --{} flag.".format(action, action)
+                        )
+                    elif not args.retention.isdigit() or int(args.retention) < 2:
+                        pitr_error_map[action].append(
+                        "* Retention period must be a positive integer greater than 1." \
+                        " Please specify a valid postive integer greater than 1 to" \
+                        " enable point-in-time recovery."
+                        )
+
+                # List errors found while configuring pitr for a YugabyteDB cluster
+                if pitr_error_map.get("enable"):
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while enabling point-in-time recovery:\n" +
+                                "\n".join(pitr_error_map["enable"]))
+                if pitr_error_map.get("disable"):
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while disabling point-in-time recovery:\n" +
+                                "\n".join(pitr_error_map["disable"]))
+                if pitr_error_map.get("status"):
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while displaying the point-in-time recovery status:\n" +
+                                "\n".join(pitr_error_map["status"]))
+
+                # If no errors are found save the configs
+                if not has_errors:
+                    if args.database:
+                        self.configs.temp_data["database_name_backup_restore"] = args.database
+                    if args.keyspace:
+                        self.configs.temp_data["keyspace_name_backup_restore"] = args.keyspace
+                    if args.retention:
+                        self.configs.temp_data["retention_period"] = int(args.retention)
+
         if args.parser == "admin_operation":
             if not args.command:
                 has_errors = True
                 Output.print_and_log(Output.make_red("Error:") + " --command flag is empty. " +
                                  "Please specify a yb-admin command to execute.")
-                # Output.print_out("--command flag is empty. " +
-                #                  "Specify a yb-admin command to execute.")
             else:
                 self.configs.temp_data["admin_command"] = args.command
 
             if args.master_addresses is not None:
                 self.configs.temp_data[
                     "admin_operation_master_addresses"] = args.master_addresses
+
+        if args.parser == "finalize_upgrade":
+            if args.upgrade_ysql_timeout is not None:
+                # Check if timeout is a digit and its integer value is greater than 0
+                if not args.upgrade_ysql_timeout.isdigit() or \
+                                            int(args.upgrade_ysql_timeout) <= 0:
+                    has_errors = True
+                    Output.print_and_log(Output.make_red("Error") + ": " +
+                    "--upgrade_ysql_timeout value must be" +
+                    " a positive integer greater than 0 in milliseconds." +
+                    " Please specify a valid positive integer to set the" +
+                    " YSQL upgrade timeout value.")
+                else:
+                    # Valid timeout value
+                    self.configs.temp_data["upgrade_ysql_timeout"] = \
+                                                    int(args.upgrade_ysql_timeout)
 
         if args.parser == "data_placement":
             if args.fault_tolerance is not None:
@@ -4668,6 +6108,7 @@ class ControlScript(object):
             if args.background is None:
                 args.background = "True"
 
+            cluster_member = self.configs.saved_data.get("cluster_member")
             if args.join is not None:
                 if not self.validate_hostname_ip(args.join):
                     Output.log_error_and_exit(Output.make_red("ERROR") + ": --join" +
@@ -4675,66 +6116,79 @@ class ControlScript(object):
                         "IPV6 or DNS.")
 
                 Output.print_and_log("Fetching configs from join IP...")
-                # Check if tserver webserver at join_IP is reachable or not
-                # Also get the leader master(used to get the info of all tservers)
-                master_leader = self.get_current_master_leader_from_api(args.join)
-                args.join = master_leader
+                if not cluster_member:
+                    # Check if tserver webserver at join_IP is reachable or not
+                    # Also get the leader master(used to get the info of all tservers)
+                    master_leader = self.get_current_master_leader_from_api(args.join)
+                    args.join = master_leader
 
-                # Get info on all tservers
-                master_leader_hostport = "{}:{}".format(master_leader,
-                                    self.configs.saved_data.get("master_webserver_port"))
-                tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
+                    # Get info on all tservers
+                    master_leader_hostport = "{}:{}".format(master_leader,
+                                        self.configs.saved_data.get("master_webserver_port"))
+                    tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
 
-                # Check if any existing node has the same IP as advertise address
-                for uuid, nodes in tservers_info.items():
-                    for node in [node.split(":")[0] for node in list(nodes.keys())]:
-                        if args.advertise_address == node:
-                            Output.log_error_and_exit(Output.make_red("ERROR:") + " A node is " +
-                                        "already running on {}, please ".format(args.join) +
-                                        "specify a valid address.")
+                    # Check if any existing node has the same IP as advertise address
+                    for uuid, nodes in tservers_info.items():
+                        for node in [node.split(":")[0] for node in list(nodes.keys())]:
+                            if args.advertise_address == node:
+                                Output.log_error_and_exit(Output.make_red("ERROR:") + " A node" +
+                                    " is already running on {}, please ".format(args.join) +
+                                    "specify a valid address.")
 
-                is_placement_uuid_set = False
+                    is_placement_uuid_set = False
 
-                # Set placement UUID for the node according to it's properties(rr or primary)
-                if args.read_replica:
-                    # When the 1st read replica node is started use a new uuid
-                    if len(tservers_info) == 1:
-                        is_placement_uuid_set = True
-                        Output.log("Starting first read replica node. " +
-                                    "Using {} as placement_uuid".format(
-                                        self.configs.saved_data.get("placement_uuid")))
-                    # When a read replica cluster exists use the existing placement UUID
+                    # Set placement UUID for the node according to it's properties(rr or primary)
+                    if args.read_replica:
+                        # When the 1st read replica node is started use a new uuid
+                        if len(tservers_info) == 1:
+                            is_placement_uuid_set = True
+                            Output.log("Starting first read replica node. " +
+                                        "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
+                        # When a read replica cluster exists use the existing placement UUID
+                        else:
+                            for uuid, nodes in tservers_info.items():
+                                nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                                if master_leader not in nodes_list and len(nodes) != 0:
+                                    self.configs.saved_data["placement_uuid"] = uuid
+                                    Output.log("Using placement_uuid {} from ".format(uuid) +
+                                                "existing read replica cluster.")
+                                    is_placement_uuid_set = True
                     else:
+                        # Use placement uuid set for the primary cluster when 1st node was started.
                         for uuid, nodes in tservers_info.items():
                             nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                            if master_leader not in nodes_list and len(nodes) != 0:
+                            if master_leader in nodes_list:
                                 self.configs.saved_data["placement_uuid"] = uuid
                                 Output.log("Using placement_uuid {} from ".format(uuid) +
-                                            "existing read replica cluster.")
+                                                "existing primary cluster.")
                                 is_placement_uuid_set = True
+
+                    # If placement UUID could not be set for some reason, throw an error
+                    if not is_placement_uuid_set:
+                        Output.log("Cannot find placement UUID for the node. " +
+                                "Leader Master node: {}. ".format(master_leader) +
+                                "Response from tablet-servers API: {}".format(
+                                    str(tservers_info)))
+                        Output.log_error_and_exit(Output.make_red("ERROR:") +
+                                " Unable to start the node.")
+
+                # Restart node as a part of an existing cluster with the join flag specified
                 else:
-                    # Use placement uuid set for the primary cluster when 1st node was started.
-                    for uuid, nodes in tservers_info.items():
-                        nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                        if master_leader in nodes_list:
-                            self.configs.saved_data["placement_uuid"] = uuid
-                            Output.log("Using placement_uuid {} from ".format(uuid) +
-                                            "existing primary cluster.")
-                            is_placement_uuid_set = True
+                    Output.log("Restarting node as part of an existing cluster. " +
+                                            "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
 
-                # If placement UUID could not be set for some reason, throw an error
-                if not is_placement_uuid_set:
-                    Output.log("Cannot find placement UUID for the node. " +
-                            "Leader Master node: {}. ".format(master_leader) +
-                            "Response from tablet-servers API: {}".format(
-                                str(tservers_info)))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") +
-                            " Unable to start the node.")
-
-            # If no --join is passed then start a new cluster with a new placement_uuid
+            # If no --join is passed, check if its a first time start or its a restart
             else:
-                Output.log("Starting first primary node. Using {} as placement_uuid".format(
+                if not cluster_member:
+                    Output.log("Starting first primary node. Using {} as placement_uuid".format(
                                            self.configs.saved_data.get("placement_uuid")))
+                # Restart node as a part of an existing cluster without the join flag specified
+                else:
+                    Output.log("Restarting node as part of an existing cluster. " +
+                                            "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
 
             self.find_security_nature_of_deployment(args)
 
@@ -4745,7 +6199,7 @@ class ControlScript(object):
                     ": --certs_dir flag needs to be accompanied with the --secure flag.")
 
             if args.insecure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if self.is_leader_master_secure(master_hostport):
@@ -4756,7 +6210,7 @@ class ControlScript(object):
                             "IP was provided in --join flag has SSL/TLS enabled. Cannot join a " +
                             "secure and an insecure node.")
             elif args.secure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if not self.is_leader_master_secure(master_hostport):
@@ -4775,6 +6229,9 @@ class ControlScript(object):
 
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
+            if args.enable_pg_parity_tech_preview:
+                self.configs.temp_data["enable_pg_parity"] = \
+                                args.enable_pg_parity_tech_preview
 
             args.background = self.parse_bool(args.background)
             if args.ui is not None:
@@ -4782,8 +6239,14 @@ class ControlScript(object):
             else:
                 args.ui = self.configs.saved_data.get("ui")
 
-            self.configs.temp_data["ui_port_available"] = self.is_port_available(
-                args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
+            if args.backup_daemon is not None:
+                args.backup_daemon = self.parse_bool(args.backup_daemon)
+            else:
+                args.backup_daemon = self.configs.saved_data.get("backup_daemon")
+
+            if not has_errors:
+                self.configs.temp_data["ui_port_available"] = self.is_port_available(
+                    args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
 
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
@@ -4812,12 +6275,13 @@ class ControlScript(object):
 
             self.configs.temp_data["background"] = args.background
             self.configs.saved_data["ui"] = args.ui
+            self.configs.saved_data["backup_daemon"] = args.backup_daemon
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
 
         if has_errors:
             sys.exit(1)
 
-        parent_flags = ["config", "log_dir", "data_dir"]
+        parent_flags = ["log_dir", "data_dir"]
         # Override configs and defaults with user specified variables
         for k, v in get_kv(args.__dict__):
             if (v is not None and k not in parent_flags and k in self.configs.saved_data
@@ -4832,9 +6296,6 @@ class ControlScript(object):
     def run(self):
         # Parent subparser for common args
         common_parser = argparse.ArgumentParser(add_help=False)
-        common_parser.add_argument(
-            "--config", help="{} configuration file path".format(
-                              SCRIPT_NAME), metavar="")
         # TODO: Refactor data_dir to be a list for multi-node. How should the config file and
         # data dir be set for local mulit-node setups? Note: daemon mode may be affected.
         common_parser.add_argument(
@@ -4858,8 +6319,11 @@ class ControlScript(object):
                 ("start", "Start YugabyteDB cluster."),
                 ("stop", "Stop running YugabyteDB cluster."),
                 ("destroy", "Destroy YugabyteDB cluster and remove data."),
+                ("backup", "Back up a database."),
+                ("restore", "Restore a database."),
                 ("status", "Print status of YugabyteDB cluster."),
                 ("version", "Release version of YugabyteDB cluster."),
+                ("finalize_upgrade", "Finalize the upgrade process for the YugabyteDB cluster."),
                 ("collect_logs", "Collect and package logs for troubleshooting.")):
             example = ""
             if EXAMPLE.get(cmd):
@@ -4965,19 +6429,22 @@ class ControlScript(object):
         # Top Level command: configure
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure"]
         configure_parser = subparsers.add_parser("configure", description=example,
-                                                help="Configure data placement or " +
-                                                "toggle encryption at rest for " +
-                                                "the cluster.", parents=[common_parser])
+                                                help="Configure data placement," +
+                                                " toggle encryption at rest or run" +
+                                                " point-in-time recovery operations on" +
+                                                " the cluster.", parents=[common_parser])
 
         # Sub-commands for top level `configure` command: data_placement,
-        # encrypt_at_rest, admin_operation
+        # encrypt_at_rest, admin_operation, point_in_time_recovery
         all_parsers["configure"] = configure_parser
         configure_subparsers = configure_parser.add_subparsers(dest="parser", metavar="")
         configure_subparsers.required = True
         for cmd, description in (
-                ("data_placement", "Configure multi-zone/multi-region cluster."),
-                ("encrypt_at_rest", "Enable or disable encryption at rest."),
-                ("admin_operation", "Run yb-admin command on the YugabyteDB cluster.")):
+        ("data_placement", "Configure multi-zone/multi-region cluster."),
+        ("encrypt_at_rest", "Enable or disable encryption at rest."),
+        ("admin_operation", "Run yb-admin command on the YugabyteDB cluster."),
+        ("point_in_time_recovery", "Configure point-in-time recovery for "
+            "a database or keyspace."),):
             example = ""
             if EXAMPLE.get(cmd):
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
@@ -5031,6 +6498,36 @@ class ControlScript(object):
                 metavar=""
             )
 
+        # Flags for sub-command: point_in_time_recovery
+        for cmd in ("configure_point_in_time_recovery",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--enable", help="Enable point-in-time recovery for a database or keyspace.",
+                action="store_true", default=None
+                )
+            cur_parser.add_argument(
+                "--retention", help="Specify the retention period of the snapshots.",
+                metavar=""
+                )
+            cur_parser.add_argument(
+                "--disable", help="Disable point-in-time recovery for a database or keyspace.",
+                action="store_true", default=None
+                )
+            cur_parser.add_argument(
+                "--database", help="Name of the YSQL database for which " + \
+                "point-in-time recovery is being configured.",
+                metavar=""
+                )
+            cur_parser.add_argument(
+                "--keyspace", help="Name of the YCQL keyspace for which " + \
+                "point-in-time recovery is being configured.",
+                metavar=""
+                )
+            cur_parser.add_argument(
+                "--status", help="Display point-in-time recovery status for a " + \
+                "YugabyteDB cluster.", action="store_true", default=None
+                )
+
         # Top Level command: configure_read_replica
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure_read_replica"]
         configure_read_replica_parser = subparsers.add_parser("configure_read_replica",
@@ -5076,6 +6573,56 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--data_placement_constraint", help="Placement policy for the read replica " +
                 "cluster.", metavar="")
+
+        # Top level command: backup
+        for cmd in ("backup",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--database", metavar="",
+                help="YSQL Database to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--keyspace", metavar="",
+                help="YCQL Keyspace to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--cloud_storage_uri", metavar="",
+                help="Cloud location to store the backup data.")
+            cur_parser.add_argument(
+                "--status",
+                help="Check the status of the backup task.",
+                action="store_true", default=None
+            )
+
+        # Top level command: restore
+        for cmd in ("restore",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--database", metavar="",
+                help="YSQL Database to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--keyspace", metavar="",
+                help="YCQL Keyspace to be backed up to cloud storage.")
+            cur_parser.add_argument(
+                "--cloud_storage_uri", metavar="",
+                help="Cloud location to store the backup data.")
+            cur_parser.add_argument(
+                "--status",
+                help="Check the status of the restore task.",
+                action="store_true", default=None
+            )
+            cur_parser.add_argument(
+                "--recover_to_point_in_time", help="Restore to the specified point" + \
+                "-in-time with timestamp enclosed within single quotes.",
+                metavar=""
+            )
+
+        # Top level command: finalize_upgrade
+        for cmd in ("finalize_upgrade",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--upgrade_ysql_timeout",
+                help="Custom timeout for the YSQL upgrade in milliseconds.",
+                metavar=""
+            )
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -5131,6 +6678,9 @@ class ControlScript(object):
                 "--ui", choices=BOOL_CHOICES, metavar="",
                 help="Toggle enabling or disabling webserver UI. Default true.")
             cur_parser.add_argument(
+                "--backup_daemon", choices=BOOL_CHOICES, metavar="",
+                help="Toggle enabling or disabling YBC server. Default False.")
+            cur_parser.add_argument(
                 "--ysql_enable_auth", choices=BOOL_CHOICES,
                 help=argparse.SUPPRESS)
             cur_parser.add_argument(
@@ -5144,6 +6694,12 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--fault_tolerance", metavar="",
                 help="Determines the type of deployment of the cluster. Default is None.")
+            cur_parser.add_argument(
+            "--config", help="{} user configuration file path".format(
+                              SCRIPT_NAME), metavar="")
+            cur_parser.add_argument(
+                "--enable_pg_parity_tech_preview", help="Enable PostgreSQL compatibility features."
+                " Default value is False.", action="store_true", default=False)
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -5176,8 +6732,11 @@ class ControlScript(object):
 
         Output.log("Running yugabyted command: '{}'".format(' '.join(sys.argv)))
 
-        Output.log("cmd = {} using config file: {} (args.config={})".format(
-            args.parser, self.conf_file, args.config))
+        Output.log("cmd = {} using config file: {}".format(args.parser, self.conf_file))
+
+        if args.parser == "start" and args.config:
+            Output.log("Updating yugabyted config file with"
+                    " user-specified configs located at: {}".format(args.config))
 
         # Initialize the script path of openssl_proxy.sh
         OpenSSLProxy.init()
@@ -5265,6 +6824,7 @@ class Configs(object):
     def __init__(self, config_file, base_dir):
         self.saved_data = {
             "data_dir": os.path.join(base_dir, "data"),
+            "additional_data_dir": "",
             "log_dir": os.path.join(base_dir, "logs"),
             "gen_certs_dir": os.path.join(base_dir, "generated_certs"),
             "master_rpc_port": DEFAULT_MASTER_RPC_PORT,
@@ -5301,8 +6861,10 @@ class Configs(object):
             "database_password": None,
             "current_masters": "",
             "ui": True,
+            "backup_daemon": False,
             "dns_enabled": False,
             "read_replica": False,
+            "cluster_member": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -5316,19 +6878,33 @@ class Configs(object):
             "hostnames": "",
             "enable_encrypt_at_rest": False,
             "disable_encrypt_at_rest": False,
+            "enable_pg_parity": False,
             "admin_command": "",
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",
             "rr_replication_factor": "",
+            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs"),
+            "enable_pitr": False,
+            "disable_pitr": False,
+            "retention_period": DEAFULT_RETENTION_PERIOD,
+            "restore_time": None,
             "ui_port_available": True,
-            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs")
+            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs"),
+            "database_name_backup_restore": None,
+            "keyspace_name_backup_restore": None,
+            "ybc_cloud_type": "",
+            "ybc_cloud_storage_bucket": "",
+            "ybc_cloud_storage_dir": "",
+            "ybc_status": False,
+            "upgrade_ysql_timeout": DEFAULT_UPGRADE_YSQL_TIMEOUT,
         }
         self.config_file = config_file
 
     # Saves current configs to config file.
     def save_configs(self):
-        with open(self.config_file, "w+") as f:
-            json.dump(self.saved_data, f, indent=4)
+        if os.path.exists(self.config_file):
+            with open(self.config_file, "w+") as f:
+                json.dump(self.saved_data, f, indent=4)
 
     # Custom parser for reading config file.
     @staticmethod
@@ -5342,13 +6918,54 @@ class Configs(object):
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
 
-        paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
-        for k, v in configs.saved_data.items():
-            if v is not None and k in paths:
-                if "$" in v:
-                    configs.saved_data[k] = os.path.expanduser(os.path.expandvars(v))
-                else:
-                    configs.saved_data[k] = os.path.expanduser(v)
+        configs.saved_data = Configs.expand_path_variables(configs.saved_data)
+
+        return configs
+
+    # Custom parser for reading user config file.
+    @staticmethod
+    def parse_user_config_file(user_conf_file):
+        user_configs = {}
+        if not os.path.exists(user_conf_file):
+            Output.log_error_and_exit("User config file {} does not exist.".format(user_conf_file))
+        try:
+            with open(user_conf_file, 'r') as f:
+                content = f.read()
+                # If the file is empty or contains only whitespace,
+                # user_configs remains an empty dictionary
+                if content.strip():
+                    user_configs = json.loads(content)
+        except Exception as e:
+            Output.log_error_and_exit("Failed to read user config file {}: {}".format(
+                                        user_conf_file, str(e)))
+
+        user_configs = Configs.expand_path_variables(user_configs)
+
+        return user_configs
+
+    # Expand path variables in config files
+    @staticmethod
+    def expand_path_variables(configs):
+        paths = ["log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
+        multi_paths = ["data_dir"]
+        for key, value in configs.items():
+            if value is not None:
+                if key in multi_paths:
+                    configs[key] = ','.join([
+                        os.path.abspath(os.path.realpath(
+                            os.path.expanduser(os.path.expandvars(path))) \
+                            if "$" in path else \
+                            os.path.abspath(os.path.realpath(os.path.expanduser(path)))
+                        ) for path in value.split(',')
+                    ])
+                elif key in paths:
+                    configs[key] = (
+                        os.path.abspath(os.path.realpath(
+                            os.path.expanduser(os.path.expandvars(value))))
+                        if "$" in value else
+                        os.path.abspath(os.path.realpath(os.path.expanduser(value)))
+                    )
+
         return configs
 
     @staticmethod
@@ -5695,6 +7312,200 @@ class Diagnostics(object):
                     size += os.path.getsize(filepath)
         return size
 
+class YBControllerCLIProxy(object):
+    cmd_args = []
+
+    @staticmethod
+    def init():
+        YBControllerCLIProxy.cmd_args.append(find_ybc_binary_location("yb-controller-cli"))
+
+    @staticmethod
+    def set_certs_dir(master_flags, secure, certs_dir):
+        # If the user is attempting to use TLS, let's point yb-admin to
+        # the same certs dir as the master
+        if secure:
+            YBControllerCLIProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
+        elif master_flags:
+            flags_list = master_flags.split(",")
+            if 'use_node_to_node_encryption=true' not in flags_list:
+                return
+            certs_dir_name = [y for y in
+                [re.match('certs_dir=(.*)', x) for x in flags_list]
+                if y is not None]
+            if not certs_dir_name[0]:
+                raise RuntimeError("use_node_to_node_encryption=true must "
+                                "be accompanied by a certs_dir setting")
+            YBControllerCLIProxy.cmd_args.append('--certs_dir_name={}'.
+                                                 format(certs_dir_name[0].group(1)))
+
+    @staticmethod
+    def backup_to_cloud(tserver_ip, ybc_cli_flags):
+
+        cmd = YBControllerCLIProxy.cmd_args + \
+        [
+                "backup",
+                "--cloud_type={}".format(ybc_cli_flags["cloud_type"]),
+                "--bucket={}".format(ybc_cli_flags["bucket"]),
+                "--cloud_dir={}".format(ybc_cli_flags["cloud_dir"]),
+                "--tserver_ip={}".format(tserver_ip),
+                "--ns={}".format(ybc_cli_flags["ns"]),
+                "--ns_type={}".format(ybc_cli_flags["ns_type"]),
+        ]
+
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return []
+
+        match = re.search("task:", out)
+        if match:
+            task_id = out[match.end():]
+            task_id = task_id.lstrip()
+            task_id = task_id.rstrip()
+            return task_id
+
+        return []
+
+    @staticmethod
+    def restore_from_cloud(tserver_ip, ybc_cli_flags):
+        # ./bin/yb-controller-cli restore
+        # --bucket nikhil.customer.share
+        # --cloud_type nfs --tserver_ip 10.151.0.29
+        # --ns yb_demo_northwind --ns_type ysql --wait
+        # --cloud_dir ybc_test_08_04_2023_1
+
+        cmd = YBControllerCLIProxy.cmd_args + \
+        [
+                "restore",
+                "--cloud_type={}".format(ybc_cli_flags["cloud_type"]),
+                "--bucket={}".format(ybc_cli_flags["bucket"]),
+                "--cloud_dir={}".format(ybc_cli_flags["cloud_dir"]),
+                "--tserver_ip={}".format(tserver_ip),
+                "--ns={}".format(ybc_cli_flags["ns"]),
+                "--ns_type={}".format(ybc_cli_flags["ns_type"]),
+        ]
+
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return []
+
+        match = re.search("task:", out)
+        if match:
+            task_id = out[match.end():]
+            task_id = task_id.lstrip()
+            task_id = task_id.rstrip()
+            return task_id
+
+        return []
+
+    # Records the backup task id in backup.lock
+    @staticmethod
+    def write_ybc_lock_file(ybc_args, task_id, ybc_dir, tserver_ip):
+        # "{}/yb-data/ybc".format(data_dir)
+        backup_lock = os.path.join(
+            ybc_dir,
+            "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                   ybc_args.get("ybc_task")))
+        with open(backup_lock, "w+") as backup_lock_file:
+            backup_lock_file.write(
+                str(task_id + "," + tserver_ip + "," + ybc_args.get("ybc_task") + ","
+                    + ybc_args.get("ns_type") + "," + ybc_args.get("ns") + ","
+                    + datetime.utcnow().strftime('%B %d %Y - %H:%M:%S')))
+            Output.log("Started backup with task id {}.".format(task_id))
+
+    @staticmethod
+    def rename_ybc_lock_file(ybc_args, ybc_dir):
+        # "{}/yb-data/ybc".format(data_dir)
+        backup_lock = os.path.join(
+            ybc_dir, "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                            ybc_args.get("ybc_task"))
+        )
+        rename_filename = os.path.join(
+            ybc_dir, "{}_{}_{}.{}".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                          ybc_args.get("ybc_task"), time.time())
+        )
+        try:
+            os.rename(backup_lock, rename_filename)
+        except OSError as e:
+            Output.log("Unable to delete the backup lock file. " + str(e))
+
+    @staticmethod
+    def check_for_ongoing_ybc_task(ybc_args, ybc_dir):
+        ybc_lock = os.path.join(
+            ybc_dir,
+            "{}_{}_{}.lock".format(ybc_args.get("ns"), ybc_args.get("ns_type"),
+                                   ybc_args.get("ybc_task")))
+        ybc_task_details = []
+        if os.path.isfile(ybc_lock):
+            with open(ybc_lock, 'r') as file:
+                line = file.readline()
+                ybc_task_details = line.split(',')
+                Output.log("{}: checking for ongoing ybc task {},{}".
+                           format(ybc_args.get("ybc_task"),
+                                  ybc_task_details[0],
+                                  ybc_task_details[1])
+                           )
+        else:
+             return None
+
+        backup_status = YBControllerCLIProxy.get_ybc_task_status(
+            ybc_task_details[0], ybc_task_details[1])
+
+        return backup_status
+
+    @staticmethod
+    def check_for_existing_backup(ybc_cli_flags):
+
+        # ./bin/yb-controller-cli download_md
+        # --cloud_dir ybc_test_08_04_2023_1
+        # --bucket nikhil.customer.share
+        # --cloud_type nfs --local_dir /tmp/ybc_test_08_04_2023_1
+        cmd = YBControllerCLIProxy.cmd_args + \
+            [
+                "download_md",
+                "--cloud_dir={}".format(ybc_cli_flags["cloud_dir"]),
+                "--bucket={}".format(ybc_cli_flags["bucket"]),
+                "--cloud_type={}".format(ybc_cli_flags["cloud_type"]),
+                "--local_dir=/tmp/{}".format(ybc_cli_flags["cloud_dir"])
+            ]
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return False
+
+        match = re.search("Status:", out)
+        if match:
+            download_md_status = out[match.end():]
+            download_md_status = download_md_status.lstrip()
+            download_md_status = download_md_status.rstrip()
+            if download_md_status == "OK":
+                Output.log("Existing backup found at - {}".format(
+                    ybc_cli_flags["cloud_dir"]))
+                return True
+
+        return False
+
+    @staticmethod
+    def get_ybc_task_status(taskid, tserver_ip):
+
+        cmd = YBControllerCLIProxy.cmd_args + \
+            [
+                "task_progress",
+                "--task_id={}".format(taskid),
+                "--tserver_ip={}".format(tserver_ip),
+            ]
+        out, err, ret_code = run_process(cmd, timeout=10, log_cmd=True)
+        if 0 != ret_code or len(out.splitlines()) <= 1:
+            return []
+
+        match = re.search("Final Status:", out)
+        if match:
+            ybc_task_status = out[match.end():]
+            ybc_task_status = ybc_task_status.lstrip()
+            ybc_task_status = ybc_task_status.rstrip()
+            Output.log("backup: task status {} - {}".format(taskid, ybc_task_status))
+            return ybc_task_status
+
+        return []
+
 
 # Proxy for parsing output from yb-admin commands.
 class YBAdminProxy(object):
@@ -5895,6 +7706,64 @@ class YBAdminProxy(object):
         if 0 != ret_code:
             return None
         return out
+
+    # Enable point_in_time_recovery
+    @staticmethod
+    def create_snapshot_schedule(master_addrs, retention,
+                pitr_object, timeout=10):
+        cmd = YBAdminProxy.cmd_args + [
+            "--master_addresses", master_addrs, "create_snapshot_schedule",
+            "1440", str(retention*1440), pitr_object]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code == 0
+
+    # Disable point_in_time_recovery
+    @staticmethod
+    def delete_snapshot_schedule(master_addrs, pitr_object_id, timeout=10):
+        cmd = YBAdminProxy.cmd_args + [
+            "--master_addresses", master_addrs, "delete_snapshot_schedule", pitr_object_id]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code == 0
+
+    # List point_in_time recovery configuration details
+    @staticmethod
+    def list_schedules(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs,
+                                        "list_snapshot_schedules"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if ret_code:
+            return None
+        try:
+            data = json.loads(out)
+            # Return an empty list if there are no schedules,
+            # rather than None, to signify no schedules found without error
+            return data.get("schedules", [])
+        except Exception:
+            return None
+
+    # Restore to a specific point in time
+    @staticmethod
+    def restore_snapshot_schedule(master_addrs, pitr_object_id, restore_time, timeout=10):
+        cmd = YBAdminProxy.cmd_args + [
+            "--master_addresses", master_addrs, "restore_snapshot_schedule", pitr_object_id,
+                                            restore_time]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code, err
+
+    # Promote Auto Flags
+    @staticmethod
+    def promote_auto_flags(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "promote_auto_flags"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (ret_code == 0)
+
+    # Upgrade YSQL catalog
+    @staticmethod
+    def upgrade_ysql(master_addrs, timeout):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+        "-timeout_ms", str(timeout), "upgrade_ysql"]
+        out, err, ret_code = run_process(cmd, log_cmd=True)
+        return (ret_code == 0)
 
     # Passthrough method for all the yb-admin commands
     # @staticmethod
@@ -6133,7 +8002,11 @@ class YcqlProxy(object):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
             "SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name='{}';".
             format(keyspace)]
-        return run_process_checked(cmd).strip() == keyspace
+        output = run_process_checked(cmd=cmd)
+        if keyspace in output:
+            return True
+
+        return False
 
     # Create specified keyspace
     def create_keyspace(self, keyspace):
@@ -6473,7 +8346,12 @@ class Output(object):
                     symbol = status
                     running = False
 
-                line = "\r{} {}".format(symbol, msg)
+                if msg == "":
+                    line = "\r" + " " * line_len
+                    running = False
+                else:
+                    line = "\r{} {}".format(symbol, msg)
+
                 line_len = max(len(line), line_len)
                 line_to_write = "{:<{}}".format(line, line_len)
                 if not running:
@@ -6539,7 +8417,10 @@ class Output(object):
     @staticmethod
     def log_error_and_exit(msg):
         if Output.log_dir:
-            msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
+            if msg is None:
+                msg = "For more information, check the logs in {}".format(Output.log_dir)
+            else:
+                msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
         Output.print_and_log(msg, logging.ERROR)
         Output.console_access = False
         if Output.script_exit_func:

@@ -58,31 +58,17 @@ func (h *HelperContainer) GetTablesFuture(
         Tables: TablesResponseStruct{},
         Error: nil,
     }
-    urls, err := h.BuildMasterURLs("api/v1/tables")
+    params := url.Values{}
+    params.Add("only_user_tables", strconv.FormatBool(onlyUserTables))
+    body, err := h.BuildMasterURLsAndAttemptGetRequests(
+        "api/v1/tables", // path
+        params, // params
+        true, // expectJson
+    )
     if err != nil {
         tables.Error = err
         future <- tables
         return
-    }
-    requestUrls := []string{}
-    // Query params
-    params := url.Values{}
-    params.Add("only_user_tables", strconv.FormatBool(onlyUserTables))
-    for _, baseUrl := range urls {
-        requestUrl, err := url.Parse(baseUrl)
-        if err != nil {
-            tables.Error = err
-            future <- tables
-            return
-        }
-        requestUrl.RawQuery = params.Encode()
-        requestUrls = append(requestUrls, requestUrl.String())
-    }
-    body, err := h.AttemptGetRequests(requestUrls, true)
-    if err != nil {
-            tables.Error = err
-            future <- tables
-            return
     }
     err = json.Unmarshal([]byte(body), &tables.Tables)
     tables.Error = err
@@ -142,31 +128,17 @@ func (h *HelperContainer) GetTableInfoFuture(
         TableInfo: TableInfoStruct{},
         Error: nil,
     }
-    urls, err := h.BuildMasterURLs("api/v1/table")
+    params := url.Values{}
+    params.Add("id", id)
+    body, err := h.BuildMasterURLsAndAttemptGetRequests(
+        "api/v1/table", // path
+        params, // params
+        true, // expectJson
+    )
     if err != nil {
         tableInfo.Error = err
         future <- tableInfo
         return
-    }
-    requestUrls := []string{}
-    // Query params
-    params := url.Values{}
-    params.Add("id", id)
-    for _, baseUrl := range urls {
-        requestUrl, err := url.Parse(baseUrl)
-        if err != nil {
-            tableInfo.Error = err
-            future <- tableInfo
-            return
-        }
-        requestUrl.RawQuery = params.Encode()
-        requestUrls = append(requestUrls, requestUrl.String())
-    }
-    body, err := h.AttemptGetRequests(requestUrls, true)
-    if err != nil {
-            tableInfo.Error = err
-            future <- tableInfo
-            return
     }
     err = json.Unmarshal([]byte(body), &tableInfo.TableInfo)
     tableInfo.Error = err

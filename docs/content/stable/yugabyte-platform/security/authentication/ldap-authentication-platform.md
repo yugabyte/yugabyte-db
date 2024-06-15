@@ -1,8 +1,8 @@
 ---
-title: LDAP authentication
-headerTitle: LDAP authentication
+title: LDAP authentication for universes
+headerTitle: LDAP authentication for universes
 linkTitle: LDAP authentication
-description: Configuring YugabyteDB Anywhere to use an external LDAP authentication service.
+description: Configure YugabyteDB Anywhere to use LDAP authentication for databases.
 headcontent: Manage database users using LDAP
 menu:
   stable_yugabyte-platform:
@@ -23,6 +23,8 @@ type: docs
 
 This section describes how to configure a YugabyteDB Anywhere universe to use an LDAP server such as Active Directory with TLS.
 
+(For information on using LDAP to authenticate with YugabyteDB Anywhere, refer to [Enable YugabyteDB Anywhere authentication via LDAP](../../../administer-yugabyte-platform/ldap-authentication/).)
+
 ## Bind to the LDAP server using TLS
 
 You enable LDAP authentication in the YugabyteDB universe by setting the LDAP configuration using the <code>[--ysql_hba_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag.
@@ -37,11 +39,11 @@ For more information, see [Edit configuration flags](../../../manage-deployments
 
 When entering the flag value in YugabyteDB Anywhere, do not enclose it in single quotes, as you would in a Linux shell.
 
-The first host-based authentication (HBA) rule `host all yugabyte 127.0.0.1/0 password` allows access to the admin user (yugabyte) from localhost (127.0.0.1) using password authentication. This allows the administrator to log in as `yugabyte` to set up the roles and permissions for LDAP users.
+The first host-based authentication (HBA) rule `host all yugabyte 127.0.0.1/0 password` allows access to the admin user (yugabyte) from localhost (127.0.0.1) using password authentication. This allows the administrator to sign in as `yugabyte` to set up the roles and permissions for LDAP users.
 
 The second HBA rule configures LDAP authentication for all other user-host pairs using a [search+bind](../../../../secure/authentication/ldap-authentication-ysql/#search-bind-mode) configuration. The YB-TServer binds to the LDAP directory using a fixed user name and password specified with `ldapbinddn` and `ldapbindpasswd`. The search is performed over the subtree at `ldapbasedn` and tries to find an exact match of the attribute specified in `ldapsearchattribute`.
 
-After the user is found, to verify that the login is correct, the server disconnects and rebinds to the directory as this user using the password specified by the client.
+After the user is found, to verify that the credentials are correct, the server disconnects and rebinds to the directory as this user using the password specified by the client.
 
 For more information on the `ysql_hba_conf_csv` flag, refer to [--ysql_hba_conf_csv flag](../../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv). For more information on HBA, refer to [Host-based authentication](../../../../secure/authentication/host-based-authentication/).
 
@@ -132,3 +134,7 @@ Consider the following example:
     ```output
     You are connected to database "exampledb" as user "adam" on host "localhost" at port "5433".
     ```
+
+## Learn more
+
+For more information on LDAP in YugabyteDB, refer to [LDAP authentication](../../../../secure/authentication/ldap-authentication-ysql/).

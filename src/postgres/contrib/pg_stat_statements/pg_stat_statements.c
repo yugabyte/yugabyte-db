@@ -315,6 +315,7 @@ static const struct config_enum_entry track_options[] =
 #define YB_HDR_DEFAULT_LATENCY_RES_MS 0.1
 #define YB_HDR_DEFAULT_BUCKET_FACTOR 16
 #define YB_HDR_DEFAULT_MAX_VALUE YB_HDR_DEFAULT_MAX_LATENCY_MS / YB_HDR_DEFAULT_LATENCY_RES_MS
+#define YB_DEFAULT_QTEXT_LIMIT_KB (512 * 1024)
 
 static int	pgss_max;			/* max # statements to track */
 static int	pgss_track;			/* tracking level */
@@ -325,6 +326,7 @@ static float	yb_hdr_latency_res_ms = YB_HDR_DEFAULT_LATENCY_RES_MS; /* hardcoded
 static int	yb_hdr_bucket_factor; /* subbuckets per bucket for histogram */
 static int64_t	yb_hdr_max_value = YB_HDR_DEFAULT_MAX_VALUE; /* default hardcode for phase 1, will need to be adjusted against latency_res */
 static struct hdr_histogram_bucket_config cfg;
+static int yb_qtext_size_limit = YB_DEFAULT_QTEXT_LIMIT_KB;
 /*
  * yb_hdr_max_value is the integer representation of the max query latency we
  * want to track. Currently with a latency resolution of 0.1ms,
@@ -423,6 +425,8 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 	Size *query_offset, int encoding, Counters *counters,
 	pgssReaderContext *context);
 static void enforce_bucket_factor(int * value);
+static bool yb_track_nested_queries(void);
+
 /*
  * Module load callback
  */
@@ -503,6 +507,19 @@ _PG_init(void)
 							NULL,
 							NULL);
 
+	DefineCustomIntVariable("pg_stat_statements.yb_qtext_size_limit",
+							"Sets the max size of the pg_stat_statements query text file.",
+							NULL,
+							&yb_qtext_size_limit,
+							YB_DEFAULT_QTEXT_LIMIT_KB,
+							-1,
+							MAX_KILOBYTES,
+							PGC_SUSET,
+							GUC_UNIT_KB,
+							NULL,
+							NULL,
+							NULL);
+
 	EmitWarningsOnPlaceholders("pg_stat_statements");
 
 	/*
@@ -559,6 +576,9 @@ _PG_init(void)
 	ExecutorEnd_hook = pgss_ExecutorEnd;
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = pgss_ProcessUtility;
+
+	/* Function pointer to check if nested queries should be tracked in ASH */
+	yb_ash_track_nested_queries = yb_track_nested_queries;
 }
 
 /*
@@ -636,6 +656,8 @@ getYsqlStatementStats(void *cb_arg)
 		char *qry = qtext_fetch(entry->query_offset, entry->query_len, qbuffer, qbuffer_size);
 		if (qry != NULL)
 		{
+			tmp.userid       = entry->key.userid;
+			tmp.dbid         = entry->key.dbid;
 			tmp.query        = qry;
 			tmp.calls        = entry->counters.calls;
 
@@ -647,6 +669,13 @@ getYsqlStatementStats(void *cb_arg)
 
 			tmp.rows         = entry->counters.rows;
 			tmp.query_id     = entry->key.queryid;
+
+			tmp.local_blks_hit = entry->counters.local_blks_hit;
+			tmp.local_blks_read = entry->counters.local_blks_read;
+			tmp.local_blks_dirtied = entry->counters.local_blks_dirtied;
+			tmp.local_blks_written = entry->counters.local_blks_written;
+			tmp.temp_blks_read = entry->counters.temp_blks_read;
+			tmp.temp_blks_written = entry->counters.temp_blks_written;
 
 			WriteStartObjectToJson(cb_arg);
 			WriteStatArrayElemToJson(cb_arg, &tmp);
@@ -1551,9 +1580,7 @@ pgss_store(const char *query, uint64 queryId,
 		query_len--;
 
 	/* Use the redacted query for checking purposes. */
-	redacted_query = pnstrdup(query, query_len);
-	redacted_query = RedactPasswordIfExists(redacted_query);
-	redacted_query_len = strlen(redacted_query);
+	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
 
 	/*
 	 * For utility statements, we just hash the query string to get an ID.
@@ -2376,17 +2403,19 @@ qtext_load_file(Size *buffer_size)
 	}
 
 	/* Allocate buffer; beware that off_t might be wider than size_t */
-	if (stat.st_size <= MaxAllocHugeSize)
-		buf = (char *) malloc(stat.st_size);
-	else
+	if ((yb_qtext_size_limit >= 0 && stat.st_size > yb_qtext_size_limit * 1024) ||
+	     !AllocHugeSizeIsValid(stat.st_size))
 		buf = NULL;
+	else
+		buf = (char *) malloc(stat.st_size);
+
 	if (buf == NULL)
 	{
 		ereport(LOG,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory"),
-				 errdetail("Could not allocate enough memory to read pg_stat_statement file \"%s\".",
-						   PGSS_TEXT_FILE)));
+				 errdetail("Could not allocate %lld bytes needed to read pg_stat_statement file \"%s\".",
+						   (long long) stat.st_size, PGSS_TEXT_FILE)));
 		CloseTransientFile(fd);
 		return NULL;
 	}
@@ -3771,4 +3800,10 @@ yb_get_histogram_jsonb(PG_FUNCTION_ARGS)
 static void yb_hdr_reset(hdr_histogram *h)
 {
 	memset(h, 0, sizeof(hdr_histogram) + (sizeof(count_t) * h->counts_len));
+}
+
+static bool
+yb_track_nested_queries(void)
+{
+	return pgss_track == PGSS_TRACK_ALL;
 }

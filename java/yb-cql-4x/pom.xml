@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.74-SNAPSHOT</version>
+    <version>0.8.89-SNAPSHOT</version>
   </parent>
   <artifactId>yb-cql-4x</artifactId>
   <name>YB CQL Support for 4.x Driver</name>
@@ -48,12 +48,12 @@
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.15.0-yb-1</version>
+      <version>4.15.0-yb-2</version>
     </dependency>
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-query-builder</artifactId>
-      <version>4.15.0-yb-1</version>
+      <version>4.15.0-yb-2</version>
     </dependency>
     <dependency>
       <groupId>org.lz4</groupId>

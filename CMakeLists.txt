@@ -409,7 +409,6 @@ if(IS_GCC)
     # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
     ADD_CXX_FLAGS("-Wno-use-after-free")
   endif()
-
 endif()
 
 if(USING_LINUXBREW)
@@ -544,10 +543,14 @@ endif()
 # - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
 #   all over the place.
 if ("${YB_BUILD_TYPE}" STREQUAL "asan")
-  set(CXX_NO_SANITIZE_FLAG "alignment")
+  set(CXX_NO_SANITIZE_FLAG "")
+  add_cxx_no_sanitize_flag("alignment")
   if(NOT APPLE)
-    set(CXX_NO_SANITIZE_FLAG "${CXX_NO_SANITIZE_FLAG},vptr")
+    add_cxx_no_sanitize_flag("vptr")
     ADD_CXX_FLAGS("-fsanitize=undefined")
+  endif()
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "17.0.0")
+    add_cxx_no_sanitize_flag("function")
   endif()
   ADD_CXX_FLAGS("-fno-sanitize-recover=all -fno-sanitize=${CXX_NO_SANITIZE_FLAG}")
   ADD_CXX_FLAGS("-fsanitize-recover=float-cast-overflow")
@@ -596,9 +599,15 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-# Generated sources always have higher priority.
+# Generated sources always have higher priority than identically named sources in the source
+# directory.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
+
 include_directories(src)
+
+include_directories("src/inline-thirdparty/usearch")
+include_directories("src/inline-thirdparty/fp16")
+
 
 enable_testing()
 
@@ -906,11 +915,16 @@ endif()
 # that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are
 # symlinks to it.  It decides to act as yb-master or yb-tserver based on its argv[0].
 #
-# In the command below, yb-master is the CMake target that we use as a base to determine the set of
-# object files to be linked into the LTO executable, yb-server is the name of the LTO executable,
-# and yb-master/yb-tserver are names of symlinks to create in the "bin" directory, pointing to the
-# LTO executable.
-yb_add_lto_target(yb-master yb-server "yb-master;yb-tserver")
+# In the command below, yb-master-dynamic is the CMake target that we use as a base to determine the
+# set of object files to be linked into the LTO executable, yb-server is the name of the LTO
+# executable, and yb-master/yb-tserver are names of symlinks to create in the "bin" directory,
+# pointing to the LTO executable.
+yb_add_lto_target(yb-master-dynamic yb-server "yb-master;yb-tserver")
+
+# Here is how to add LTO-linked tests if necessary. Note that each test might take more than a
+# minute to link, so these LTO-enabled tests should only be enabled when debugging. An example of an
+# issue that requires debugging a test with LTO is #22191.
+# yb_add_lto_target(date_time-test date_time-test-lto "")
 
 # ------------------------------------------------------------------------------------------------
 # Utilities for collecting the dependency graph

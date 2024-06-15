@@ -45,6 +45,8 @@
 #undef DEFINE_validator
 #endif
 #define DEFINE_validator(name, validator) \
+  static_assert( \
+      sizeof(_DEFINE_FLAG_IN_FILE(name)), "validator must be DEFINED in the same file as the flag"); \
   static const bool BOOST_PP_CAT(name, _validator_registered) __attribute__((unused)) = \
       google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), (validator))
 
@@ -131,6 +133,7 @@ SetFlagResult SetFlag(
 // Flags are set to a dummy value
 #define DEPRECATE_FLAG(type, name, date_mm_yyyy) \
   namespace deprecated_flag_do_not_use { \
+  using std::string; \
   type default_##name; \
   DEFINE_RUNTIME_##type(name, default_##name, "Deprecated"); \
   _TAG_FLAG(name, ::yb::FlagTag::kDeprecated, deprecated); \

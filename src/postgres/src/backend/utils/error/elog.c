@@ -422,10 +422,12 @@ static const char *get_errno_symbol(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
 static bool is_log_level_output(int elevel, int log_min_level);
+
+static void yb_additional_errmsg(const char* fmt,...);
 static void yb_log_errmsg_va(const char* fmt, va_list args);
 static void yb_errmsg_va(const char* fmt, va_list args);
-static void		   yb_message_from_status_data(StringInfo buf, const char *fmt,
-											   const size_t nargs, const char **args);
+static void yb_format_and_append(StringInfo buf, const char *fmt,
+								 const size_t nargs, const char **args);
 
 /*
  * in_error_recursion_trouble --- are we at risk of infinite error recursion?
@@ -1019,11 +1021,6 @@ errcode_for_socket_access(void)
 		} \
 		/* Done with expanded fmt */ \
 		pfree(fmtbuf); \
-		/* In YB debug mode, add stack trace info (to first msg only) */ \
-		if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace && !appendval) { \
-			appendStringInfoString(&buf, "\n"); \
-			appendStringInfoString(&buf, YBCGetStackTrace()); \
-		} \
 		/* Save the completed message into the stack item */ \
 		if (edata->targetfield) \
 			pfree(edata->targetfield); \
@@ -1111,6 +1108,9 @@ errmsg(const char *fmt,...)
 	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, true);
 
+	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
+		yb_additional_errmsg("%s", YBCGetStackTrace());
+
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
 	return 0;					/* return value does not matter */
@@ -1145,6 +1145,9 @@ errmsg_internal(const char *fmt,...)
 
 	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, false);
+
+	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
+		yb_additional_errmsg("%s", YBCGetStackTrace());
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -1191,6 +1194,9 @@ errmsg_plural(const char *fmt_singular, const char *fmt_plural,
 
 	edata->message_id = fmt_singular;
 	EVALUATE_MESSAGE_PLURAL(edata->domain, message, false);
+
+	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
+		yb_additional_errmsg("%s", YBCGetStackTrace());
 
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
@@ -1747,6 +1753,9 @@ elog_finish(int elevel, const char *fmt,...)
 	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, false);
 
+	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
+		yb_additional_errmsg("%s", YBCGetStackTrace());
+
 	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
 
@@ -1806,6 +1815,9 @@ format_elog_string(const char *fmt,...)
 
 	edata->message_id = fmt;
 	EVALUATE_MESSAGE(edata->domain, message, false, true);
+
+	if (IsYugaByteEnabled() && yb_debug_report_error_stacktrace)
+		yb_additional_errmsg("%s", YBCGetStackTrace());
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -1956,7 +1968,7 @@ ybg_status_to_edata(void)
 		int nargs;
 		const char **args = YbgStatusGetMessageArgs(ybg_status, &nargs);
 		initStringInfo(&buf);
-		yb_message_from_status_data(&buf, fmt, nargs, args);
+		yb_format_and_append(&buf, fmt, nargs, args);
 		newedata->message_id = pstrdup(fmt);
 		newedata->message = buf.data;
 	}
@@ -4485,6 +4497,23 @@ trace_recovery(int trace_level)
 #define MAX_ATTR_LEN 16384
 
 /*
+ * Append an additional message to edata->message.  This function is expected to
+ * be called uniformly across all instances of
+ *
+ *     ...EVALUATE_MESSAGE...(edata->domain, message, false...
+ */
+static void
+yb_additional_errmsg(const char *fmt,...)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	Assert(GetCurrentMemoryContext() == edata->assoc_context ||
+		   GetCurrentMemoryContext() == ErrorContext);
+	EVALUATE_MESSAGE(edata->domain, message, true /* appendval */,
+					 false /* translateit */);
+}
+
+/*
  * yb_is_char_in_str - find if specified character exists in the c-string
  */
 static bool
@@ -4705,19 +4734,20 @@ yb_errmsg_va(const char *fmt, va_list args)
 }
 
 /*
- * yb_message_from_status_data - format a string with provided string arguments
+ * yb_format_and_append - format a string with provided string arguments,
+ * and append to buf.
  *
  * The function takes printf-like format strings and substitute strings from the
  * args array. Unlike printf, function takes strings instead of values of types
  * defined by the template.
  *
- * Function desined to work with DocDB Status object's data, which carries
+ * Function is designed to work with DocDB Status object's data, which carries
  * message arguments as strings. Currently Status only takes the message, in
  * future we may add support for more fields.
  */
 static void
-yb_message_from_status_data(StringInfo buf, const char *fmt, const size_t nargs,
-							const char **args)
+yb_format_and_append(StringInfo buf, const char *fmt, const size_t nargs,
+					 const char **args)
 {
 	const char *next;
 	int			len = 0;
@@ -4740,36 +4770,41 @@ yb_message_from_status_data(StringInfo buf, const char *fmt, const size_t nargs,
 	appendStringInfoString(buf, fmt);
 }
 
-#define YB_EVALUATE_STATUS_DATA_MESSAGE(field, fmt, nargs, args, dump_stacks) \
-	do { \
+/*
+ * Same as EVALUATE_MESSAGE except
+ * - assert not multithreaded mode
+ * - don't expand %m (so no need for local variable fmtbuf)
+ * - get args from passed nargs and args rather than VA args
+ * - generate actual output using yb_format_and_append
+ */
+#define YB_EVALUATE_MESSAGE_FROM_STATUS(domain, targetfield, appendval, \
+										translateit, nargs, args) \
+	{ \
 		AssertMacro(!IsMultiThreadedMode()); \
-		MemoryContext oldcontext; \
 		StringInfoData	buf; \
-		oldcontext = MemoryContextSwitchTo(edata->assoc_context); \
-		\
 		/* Internationalize the error format string */ \
-		if (!in_error_recursion_trouble()) \
-			fmt = dgettext(edata->domain, fmt); \
+		if ((translateit) && !in_error_recursion_trouble()) \
+			fmt = dgettext((domain), fmt);				  \
 		initStringInfo(&buf); \
-		yb_message_from_status_data(&buf, fmt, nargs, args); \
-		if (dump_stacks && IsYugaByteEnabled() && \
-			yb_debug_report_error_stacktrace) \
-		{ \
-			appendStringInfoString(&buf, "\n"); \
-			appendStringInfoString(&buf, YBCGetStackTrace()); \
+		if ((appendval) && edata->targetfield) { \
+			appendStringInfoString(&buf, edata->targetfield); \
+			appendStringInfoChar(&buf, '\n'); \
 		} \
-		if (edata->field) \
-			pfree(edata->field); \
-		edata->field = buf.data; \
-		MemoryContextSwitchTo(oldcontext); \
-	} while(0)
+		/* Generate actual output --- have to use appendStringInfoVA */ \
+		yb_format_and_append(&buf, fmt, nargs, args); \
+		/* Save the completed message into the stack item */ \
+		if (edata->targetfield) \
+			pfree(edata->targetfield); \
+		edata->targetfield = pstrdup(buf.data); \
+		pfree(buf.data); \
+	}
 
 /*
- * yb_errmsg_from_status_data - set error message from Status data
+ * yb_errmsg_from_status - set error message from Status data
  *
- * The yb_errmsg_from_status_data is equivalent of errmsg to work in
+ * The yb_errmsg_from_status is equivalent of errmsg to work in
  * HandleYBStatus context, rather then in ereport. The
- * yb_errmsg_from_status_data sets message field on current ErrorData frame
+ * yb_errmsg_from_status sets message field on current ErrorData frame
  * from the info retrieved from DocDB Status object.
  *
  * Status object carries messages as a format string and string arguments for
@@ -4781,42 +4816,50 @@ yb_message_from_status_data(StringInfo buf, const char *fmt, const size_t nargs,
  * prepared before they are stored into a Status object.
  */
 int
-yb_errmsg_from_status_data(const char *fmt, const size_t nargs,
-						   const char **args)
+yb_errmsg_from_status(const char *fmt, const size_t nargs, const char **args)
 {
 	Assert(!IsMultiThreadedMode());
-	Assert(fmt != NULL);
 
 	ErrorData  *edata = &errordata[errordata_stack_depth];
+	MemoryContext oldcontext;
 
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
 	edata->message_id = fmt;
-	YB_EVALUATE_STATUS_DATA_MESSAGE(message, fmt, nargs, args, true);
+	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, message,
+									false /* appendval */,
+									true /* translateit */, nargs, args);
 
+	Assert(IsYugaByteEnabled());
+	if (yb_debug_report_error_stacktrace)
+		yb_additional_errmsg("%s", YBCGetStackTrace());
+
+	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
-	return 0; /* return value does not matter */
+	return 0;					/* return value does not matter */
 }
 
 int
-yb_detail_from_status_data(const char *fmt, const size_t nargs,
-						   const char **args)
+yb_errdetail_from_status(const char *fmt, const size_t nargs, const char **args)
 {
 	Assert(!IsMultiThreadedMode());
 
 	ErrorData  *edata = &errordata[errordata_stack_depth];
-
-	if (fmt == NULL)
-		return 0;
+	MemoryContext oldcontext;
 
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
+	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
 
-	YB_EVALUATE_STATUS_DATA_MESSAGE(detail, fmt, nargs, args, false);
+	YB_EVALUATE_MESSAGE_FROM_STATUS(edata->domain, detail,
+									false /* appendval */,
+									true /* translateit */, nargs, args);
 
+	MemoryContextSwitchTo(oldcontext);
 	recursion_depth--;
-	return 0; /* return value does not matter */
+	return 0;					/* return value does not matter */
 }
 
 /*

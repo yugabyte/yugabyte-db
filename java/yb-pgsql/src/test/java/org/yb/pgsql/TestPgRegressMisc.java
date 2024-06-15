@@ -22,7 +22,7 @@ import java.util.Map;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressMisc extends BasePgSQLTest {
+public class TestPgRegressMisc extends BasePgRegressTest {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();

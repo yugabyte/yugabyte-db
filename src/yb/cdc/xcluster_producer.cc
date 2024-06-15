@@ -14,16 +14,15 @@
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/docdb.pb.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
@@ -35,11 +34,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/flags.h"
-#include "yb/util/logging.h"
 #include "yb/gutil/stl_util.h"
 
 DEPRECATE_FLAG(int32, cdc_transaction_timeout_ms, "05_2021");
@@ -68,34 +63,12 @@ using dockv::PrimitiveValue;
 using tablet::TransactionParticipant;
 
 namespace {
-template <typename Value>
-void AddColumnToMap(
-    const ColumnSchema& col_schema, const Value& col, cdc::KeyValuePairPB* kv_pair) {
-  kv_pair->set_key(col_schema.name());
-  col.ToQLValuePB(col_schema.type(), kv_pair->mutable_value());
-}
-
-void AddPrimaryKey(
-    const dockv::SubDocKey& decoded_key, const Schema& tablet_schema, CDCRecordPB* record) {
-  size_t i = 0;
-  for (const auto& col : decoded_key.doc_key().hashed_group()) {
-    AddColumnToMap(tablet_schema.column(i), col, record->add_key());
-    i++;
-  }
-  for (const auto& col : decoded_key.doc_key().range_group()) {
-    AddColumnToMap(tablet_schema.column(i), col, record->add_key());
-    i++;
-  }
-}
 
 Status PopulateWriteRecord(
-    const consensus::LWReplicateMsg& msg,
-    const StreamMetadata& metadata,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const consensus::LWReplicateMsg& msg, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     GetChangesResponsePB* resp) {
   const auto& batch = msg.write().write_batch();
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  const auto& schema = *tablet->schema();
   // Write batch may contain records from different rows.
   // For xCluster, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -120,21 +93,17 @@ Status PopulateWriteRecord(
       dockv::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
 
-      if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
-        // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
-        // producer and re-serializing on consumer.
-        auto kv_pair = record->add_key();
-        if (decoded_key.doc_key().has_hash()) {
-          // TODO: is there another way of getting this? Perhaps using kUpToHashOrFirstRange?
-          kv_pair->set_key(
-              dockv::PartitionSchema::EncodeMultiColumnHashValue(decoded_key.doc_key().hash()));
-        } else {
-          kv_pair->set_key(decoded_key.doc_key().Encode().ToStringBuffer());
-        }
-        kv_pair->mutable_value()->set_binary_value(write_pair.key().ToBuffer());
+      // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
+      // producer and re-serializing on consumer.
+      auto kv_pair = record->add_key();
+      if (decoded_key.doc_key().has_hash()) {
+        // TODO: is there another way of getting this? Perhaps using kUpToHashOrFirstRange?
+        kv_pair->set_key(
+            dockv::PartitionSchema::EncodeMultiColumnHashValue(decoded_key.doc_key().hash()));
       } else {
-        AddPrimaryKey(decoded_key, schema, record);
+        kv_pair->set_key(decoded_key.doc_key().Encode().ToStringBuffer());
       }
+      kv_pair->mutable_value()->set_binary_value(write_pair.key().ToBuffer());
 
       // Check whether operation is WRITE or DELETE.
       if (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
@@ -158,24 +127,9 @@ Status PopulateWriteRecord(
     prev_key = primary_key;
     DCHECK(record);
 
-    if (metadata.GetRecordFormat() == CDCRecordFormat::WAL) {
-      auto kv_pair = record->add_changes();
-      kv_pair->set_key(write_pair.key().ToBuffer());
-      kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
-    } else if (record->operation() == CDCRecordPB_OperationType_WRITE) {
-      dockv::KeyEntryValue column_id;
-      Slice key_column = write_pair.key().WithoutPrefix(key_size);
-      RETURN_NOT_OK(column_id.DecodeFromKey(&key_column));
-      if (column_id.type() == dockv::KeyEntryType::kColumnId) {
-        dockv::Value decoded_value;
-        RETURN_NOT_OK(decoded_value.Decode(write_pair.value()));
-
-        const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
-        AddColumnToMap(col, decoded_value.primitive_value(), record->add_changes());
-      } else if (column_id.type() != dockv::KeyEntryType::kSystemColumnId) {
-        LOG(DFATAL) << "Unexpected value type in key: " << column_id.type();
-      }
-    }
+    auto kv_pair = record->add_changes();
+    kv_pair->set_key(write_pair.key().ToBuffer());
+    kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
   }
   return Status::OK();
 }
@@ -211,9 +165,8 @@ Status PopulateTransactionRecord(
   return Status::OK();
 }
 
-// Populate a CDCRecordPB for a tablet split operation. Returns true iff the operation was
-// successfully processed.
-Result<bool> PopulateSplitOpRecord(
+// Populate a CDCRecordPB for a tablet split operation.
+Status PopulateSplitOpRecord(
     const xrepl::StreamId& stream_id, const TabletId& tablet_id,
     const consensus::LWReplicateMsg& msg, UpdateOnSplitOpFunc update_on_split_op_func,
     GetChangesResponsePB* resp) {
@@ -221,7 +174,7 @@ Result<bool> PopulateSplitOpRecord(
       msg.has_split_request(), InvalidArgument,
       Format("Split op message requires split_request: $0", msg.ShortDebugString()));
   if (msg.split_request().tablet_id() != tablet_id) {
-    return true;
+    return Status::OK();
   }
 
   // Only send split if it is our split, and if we can update the children tablet entries
@@ -231,7 +184,7 @@ Result<bool> PopulateSplitOpRecord(
   if (!s.ok()) {
     LOG(INFO) << "Not replicating SPLIT_OP yet for tablet: " << tablet_id
               << ", stream: " << stream_id << " : " << s;
-    return false;
+    return s;
   }
 
   CDCRecordPB* record = resp->add_records();
@@ -239,7 +192,7 @@ Result<bool> PopulateSplitOpRecord(
   record->set_time(msg.hybrid_time());
   msg.split_request().ToGoogleProtobuf(record->mutable_split_tablet_request());
 
-  return true;
+  return Status::OK();
 }
 
 // Populate a CDCRecordPB for a Change Metadata operation. Returns true if the record was added and
@@ -298,6 +251,10 @@ Status GetChangesForXCluster(
     GetChangesResponsePB* resp,
     int64_t* last_readable_opid_index) {
   SCHECK(tablet_peer, NotFound, Format("Tablet id $0 not found", tablet_id));
+  RSTATUS_DCHECK_EQ(
+      stream_metadata->GetRecordFormat(), CDCRecordFormat::WAL, IllegalState,
+      "xCluster only supports WAL record format");
+
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
 
   auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
@@ -384,16 +341,11 @@ Status GetChangesForXCluster(
         RETURN_NOT_OK(PopulateTransactionRecord(msg, tablet_peer, resp));
         break;
       case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(msg, *stream_metadata, tablet_peer, resp));
+        RETURN_NOT_OK(PopulateWriteRecord(msg, tablet_peer, resp));
         break;
       case consensus::OperationType::SPLIT_OP:
-        if (!VERIFY_RESULT(
-                PopulateSplitOpRecord(stream_id, tablet_id, msg, update_on_split_op_func, resp))) {
-          // Failed to process the Split Op, so stop processing it and any further records. We can
-          // still send all previous records to the consumer.
-          checkpoint = previous_checkpoint;
-          exit_early = true;
-        }
+        RETURN_NOT_OK(
+            PopulateSplitOpRecord(stream_id, tablet_id, msg, update_on_split_op_func, resp));
         break;
       case consensus::OperationType::CHANGE_METADATA_OP:
         if (VERIFY_RESULT(PopulateChangeMetadataRecord(tablet_id, msg, resp))) {
@@ -405,12 +357,13 @@ Status GetChangesForXCluster(
         // Nothing to do for other operation types.
         break;
     }
+    ht_of_last_returned_message = HybridTime(msg.hybrid_time());
+
     if (exit_early) {
       have_more_messages = HaveMoreMessages::kTrue;
       break;
     }
 
-    ht_of_last_returned_message = HybridTime(msg.hybrid_time());
     previous_checkpoint = checkpoint;
   }
 
@@ -427,12 +380,14 @@ Status GetChangesForXCluster(
   if (transactional) {
     // We can set the apply_safe_time if no messages were read from the WAL and there is nothing
     // to send. Or, the apply_safe_time_checkpoint_op_id_ was included in the response.
-    if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
-        checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
-      resp->set_safe_hybrid_time(stream_tablet_metadata->last_apply_safe_time_.ToUint64());
-      // Clear out the checkpoint and recompute it on next call.
-      stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = 0;
-      stream_tablet_metadata->last_apply_safe_time_ = HybridTime::kInvalid;
+    if (stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
+      if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
+          checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
+        resp->set_safe_hybrid_time(stream_tablet_metadata->last_apply_safe_time_.ToUint64());
+        // Clear out the checkpoint and recompute it on next call.
+        stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = 0;
+        stream_tablet_metadata->last_apply_safe_time_ = HybridTime::kInvalid;
+      }
     }
   } else {
     auto safe_time =

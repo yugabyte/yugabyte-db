@@ -35,24 +35,37 @@ namespace yb {
 namespace pggate {
 
 PgTableDesc::PgTableDesc(
-    const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+    const PgObjectId& relfilenode_id, const master::GetTableSchemaResponsePB& resp,
     client::VersionedTablePartitionList partition_list)
-    : id_(id), resp_(resp),  table_partition_list_(std::move(partition_list)),
+    : relfilenode_id_(relfilenode_id), resp_(resp),
+      table_partition_list_(std::move(partition_list)),
       latest_known_table_partition_list_version_(table_partition_list_.version) {
   table_name_.GetFromTableIdentifierPB(resp.identifier());
 }
 
 Status PgTableDesc::Init() {
   RETURN_NOT_OK(SchemaFromPB(resp_.schema(), &schema_));
+  schema_packing_.emplace(TableType::PGSQL_TABLE_TYPE, schema_);
   size_t idx = 0;
   for (const auto& column : schema().columns()) {
-    attr_num_map_.emplace(column.order(), idx++);
+    attr_num_map_.emplace_back(column.order(), idx++);
   }
+  std::sort(attr_num_map_.begin(), attr_num_map_.end());
   if (resp_.has_tablegroup_id()) {
     tablegroup_oid_ = VERIFY_RESULT(GetPgsqlTablegroupOid(resp_.tablegroup_id()));
   }
+  if (resp_.has_pg_table_id() && !resp_.pg_table_id().empty()) {
+    pg_table_id_ = VERIFY_RESULT(GetPgsqlTableOid(resp_.pg_table_id()));
+  }
   return dockv::PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
+
+struct CmpAttrNum {
+  template <class P>
+  bool operator()(const P& lhs, int rhs) const {
+    return lhs.first < rhs;
+  }
+};
 
 Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   // Find virtual columns.
@@ -61,21 +74,28 @@ Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   }
 
   // Find physical column.
-  const auto itr = attr_num_map_.find(attr_num);
-  if (itr != attr_num_map_.end()) {
+  const auto itr = std::lower_bound(
+      attr_num_map_.begin(), attr_num_map_.end(), attr_num, CmpAttrNum());
+  if (itr != attr_num_map_.end() && itr->first == attr_num) {
     return itr->second;
   }
+
+  // Special case: if kYBIdxBaseTupleId is not in the attr_num_map_, treat it as
+  // kYBTupleId. This allows us to easily request ybctids on secondary indexes.
+  if (attr_num == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId))
+    return num_columns();
 
   return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
 }
 
-Result<YBCPgColumnInfo> PgTableDesc::GetColumnInfo(int16_t attr_number) const {
+Result<YBCPgColumnInfo> PgTableDesc::GetColumnInfo(int attr_number) const {
   YBCPgColumnInfo column_info {
     .is_primary = false,
     .is_hash = false
   };
-  const auto itr = attr_num_map_.find(attr_number);
-  if (itr != attr_num_map_.end()) {
+  const auto itr = std::lower_bound(
+      attr_num_map_.begin(), attr_num_map_.end(), attr_number, CmpAttrNum());
+  if (itr != attr_num_map_.end() && itr->first == attr_number) {
     column_info.is_primary = itr->second < schema().num_key_columns();
     column_info.is_hash = itr->second < schema().num_hash_key_columns();
   }
@@ -127,7 +147,7 @@ Status PgTableDesc::EnsurePartitionListIsUpToDate(PgClient* client) {
   }
   DCHECK(table_partition_list_.version < latest_known_table_partition_list_version_);
 
-  auto partition_list = VERIFY_RESULT(client->GetTablePartitionList(id()));
+  auto partition_list = VERIFY_RESULT(client->GetTablePartitionList(relfilenode_id()));
   VLOG(1) << Format(
       "Received partition list for table \"$0\", "
       "new version: $1, old version: $2, latest known version: $3.",

@@ -25,12 +25,11 @@ To run the docs site locally and edit the docs, you'll need:
 
     Xcode is many gigabytes. Install the command-line tools unless you actually need the full Xcode.
 
+* [**Node.js**](https://nodejs.org/en/download/) LTS (16) using [NVM](https://github.com/nvm-sh/nvm?tab=readme-ov-file#install--update-script) : `nvm install 16.14.0`
+
+  <!-- * Using Homebrew: `brew install node@16` -->
+
 * [**Homebrew**](https://brew.sh) on macOS or Linux.
-
-* [**Node.js**](https://nodejs.org/en/download/) LTS (16):
-
-  * Using Homebrew: `brew install node@16`
-  * Using NVM: `nvm install 16`
 
 * **Hugo**: `brew install hugo` installs the latest version.
 
@@ -108,6 +107,16 @@ The live-reload server runs at <http://localhost:1313/> unless port 1313 is alre
 
 When you're done, type Ctrl-C stop the server.
 
+### Optional: Run builds more quickly
+
+If you are only working in `preview` or `stable`, you can start the live-reload server more quickly using the following:
+
+```sh
+npm run fast
+```
+
+This builds only the `preview` and `stable` directories, and does not generate syntax diagrams.
+
 ### Optional: Run a full build {#full-build}
 
 The live-reload server is the quickest way to get the docs running locally. If you want to run the build exactly the same way the CI pipeline does for a deployment, do the following:
@@ -128,6 +137,8 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 * If the live-reload server (`npm start`) is returning a Hugo error &mdash; say, about shortcodes &mdash; re-run `hugo mod clean`, followed by `npm start`. Also, be sure you've followed the instructions on this page to [configure Hugo](#configure-hugo).
 
 * Make sure your tools are up-to-date. Run `brew update` periodically, and if it reports anything out of date, run `brew upgrade`.
+
+* If you get an error about missing modules, try running `npm install`.
 
 ## Next steps
 

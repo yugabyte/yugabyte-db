@@ -26,7 +26,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import play.mvc.Http;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = GFlagsUpgradeParams.Converter.class)
@@ -60,7 +61,9 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
     if (tserverGFlags == null) {
       tserverGFlags = new HashMap<>();
     }
-    verifyGFlags(universe, isFirstTry);
+    if (!verifyGFlagsHasChanges(universe) && isFirstTry) {
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, SPECIFIC_GFLAGS_NO_CHANGES_ERROR);
+    }
   }
 
   public void checkXClusterAutoFlags(

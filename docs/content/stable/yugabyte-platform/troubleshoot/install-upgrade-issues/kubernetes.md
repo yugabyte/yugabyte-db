@@ -1,6 +1,6 @@
 ---
 title: Install and upgrade issues on Kubernetes
-headerTitle: Install and upgrade issues on Kubernetes
+headerTitle: Install and upgrade issues
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere on Kubernetes.
 menu:
@@ -13,13 +13,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
- <li>
-    <a href="../vm/" class="nav-link">
+  <li>
+    <a href="../installer/" class="nav-link">
       <i class="fa-solid fa-building"></i>
+      YBA Installer</a>
+  </li>
+
+  <li>
+    <a href="../vm/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>
       Virtual machine </a>
   </li>
 
-<li>
+  <li>
     <a href="../kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
@@ -30,7 +36,7 @@ type: docs
 
 Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues.
 
-If you experience difficulties while troubleshooting, contact {{% support-platform %}}.
+If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 For more information, see the following:
 
@@ -79,7 +85,7 @@ For more information, see [Kubernetes: Specify a CPU request that is too big for
 
 **Resolution**
 
-- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Prerequisites - Kubernetes](../../../install-yugabyte-platform/prerequisites/kubernetes/#hardware-requirements).
+- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware).
 - Modify the YugabyteDB Anywhere pods resources configuration. For more information, see [Modify resources](../../../install-yugabyte-platform/install-software/kubernetes/#modify-resources).
 
 ### Mismatch in node selector, affinity, taints, tolerations
@@ -121,7 +127,7 @@ If the issue you are experiencing is due to the incorrect setting for the storag
 Events:
   Type     Reason             Age                From                Message
   ----     ------             ----               ----                -------
-Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/55 nodes are available: 19 Insufficient cpu, 36 node(s) didn't match Pod's node affinity/selector
+Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/10 nodes are available: 3 node(s) had volume node affinity conflict, 7 node(s) didn't match Pod's node affinity/selector.
 ```
 
 You can obtain information related to storage classes, as follows:
@@ -242,7 +248,7 @@ Events:
 **Resolution**
 
 - To resolve the Bad pull secret, No pull secret, Bad pull secret name errors, enable the pull secret to fetch the images from the YugabyteDB Quay.io registry and ensure that you have applied the same in the namespace that will be used to install YugabyteDB Anywhere. By default, search for a secret with name `yugabyte-k8s-pull-secret` is performed. For more information, see the [`values.yaml` file`](https://github.com/yugabyte/charts/blob/24a8dcf3a4c33153477e3e3ba82f9f4b6e2967a5/stable/yugaware/values.yaml#L16).
-- To resolve the Unable to pull image error, ensure that the Kubernetes nodes can connect to Quay.io or you have images in the local registry. For more information, see [Pull and push YugabyteDB docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+- To resolve the Unable to pull image error, ensure that the Kubernetes nodes can connect to Quay.io or you have images in the local registry. For more information, see [Pull and push YugabyteDB docker images to private container registry](../../../prepare/server-nodes-software/software-kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
 ### CrashLoopBackOff error
 
@@ -334,7 +340,7 @@ A number of other issue can occur while installing and upgrading YugabyteDB Anyw
 
 ### Cross-Origin Resource Sharing (CORS) error
 
-You might encounter a CORS error while accessing YugabyteDB Anywhere through a load balancer. The condition can manifest itself by the initial setup or any login attempts not working or resulting in a blank screen.
+You might encounter a CORS error while accessing YugabyteDB Anywhere through a load balancer. The condition can manifest itself by the initial setup or any sign in attempts not working or resulting in a blank screen.
 
 To start diagnostics, check the developer tools of your browser for any errors. In addition, check the logs of the YugabyteDB Anywhere pod by executing the following command:
 

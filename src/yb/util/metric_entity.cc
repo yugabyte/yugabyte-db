@@ -176,11 +176,6 @@ void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
       << "Metric name is not compatible with Prometheus: " << proto->name();
 }
 
-scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype) const {
-  std::lock_guard l(lock_);
-  return FindPtrOrNull(metric_map_, &prototype);
-}
-
 bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
   std::lock_guard l(lock_);
   for (const MetricMap::value_type& val : metric_map_) {
@@ -264,7 +259,8 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
-                                        const MetricPrometheusOptions& opts) {
+                                        const MetricPrometheusOptions& opts,
+                                        std::vector<MetricMap>* owned_metric_map_holder) {
   AttributeMap attrs;
   MetricMap prometheus_metrics;
   {
@@ -303,8 +299,6 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["stream_id"] = attrs["stream_id"];
     aggregation_levels = kStreamLevel;
   } else if (strcmp(prototype_->name(), kCdcsdkMetricEntityName) == 0) {
-    prometheus_attr["table_id"] = attrs["table_id"];
-    prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
     aggregation_levels = kStreamLevel;
@@ -322,6 +316,10 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     WARN_NOT_OK(metric->WriteForPrometheus(
         writer, prometheus_attr, opts, aggregation_levels),
         Format("Failed to write $0 as Prometheus", prototype->name()));
+  }
+
+  if (owned_metric_map_holder) {
+    owned_metric_map_holder->push_back(std::move(prometheus_metrics));
   }
 
   return Status::OK();

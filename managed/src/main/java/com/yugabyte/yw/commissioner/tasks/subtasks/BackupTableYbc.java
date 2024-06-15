@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -24,7 +25,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.YbcClient;
@@ -210,7 +211,8 @@ public class BackupTableYbc extends YbcTaskBase {
         Throwables.propagate(e);
       }
     } catch (CancellationException ce) {
-      if (!taskExecutor.isShutdown()) {
+      if (!taskExecutor.isShutdown()
+          || !getRunnableTask().getTaskInfo().getTaskType().equals(TaskType.CreateBackup)) {
         if (ce.getMessage().contains("Task aborted on YB-Controller")) {
           // Remove task on YB-Controller server.
           ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);

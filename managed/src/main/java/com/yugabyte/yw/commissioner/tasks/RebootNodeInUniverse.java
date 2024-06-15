@@ -58,7 +58,6 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new PlatformServiceException(Http.Status.BAD_REQUEST, msg);
     }
-
     currentNode.validateActionOnState(
         taskParams().isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT);
 
@@ -70,6 +69,11 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, "Cannot reboot manually provisioned nodes through YBA");
     }
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    addBasicPrecheckTasks();
   }
 
   @Override
@@ -134,8 +138,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         // Start the master.
         createStartMasterProcessTasks(Collections.singleton(currentNode));
 
-        createWaitForServerReady(
-                currentNode, ServerType.MASTER, getSleepTimeForProcess(ServerType.MASTER))
+        createWaitForServerReady(currentNode, ServerType.MASTER)
             .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
       }
 
@@ -148,8 +151,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-        createWaitForServerReady(
-                currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
+        createWaitForServerReady(currentNode, ServerType.TSERVER)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       }
 

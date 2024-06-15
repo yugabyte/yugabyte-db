@@ -19,13 +19,19 @@ To access backups from a specific universe, navigate to the universe and choose 
 
 To access all universe backups, navigate to **Backups**.
 
+{{< warning title="Restoring a backup using YBC" >}}
+
+Backups from a stable track universe can only be restored to a higher version stable track YugabyteDB universe, and the same applies for preview track. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YBA version checks during restores. For more information, contact {{% support-platform %}}.
+
+{{< /warning >}}
+
 ## Prerequisites
 
 - The target universe must have enough nodes to accommodate the restore.
 - If the source universe is encrypted, the KMS configuration that was used to encrypt the universe. See [Back up and restore data from an encrypted at rest universe](../../security/enable-encryption-at-rest/#back-up-and-restore-data-from-an-encrypted-at-rest-universe).
 - If the source backup has tablespaces, to restore the tablespaces the target universe must have a matching topology; that is, the zones and regions in the target must be the same as the zones and regions in the source.
 
-    If the topology of the target universe does not match, none of the tablespaces are preserved and all their data is written to the primary region. After the restore, you will have to re-add all the tablespaces. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
+    If the topology of the target universe does not match, none of the tablespaces are preserved and all their data is written to the primary region. After the restore, you will have to re-add all the tablespaces. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../explore/going-beyond-sql/tablespaces/).
 
 ## Restore an entire or incremental backup
 
@@ -108,7 +114,12 @@ To view the details of a restored database, navigate to **Universes > Restore Hi
 
 ## Advanced restore procedure
 
-In addition to the basic restore, an advanced option is available for when you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
+In addition to the basic restore, an advanced restore option is available for the following circumstances:
+
+- you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
+- you want to restore a backup that was [moved to a different location](../back-up-universe-data/#moving-backups-between-buckets) (for example, for long-term storage) and is no longer being managed by YBA; that is, is no longer listed in the **Backups** list.
+
+For information regarding components of a backup, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
 
 ### Prerequisites
 
@@ -116,13 +127,20 @@ To perform an advanced restore, you need the following:
 
 - If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YBA installation so that the backup can be decrypted.
 - A matching [storage configuration](../configure-backup-storage/) in the target YBA installation with credentials to access the storage where the backup is located.
-- The storage address of the database or keyspace backup you want to restore. On the YugabyteDB Anywhere installation with the backup, do the following:
+
+    If you are restoring from a backup that was moved to another location, copy the backup to a location with a corresponding storage configuration in YBA.
+
+- The storage address of the database or keyspace backup you want to restore.
+
+    If the backup is on a different YugabyteDB Anywhere installation, you can obtain the location address as follows:
 
     1. In the **Backups** list, click the backup (row) to display the **Backup Details**.
 
     1. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace you want to restore. If your backup includes incremental backups, to display the databases or keyspaces, click the down arrow for the increment at which you want to restore.
 
     1. Note the **Storage Config** used by the backup, along with the database or keyspace name.
+
+    To determine the address from the backup folder structure, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
 
 ### Perform an advanced restore
 
@@ -134,9 +152,29 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
 1. Choose the type of API.
 
-1. In the **Backup location** field, paste the location of the backup you copied from your other installation.
+1. In the **Backup location** field, paste the location of the backup you are restoring. For example:
 
-1. Select the cloud provider-specific configuration of the backup storage. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
+    ```output
+    s3://user_bucket/some/sub/folders/univ-a85b5b01-6e0b-4a24-b088-478dafff94e4/ybc_backup-92317948b8e444ba150616bf182a061/incremental/20204-01-04T12: 11: 03/multi-table-postgres_40522fc46c69404893392b7d92039b9e
+    ```
+
+1. Select the **Backup config** that corresponds to the location of the backup. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System.
+
+    Note that the backup config bucket takes precedence over the bucket specified in the backup location.
+
+    For example, if the backup config you provide is for the following S3 Bucket:
+
+    ```output
+    s3://test_bucket/test
+    ```
+
+    And the address provided in the **Backup location** has the following:
+
+    ```output
+    s3://user_bucket/test/univ-xyz...
+    ```
+
+    YBA looks for the backup in `test_bucket/test`, not `user_bucket/test`.
 
 1. Specify the name of the database or keyspace from which you are performing a restore.
 

@@ -1,3 +1,17 @@
+// Font Awesome Pro
+@import "../vendor/Font-Awesome-Pro/scss/fontawesome.scss";
+@import "../vendor/Font-Awesome-Pro/scss/brands.scss";
+@import "../vendor/Font-Awesome-Pro/scss/duotone.scss";
+@import "../vendor/Font-Awesome-Pro/scss/light.scss";
+@import "../vendor/Font-Awesome-Pro/scss/regular.scss";
+@import "../vendor/Font-Awesome-Pro/scss/sharp-light.scss";
+@import "../vendor/Font-Awesome-Pro/scss/sharp-regular.scss";
+@import "../vendor/Font-Awesome-Pro/scss/sharp-solid.scss";
+@import "../vendor/Font-Awesome-Pro/scss/sharp-thin.scss";
+@import "../vendor/Font-Awesome-Pro/scss/solid.scss";
+@import "../vendor/Font-Awesome-Pro/scss/thin.scss";
+@import "../vendor/Font-Awesome-Pro/scss/v4-shims.scss";
+
 @import "./_yb_headings.scss";
 @import "./_yb_bullets-and-number-list.scss";
 @import "./_dropdown_list.scss";
@@ -10,6 +24,7 @@
 @import "./_tables.scss";
 @import "./_footer.scss";
 @import "./_yb_image.scss";
+@import "./_yb_kapa_ai.scss";
 @import "./_yb_buttons.scss";
 @import "./_yb_page_style.scss";
 @import "./_yb_resources.scss";
@@ -22,10 +37,13 @@ html {
 
 * body {
   background: #fff;
-  font-size: 15px;
+  font-size: 15.75px;
   font-weight: 400;
-  line-height: 24px;
-  color: $yb-font-darkgray;
+  line-height: 28px;
+  color: $yb-font-gray;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /******* Variables for Color Theme Switcher **********/
@@ -83,7 +101,7 @@ html {
         }
       }
 
-      + .breadcrumb-item {
+      +.breadcrumb-item {
         padding-left: 0.25rem;
 
         &::before {
@@ -105,6 +123,7 @@ html {
 }
 
 @media (min-width: 768px) {
+
   .pl-md-5,
   .px-md-5 {
     padding-left: 1.5rem !important;
@@ -129,6 +148,15 @@ html {
   img {
     max-width: 66px;
     height: auto;
+  }
+
+	> i[class^="fa-"] {
+    font-size: 75px;
+		color: $YB_ORANGE;
+  }
+
+  > i.fa-brands {
+    font-size: 86px;
   }
 }
 
@@ -389,18 +417,19 @@ body:not(.td-home) .td-main main {
 }
 
 @media (min-width: 992px) {
+
   .td-max-width-on-larger-screens,
-  .td-content > .highlight,
-  .td-content > .lead,
-  .td-content > h1,
-  .td-content > h2,
-  .td-content > ul,
-  .td-content > ol,
-  .td-content > p,
-  .td-content > blockquote,
-  .td-content > dl dd,
+  .td-content>.highlight,
+  .td-content>.lead,
+  .td-content>h1,
+  .td-content>h2,
+  .td-content>ul,
+  .td-content>ol,
+  .td-content>p,
+  .td-content>blockquote,
+  .td-content>dl dd,
   .td-content .footnotes,
-  .td-content > .alert {
+  .td-content>.alert {
     max-width: 100%;
   }
 }
@@ -426,6 +455,7 @@ body:not(.td-home) .td-main main {
 }
 
 .td-content {
+
   .admonition a,
   th a,
   td a,

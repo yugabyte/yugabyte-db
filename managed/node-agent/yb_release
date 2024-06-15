@@ -49,14 +49,27 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+
 if [[ "$local" == "true" ]]; then
+  # Local dev build invoked by sbt build.
   pre_release="--pre_release"
   if [[ ! -d $destination ]]; then
     destination="/opt/yugabyte/node-agent/releases"
     mkdir -p "$destination"
   fi
-elif [[ ! -d $destination ]]; then
-  fatal "No destination directory found ('$destination')"
+else
+  if [[ $(uname -m) != "x86_64" ]]; then
+    echo "This target doesn't support $(uname -m)."
+    exit 0
+  fi
+  if [[ $(uname) != "Linux" ]]; then
+    echo "This target doesn't support $(uname)."
+    exit 0
+  fi
+  if [[ ! -d $destination ]]; then
+    echo "No destination directory found ('$destination')"
+    exit 0
+  fi
 fi
 
 activate_virtualenv

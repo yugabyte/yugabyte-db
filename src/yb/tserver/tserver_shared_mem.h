@@ -85,6 +85,14 @@ class TServerSharedData {
     return db_catalog_versions_[index].load(std::memory_order_acquire);
   }
 
+  void SetCatalogVersionTableInPerdbMode(bool perdb_mode) {
+    catalog_version_table_in_perdb_mode_.store(perdb_mode, std::memory_order_release);
+  }
+
+  std::optional<bool> catalog_version_table_in_perdb_mode() const {
+    return catalog_version_table_in_perdb_mode_.load(std::memory_order_acquire);
+  }
+
   void SetPostgresAuthKey(uint64_t auth_key) {
     postgres_auth_key_ = auth_key;
   }
@@ -102,6 +110,12 @@ class TServerSharedData {
     return tserver_uuid_;
   }
 
+  void SetCronLeaderLease(MonoTime cron_leader_lease_end) {
+    cron_leader_lease_ = cron_leader_lease_end;
+  }
+
+  bool IsCronLeader() const;
+
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
@@ -112,6 +126,10 @@ class TServerSharedData {
   unsigned char tserver_uuid_[16]; // Tserver UUID is stored as raw bytes.
 
   std::atomic<uint64_t> db_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
+  // See same variable comments in CatalogManager.
+  std::atomic<std::optional<bool>> catalog_version_table_in_perdb_mode_{std::nullopt};
+
+  std::atomic<MonoTime> cron_leader_lease_{MonoTime::kUninitialized};
 };
 
 YB_STRONGLY_TYPED_BOOL(Create);

@@ -11,6 +11,8 @@ package com.yugabyte.yw.common.cdc;
 
 import com.cronutils.utils.VisibleForTesting;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
+import com.yugabyte.yw.forms.CDCReplicationSlotResponse.CDCReplicationSlotDetails;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,11 +20,13 @@ import java.util.HashSet;
 import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.*;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 
 @Singleton
 public class CdcStreamManager {
@@ -152,6 +156,51 @@ public class CdcStreamManager {
       }
 
       return new CdcStreamDeleteResponse(new ArrayList<>(response.getNotFoundStreamIds()));
+    }
+  }
+
+  public CDCReplicationSlotResponse listReplicationSlot(Universe universe) throws Exception {
+    try (YBClient client = getYBClientForUniverse(universe)) {
+
+      ListCDCStreamsResponse response =
+          client.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID);
+      LOG.info(
+          "Got response for 'listCDCStreams' for universeId='{}': hasError='{}', size='{}'",
+          universe.getUniverseUUID(),
+          response.hasError(),
+          response.getStreams() != null ? response.getStreams().size() : -1);
+      if (response.hasError()) {
+        throw new Exception(response.errorMessage());
+      }
+
+      CDCReplicationSlotResponse result = new CDCReplicationSlotResponse();
+      List<NamespaceIdentifierPB> namespaceList = null;
+      for (CDCStreamInfo streamInfo : response.getStreams()) {
+        HashMap<String, String> options = new HashMap<>(streamInfo.getOptions());
+        CDCReplicationSlotDetails details = new CDCReplicationSlotDetails();
+        details.streamID = streamInfo.getStreamId();
+        details.slotName = streamInfo.getCdcsdkYsqlReplicationSlotName();
+        // Skip cdc streams which does not have name as an replication slot is supposed to have
+        // name and yb-admin streams does not have name.
+        if (StringUtils.isEmpty(details.slotName)) {
+          LOG.info("Skipping slot {} in replication slot response.", details.slotName);
+          continue;
+        }
+        details.state = options.get("state");
+        if (namespaceList == null) {
+          namespaceList = client.getNamespacesList().getNamespacesList();
+        }
+        NamespaceIdentifierPB namespaceIdentifier =
+            namespaceList.stream()
+                .filter(
+                    namespace ->
+                        namespace.getId().toStringUtf8().equals(streamInfo.getNamespaceId()))
+                .findFirst()
+                .get();
+        details.databaseName = namespaceIdentifier.getName();
+        result.replicationSlots.add(details);
+      }
+      return result;
     }
   }
 }

@@ -14,6 +14,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -46,6 +48,8 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   @Inject private PlatformReplicationManager replicationManager;
 
+  @Inject private RuntimeConfGetter runtimeConfGetter;
+
   @Inject CustomerTaskManager taskManager;
 
   @AuthzPath({
@@ -77,6 +81,13 @@ public class PlatformInstanceController extends AuthenticatedController {
       // Cannot create multiple leader platform instances.
     } else if (formData.get().is_leader && config.get().isLocalLeader()) {
       throw new PlatformServiceException(BAD_REQUEST, "Leader platform instance already exists");
+    } else if (!formData.get().is_local
+        && !replicationManager.testConnection(
+            config.get(),
+            formData.get().getCleanAddress(),
+            config.get().getAcceptAnyCertificate())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Standby YBA instance is unreachable or hasn't been configured yet");
     }
 
     PlatformInstance instance =
@@ -90,6 +101,10 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (instance.getIsLeader()) {
       config.get().updateLastFailover();
     }
+
+    // Sync instances immediately after being added
+    replicationManager.oneOffSync();
+
     auditService()
         .createAuditEntry(
             request,
@@ -128,6 +143,9 @@ public class PlatformInstanceController extends AuthenticatedController {
     if (instanceToDelete.get().getIsLocal()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
     }
+
+    // Clear metrics for remote instance
+    replicationManager.clearMetrics(instanceToDelete.get());
 
     auditService()
         .createAuditEntry(
@@ -168,7 +186,7 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result promoteInstance(
-      UUID configUUID, UUID instanceUUID, String curLeaderAddr, Http.Request request)
+      UUID configUUID, UUID instanceUUID, String curLeaderAddr, boolean force, Http.Request request)
       throws java.net.MalformedURLException {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -200,6 +218,15 @@ public class PlatformInstanceController extends AuthenticatedController {
       }
 
       curLeaderAddr = leaderInstance.get().getAddress();
+    }
+
+    // Validate we can reach current leader
+    if (!force) {
+      if (!replicationManager.testConnection(
+          config.get(), curLeaderAddr, config.get().getAcceptAnyCertificate())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
+      }
     }
 
     // Make sure the backup file provided exists.
@@ -235,6 +262,10 @@ public class PlatformInstanceController extends AuthenticatedController {
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Promote);
+
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 0) {
+      Util.shutdownYbaProcess(5);
+    }
     return ok();
   }
 }

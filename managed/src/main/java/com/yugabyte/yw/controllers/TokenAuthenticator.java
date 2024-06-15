@@ -9,8 +9,8 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -28,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.extern.slf4j.Slf4j;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
@@ -39,6 +40,7 @@ import play.mvc.Http.Cookie;
 import play.mvc.Result;
 import play.mvc.Results;
 
+@Slf4j
 public class TokenAuthenticator extends Action.Simple {
   public static final Set<String> READ_POST_ENDPOINTS =
       ImmutableSet.of(
@@ -55,7 +57,9 @@ public class TokenAuthenticator extends Action.Simple {
           "/fetch_package",
           "/performance_recommendations/page",
           "/performance_recommendation_state_change/page",
-          "/node_agents/page");
+          "/node_agents/page",
+          "/login",
+          "/api_token");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -81,7 +85,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final UserService userService;
 
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter confGetter;
 
   private final RuntimeConfigCache runtimeConfigCache;
 
@@ -92,13 +96,13 @@ public class TokenAuthenticator extends Action.Simple {
       Config config,
       PlaySessionStore sessionStore,
       UserService userService,
-      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter,
       RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.userService = userService;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
     this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
   }
@@ -106,21 +110,23 @@ public class TokenAuthenticator extends Action.Simple {
   public Users getCurrentAuthenticatedUser(Http.Request request) {
     String token;
     Users user = null;
-    boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
+    boolean useOAuth = confGetter.getGlobalConf(GlobalConfKeys.useOauth);
     Optional<Http.Cookie> cookieValue = request.getCookie(COOKIE_PLAY_SESSION);
     if (useOAuth) {
       final PlayWebContext context = new PlayWebContext(request, sessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       if (profileManager.isAuthenticated()) {
-        String emailAttr =
-            runtimeConfigFactory.globalRuntimeConf().getString("yb.security.oidcEmailAttribute");
+        CommonProfile profile = profileManager.get(true).get();
+        String emailAttr = confGetter.getGlobalConf(GlobalConfKeys.oidcEmailAttribute);
         String email;
         if (emailAttr.equals("")) {
-          email = profileManager.get(true).get().getEmail();
+          email = profile.getEmail();
         } else {
-          email = (String) profileManager.get(true).get().getAttribute(emailAttr);
+          email = (String) profile.getAttribute(emailAttr);
         }
-        user = Users.getByEmail(email.toLowerCase());
+        if (email != null) {
+          user = Users.getByEmail(email.toLowerCase());
+        }
       }
       if (user == null) {
         // Defaulting to regular flow to support dual login.
@@ -162,7 +168,7 @@ public class TokenAuthenticator extends Action.Simple {
       Matcher matcher = pattern.matcher(path);
       UUID custUUID = null;
       String patternForUUID =
-          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
       String patternForHost = ".+:[0-9]{4,5}";
 
       // Allow for disabling authentication on proxy endpoint so that

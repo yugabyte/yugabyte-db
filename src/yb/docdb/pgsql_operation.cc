@@ -43,6 +43,7 @@
 
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/packed_row.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
@@ -116,6 +117,11 @@ DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
 
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
                             "Whether to use packed row V2 when row packing is enabled.");
+
+DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
+    "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
+    "take finer column-level locks instead of locking the whole row. This may cause issues with "
+    "data integrity for operations with implicit dependencies between columns.");
 
 namespace yb::docdb {
 
@@ -584,13 +590,14 @@ struct IndexState {
       const Schema& schema, const PgsqlReadRequestPB& request,
       std::unique_ptr<YQLRowwiseIteratorIf>* iterator_holder, ColumnId ybbasectid_id)
       : projection(CreateProjection(schema, request)), row(projection), iter(iterator_holder),
-        ybbasectid_idx(projection.ColumnIdxById(ybbasectid_id)) {
+        ybbasectid_idx(projection.ColumnIdxById(ybbasectid_id)), scanned_rows(0) {
   }
 
   dockv::ReaderProjection projection;
   dockv::PgTableRow row;
   FilteringIterator iter;
   const size_t ybbasectid_idx;
+  uint64_t scanned_rows;
 };
 
 Result<FetchResult> FetchTableRow(
@@ -604,8 +611,10 @@ Result<FetchResult> FetchTableRow(
         return FetchResult::NotFound;
       case FetchResult::FilteredOut:
         VLOG(1) << "Row filtered out by colocated index condition";
+        ++index->scanned_rows;
         return FetchResult::FilteredOut;
       case FetchResult::Found:
+        ++index->scanned_rows;
         break;
     }
 
@@ -700,6 +709,26 @@ class ExpressionHelper {
   size_t next_result_idx_ = 0;
 };
 
+[[nodiscard]] inline bool NewValuesHaveExpression(const PgsqlWriteRequestPB& request) {
+  // In case of UPDATE row need to be protected from removing. Weak intent is enough for
+  // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
+  // is returned. The caller code will create strong intent for returned path
+  // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
+  // Note: UPDATE operation may have expressions instead of exact value.
+  // These expressions may read column value.
+  // Potentially expression for updating column v1 may read value of column v2.
+  //
+  // UPDATE t SET v = v + 10 WHERE k = 1
+  // UPDATE t SET v1 = v2 + 10 WHERE k = 1
+  //
+  // Strong intent for the whole row is required in this case as it may be too expensive to
+  // determine what exact columns are read by the expression.
+
+  return std::any_of(
+      request.column_new_values().begin(), request.column_new_values().end(),
+      [](const auto& cv) { return !cv.expr().has_value(); });
+}
+
 void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
   char encoded_rows[sizeof(uint64_t)];
   NetworkByteOrder::Store64(encoded_rows, result_rows);
@@ -743,18 +772,23 @@ class PgsqlWriteOperation::RowPackContext {
         packer_(packer_data.MakePacker()) {
   }
 
-  Result<bool> Add(ColumnId column_id, const QLValuePB& value) {
+  template <class Value>
+  Result<bool> Add(ColumnId column_id, const Value& value) {
     return std::visit([column_id, &value](auto& packer) {
       return packer.AddValue(column_id, value);
     }, packer_);
   }
 
   Status Complete(const RefCntPrefix& encoded_doc_key) {
+    return Complete(encoded_doc_key.as_slice());
+  }
+
+  Status Complete(Slice encoded_doc_key) {
     auto encoded_value = VERIFY_RESULT(std::visit([](auto& packer) {
       return packer.Complete();
     }, packer_));
     return data_.doc_write_batch->SetPrimitive(
-        DocPath(encoded_doc_key.as_slice()), dockv::ValueControlFields(),
+        DocPath(encoded_doc_key), dockv::ValueControlFields(),
         ValueRef(encoded_value), data_.read_operation_data, query_id_, write_id_);
   }
 
@@ -767,13 +801,32 @@ class PgsqlWriteOperation::RowPackContext {
 
 //--------------------------------------------------------------------------------------------------
 
+PgsqlWriteOperation::PgsqlWriteOperation(
+    std::reference_wrapper<const PgsqlWriteRequestPB> request, DocReadContextPtr doc_read_context,
+    const TransactionOperationContext& txn_op_context, rpc::Sidecars* sidecars)
+    : DocOperationBase(request),
+      doc_read_context_(std::move(doc_read_context)),
+      txn_op_context_(txn_op_context),
+      sidecars_(sidecars),
+      ysql_skip_row_lock_for_update_(FLAGS_ysql_skip_row_lock_for_update) {}
+
 Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
   response_ = response;
 
-  DocKeyAccessor accessor(doc_read_context_->schema());
-  doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
-  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
+  if (!request_.packed_rows().empty()) {
+    // When packed_rows are specified, operation could contain multiple rows.
+    // So we use table root key for doc_key, and have to use special handling for packed_rows in
+    // other places.
+    doc_key_ = dockv::DocKey(doc_read_context_->schema());
+    encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
+  } else {
+    DocKeyAccessor accessor(doc_read_context_->schema());
+    doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
+    encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(
+        Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
+  }
+
   encoded_doc_key_.Resize(encoded_doc_key_.size() - 1);
 
   return Status::OK();
@@ -992,7 +1045,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       // Non-backfill requests shouldn't use HasDuplicateUniqueIndexValue because
       // - they should error even if the conflicting row matches
       // - retrieving and calculating whether the conflicting row matches is a waste
-      if (VERIFY_RESULT(ReadColumns(data, &table_row))) {
+      if (VERIFY_RESULT(ReadRow(data, &table_row))) {
         VLOG(4) << "Duplicate row: " << table_row.ToString();
         // Primary key or unique index value found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
@@ -1002,7 +1055,58 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (ShouldYsqlPackRow(doc_read_context_->schema().is_colocated())) {
+  const auto& schema = doc_read_context_->schema();
+  auto pack_row = ShouldYsqlPackRow(schema.is_colocated());
+  if (!request_.packed_rows().empty()) {
+    RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(
+        request_.table_id(), schema, schema.value_column_ids()));
+    dockv::KeyBytes key_bytes(encoded_doc_key_.as_slice());
+    for (auto it = request_.packed_rows().begin(); it != request_.packed_rows().end();) {
+      key_bytes.Truncate(encoded_doc_key_.size());
+      key_bytes.AppendRawBytes(*it++);
+      auto key = key_bytes.AsSlice();
+      Slice packed_value(*it++);
+      if (pack_row &&
+          packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
+        RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+            DocPath(key), dockv::ValueControlFields(),
+            ValueRef(packed_value), data.read_operation_data, request_.stmt_id()));
+      } else {
+        SCHECK(packed_value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRowV1),
+               InvalidArgument,
+               "Packed value in a wrong format: $0", packed_value.ToDebugHexString());
+        const auto& packing = VERIFY_RESULT_REF(
+            doc_read_context_->schema_packing_storage.GetPacking(&packed_value));
+
+        std::optional<RowPackContext> pack_context;
+        if (pack_row) {
+          pack_context.emplace(
+              request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
+        } else {
+          RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+              DocPath(key, KeyEntryValue::kLivenessColumn),
+              dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow),
+              data.read_operation_data, request_.stmt_id()));
+        }
+        for (size_t idx = 0; idx != packing.columns(); ++idx) {
+          auto value = dockv::PackedValueV1(packing.GetValue(idx, packed_value));
+          auto column_id = packing.column_packing_data(idx).id;
+          if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
+            if (value->empty()) {
+              static char null_column_type = dockv::ValueEntryTypeAsChar::kNullLow;
+              value = dockv::PackedValueV1(Slice(&null_column_type, sizeof(null_column_type)));
+            }
+            DocPath sub_path(key, KeyEntryValue::MakeColumnId(column_id));
+            RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+                sub_path, ValueRef(*value), data.read_operation_data, request_.stmt_id()));
+          }
+        }
+        if (pack_context) {
+          RETURN_NOT_OK(pack_context->Complete(key));
+        }
+      }
+    }
+  } else if (pack_row) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -1091,7 +1195,7 @@ Status PgsqlWriteOperation::UpdateColumn(
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   dockv::PgTableRow table_row(projection());
 
-  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
+  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
     // Row not found.
     response_->set_skipped(true);
     return Status::OK();
@@ -1218,7 +1322,7 @@ Status PgsqlWriteOperation::ApplyDelete(
     const bool is_persist_needed) {
   int num_deleted = 1;
   dockv::PgTableRow table_row(projection());
-  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
+  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
     // Row not found.
     // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
     // nonexistent rows are expected to get written to the index when the index has the delete
@@ -1256,7 +1360,7 @@ Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& 
 Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data) {
   dockv::PgTableRow table_row(projection());
   DCHECK(request_.has_fetch_sequence_params()) << "Invalid input: fetch sequence without params";
-  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
+  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
     // Row not found.
     return STATUS(NotFound, "Unable to find relation for sequence");
   }
@@ -1365,58 +1469,42 @@ const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
   return *projection_;
 }
 
-Status PgsqlWriteOperation::UpdateIterator(
-    DocOperationApplyData* data, DocOperation* prev_op, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) {
-  if (prev_op) {
-    auto* prev = down_cast<PgsqlWriteOperation*>(prev_op);
-    if (request_.table_id() == prev->request_.table_id() &&
-        projection() == prev->projection()) {
-      data->restart_seek = doc_key_ <= prev->doc_key_;
-      return Status::OK();
-    }
+Result<bool> PgsqlWriteOperation::ReadRow(
+    const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
+  if (request_.packed_rows().empty()) {
+    return ReadRow(data, doc_key_, table_row);
   }
 
-  iterator->emplace(
+  dockv::KeyBytes key_bytes(encoded_doc_key_.as_slice());
+  dockv::DocKey doc_key;
+  // 2 entries per row, even for key, odd for value.
+  for (auto it = request_.packed_rows().begin(); it != request_.packed_rows().end(); it += 2) {
+    key_bytes.Truncate(encoded_doc_key_.size());
+    key_bytes.AppendRawBytes(*it);
+    RETURN_NOT_OK(doc_key.FullyDecodeFrom(key_bytes.AsSlice()));
+    if (VERIFY_RESULT(ReadRow(data, doc_key, table_row))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Result<bool> PgsqlWriteOperation::ReadRow(
+    const DocOperationApplyData& data, const dockv::DocKey& doc_key, dockv::PgTableRow* table_row) {
+  // Filter the columns using primary key.
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key);
+  auto iterator = DocRowwiseIterator(
       projection(),
       *doc_read_context_,
       txn_op_context_,
-      data->doc_write_batch->doc_db(),
-      data->read_operation_data,
-      data->doc_write_batch->pending_op());
-
-  static const dockv::DocKey kEmptyDocKey;
-  auto& key = single_operation ? doc_key_ : kEmptyDocKey;
-  static const dockv::KeyEntryValues kEmptyVec;
-  DocPgsqlScanSpec scan_spec(
-      doc_read_context_->schema(),
-      request_.stmt_id(),
-      /* hashed_components= */ kEmptyVec,
-      /* range_components= */ kEmptyVec,
-      /* condition= */ nullptr ,
-      /* hash_code= */ std::nullopt,
-      /* max_hash_code= */ std::nullopt,
-      key,
-      /* is_forward_scan= */ true ,
-      key,
-      key,
-      0,
-      AddHighestToUpperDocKey::kTrue);
-
-  data->iterator = &**iterator;
-  data->restart_seek = true;
-
-  return (**iterator).Init(scan_spec, SkipSeek::kTrue);
-}
-
-Result<bool> PgsqlWriteOperation::ReadColumns(
-    const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
-  // Filter the columns using primary key.
-  if (!VERIFY_RESULT(data.iterator->PgFetchRow(
-          encoded_doc_key_.as_slice(), data.restart_seek, table_row))) {
+      data.doc_write_batch->doc_db(),
+      data.read_operation_data,
+      data.doc_write_batch->pending_op());
+  RETURN_NOT_OK(iterator.Init(spec));
+  if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
     return false;
   }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(data.iterator->RestartReadHt()));
+  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
 
   return true;
 }
@@ -1463,40 +1551,19 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
   *level = RequireReadSnapshot() ? IsolationLevel::SNAPSHOT_ISOLATION
                                  : IsolationLevel::SERIALIZABLE_ISOLATION;
 
+  const auto is_update = request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE;
   switch (mode) {
     case GetDocPathsMode::kLock: {
-      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        // In case of UPDATE row need to be protected from removing. Weak intent is enough for
-        // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
-        // is returned. The caller code will create strong intent for returned path
-        // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
-        // Note: UPDATE operation may have expressions instead of exact value.
-        // These expressions may read column value.
-        // Potentially expression for updating column v1 may read value of column v2.
-        //
-        // UPDATE t SET v = v + 10 WHERE k = 1
-        // UPDATE t SET v1 = v2 + 10 WHERE k = 1
-        //
-        // Strong intent for the whole row is required in this case as it may be too expensive to
-        // determine what exact columns are read by the expression.
-
-        bool has_expression = false;
-        for (const auto& column_value : request_.column_new_values()) {
-          if (!column_value.expr().has_value()) {
-            has_expression = true;
-            break;
-          }
-        }
-        if (!has_expression) {
-          DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
-          paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
-          return Status::OK();
-        }
+      if (PREDICT_FALSE(ysql_skip_row_lock_for_update_) && is_update &&
+          !NewValuesHaveExpression(request_)) {
+        DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
+        paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
+        return Status::OK();
       }
       break;
     }
     case GetDocPathsMode::kIntents: {
-      if (request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPDATE) {
+      if (!is_update) {
         break;
       }
       const auto& column_values = request_.column_new_values();
@@ -1512,6 +1579,18 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
       }
       return Status::OK();
     }
+    case GetDocPathsMode::kStrongReadIntents: {
+      if (!is_update || PREDICT_FALSE(ysql_skip_row_lock_for_update_)) {
+        return Status::OK();
+      }
+      break;
+    }
+  }
+  if (!request_.packed_rows().empty()) {
+    for (auto it = request_.packed_rows().begin(); it != request_.packed_rows().end(); it += 2) {
+      paths->emplace_back(*it);
+    }
+    return Status::OK();
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.
   paths->push_back(encoded_doc_key_);
@@ -1567,6 +1646,20 @@ Result<size_t> PgsqlReadOperation::Execute(
   if (index_iter_) {
     restart_read_ht->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
   }
+
+  // Versions of pggate < 2.17.1 are not capable of processing response protos that contain RPC
+  // sidecars holding data other than the rows returned by DocDB. During an upgrade, it is possible
+  // that a pggate of version < 2.17.1 may receive a response from a tserver containing the metrics
+  // sidecar, causing a crash. To prevent this, send the scanned row count only if the incoming
+  // request object contains the metrics capture field. This serves to validate that the requesting
+  // pggate has indeed upgraded to a version that is capable of unpacking the metric sidecar.
+  if (request_.has_metrics_capture()) {
+    response_.mutable_metrics()->set_scanned_table_rows(scanned_table_rows_);
+    if (scanned_index_rows_ > 0) {
+      response_.mutable_metrics()->set_scanned_index_rows(scanned_index_rows_);
+    }
+  }
+
   return fetched_rows;
 }
 
@@ -1758,6 +1851,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     if (fetch_result == FetchResult::NotFound) {
       break;
     }
+    ++scanned_table_rows_;
     if (fetch_result == FetchResult::Found) {
       ++match_count;
       if (request_.is_aggregate()) {
@@ -1804,6 +1898,10 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     *has_paging_state = VERIFY_RESULT(SetPagingState(
         iterator, read_context->schema(), read_operation_data.read_time));
   }
+
+  if (index_state) {
+    scanned_index_rows_ += index_state->scanned_rows;
+  }
   return fetched_rows;
 }
 
@@ -1838,8 +1936,10 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
   std::optional<FilteringIterator> iter;
-  size_t row_count = 0;
+  size_t found_rows = 0;
   size_t fetched_rows = 0;
+  size_t filtered_rows = 0;
+  size_t not_found_rows = 0;
   for (const auto& batch_argument : batch_args) {
     if (!iter) {
       // It can be the case like when there is a tablet split that we still want
@@ -1859,13 +1959,15 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     switch (VERIFY_RESULT(
         iter->FetchTuple(batch_argument.ybctid().value().binary_value(), &row))) {
       case FetchResult::NotFound:
+        ++not_found_rows;
         // rebuild iterator on next iteration
         iter = std::nullopt;
         break;
       case FetchResult::FilteredOut:
+        ++filtered_rows;
         break;
       case FetchResult::Found:
-        ++row_count;
+        ++found_rows;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
@@ -1878,7 +1980,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     }
 
     if (result_buffer->size() >= response_size_limit) {
-      VLOG(1) << "Stopped iterator after " << row_count << " rows fetched (out of "
+      VLOG(1) << "Stopped iterator after " << found_rows << " rows fetched (out of "
               << request_.batch_arguments_size() << " matches). Response buffer size: "
               << result_buffer->size() << ", response size limit: " << response_size_limit;
       break;
@@ -1886,18 +1988,19 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   }
 
   // Output aggregate values accumulated while looping over rows
-  if (request_.is_aggregate() && row_count > 0) {
+  if (request_.is_aggregate() && found_rows > 0) {
     RETURN_NOT_OK(PopulateAggregate(result_buffer));
     ++fetched_rows;
   }
 
   // Set status for this batch.
   if (result_buffer->size() >= response_size_limit)
-    response_.set_batch_arg_count(row_count);
+    response_.set_batch_arg_count(found_rows + filtered_rows + not_found_rows);
   else
     // Mark all rows were processed even in case some of the ybctids were not found.
     response_.set_batch_arg_count(request_.batch_arguments_size());
 
+  scanned_table_rows_ += filtered_rows + found_rows;
   return fetched_rows;
 }
 

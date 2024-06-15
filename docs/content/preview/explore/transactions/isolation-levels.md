@@ -31,38 +31,55 @@ type: docs
 -->
 </ul>
 
-YugabyteDB supports three isolation levels in the transactional layer: Serializable, Snapshot, and Read committed. PostgreSQL (and the SQL standard) have four isolation levels: Serializable, Repeatable read, Read committed, and Read uncommitted.
+YugabyteDB supports three isolation levels in the transactional layer:
 
-The following table shows the mapping between the PostgreSQL isolation levels in YSQL, along with transaction anomalies that can occur at each isolation level:
+- Serializable
+- Snapshot
+- Read committed {{<badge/ea>}}
 
-| PostgreSQL Isolation | YugabyteDB Equivalent | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
-| :------------------- | :-------------------- | :--------- | :------------------ | :----------- | :-------------------- |
-Read uncommitted | Read Committed<sup>$</sup> | Allowed, but not in YSQL |  Possible | Possible | Possible
-Read committed   | Read Committed<sup>$</sup> | Not possible | Possible | Possible | Possible
-Repeatable read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
-Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
+The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
 
-<sup>$</sup> Read committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read committed isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+To enable Read committed (currently in [Early Access](/preview/releases/versioning/#feature-maturity)), you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` and the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
 
-The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation (unless the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`).
+{{< tip title="Tip" >}}
+
+To avoid serializable errors, that is, to run applications with no retry logic, keep the default `READ COMMITTED` isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
+
+{{< /tip >}}
 
 To set the transaction isolation level of a transaction, use the command `SET TRANSACTION`.
 
-As per the information in the preceding table, the most strict isolation level is `Serializable`, which requires that any concurrent execution of a set of `Serializable` transactions is guaranteed to produce the same effect as running them in some serial order (one transaction at a time). The other levels are defined by which anomalies must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level. For reference, the following are various transaction anomalies:
+## Isolation levels in PostgreSQL and YSQL
 
-* Dirty read: A transaction reads data written by a concurrent uncommitted transaction.
+PostgreSQL (and the SQL standard) has four isolation levels: Serializable, Repeatable read, Read committed, and Read uncommitted.
 
-* Nonrepeatable read: A transaction rereads data it has previously read and finds that data has been modified by another transaction committed after the initial read.
+The following table shows the mapping between the PostgreSQL isolation levels in YSQL, along with transaction anomalies that can occur at each isolation level:
 
-* Phantom read: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
+| PostgreSQL Isolation | YugabyteDB Equivalent     | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
+| :------------------- | :------------------------ | :--------- | :------------------ | :----------- | :-------------------- |
+| Read uncommitted | Read Committed {{<badge/tp>}} | Allowed, but not in YSQL |  Possible | Possible | Possible |
+| Read committed   | Read Committed {{<badge/tp>}} | Not possible | Possible     | Possible | Possible |
+| Repeatable read  | Snapshot                      | Not possible | Not possible | Allowed, but not in YSQL | Possible |
+| Serializable     | Serializable                  | Not possible | Not possible | Not possible | Not possible |
 
-* Serialization anomaly: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
+The strictest isolation level is Serializable, which requires that any concurrent execution of a set of Serializable transactions is guaranteed to produce the same effect as running them in some serial order (one transaction at a time).
+
+The other levels are defined by which anomalies (none of which are possible with serializable) must not occur as a result of interactions between concurrent transactions.
+
+| Transaction&nbsp;anomaly | Description |
+| :--- | :--- |
+| Dirty read | A transaction reads data written by a concurrent uncommitted transaction. |
+| Non-repeatable read | A transaction re-reads data it has previously fetched and finds that data has been modified by another transaction committed after the initial read. |
+| Phantom read | A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction. |
+| Serialization anomaly | The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time. |
 
 ## Serializable isolation
 
+{{<explore-setup-single>}}
+
 The Serializable isolation level provides the strictest transaction isolation. This level emulates serial transaction execution for all committed transactions, as if transactions had been executed one after another, serially rather than concurrently. Serializable isolation can detect read-write conflicts in addition to write-write conflicts. This is accomplished by writing provisional records for read operations as well.
 
-The Serializable isolation can be demonstrated by a bank overdraft protection example. Before you can start using the example, you need to [create a YugabyteDB universe](../../#set-up-yugabytedb-universe).
+The Serializable isolation can be demonstrated by a bank overdraft protection example.
 
 The hypothetical case is that there is a bank which allows depositors to withdraw money up to the total of what they have in all accounts. The bank later automatically transfers funds as needed to close the day with a positive balance in each account. In a single transaction, they check that the total of all accounts exceeds the amount requested.
 
@@ -207,8 +224,8 @@ The Snapshot isolation level is only aware of data committed before the transact
 
 Snapshot isolation detects only write-write conflicts; it does not detect read-write conflicts. That is:
 
-* `INSERT`, `UPDATE`, and `DELETE` commands behave in the same way as `SELECT` in terms of searching for target rows. They can only find target rows that were committed as of the transaction start time.
-* If such a target row might have already been updated, deleted, or locked by another concurrent transaction by the time it is found. This is called a transaction conflict, where the current transaction conflicts with the transaction that made or is attempting to make an update. In such cases, one of the two transactions is aborted, depending on priority.
+- `INSERT`, `UPDATE`, and `DELETE` commands behave in the same way as `SELECT` in terms of searching for target rows. They can only find target rows that were committed as of the transaction start time.
+- If such a target row might have already been updated, deleted, or locked by another concurrent transaction by the time it is found. This is called a transaction conflict, where the current transaction conflicts with the transaction that made or is attempting to make an update. In such cases, one of the two transactions is aborted, depending on priority.
 
 Applications using this level must be prepared to retry transactions due to serialization failures.
 
@@ -337,7 +354,7 @@ SELECT * FROM example;
 
 {{< note >}}
 
-Read Committed is [Tech Preview](/preview/releases/versioning/#feature-availability).
+Read Committed is [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 {{</note >}}
 

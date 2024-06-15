@@ -23,13 +23,13 @@ public class TaskTest extends FakeDBApplication {
   @Test
   public void testCreateAndUpdate() {
     // Create the task and save it.
-    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateUniverse, null);
     // Set the task details.
     Map<String, String> details = new HashMap<String, String>();
     details.put("description", "Test task");
     details.put("key1", "val1");
     details.put("key2", "val2");
-    taskInfo.setDetails(Json.toJson(details));
+    taskInfo.setTaskParams(Json.toJson(details));
     // Set the owner info.
     String hostname = "";
     try {

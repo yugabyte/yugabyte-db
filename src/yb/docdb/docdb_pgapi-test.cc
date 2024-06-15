@@ -24,6 +24,10 @@ class YbGateTest : public testing::Test {
   static void SetUpTestSuite() {
     google::InitGoogleLogging("");
   }
+
+  void TearDown() override {
+    ASSERT_EQ(YBCPgGetThreadLocalJumpBuffer(), nullptr);
+  }
 };
 
 TEST_F(YbGateTest, ElogLog) {
@@ -95,7 +99,7 @@ TEST_F(YbGateTest, EreportErrorLocation) {
   // check status location fields
   EXPECT_STREQ(YbgStatusGetFilename(ybg_status), "ybgate_api-test.c");
   // *** Line number may change if ybgate_api-test.c is modified ***
-  EXPECT_EQ(YbgStatusGetLineNumber(ybg_status), 123);
+  EXPECT_EQ(YbgStatusGetLineNumber(ybg_status), 124);
   EXPECT_STREQ(YbgStatusGetFuncname(ybg_status), "yb_test");
   YbgStatusDestroy(ybg_status);
 }

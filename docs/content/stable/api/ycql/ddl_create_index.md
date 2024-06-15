@@ -21,7 +21,7 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 #### create_index
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="655" height="150" viewbox="0 0 655 150"><path class="connector" d="M0 22h15m68 0h30m70 0h20m-105 0q5 0 5 5v8q0 5 5 5h80q5 0 5-5v-8q0-5 5-5m5 0h10m59 0h30m32 0h10m46 0h10m64 0h20m-197 0q5 0 5 5v8q0 5 5 5h172q5 0 5-5v-8q0-5 5-5m5 0h10m97 0h10m39 0h7m2 0h2m2 0h2m-655 50h2m2 0h2m2 0h7m95 0h10m25 0h10m162 0h10m24 0h30m170 0h20m-205 0q5 0 5 5v8q0 5 5 5h180q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h7m2 0h2m2 0h2m-621 50h2m2 0h2m2 0h27m132 0h20m-167 0q5 0 5 5v8q0 5 5 5h142q5 0 5-5v-8q0-5 5-5m5 0h30m127 0h20m-162 0q5 0 5 5v8q0 5 5 5h137q5 0 5-5v-8q0-5 5-5m5 0h30m66 0h10m121 0h20m-232 0q5 0 5 5v8q0 5 5 5h207q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="68" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="113" y="5" width="70" height="25" rx="7"/><text class="text" x="123" y="22">UNIQUE</text><rect class="literal" x="213" y="5" width="59" height="25" rx="7"/><text class="text" x="223" y="22">INDEX</text><rect class="literal" x="302" y="5" width="32" height="25" rx="7"/><text class="text" x="312" y="22">IF</text><rect class="literal" x="344" y="5" width="46" height="25" rx="7"/><text class="text" x="354" y="22">NOT</text><rect class="literal" x="400" y="5" width="64" height="25" rx="7"/><text class="text" x="410" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="494" y="5" width="97" height="25"/><text class="text" x="504" y="22">index_name</text></a><rect class="literal" x="601" y="5" width="39" height="25" rx="7"/><text class="text" x="611" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="55" width="95" height="25"/><text class="text" x="25" y="72">table_name</text></a><rect class="literal" x="120" y="55" width="25" height="25" rx="7"/><text class="text" x="130" y="72">(</text><a xlink:href="../grammar_diagrams#partition-key-columns"><rect class="rule" x="155" y="55" width="162" height="25"/><text class="text" x="165" y="72">partition_key_columns</text></a><rect class="literal" x="327" y="55" width="24" height="25" rx="7"/><text class="text" x="337" y="72">,</text><a xlink:href="../grammar_diagrams#clustering-key-columns"><rect class="rule" x="381" y="55" width="170" height="25"/><text class="text" x="391" y="72">clustering_key_columns</text></a><rect class="literal" x="581" y="55" width="25" height="25" rx="7"/><text class="text" x="591" y="72">)</text><a xlink:href="../grammar_diagrams#covering-columns"><rect class="rule" x="35" y="105" width="132" height="25"/><text class="text" x="45" y="122">covering_columns</text></a><a xlink:href="../grammar_diagrams#index-properties"><rect class="rule" x="217" y="105" width="127" height="25"/><text class="text" x="227" y="122">index_properties</text></a><rect class="literal" x="394" y="105" width="66" height="25" rx="7"/><text class="text" x="404" y="122">WHERE</text><a xlink:href="../grammar_diagrams#index-predicate"><rect class="rule" x="470" y="105" width="121" height="25"/><text class="text" x="480" y="122">index_predicate</text></a><polygon points="622,129 626,129 626,115 622,115" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="790" height="150" viewbox="0 0 790 150"><path class="connector" d="M0 22h15m68 0h30m70 0h20m-105 0q5 0 5 5v8q0 5 5 5h80q5 0 5-5v-8q0-5 5-5m5 0h30m85 0h20m-120 0q5 0 5 5v8q0 5 5 5h95q5 0 5-5v-8q0-5 5-5m5 0h10m59 0h30m32 0h10m46 0h10m64 0h20m-197 0q5 0 5 5v8q0 5 5 5h172q5 0 5-5v-8q0-5 5-5m5 0h10m97 0h10m39 0h7m2 0h2m2 0h2m-790 50h2m2 0h2m2 0h7m95 0h10m25 0h10m162 0h10m24 0h30m170 0h20m-205 0q5 0 5 5v8q0 5 5 5h180q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h7m2 0h2m2 0h2m-621 50h2m2 0h2m2 0h27m132 0h20m-167 0q5 0 5 5v8q0 5 5 5h142q5 0 5-5v-8q0-5 5-5m5 0h30m127 0h20m-162 0q5 0 5 5v8q0 5 5 5h137q5 0 5-5v-8q0-5 5-5m5 0h30m66 0h10m121 0h20m-232 0q5 0 5 5v8q0 5 5 5h207q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="68" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="113" y="5" width="70" height="25" rx="7"/><text class="text" x="123" y="22">UNIQUE</text><rect class="literal" x="233" y="5" width="85" height="25" rx="7"/><text class="text" x="243" y="22">DEFERRED</text><rect class="literal" x="348" y="5" width="59" height="25" rx="7"/><text class="text" x="358" y="22">INDEX</text><rect class="literal" x="437" y="5" width="32" height="25" rx="7"/><text class="text" x="447" y="22">IF</text><rect class="literal" x="479" y="5" width="46" height="25" rx="7"/><text class="text" x="489" y="22">NOT</text><rect class="literal" x="535" y="5" width="64" height="25" rx="7"/><text class="text" x="545" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="629" y="5" width="97" height="25"/><text class="text" x="639" y="22">index_name</text></a><rect class="literal" x="736" y="5" width="39" height="25" rx="7"/><text class="text" x="746" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="55" width="95" height="25"/><text class="text" x="25" y="72">table_name</text></a><rect class="literal" x="120" y="55" width="25" height="25" rx="7"/><text class="text" x="130" y="72">(</text><a xlink:href="../grammar_diagrams#partition-key-columns"><rect class="rule" x="155" y="55" width="162" height="25"/><text class="text" x="165" y="72">partition_key_columns</text></a><rect class="literal" x="327" y="55" width="24" height="25" rx="7"/><text class="text" x="337" y="72">,</text><a xlink:href="../grammar_diagrams#clustering-key-columns"><rect class="rule" x="381" y="55" width="170" height="25"/><text class="text" x="391" y="72">clustering_key_columns</text></a><rect class="literal" x="581" y="55" width="25" height="25" rx="7"/><text class="text" x="591" y="72">)</text><a xlink:href="../grammar_diagrams#covering-columns"><rect class="rule" x="35" y="105" width="132" height="25"/><text class="text" x="45" y="122">covering_columns</text></a><a xlink:href="../grammar_diagrams#index-properties"><rect class="rule" x="217" y="105" width="127" height="25"/><text class="text" x="227" y="122">index_properties</text></a><rect class="literal" x="394" y="105" width="66" height="25" rx="7"/><text class="text" x="404" y="122">WHERE</text><a xlink:href="../grammar_diagrams#index-predicate"><rect class="rule" x="470" y="105" width="121" height="25"/><text class="text" x="480" y="122">index_predicate</text></a><polygon points="622,129 626,129 626,115 622,115" style="fill:black;stroke-width:0"/></svg>
 
 #### partition_key_columns
 
@@ -54,19 +54,20 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 ### Grammar
 
 ```ebnf
-create_index ::= CREATE [ UNIQUE ] INDEX [ IF NOT EXISTS ] index_name 
-                 ON  table_name ( partition_key_columns , 
-                 [ clustering_key_columns ] )  [ covering_columns ] 
-                 [ index_properties ] [ WHERE index_predicate ]
+create_index ::= CREATE [ UNIQUE ] [ DEFERRED ] INDEX
+                 [ IF NOT EXISTS ] index_name ON  table_name (
+                 partition_key_columns , [ clustering_key_columns ] )
+                 [ covering_columns ] [ index_properties ]
+                 [ WHERE index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )
 
 clustering_key_columns ::= index_column [ , ... ]
 
-index_properties ::= WITH 
+index_properties ::= WITH
                      { property_name = property_literal
-                       | CLUSTERING ORDER BY ( 
-                         { index_column [ ASC | DESC ] } [ , ... ] ) } 
+                       | CLUSTERING ORDER BY (
+                         { index_column [ ASC | DESC ] } [ , ... ] ) }
                      [ AND ... ]
 
 index_column ::= column_name | jsonb_attribute
@@ -80,8 +81,8 @@ index_predicate ::= where_expression
 
 Where
 
-- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers. 
-- `table_name` may be qualified with a keyspace name. 
+- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers.
+- `table_name` may be qualified with a keyspace name.
 - `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
 - `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) data type.
 - `index_column` can be any data type except `MAP`, `SET`, `LIST`, `JSONB`, `USER_DEFINED_TYPE`.
@@ -98,7 +99,11 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 {{< /note >}}
 
-### User enforced consistency
+### User-enforced consistency
+
+{{<warning title="Caution">}}
+Opt for user-enforced consistency only when there is no other solution to your problem. User-enforced consistency requires considerable user effort to keep the index and table in sync.
+{{</warning>}}
 
 Indexes require transactions to have been enabled on the table. For cases where the table was created without enabling transactions, `consistency_level` has to be set to `user_enforced` like,
 
@@ -108,8 +113,10 @@ CREATE INDEX ON orders (warehouse)
       WITH transactions = { 'enabled' : false, 'consistency_level' : 'user_enforced' };
 ```
 
-{{< warning >}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync.
+{{< warning title="Syncing table and index">}}
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. 
+
+Also, if the index is created after data has been added to the table, the index may **not** be backfilled automatically depending on the setting of the `disable_index_backfill_for_non_txn_tables` flag. If set to `true`, then it is the responsibility of the user to trigger a backfill using the [yb-admin backfill_indexes_for_table](../../../admin/yb-admin/#backfill-indexes-for-table) command, which will trigger the backfill after a small delay of about a minute. This delay is controlled by the `index_backfill_upperbound_for_user_enforced_txn_duration_ms` flag.
 {{< /warning >}}
 
 ### PARTITION KEY
@@ -130,7 +137,7 @@ When using an index without transactions enabled, it is the responsibility of th
 - When setting a TTL on the index using `default_time_to_live`, please ensure that the TTL value is the same as that of the table's TTL. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
 
 {{<warning>}}
-**Caveat** : Row level TTL cannot be set on a table with a secondary indexes during INSERTS/UPDATES. {{<issue 10992>}}
+**Caveat**: Row-level TTL cannot be set on a table with a secondary index during INSERTS/UPDATES. {{<issue 10992>}}
 {{</warning>}}
 
 ### INCLUDED COLUMNS
@@ -142,6 +149,43 @@ When using an index without transactions enabled, it is the responsibility of th
 ### UNIQUE INDEX
 
 - A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.
+
+### DEFERRED INDEX
+
+Currently, an "index backfill" job is launched for each index that is created. For the case where you create a table and add multiple indexes, the main table needs to be scanned multiple times to populate each index. This is unnecessary, and can also cause issues with the single touch and multi touch block cache algorithm.
+
+After creating a set of indexes with their backfill deferred, you can then trigger a backfill job for the entire batch of indexes (on the same table) in one of the following ways:
+
+- Create a new index that is not deferred:
+
+    ```cql
+    CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
+
+
+    // To launch backfill ...
+    CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and
+                                                        // all deferred indexes idx_1 .. idx_9
+                                                        // on the same table viz: table_name.
+    ```
+
+- Use yb-admin to launch backfill for deferred indexes on the table.
+
+    ```cql
+    CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
+        ...
+    CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_10 on table_name(col_10);      // No backfill launched.
+    ```
+
+   Launch a backfill job for backfilling all the deferred indexes using the `backfill_indexes_for_table` command as follows:
+
+    ```bash
+    bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table ycql.ybdemo table_name
+    ```
+- Use the [`--defer_index_backfill`](../../../reference/configuration/yb-master#defer-index-backfill) YB-Master flag to force all indexes to be DEFERRED, and run `yb-admin backfill_indexes_for_table` to backfill indexes.
 
 ### PARTIAL INDEX
 

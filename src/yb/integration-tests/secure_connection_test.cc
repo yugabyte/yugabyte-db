@@ -22,7 +22,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/size_literals.h"
 #include "yb/util/env_util.h"
@@ -34,6 +34,7 @@ DECLARE_bool(TEST_private_broadcast_address);
 DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(enable_stream_compression);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_bool(openssl_require_fips);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(verify_client_endpoint);
@@ -239,6 +240,17 @@ class SecureConnectionCompressionTest : public SecureConnectionTest {
 };
 
 TEST_F_EX(SecureConnectionTest, Compression, SecureConnectionCompressionTest) {
+  TestSimpleOps();
+}
+
+class SecureFIPSTest : public SecureConnectionTest {
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_openssl_require_fips) = true;
+    SecureConnectionTest::SetUp();
+  }
+};
+
+TEST_F_EX(SecureConnectionTest, FIPS, SecureFIPSTest) {
   TestSimpleOps();
 }
 

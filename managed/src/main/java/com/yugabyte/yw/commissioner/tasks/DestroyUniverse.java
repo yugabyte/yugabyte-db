@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.UniverseInProgressException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
@@ -36,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -96,21 +99,38 @@ public class DestroyUniverse extends UniverseTaskBase {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1);
+        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       }
 
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
 
-      // Promote auto flags on all universes which were blocked due to the xCluster config.
-      // No need to send excludeXClusterConfigSet as they are updated with status DeletedUniverse.
-      createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-          lockedXClusterUniversesUuidSet,
-          Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
-          xClusterUniverseService,
-          new HashSet<>() /* excludeXClusterConfigSet */,
-          params().isForceDelete);
+      Set<Universe> xClusterConnectedUniverseSet = new HashSet<>();
+      xClusterConnectedUniverseSet.add(universe);
+      lockedXClusterUniversesUuidSet.forEach(
+          uuid -> {
+            xClusterConnectedUniverseSet.add(Universe.getOrBadRequest(uuid));
+          });
+
+      if (xClusterConnectedUniverseSet.stream()
+          .anyMatch(
+              univ ->
+                  CommonUtils.isReleaseBefore(
+                      Util.YBDB_ROLLBACK_DB_VERSION,
+                      univ.getUniverseDetails()
+                          .getPrimaryCluster()
+                          .userIntent
+                          .ybSoftwareVersion))) {
+        // Promote auto flags on all universes which were blocked due to the xCluster config.
+        // No need to send excludeXClusterConfigSet as they are updated with status DeletedUniverse.
+        createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+            lockedXClusterUniversesUuidSet,
+            Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
+            xClusterUniverseService,
+            new HashSet<>() /* excludeXClusterConfigSet */,
+            params().isForceDelete);
+      }
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
@@ -162,7 +182,8 @@ public class DestroyUniverse extends UniverseTaskBase {
                 universe.getNodes(),
                 params().isForceDelete,
                 true /* delete node */,
-                true /* deleteRootVolumes */)
+                true /* deleteRootVolumes */,
+                true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 
@@ -326,7 +347,10 @@ public class DestroyUniverse extends UniverseTaskBase {
           xClusterConfig -> {
             DrConfig drConfig = xClusterConfig.getDrConfig();
             createDeleteXClusterConfigSubtasks(
-                xClusterConfig, false /* keepEntry */, params().isForceDelete);
+                xClusterConfig,
+                false /* keepEntry */,
+                params().isForceDelete,
+                true /* deletePitrConfigs */);
             if (Objects.nonNull(drConfig) && drConfig.getXClusterConfigs().size() == 1) {
               createDeleteDrConfigEntryTask(drConfig)
                   .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);
@@ -351,7 +375,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
     if (!supportBundles.isEmpty()) {
       for (SupportBundle supportBundle : supportBundles) {
-        supportBundleUtil.deleteFile(supportBundle.getPathObject());
+        supportBundleUtil.deleteSupportBundle(supportBundle);
       }
     }
   }

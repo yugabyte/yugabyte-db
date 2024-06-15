@@ -19,7 +19,7 @@ To run the following examples, first set up a cluster and database schema as des
 
 ## Fast single-row transactions
 
-YugabytedDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast-path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region, or globally.
+YugabyteDB has specific optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. These transactions are referred to as [single-row or fast-path](../../../../architecture/transactions/single-row-transactions/) transactions. These are much faster than [distributed](../../../../architecture/transactions/distributed-txns/) transactions that impact a set of rows distributed across shards that are themselves spread across multiple nodes distributed across a data center, region, or globally.
 
 For example, consider a common scenario in transactions where a single row is updated and the new value is fetched. This is usually done in multiple steps as follows:
 

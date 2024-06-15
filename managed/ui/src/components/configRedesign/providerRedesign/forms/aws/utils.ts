@@ -23,7 +23,7 @@ export const getInvalidFields = <
   return Array.from(invalidFields);
 };
 
-const getFieldKeyName = (keyString: string) => keyString.replace(/^(data\.)/, '').split('.')[0];
+const getFieldKeyName = (keyString: string) => keyString.split('.')[0];
 
 export const useValidationStyles = makeStyles(() => ({
   errorList: {

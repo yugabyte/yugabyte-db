@@ -60,9 +60,8 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Get details of a maintenance window",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get details of a maintenance window",
       response = MaintenanceWindow.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -79,7 +78,8 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "List maintenance windows",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List maintenance windows",
       response = MaintenanceWindow.class,
       responseContainer = "List",
       nickname = "listOfMaintenanceWindows")
@@ -102,9 +102,8 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "List maintenance windows (paginated)",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List maintenance windows (paginated)",
       response = MaintenanceWindowPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -136,7 +135,8 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "Create maintenance window",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create maintenance window",
       response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -172,7 +172,8 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "Update maintenance window",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update maintenance window",
       response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -214,7 +215,8 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "Delete maintenance window",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete maintenance window",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(

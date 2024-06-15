@@ -204,8 +204,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     p2.save();
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
-    System.out.println("Testing JSON");
-    System.out.println(json);
 
     assertOk(result);
     assertAuditEntry(0, customer.getUuid());
@@ -219,7 +217,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             assertValue(config, "AWS_ACCESS_KEY_ID", "SE**********TA");
             assertValue(config, "AWS_SECRET_ACCESS_KEY", "SE**********TA");
           } else {
-            assertValue(config, "GCE_PROJECT", "BAR");
+            assertValue(config, "GCE_HOST_PROJECT", "BAR");
           }
         });
   }
@@ -563,7 +561,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     } else {
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_PULL_SECRET_NAME", pullSecretName);
       assertValueAtPath(json, "/config/KUBECONFIG_PULL_SECRET_NAME", pullSecretName);
-      String registryPath = "quay.io/yugabyte/yugabyte-itest";
+      // Empty Registry Path in Unit tests now since we we get it from reference.conf
+      String registryPath = "";
       assertValueAtPath(json, "/config/KUBECONFIG_IMAGE_REGISTRY", registryPath);
     }
 

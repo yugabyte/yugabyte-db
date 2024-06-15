@@ -8,7 +8,7 @@ import { SubmissionError } from 'redux-form';
 import _ from 'lodash';
 import { YBTabsPanel } from '../../panels';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { YBLoading } from '../../common/indicators';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 import GcsStorageConfiguration from './GcsStorageConfiguration';
 import { BackupList } from './BackupList';
@@ -130,14 +130,14 @@ class StorageConfiguration extends Component {
       case 'gcs': {
         let FIELDS;
         if (values['USE_GCP_IAM']) {
-            configName = dataPayload['GCS_CONFIGURATION_NAME'];
-            dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
-            dataPayload['USE_GCP_IAM'] = dataPayload['USE_GCP_IAM'].toString();
-            FIELDS = ['BACKUP_LOCATION', 'USE_GCP_IAM'];
+          configName = dataPayload['GCS_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
+          dataPayload['USE_GCP_IAM'] = dataPayload['USE_GCP_IAM'].toString();
+          FIELDS = ['BACKUP_LOCATION', 'USE_GCP_IAM'];
         } else {
-            configName = dataPayload['GCS_CONFIGURATION_NAME'];
-            dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
-            FIELDS = ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON'];
+          configName = dataPayload['GCS_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['GCS_BACKUP_LOCATION'];
+          FIELDS = ['BACKUP_LOCATION', 'GCS_CREDENTIALS_JSON'];
         }
         dataPayload = _.pick(dataPayload, FIELDS);
         break;
@@ -244,6 +244,7 @@ class StorageConfiguration extends Component {
    */
   deleteStorageConfig = (configUUID) => {
     this.props.deleteCustomerConfig(configUUID).then(() => {
+      this.props.hideDeleteStorageConfig();
       this.props.reset(); // reset form to initial values
       this.props.fetchCustomerConfigs();
     });
@@ -384,21 +385,26 @@ class StorageConfiguration extends Component {
     } = this.props;
     const { iamRoleEnabled, useGcpIam, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
-    const backupListData = customerConfigs.data.filter((list) => {
-      if (activeTab === list.name.toLowerCase()) {
-        return list;
-      }
-      return null;
-    });
 
     if (getPromiseState(customerConfigs).isLoading()) {
       return <YBLoading />;
+    }
+
+    if (getPromiseState(customerConfigs).isError()) {
+      return <YBErrorIndicator customErrorMessage="Failed to fetch customer configs." />;
     }
 
     if (
       getPromiseState(customerConfigs).isSuccess() ||
       getPromiseState(customerConfigs).isEmpty()
     ) {
+      const backupListData = (customerConfigs?.data ?? []).filter((list) => {
+        if (activeTab === list.name.toLowerCase()) {
+          return list;
+        }
+        return null;
+      });
+
       const configs = [
         <Tab eventKey={'s3'} title={getTabTitle('S3')} key={'s3-tab'} unmountOnExit={true}>
           {!listView.s3 && (
@@ -411,15 +417,15 @@ class StorageConfiguration extends Component {
             />
           )}
         </Tab>,
-         <Tab eventKey={'gcs'} title={getTabTitle('GCS')} key={'gcs-tab'} unmountOnExit={true}>
-         {!listView.gcs && (
-           <GcsStorageConfiguration
-             useGcpIam={useGcpIam}
-             gcpIamToggle={this.gcpIamToggle}
-             isEdited={editView[activeTab]}
-           />
-         )}
-       </Tab>
+        <Tab eventKey={'gcs'} title={getTabTitle('GCS')} key={'gcs-tab'} unmountOnExit={true}>
+          {!listView.gcs && (
+            <GcsStorageConfiguration
+              useGcpIam={useGcpIam}
+              gcpIamToggle={this.gcpIamToggle}
+              isEdited={editView[activeTab]}
+            />
+          )}
+        </Tab>
       ];
 
       Object.keys(storageConfigTypes).forEach((configName) => {

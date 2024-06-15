@@ -17,7 +17,7 @@ The examples in the following sections illustrate failure scenarios and techniqu
 
 ## Prerequisites
 
-Follow the [setup instructions](../../../../explore#tabs-00-00) to start a single local YugabytedDB instance, and create a table as follows:
+Follow the [setup instructions](../../../../explore#tabs-00-00) to start a single local YugabyteDB instance, and create a table as follows:
 
 1. Create the table as follows:
 
@@ -232,3 +232,4 @@ The only valid statements at this point would be [ROLLBACK](../../../../api/ysql
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
+- [Designing a Retry Mechanism for Resilient Spring Boot Applications](https://www.yugabyte.com/blog/retry-mechansim-spring-boot-app/)

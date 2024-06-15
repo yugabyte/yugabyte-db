@@ -14,7 +14,7 @@ type: docs
 A YugabyteDB cluster consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes of a YugabyteDB cluster across different zones in a single region, and across regions. The topology you choose depends on your requirements for latency, availability, and geo-distribution:
 
 - Moving data closer to where end-users are enables lower latency access.
-- Distributing data can make the data service resilient to zone and region failures in the cloud.
+- Distributing data can make the data service resilient to zone and region outages in the cloud.
 - Geo-partitioning can keep user data in a particular geographic region to comply with data sovereignty regulations.
 
 YugabyteDB Managed offers a number of deployment and replication options in geo-distributed environments to achieve resilience, performance, and compliance objectives.
@@ -84,7 +84,7 @@ In a cluster that is replicated across regions, the nodes of the cluster are dep
 
 **Latency**: Latency in a multi-region cluster depends on the distance and network packet transfer times between the nodes of the cluster and between the cluster and the client. Write latencies in this deployment mode can be high. This is because the tablet leader replicates write operations across a majority of tablet peers before sending a response to the client. All writes involve cross-zone communication between tablet peers.
 
-As a mitigation, you can enable [follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) and set a [preferred region](../create-clusters/create-clusters-multisync/#preferred-region).
+As a mitigation, you can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) and set a [preferred region](../create-clusters/create-clusters-multisync/#preferred-region).
 
 **Strengths**
 
@@ -94,7 +94,7 @@ As a mitigation, you can enable [follower reads](../../../explore/ysql-language-
 **Tradeoffs**
 
 - Write latency can be high (depends on the distance/network packet transfer times)
-- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql) trade off consistency for latency
+- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql) trade off consistency for latency
 
 **Fault tolerance**
 
@@ -155,7 +155,7 @@ To deploy a partition-by-region cluster, refer to [Partition by region](../creat
 **Learn more**
 
 - [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/)
-- [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/)
+- [Tablespaces](../../../explore/going-beyond-sql/tablespaces/)
 
 <!--
 ## Cross-universe
@@ -232,7 +232,7 @@ In an active-active configuration, both universes can handle writes to potential
 
 ## Read replicas
 
-For applications that have writes happening from a single zone or region but want to serve read requests from multiple remote regions, you can use read replicas. Data from the primary cluster is automatically replicated asynchronously to one or more read replica clusters. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest. To read data from a read replica, you enable [follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) for the cluster.
+For applications that have writes happening from a single zone or region but want to serve read requests from multiple remote regions, you can use read replicas. Data from the primary cluster is automatically replicated asynchronously to one or more read replica clusters. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest. To read data from a read replica, you enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) for the cluster.
 
 ![Read replicas](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-6.png)
 
@@ -240,7 +240,7 @@ For applications that have writes happening from a single zone or region but wan
 
 **Consistency**: The data in the replica clusters is timeline consistent, which is better than eventual consistency.
 
-**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) in the primary cluster. Read replicas don't handle write requests; these are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
+**Latency**: Reads from both the primary cluster and read replicas can be fast (single digit millisecond latency) because read replicas can serve timeline consistent reads without having to go to the [tablet leader](../../../architecture/key-concepts/#tablet-leader) in the primary cluster. Read replicas don't handle write requests; these are redirected to the primary cluster. So the write latency will depend on the distance between the client and the primary cluster.
 
 **Strengths**
 
@@ -264,4 +264,4 @@ You can add replicas to an existing primary cluster as needed. Refer to [Read re
 **Learn more**
 
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
-- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
+- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/)

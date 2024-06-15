@@ -4,30 +4,24 @@ headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
+
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
-    identifier: install-software-4-installer
-    weight: 77
+    identifier: install-software-1-installer
+    weight: 10
 rightNav:
   hideH4: true
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere (YBA) software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
-
-Note: For higher availability, one or more additional YBA instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../installer/" class="nav-link active">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
+      <i class="fa-solid fa-building"></i>On-premises and public clouds</a>
   </li>
 
   <li>
@@ -35,37 +29,31 @@ Note: For higher availability, one or more additional YBA instances can be separ
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
 </ul>
 
-Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
+Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate if the workspace is ready to run YBA.
 
-YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
+You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
 
-{{< warning >}}
-You can use YBA Installer only if you are about to perform a new install. Currently, you cannot switch your existing YBA software installed via Replicated to be installed using YBA Installer.
-{{< /warning >}}
+-> To perform a new installation, follow the steps in [Quick start](#quick-start).
 
-## Prerequisites
+-> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
 
-- Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
-- For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
+-> To migrate an installation from Replicated, refer to [Migrate from Replicated](../../migrate-replicated/).
 
-  If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
+-> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
 
-  ```sh
-  /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
-  ```
+After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
+
+## Before you begin
+
+Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
 
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from Yugabyte Support.
+1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -80,7 +68,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     $ sudo ./yba-ctl preflight
     ```
 
-1. If there are no issues, using sudo, install the software, providing your license.
+1. If there are no issues (aside from the lack of a license), using sudo, install the software, providing your license.
 
     ```sh
     $ sudo ./yba-ctl install -l /path/to/license
@@ -158,7 +146,7 @@ You can also provide a license when running the `install` command. Refer to [Ins
 
 ### Run preflight checks
 
-Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../prerequisites/installer/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
+Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../../prepare/server-nodes-hardware/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
 $ sudo ./yba-ctl preflight
@@ -256,7 +244,11 @@ Services:
 
 ### Upgrade
 
-To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to. See [Download YBA Installer](#download-yba-installer). Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state. When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
+To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to. See [Download YBA Installer](#download-yba-installer).
+
+Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state.
+
+When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
 
 ```sh
 $ sudo ./yba-ctl upgrade
@@ -362,12 +354,15 @@ To perform a non-sudo installation, run any of the preceding commands without su
 
 You can set the following YBA Installer configuration options.
 
-| Option | Description |
-| :--- | :--- |
-| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. |
-| `host` | Hostname or IP Address used for CORS and certificate creation. Optional. |
-| `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. |
-| `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
+| Option | Description |      |
+| :----- | :---------- | :--- |
+| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. | {{<icon/partial>}} |
+| `host` | Hostname or IP Address used for CORS and certificate creation. Optional. | |
+| `support_origin_url` | Specify an alternate hostname or IP address for CORS. For example, for a load balancer. Optional | |
+| `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. | |
+| `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. | {{<icon/partial>}} |
+
+{{<icon/partial>}} You can't change these settings after installation.
 
 ### YBA configuration options
 
@@ -375,47 +370,48 @@ You can configure the following YBA configuration options.
 
 | Option | Description |
 | :--- | :--- |
-| `port` | Specify a custom port for the YBA UI to run on.
-| `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty.
-| `appSecret` | Play framework crypto secret. Auto-generated if left empty.
+| `port` | Specify a custom port for the YBA UI to run on. |
+| `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty. |
+| `appSecret` | Play framework crypto secret. Auto-generated if left empty. |
 
 OAuth related settings are described in the following table. Only set these fields if you intend to use OIDC SSO for your YugabyteDB Anywhere installation (otherwise leave it empty).
 
 | Option | Description |
 | :--- | :--- |
-| `useOauth` | Boolean that determines if OIDC SSO needs to be enabled for YBA. Default is false. Set to true if you intend on using OIDC SSO for your YBA installation (must be a boolean).
-| `ybSecurityType` | The Security Type corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcClientId` | The Client ID corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcSecret` | The OIDC Secret Key corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
-| `ywWrl` | The Platform IP corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
-| `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcEmailAtr` | The OIDC Email Attribute corresponding to the OIDC SSO for your YBA installation. Must be a valid email address.
+| `useOauth` | Boolean that determines if OIDC SSO needs to be enabled for YBA. Default is false. Set to true if you intend on using OIDC SSO for your YBA installation (must be a boolean). |
+| `ybSecurityType` | The Security Type corresponding to the OIDC SSO for your YBA installation. |
+| `ybOidcClientId` | The Client ID corresponding to the OIDC SSO for your YBA installation. |
+| `ybOidcSecret` | The OIDC Secret Key corresponding to the OIDC SSO for your YBA installation. |
+| `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your YBA installation. Must be a valid URL. |
+| `ywWrl` | The Platform IP corresponding to the OIDC SSO for your YBA installation. Must be a valid URL. |
+| `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation. |
+| `ybOidcEmailAtr` | The OIDC Email Attribute corresponding to the OIDC SSO for your YBA installation. Must be a valid email address. |
 
 Http and Https proxy settings are described in the following table.
 
 | Option | Description |
 | :--- | :--- |
-| `http_proxy` |            Specify the setting for HTTP_PROXY
-| `java_http_proxy_port` |  Specify -Dhttp.proxyPort
-| `java_http_proxy_host` |  Specify -Dhttp.proxyHost
-| `https_proxy` |           Specify the setting for HTTPS_PROXY
-| `java_https_proxy_port` | Specify -Dhttps.proxyPort
-| `java_https_proxy_host` | Specify -Dhttps.proxyHost
-| `no_proxy` |              Specify the setting for NO_PROXY
-| `java_non_proxy` |        Specify  -Dhttps.nonProxyHosts.
+| `http_proxy` |            Specify the setting for HTTP_PROXY |
+| `java_http_proxy_port` |  Specify -Dhttp.proxyPort |
+| `java_http_proxy_host` |  Specify -Dhttp.proxyHost |
+| `https_proxy` |           Specify the setting for HTTPS_PROXY |
+| `java_https_proxy_port` | Specify -Dhttps.proxyPort |
+| `java_https_proxy_host` | Specify -Dhttps.proxyHost |
+| `no_proxy` |              Specify the setting for NO_PROXY |
+| `java_non_proxy` |        Specify -Dhttps.nonProxyHosts |
 
 ### Prometheus configuration options
 
 | Option | Description |
 | :--- | :--- |
-| `port` | External Prometheus port
-| `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash.
-| `scrapeInterval` | How often Prometheus scrapes for database metrics.
-| `scrapeTimeout` | Timeout for inactivity during scraping.
-| `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus.
-| `maxSamples` | Maximum number of samples that a single query can load into memory.
-| `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive.
+| `port` | External Prometheus port. |
+| `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash. |
+| `scrapeInterval` | How often Prometheus scrapes for database metrics. |
+| `scrapeTimeout` | Timeout for inactivity during scraping. |
+| `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus. |
+| `maxSamples` | Maximum number of samples that a single query can load into memory. |
+| `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive. |
+| `retentionTime` | How long Prometheus retains the database metrics. |
 
 ### Configure PostgreSQL
 
@@ -430,17 +426,24 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 **Install options**
 
-| Option | Description |
-| :--- | :--- |
-| `port` | Port PostgreSQL is listening to.
-| `restartSecond` | Wait time to restart PostgreSQL if the service crashes.
-| `locale` | locale is used during initialization of the db.
+| Option | Description |      |
+| :----- | :---------- | :--- |
+| `enabled` | Boolean indicating whether yba-ctl will install PostgreSQL. | {{<icon/partial>}} |
+| `port` | Port PostgreSQL is listening to. | |
+| `restartSecond` | Wait time to restart PostgreSQL if the service crashes. | |
+| `locale` | locale is used during initialization of the database. | |
+| `ldap_enabled` | Boolean indicating whether LDAP is enabled. | {{<icon/partial>}} |
+
+{{<icon/partial>}} You can't change these settings after installation.
 
 **useExisting options**
 
-| Option | Description |
-| :--- | :--- |
-| `host` | IP address/domain name of the PostgreSQL server.
-| `port` | Port PostgreSQL is running on.
-| `username` and `password` | Used to authenticate with PostgreSQL.
-| `pg_dump_path`<br/>`pg_restore_path` | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
+| Option | Description |      |
+| :----- | :---------- | :--- |
+| `enabled` | Boolean indicating whether to use a PostgreSQL instance that you provision and manage separately. | {{<icon/partial>}} |
+| `host` | IP address/domain name of the PostgreSQL server. | |
+| `port` | Port PostgreSQL is running on. | |
+| `username` and `password` | Used to authenticate with PostgreSQL. | |
+| `pg_dump_path`<br/>`pg_restore_path` | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install. | |
+
+{{<icon/partial>}} You can't change this setting after installation.

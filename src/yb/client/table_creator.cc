@@ -17,6 +17,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/common_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -35,7 +36,6 @@ using std::string;
 DECLARE_bool(client_suppress_created_logs);
 DECLARE_uint32(change_metadata_backoff_max_jitter_ms);
 DECLARE_uint32(change_metadata_backoff_init_exponent);
-DECLARE_bool(ysql_ddl_rollback_enabled);
 
 DEFINE_test_flag(bool, duplicate_create_table_request, false,
                  "Whether a table creator should send duplicate CreateTableRequestPB to master.");
@@ -125,8 +125,18 @@ YBTableCreator& YBTableCreator::is_matview(bool is_matview) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::matview_pg_table_id(const std::string& matview_pg_table_id) {
-  matview_pg_table_id_ = matview_pg_table_id;
+YBTableCreator& YBTableCreator::pg_table_id(const std::string& pg_table_id) {
+  pg_table_id_ = pg_table_id;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::old_rewrite_table_id(const std::string& old_rewrite_table_id) {
+  old_rewrite_table_id_ = old_rewrite_table_id;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::is_truncate(bool is_truncate) {
+  is_truncate_ = is_truncate;
   return *this;
 }
 
@@ -195,6 +205,12 @@ YBTableCreator& YBTableCreator::is_local_index(bool is_local_index) {
 
 YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
   index_info_->set_is_unique(is_unique_index);
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::add_vector_options(
+    const PgVectorIdxOptionsPB& vec_options) {
+  *index_info_->mutable_vector_idx_options() = vec_options;
   return *this;
 }
 
@@ -287,8 +303,16 @@ Status YBTableCreator::Create() {
     req.set_is_matview(*is_matview_);
   }
 
-  if (!matview_pg_table_id_.empty()) {
-    req.set_matview_pg_table_id(matview_pg_table_id_);
+  if (!pg_table_id_.empty()) {
+    req.set_pg_table_id(pg_table_id_);
+  }
+
+  if (!old_rewrite_table_id_.empty()) {
+    req.set_old_rewrite_table_id(old_rewrite_table_id_);
+  }
+
+  if (is_truncate_) {
+    req.set_is_truncate(*is_truncate_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or
@@ -303,7 +327,7 @@ Status YBTableCreator::Create() {
 
   if (txn_) {
     txn_->ToPB(req.mutable_transaction());
-    req.set_ysql_ddl_rollback_enabled(FLAGS_ysql_ddl_rollback_enabled);
+    req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
   }
 
   // Setup the number splits (i.e. number of splits).

@@ -14,52 +14,65 @@ showRightNav: true
 type: indexpage
 ---
 
-In YugabyteDB, [data is split (sharded)](./sharding-rebalancing) into tablets, and these multiple tablets are placed on various nodes. When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+Being able to scale a distributed system is essential to reliably and efficiently meeting the increasing demands of users, workloads, and data. Scalability is central the design and maintenance of distributed systems. You need it to ensure systems can handle increasing workloads, provide high availability, optimize resource usage, adapt to changing requirements, and accommodate future growth.
 
-You can either add more nodes to distribute the tablets or increase the specifications of your nodes to scale your universe efficiently and reliably to handle the following:
+Depending on your business, you may need to scale for a variety of reasons:
 
-* High transactions per second
-* High number of concurrent client connections
-* Large datasets
-* Data in multiple regions and continents
+- **Growing user base**. Your application becomes popular, users love your app, and the user base is expanding.
+- **Seasonal traffic**. Occasionally, you have to handle a lot more transactions per second than usual. Black Friday and Cyber Monday retail traffic, or streaming for special events like the Superbowl or World Cup, for example.
+- **Growing datasets**. For example, you have an IoT app or an audit database that keeps growing rapidly daily. These systems have to handle a high volume of writes regularly.
+- **Changing business priorities**. Scaling needs are often unpredictable. To take one example, retail priorities shifted radically when Covid entered the picture. With a database that can scale, you can pivot quickly when the business environment shifts.
+- **New geographies**. Your user base expands to new regions, and you need to add to your presence globally by adding more data centers in different continents.
 
-## Horizontal scaling (scale out)
+Being able to scale seamlessly is as important as being able to scale. Scaling needs to be operationally simple and completely transparent to the applications. With YugabyteDB, you can start small and add nodes as needed. You can scale your data, reads, and writes without disrupting ongoing applications. As your needs grow, YugabyteDB automatically shards data and scales out. You can also scale up your cluster for short-term needs and then scale down after the need is over.
 
-Horizontal scaling, also referred to as scaling out, is the process of adding more nodes to a distributed database to handle increased load and data. Horizontal scaling is the most common scaling model in YugabyteDB, and has several advantages, including:
+## Ways to scale
 
-* **Improved performance** - More nodes can process requests in parallel, reducing response times.
-* **Cost-effectiveness** - You can use commodity hardware, which is generally less expensive than high-end servers.
-* **Elastic scaling** - You can add new nodes as needed to accommodate growth or scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the universe.
+There are 2 common ways to scale, namely **vertical** and **horizontal**. YugabyteDB supports both. In vertical scaling, you enhance the capabilities of your existing nodes by increasing CPU, memory, storage, and so on. With horizontal scaling, you add more nodes of the same type to your cluster. Horizontal scaling is the most common type of scaling in YugabyteDB. As YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
 
-## Vertical scaling (scale up)
+{{<lead link="./horizontal-vs-vertical-scaling">}}
+To learn more about the pros and cons of the two types of scaling, see [Horizontal vs vertical scaling](./horizontal-vs-vertical-scaling).
+{{</lead>}}
 
-Vertical scaling involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on. Vertical scaling is often limited by the capacity of a single server and can get expensive as you move to more powerful hardware. Although you retain the same number of nodes, which could simplify your operations, eventually hardware resources reach their limits, and further scaling up might not be feasible.
+## How scaling works
 
-In some cases, depending on your application needs and budget constraints, a combination of both horizontal and vertical scaling may be used to achieve the desired performance and scalability goals.
+To get a better idea of the effort and time you will need to scale your systems, it's helpful to understand a few basic concepts that describe how YugabyteDB scales. Let's go over them quickly.
 
-## Horizontal vs Vertical scaling
+### Sharding
 
-The following table lists the pros and cons of Horizontal and Vertical scaling of a YugabyteDB cluster.
+Data distribution is critical in scaling. In YugabyteDB, data is [split (sharded)](./data-distribution/) into tablets. A tablet is effectively a piece of a table and these tablets are placed on various nodes. The mapping of a row of a table to a tablet is deterministic and the system knows exactly which tablet holds a specific row.
 
-|                         |                           Horizontal Scaling/Scale out                            |                                Vertical Scaling/Scale up                                |
-| ----------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **Number of nodes**        | Increases                                                                         | Remains the same                                                                        |
-| **Ease of effort**      | Add new nodes to the cluster                                                      | Add more powerful nodes, drain the old node, and remove them from the cluster           |
-| **Fault Tolerance**     | Increases as more nodes are added                                           | Remains the same                                                                        |
-| **Cluster&nbsp;rebalancing** | Faster                                                                            | Slower                                                                                  |
-| **Future scaling**      | More nodes can be added                                                           | Limited to the most powerful machines available currently                                   |
-| **Added costs**         | Cost of newer machines                                                            | Difference in cost between the new and old machines                                          |
-| **Disk**                | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and memory, disks should also be upgraded to handle increased workloads |
+{{<tip>}}
+To learn more about the different types of sharding, see [Hash and range sharding](../../architecture/docdb-sharding/sharding/). For an illustration of how tablets are split, see [Tablet splitting](./data-distribution/#tablet-splitting).
+{{</tip>}}
 
-## Enhancements
+### Rebalancing
 
-[DocDB](../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered from the ground up to deliver high performance at a massive scale. Several features have been built into DocDB to enhance performance, including the following:
+As your data grows, tablets are split and moved across the different nodes in the cluster to maintain an equal distribution of data across the nodes. This process is known as _Rebalancing_. Data is moved automatically, without any interruption in service.
 
-* Scan-resistant global block cache
-* Bloom/index data splitting
-* Global memstore limit
-* Separate compaction queues to reduce read amplification
-* Smart load balancing across disks
+{{<lead link="./data-distribution/#rebalancing">}}
+For an illustration of how tablets are rebalanced, see [Rebalancing](./data-distribution/#rebalancing).
+{{</lead>}}
+
+### Adding nodes
+
+When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./data-distribution/#rebalancing) to the new nodes, and the entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+
+{{<lead link="node-addition/">}}
+For an illustration of what happens when nodes are added to a cluster, see [Adding nodes](node-addition/).
+{{</lead>}}
+
+## When to scale
+
+To know when to scale, monitor metrics provided for CPU, memory, and disk space. Set up alerts on these metrics to give you ample time to plan and react.
+
+For best results, keep steady state resource usage under 60%, and take strong action at 75%, in particular for disk space. If CPU or memory is high, the system will slow; if disk usage approaches limits, usage on followers also increases, and moving and recovering data takes time.
+
+[YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/) both include metrics dashboards and configurable alerts to keep you notified of changes.
+
+{{<lead link="../observability">}}
+To learn more about the various metrics than you can monitor, see [Observability](../observability).
+{{</lead>}}
 
 ## Learn more
 
@@ -68,13 +81,19 @@ The following table lists the pros and cons of Horizontal and Vertical scaling o
   {{<index/item
     title="Distribute data across nodes"
     body="Automatic data distribution across a universe's nodes using transparent sharding of tables."
-    href="./sharding-rebalancing"
+    href="data-distribution/"
     icon="fa-solid fa-building">}}
+
+  {{<index/item
+    title="Horizontal vs vertical scaling"
+    body="Understand the differences between horizontal and vertical scaling."
+    href="horizontal-vs-vertical-scaling/"
+    icon="fa-solid fa-circle-nodes">}}
 
   {{<index/item
     title="Scale out by adding nodes"
     body="Seamlessly scale your cluster on demand by adding new nodes to the cluster."
-    href="./node-addition"
+    href="node-addition/"
     icon="fa-solid fa-circle-nodes">}}
 
   {{<index/item

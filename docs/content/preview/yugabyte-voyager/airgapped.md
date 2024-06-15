@@ -73,19 +73,31 @@ For yum to download all the required dependencies, ensure that the list of *all*
     1. Install the `epel-release` repository using the following command:
 
         ```sh
-        # For RHEL 7/CentOS 7
+        # For RHEL 7 or CentOS 7
         sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
         ```
 
         ```sh
-        # For RHEL 8/CentOS 8
+        # For RHEL 8 or CentOS 8
         sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
         ```
 
-    1. Install the PostgreSQL and Oracle instant clients repositories using the following command:
+    1. Install the Oracle instant client repositories using the following command:
 
         ```sh
-        sudo yum install pgdg-redhat-repo oracle-instant-clients-repo
+        sudo yum install oracle-instant-clients-repo
+        ```
+
+    1. Install the PostgreSQL repositories using the following command:
+
+        ```sh
+        # For RHEL 7
+        sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        ```
+
+        ```sh
+        # For RHEL 8
+        sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
         ```
 
         These repositories contain the rest of the dependencies required to run `yb-voyager`.
@@ -115,7 +127,7 @@ For yum to download all the required dependencies, ensure that the list of *all*
 1. Navigate to the folder containing all the files and install the rpm files using the following command:
 
     ```sh
-    sudo yum install *
+    sudo yum --disablerepo=* install *
     ```
 
 1. Check that yb-voyager is installed using the following command:

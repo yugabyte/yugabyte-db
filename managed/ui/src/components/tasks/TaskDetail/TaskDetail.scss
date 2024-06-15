@@ -79,13 +79,17 @@
 
 .task-container {
   width: 100%;
-  max-width: 980px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: 0px !important;
 
   .content-panel {
     margin-top: 40px;
   }
+}
+
+.task-header-font {
+  font-size: 26px !important;
 }
 
 .task-detail-back-button {
@@ -100,11 +104,20 @@
 }
 
 .task-heading-row {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   margin-top: 10px;
-  margin-bottom: 0;
+  margin-bottom: 10px;
   text-transform: uppercase;
+}
+
+.task-value-row {
+  font-size: 13px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-weight: 400;
+  border-top: 1px solid #e9eef2;
+  border-bottom: 1px solid #e9eef2;
 }
 
 .task-detail-info {

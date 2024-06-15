@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Universe;
@@ -27,7 +28,7 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import play.libs.Json;
 
 @Slf4j
@@ -73,6 +74,7 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
         taskParams().targetSoftwareVersion != null
             ? taskParams().targetSoftwareVersion
             : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
     log.debug("Current master db software version {}", softwareVersion);
     if (!supportsUnderReplicatedCheck(softwareVersion)) {
       log.debug(
@@ -80,6 +82,12 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
               + "does not support under-replicated tablets check.",
           universe.getName(),
           softwareVersion);
+      return;
+    }
+    if (CheckNodesAreSafeToTakeDown.isApiSupported(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
+        && CheckNodesAreSafeToTakeDown.isApiSupported(softwareVersion)) {
+      log.debug("Skipping check, CheckNodesAreSafeToTakeDown should have been applied");
       return;
     }
 
@@ -197,13 +205,20 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
         log.info("Timing out after iters={}.", iterationNum);
         throw new RuntimeException(
             String.format(
-                "CheckUnderReplicatedTablets, timing out after retrying %s times for "
-                    + "a duration of %sms, greater than max time out of %sms. "
-                    + "Under-replicated tablet size: %s. Failing...",
-                iterationNum,
+                "There are existing under-replicated tablets on the universe. "
+                    + "Aborting because this operation can potentially take down a "
+                    + "majority of copies of some tablets (CheckUnderReplicatedTablets)."
+                    + " If temporary unavailability is acceptable, you can "
+                    + " adjust the runtime configs "
+                    + UniverseConfKeys.underReplicatedTabletsCheckEnabled.getKey()
+                    + " , "
+                    + UniverseConfKeys.underReplicatedTabletsTimeout.getKey()
+                    + " and retry this operation."
+                    + " Details: Under-replicated tablet size: %s, timed out after retrying for "
+                    + "a duration of %sms, greater than max time out of %sms. ",
+                numUnderReplicatedTablets,
                 currentElapsedTime.toMillis(),
-                maxSubtaskTimeout.toMillis(),
-                numUnderReplicatedTablets));
+                maxSubtaskTimeout.toMillis()));
       }
 
       waitFor(Duration.ofMillis(sleepTimeMs));

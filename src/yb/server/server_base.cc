@@ -45,6 +45,7 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
@@ -93,9 +94,7 @@ TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
 
-DEFINE_UNKNOWN_int32(generic_svc_num_threads, 10,
-             "Number of RPC worker threads to run for the generic service");
-TAG_FLAG(generic_svc_num_threads, advanced);
+DEPRECATE_FLAG(int32, generic_svc_num_threads, "02_2024");
 
 DEFINE_UNKNOWN_int32(generic_svc_queue_length, 50,
              "RPC Queue length for the generic service");
@@ -119,6 +118,20 @@ DEFINE_test_flag(int32, nodes_per_cloud, 2,
 METRIC_DEFINE_lag(server, server_uptime_ms,
                   "Server uptime",
                   "The amount of time a server has been up for.");
+
+METRIC_DEFINE_gauge_int64(server, server_memory_hard_limit,
+    "Server hard memory limit", yb::MetricUnit::kBytes,
+    "If the server has a hard memory limit, that in bytes, otherwise -1.");
+
+METRIC_DEFINE_gauge_int64(server, server_memory_soft_limit,
+    "Server soft memory limit", yb::MetricUnit::kBytes,
+    "If the server has a soft memory limit, that in bytes, otherwise -1.");
+
+METRIC_DEFINE_gauge_uint64(server, untracked_memory,
+    "Untracked memory", yb::MetricUnit::kBytes,
+    "The amount of memory not tracked by MemTracker");
+
+DECLARE_bool(TEST_running_test);
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -167,7 +180,7 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
 #if YB_TCMALLOC_ENABLED
 void RegisterTCMallocTracker(const char* name, const char* prop) {
   common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
-      -1, "TCMalloc "s + name, std::bind(&::yb::GetTCMallocProperty, prop)));
+      -1, kTCMallocTrackerNamePrefix + name, std::bind(&::yb::GetTCMallocProperty, prop)));
 }
 #endif
 
@@ -211,6 +224,9 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
           }
         });
   }
+
+  metric_entity_->NeverRetire(METRIC_untracked_memory.InstantiateFunctionGauge(metric_entity_,
+      Bind(&MemTracker::GetUntrackedMemory)));
 #endif  // YB_TCMALLOC_ENABLED
 
   if (clock) {
@@ -277,7 +293,7 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-Status RpcServerBase::InitAutoFlags() { return Status::OK(); }
+Status RpcServerBase::InitAutoFlags(rpc::Messenger* messenger) { return Status::OK(); }
 
 Status RpcServerBase::Init() {
   CHECK(!initialized_);
@@ -297,14 +313,21 @@ Status RpcServerBase::Init() {
     RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
   }
 
-  RETURN_NOT_OK(InitAutoFlags());
-
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
   builder.UseDefaultConnectionContextFactory(mem_tracker());
   RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+
+  if (PREDICT_FALSE(FLAGS_TEST_running_test)) {
+    std::vector<HostPort> host_ports;
+    RETURN_NOT_OK(
+        HostPort::ParseStrings(options_.HostsString(), 0 /* default_port */, &host_ports));
+    messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host_ports[0].host())));
+  }
+
+  RETURN_NOT_OK(InitAutoFlags(messenger_.get()));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_.get()));
   RETURN_NOT_OK(rpc_server_->Bind());
@@ -457,6 +480,14 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     const scoped_refptr<server::Clock>& clock)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
       web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
+  auto root = MemTracker::GetRootTracker();
+  int64_t hard_limit = root->has_limit() ? root->limit() : -1;
+  int64_t soft_limit = root->has_limit() ? root->soft_limit() : -1;
+  server_hard_limit_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
+      &METRIC_server_memory_hard_limit, static_cast<int64_t>(hard_limit));
+  server_soft_limit_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
+      &METRIC_server_memory_soft_limit, static_cast<int64_t>(soft_limit));
+
   FsManagerOpts fs_opts;
   fs_opts.metric_registry = metric_registry_.get();
   fs_opts.parent_mem_tracker = mem_tracker_;
@@ -516,7 +547,7 @@ Status RpcAndWebServerBase::Init() {
   return Status::OK();
 }
 
-Status RpcAndWebServerBase::InitAutoFlags() {
+Status RpcAndWebServerBase::InitAutoFlags(rpc::Messenger* messenger) {
   auto process_auto_flags_result = GetAvailableAutoFlagsForServer();
   if (!process_auto_flags_result) {
     LOG(WARNING) << "Unable to get the AutoFlags for this process: "
@@ -525,7 +556,7 @@ Status RpcAndWebServerBase::InitAutoFlags() {
     web_server_->SetAutoFlags(std::move(*process_auto_flags_result));
   }
 
-  return RpcServerBase::InitAutoFlags();
+  return RpcServerBase::InitAutoFlags(messenger);
 }
 
 void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
@@ -638,6 +669,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
+  DisplayIconTile(output, "fa-times", "xCluster", "/xcluster");
 }
 
 void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
@@ -697,7 +729,7 @@ Status RpcAndWebServerBase::Start() {
   GenerateInstanceID();
 
   AddDefaultPathHandlers(web_server_.get());
-  AddRpczPathHandlers(messenger_.get(), web_server_.get());
+  AddRpczPathHandlers(messenger_.get(), ShouldExportLocalCalls(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   RegisterPathUsageHandler(web_server_.get(), fs_manager_.get());
   RegisterTlsHandler(web_server_.get(), this);
@@ -744,8 +776,6 @@ void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index) {
   CHECK_GE(index, kMinServerIdx);
   CHECK_LE(index, kMaxServers);
 
-  messenger->TEST_SetOutboundIpBase(
-      CHECK_RESULT(HostToAddress(TEST_RpcAddress(index, Private::kTrue))));
   auto server_group = ServerGroupNum(index);
   for (int other_server_idx = kMinServerIdx; other_server_idx <= kMaxServers; ++other_server_idx) {
     // We group servers by 2. When servers belongs to the same group, they should use

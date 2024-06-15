@@ -28,12 +28,12 @@ export type ApiEndpointPermMappingType = {
     }
 }[]
 
-export type ApiProps = {
+export type ApiPermissionProps = {
     requestType: ApiEndpointPermMappingType[number]['requestType'];
     endpoint: ApiEndpointPermMappingType[number]['endpoint']
 };
 
-type ApiPermissionMapType = Record<string, ApiProps>;
+type ApiPermissionMapType = Record<string, ApiPermissionProps>;
 
 
 export const ApiPermissionMap = {
@@ -301,7 +301,7 @@ export const ApiPermissionMap = {
         endpoint: '/nodes/$nodeUUID<[^/]+>/list'
     },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
-    CREATE_PROVIDERS: { requestType: ApiRequestType.POST, endpoint: '/providers' },
+    CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {
         requestType: ApiRequestType.GET,
         endpoint: '/providers/$pUUID<[^/]+>'
@@ -342,7 +342,7 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/providers/$pUUID<[^/]+>/initialize'
     },
-    GET_PROVIDER_ENDPOINT: {
+    CREATE_INSTANCE_TYPE: {
         requestType: ApiRequestType.POST,
         endpoint: '/providers/$pUUID<[^/]+>/instance_types'
     },
@@ -820,6 +820,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/software'
     },
+    UPGRADE_NEW_UNIVERSE_SOFTWARE: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/upgrade/db_version'
+    },
     UPGRADE_UNIVERSE_SYSTEMD: {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/systemd'
@@ -917,7 +921,7 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>'
     },
-    MODIFY_XLCUSTER_REPLICATION: {
+    MODIFY_XCLUSTER_REPLICATION: {
         requestType: ApiRequestType.PUT,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>'
     },
@@ -1080,20 +1084,44 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/dr_configs'
     },
-    GET_DR_CONFIG_BY_ID: {
+    GET_DR_CONFIG: {
         requestType: ApiRequestType.GET,
         endpoint: '/dr_configs/$drUUID<[^/]+>'
     },
-    MODIFY_DR_CONFIG_BY_ID: {
-        requestType: ApiRequestType.PUT,
-        endpoint: '/dr_configs/$drUUID<[^/]+>'
+    DR_CONFIG_EDIT: {
+        requestType: ApiRequestType.POST,
+        endpoint: 'dr_configs/$drUUID<[^/]+>/edit'
     },
-    MODIFY_DR_CONFIG_FAILOVER: {
+    DR_CONFIG_REPLACE_REPLICA: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/replace_replica'
+    },
+    DR_CONFIG_SWITCHOVER: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/switchover'
+    },
+    DR_CONFIG_FAILOVER: {
         requestType: ApiRequestType.POST,
         endpoint: '/dr_configs/$drUUID<[^/]+>/failover',
+    },
+    DR_CONFIG_RESTART: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/restart',
+    },
+    DR_CONFIG_SET_TABLES: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/set_tables',
+    },
+    DR_CONFIG_SYNC: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/sync',
     },
     DELETE_DR_CONFIG: {
         requestType: ApiRequestType.DELETE,
         endpoint: '/dr_configs/$drUUID<[^/]+>'
+    },
+    GET_DR_CONFIG_SAFETIME: {
+        requestType: ApiRequestType.GET,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/safetime'
     }
 } satisfies ApiPermissionMapType;

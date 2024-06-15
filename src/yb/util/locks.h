@@ -53,7 +53,7 @@ namespace yb {
 // expected by Boost.
 class CAPABILITY("mutex") simple_spinlock {
  public:
-  simple_spinlock() {}
+  constexpr simple_spinlock() {}
 
   void lock() ACQUIRE() {
     l_.Lock();

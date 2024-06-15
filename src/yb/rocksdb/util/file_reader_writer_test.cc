@@ -28,6 +28,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 
@@ -150,7 +151,9 @@ TEST_F(WritableFileWriterTest, AppendStatusReturn) {
   ASSERT_NOK(writer->Append(std::string(2 * kMb, 'b')));
 }
 
-TEST(FileReaderWriterTest, CheckFileTailForZeros) {
+class FileReaderWriterTest : public RocksDBTest {};
+
+TEST_F(FileReaderWriterTest, CheckFileTailForZeros) {
   constexpr auto kNonZeroPrefixSize = 123;
 
   Random r(301);
@@ -206,6 +209,54 @@ TEST(FileReaderWriterTest, CheckFileTailForZeros) {
       }
     }
   }
+}
+
+TEST_F(FileReaderWriterTest, TestReadAndValidateRetry) {
+  std::string tmp;
+  Random rnd(301);
+  const uint32_t kLength = 100;
+  Slice contents = RandomString(&rnd, kLength, &tmp);
+  test::StringSource* string_source =
+      new test::StringSource(contents, 0, false);
+  std::unique_ptr<RandomAccessFileReader> file_reader(
+      test::GetRandomAccessFileReader(string_source));
+
+  struct FakeValidator : public yb::ReadValidator {
+    FakeValidator() {}
+
+    Status Validate(const Slice& read_result) const override {
+      if (return_corruption) {
+        return STATUS_FORMAT(Corruption, "");
+      }
+      return Status::OK();
+    }
+    bool return_corruption = true;
+  } validator;
+
+  Slice result;
+  std::unique_ptr<char[]> scratch(new char[kLength]);
+
+  // Simulate the file is permanently corrupted.
+  int read_fail_num = 0;
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "RandomAccessFileReader::ReadAndValidate:0",
+      [&](void* arg) { read_fail_num++; });
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  auto status = file_reader->ReadAndValidate(0, kLength, &result, scratch.get(), validator);
+  ASSERT_TRUE(status.IsCorruption());
+  ASSERT_EQ(2, read_fail_num);
+
+  // Simulate the first read being corrupted and the second read succeeding
+  read_fail_num = 0;
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "RandomAccessFileReader::ReadAndValidate:0",
+      [&](void* arg) {
+        read_fail_num++;
+        validator.return_corruption = false;
+      });
+  ASSERT_OK(file_reader->ReadAndValidate(0, kLength, &result, scratch.get(), validator));
+  ASSERT_EQ(1, read_fail_num);
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
 }  // namespace rocksdb

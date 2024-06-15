@@ -59,8 +59,7 @@ void StmtCounters::WriteAsJson(
   jw->StartObject();
   jw->String("query_id");
   // Write only the 8 bytes of the query_id instead of 16.
-  jw->Int64(std::stoull(b2a_hex(query_id).substr(
-        0, std::min(16, static_cast<int>(query_id.size()))), 0, 16));
+  jw->Int64(ql::CQLMessage::QueryIdAsUint64(query_id));
 
   jw->String("query");
   jw->String(this->query);
@@ -84,8 +83,7 @@ void StmtCounters::WriteAsJson(
   // sample variance, as we have data for the whole population, so
   // Bessel's correction is not used, and we don't divide by
   // this->num_calls-1.
-  const double stddev_time = this->num_calls == 0 ? 0. :
-      sqrt(this->sum_var_time_in_msec / this->num_calls);
+  const double stddev_time = GetStdDevTime();
 
   jw->String("stddev_time");
   jw->Double(stddev_time);
@@ -98,6 +96,11 @@ void StmtCounters::ResetCounters() {
   this->min_time_in_msec = 0.;
   this->max_time_in_msec = 0.;
   this->sum_var_time_in_msec = 0.;
+}
+
+double StmtCounters::GetStdDevTime() const {
+  return this->num_calls == 0 ? 0. :
+      sqrt(this->sum_var_time_in_msec / this->num_calls);
 }
 
 }  // namespace cqlserver

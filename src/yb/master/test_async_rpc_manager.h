@@ -37,7 +37,7 @@ class TestAsyncRpcManager {
 
 
   Status SendMasterTestRetryRequest(
-    const consensus::RaftPeerPB& peer, const int32_t num_retries, StdStatusCallback callback);
+    consensus::RaftPeerPB&& peer, const int32_t num_retries, StdStatusCallback callback);
 
   Status SendTsTestRetryRequest(
       const PeerId& ts_id, int32_t num_retries, StdStatusCallback callback);

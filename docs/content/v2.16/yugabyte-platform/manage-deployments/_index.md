@@ -8,7 +8,7 @@ menu:
   v2.16_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: manage-deployments
-    weight: 644
+    weight: 640
 type: indexpage
 ---
 To see your deployed universes, navigate to **Dashboard** or **Universes**. To view a universe, select it in the list.
@@ -133,18 +133,6 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
       </div>
       <div class="body">
         Upgrade YugabyteDB software powering your universes.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migrate-to-helm3/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Migrate to Helm 3</div>
-      </div>
-      <div class="body">
-        Migrate your deployment from Helm 2 to Helm 3.
       </div>
     </a>
   </div>

@@ -7,6 +7,7 @@ description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
   - /preview/quick-start/create-local-cluster/
   - /preview/quick-start/install/
+  - /preview/quick-start/macos/
 layout: single
 type: docs
 rightNav:
@@ -60,13 +61,13 @@ The local cluster setup on a single host is intended for development and learnin
 
 ## Install YugabyteDB
 
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the packaged database](#download-yugabytedb).
+Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [downloading the packaged database](#download).
 
 ### Prerequisites
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you also need [Rosetta](https://support.apple.com/en-us/HT211861).
 
 - Python 3. To check the version, execute the following command:
 
@@ -228,6 +229,20 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 ### Choose your language
 
 {{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+
+## Migrate from PostgreSQL
+
+For PostgreSQL users seeking to transition to a modern, horizontally scalable database solution with built-in resilience, YugabyteDB offers a seamless lift-and-shift approach that ensures compatibility with PostgreSQL syntax and features while providing the scalability benefits of distributed SQL.
+
+YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
+
+[YugabyteDB Voyager](../yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Managed, Anywhere, and the core open-source database.
+
+You can [install](../yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
+
+In addition to [offline migration](../yugabyte-voyager/migrate/migrate-steps/), the latest release of YugabyteDB Voyager introduces [live, non-disruptive migration](../yugabyte-voyager/migrate/live-migrate/) from PostgreSQL, along with new live migration workflows featuring [fall-forward](../yugabyte-voyager/migrate/live-fall-forward/) and [fall-back](../yugabyte-voyager/migrate/live-fall-back/) capabilities.
+
+Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
 
 ## Next step
 

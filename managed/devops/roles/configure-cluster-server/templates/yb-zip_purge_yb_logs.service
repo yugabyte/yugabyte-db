@@ -1,0 +1,14 @@
+[Unit]
+Description=Yugabyte logs
+
+[Service]
+{% set use_system_level_systemd = use_system_level_systemd | default(false) %}
+{% if ((ansible_os_family == 'RedHat' and (ansible_distribution_major_version == '7' or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))) or use_system_level_systemd == 'True') %}User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
+Type=oneshot
+WorkingDirectory={{yb_home_dir}}/bin
+ExecStart=/bin/bash {{yb_home_dir}}/bin/zip_purge_yb_logs.sh
+
+[Install]
+WantedBy=multi-user.target

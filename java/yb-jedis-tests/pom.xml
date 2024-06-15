@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.74-SNAPSHOT</version>
+    <version>0.8.89-SNAPSHOT</version>
   </parent>
   <artifactId>yb-jedis-tests</artifactId>
   <name>YB Jedis Tests</name>
@@ -33,13 +33,13 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.74-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.74-SNAPSHOT</version>
+      <version>0.8.89-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>

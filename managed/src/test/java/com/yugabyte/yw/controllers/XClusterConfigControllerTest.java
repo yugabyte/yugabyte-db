@@ -8,12 +8,14 @@ import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.ModelFactory.testCustomer;
 import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -33,6 +35,7 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -41,6 +44,7 @@ import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -70,6 +74,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
@@ -184,6 +189,20 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     when(mockService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate))
         .thenReturn(mockClient);
 
+    mockTableSchemaResponse(CommonTypes.TableType.YQL_TABLE_TYPE);
+
+    apiEndpoint = "/api/customers/" + customer.getUuid() + "/xcluster_configs";
+
+    createFormData = new XClusterConfigCreateFormData();
+    createFormData.name = configName;
+    createFormData.sourceUniverseUUID = sourceUniverseUUID;
+    createFormData.targetUniverseUUID = targetUniverseUUID;
+    createFormData.tables = exampleTables;
+
+    setupMetricValues();
+  }
+
+  private void mockTableSchemaResponse(CommonTypes.TableType tableType) {
     GetTableSchemaResponse mockTableSchemaResponseTable1 =
         new GetTableSchemaResponse(
             0,
@@ -194,7 +213,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             exampleTableID1,
             null,
             true,
-            CommonTypes.TableType.YQL_TABLE_TYPE,
+            tableType,
             Collections.emptyList(),
             false);
     GetTableSchemaResponse mockTableSchemaResponseTable2 =
@@ -207,7 +226,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             exampleTableID2,
             null,
             true,
-            CommonTypes.TableType.YQL_TABLE_TYPE,
+            tableType,
             Collections.emptyList(),
             false);
     try {
@@ -219,16 +238,6 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
           .thenReturn(mockTableSchemaResponseTable2);
     } catch (Exception ignored) {
     }
-
-    apiEndpoint = "/api/customers/" + customer.getUuid() + "/xcluster_configs";
-
-    createFormData = new XClusterConfigCreateFormData();
-    createFormData.name = configName;
-    createFormData.sourceUniverseUUID = sourceUniverseUUID;
-    createFormData.targetUniverseUUID = targetUniverseUUID;
-    createFormData.tables = exampleTables;
-
-    setupMetricValues();
   }
 
   private void setupMockClusterConfigWithXCluster(XClusterConfig xClusterConfig) {
@@ -287,12 +296,16 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   public void initClientGetTablesList() {
+    initClientGetTablesList(CommonTypes.TableType.YQL_TABLE_TYPE);
+  }
+
+  public void initClientGetTablesList(CommonTypes.TableType tableType) {
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
     // Adding table 1.
     MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
         MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
-    table1TableInfoBuilder.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    table1TableInfoBuilder.setTableType(tableType);
     table1TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID1));
     table1TableInfoBuilder.setName(exampleTable1Name);
     table1TableInfoBuilder.setNamespace(
@@ -304,7 +317,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     // Adding table 2.
     MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table2TableInfoBuilder =
         MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
-    table2TableInfoBuilder.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
+    table2TableInfoBuilder.setTableType(tableType);
     table2TableInfoBuilder.setId(ByteString.copyFromUtf8(exampleTableID2));
     table2TableInfoBuilder.setName(exampleTable2Name);
     table2TableInfoBuilder.setNamespace(
@@ -715,6 +728,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                         tableConfig.setStreamId(exampleTablesAndStreamIDs.get(tableId))));
 
     setupMockMetricQueryHelperResponse();
+
+    Mockito.doNothing().when(mockXClusterSyncScheduler).syncXClusterConfig(any());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 
@@ -1293,5 +1308,73 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertResponseError("Cannot find universe " + invalidUUID, result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testCreateXClusterConfigWithBootstrapRequiredOnPartialTables() {
+
+    mockTableSchemaResponse(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+    initClientGetTablesList(CommonTypes.TableType.PGSQL_TABLE_TYPE);
+
+    createFormData.tables = ImmutableSet.of(exampleTableID1);
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    XClusterConfigCreateFormData.BootstrapParams params =
+        new XClusterConfigCreateFormData.BootstrapParams();
+    params.allowBootstrap = false;
+    params.tables = Collections.singleton(exampleTableID2);
+    params.backupRequestParams =
+        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+    params.backupRequestParams.storageConfigUUID =
+        ModelFactory.createS3StorageConfig(customer, "s3-config").getConfigUUID();
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.tables = ImmutableSet.of(exampleTableID1, exampleTableID2);
+    editFormData.bootstrapParams = params;
+
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(
+            0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignore) {
+    }
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    IllegalArgumentException exception =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", editAPIEndpoint, user.createAuthToken(), Json.toJson(editFormData)));
+    assertThat(
+        exception.getMessage(),
+        containsString("For YSQL tables, all the tables in a keyspace must be selected"));
+
+    params.allowBootstrap = true;
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT", editAPIEndpoint, user.createAuthToken(), Json.toJson(editFormData));
+    assertOk(result);
+
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertValue(resultJson, "taskUUID", taskUUID.toString());
+
+    CustomerTask customerTask =
+        CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
+    assertNotNull(customerTask);
+    assertThat(customerTask.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(
+        customerTask.getTargetUUID(),
+        allOf(notNullValue(), equalTo(xClusterConfig.getSourceUniverseUUID())));
+    assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
+    assertThat(
+        customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Edit)));
+    assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
+
+    assertAuditEntry(1, customer.getUuid());
+
+    xClusterConfig.delete();
   }
 }

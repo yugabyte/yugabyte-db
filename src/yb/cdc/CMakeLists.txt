@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX cdc)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 #########################################
 # cdc_service_proto
@@ -62,8 +61,7 @@ set(CDC_YRPC_LIBS
   yrpc
   yb_common_proto
   protobuf
-  master_proto
-  opid_proto)
+  master_proto)
 ADD_YB_LIBRARY(cdc_service_proto
   SRCS ${CDC_YRPC_SRCS} cdc_error.cc
   DEPS ${CDC_YRPC_LIBS}
@@ -88,9 +86,15 @@ ADD_YB_LIBRARY(xcluster_producer_proto
   DEPS ${XCLUSTER_PRODUCER_YRPC_LIBS}
   NONLINK_DEPS ${XCLUSTER_PRODUCER_YRPC_TGTS})
 
+set(CDC_UTIL_SRCS
+  cdc_util.cc
+  xcluster_types.cc
+  xcluster_util.cc
+)
+
 ADD_YB_LIBRARY(
     cdc_util
-    SRCS cdc_util.cc
+    SRCS ${CDC_UTIL_SRCS}
     DEPS yb_client ql_util)
 
 #########################################
@@ -106,7 +110,9 @@ set(CDC_SRCS
   xcluster_rpc.cc
   cdc_state_table.cc
   xrepl_stream_metadata.cc
-  xrepl_stream_stats.cc)
+  xrepl_stream_stats.cc
+  cdcsdk_virtual_wal.cc
+  cdcsdk_unique_record_id.cc)
 
 ADD_YB_LIBRARY(
     cdc

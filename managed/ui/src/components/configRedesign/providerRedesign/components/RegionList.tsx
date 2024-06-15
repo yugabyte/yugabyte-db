@@ -7,17 +7,26 @@
 import pluralize from 'pluralize';
 import clsx from 'clsx';
 
+import { isEmpty, split } from 'lodash';
 import { EmptyListPlaceholder } from '../EmptyListPlaceholder';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBButton } from '../../../common/forms/fields';
+import { YBPopover } from '../../../../redesign/components/YBPopover/YBPopover';
 import { CloudVendorRegionField } from '../forms/configureRegion/ConfigureRegionModal';
-import { ProviderCode, CloudVendorProviders } from '../constants';
+import { ProviderCode, CloudVendorProviders, ProviderOperation } from '../constants';
 import { K8sRegionField } from '../forms/configureRegion/ConfigureK8sRegionModal';
 import { ConfigureOnPremRegionFormValues } from '../forms/configureRegion/ConfigureOnPremRegionModal';
 import { RegionOperation } from '../forms/configureRegion/constants';
 import { getRegionToInUseAz } from '../utils';
 import { UniverseItem } from '../providerView/providerDetails/UniverseTable';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import ErrorIcon from '../../../../redesign/assets/error.svg';
 
+import { ValidationErrMsgDelimiter } from '../forms/utils';
 import { SupportedRegionField } from '../forms/configureRegion/types';
 
 import styles from './RegionList.module.scss';
@@ -26,13 +35,15 @@ interface RegionListCommmonProps {
   showAddRegionFormModal: () => void;
   showEditRegionFormModal: (regionOperation: RegionOperation) => void;
   showDeleteRegionModal: () => void;
-  disabled: boolean;
+  isDisabled: boolean;
+  providerOperation: ProviderOperation;
 
   providerUuid?: string;
   existingRegions?: string[];
   linkedUniverses?: UniverseItem[];
   isEditInUseProviderEnabled?: boolean;
   isError?: boolean;
+  errors?: any[];
 }
 interface CloudVendorRegionListProps extends RegionListCommmonProps {
   providerCode: typeof CloudVendorProviders[number];
@@ -53,16 +64,23 @@ interface OnPremRegionListProps extends RegionListCommmonProps {
 type RegionListProps = CloudVendorRegionListProps | K8sRegionListProps | OnPremRegionListProps;
 
 export const RegionList = (props: RegionListProps) => {
-  const { disabled, isError, regions, showAddRegionFormModal } = props;
+  const { isDisabled, isError, regions, showAddRegionFormModal, providerOperation } = props;
   const { formatZones, formatRegionActions } = contextualHelpers(props);
 
-  return regions.length === 0 && !disabled ? (
+  return regions.length === 0 && !isDisabled ? (
     <EmptyListPlaceholder
+      variant="secondary"
+      accessRequiredOn={
+        providerOperation === ProviderOperation.CREATE
+          ? ApiPermissionMap.CREATE_PROVIDER
+          : ApiPermissionMap.MODIFY_PROVIDER
+      }
       actionButtonText={`Add Region`}
       descriptionText="Add regions to deploy DB nodes"
       onActionButtonClick={showAddRegionFormModal}
       className={clsx(isError && styles.emptyListError)}
       dataTestIdPrefix="RegionEmptyList"
+      isDisabled={isDisabled}
     />
   ) : (
     <>
@@ -86,7 +104,7 @@ export const RegionList = (props: RegionListProps) => {
 
 const contextualHelpers = ({
   providerUuid,
-  disabled,
+  isDisabled,
   linkedUniverses = [],
   isEditInUseProviderEnabled = false,
   existingRegions,
@@ -94,7 +112,8 @@ const contextualHelpers = ({
   regions,
   setRegionSelection,
   showEditRegionFormModal,
-  showDeleteRegionModal
+  showDeleteRegionModal,
+  errors = []
 }: RegionListProps) => {
   const isProviderInUse = linkedUniverses.length > 0;
   const regionToInUseAz = providerUuid
@@ -122,40 +141,70 @@ const contextualHelpers = ({
       };
       const formatZones = (zones: typeof regions[number]['zones']) =>
         pluralize('zone', zones.length, true);
-      const formatRegionActions = (_: unknown, row: CloudVendorRegionField) => {
+      const formatRegionActions = (
+        _: unknown,
+        row: CloudVendorRegionField,
+        _extra: unknown,
+        index: number
+      ) => {
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse && !isEditInUseProviderEnabled ? (
+            {!isEmpty(errors[index]) ? (
+              <YBPopover
+                hoverMsg={
+                  <div>
+                    {' '}
+                    {split(errors[index]?.message, ValidationErrMsgDelimiter).map((msg) => (
+                      <div>{msg}</div>
+                    ))}
+                  </div>
+                }
+              >
+                <img src={ErrorIcon} />
+              </YBPopover>
+            ) : null}
+            {(isProviderInUse && !isEditInUseProviderEnabled) ||
+            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleViewRegion(row)}
+                onClick={(e: any) => {
+                  handleViewRegion(row);
+                  e.currentTarget.blur();
+                }}
                 data-testid="RegionList-ViewRegion"
               />
             ) : (
+              <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
+                <YBButton
+                  className={clsx(isDisabled && styles.disabledButton)}
+                  btnIcon="fa fa-pencil"
+                  btnText="Edit"
+                  btnClass="btn btn-default"
+                  btnType="button"
+                  onClick={(e: any) => {
+                    handleEditRegion(row);
+                    e.currentTarget.blur();
+                  }}
+                  disabled={isDisabled}
+                  data-testid="RegionList-EditRegion"
+                />
+              </RbacValidator>
+            )}
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
               <YBButton
-                className={clsx(disabled && styles.disabledButton)}
-                btnIcon="fa fa-pencil"
-                btnText="Edit"
+                className={clsx(isDisabled && styles.disabledButton)}
+                btnIcon="fa fa-trash"
+                btnText="Delete"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleEditRegion(row)}
-                disabled={disabled}
-                data-testid="RegionList-EditRegion"
+                onClick={() => handleDeleteRegion(row)}
+                disabled={isDisabled || isRegionInUse}
+                data-testid="RegionList-DeleteRegion"
               />
-            )}
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-trash"
-              btnText="Delete"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleDeleteRegion(row)}
-              disabled={disabled || isRegionInUse}
-              data-testid="RegionList-DeleteRegion"
-            />
+            </RbacValidator>
           </div>
         );
       };
@@ -185,40 +234,70 @@ const contextualHelpers = ({
       };
       const formatZones = (zones: typeof regions[number]['zones']) =>
         pluralize('zone', zones.length, true);
-      const formatRegionActions = (_: unknown, row: K8sRegionField) => {
+      const formatRegionActions = (
+        _: unknown,
+        row: K8sRegionField,
+        _extra: unknown,
+        index: number
+      ) => {
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse && !isEditInUseProviderEnabled ? (
+            {!isEmpty(errors[index]) ? (
+              <YBPopover
+                hoverMsg={
+                  <div>
+                    {' '}
+                    {split(errors[index]?.message, ValidationErrMsgDelimiter).map((msg) => (
+                      <div>{msg}</div>
+                    ))}
+                  </div>
+                }
+              >
+                <img src={ErrorIcon} />
+              </YBPopover>
+            ) : null}
+            {(isProviderInUse && !isEditInUseProviderEnabled) ||
+            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleViewRegion(row)}
+                onClick={(e: any) => {
+                  handleViewRegion(row);
+                  e.currentTarget.blur();
+                }}
                 data-testid="RegionList-ViewRegion"
               />
             ) : (
+              <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
+                <YBButton
+                  className={clsx(isDisabled && styles.disabledButton)}
+                  btnIcon="fa fa-pencil"
+                  btnText="Edit"
+                  btnClass="btn btn-default"
+                  btnType="button"
+                  onClick={(e: any) => {
+                    handleEditRegion(row);
+                    e.currentTarget.blur();
+                  }}
+                  disabled={isDisabled}
+                  data-testid="RegionList-EditRegion"
+                />
+              </RbacValidator>
+            )}
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
               <YBButton
-                className={clsx(disabled && styles.disabledButton)}
-                btnIcon="fa fa-pencil"
-                btnText="Edit"
+                className={clsx(isDisabled && styles.disabledButton)}
+                btnIcon="fa fa-trash"
+                btnText="Delete"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleEditRegion(row)}
-                disabled={disabled}
-                data-testid="RegionList-EditRegion"
+                onClick={() => handleDeleteRegion(row)}
+                disabled={isDisabled || isRegionInUse}
+                data-testid="RegionList-DeleteRegion"
               />
-            )}
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-trash"
-              btnText="Delete"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleDeleteRegion(row)}
-              disabled={disabled || isRegionInUse}
-              data-testid="RegionList-DeleteRegion"
-            />
+            </RbacValidator>
           </div>
         );
       };
@@ -252,36 +331,47 @@ const contextualHelpers = ({
         const isRegionInUse = !!regionToInUseAz.get(row.code);
         return (
           <div className={styles.buttonContainer}>
-            {isProviderInUse && !isEditInUseProviderEnabled ? (
+            {(isProviderInUse && !isEditInUseProviderEnabled) ||
+            !hasNecessaryPerm(ApiPermissionMap.MODIFY_PROVIDER) ? (
               <YBButton
                 btnText="View"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleViewRegion(row)}
+                onClick={(e: any) => {
+                  handleViewRegion(row);
+                  e.currentTarget.blur();
+                }}
                 data-testid="RegionList-ViewRegion"
               />
             ) : (
+              <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
+                <YBButton
+                  className={clsx(isDisabled && styles.disabledButton)}
+                  btnIcon="fa fa-pencil"
+                  btnText="Edit"
+                  btnClass="btn btn-default"
+                  btnType="button"
+                  onClick={(e: any) => {
+                    handleEditRegion(row);
+                    e.currentTarget.blur();
+                  }}
+                  disabled={isDisabled}
+                  data-testid="RegionList-EditRegion"
+                />
+              </RbacValidator>
+            )}
+            <RbacValidator accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER} isControl>
               <YBButton
-                className={clsx(disabled && styles.disabledButton)}
-                btnIcon="fa fa-pencil"
-                btnText="Edit"
+                className={clsx(isDisabled && styles.disabledButton)}
+                btnIcon="fa fa-trash"
+                btnText="Delete"
                 btnClass="btn btn-default"
                 btnType="button"
-                onClick={() => handleEditRegion(row)}
-                disabled={disabled}
-                data-testid="RegionList-EditRegion"
+                onClick={() => handleDeleteRegion(row)}
+                disabled={isDisabled || isRegionInUse}
+                data-testid="RegionList-DeleteRegion"
               />
-            )}
-            <YBButton
-              className={clsx(disabled && styles.disabledButton)}
-              btnIcon="fa fa-trash"
-              btnText="Delete"
-              btnClass="btn btn-default"
-              btnType="button"
-              onClick={() => handleDeleteRegion(row)}
-              disabled={disabled || isRegionInUse}
-              data-testid="RegionList-DeleteRegion"
-            />
+            </RbacValidator>
           </div>
         );
       };

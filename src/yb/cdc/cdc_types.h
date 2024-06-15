@@ -16,7 +16,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -28,15 +28,20 @@
 
 namespace yb {
 
+namespace master {
+
+class PgAttributePB;
+
+}  // namespace master
+
 // Object types used to manage eXternal REPLication (XREPL) of data from a YugabyteDB.
 // xCluster replicates data to another YugabyteDB, and CDC replicates the data to external
 // databases or files.
 
 namespace cdc {
+
 static const char* const kIdType = "id_type";
 static const char* const kTableId = "TABLEID";
-
-YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
 typedef std::unordered_map<SchemaVersion, SchemaVersion> XClusterSchemaVersionMap;
 typedef std::unordered_map<uint32_t, XClusterSchemaVersionMap> ColocatedSchemaVersionMap;
@@ -49,5 +54,20 @@ constexpr uint32_t kInvalidSchemaVersion = std::numeric_limits<uint32_t>::max();
 
 YB_STRONGLY_TYPED_BOOL(StreamModeTransactional);
 YB_DEFINE_ENUM(RefreshStreamMapOption, (kNone)(kAlways)(kIfInitiatedState));
+
+using EnumOidLabelMap = std::unordered_map<uint32_t, std::string>;
+using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
+
+using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
+using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
+
+static const char* const kRecordType = "record_type";
+static const char* const kRecordFormat = "record_format";
+static const char* const kSourceType = "source_type";
+static const char* const kCheckpointType = "checkpoint_type";
+static const char* const kStreamState = "state";
+static const char* const kNamespaceId = "NAMESPACEID";
+// NOTE: Do not add new options here. Create them as explicit PB fields.
+
 }  // namespace cdc
 }  // namespace yb

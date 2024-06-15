@@ -67,6 +67,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Mock RuntimeConfigFactory mockruntimeConfigFactory;
   @Mock Config mockConfigUniverseScope;
   @Mock RuntimeConfGetter mockConfGetter;
+  @Mock ReleasesUtils mockReleasesUtils;
 
   private Provider testProvider;
   private Customer testCustomer;
@@ -311,8 +312,10 @@ public class TableManagerTest extends FakeDBApplication {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getId());
     ReleaseManager.ReleaseMetadata metadata = new ReleaseManager.ReleaseMetadata();
+    ReleaseContainer release =
+        new ReleaseContainer(metadata, mockCloudUtilFactory, mockAppConfig, mockReleasesUtils);
     metadata.filePath = "/yb/release.tar.gz";
-    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
+    when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(release);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.pgBasedBackup)))
         .thenReturn(false);

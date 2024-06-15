@@ -41,6 +41,8 @@
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/fs/fs.pb.h"
 
 #include "yb/gutil/map-util.h"
@@ -116,7 +118,6 @@ const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
 
-YB_STRONGLY_TYPED_UUID_IMPL(UniverseUuid);
 namespace {
 
 const char kRaftGroupMetadataDirName[] = "tablet-meta";
@@ -127,7 +128,6 @@ const char kConsensusMetadataDirName[] = "consensus-meta";
 const char kLogsDirName[] = "logs";
 const char kTmpInfix[] = ".tmp";
 const char kCheckFileTemplate[] = "check.XXXXXX";
-const char kSecureCertsDirName[] = "certs";
 const char kPrefixMetricId[] = "drive:";
 
 std::string DataDir(const std::string& root, const std::string& server_type) {
@@ -339,7 +339,18 @@ Status FsManager::SetUniverseUuidOnTserverInstanceMetadata(
     const UniverseUuid& universe_uuid) {
   std::lock_guard lock(metadata_mutex_);
   SCHECK_NOTNULL(metadata_);
+  LOG(INFO) << "Setting the universe_uuid to " << universe_uuid;
   metadata_->mutable_tserver_instance_metadata()->set_universe_uuid(universe_uuid.ToString());
+  auto instance_metadata_path = VERIFY_RESULT(GetExistingInstanceMetadataPath());
+  return pb_util::WritePBContainerToPath(
+      env_, instance_metadata_path, *metadata_.get(), pb_util::OVERWRITE, pb_util::SYNC);
+}
+
+Status FsManager::ClearUniverseUuidOnTserverInstanceMetadata() {
+  std::lock_guard lock(metadata_mutex_);
+  SCHECK_NOTNULL(metadata_);
+  LOG(INFO) << "Clearing the universe_uuid from Instance Metadata";
+  metadata_->mutable_tserver_instance_metadata()->clear_universe_uuid();
   auto instance_metadata_path = VERIFY_RESULT(GetExistingInstanceMetadataPath());
   return pb_util::WritePBContainerToPath(
       env_, instance_metadata_path, *metadata_.get(), pb_util::OVERWRITE, pb_util::SYNC);
@@ -790,23 +801,27 @@ bool IsValidTabletId(const std::string& fname) {
 
 Result<std::vector<std::string>> FsManager::ListTabletIds() {
   std::lock_guard lock(data_mutex_);
-  std::vector<std::string> tablet_ids;
+  std::unordered_set<std::string> tablet_ids;
   for (const auto& dir : GetRaftGroupMetadataDirs()) {
-    vector<string> children;
-    RETURN_NOT_OK_PREPEND(ListDir(dir, &children),
-                          Substitute("Couldn't list tablets in metadata directory $0", dir));
+    std::vector<std::string> children = VERIFY_RESULT_PREPEND(ListDir(dir),
+        Substitute("Couldn't list tablets in metadata directory $0", dir));
 
-    for (const string& child : children) {
+    for (const auto& child : children) {
       if (!IsValidTabletId(child)) {
         continue;
       }
       auto tablet_dirname = DirName(dir);
       LOG(INFO) << "Found tablet " << child << " metadata at " << tablet_dirname;
+      auto [_, inserted] = tablet_ids.emplace(child);
+      if (!inserted) {
+        return STATUS_FORMAT(IllegalState,
+            "Found two tablet metadata folders $0 and $1 with the same tablet_id $2. Remove the "
+            "duplicate one to avoid the error.", tablet_dirname, tablet_id_to_path_[child], child);
+      }
       tablet_id_to_path_.emplace(child, tablet_dirname);
-      tablet_ids.push_back(child);
     }
   }
-  return tablet_ids;
+  return std::vector<std::string>(tablet_ids.begin(), tablet_ids.end());
 }
 
 Result<std::string> FsManager::GetExistingInstanceMetadataPath() const {
@@ -832,10 +847,6 @@ std::string FsManager::GetFsLockFilePath(const string& root) const {
 std::string FsManager::GetDefaultRootDir() const {
   DCHECK(initted_);
   return GetServerTypeDataPath(canonicalized_default_fs_root_, server_type_);
-}
-
-std::string FsManager::GetCertsDir(const std::string& root_dir) {
-  return JoinPathSegments(root_dir, kSecureCertsDirName);
 }
 
 std::vector<std::string> FsManager::GetConsensusMetadataDirs() const {

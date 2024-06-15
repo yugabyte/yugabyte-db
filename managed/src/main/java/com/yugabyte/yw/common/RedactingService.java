@@ -34,13 +34,19 @@ public class RedactingService {
           .addAll(SECRET_PATHS_FOR_APIS)
           .add("$..password")
           .add("$..confirmPassword")
+          .add("$..newPassword")
+          .add("$..currentPassword")
           .add("$..['config.AWS_ACCESS_KEY_ID']")
           .add("$..['config.AWS_SECRET_ACCESS_KEY']")
+          // Datadog API key
+          .add("$..config.apiKey")
           // GCP private key
           .add("$..['config.config_file_contents.private_key_id']")
           .add("$..['config.config_file_contents.private_key']")
           .add("$..config.private_key_id")
           .add("$..config.private_key")
+          .add("$..credentials.private_key_id")
+          .add("$..credentials.private_key")
           .add("$..GCP_CONFIG.private_key_id")
           .add("$..GCP_CONFIG.private_key")
           .add("$..gceApplicationCredentialsPath")
@@ -83,6 +89,9 @@ public class RedactingService {
           // Custom hooks
           .add("$..hook.hookText")
           .add("$..hook.runtimeArgs")
+          // LDAP - DB Universe Sync
+          .add("$..dbuserPassword")
+          .add("$..ldapBindPassword")
           .build();
 
   // List of json paths to any secret fields we want to redact.
@@ -116,7 +125,7 @@ public class RedactingService {
 
   public static String redactString(String input) {
     String length = ((Integer) input.length()).toString();
-    String regex = "(.)" + "{" + length + "}";
+    String regex = "(.){" + length + "}";
     String output = input.replaceAll(regex, SECRET_REPLACEMENT);
     return output;
   }

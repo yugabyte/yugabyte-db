@@ -33,6 +33,7 @@
 #pragma once
 
 #include "yb/gutil/macros.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
 #include "yb/util/thread_restrictions.h"
@@ -74,7 +75,7 @@ class Barrier {
     if (--count_ == 0) {
       count_ = wait_count_;
       ++cycle_count_;
-      cond_.Broadcast();
+      YB_PROFILE(cond_.Broadcast());
       return;
     }
 

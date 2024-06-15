@@ -67,7 +67,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.Setter;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.slf4j.Logger;
@@ -142,6 +142,7 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private long frequency;
 
+  @ApiModelProperty(value = "Request body for the task", accessMode = READ_ONLY)
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;

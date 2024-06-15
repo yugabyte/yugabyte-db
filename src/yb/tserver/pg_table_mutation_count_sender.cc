@@ -15,10 +15,13 @@
 
 #include <chrono>
 
+#include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
+
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
@@ -61,7 +64,7 @@ Status TableMutationCountSender::Stop() {
   {
     std::lock_guard lock(mutex_);
     stopped_ = true;
-    cond_.notify_one();
+    YB_PROFILE(cond_.notify_one());
   }
 
   decltype(thread_) thread;
@@ -79,9 +82,7 @@ Status TableMutationCountSender::DoSendMutationCounts() {
   }
 
   if (!client_) {
-    auto client = std::make_unique<client::PgAutoAnalyzeServiceClient>();
-    RETURN_NOT_OK(client->Init(&server_));
-    client_.swap(client);
+    client_ = std::make_unique<client::PgAutoAnalyzeServiceClient>(*server_.client_future().get());
   }
 
   stateful_service::IncreaseMutationCountersRequestPB req;

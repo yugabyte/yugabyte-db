@@ -1,93 +1,50 @@
 ---
-title: Configure YugabyteDB Anywhere
-headerTitle: Configure YugabyteDB Anywhere
-linkTitle: Configure
-description: Configure YugabyteDB Anywhere.
-image: /images/section_icons/deploy/manual-deployment.png
+title: Create provider configurations
+headerTitle: Create provider configurations
+linkTitle: Create providers
+description: Create provider configurations for deploying YugabyteDB universes.
+image: fa-thin fa-folder-gear
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
-    weight: 610
+    weight: 620
+aliases:
+  - /preview/yugabyte-platform/overview/configure/
+  - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 type: indexpage
 ---
 
-After YugabytDB Anywhere (YBA) has been installed, the next step is to create provider configurations. A provider configuration comprises all the parameters needed to deploy a YugabyteDB universe on the corresponding provider. This includes cloud credentials, regions and zones, networking details, and more.
+After installing YugabyteDB Anywhere (YBA), the next step is to create provider configurations.
 
-When deploying a universe, YBA uses the provider configuration settings to create and provision the nodes that will make up the universe.
+A provider configuration describes your cloud environment (such as its security group, regions and availability zones, NTP server, SSH credentials for connecting to VMs for provisioning, the Linux disk image to be used for configuring the nodes, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
-<div class="row">
+Before you can deploy universes using YBA, you must create a provider configuration.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure/aws/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Overview</div>
-      </div>
-      <div class="body">
-        Configuration process at a glance.
-      </div>
-    </a>
-  </div>
+| To deploy YugbayteDB universes to | Create provider |
+| :--- | :--- |
+| Private cloud<br>Bare metal, racks<br>Cloud provider (limited SSH permissions) | [On-premises](on-premises/) |
+| Cloud provider (full SSH permissions) | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) |
+| Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzu/)<br>[OpenShift](openshift/) |
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="supported-os-and-arch/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Node prerequisites</div>
-      </div>
-      <div class="body">
-        Operating systems and architectures supported by YBA for deploying YugabyteDB universes.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-admin-user/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/admin.png" aria-hidden="true" />
-        <div class="title">Create admin user</div>
-      </div>
-      <div class="body">
-        Admin user account registration and setup.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="On-premises"
+    body="Create provider configurations for on-premises deployments."
+    href="on-premises/"
+    icon="fa-thin fa-building">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="set-up-cloud-provider/aws/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Configure cloud providers</div>
-      </div>
-      <div class="body">
-        Create AWS, GCP, Azure, Kubernetes, OpenShift, Tanzu, and On-premises providers.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Cloud"
+    body="Create provider configurations for AWS, Azure, and GCP."
+    href="aws/"
+    icon="fa-thin fa-cloud">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="backup-target/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Configure backup targets</div>
-      </div>
-      <div class="body">
-        Targets for scheduled backups of YugbyteDB universe data.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Kubernetes"
+    body="Create provider configurations for Kubernetes, including VMWare Tanzu and OpenShift."
+    href="kubernetes/"
+    icon="fa-thin fa-dharmachakra">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="set-up-alerts-health-check/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Configure alerts</div>
-      </div>
-      <div class="body">
-        Health check and alerts for issues that may affect deployment.
-      </div>
-    </a>
-  </div>
-
-</div>
+{{</index/block>}}

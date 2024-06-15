@@ -4,6 +4,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -18,14 +19,11 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.SupportBundleStatus;
-import io.yugabyte.operator.v1alpha1.SupportBundleStatus.Status;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.Date;
 import java.util.EnumSet;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +43,7 @@ public class SupportBundleReconciler
   private final TaskExecutor taskExecutor;
 
   private final SupportBundleUtil supportBundleUtil;
+  private final OperatorUtils operatorUtils;
 
   public SupportBundleReconciler(
       SharedIndexInformer<io.yugabyte.operator.v1alpha1.SupportBundle> informer,
@@ -56,7 +55,8 @@ public class SupportBundleReconciler
       String namespace,
       Commissioner commissioner,
       TaskExecutor taskExecutor,
-      SupportBundleUtil sbu) {
+      SupportBundleUtil sbu,
+      OperatorUtils operatorUtils) {
     this.resourceClient = resourceClient;
     this.informer = informer;
     this.lister = new Lister<>(informer.getIndexer());
@@ -64,6 +64,7 @@ public class SupportBundleReconciler
     this.commissioner = commissioner;
     this.taskExecutor = taskExecutor;
     this.supportBundleUtil = sbu;
+    this.operatorUtils = operatorUtils;
   }
 
   @Override
@@ -74,6 +75,17 @@ public class SupportBundleReconciler
 
   @Override
   public void onAdd(io.yugabyte.operator.v1alpha1.SupportBundle bundle) {
+    try {
+      onAddInternal(bundle);
+    } catch (Exception e) {
+      log.error("Failed to add support bundle", e);
+      UUID uuid = new UUID(0, 0);
+      markStatus(bundle, SupportBundleStatus.Status.FAILED, uuid);
+      return;
+    }
+  }
+
+  public void onAddInternal(io.yugabyte.operator.v1alpha1.SupportBundle bundle) {
     if (bundle.getStatus() != null && bundle.getStatus().getResourceUUID() != null) {
       // TODO: If we hit this path due to a YBA restart, the bundle won't have its final status
       // update. We need a better way of plugging in the 'status update' function into the tasks.
@@ -82,9 +94,13 @@ public class SupportBundleReconciler
     }
 
     log.trace("getting customer to create the support bundle");
-    List<Customer> custList = Customer.getAll();
-    Customer customer = custList.get(0);
-
+    Customer customer;
+    try {
+      customer = operatorUtils.getOperatorCustomer();
+    } catch (Exception e) {
+      log.error("failed to get customer", e);
+      return;
+    }
     // Format start and end dates.
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
     SupportBundleFormData bundleData = new SupportBundleFormData();
@@ -104,22 +120,33 @@ public class SupportBundleReconciler
       throw new RuntimeException("failed to parse dates", e);
     }
 
-    bundleData.components =
-        bundle.getSpec().getComponents().stream()
-            .map(comp -> ComponentType.valueOf(comp.getValue()))
-            .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
+    if (bundle.getSpec().getComponents() == null || bundle.getSpec().getComponents().size() == 0) {
+      bundleData.components = EnumSet.allOf(ComponentType.class);
+    } else {
+      bundleData.components =
+          bundle.getSpec().getComponents().stream()
+              .map(comp -> ComponentType.valueOf(comp.getValue()))
+              .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
+    }
 
     // Get the Universe
-    Optional<Universe> opUniverse =
-        Universe.maybeGetUniverseByName(customer.getId(), bundle.getSpec().getUniverseName());
-    if (!opUniverse.isPresent()) {
-      throw new RuntimeException(
-          "no universe found with name " + bundle.getSpec().getUniverseName());
+    Universe universe = null;
+    try {
+      universe =
+          operatorUtils.getUniverseFromNameAndNamespace(
+              customer.getId(),
+              bundle.getSpec().getUniverseName(),
+              bundle.getMetadata().getNamespace());
+      if (universe == null) {
+        log.error("No universe found with name " + bundle.getSpec().getUniverseName());
+        return;
+      }
+    } catch (Exception e) {
+      log.error("Error fetching universe with name " + bundle.getSpec().getUniverseName());
+      return;
     }
-    Universe universe = opUniverse.get();
-
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
-    markStatusGenerating(bundle, supportBundle.getBundleUUID());
+    markStatus(bundle, SupportBundleStatus.Status.GENERATING, supportBundle.getBundleUUID());
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);
     taskParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(bundle));
@@ -132,8 +159,6 @@ public class SupportBundleReconciler
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreateSupportBundle,
         universe.getName());
-
-    taskExecutor.waitForTask(taskUUID);
   }
 
   @Override
@@ -145,6 +170,16 @@ public class SupportBundleReconciler
 
   @Override
   public void onDelete(
+      io.yugabyte.operator.v1alpha1.SupportBundle bundle, boolean deletedFinalStateUnknown) {
+    try {
+      onDeleteInternal(bundle, deletedFinalStateUnknown);
+    } catch (Exception e) {
+      log.error("Failed to delete support bundle", e);
+      return;
+    }
+  }
+
+  public void onDeleteInternal(
       io.yugabyte.operator.v1alpha1.SupportBundle bundle, boolean deletedFinalStateUnknown) {
     UUID bundleUUID = UUID.fromString(bundle.getStatus().getResourceUUID());
     SupportBundle supportBundle = SupportBundle.get(bundleUUID);
@@ -159,12 +194,15 @@ public class SupportBundleReconciler
     supportBundleUtil.deleteFile(supportBundle.getPathObject());
   }
 
-  private void markStatusGenerating(io.yugabyte.operator.v1alpha1.SupportBundle bundle, UUID uuid) {
+  private void markStatus(
+      io.yugabyte.operator.v1alpha1.SupportBundle bundle,
+      SupportBundleStatus.Status statusEnum,
+      UUID uuid) {
     SupportBundleStatus bundleStatus = bundle.getStatus();
     if (bundleStatus == null) {
       bundleStatus = new SupportBundleStatus();
     }
-    bundleStatus.setStatus(Status.GENERATING);
+    bundleStatus.setStatus(statusEnum);
     bundleStatus.setResourceUUID(uuid.toString());
     bundle.setStatus(bundleStatus);
     resourceClient.inNamespace(namespace).resource(bundle).replaceStatus();

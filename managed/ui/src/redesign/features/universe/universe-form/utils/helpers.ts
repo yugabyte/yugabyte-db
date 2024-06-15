@@ -62,20 +62,32 @@ export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
 
 //create error msg from reponse payload
 export const createErrorMessage = (payload: any) => {
-  const structuredError = payload?.response?.data?.error;
-  if (structuredError) {
-    if (typeof structuredError == 'string') {
-      return structuredError;
+  try {
+
+
+    const structuredError = payload?.response?.data?.error;
+    if (structuredError) {
+      if (typeof structuredError === 'string') {
+        return structuredError;
+      }
+      if (_.has(structuredError, 'message')) {
+        return _.get(structuredError, 'message');
+      }
+
+      const message = (Object.keys(structuredError)
+        ?.map((fieldName) => {
+          const messages = structuredError[fieldName];
+          return fieldName + ': ' + (messages?.join(', ') ?? '');
+        })
+        ?.join('\n')) ?? 'Something went wrong. Please try again';
+      return message;
     }
-    const message = (Object.keys(structuredError)
-      ?.map((fieldName) => {
-        const messages = structuredError[fieldName];
-        return fieldName + ': ' + (messages?.join(', ') ?? '');
-      })
-      ?.join('\n')) ?? 'Something went wrong. Please try again';
-    return message;
+    return payload.message;
   }
-  return payload.message;
+  catch (e) {
+    console.error(e);
+    return 'Something went wrong. Please try again';
+  }
 };
 
 //Filter form data by cluster type
@@ -154,7 +166,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
 
   const { userIntent } = cluster;
 
-  let data: UniverseFormData = {
+  const data: UniverseFormData = {
     cloudConfig: {
       universeName: userIntent.universeName,
       provider: {
@@ -188,6 +200,8 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       enableEncryptionAtRest: !!encryptionAtRestConfig.encryptionAtRestEnabled,
       kmsConfig: encryptionAtRestConfig?.kmsConfigUUID ?? null,
       tserverK8SNodeResourceSpec: userIntent.tserverK8SNodeResourceSpec,
+      arch: universeData.arch,
+      imageBundleUUID: userIntent.imageBundleUUID,
       rootCA
     },
     advancedConfig: {
@@ -205,7 +219,9 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
     gFlags: userIntent?.specificGFlags
       ? transformSpecificGFlagToFlagsArray(userIntent?.specificGFlags)
       : transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
-    azOverrides: userIntent.azOverrides,
+    azOverrides: userIntent.userIntentOverrides?.azOverrides,
+    proxyConfig: userIntent.proxyConfig,
+    specificGFlagsAzOverrides: userIntent.specificGFlags?.perAZ ?? {},
     universeOverrides: userIntent.universeOverrides,
     inheritFlagsFromPrimary: userIntent?.specificGFlags?.inheritFromPrimary
   };
@@ -240,12 +256,14 @@ export const getUserIntent = (
     instanceTags,
     gFlags,
     azOverrides,
+    proxyConfig,
     universeOverrides,
-    inheritFlagsFromPrimary
+    inheritFlagsFromPrimary,
+    specificGFlagsAzOverrides
   } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
 
-  let intent: UserIntent = {
+  const intent: UserIntent = {
     universeName: cloudConfig.universeName,
     provider: cloudConfig.provider?.uuid as string,
     providerType: cloudConfig.provider?.code as CloudType,
@@ -270,7 +288,8 @@ export const getUserIntent = (
     ybSoftwareVersion: advancedConfig.ybSoftwareVersion,
     enableIPV6: advancedConfig.enableIPV6,
     enableExposingService: advancedConfig.enableExposingService,
-    useSystemd: advancedConfig.useSystemd
+    useSystemd: advancedConfig.useSystemd,
+    imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 
   if (enableRRGflags) {
@@ -289,7 +308,7 @@ export const getUserIntent = (
             TSERVER: tserverGFlags
           }
         },
-        perAZ: {}
+        perAZ: specificGFlagsAzOverrides ?? {}
       };
     }
   } else {
@@ -299,7 +318,8 @@ export const getUserIntent = (
 
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
-  if (!_.isEmpty(azOverrides)) intent.azOverrides = azOverrides;
+  if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
+  if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 
   if (
@@ -363,7 +383,7 @@ export const createUniverse = async ({
     //patch - end
 
     // now everything is ready to create universe
-    let response = await api.createUniverse(finalPayload);
+    const response = await api.createUniverse(finalPayload);
 
     //redirect to task page
     response?.universeUUID && transitToUniverse(response.universeUUID);
@@ -376,11 +396,11 @@ export const createUniverse = async ({
 };
 
 export const createReadReplica = async (configurePayload: UniverseConfigure) => {
-  let universeUUID = configurePayload.universeUUID;
+  const universeUUID = configurePayload.universeUUID;
   if (!universeUUID) return false;
   try {
     // now everything is ready to create async cluster
-    let response = await api.createCluster(configurePayload, universeUUID);
+    const response = await api.createCluster(configurePayload, universeUUID);
     response && transitToUniverse(universeUUID);
     return response;
   } catch (error) {
@@ -391,11 +411,11 @@ export const createReadReplica = async (configurePayload: UniverseConfigure) => 
 };
 
 export const editReadReplica = async (configurePayload: UniverseConfigure) => {
-  let universeUUID = configurePayload.universeUUID;
+  const universeUUID = configurePayload.universeUUID;
   if (!universeUUID) return false;
   try {
     // now everything is ready to edit universe
-    let response = await api.editUniverse(configurePayload, universeUUID);
+    const response = await api.editUniverse(configurePayload, universeUUID);
     response && transitToUniverse(universeUUID);
     return response;
   } catch (error) {
@@ -410,15 +430,59 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
     return {
       masterPlacementChanged: false,
       numNodesChanged: false,
-      currentNodeCount: false,
-      newNodeCount: false
-    }
+      currentNodeCount: 0,
+      newNodeCount: 0,
+      oldNumReadReplicas: 0,
+      newNumReadReplicas: 0
+    };
   }
 
   return {
     masterPlacementChanged: currentClusterConfig?.userIntent?.dedicatedNodes !== newClusterConfig?.userIntent?.dedicatedNodes,
     numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
-    newNodeCount: newClusterConfig?.userIntent?.numNodes
+    newNodeCount: newClusterConfig?.userIntent?.numNodes,
+    oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
+    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+  };
+};
+
+export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, newClusterConfig?: Cluster) => {
+  if (!currentClusterConfig || !newClusterConfig) {
+    return {
+      numNodesChanged: false,
+      currentTServerNodeCount: 0,
+      newTServerNodeCount: 0,
+      oldNumReadReplicas: 0,
+      newNumReadReplicas: 0,
+      oldTServerNumCores: 0,
+      newTServerNumCores: 0,
+      oldTServerMemory: 0,
+      newTServerMemory: 0,
+      oldTServerVolumeSize: 0,
+      newTServerVolumeSize: 0,
+      oldMasterNumCores: 0,
+      newMasterNumCores: 0,
+      oldMasterMemory: 0,
+      newMasterMemory: 0
+    };
   }
-}
+
+  return {
+    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
+    newNodeCount: newClusterConfig?.userIntent?.numNodes,
+    oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
+    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+    oldTServerNumCores: currentClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.cpuCoreCount,
+    newTServerNumCores: newClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.cpuCoreCount,
+    oldTServerMemory: currentClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.memoryGib,
+    newTServerMemory: newClusterConfig?.userIntent?.tserverK8SNodeResourceSpec?.memoryGib,
+    oldTServerVolumeSize: currentClusterConfig?.userIntent?.deviceInfo?.volumeSize,
+    newTServerVolumeSize: newClusterConfig?.userIntent?.deviceInfo?.volumeSize,
+    oldMasterNumCores: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
+    newMasterNumCores: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.cpuCoreCount,
+    oldMasterMemory: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
+    newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib
+  };
+};

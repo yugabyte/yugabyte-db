@@ -64,6 +64,7 @@
 #include "utils/snapmgr.h"
 
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 /* Our shared memory area */
 typedef struct ProcArrayStruct
@@ -4130,6 +4131,50 @@ KnownAssignedXidsReset(void)
 	pArray->numKnownAssignedXids = 0;
 	pArray->tailKnownAssignedXids = 0;
 	pArray->headKnownAssignedXids = 0;
+
+	LWLockRelease(ProcArrayLock);
+}
+
+void
+YbStorePgAshSamples(TimestampTz sample_time)
+{
+	int			i;
+	int			samples_stored = 0;
+
+	ProcArrayStruct *arrayP = procArray;
+
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	/*
+	 * TODO: Add sampling logic to take random samples instead of
+	 * the first 'N'.
+	 */
+	for (i = 0; i < arrayP->numProcs; ++i)
+	{
+		int			pgprocno = arrayP->pgprocnos[i];
+		PGPROC 	   *proc = &allProcs[pgprocno];
+
+		/*
+		 * Don't sample prepared transactions, background workers,
+		 * if the address family has not been set yet, or if the wait
+		 * event is something that should ignored.
+		 * We don't need to take lock for reading addr_family because
+		 * we might only miss a few samples. With the default sampling
+		 * interval of 1000ms, missed samples should be at most one per
+		 * session. For large number of samples, this shouldn't matter much.
+		 * We might also have some samples, where the root_request_id and
+		 * query_id has not been set yet, but the number of such samples
+		 * should be pretty low.
+		 */
+		if (proc->pid == 0 || proc->isBackgroundWorker ||
+			proc->yb_ash_metadata.addr_family == AF_UNSPEC ||
+			YbAshShouldIgnoreWaitEvent(proc->wait_event_info))
+			continue;
+
+		if (YbAshStoreSample(proc, arrayP->numProcs, sample_time,
+							 &samples_stored) == 0)
+			break;
+	}
 
 	LWLockRelease(ProcArrayLock);
 }

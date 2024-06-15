@@ -34,6 +34,7 @@
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -41,7 +42,6 @@
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "mb/pg_wchar.h"
-#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
@@ -71,6 +71,7 @@
 #include "catalog/pg_database.h"
 #include "commands/progress.h"
 #include "commands/tablegroup.h"
+#include "miscadmin.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "utils/yb_inheritscache.h"
@@ -504,7 +505,7 @@ DefineIndex(Oid relationId,
 	 *   CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
 	 *   is safe to be disabled.
 	 */
-	if (IsCatalogRelation(rel))
+	if (YbIsSysCatalogTabletRelation(rel))
 	{
 		if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
 			ereport(ERROR,
@@ -748,6 +749,65 @@ DefineIndex(Oid relationId,
 		YbGetTableProperties(rel)->tablegroup_oid :
 		InvalidOid;
 
+	bool is_colocated_via_database = is_colocated && MyDatabaseColocated;
+	bool is_colocated_tables_with_tablespace_enabled =
+		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+
+	/*
+	 * For colocated index tables in a colocation database, the implicit
+	 * tablegroup of the index depends on tablespace specified. If no tablespace
+	 * is specified we use the default implicit tablegroup.
+	 */
+	if (is_colocated_tables_with_tablespace_enabled &&
+		is_colocated_via_database && !MyColocatedDatabaseLegacy)
+	{
+		char *tablegroup_name = NULL;
+	
+		if (OidIsValid(tablespaceId)) 
+    {
+			/*
+			 * We look in pg_shdepend rather than directly use the derived name,
+			 * as later we might need to associate an existing implicit tablegroup to a tablespace
+			 */
+			shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+
+			/*
+			 * If we do not find a tablegroup corresponding to the given tablespace, we 
+			 * would have to create one. We derive the name from tablespace OID.
+			 */
+			tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) : 
+				get_implicit_tablegroup_name(tablespaceId);
+
+		} 
+    else 
+    {
+			tablegroup_name = DEFAULT_TABLEGROUP_NAME;
+			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+		}
+
+		char *tablespace_name = OidIsValid(tablespaceId) ? get_tablespace_name(tablespaceId) :
+			NULL;
+
+		/* Tablegroup doesn't exist, so create it. */
+		if (!OidIsValid(tablegroupId))
+		{
+			/*
+			 * Regardless of the current user, let postgres be the owner of the
+			 * implicit tablegroup in a colocated database.
+			 */
+			RoleSpec *spec = makeNode(RoleSpec);
+			spec->roletype = ROLESPEC_CSTRING;
+			spec->rolename = pstrdup("postgres");
+			
+			CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
+			tablegroup_stmt->tablegroupname = tablegroup_name;
+			tablegroup_stmt->tablespacename = tablespace_name;
+			tablegroup_stmt->implicit = true;
+			tablegroup_stmt->owner = spec;
+			tablegroupId = CreateTableGroup(tablegroup_stmt);
+		}
+	}
+
 	if (stmt->split_options)
 	{
 		if (MyDatabaseColocated && is_colocated)
@@ -768,10 +828,10 @@ DefineIndex(Oid relationId,
 				 errmsg("cannot set colocation_id for non-colocated index")));
 
 	/*
-	 * Fail if the index is colocated and tablespace
+	 * Fail if the index is colocated via tablegroup and tablespace
 	 * is specified while creation.
 	 */
-	if (OidIsValid(tablespaceId) && is_colocated)
+	if (OidIsValid(tablespaceId) && is_colocated && !MyDatabaseColocated)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
@@ -881,23 +941,21 @@ DefineIndex(Oid relationId,
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
 
-	if (IsYBRelation(rel) && (accessMethodId != LSM_AM_OID &&
-							  accessMethodId != YBGIN_AM_OID))
+	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+
+	if (IsYBRelation(rel) && !amRoutine->yb_amisforybrelation)
 		ereport(ERROR,
 				(errmsg("index method \"%s\" not supported yet",
 						accessMethodName),
 				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/1337. "
 						 "React with thumbs up to raise its priority")));
-	if (!IsYBRelation(rel) && (accessMethodId == LSM_AM_OID ||
-							   accessMethodId == YBGIN_AM_OID))
+	if (!IsYBRelation(rel) && amRoutine->yb_amisforybrelation)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("access method \"%s\" only supported for indexes"
 						" using Yugabyte storage",
 						accessMethodName)));
-
-	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
-	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
 
 	if (stmt->unique && !amRoutine->amcanunique)
 		ereport(ERROR,
@@ -1781,60 +1839,32 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Oid			atttype;
 		Oid			attcollation;
 
-		if (IsYugaByteEnabled())
+		SortByDir   yb_ordering = attribute->ordering;
+
+		if (use_yb_ordering)
 		{
-			if (use_yb_ordering)
+			yb_ordering =
+				YbSortOrdering(attribute->ordering, is_colocated,
+							   OidIsValid(tablegroupId) /* is_tablegroup */,
+							   (attn == 0) /* is_first_key */);
+
+			if (yb_ordering == SORTBY_DESC || yb_ordering == SORTBY_ASC)
 			{
-				switch (attribute->ordering)
-				{
-					case SORTBY_ASC:
-					case SORTBY_DESC:
-						range_index = true;
-						break;
-					case SORTBY_DEFAULT:
-						/*
-						 * In YB mode, first attribute defaults to HASH and
-						 * other attributes default to ASC.  However, for
-						 * colocated tables, the first attribute defaults to
-						 * ASC.
-						 */
-						if (attn > 0 || is_colocated || tablegroupId != InvalidOid)
-						{
-							range_index = true;
-							break;
-						}
-						switch_fallthrough();
-					case SORTBY_HASH:
-						if (range_index)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									errmsg("hash column not allowed after an ASC/DESC column")));
-						else if (tablegroupId != InvalidOid && !MyDatabaseColocated)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									 errmsg("cannot create a hash partitioned"
-									 		" index in a TABLEGROUP")));
-						else if (is_colocated)
-							ereport(ERROR,
-									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-									 errmsg("cannot colocate hash partitioned index")));
-						break;
-					default:
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								errmsg("unsupported column sort order")));
-						break;
-				}
+				range_index = true;
 			}
-			else
+			else if (yb_ordering == SORTBY_HASH)
 			{
-				if (attribute->ordering == SORTBY_HASH)
-				{
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								errmsg("unsupported column sort order")));
-				}
+				if (range_index)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+							 errmsg("hash column not allowed after an ASC/DESC column")));
 			}
+		}
+		else if (attribute->ordering == SORTBY_HASH)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+					 errmsg("unsupported column sort order")));
 		}
 
 		/*
@@ -2079,18 +2109,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			/* default ordering is ASC */
 			if (attribute->ordering == SORTBY_DESC)
 				colOptionP[attn] |= INDOPTION_DESC;
-			if (IsYugaByteEnabled() &&
-				attribute->ordering == SORTBY_HASH)
-				colOptionP[attn] |= INDOPTION_HASH;
 
-			/*
-			 * In Yugabyte, use HASH as the default for the first column of
-			 * non-colocated tables
-			 */
-			if (use_yb_ordering &&
-				attn == 0 &&
-				attribute->ordering == SORTBY_DEFAULT &&
-				!is_colocated && tablegroupId == InvalidOid)
+			if (yb_ordering == SORTBY_HASH)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */
@@ -2653,7 +2673,9 @@ ReindexIndex(RangeVar *indexRelation, int options)
 	persistence = irel->rd_rel->relpersistence;
 	index_close(irel, NoLock);
 
-	reindex_index(indOid, false, persistence, options);
+	reindex_index(indOid, false, persistence, options,
+				  false /* is_yb_table_rewrite */,
+				  true /* yb_copy_split_options */);
 }
 
 /*
@@ -2732,7 +2754,9 @@ ReindexTable(RangeVar *relation, int options)
 	if (!reindex_relation(heapOid,
 						  REINDEX_REL_PROCESS_TOAST |
 						  REINDEX_REL_CHECK_CONSTRAINTS,
-						  options))
+						  options,
+						  false /* is_yb_table_rewrite */,
+						  true /* yb_copy_split_options */))
 		ereport(NOTICE,
 				(errmsg("table \"%s\" has no indexes",
 						relation->relname)));
@@ -2903,7 +2927,9 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 		if (reindex_relation(relid,
 							 REINDEX_REL_PROCESS_TOAST |
 							 REINDEX_REL_CHECK_CONSTRAINTS,
-							 options))
+							 options,
+							 false /* is_yb_table_rewrite */,
+							 true /* yb_copy_split_options */))
 
 			if (options & REINDEXOPT_VERBOSE)
 				ereport(INFO,
@@ -3100,20 +3126,35 @@ YbWaitForBackendsCatalogVersion()
 			TimestampDifferenceExceeds(start,
 									   GetCurrentTimestamp(),
 									   yb_wait_for_backends_catalog_version_timeout))
-			ereport(ERROR,
-					(errmsg("timed out waiting for postgres backends to catch"
-							" up"),
-					 errdetail("%d backends on database %u are still behind"
-							   " catalog version %" PRIu64 ".",
-							   num_lagging_backends,
-							   MyDatabaseId,
-							   YbGetCatalogCacheVersion()),
-					 errhint("Run the following query on all tservers to find"
-							 " the lagging backends: SELECT * FROM"
-							 " pg_stat_activity WHERE catalog_version < %"
-							 PRIu64 " AND datid = %u;",
-							 YbGetCatalogCacheVersion(),
-							 MyDatabaseId)));
+		{
+			if (num_lagging_backends > 0)
+				ereport(ERROR,
+						(errmsg("timed out waiting for postgres backends to catch"
+								" up"),
+						 errdetail("%d backends on database %u are still behind"
+								   " catalog version %" PRIu64 ".",
+								   num_lagging_backends,
+								   MyDatabaseId,
+								   YbGetCatalogCacheVersion()),
+						 errhint("Run the following query on all tservers to find"
+								 " the lagging backends: SELECT * FROM"
+								 " pg_stat_activity WHERE catalog_version < %"
+								 PRIu64 " AND datid = %u;",
+								 YbGetCatalogCacheVersion(),
+								 MyDatabaseId)));
+			else
+			{
+				Assert(num_lagging_backends == -1);
+				ereport(ERROR,
+						(errmsg("timed out waiting for postgres backends to catch"
+								" up"),
+						 errdetail("Failed to determine how many backends on"
+								   " database %u are still behind"
+								   " catalog version %" PRIu64 ".",
+								   MyDatabaseId,
+								   YbGetCatalogCacheVersion())));
+			}
+		}
 
 		YBCStatus s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
 														 YbGetCatalogCacheVersion(),

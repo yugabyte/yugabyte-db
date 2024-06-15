@@ -52,6 +52,10 @@
 #endif
 #endif
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
+
 
 #define MAX_TOKEN	256
 #define MAX_LINE	8192
@@ -2275,7 +2279,9 @@ check_hba(hbaPort *port)
 				continue;
 
 			/* Check SSL state */
-			if (port->ssl_in_use)
+			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req ?
+					port->yb_is_ssl_enabled_in_logical_conn :
+					port->ssl_in_use)
 			{
 				/* Connection is SSL, match both "host" and "hostssl" */
 				if (hba->conntype == ctHostNoSSL)
@@ -3280,7 +3286,61 @@ load_ident(void)
 	return true;
 }
 
+static inline bool
+yb_set_hba_tserver_key(hbaPort *port)
+{
+	if (!IsYugaByteEnabled())
+		return false;
 
+	/* Not supported in auth passthrough */
+	if (port->yb_is_auth_passthrough_req)
+		return false;
+
+	/* Supported only in unix domain socket */
+	if (!IS_AF_UNIX(port->raddr.addr.ss_family))
+		return false;
+
+	/*
+	 * Check that client connections are allowed to set yb-tserver-key
+	 * as the authentication method via the startup packet.
+	 */
+	char *is_allowed = getenv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH");
+	if (is_allowed == NULL || strcmp(is_allowed, "1") != 0)
+		return false;
+
+	ListCell *gucopts;
+
+	/*
+	 * Parsing and setting startup parameter happen after authentication.
+	 * Therefore, the startup parameter "yb_use_tserver_key_auth" is not yet
+	 * set, we need to parse the startup parameter list.
+	 */
+	gucopts = list_head(port->guc_options);
+	while (gucopts)
+	{
+		char *name;
+		char *value;
+
+		name = lfirst(gucopts);
+		gucopts = lnext(gucopts);
+
+		value = lfirst(gucopts);
+		gucopts = lnext(gucopts);
+
+		if (strcasecmp(name, "yb_use_tserver_key_auth") == 0)
+		{
+			bool result;
+			if (!parse_bool(value, &result))
+				ereport(FATAL, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("parameter \"%s\" requires a Boolean "
+									   "value", name)));
+
+			return result;
+		}
+	}
+
+	return false;
+}
 
 /*
  *	Determine what authentication method should be used when accessing database
@@ -3293,5 +3353,13 @@ load_ident(void)
 void
 hba_getauthmethod(hbaPort *port)
 {
+	if (yb_set_hba_tserver_key(port))
+	{
+		port->yb_is_tserver_auth_method = true;
+		port->hba = palloc0(sizeof(HbaLine));
+		*port->hba = (HbaLine){.auth_method = uaYbTserverKey};
+		return;
+	}
+
 	check_hba(port);
 }

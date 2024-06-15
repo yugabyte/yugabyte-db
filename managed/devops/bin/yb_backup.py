@@ -68,6 +68,12 @@ STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
 YSQL_SHELL_ERROR_RE = re.compile('.*ERROR.*')
+# This temporary variable enables the features:
+# 1. "STOP_ON_ERROR" mode in 'ysqlsh' tool
+# 2. New API: 'backup_tablespaces'/'restore_tablespaces'+'use_tablespaces'
+#    instead of old 'use_tablespaces'
+# 3. If the new API 'backup_roles' is NOT used - the YSQL Dump is generated
+#    with '--no-privileges' flag.
 ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = False
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
@@ -84,6 +90,7 @@ TABLET_DIR_GLOB = TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 MANIFEST_FILE_NAME = 'Manifest'
 METADATA_FILE_NAME = 'SnapshotInfoPB'
 SQL_TBSP_DUMP_FILE_NAME = 'YSQLDump_tablespaces'
+SQL_ROLES_DUMP_FILE_NAME = 'YSQLDump_roles'
 SQL_DUMP_FILE_NAME = 'YSQLDump'
 SQL_DATA_DUMP_FILE_NAME = 'YSQLDump_data'
 CREATE_METAFILES_MAX_RETRIES = 10
@@ -920,7 +927,7 @@ class YBManifest:
           "storage-type": "nfs",
 
           # Was additional 'YSQLDump_tablespaces' dump file created?
-          "use-tablespaces": true,
+          "backup-tablespaces": true,
 
           # Parallelism level - number of worker threads.
           "parallelism": 8,
@@ -985,7 +992,10 @@ class YBManifest:
         properties = self.body['properties']
         properties['platform-version'] = get_yb_backup_version_string()
         properties['parallelism'] = self.backup.args.parallelism
-        properties['use-tablespaces'] = self.backup.args.use_tablespaces
+        if not ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            properties['use-tablespaces'] = self.backup.args.use_tablespaces
+        properties['backup-tablespaces'] = self.backup.args.backup_tablespaces
+        properties['backup-roles'] = self.backup.args.backup_roles
         properties['pg-based-backup'] = pg_based_backup
         properties['start-time'] = self.backup.timer.start_time_str()
         properties['end-time'] = self.backup.timer.end_time_str()
@@ -1111,7 +1121,8 @@ class YBBackup:
         else:
             raise ex
 
-    def run_program(self, args, num_retry=1, timeout=10, env=None, **kwargs):
+    def run_program(self, args, num_retry=1, timeout=10, env=None,
+                    redirect_stderr=subprocess.STDOUT, **kwargs):
         """
         Runs the given program with the given set of arguments. Arguments are the same as in
         subprocess.check_output. Logs the program and the output in verbose mode. Also logs the
@@ -1130,7 +1141,7 @@ class YBBackup:
                 proc_env.update(env if env is not None else {})
 
                 subprocess_result = str(subprocess.check_output(
-                    args, stderr=subprocess.STDOUT,
+                    args, stderr=redirect_stderr,
                     env=proc_env, **kwargs).decode('utf-8', errors='replace')
                     .encode("ascii", "ignore")
                     .decode("ascii"))
@@ -1141,10 +1152,11 @@ class YBBackup:
                             cmd_as_str, subprocess_result))
                 return subprocess_result
             except subprocess.CalledProcessError as e:
+                log_out = e.output if (redirect_stderr == subprocess.STDOUT) else e.stderr
                 logging.error("Failed to run command [[ {} ]]: code={} output={}".format(
-                    cmd_as_str, e.returncode, str(e.output.decode('utf-8', errors='replace')
-                                                          .encode("ascii", "ignore")
-                                                          .decode("ascii"))))
+                    cmd_as_str, e.returncode, str(log_out.decode('utf-8', errors='replace')
+                                                         .encode("ascii", "ignore")
+                                                         .decode("ascii"))))
                 self.sleep_or_raise(num_retry, timeout, e)
             except Exception as ex:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
@@ -1257,6 +1269,8 @@ class YBBackup:
             '--disable_checksums', action='store_true', default=False,
             help="Whether checksums will be created and checked. If specified, will skip using "
                  "checksums.")
+        parser.add_argument('--useTserver', action='store_true', required=False, default=False,
+                            help="use tserver instead of master for backup operations")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -1326,9 +1340,36 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
+
+        parser.add_argument(
+            '--backup_tablespaces', required=False, action='store_true', default=False,
+            help='Backup YSQL TABLESPACE objects into the backup.')
+        parser.add_argument(
+            '--restore_tablespaces', required=False, action='store_true', default=False,
+            help='Restore YSQL TABLESPACE objects from the backup.')
+        parser.add_argument(
+            '--ignore_existing_tablespaces', required=False, action='store_true', default=False,
+            help='Ignore the tablespace creation if it already exists.')
         parser.add_argument(
             '--use_tablespaces', required=False, action='store_true', default=False,
-            help='Backup/restore YSQL TABLESPACE objects into/from the backup.')
+            help="Use the restored YSQL TABLESPACE objects for the tables "
+                 "via 'SET default_tablespace=...' syntax.")
+
+        parser.add_argument(
+            '--backup_roles', required=False, action='store_true', default=False,
+            help='Backup YSQL ROLE objects into the backup.')
+        parser.add_argument(
+            '--restore_roles', required=False, action='store_true', default=False,
+            help='Restore YSQL ROLE objects from the backup.')
+        parser.add_argument(
+            '--ignore_existing_roles', required=False, action='store_true', default=False,
+            help='Ignore the role creation if it already exists.')
+        parser.add_argument(
+            '--use_roles', required=False, action='store_true', default=False,
+            help="Use the restored YSQL ROLE objects for the tables "
+                 "via 'ALTER TABLE ... OWNER TO <role>' and "
+                 "'REVOKE/GRANT ... ON TABLE ... FROM/TO <role>' syntax.")
+
         parser.add_argument('--upload', dest='upload', action='store_true', default=True)
         # Please note that we have to use this weird naming (i.e. underscore in the argument name)
         # style to keep it in sync with YB processes G-flags.
@@ -1605,7 +1646,7 @@ class YBBackup:
         return self.args.ssh_user != self.args.remote_user
 
     def get_main_host_ip(self):
-        if self.is_k8s():
+        if self.args.useTserver:
             return self.get_live_tserver_ip()
         else:
             return self.get_leader_master_ip()
@@ -1810,7 +1851,7 @@ class YBBackup:
         :return: the standard output of the tool
         """
 
-        run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
+        run_at_ip = self.get_live_tserver_ip() if self.args.useTserver else None
         return self.run_tool(None, cli_tool_with_args, [], [], run_ip=run_at_ip)
 
     def run_dump_tool(self, local_tool_binary, remote_tool_binary, cmd_line_args):
@@ -1828,7 +1869,7 @@ class YBBackup:
                 'FLAGS_use_node_hostname_for_local_tserver': 'true',
             }
 
-        run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
+        run_at_ip = self.get_live_tserver_ip() if self.args.useTserver else None
         # If --ysql_enable_auth is passed, connect with ysql through the remote socket.
         local_binary = None if self.args.ysql_enable_auth else local_tool_binary
 
@@ -1855,7 +1896,7 @@ class YBBackup:
         :return: the standard output of ysql shell
         """
         run_at_ip = None
-        if self.is_k8s():
+        if self.args.useTserver:
             run_at_ip = self.get_live_tserver_ip()
 
         return self.run_tool(
@@ -2276,7 +2317,8 @@ class YBBackup:
                 '-c',
                 cmd],
                 num_retry=num_retries,
-                env=k8s_details.env_config)
+                env=k8s_details.env_config,
+                redirect_stderr=subprocess.PIPE)
         elif not self.args.no_ssh:
             ssh_key_path = self.args.ssh_key_path
             if self.ip_to_ssh_key_map:
@@ -3027,12 +3069,24 @@ class YBBackup:
         """
         :return: snapshot_id and list of sql_dump files
         """
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            if self.args.use_tablespaces:
+                raise BackupException("--use_tablespaces can be used in RESTORE mode only")
+
+        if self.args.use_roles:
+            raise BackupException("--use_roles can be used in RESTORE mode only")
+
         snapshot_id = None
         dump_files = []
         pg_based_backup = self.args.pg_based_backup
         if self.is_ysql_keyspace():
-            sql_tbsp_dump_path = os.path.join(
-                self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME) if self.args.use_tablespaces else None
+            if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+                backup_tablespaces = self.args.backup_tablespaces
+            else:
+                backup_tablespaces = self.args.use_tablespaces or self.args.backup_tablespaces
+
+            sql_tbsp_dump_path = os.path.join(self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME)\
+                if backup_tablespaces else None
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
             ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
@@ -3040,10 +3094,22 @@ class YBBackup:
             if sql_tbsp_dump_path:
                 logging.info("[app] Creating ysql dump for tablespaces to {}".format(
                     sql_tbsp_dump_path))
-                self.run_ysql_dumpall(['--tablespaces-only', '--file=' + sql_tbsp_dump_path])
+                self.run_ysql_dumpall(['--tablespaces-only', '--include-yb-metadata',
+                                       '--file=' + sql_tbsp_dump_path])
                 dump_files.append(sql_tbsp_dump_path)
             else:
                 ysql_dump_args.append('--no-tablespaces')
+
+            sql_roles_dump_path = os.path.join(self.get_tmp_dir(), SQL_ROLES_DUMP_FILE_NAME)\
+                if self.args.backup_roles else None
+            if sql_roles_dump_path:
+                logging.info("[app] Creating ysql dump for roles to {}".format(
+                    sql_roles_dump_path))
+                self.run_ysql_dumpall(['--roles-only', '--include-yb-metadata',
+                                       '--file=' + sql_roles_dump_path])
+                dump_files.append(sql_roles_dump_path)
+            elif ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+                ysql_dump_args.append('--no-privileges')
 
             logging.info("[app] Creating ysql dump for DB '{}' to {}".format(
                 db_name, sql_dump_path))
@@ -3162,7 +3228,7 @@ class YBBackup:
         # Create Manifest file and upload it to tmp dir on the main host.
         metadata_path = os.path.join(self.get_tmp_dir(), MANIFEST_FILE_NAME)
         self.manifest.save_into_file(metadata_path)
-        os.chmod(metadata_path, 0o400)
+        os.chmod(metadata_path, 0o600)
         if not self.args.local_yb_admin_binary:
             self.upload_local_file_to_server(
                 self.get_main_host_ip(), metadata_path, self.get_tmp_dir())
@@ -3395,7 +3461,12 @@ class YBBackup:
         self.load_or_create_manifest()
         dump_files = []
 
-        if self.args.use_tablespaces:
+        if ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR:
+            restore_tablespaces = self.args.restore_tablespaces
+        else:
+            restore_tablespaces = self.args.use_tablespaces or self.args.restore_tablespaces
+
+        if restore_tablespaces:
             src_sql_tbsp_dump_path = os.path.join(
                 self.args.backup_location, SQL_TBSP_DUMP_FILE_NAME)
             sql_tbsp_dump_path = os.path.join(self.get_tmp_dir(), SQL_TBSP_DUMP_FILE_NAME)
@@ -3403,6 +3474,15 @@ class YBBackup:
             dump_files.append(sql_tbsp_dump_path)
         else:
             sql_tbsp_dump_path = None
+
+        if self.args.restore_roles:
+            src_sql_roles_dump_path = os.path.join(
+                self.args.backup_location, SQL_ROLES_DUMP_FILE_NAME)
+            sql_roles_dump_path = os.path.join(self.get_tmp_dir(), SQL_ROLES_DUMP_FILE_NAME)
+            self.download_file(src_sql_roles_dump_path, sql_roles_dump_path)
+            dump_files.append(sql_roles_dump_path)
+        else:
+            sql_roles_dump_path = None
 
         src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
         sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
@@ -3493,6 +3573,18 @@ class YBBackup:
                 self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
         ysql_shell_args = ['--echo-all', '--file=' + dump_file_path]
+
+        if self.args.ignore_existing_tablespaces:
+            ysql_shell_args.append('--variable=ignore_existing_tablespaces=1')
+
+        if self.args.use_tablespaces:
+            ysql_shell_args.append('--variable=use_tablespaces=1')
+
+        if self.args.ignore_existing_roles:
+            ysql_shell_args.append('--variable=ignore_existing_roles=1')
+
+        if self.args.use_roles:
+            ysql_shell_args.append('--variable=use_roles=1')
 
         if on_error_stop:
             logging.info(
@@ -3768,7 +3860,10 @@ class YBBackup:
 
         for dump_file_path in dump_file_paths:
             dump_file = os.path.basename(dump_file_path)
-            if dump_file == SQL_TBSP_DUMP_FILE_NAME:
+            if dump_file == SQL_ROLES_DUMP_FILE_NAME:
+                logging.info('[app] Create roles from {}'.format(dump_file_path))
+                self.import_ysql_dump(dump_file_path)
+            elif dump_file == SQL_TBSP_DUMP_FILE_NAME:
                 logging.info('[app] Create tablespaces from {}'.format(dump_file_path))
                 self.import_ysql_dump(dump_file_path)
             elif dump_file == SQL_DUMP_FILE_NAME:

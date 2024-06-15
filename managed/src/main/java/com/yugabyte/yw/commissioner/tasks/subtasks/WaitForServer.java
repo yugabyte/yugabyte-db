@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -45,6 +46,7 @@ public class WaitForServer extends ServerSubTaskBase {
     // Timeout for the RPC call.
     public long serverWaitTimeoutMs;
     public UniverseDefinitionTaskParams.UserIntent userIntent;
+    public CommunicationPorts customCommunicationPorts;
   }
 
   @Override
@@ -109,18 +111,20 @@ public class WaitForServer extends ServerSubTaskBase {
 
   private boolean checkPostgresStatus(Universe universe) {
     RunQueryFormData runQueryFormData = new RunQueryFormData();
-    runQueryFormData.query = "SELECT version()";
-    runQueryFormData.db_name = "system_platform";
+    runQueryFormData.setQuery("SELECT version()");
+    runQueryFormData.setDbName("system_platform");
     UniverseDefinitionTaskParams.UserIntent userIntent = taskParams().userIntent;
     if (userIntent == null) {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     }
+    NodeDetails node = universe.getNode(taskParams().nodeName);
+    if (taskParams().customCommunicationPorts != null) {
+      UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
+          taskParams().customCommunicationPorts, node);
+    }
     JsonNode ysqlResponse =
         ysqlQueryExecutor.executeQueryInNodeShell(
-            universe,
-            runQueryFormData,
-            universe.getNode(taskParams().nodeName),
-            userIntent.isYSQLAuthEnabled());
+            universe, runQueryFormData, node, userIntent.isYSQLAuthEnabled());
     return !ysqlResponse.has("error");
   }
 }

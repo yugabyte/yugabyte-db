@@ -33,6 +33,7 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   explicit YsqlConnMgrConf(const std::string& data_path);
 
   std::string CreateYsqlConnMgrConfigAndGetPath();
+  std::string yb_tserver_key_;
 
  private:
   const std::string conf_file_name_ = "ysql_conn_mgr.conf";
@@ -47,7 +48,6 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   uint16_t control_connection_pool_size_;
   uint num_resolver_threads_ = 1;
 
-  bool application_name_add_host_ = true;
   bool log_debug_ = false;
 
   void UpdateConfigFromGFlags();

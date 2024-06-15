@@ -208,11 +208,13 @@ lnext:
 				break;
 		}
 
-		if (IsYBBackedRelation(erm->relation)) {
-			test = YBCLockTuple(erm->relation, datum, erm->markType, erm->waitPolicy,
-													estate);
+		if (IsYBBackedRelation(erm->relation))
+		{
+			test = YBCLockTuple(
+				erm->relation, datum, erm->markType, erm->waitPolicy, estate);
 		}
-		else {
+		else
+		{
 			test = heap_lock_tuple(erm->relation, &tuple,
 							   estate->es_output_cid,
 							   lockmode, erm->waitPolicy, true,
@@ -528,4 +530,18 @@ ExecReScanLockRows(LockRowsState *node)
 	 */
 	if (node->ps.lefttree->chgParam == NULL)
 		ExecReScan(node->ps.lefttree);
+}
+
+/* ----------------------------------------------------------------
+ *		ExecShutdownLockRows
+ *
+ *		YB: This flushes the explicit row lock buffer once there are no
+ *    more rows to be locked.
+ *
+ * ----------------------------------------------------------------
+ */
+void
+ExecShutdownLockRows(LockRowsState *node)
+{
+	YBCFlushTupleLocks();
 }

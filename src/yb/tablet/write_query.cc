@@ -13,6 +13,8 @@
 
 #include "yb/tablet/write_query.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -21,7 +23,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/qlexpr/index.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 
@@ -31,6 +32,8 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/redis_operation.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -49,6 +52,11 @@
 
 using namespace std::placeholders;
 using namespace std::literals;
+
+DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
+    "A safety switch to disable the changes from D8710 which makes a schema "
+    "operation take an exclusive lock making all write operations wait for it.");
+TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
 DEFINE_test_flag(bool, writequery_stuck_from_callback_leak, false,
     "Simulate WriteQuery stuck because of the update index flushed rpc call back leak");
@@ -73,9 +81,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
     out_request->set_client_id2(client_request.client_id2());
     out_request->set_request_id(client_request.request_id());
     out_request->set_min_running_request_id(client_request.min_running_request_id());
-    if (client_request.has_start_time_micros()) {
-      out_request->set_start_time_micros(client_request.start_time_micros());
-    }
+  }
+  if (client_request.has_start_time_micros()) {
+    out_request->set_start_time_micros(client_request.start_time_micros());
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
@@ -118,6 +126,52 @@ bool CheckSchemaVersion(
       table_info->table_id, table_info->schema_version, schema_version,
       compat_str));
   return false;
+}
+
+using DocPaths = boost::container::small_vector<RefCntPrefix, 16>;
+
+void AddReadPairs(const DocPaths& paths, docdb::LWKeyValueWriteBatchPB* write_batch) {
+  for (const auto& path : paths) {
+    auto& pair = *write_batch->add_read_pairs();
+    pair.dup_key(path.as_slice());
+    // Empty values are disallowed by docdb.
+    // https://github.com/YugaByte/yugabyte-db/issues/736
+    pair.dup_value(Slice(&dockv::KeyEntryTypeAsChar::kNullLow, 1));
+  }
+}
+
+[[nodiscard]] bool IsSkipped(const docdb::DocOperation& doc_op) {
+  return doc_op.OpType() == docdb::DocOperation::Type::PGSQL_WRITE_OPERATION &&
+         down_cast<const docdb::PgsqlWriteOperation&>(doc_op).response()->skipped();
+}
+
+// When reset_ops is true, the operations in the provided 'doc_ops' are reset with the current
+// schema version.
+Status CqlPopulateDocOps(
+    const TabletPtr& tablet, const tserver::WriteRequestPB* client_request,
+    docdb::DocOperations* doc_ops, tserver::WriteResponsePB* resp, bool reset_ops = false) {
+  const auto& ql_write_batch = client_request->ql_write_batch();
+  doc_ops->reserve(ql_write_batch.size());
+
+  auto txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
+      client_request->write_batch().transaction(),
+      /* is_ysql_catalog_table */ false,
+      &client_request->write_batch().subtransaction()));
+  auto table_info = tablet->metadata()->primary_table_info();
+  for (int i = 0; i < ql_write_batch.size(); i++) {
+    auto write_op = std::make_unique<docdb::QLWriteOperation>(
+        ql_write_batch[i], table_info->schema_version, table_info->doc_read_context,
+        table_info->index_map, table_info->unique_index_key_projection, txn_op_ctx);
+    if (reset_ops) {
+      auto* old_write_op = down_cast<docdb::QLWriteOperation*>((*doc_ops)[i].get());
+      RETURN_NOT_OK(write_op->Init(old_write_op->response()));
+      (*doc_ops)[i] = std::move(write_op);
+    } else {
+      RETURN_NOT_OK(write_op->Init(resp->add_ql_response_batch()));
+      doc_ops->emplace_back(std::move(write_op));
+    }
+  }
+  return Status::OK();
 }
 
 } // namespace
@@ -165,6 +219,22 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
   std::unique_ptr<WriteQuery> self(this);
   // Move submit_token_ so it is released after this function.
   ScopedRWOperation submit_token(std::move(submit_token_));
+  // If a schema mismatch error occured, populate the response accordingly and return.
+  if (schema_version_mismatch_) {
+    if (execute_mode_ == ExecuteMode::kCql) {
+      CqlRespondSchemaVersionMismatch();
+    } else if (execute_mode_ == ExecuteMode::kPgsql) {
+      PgsqlRespondSchemaVersionMismatch();
+    } else {
+      auto s = STATUS_FORMAT(
+          IllegalState,
+          Format("Schema version mismatch error not expected for WriteQuery::ExecuteMode $0",
+                 BOOST_PP_STRINGIZE(execute_mode_)));
+      LOG(DFATAL) << s;
+      Cancel(s);
+    }
+    return;
+  }
   // If a restart read is required, then we return this fact to caller and don't perform the write
   // operation.
   if (status.ok() && restart_read_ht_.is_valid()) {
@@ -187,7 +257,17 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  TRACE_FUNC();
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(OnCpu_Passive);
   context_->Submit(self.release()->PrepareSubmit(), term_);
+  // Any further update to the wait-state for this RPC should happen based on
+  // the state/transition of the submitted WriteOperation.
+  // We don't want to update this RPC's wait-state when this thread returns from
+  // ServicePoolImpl::Handle call.
+  //
+  // Prevent any further modification to the wait-state on this thread.
+  ash::WaitStateInfo::SetCurrentWaitState(nullptr);
 }
 
 void WriteQuery::Release() {
@@ -286,6 +366,9 @@ Result<bool> WriteQuery::PrepareExecute() {
   if (client_request_) {
     auto* request = operation().AllocateRequest();
     SetupKeyValueBatch(*client_request_, request);
+    if (client_request_->has_start_time_micros()) {
+      SetRequestStartUs(client_request_->start_time_micros());
+    }
 
     if (!client_request_->redis_write_batch().empty()) {
       return RedisPrepareExecute();
@@ -300,7 +383,6 @@ Result<bool> WriteQuery::PrepareExecute() {
     }
 
     if (client_request_->has_write_batch() && client_request_->has_external_hybrid_time()) {
-      StartSynchronization(std::move(self_), Status::OK());
       return false;
     }
   } else {
@@ -351,38 +433,58 @@ Result<bool> WriteQuery::SimplePrepareExecute() {
   return true;
 }
 
+Result<bool> WriteQuery::CqlRePrepareExecuteIfNecessary() {
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  auto& metadata = *tablet->metadata();
+  VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
+                    << metadata.schema_version();
+  // Check if the schema version set in client_request_->ql_write_batch() is compatible with
+  // the current schema pointed to by the tablet's metadata.
+  if (!VERIFY_RESULT(CqlCheckSchemaVersion())) {
+    return false;
+  }
+
+  SCHECK_EQ(
+      request().write_batch().table_schema_version_size(), 1,
+      IllegalState, "Unexpected value encountered for write_batch().table_schema_version_size()");
+  auto* write_batch = request().mutable_write_batch();
+  const auto& schema_version = write_batch->table_schema_version().front().schema_version();
+  if (schema_version == metadata.schema_version()) {
+    return true;
+  }
+  // It could still happen that the schema version set in request() is one behind the current
+  // schema. In such a case, reset the version and re-form the doc operations poiting to the
+  // latest schema.
+  //
+  // Note that 'CqlCheckSchemaVersion' doesn't catch this since it checks the compatibility
+  // of requests in ql_write_batch with that of the current metadata and doesn't check the
+  // schema compatibility for operations in 'request().write_batch()'.
+  SCHECK_EQ(
+      schema_version + 1, metadata.schema_version(),
+      IllegalState, "Expected current schema version to be ahead by at most 1");
+  write_batch->mutable_table_schema_version()->Clear();
+  docdb::AddTableSchemaVersion(
+      Uuid::Nil(), metadata.schema_version(), request().mutable_write_batch());
+  RETURN_NOT_OK(
+      CqlPopulateDocOps(tablet, client_request_, &doc_ops_, response_, true /* reset_ops */));
+  return true;
+}
+
 Result<bool> WriteQuery::CqlPrepareExecute() {
   auto tablet = VERIFY_RESULT(tablet_safe());
   RETURN_NOT_OK(InitExecute(ExecuteMode::kCql));
 
   auto& metadata = *tablet->metadata();
-  VLOG(2) << "Schema version for  " << metadata.table_name() << ": " << metadata.schema_version();
+  VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
+                    << metadata.schema_version();
 
-  if (!CqlCheckSchemaVersion()) {
+  if (!VERIFY_RESULT(CqlCheckSchemaVersion())) {
     return false;
   }
 
   docdb::AddTableSchemaVersion(
       Uuid::Nil(), metadata.schema_version(), request().mutable_write_batch());
-
-  const auto& ql_write_batch = client_request_->ql_write_batch();
-
-  doc_ops_.reserve(ql_write_batch.size());
-
-  auto txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
-      client_request_->write_batch().transaction(),
-      /* is_ysql_catalog_table */ false,
-      &client_request_->write_batch().subtransaction()));
-  auto table_info = metadata.primary_table_info();
-  for (const auto& req : ql_write_batch) {
-    QLResponsePB* resp = response_->add_ql_response_batch();
-    auto write_op = std::make_unique<docdb::QLWriteOperation>(
-        req, table_info->schema_version, table_info->doc_read_context, table_info->index_map,
-        table_info->unique_index_key_projection, txn_op_ctx);
-    RETURN_NOT_OK(write_op->Init(resp));
-    doc_ops_.emplace_back(std::move(write_op));
-  }
-
+  RETURN_NOT_OK(CqlPopulateDocOps(tablet, client_request_, &doc_ops_, response_));
   return true;
 }
 
@@ -390,7 +492,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
   auto tablet = VERIFY_RESULT(tablet_safe());
   RETURN_NOT_OK(InitExecute(ExecuteMode::kPgsql));
 
-  if (!PgsqlCheckSchemaVersion()) {
+  if (!VERIFY_RESULT(PgsqlCheckSchemaVersion())) {
     return false;
   }
 
@@ -446,6 +548,7 @@ void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   }
 
   if (!prepare_result.get()) {
+    StartSynchronization(std::move(query_ptr->self_), Status::OK());
     return;
   }
 
@@ -546,6 +649,12 @@ Status WriteQuery::DoExecute() {
     return Status::OK();
   }
 
+  // The request_id field should be populated for all write requests, but any read requests which
+  // trigger a write_query will not have it populated. In this case, we use -1 as the request_id,
+  // and conflict_resolution passes the serial_no to the wait queue as the request_id.
+  DCHECK(request().has_request_id() || request().write_batch().write_pairs_size() == 0);
+  auto request_id = request().has_request_id() ? request().request_id() : -1;
+
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     auto now = tablet->clock()->Now();
     auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
@@ -566,9 +675,9 @@ Status WriteQuery::DoExecute() {
     }
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
-        tablet->doc_db(), partial_range_key_intents, transaction_participant,
-        tablet->metrics(), &prepare_result_.lock_batch,
-        wait_queue,
+        request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
+        transaction_participant, tablet->metrics(), &prepare_result_.lock_batch, wait_queue,
+        deadline(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());
@@ -582,20 +691,13 @@ Status WriteQuery::DoExecute() {
 
   if (isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&
       prepare_result_.need_read_snapshot) {
-    boost::container::small_vector<RefCntPrefix, 16> paths;
+    DocPaths paths;
     for (const auto& doc_op : doc_ops_) {
-      paths.clear();
       IsolationLevel ignored_isolation_level;
       RETURN_NOT_OK(doc_op->GetDocPaths(
-          docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
-      for (const auto& path : paths) {
-        auto key = path.as_slice();
-        auto& pair = write_batch.mutable_read_pairs()->emplace_back();
-        pair.dup_key(key);
-        // Empty values are disallowed by docdb.
-        // https://github.com/YugaByte/yugabyte-db/issues/736
-        pair.dup_value(std::string(1, dockv::KeyEntryTypeAsChar::kNullLow));
-      }
+              docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
+      AddReadPairs(paths, &write_batch);
+      paths.clear();
     }
   }
 
@@ -605,9 +707,9 @@ Status WriteQuery::DoExecute() {
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
-      tablet->doc_db(), partial_range_key_intents,
+      request_start_us(), request_id, tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
-      &prepare_result_.lock_batch, wait_queue,
+      &prepare_result_.lock_batch, wait_queue, deadline(),
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
           ExecuteDone(result.status());
@@ -672,6 +774,29 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
     // A read_time will be picked by the below ScopedReadOperation::Create() call.
     tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
   }
+  // For WriteQuery requests with execution mode kCql and kPgsql, we perform schema version checks
+  // in two places:
+  // 1. pre conflict resolution - as part of CqlPrepareExecute/ PgsqlPrepareExecute
+  // 2. post conflict resolution - as part of ExecuteSchemaVersionCheck
+  //
+  // We acquire the write permit here just before performing the checks in 2. so as to block alter
+  // schema requests until the current request gets submitted to the preparer queue for replication.
+  //
+  // Note: Acquiring the write permit pre conflict resolution could lead to other issues.
+  // Refer https://github.com/yugabyte/yugabyte-db/issues/20730 for details.
+  if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion))) {
+    auto write_permit = tablet->GetPermitToWrite(deadline());
+    RETURN_NOT_OK(write_permit);
+    // Save the write permit to be released after the operation is submitted
+    // to Raft queue.
+    UseSubmitToken(std::move(write_permit));
+  }
+
+  if (!VERIFY_RESULT(ExecuteSchemaVersionCheck())) {
+    DCHECK(schema_version_mismatch_) << "Expected schema_version_mismatch_ to be set";
+    return Status::OK();
+  }
+
   auto read_op = prepare_result_.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(tablet.get(),
                                                   RequireLease::kTrue,
@@ -690,16 +815,17 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   // read_txn goes out of scope, the read point is deregistered.
   bool local_limit_updated = false;
 
-  // This loop may be executed multiple times multiple times only for serializable isolation or
+  // This loop may be executed multiple times only for serializable isolation or
   // when read_time was not yet picked for snapshot isolation.
   // In all other cases it is executed only once.
   auto init_marker_behavior = tablet->table_type() == TableType::REDIS_TABLE_TYPE
       ? docdb::InitMarkerBehavior::kRequired
       : docdb::InitMarkerBehavior::kOptional;
+  auto& write_batch = *request().mutable_write_batch();
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
-        scoped_read_operation_, request().mutable_write_batch(), init_marker_behavior,
+        scoped_read_operation_, &write_batch, init_marker_behavior,
         tablet->monotonic_counter(), &restart_read_ht_, tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
@@ -719,23 +845,37 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
 
     restart_read_ht_ = HybridTime();
 
-    request().mutable_write_batch()->mutable_write_pairs()->clear();
+    write_batch.mutable_write_pairs()->clear();
 
     for (auto& doc_op : doc_ops_) {
       doc_op->ClearResponse();
     }
   }
 
-  if (allow_immediate_read_restart_ &&
-      isolation_level_ != IsolationLevel::NON_TRANSACTIONAL &&
-      response_) {
-    read_operation_data.read_time.ToPB(response_->mutable_used_read_time());
-  }
-
-  if (restart_read_ht_.is_valid()) {
+  if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     return Status::OK();
   }
 
+  if (allow_immediate_read_restart_ && response_) {
+    read_operation_data.read_time.ToPB(response_->mutable_used_read_time());
+  }
+
+  // SERIALIZABLE operations already add the row to read_pairs for UPDATE operations
+  // in DoExecute(), so we shouldn't be doing it again here.
+  if (write_batch.write_pairs_size() &&
+      isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION) {
+    DocPaths paths;
+    for (const auto& doc_op : doc_ops_) {
+      if (IsSkipped(*doc_op)) {
+        continue;
+      }
+      IsolationLevel ignored_isolation_level;
+      RETURN_NOT_OK(doc_op->GetDocPaths(
+          docdb::GetDocPathsMode::kStrongReadIntents, &paths, &ignored_isolation_level));
+      AddReadPairs(paths, &write_batch);
+      paths.clear();
+    }
+  }
   return Status::OK();
 }
 
@@ -773,13 +913,12 @@ void WriteQuery::RedisExecuteDone(const Status& status) {
   StartSynchronization(std::move(self_), Status::OK());
 }
 
-bool WriteQuery::CqlCheckSchemaVersion() {
+Result<bool> WriteQuery::CqlCheckSchemaVersion() {
   auto tablet_result = tablet_safe();
   if (!tablet_result.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Tablet has already been destroyed in WriteQuery::CqlCheckSchemaVersion.";
-    StartSynchronization(std::move(self_), tablet_result.status());
-    return false;
+    return tablet_result.status();
   }
   auto tablet = *tablet_result;
 
@@ -801,19 +940,22 @@ bool WriteQuery::CqlCheckSchemaVersion() {
   }
 
   if (num_mismatches != 0) {
-    SchemaVersionMismatch(error_code, req_batch.size(), &resp_batch);
+    schema_version_mismatch_ = true;
     return false;
   }
 
   return true;
 }
 
-void WriteQuery::CqlExecuteDone(const Status& status) {
-  if (!CqlCheckSchemaVersion()) {
-    return;
-  }
+void WriteQuery::CqlRespondSchemaVersionMismatch() {
+  constexpr auto error_code = QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH;
+  const auto& req_batch = client_request_->ql_write_batch();
+  auto& resp_batch = *response_->mutable_ql_response_batch();
+  SchemaVersionMismatch(error_code, req_batch.size(), &resp_batch);
+}
 
-  if (restart_read_ht().is_valid()) {
+void WriteQuery::CqlExecuteDone(const Status& status) {
+  if (restart_read_ht().is_valid() || schema_version_mismatch_) {
     StartSynchronization(std::move(self_), Status::OK());
     return;
   }
@@ -836,9 +978,31 @@ void WriteQuery::SchemaVersionMismatch(Code code, int size, Resp* resp) {
     entry->set_status(code);
     entry->set_error_message("Other request entry schema version mismatch");
   }
-  auto self = std::move(self_);
-  submit_token_.Reset();
   Cancel(Status::OK());
+}
+
+Result<bool> WriteQuery::ExecuteSchemaVersionCheck() {
+  switch (execute_mode_) {
+    case ExecuteMode::kSimple: FALLTHROUGH_INTENDED;
+    case ExecuteMode::kRedis:
+      return true;
+    case ExecuteMode::kCql:
+      // For cql, the requests in client_request_->ql_write_batch() could have the field
+      // 'is_compatible_with_previous_version' set, which allows processing of the Write when the
+      // schema is at the previous version. It could have happened that an alter schema request got
+      // processed between first schema version check done pre conflict resolution and acquring the
+      // write permit. In such cases, we need to re-prepare the write operation considering the new
+      // schema version. Else, the post replication check guarding the write query against schema
+      // changes amidst its replication would fail. Hence a call to 'CqlCheckSchemaVersion' alone
+      // doesn't gaurd us from failures/inconsistencies.
+      return CqlRePrepareExecuteIfNecessary();
+    case ExecuteMode::kPgsql:
+      // Note: We don't have the above problem for pgsql as 'is_compatible_with_previous_version' is
+      // not used for pgsql, and hence can go ahead with a plain schema version check. If an alter
+      // schema was processed when this query underwent conflict resolution, the below check fails.
+      return PgsqlCheckSchemaVersion();
+  }
+  FATAL_INVALID_ENUM_VALUE(ExecuteMode, execute_mode_);
 }
 
 void WriteQuery::CompleteQLWriteBatch(const Status& status) {
@@ -1075,11 +1239,12 @@ void WriteQuery::UpdateQLIndexesFlushed(
   CompleteQLWriteBatch(Status::OK());
 }
 
-bool WriteQuery::PgsqlCheckSchemaVersion() {
+Result<bool> WriteQuery::PgsqlCheckSchemaVersion() {
   auto tablet_result = tablet_safe();
   if (!tablet_result.ok()) {
-    StartSynchronization(std::move(self_), tablet_result.status());
-    return false;
+    YB_LOG_EVERY_N_SECS(WARNING, 1)
+        << "Tablet has already been destroyed in WriteQuery::PgsqlCheckSchemaVersion.";
+    return tablet_result.status();
   }
   auto tablet = *tablet_result;
 
@@ -1091,13 +1256,9 @@ bool WriteQuery::PgsqlCheckSchemaVersion() {
   int index = 0;
   int num_mismatches = 0;
   for (const auto& req : req_batch) {
-    auto table_info = metadata.GetTableInfo(req.table_id());
-    if (!table_info.ok()) {
-      StartSynchronization(std::move(self_), table_info.status());
-      return false;
-    }
+    auto table_info = VERIFY_RESULT(metadata.GetTableInfo(req.table_id()));
     if (!CheckSchemaVersion(
-            table_info->get(), req.schema_version(),
+            table_info.get(), req.schema_version(),
             std::nullopt /* compatible_with_previous_version= */,
             error_code, index, &resp_batch)) {
       ++num_mismatches;
@@ -1106,19 +1267,22 @@ bool WriteQuery::PgsqlCheckSchemaVersion() {
   }
 
   if (num_mismatches != 0) {
-    SchemaVersionMismatch(error_code, req_batch.size(), &resp_batch);
+    schema_version_mismatch_ = true;
     return false;
   }
 
   return true;
 }
 
-void WriteQuery::PgsqlExecuteDone(const Status& status) {
-  if (!PgsqlCheckSchemaVersion()) {
-    return;
-  }
+void WriteQuery::PgsqlRespondSchemaVersionMismatch() {
+  constexpr auto error_code = PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH;
+  const auto& req_batch = client_request_->pgsql_write_batch();
+  auto& resp_batch = *response_->mutable_pgsql_response_batch();
+  SchemaVersionMismatch(error_code, req_batch.size(), &resp_batch);
+}
 
-  if (!status.ok() || restart_read_ht_.is_valid()) {
+void WriteQuery::PgsqlExecuteDone(const Status& status) {
+  if (!status.ok() || restart_read_ht_.is_valid() || schema_version_mismatch_) {
     StartSynchronization(std::move(self_), status);
     return;
   }

@@ -31,7 +31,6 @@
 #
 
 set(YB_PCH_PREFIX tablet)
-set(YB_PCH_DEP_LIBS opid_proto)
 
 set(TABLET_SRCS
   abstract_tablet.cc
@@ -45,6 +44,8 @@ set(TABLET_SRCS
   tablet.cc
   tablet_bootstrap.cc
   tablet_bootstrap_if.cc
+  tablet_bootstrap_state_flusher.cc
+  tablet_bootstrap_state_manager.cc
   tablet_component.cc
   tablet_metrics.cc
   tablet_peer_mm_ops.cc
@@ -53,9 +54,11 @@ set(TABLET_SRCS
   transaction_loader.cc
   transaction_participant.cc
   transaction_status_resolver.cc
+  write_post_apply_metadata_task.cc
   operations/operation.cc
   operations/change_auto_flags_config_operation.cc
   operations/change_metadata_operation.cc
+  operations/clone_operation.cc
   operations/history_cutoff_operation.cc
   operations/operation_driver.cc
   operations/operation_tracker.cc
@@ -69,7 +72,6 @@ set(TABLET_SRCS
   tablet_retention_policy.cc
   preparer.cc
   write_query.cc
-  retryable_requests_flusher.cc
   )
 
 set(TABLET_DEPS pq_utils)
@@ -94,7 +96,7 @@ set(TABLET_PROTO_LIBS
   yb_common)
 ADD_YB_LIBRARY(tablet_proto
   SRCS ${TABLET_PROTO_SRCS}
-  DEPS ${TABLET_PROTO_LIBS} opid_proto
+  DEPS ${TABLET_PROTO_LIBS}
   NONLINK_DEPS ${TABLET_PROTO_TGTS})
 
 ADD_YB_LIBRARY(
@@ -137,6 +139,7 @@ target_link_libraries(tablet
   yb_common
   gutil
   server_common
+  yb_ash
   yb_fs
   yb_rocksutil
   yb_util
@@ -169,3 +172,4 @@ ADD_YB_TEST(composite-pushdown-test)
 ADD_YB_TEST(tablet_peer-test)
 ADD_YB_TEST(tablet_random_access-test)
 ADD_YB_TEST(tablet_data_integrity-test)
+ADD_YB_TEST(operations/operation_tracker-test)

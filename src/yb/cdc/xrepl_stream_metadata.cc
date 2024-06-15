@@ -16,6 +16,8 @@
 #include "yb/gutil/map-util.h"
 #include "yb/util/shared_lock.h"
 
+DECLARE_bool(ysql_yb_enable_replica_identity);
+
 // If this is the initial load, assign the variable to class local variable of the same name and _
 // suffix. If this is a refresh, validate that the value has not changed.
 #define ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(var) \
@@ -34,6 +36,8 @@ namespace {
 // This function is to handle the upgrade scenario where the DB is upgraded from a version
 // without CDCSDK changes to the one with it. So in case some required options are missing,
 // the default values will be added for the same.
+// (DEPRECATE_EOL 2024.1) This can be removed since XClusterSourceManager populates these defaults
+// on new streams and CDCStreamLoader backfills them for older streams.
 void AddDefaultOptionsIfMissing(std::unordered_map<std::string, std::string>* options) {
   InsertIfNotPresent(options, kSourceType, CDCRequestSource_Name(CDCRequestSource::XCLUSTER));
   InsertIfNotPresent(options, kCheckpointType, CDCCheckpointType_Name(CDCCheckpointType::IMPLICIT));
@@ -111,16 +115,17 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   StreamModeTransactional transactional(false);
   std::optional<uint64> consistent_snapshot_time;
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
+  std::optional<uint64> stream_creation_time;
+  std::unordered_map<std::string, PgReplicaIdentity> replica_identity_map;
 
-  RETURN_NOT_OK(
-      client->GetCDCStream(
-          stream_id, &namespace_id, &object_ids, &options, &transactional,
-          &consistent_snapshot_time, &consistent_snapshot_option));
+  RETURN_NOT_OK(client->GetCDCStream(
+      stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
+      &consistent_snapshot_option, &stream_creation_time, &replica_identity_map));
 
   AddDefaultOptionsIfMissing(&options);
 
   for (const auto& [key, value] : options) {
-    if (key == kRecordType) {
+    if (key == kRecordType && !FLAGS_ysql_yb_enable_replica_identity) {
       CDCRecordType record_type;
       SCHECK(
           CDCRecordType_Parse(value, &record_type), IllegalState, "CDC record type parsing error");
@@ -145,7 +150,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
       ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(checkpoint_type);
     } else if (key == kIdType) {
       if (value == kNamespaceId) {
-        ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(namespace_id);
+        // Ignore use-after-move-warning. There is at most one key of this type and value.
+        ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(namespace_id); // NOLINT(bugprone-use-after-move)
       } else if (value != kTableId) {
         LOG(WARNING) << "Unsupported CDC Stream Id type: " << value;
       }
@@ -163,8 +169,13 @@ Status StreamMetadata::GetStreamInfoFromMaster(
     }
   }
 
+  {
+    std::lock_guard l_table(table_ids_mutex_);
+    replica_identitity_map_.swap(replica_identity_map);
+  }
   transactional_.store(transactional, std::memory_order_release);
   consistent_snapshot_time_.store(consistent_snapshot_time, std::memory_order_release);
+  stream_creation_time_.store(stream_creation_time, std::memory_order_release);
   consistent_snapshot_option_ = consistent_snapshot_option;
 
   if (!is_refresh) {

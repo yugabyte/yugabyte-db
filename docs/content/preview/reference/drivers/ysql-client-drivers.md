@@ -152,7 +152,7 @@ Replace `<path-to-libpq>` with the path to the libpq installation; for example, 
 
 [Rust-Postgres](https://github.com/sfackler/rust-postgres) is the Rust interface for PostgreSQL databases. Rust-Postgres is not based on libpq, but supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Ruby application with Rust-Postgres, see [Build a Rust application](../../../develop/build-apps/rust/cloud-ysql-rust/).
+For a tutorial on building a sample Ruby application with Rust-Postgres, see [Build a Rust application](../../../tutorials/build-apps/rust/cloud-ysql-rust/).
 
 #### Install the Rust-Postgres driver
 

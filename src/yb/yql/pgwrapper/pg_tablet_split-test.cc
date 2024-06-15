@@ -62,6 +62,7 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
@@ -69,9 +70,9 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+DECLARE_string(ysql_pg_conf_csv);
 
 DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
 DECLARE_bool(TEST_pause_before_full_compaction);
@@ -241,6 +242,92 @@ TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
     ASSERT_OK(conn.ExecuteFormat("UPDATE t SET v = 2 where k = $0;", i));
   }
 
+  ASSERT_OK(conn.CommitTransaction());
+}
+
+// The below test asserts that the intent iterator created during conflict resolution rightly checks
+// conflicts for the empty doc key and that it doesn't get iniaited with the tablet's key bounds.
+//
+// Refer https://github.com/yugabyte/yugabyte-db/issues/22630 for details.
+#ifndef NDEBUG
+TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1,10000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+  const auto& parent_peer = peers[0];
+
+  ASSERT_OK(WaitForAnySstFiles(parent_peer));
+  const auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
+  const auto doc_key_hash = ASSERT_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  // Find a key belonging to the second child which has key bounds [encoded_split_key, )
+  auto key = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      Format("SELECT k FROM t WHERE yb_hash_code(k) > $0 LIMIT 1", doc_key_hash)));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<int64>("SELECT COUNT(*) FROM t WHERE v=1")));
+
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"ConflictResolver::Resolve", "TestConflictResolutionChecksConflictsAgainstEmptyKey"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    // This update should be blocked until the above serializable transaction commits.
+    return conn.ExecuteFormat("UPDATE t SET v=v+1 WHERE k=$0", key);
+  });
+  // Wait for the async transaction to detect conflicts.
+  DEBUG_ONLY_TEST_SYNC_POINT("TestConflictResolutionChecksConflictsAgainstEmptyKey");
+  // Serializable isolation guarantees that the count will remain 0.
+  ASSERT_EQ(0, ASSERT_RESULT(conn.FetchRow<int64>("SELECT COUNT(*) FROM t WHERE v=1")));
+  ASSERT_NE(status_future.wait_for(0ms), std::future_status::ready);
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(status_future.get());
+}
+#endif // NDEBUG
+
+// Trigger a tablet split when a transaction has an outstanding statement in progress.
+// The split will cause ops to be retried at the YBSession level.
+TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitAmidstRunningTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto num_rows_str = "10000";
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT generate_series(1, $0), 0", num_rows_str));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // Reduce max batch size so as to increase chances of encountering a WriteRpc amidst split.
+  ASSERT_OK(conn.Execute("SET ysql_session_max_batch_size=100"));
+  ASSERT_OK(conn.Execute("UPDATE t SET v=v+10 where k >= 1"));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+
+  auto status_future = std::async(std::launch::async, [&conn]() {
+    return conn.Execute("UPDATE t SET v=v+100 WHERE k >= 1");
+  });
+  ASSERT_OK(WaitFor([&conn] () {
+    return conn.IsBusy();
+  }, 1s * kTimeMultiplier, "Wait for the request to be submitted to the query layer"));
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  ASSERT_OK(status_future.get());
+  auto row_count_str = ASSERT_RESULT(conn.FetchRowAsString("SELECT COUNT(*) FROM t WHERE v=110"));
+  ASSERT_EQ(row_count_str, num_rows_str);
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO a"));
+  row_count_str = ASSERT_RESULT(conn.FetchRowAsString("SELECT COUNT(*) FROM t WHERE v=110"));
+  ASSERT_EQ(row_count_str, "0");
   ASSERT_OK(conn.CommitTransaction());
 }
 
@@ -1480,9 +1567,7 @@ class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {
   void SetUp() override {
     // Disable wait queues to fail faster in case of transactions conflict instead of waiting until
     // request times out.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    // Fail txn early in case of conflict to reduce test runtime.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    EnableFailOnConflict();
     PgPartitioningTest::SetUp();
   }
 };

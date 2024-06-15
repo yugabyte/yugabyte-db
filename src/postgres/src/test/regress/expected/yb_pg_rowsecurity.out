@@ -297,7 +297,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
                      QUERY PLAN
 ----------------------------------------------------
  Seq Scan on document
-   Remote Filter: (dlevel <= $0)
+   Storage Filter: (dlevel <= $0)
    Filter: f_leak(dtitle)
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
@@ -313,7 +313,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on document
-         Remote Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = ANY (ARRAY[document.cid, $2, $3, ..., $1024]))
@@ -361,9 +361,9 @@ NOTICE:  f_leak => awesome technology book
 
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
                                     QUERY PLAN
-----------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------
  Seq Scan on document
-   Remote Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0))
+   Storage Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0))
    Filter: f_leak(dtitle)
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
@@ -372,14 +372,14 @@ EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
 
 EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle);
                                        QUERY PLAN
-----------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (document.cid = category.cid)
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on document
-         Remote Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0))
+         Storage Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0))
          Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
          Index Cond: (cid = ANY (ARRAY[document.cid, $2, $3, ..., $1024]))
@@ -708,9 +708,9 @@ SELECT * FROM t1;
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
 (2 rows)
 
 SELECT * FROM t1 WHERE f_leak(b);
@@ -724,9 +724,9 @@ NOTICE:  f_leak => dad
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
@@ -737,9 +737,9 @@ LINE 1: SELECT oid, * FROM t1;
                ^
 EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
 (2 rows)
 
 -- reference to whole-row reference
@@ -752,9 +752,9 @@ SELECT *, t1 FROM t1;
 
 EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
 (2 rows)
 
 -- for share/update lock
@@ -767,10 +767,10 @@ SELECT * FROM t1 FOR SHARE;
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 FOR SHARE;
               QUERY PLAN
---------------------------------------
+---------------------------------------
  LockRows
    ->  Seq Scan on t1
-         Remote Filter: ((a % 2) = 0)
+         Storage Filter: ((a % 2) = 0)
 (3 rows)
 
 SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
@@ -784,10 +784,10 @@ NOTICE:  f_leak => dad
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
               QUERY PLAN
---------------------------------------
+---------------------------------------
  LockRows
    ->  Seq Scan on t1
-         Remote Filter: ((a % 2) = 0)
+         Storage Filter: ((a % 2) = 0)
          Filter: f_leak(b)
 (4 rows)
 
@@ -1052,13 +1052,13 @@ NOTICE:  f_leak => 11
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                        QUERY PLAN
---------------------------------------------------------
+---------------------------------------------------------
  Append
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on part_document_fiction
-         Remote Filter: ((cid < 55) AND (dlevel <= $0))
+         Storage Filter: ((cid < 55) AND (dlevel <= $0))
          Filter: f_leak(dtitle)
 (7 rows)
 
@@ -1099,13 +1099,13 @@ EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
    ->  Seq Scan on part_document_fiction
-         Remote Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_satire
-         Remote Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
    ->  Seq Scan on part_document_nonfiction
-         Remote Filter: (dlevel <= $0)
+         Storage Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
 (13 rows)
 
@@ -1361,12 +1361,12 @@ NOTICE:  f_leak => a87ff679a2f3e71d9181a67b7542122c
 
 EXPLAIN (COSTS OFF) SELECT * FROM only s1 WHERE f_leak(b);
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on s1
    Filter: ((hashed SubPlan 1) AND f_leak(b))
    SubPlan 1
      ->  Seq Scan on s2
-           Remote Filter: (((x % 2) = 0) AND (y ~~ '%2f%'::text))
+           Storage Filter: (((x % 2) = 0) AND (y ~~ '%2f%'::text))
 (5 rows)
 
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -1383,12 +1383,12 @@ NOTICE:  f_leak => 1679091c5a880faf6fb5e6087eb1b2dc
 
 EXPLAIN (COSTS OFF) SELECT * FROM s1 WHERE f_leak(b);
                             QUERY PLAN
-------------------------------------------------------------------
+-------------------------------------------------------------------
  Seq Scan on s1
    Filter: ((hashed SubPlan 1) AND f_leak(b))
    SubPlan 1
      ->  Seq Scan on s2
-           Remote Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
+           Storage Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (5 rows)
 
 SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
@@ -1401,16 +1401,16 @@ SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
 
 EXPLAIN (COSTS OFF) SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
                                    QUERY PLAN
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
  Seq Scan on s2
-   Remote Filter: (((x % 2) = 0) AND (y ~~ '%28%'::text))
+   Storage Filter: (((x % 2) = 0) AND (y ~~ '%28%'::text))
    SubPlan 2
      ->  Limit
            ->  Seq Scan on s1
                  Filter: (hashed SubPlan 1)
                  SubPlan 1
                    ->  Seq Scan on s2 s2_1
-                         Remote Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
+                         Storage Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (9 rows)
 
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -1427,10 +1427,10 @@ EXECUTE p1(2);
 (1 row)
 
 EXPLAIN (COSTS OFF) EXECUTE p1(2);
-                  QUERY PLAN
------------------------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Seq Scan on t1
-   Remote Filter: ((a <= 2) AND ((a % 2) = 0))
+   Storage Filter: ((a <= 2) AND ((a % 2) = 0))
 (2 rows)
 
 -- superuser is allowed to bypass RLS checks
@@ -1465,10 +1465,10 @@ EXECUTE p1(2);
 (2 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE p1(2);
-        QUERY PLAN
----------------------------
+         QUERY PLAN
+----------------------------
  Seq Scan on t1
-   Remote Filter: (a <= 2)
+   Storage Filter: (a <= 2)
 (2 rows)
 
 PREPARE p2(int) AS SELECT * FROM t1 WHERE a = $1;
@@ -1480,9 +1480,9 @@ EXECUTE p2(2);
 
 EXPLAIN (COSTS OFF) EXECUTE p2(2);
         QUERY PLAN
---------------------------
+---------------------------
  Seq Scan on t1
-   Remote Filter: (a = 2)
+   Storage Filter: (a = 2)
 (2 rows)
 
 -- also, case when privilege switch from superuser
@@ -1496,9 +1496,9 @@ EXECUTE p2(2);
 
 EXPLAIN (COSTS OFF) EXECUTE p2(2);
                   QUERY PLAN
-----------------------------------------------
+-----------------------------------------------
  Seq Scan on t1
-   Remote Filter: ((a = 2) AND ((a % 2) = 0))
+   Storage Filter: ((a = 2) AND ((a % 2) = 0))
 (2 rows)
 
 --
@@ -1507,10 +1507,10 @@ EXPLAIN (COSTS OFF) EXECUTE p2(2);
 SET SESSION AUTHORIZATION regress_rls_bob;
 EXPLAIN (COSTS OFF) UPDATE t1 SET b = b || b WHERE f_leak(b);
               QUERY PLAN
---------------------------------------
+---------------------------------------
  Update on t1
    ->  Seq Scan on t1
-         Remote Filter: ((a % 2) = 0)
+         Storage Filter: ((a % 2) = 0)
          Filter: f_leak(b)
 (4 rows)
 
@@ -1519,10 +1519,10 @@ NOTICE:  f_leak => bbb
 NOTICE:  f_leak => dad
 EXPLAIN (COSTS OFF) UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
               QUERY PLAN
---------------------------------------
+---------------------------------------
  Update on t1
    ->  Seq Scan on t1
-         Remote Filter: ((a % 2) = 0)
+         Storage Filter: ((a % 2) = 0)
          Filter: f_leak(b)
 (4 rows)
 
@@ -1595,19 +1595,19 @@ EXPLAIN (COSTS OFF) UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
 WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
 AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
                            QUERY PLAN
-----------------------------------------------------------------
+-----------------------------------------------------------------
  Update on t1 t1_1
    ->  Merge Join
          Merge Cond: (t1_1.b = t1_2.b)
          ->  Sort
                Sort Key: t1_1.b
                ->  Seq Scan on t1 t1_1
-                     Remote Filter: ((a = 4) AND ((a % 2) = 0))
+                     Storage Filter: ((a = 4) AND ((a % 2) = 0))
                      Filter: f_leak(b)
          ->  Sort
                Sort Key: t1_2.b
                ->  Seq Scan on t1 t1_2
-                     Remote Filter: ((a = 4) AND ((a % 2) = 0))
+                     Storage Filter: ((a = 4) AND ((a % 2) = 0))
                      Filter: f_leak(b)
 (13 rows)
 
@@ -1636,19 +1636,19 @@ SET SESSION AUTHORIZATION regress_rls_bob;
 SET row_security TO ON;
 EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
               QUERY PLAN
---------------------------------------
+---------------------------------------
  Delete on t1
    ->  Seq Scan on t1
-         Remote Filter: ((a % 2) = 0)
+         Storage Filter: ((a % 2) = 0)
          Filter: f_leak(b)
 (4 rows)
 
 EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
               QUERY PLAN
---------------------------------------
+---------------------------------------
  Delete on t1
    ->  Seq Scan on t1
-         Remote Filter: ((a % 2) = 0)
+         Storage Filter: ((a % 2) = 0)
          Filter: f_leak(b)
 (4 rows)
 
@@ -1908,29 +1908,29 @@ NOTICE:  f_leak => dad
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
 PREPARE plancache_test AS SELECT * FROM z1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
 PREPARE plancache_test2 AS WITH q AS (SELECT * FROM z1 WHERE f_leak(b)) SELECT * FROM q,z2;
 EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z1
-           Remote Filter: ((a % 2) = 0)
+           Storage Filter: ((a % 2) = 0)
            Filter: f_leak(b)
    ->  CTE Scan on q
    ->  Materialize
@@ -1940,14 +1940,14 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 PREPARE plancache_test3 AS WITH q AS (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
          ->  Seq Scan on z1
-               Remote Filter: ((a % 2) = 0)
+               Storage Filter: ((a % 2) = 0)
                Filter: f_leak(b)
 (8 rows)
 
@@ -1963,27 +1963,27 @@ NOTICE:  f_leak => dad
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z1
-           Remote Filter: ((a % 2) = 0)
+           Storage Filter: ((a % 2) = 0)
            Filter: f_leak(b)
    ->  CTE Scan on q
    ->  Materialize
@@ -1992,14 +1992,14 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
          ->  Seq Scan on z1
-               Remote Filter: ((a % 2) = 0)
+               Storage Filter: ((a % 2) = 0)
                Filter: f_leak(b)
 (8 rows)
 
@@ -2015,27 +2015,27 @@ NOTICE:  f_leak => ccc
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 1)
+   Storage Filter: ((a % 2) = 1)
    Filter: f_leak(b)
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 1)
+   Storage Filter: ((a % 2) = 1)
    Filter: f_leak(b)
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z1
-           Remote Filter: ((a % 2) = 1)
+           Storage Filter: ((a % 2) = 1)
            Filter: f_leak(b)
    ->  CTE Scan on q
    ->  Materialize
@@ -2044,14 +2044,14 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
          ->  Seq Scan on z1
-               Remote Filter: ((a % 2) = 1)
+               Storage Filter: ((a % 2) = 1)
                Filter: f_leak(b)
 (8 rows)
 
@@ -2067,27 +2067,27 @@ NOTICE:  f_leak => ccc
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 1)
+   Storage Filter: ((a % 2) = 1)
    Filter: f_leak(b)
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 1)
+   Storage Filter: ((a % 2) = 1)
    Filter: f_leak(b)
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z1
-           Remote Filter: ((a % 2) = 1)
+           Storage Filter: ((a % 2) = 1)
            Filter: f_leak(b)
    ->  CTE Scan on q
    ->  Materialize
@@ -2096,14 +2096,14 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
                  QUERY PLAN
---------------------------------------------
+---------------------------------------------
  Nested Loop
    CTE q
      ->  Seq Scan on z2
    ->  CTE Scan on q
    ->  Materialize
          ->  Seq Scan on z1
-               Remote Filter: ((a % 2) = 1)
+               Storage Filter: ((a % 2) = 1)
                Filter: f_leak(b)
 (8 rows)
 
@@ -2177,9 +2177,9 @@ NOTICE:  f_leak => dad
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
@@ -2197,9 +2197,9 @@ NOTICE:  f_leak => dad
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
@@ -2223,9 +2223,9 @@ NOTICE:  f_leak => dad
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on z1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
    Filter: f_leak(b)
 (3 rows)
 
@@ -2362,9 +2362,9 @@ CREATE VIEW rls_sbv WITH (security_barrier) AS
     SELECT * FROM y1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) SELECT * FROM rls_sbv WHERE (a = 1);
         QUERY PLAN
---------------------------
+---------------------------
  Seq Scan on y1
-   Remote Filter: (a = 1)
+   Storage Filter: (a = 1)
    Filter: f_leak(b)
 (3 rows)
 
@@ -2374,10 +2374,10 @@ SET SESSION AUTHORIZATION regress_rls_bob;
 CREATE VIEW rls_sbv WITH (security_barrier) AS
     SELECT * FROM y1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) SELECT * FROM rls_sbv WHERE (a = 1);
-                        QUERY PLAN
------------------------------------------------------------
+                         QUERY PLAN
+------------------------------------------------------------
  Seq Scan on y1
-   Remote Filter: ((a = 1) AND ((a > 2) OR ((a % 2) = 0)))
+   Storage Filter: ((a = 1) AND ((a > 2) OR ((a % 2) = 0)))
    Filter: f_leak(b)
 (3 rows)
 
@@ -2425,9 +2425,9 @@ NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak(b);
                              QUERY PLAN
---------------------------------------------------------------------
+---------------------------------------------------------------------
  Seq Scan on y2
-   Remote Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
+   Storage Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
    Filter: f_leak(b)
 (3 rows)
 
@@ -2469,9 +2469,9 @@ NOTICE:  f_leak => abc
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak('abc');
                              QUERY PLAN
---------------------------------------------------------------------
+---------------------------------------------------------------------
  Seq Scan on y2
-   Remote Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
+   Storage Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
    Filter: f_leak('abc'::text)
 (3 rows)
 
@@ -2488,13 +2488,13 @@ NOTICE:  f_leak => def
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(abc);
                                    QUERY PLAN
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (y2.b = test_qual_pushdown.abc)
    ->  Sort
          Sort Key: y2.b
          ->  Seq Scan on y2
-               Remote Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
+               Storage Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
    ->  Sort
          Sort Key: test_qual_pushdown.abc
          ->  Seq Scan on test_qual_pushdown
@@ -2522,13 +2522,13 @@ NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b);
                                    QUERY PLAN
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (y2.b = test_qual_pushdown.abc)
    ->  Sort
          Sort Key: y2.b
          ->  Seq Scan on y2
-               Remote Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
+               Storage Filter: (((a % 4) = 0) OR ((a % 3) = 0) OR ((a % 2) = 0))
                Filter: f_leak(b)
    ->  Sort
          Sort Key: test_qual_pushdown.abc
@@ -2556,9 +2556,9 @@ PREPARE role_inval AS SELECT * FROM t1;
 -- Check plan
 EXPLAIN (COSTS OFF) EXECUTE role_inval;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
 (2 rows)
 
 -- Change to regress_rls_carol
@@ -2566,9 +2566,9 @@ SET ROLE regress_rls_carol;
 -- Check plan- should be different
 EXPLAIN (COSTS OFF) EXECUTE role_inval;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t1
-   Remote Filter: ((a % 4) = 0)
+   Storage Filter: ((a % 4) = 0)
 (2 rows)
 
 -- Change back to regress_rls_bob
@@ -2576,9 +2576,9 @@ SET ROLE regress_rls_bob;
 -- Check plan- should be back to original
 EXPLAIN (COSTS OFF) EXECUTE role_inval;
            QUERY PLAN
---------------------------------
+---------------------------------
  Seq Scan on t1
-   Remote Filter: ((a % 2) = 0)
+   Storage Filter: ((a % 2) = 0)
 (2 rows)
 
 --
@@ -2622,11 +2622,11 @@ NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
 
 EXPLAIN (COSTS OFF) WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
                QUERY PLAN
-----------------------------------------
+-----------------------------------------
  CTE Scan on cte1
    CTE cte1
      ->  Seq Scan on t1
-           Remote Filter: ((a % 2) = 0)
+           Storage Filter: ((a % 2) = 0)
            Filter: f_leak(b)
 (5 rows)
 
@@ -2689,10 +2689,10 @@ CREATE TABLE t2 (a integer, b text, k serial, PRIMARY KEY(k ASC));
 INSERT INTO t2 (SELECT * FROM t1);
 EXPLAIN (COSTS OFF) INSERT INTO t2 (SELECT * FROM t1);
               QUERY PLAN
---------------------------------------
+---------------------------------------
  Insert on t2
    ->  Seq Scan on t1
-         Remote Filter: ((a % 2) = 0)
+         Storage Filter: ((a % 2) = 0)
 (3 rows)
 
 SELECT * FROM t2;

@@ -50,7 +50,6 @@ typedef struct ExplainState
 	bool		timing;			/* print detailed node timing */
 	bool		summary;		/* print total planning and execution timing */
 	bool		rpc;			/* print RPC stats */
-	bool		debug;			/* print debug information */
 	ExplainFormat format;		/* output format */
 	/* state for output formatting --- not reset for each new plan tree */
 	int			indent;			/* current indentation level */
@@ -62,6 +61,7 @@ typedef struct ExplainState
 	List	   *deparse_cxt;	/* context list for deparsing expressions */
 	Bitmapset  *printed_subplans;	/* ids of SubPlans we've printed */
 	YbExplainExecStats yb_stats;		   /* hold YB-specific exec stats */
+	bool		yb_debug;		/* print debug information */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */
