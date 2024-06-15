@@ -210,7 +210,7 @@ $ ./tpccbenchmark --execute=true --warmup-time-secs=60 --nodes=${IPS} --warehous
 You can then run the workload against the database from each client:
 
 {{<note>}}
-Since we specify initial-delay-secs, to ensure that the tests start together, we adjust that time in the warmup phase.
+As you specify initial-delay-secs to ensure that the tests start together, adjust that time in the warmup phase.
 {{</note>}}
 
 | Client | Command |
