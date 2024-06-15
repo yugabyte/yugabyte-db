@@ -140,7 +140,7 @@ SELECT t1.first as "A", t2.first+100 AS "B", t1.first*(t2.first+100) as "AxB",
 
 ## pset
 
-You can display tables in different ways by using the [`\pset`](../ysqlsh-pset-options/#pset-option-value) command:
+You can display tables in different ways by using the [`\pset`](../ysqlsh-pset-options/) command:
 
 ```sql
 \pset border 2

@@ -5,9 +5,6 @@
 package backup
 
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -16,10 +13,10 @@ import (
 const (
 	defaultScheduleListing = "table {{.Name}}\t{{.UUID}}\t{{.UniverseUUID}}" +
 		"\t{{.StorageConfigurationName}}\t{{.Frequency}}\t{{.CronExpression}}\t{{.NextTaskTime}}"
-	
-	taskParamsHeader   					= "Task Params"
-	taskTypeHeader     					= "Task Type"
-	nextIncrementBackupTaskTime      	= "Next Increment Backup Task Time"
+
+	taskParamsHeader            = "Task Params"
+	taskTypeHeader              = "Task Type"
+	nextIncrementBackupTaskTime = "Next Increment Backup Task Time"
 )
 
 // Context for provider outputs
@@ -59,13 +56,13 @@ func Write(ctx formatter.Context, schedules []ybaclient.Schedule) error {
 func NewScheduleContext() *Context {
 	scheduleCtx := Context{}
 	scheduleCtx.Header = formatter.SubHeaderContext{
-		"Name":    formatter.NameHeader,
-		"UUID":    formatter.UUIDHeader,
-		"UniverseName": universeHeader,
-		"StorageConfigurationName": formatter.StorageConfigurationHeader
-		"Frequency":  frequencyHeader,
-		"CronExpression":    cronExpressionHeader,
-		"NextTaskTime": nextTaskTimeHeader,
+		"Name":                     formatter.NameHeader,
+		"UUID":                     formatter.UUIDHeader,
+		"UniverseName":             formatter.UniversesHeader,
+		"StorageConfigurationName": formatter.StorageConfigurationHeader,
+		// "Frequency":  frequencyHeader,
+		// "CronExpression":    cronExpressionHeader,
+		// "NextTaskTime": nextTaskTimeHeader,
 	}
 	return &scheduleCtx
 }
@@ -77,6 +74,5 @@ func (c *Context) UUID() string {
 
 // Name fetches Schedule Name
 func (c *Context) Name() string {
-	return c.u.GetScheduleName()
+	return c.s.GetScheduleName()
 }
- 

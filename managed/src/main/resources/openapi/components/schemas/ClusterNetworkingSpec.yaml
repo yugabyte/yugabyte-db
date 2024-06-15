@@ -1,4 +1,5 @@
-title: Networking specification that is used for nodes in this cluster
+title: ClusterNetworkingSpec
+description: Networking specification that is used for nodes in this cluster. Part of ClusterSpec.
 type: object
 properties:
   enable_exposing_service:

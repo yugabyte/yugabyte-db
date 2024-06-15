@@ -58,8 +58,8 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		"installRoot":       common.GetSoftwareRoot,
 		"installVersionDir": common.GetInstallerSoftwareDir,
 		"baseInstall":       common.GetBaseInstall,
-		"splitInput": 	     common.SplitInput,
-		"removeQuotes":		 common.RemoveQuotes,
+		"splitInput":        common.SplitInput,
+		"removeQuotes":      common.RemoveQuotes,
 	}
 
 	tmpl, err := template.New(configYmlFileName).
@@ -122,47 +122,39 @@ func WriteBytes(byteSlice []byte, fileName []byte) ([]byte, error) {
 }
 
 // GenerateTemplate of a particular component.
-func GenerateTemplate(component common.Component) {
+func GenerateTemplate(component common.Component) error {
 	log.Debug("Generating config files for " + component.Name())
-	createdBytes, _ := readConfigAndTemplate(component.TemplateFile(), component)
+	createdBytes, err := readConfigAndTemplate(component.TemplateFile(), component)
+	if err != nil {
+		return err
+	}
 
-	jsonData, _ := readYAMLtoJSON(createdBytes)
+	jsonData, err := readYAMLtoJSON(createdBytes)
+	if err != nil {
+		return err
+	}
 
 	numberOfServices := len(jsonData["services"].([]interface{}))
 
 	for i := 0; i < numberOfServices; i++ {
-
 		service := jsonData["services"].([]interface{})[i]
 		serviceName := fmt.Sprint(service.(map[string]interface{})["name"])
-
 		serviceFileName := fmt.Sprint(service.(map[string]interface{})["fileName"])
-
 		serviceContents := fmt.Sprint(service.(map[string]interface{})["contents"])
 
 		// Only write the service files to the appropriate file location if we are
 		// running as root (since we might not be able to write to /etc/systemd)
 		// in the non-root case.
 		log.Debug("Creating file from template: " + serviceFileName)
-		if !common.HasSudoAccess() {
-
-			if !strings.Contains(serviceName, "Service") {
-
-				WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-
-			}
-
-		} else {
-
-			WriteBytes([]byte(serviceContents), []byte(serviceFileName))
-
+		if _, err := WriteBytes([]byte(serviceContents), []byte(serviceFileName)); err != nil {
+			return err
 		}
 
 		// TODO: Use viper to parse additional entries
-		if component.Name() == "yb-platform" && common.HasSudoAccess() {
-
+		if component.Name() == "yb-platform" && serviceName == "platformConfig" {
 			file, err := os.OpenFile(serviceFileName, os.O_APPEND|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatal("Error: " + err.Error() + ".")
+				return err
 			}
 			defer file.Close()
 
@@ -171,13 +163,11 @@ func GenerateTemplate(component common.Component) {
 
 			log.DebugLF("Writing addition data to yb-platform config: " + additionalEntryString)
 			if _, err := file.WriteString(additionalEntryString); err != nil {
-				log.Fatal("Error: " + err.Error() + ".")
+				return err
 			}
-
 		}
-
 		log.Debug("Templated configuration for " + serviceName +
 			" succesfully applied.")
-
 	}
+	return nil
 }

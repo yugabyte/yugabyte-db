@@ -355,6 +355,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return uuid.equals(other.uuid);
     }
 
+    @JsonIgnore
+    public int getExpectedNumberOfNodes() {
+      return userIntent.dedicatedNodes
+          ? userIntent.numNodes + userIntent.replicationFactor
+          : userIntent.numNodes;
+    }
+
     /**
      * Check if instance tags are same as the passed in cluster.
      *

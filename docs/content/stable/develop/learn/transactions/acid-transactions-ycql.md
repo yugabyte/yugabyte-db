@@ -1,6 +1,6 @@
 ---
 title: ACID Transactions in YCQL
-headerTitle: Transactions
+headerTitle: Transactions in YCQL
 linkTitle: Transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
 menu:
@@ -11,20 +11,9 @@ menu:
 type: docs
 ---
 
-{{<tabs>}}
-{{<tabitem href="../acid-transactions-ysql/" text="YSQL" icon="postgres" >}}
-{{<tabitem href="../acid-transactions-ycql/" text="YCQL" icon="cassandra" active="true" >}}
-{{</tabs>}}
+{{<api-tabs>}}
 
-A transaction is a sequence of operations performed as a single logical unit of work. A transaction has the following four key properties, commonly abbreviated as ACID:
-
-- **Atomicity** All the work in a transaction is treated as a single atomic unit - either all of it is performed or none of it is.
-
-- **Consistency** A completed transaction leaves the database in a consistent internal state. This can either be all the operations in the transactions succeeding or none of them succeeding.
-
-- **Isolation** This property determines how and when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot* isolation level in the YCQL API. Read more about the different [levels of isolation](../../../../architecture/transactions/isolation-levels/).
-
-- **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
+A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](../../../../architecture/key-concepts#acid) guarantees for all transactions:
 
 {{<note title="Note">}}
 Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it supports three levels of isolation in the [YSQL](../../../../explore/transactions/isolation-levels/) API: *Snapshot*, *Serializable*, and *Read Committed*.
@@ -40,7 +29,7 @@ CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : 
 
 ## Example with ycqlsh
 
-##### Create keyspace and table
+### Create keyspace and table
 
 Create a keyspace:
 
@@ -74,7 +63,7 @@ where keyspace_name='banking' AND table_name = 'accounts';
 (1 rows)
 ```
 
-##### Insert sample data
+### Insert sample data
 
 Seed the table with some sample data as follows:
 
@@ -125,7 +114,7 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
 
 ```
 
-##### Execute a transaction
+### Execute a transaction
 
 Suppose John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows:
 
@@ -238,7 +227,7 @@ String create_stmt =
                 tablename);
 ```
 
-##### Insert or update data
+### Insert or update data
 
 You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
 
@@ -259,10 +248,10 @@ String create_stmt =
                 "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
                 "END TRANSACTION;",
                 tablename, key1, value1,
-                tablename, key2, value2;
+                tablename, key2, value2);
 ```
 
-##### Prepare-bind transactions
+### Prepare-bind transactions
 
 You can prepare statements with transactions and bind variables to the prepared statements when executing the query.
 
@@ -270,10 +259,10 @@ You can prepare statements with transactions and bind variables to the prepared 
 String create_stmt =
   String.format("BEGIN TRANSACTION" +
                 "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
-                "  INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
+                "  INSERT INTO %s (k, v) VALUES (:k2, :v2);" +
                 "END TRANSACTION;",
                 tablename, key1, value1,
-                tablename, key2, value2;
+                tablename, key2, value2);
 PreparedStatement pstmt = client.prepare(create_stmt);
 
 ...

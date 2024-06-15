@@ -42,11 +42,17 @@ DEFINE_test_flag(int32, scan_tests_num_rows, 0,
 
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(sst_files_soft_limit);
+DECLARE_uint64(sst_files_hard_limit);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(use_fast_backward_scan);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(rocksdb_max_write_buffer_number);
+DECLARE_int32(max_prevs_to_avoid_seek);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
@@ -261,6 +267,7 @@ class PgMiniSmallMemstoreAndCacheTest : public PgSingleTServerTest {
   void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_memstore_size_mb_max) = 16;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = 32 * 1024 * 1024;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_write_buffer_number) = 2;
   }
 };
 
@@ -695,6 +702,225 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
     s.stop();
     LOG(INFO) << kNumScansPerIteration << " scan(s) took: " << AsString(s.elapsed());
   }
+}
+
+class PgFastBackwardScanTest : public PgSingleTServerTest {
+ protected:
+  enum class IntentsUsage { kRegularOnly, kIntentsOnly, kMixed };
+  friend std::ostream& operator<<(std::ostream& out, IntentsUsage usage) {
+    switch (usage) {
+      case IntentsUsage::kRegularOnly:
+        return (out << "regular only");
+      case IntentsUsage::kIntentsOnly:
+        return (out << "intents only");
+      case IntentsUsage::kMixed:
+        return (out << "mixed");
+    }
+    throw std::invalid_argument("usage");
+  }
+
+  void SetUp() override {
+    // Disable backgorund compactions.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
+
+    PgSingleTServerTest::SetUp();
+  }
+
+  Status CreateDB(bool colocated) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat("DROP DATABASE IF EXISTS $0", kDatabaseName));
+    return conn.ExecuteFormat(
+        "CREATE DATABASE $0 with COLOCATION = $1",
+        kDatabaseName, (colocated ? "true" : "false"));
+  }
+
+  Status FetchAndValidate(
+      PGConn& conn, const std::string& fetch_stmt,
+      const std::string& expected_result, size_t num_iterations = 4) {
+    for ([[maybe_unused]] const auto _ : Range(num_iterations)) {
+      const auto result = VERIFY_RESULT(conn.FetchAllAsString(fetch_stmt));
+      SCHECK_EQ(result, expected_result, IllegalState, "Unexpected result");
+    }
+    return Status::OK();
+  }
+
+  void SimpleTest(IntentsUsage intents_usage) {
+    // A helper functor to generate RangeObject for to cover requested keys.
+    auto keys = [](int min_key, int max_key = 0) {
+      return Range(min_key, max_key > 0 ? max_key + 1 : min_key + 1);
+    };
+    const auto kColumns = keys(1, 9);
+    const auto kHKeys   = keys(1, 2);
+
+    // A helper functor to prepares values for 'INSERT INTO table VALUES ...' statement.
+    auto build_values = [&kHKeys, &kColumns](const RangeObject<int>& r_keys, int value_base) {
+      std::string values;
+      for (const auto h : kHKeys) {
+        for (const auto r : r_keys) {
+          if (!values.empty()) {
+            values += ", ";
+          }
+          values += Format("($0, $1", h, r);
+          for (const auto i : kColumns) {
+            values += Format(", $0", value_base + i);
+          }
+          values += ")";
+        }
+      }
+      return values;
+    };
+
+    // Create database and setup a connection.
+    auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+
+    // A helper functor to execute 'INSERT INTO table VALUES <values>' statement.
+    auto insert_values = [&conn](const std::string& values) {
+      return conn.ExecuteFormat("INSERT INTO ttable VALUES $0", values);
+    };
+
+    // A helper functor to execute a select statement for the test.
+    auto fetch_and_validate = [this, &conn](const std::string& expected) {
+      return FetchAndValidate(conn,
+          "SELECT c_1, c_5, r FROM ttable WHERE h = 1 ORDER BY r DESC", expected);
+    };
+
+    // Create table.
+    {
+      std::string stmt = "CREATE TABLE ttable(h int, r int, ";
+      for (const auto i : kColumns) {
+        stmt += Format("c_$0 int, ", i);
+      }
+      stmt += "PRIMARY KEY(h, r asc));";
+      ASSERT_OK(conn.Execute(stmt));
+    }
+
+    if (intents_usage == IntentsUsage::kIntentsOnly) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    }
+
+    // Load data.
+    {
+      std::string stmt = "INSERT INTO ttable SELECT h_val, r_val";
+      for (const auto i : kColumns) {
+        stmt += Format(", $0", i);
+      }
+      stmt += Format(
+          " FROM generate_series(1, $0) h_val, generate_series(1, 3) r_val;", kHKeys.size());
+      ASSERT_OK(conn.ExecuteFormat(stmt));
+      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    }
+
+    // For mixed mode, regular DB contains records #1, #2, #4, intents DB is empty.
+    ASSERT_OK(fetch_and_validate("1, 5, 3; 1, 5, 2; 1, 5, 1"));
+
+    if (intents_usage == IntentsUsage::kMixed) {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    }
+
+    // Update some rows, make deletes and more inserts.
+    ASSERT_OK(conn.Execute("UPDATE ttable SET c_1 = 4096 WHERE h = 1 and r = 1"));
+    ASSERT_OK(insert_values(build_values(/* r_keys */ keys(4, 5), 255)));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE r = 3"));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    ASSERT_OK(fetch_and_validate("256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1"));
+
+    // Re-insert data for the deleted rows.
+    ASSERT_OK(insert_values(build_values(/* r_keys */ keys(3), 16383)));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    ASSERT_OK(fetch_and_validate("256, 260, 5; 256, 260, 4; 16384, 16388, 3; 1, 5, 2; 4096, 5, 1"));
+
+    // Delete the same records again.
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE r = 3"));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    ASSERT_OK(fetch_and_validate("256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1"));
+
+    // Delete records from the intents DB in such way the very first row would be in regular DB.
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE r IN (4, 5, 6)"));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1"));
+
+    // Insert some data which would be positioned before all the existing rows.
+    ASSERT_OK(insert_values(build_values(/* r_keys */ keys(0), 65535)));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1; 65536, 65540, 0"));
+
+    if (intents_usage != IntentsUsage::kRegularOnly) {
+      ASSERT_OK(conn.CommitTransaction());
+    }
+
+    // Remove all rows for the corresponding key outside the transaction.
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE h = 1 AND r >= 0"));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+    ASSERT_OK(fetch_and_validate(""));
+
+    ASSERT_OK(conn.Execute("DROP TABLE ttable"));
+    LOG_WITH_FUNC(INFO) << "Done";
+  }
+
+  void RunSimpleTests() {
+    // TODO(#22556): Update this test when fast backward scan will be supported for packed row V2.
+    for (const auto use_fast_backward_scan : {false, true}) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = use_fast_backward_scan;
+
+        for (auto max_prevs : {10, 0, -1}) {
+          ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = max_prevs;
+          std::this_thread::yield();
+          std::this_thread::sleep_for(1s);
+
+          for (auto intents_usage : {IntentsUsage::kRegularOnly,
+                                    IntentsUsage::kIntentsOnly,
+                                    IntentsUsage::kMixed}) {
+
+            LOG(INFO) << "Running simple test with fast bacward scan "
+                      << (use_fast_backward_scan ? "enabled" : "disabled") << ","
+                      << " max_prevs_to_avoid_seek set to " << max_prevs
+                      << " and " << intents_usage << " usage";
+
+            SimpleTest(intents_usage);
+
+            if (HasFailure()) {
+              return;
+            }
+          } // for (auto intents_usage... )
+        } // for (auto max_prevs... )
+    } // for (const auto use_fast_backward_scan... )
+  }
+};
+
+TEST_F(PgFastBackwardScanTest, Simple) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
+
+  ASSERT_OK(CreateDB(/* colocated */ false));
+  RunSimpleTests();
+}
+
+TEST_F(PgFastBackwardScanTest, SimpleWithPackedRow) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+  ASSERT_OK(CreateDB(/* colocated */ false));
+  RunSimpleTests();
+}
+
+TEST_F(PgFastBackwardScanTest, SimpleColocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) = 256;
+
+  ASSERT_OK(CreateDB(/* colocated */ true));
+  RunSimpleTests();
+}
+
+TEST_F(PgFastBackwardScanTest, SimpleColocatedWithPackedRow) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) = 256;
+
+  ASSERT_OK(CreateDB(/* colocated */ true));
+  RunSimpleTests();
 }
 
 TEST_F_EX(PgSingleTServerTest, ColocatedJoinPerformance,

@@ -7981,6 +7981,9 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ASSERT_EQ(entry_1->cdc_sdk_safe_time.value(), checkpoint.snapshot_time());
   ASSERT_EQ(entry_1->last_pub_refresh_time.value(), checkpoint.snapshot_time());
   ASSERT_TRUE(entry_1->pub_refresh_times.value().empty());
+  std::ostringstream oss;
+  oss << checkpoint.snapshot_time() << 'F';
+  ASSERT_EQ(entry_1->last_decided_pub_refresh_time.value(), oss.str());
 
   // On a non-consistent snapshot stream, we should not see the entry for replication slot.
   auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
@@ -8434,6 +8437,186 @@ TEST_F(CDCSDKYsqlTest, TestUpdateOnNonExistingEntry) {
   ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(0).row_message().op(), RowMessage::BEGIN);
   ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(1).row_message().op(), RowMessage::DDL);
   ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage::COMMIT);
+}
+
+TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 50_KB;
+  ASSERT_OK(SetUpWithParams(3, 1, false, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Positive case: Set the limit in proto field and we should see its affect.
+  auto stream_id1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id1, table.table_id()));
+  ASSERT_EQ(resp.tablet_checkpoint_pairs_size(), 1);
+  auto checkpoint = resp.tablet_checkpoint_pairs()[0].cdc_sdk_checkpoint();
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  int num_inserts = 500;
+  for (int i = 0; i < num_inserts; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table values ($0, $1)", i, i + 1));
+  }
+
+  GetChangesResponsePB change_resp;
+  int received_dml_records = 0;
+  uint64_t getchanges_resp_size_limit = 10_KB;
+  while (received_dml_records != num_inserts) {
+    GetChangesRequestPB change_req;
+    change_req.set_getchanges_resp_max_size_bytes(getchanges_resp_size_limit);
+    PrepareChangeRequest(&change_req, stream_id1, tablets, checkpoint);
+    change_resp = ASSERT_RESULT(GetChangesFromCDC(change_req, true /* should_retry */));
+    checkpoint = change_resp.cdc_sdk_checkpoint();
+
+    uint64_t resp_records_size = 0;
+    for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+      resp_records_size += record.ByteSizeLong();
+      if (IsDMLRecord(record)) {
+        ++received_dml_records;
+      }
+    }
+
+    // Arbitrarily chosen as 15KB (1.5x of proto limit) since response size can be greater than the
+    // max limit. All response should be within this limit.
+    ASSERT_LT(resp_records_size, 15_KB);
+  }
+
+  // Negative case: If the proto field is not set, the limit will be based on the gflag
+  // 'cdc_stream_records_threshold_size_bytes'.
+  resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id2, table.table_id()));
+  ASSERT_EQ(resp.tablet_checkpoint_pairs_size(), 1);
+  checkpoint = resp.tablet_checkpoint_pairs()[0].cdc_sdk_checkpoint();
+  received_dml_records = 0;
+  bool seen_resp_greater_than_limit = false;
+  while (received_dml_records != num_inserts) {
+    GetChangesRequestPB change_req;
+    PrepareChangeRequest(&change_req, stream_id2, tablets, checkpoint);
+    change_resp = ASSERT_RESULT(GetChangesFromCDC(change_req, true /* should_retry */));
+    checkpoint = change_resp.cdc_sdk_checkpoint();
+    uint64_t resp_records_size = 0;
+    for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+      resp_records_size += record.ByteSizeLong();
+      if (IsDMLRecord(record)) {
+        ++received_dml_records;
+      }
+    }
+
+    // Assert that response size is significantly greater than the proto limit we were setting
+    // (getchanges_resp_size_limit) but only slightly greater than the gflag.
+    if(resp_records_size > 3 * getchanges_resp_size_limit) {
+      seen_resp_greater_than_limit = true;
+    }
+
+    // Arbitrarily chosen as 75KB (1.5x of flag limit) since response size can be greater than the
+    // max limit.
+    ASSERT_LT(resp_records_size, 75_KB);
+  }
+  ASSERT_TRUE(seen_resp_greater_than_limit);
+}
+
+void CDCSDKYsqlTest::TestNonUserTableShouldNotGetAddedToCDCStream(
+    bool create_consistent_snapshot_stream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
+      create_consistent_snapshot_stream;
+  ASSERT_OK(SetUpWithParams(
+      1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  const auto tableName1 = "test_table_1";
+  const auto tableName2 = "test_table_2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table1, 0, &table1_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table1_tablets.size(), 3);
+
+  // Create non-user tables like index, mat views BEFORE the stream has been created
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0(a ASC)", tableName1));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv1 AS SELECT COUNT(*) FROM $0", tableName1));
+
+  xrepl::StreamId stream_id =
+      create_consistent_snapshot_stream
+          ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
+          : ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+
+  // // Create non-user tables AFTER the stream has been created
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0(b ASC)", tableName1));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv2 AS SELECT COUNT(*) FROM $0", tableName1));
+  // Wait for the bg thread to complete finding out new tables added in the namespace and add
+  // them to CDC stream if relevant.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // Create a dynamic table and create non user tables on this dynamic table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName2));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table2, 0, &table2_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table2_tablets.size(), 3);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0 (b ASC)", tableName2));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", tableName2));
+  // Wait for the bg thread to complete finding out new tables added in the namespace and adding
+  // them to CDC stream if relevant.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // We expect only tablets of the two user tables i.e. test_table_1 & test_table_2.
+  std::unordered_set<TabletId> expected_tablets;
+  for (const auto& tablet : table1_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  for (const auto& tablet : table2_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  std::unordered_set<TabletId> actual_tablets;
+  CdcStateTableRow expected_row;
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  auto table_range =
+      ASSERT_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
+  for (auto row_result : table_range) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+
+    if (row.key.stream_id == stream_id) {
+      LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
+                << " stream_id: " << row.key.stream_id;
+      actual_tablets.insert(row.key.tablet_id);
+    }
+  }
+
+  LOG(INFO) << "Expected tablets: " << AsString(expected_tablets)
+            << ", Actual tablets: " << AsString(actual_tablets);
+  ASSERT_EQ(expected_tablets, actual_tablets);
+}
+
+TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToNonConsistentSnapshotCDCStream) {
+  TestNonUserTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToConsistentSnapshotCDCStream) {
+  TestNonUserTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ true);
 }
 
 }  // namespace cdc

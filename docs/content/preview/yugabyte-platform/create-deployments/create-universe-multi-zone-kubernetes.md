@@ -55,7 +55,7 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 ### Instance Configuration
 
-Complete the **Instance Configuration** section for **TServer** and **Master** as follows:
+Complete the **Instance Configuration** section {{<badge/ea>}} for **TServer** and **Master** as follows:
 
 - **Number of Cores** - specify the total number of processing cores or CPUs assigned to the TServer and Master.
 - **Memory(GiB)** - specify the memory allocation of the TServer and Master.

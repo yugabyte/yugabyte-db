@@ -38,6 +38,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.yb.ColumnSchema.SortOrder;
 
@@ -418,19 +419,33 @@ public class ApiUtils {
     };
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdaterWith1TServer0Masters() {
-    return new Universe.UniverseUpdater() {
-      @Override
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-        // Add a desired number of nodes.
-        universeDetails.nodeDetailsSet = new HashSet<>();
-        universeDetails.nodeDetailsSet.add(getDummyNodeDetails(0, NodeDetails.NodeState.Live));
-        userIntent.numNodes = 1;
-        universeDetails.upsertPrimaryCluster(userIntent, null);
-        universe.setUniverseDetails(universeDetails);
-      }
+  public static Universe.UniverseUpdater mockUniverseUpdaterSetDedicated() {
+    return universe -> {
+      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      userIntent.dedicatedNodes = true;
+      userIntent.masterInstanceType = userIntent.instanceType;
+      userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+      universe
+          .getUniverseDetails()
+          .nodeDetailsSet
+          .forEach(
+              node -> {
+                node.isMaster = false;
+              });
+      PlacementInfoUtil.SelectMastersResult selectMastersResult =
+          PlacementInfoUtil.selectMasters(
+              null, universe.getNodes(), null, true, universe.getUniverseDetails().clusters);
+      AtomicInteger nodeIdx = new AtomicInteger(universe.getNodes().size());
+      AtomicInteger cnt = new AtomicInteger();
+      selectMastersResult.addedMasters.forEach(
+          newMaster -> {
+            newMaster.cloudInfo.private_ip = "1.1.1." + cnt.incrementAndGet();
+            universe.getUniverseDetails().nodeDetailsSet.add(newMaster);
+            newMaster.state = NodeState.Live;
+            newMaster.nodeName = "host-n" + nodeIdx.incrementAndGet();
+          });
+      PlacementInfoUtil.dedicateNodes(universe.getUniverseDetails().nodeDetailsSet);
     };
   }
 

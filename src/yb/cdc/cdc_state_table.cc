@@ -65,6 +65,7 @@ static const char* const kCDCSDKXmin = "xmin";
 static const char* const kCDCSDKRecordIdCommitTime = "record_id_commit_time";
 static const char* const kCDCSDKLastPubRefreshTime = "last_pub_refresh_time";
 static const char* const kCDCSDKPubRefreshTimes = "pub_refresh_times";
+static const char* const kCDCSDKLastDecidedPubRefreshTime = "last_decided_pub_refresh_time";
 
 namespace {
 const client::YBTableName kCdcStateYBTableName(
@@ -173,6 +174,12 @@ void SerializeEntry(
           get_map_value_pb(), kCDCSDKPubRefreshTimes, AsString(*entry.pub_refresh_times));
     }
 
+    if (entry.last_decided_pub_refresh_time) {
+      client::AddMapEntryToColumn(
+          get_map_value_pb(), kCDCSDKLastDecidedPubRefreshTime,
+          AsString(*entry.last_decided_pub_refresh_time));
+    }
+
   } else {
     if (entry.active_time) {
       client::UpdateMapUpsertKeyValue(
@@ -221,6 +228,12 @@ void SerializeEntry(
       client::UpdateMapUpsertKeyValue(
           req, cdc_table->ColumnId(kCdcData), kCDCSDKPubRefreshTimes,
           AsString(*entry.pub_refresh_times));
+    }
+
+    if (entry.last_decided_pub_refresh_time) {
+      client::UpdateMapUpsertKeyValue(
+          req, cdc_table->ColumnId(kCdcData), kCDCSDKLastDecidedPubRefreshTime,
+          AsString(*entry.last_decided_pub_refresh_time));
     }
   }
 }
@@ -282,6 +295,9 @@ Status DeserializeColumn(
     }
 
     entry->pub_refresh_times = GetValueFromMap(map_value, kCDCSDKPubRefreshTimes);
+
+    entry->last_decided_pub_refresh_time =
+        GetValueFromMap(map_value, kCDCSDKLastDecidedPubRefreshTime);
   }
 
   return Status::OK();
@@ -375,6 +391,10 @@ std::string CDCStateTableEntry::ToString() const {
 
   if (pub_refresh_times) {
     result += Format(", PubRefreshTimes: $0", *pub_refresh_times);
+  }
+
+  if (last_decided_pub_refresh_time) {
+    result += Format(", LastDecidedPubRefreshTime: $0", *last_decided_pub_refresh_time);
   }
 
   return result;
@@ -718,6 +738,9 @@ CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludePubRefreshTimes(
   return std::move(IncludeData());
 }
 
+CDCStateTableEntrySelector&& CDCStateTableEntrySelector::IncludeLastDecidedPubRefreshTime() {
+  return std::move(IncludeData());
+}
 
 CDCStateTableRange::CDCStateTableRange(
     const std::shared_ptr<client::TableHandle>& table, Status* failure_status,

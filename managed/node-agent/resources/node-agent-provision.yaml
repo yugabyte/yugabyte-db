@@ -1,17 +1,36 @@
 ynp:
   # Home directory for the yugabyte user
-  ybHomeDir: "/home/yugabyte"
-  dataDisk:
-    deviceName: "/dev/nvme1n1"
-    mountPath: "/mnt/d0"
+  yb_home_dir: /home/yugabyte
+  data_disk:
+    - deviceName: "/dev/nvme1n1"
+      mountPath: "/mnt/d0"
+    - deviceName: "/dev/nvme2n1"
+      mountPath: "/mnt/d1"
   # NTP servers for the node
-  ntp_servers: []
+  chrony_servers: ["0.pool.ntp.org", "1.pool.ntp.org"]
+  yb_user: yugabyte
+  yb_user_id: 994
+  yb_user_password: password
+  # Public key path for the key to be used for yugabyte user.
+  # Default's to current user public key.
+  public_key_filepath: ""
   # Airgapped
   is_airgap: false
+  use_system_level_systemd: false
 
 yba:
-   url: http://yba.foo.bar.com
-   customer_uuid: 550e8400-e29b-41d4-a716-446655440000
-   api-key: 123e4567-e89b-12d3-a456-426614174000
-   create_provider: true
-   add_to_existing_provider: null
+  url: http://yba.foo.bar.com
+  customer_uuid: 550e8400-e29b-41d4-a716-446655440000
+  api-key: 123e4567-e89b-12d3-a456-426614174000
+  provider:
+    name: provider-name
+    region:
+      name: region-name
+      zone:
+        name: zone-name
+  instance_type:
+    name: instance-name
+    cores: cores
+    memory_size: size
+    volume_size: size
+    mount_points: []

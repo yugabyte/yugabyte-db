@@ -114,6 +114,9 @@ DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
+DECLARE_bool(cdcsdk_enable_dynamic_table_support);
+DECLARE_bool(enable_cdcsdk_setting_get_changes_response_byte_limit);
+DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
 
 namespace yb {
 
@@ -169,6 +172,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     HybridTime record_id_commit_time = HybridTime::kInvalid;
     HybridTime last_pub_refresh_time = HybridTime::kInvalid;
     std::string pub_refresh_times = "";
+    std::string last_decided_pub_refresh_time = "";
   };
 
   struct GetAllPendingChangesResponse {
@@ -472,6 +476,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const bool need_schema_info = false);
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
+      const GetChangesRequestPB& change_req, bool should_retry = true);
+
+  Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       const CDCSDKCheckpointPB* cp = nullptr,
@@ -772,6 +779,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       std::unordered_set<std::string>* record_table_id);
 
   std::string GetPubRefreshTimesString(vector<uint64_t> pub_refresh_times);
+
+  void TestNonUserTableShouldNotGetAddedToCDCStream (bool create_consistent_snapshot_stream);
 };
 
 }  // namespace cdc

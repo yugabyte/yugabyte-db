@@ -144,19 +144,6 @@ DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
     "during the import snapshot metadata phase of restore.");
 
-DEFINE_RUNTIME_int32(inflight_splits_completion_timeout_secs, 600,
-    "Total time to wait for all inflight splits to complete during Restore.");
-TAG_FLAG(inflight_splits_completion_timeout_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_max_restore_duration_secs, 600,
-    "Maximum amount of time to complete a PITR restore.");
-TAG_FLAG(pitr_max_restore_duration_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
-    "Delay before retrying to see if inflight tablet split operations have completed "
-    "after which PITR restore can be performed.");
-TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
-
 DEFINE_RUNTIME_bool(enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
 
@@ -1374,11 +1361,12 @@ Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapsho
 }
 
 Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
-    CatalogManager::GenerateSnapshotInfoFromSchedule(
+CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
     const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
     CoarseTimePoint deadline) {
   LOG(INFO) << Format(
-      "Servicing GenerateSnapshotInfoFromSchedule for snapshot_schedule_id: $0 and read_time: $1",
+      "Servicing GenerateSnapshotInfoFromScheduleForClone for snapshot_schedule_id: $0 and "
+      "read_time: $1",
       snapshot_schedule_id, read_time);
 
   // Find or create a snapshot that covers read_time.
@@ -1406,6 +1394,11 @@ Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
     }
   }
   snapshot_info.clear_backup_entries();
+  // Clear the schedule related fields from snapshot_info, this is required so that the restore is
+  // not considered a PITR restore. This mainly implies overwriting any current schema packings with
+  // the old schema packings from the snapshot at the restore side.
+  snapshot_info.mutable_entry()->clear_schedule_id();
+  snapshot_info.mutable_entry()->clear_previous_snapshot_hybrid_time();
 
   // Set backup_entries based on what entries were running in the sys catalog as of read_time.
   *snapshot_info.mutable_backup_entries() = VERIFY_RESULT(
@@ -2463,10 +2456,31 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the schema version to the version of the snapshot if it is less.
-    if (meta.version() > table->LockForRead()->pb.version()) {
+    // Bump up the current schema version of the target table as follows:
+    // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
+    // current schema version is greater than all schema versions that might exist in the snapshot
+    // used for clone.
+    // 2- Restoring a backup case: bump the schema version to the schema version of SysTableEntryPB
+    // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
+    // schema version found in snapshotInfo is the maximum schema version that can be found in the
+    // snapshot at backup creation time.
+    std::optional<int> schema_version;
+    if (is_clone) {
+      // The Source table should be found as we are cloning from it.
+      TRACE("Looking up source table");
+      scoped_refptr<TableInfo> source_table =
+          VERIFY_RESULT(FindTableById(table_data->old_table_id));
+      auto source_table_lock = source_table->LockForRead();
+      schema_version = source_table_lock->pb.version() + 1;
+    } else if (meta.version() > table->LockForRead()->pb.version()) {
+      schema_version = meta.version();
+    }
+
+    if (schema_version) {
+      VLOG_WITH_FUNC(1) << Format(
+          "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
       auto l = table->LockForWrite();
-      l.mutable_data()->pb.set_version(meta.version());
+      l.mutable_data()->pb.set_version(schema_version.value());
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
@@ -3360,28 +3374,7 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
-      (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
-  const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
-      MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
-
-  // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableTabletSplittingInternal(disable_duration_ms, kPitrFeatureName);
-
-  bool inflight_splits_finished = false;
-  while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
-    // Wait for existing split operations to complete.
-    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */, deadline)) {
-      inflight_splits_finished = true;
-      break;
-    }
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_pitr_split_disable_check_freq_ms));
-  }
-
-  if (!inflight_splits_finished) {
-    ReenableTabletSplitting(kPitrFeatureName);
-    return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
-  }
+  RETURN_NOT_OK(tablet_split_manager_.PrepareForPitr(deadline));
 
   return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, epoch.leader_term, deadline);
 }
@@ -3537,10 +3530,6 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
   return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
-}
-
-Result<bool> CatalogManager::IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
-  return snapshot_coordinator_.IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 
 bool CatalogManager::IsPitrActive() {

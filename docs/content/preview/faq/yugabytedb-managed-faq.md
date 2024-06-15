@@ -146,12 +146,12 @@ For more information, refer to [Maintenance windows](../../yugabyte-cloud/cloud-
 
 ### What version of YugabyteDB does my cluster run on?
 
-Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#release-versioning-convention-for-stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
 - Innovation, which has more frequent updates for faster access to new features.
 - Production, which has a slower update cadence and features only select stable release builds.
 
-In addition to the Innovation track, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/versioning/#preview-releases) series.
+In addition to the Innovation track, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#release-versioning-convention-for-preview-releases) series.
 
 Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production for dedicated clusters, or Innovation or Preview for Sandbox clusters).
 

@@ -305,6 +305,8 @@ class MasterPathHandlers {
   void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleLoadBalancer(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMetaCacheJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleStatefulServices(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleStatefulServicesJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);

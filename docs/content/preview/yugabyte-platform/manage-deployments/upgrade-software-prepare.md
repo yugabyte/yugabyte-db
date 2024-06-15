@@ -18,6 +18,10 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 ## Review major changes in previous YugabyteDB releases
 
+{{< warning title="For YugabyteDB upgrades in YBA" >}}
+You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
+{{< /warning >}}
+
 Before starting the upgrade, review the following major changes in previous YugabyteDB releases. Depending on the upgrade you are planning, you may need to make changes to your automation.
 
 ### Upgrading from versions earlier than v2.16.0

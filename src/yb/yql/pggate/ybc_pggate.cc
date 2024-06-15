@@ -354,6 +354,7 @@ void AshCopyTServerSample(
 
   cb_metadata->query_id = tserver_metadata.query_id();
   cb_metadata->session_id = tserver_metadata.session_id();
+  cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_state_code());

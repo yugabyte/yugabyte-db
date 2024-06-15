@@ -75,8 +75,9 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	TimestampTz start_time = GetCurrentTimestamp();
 
 	elog(DEBUG4,
-		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d.",
-		 record->yb_virtual_wal_record->action);
+		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d. "
+		 "yb_read_time is set to %d",
+		 record->yb_virtual_wal_record->action, yb_is_read_time_ht);
 
 	/* Check if we need a relcache refresh. */
 	YBHandleRelcacheRefresh(ctx, record);
@@ -86,6 +87,12 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	{
 		/* Nothing to handle here. */
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
+			elog(DEBUG4,
+				 "Received DDL record for table: %d, xid: %d, commit_time: "
+				 "%" PRIu64,
+				 record->yb_virtual_wal_record->table_oid,
+				 record->yb_virtual_wal_record->xid,
+				 record->yb_virtual_wal_record->commit_time);
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
@@ -160,10 +167,24 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
 
+	/*
+	 * In PG, we know the size of the tuple from the header, so they can
+	 * directly allocated the tuple_buf in the reorderbuffer and copy the tuple
+	 * contents into it. In YSQL, we don't know the size of the tuple. The only
+	 * way to do it is to first create the heap tuple itself. So we do a two
+	 * step process.
+	 *
+	 * We first create a heap tuple from the YB virtual WAL record just to know
+	 * its size. We then allocate the necessary space in the reorderbuffer and
+	 * copy the tuple contents into it. Finally, we free the first tuple
+	 * created.
+	 */
 	tuple = YBGetHeapTuplesForRecord(yb_record, REORDER_BUFFER_CHANGE_INSERT);
 	tuple_buf =
 		ReorderBufferGetTupleBuf(ctx->reorder, tuple->t_len + HEAPTUPLESIZE);
-	tuple_buf->tuple = *tuple;
+	yb_heap_copytuple_with_tuple(tuple, &tuple_buf->tuple);
+	pfree(tuple);
+
 	change->data.tp.newtuple = tuple_buf;
 	change->data.tp.oldtuple = NULL;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
@@ -262,11 +283,13 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		}
 	}
 
+	/* See the comment in YBDecodeInsert on why we create tuples twice. */
 	after_op_tuple =
 		heap_form_tuple(tupdesc, after_op_datums, after_op_is_nulls);
 	after_op_tuple_buf = ReorderBufferGetTupleBuf(
 		ctx->reorder, after_op_tuple->t_len + HEAPTUPLESIZE);
-	after_op_tuple_buf->tuple = *after_op_tuple;
+	yb_heap_copytuple_with_tuple(after_op_tuple, &after_op_tuple_buf->tuple);
+	pfree(after_op_tuple);
 	after_op_tuple_buf->yb_is_omitted = after_op_is_omitted;
 	after_op_tuple_buf->yb_is_omitted_size =
 		(should_handle_omitted_case) ? nattrs : 0;
@@ -275,14 +298,26 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
 	before_op_tuple_buf = ReorderBufferGetTupleBuf(
 		ctx->reorder, before_op_tuple->t_len + HEAPTUPLESIZE);
-	before_op_tuple_buf->tuple = *before_op_tuple;
+	yb_heap_copytuple_with_tuple(before_op_tuple, &before_op_tuple_buf->tuple);
+	pfree(before_op_tuple);
 	before_op_tuple_buf->yb_is_omitted = before_op_is_omitted;
 	before_op_tuple_buf->yb_is_omitted_size =
 		(should_handle_omitted_case) ? nattrs : 0;
 
-	elog(DEBUG2, "The before_op heap tuple: %s and after_op heap tuple: %s",
-		 YbHeapTupleToString(before_op_tuple, tupdesc),
-		 YbHeapTupleToString(after_op_tuple, tupdesc));
+	if (log_min_messages <= DEBUG2)
+	{
+		const char *old_tuple_string = YbHeapTupleToStringWithIsOmitted(
+			&before_op_tuple_buf->tuple, tupdesc, before_op_is_omitted);
+		const char *new_tuple_string = YbHeapTupleToStringWithIsOmitted(
+			&after_op_tuple_buf->tuple, tupdesc, after_op_is_omitted);
+
+		elog(DEBUG2,
+			 "yb_decode: before_op heap tuple: %s, after_op heap tuple: %s",
+			 old_tuple_string, new_tuple_string);
+
+		pfree((char *) old_tuple_string);
+		pfree((char *) new_tuple_string);
+	}
 
 	change->data.tp.newtuple = after_op_tuple_buf;
 	change->data.tp.oldtuple = before_op_tuple_buf;
@@ -318,11 +353,13 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
 
+	/* See the comment in YBDecodeInsert on why we create tuples twice. */
 	tuple = YBGetHeapTuplesForRecord(yb_record, REORDER_BUFFER_CHANGE_DELETE);
-
 	tuple_buf =
 		ReorderBufferGetTupleBuf(ctx->reorder, tuple->t_len + HEAPTUPLESIZE);
-	tuple_buf->tuple = *tuple;
+	yb_heap_copytuple_with_tuple(tuple, &tuple_buf->tuple);
+	pfree(tuple);
+
 	change->data.tp.newtuple = NULL;
 	change->data.tp.oldtuple = tuple_buf;
 	change->data.tp.yb_table_oid = yb_record->table_oid;
@@ -424,9 +461,18 @@ YBGetHeapTuplesForRecord(const YBCPgVirtualWalRecord *yb_record,
 	}
 
 	tuple = heap_form_tuple(tupdesc, datums, is_nulls);
-	elog(DEBUG2, "The heap tuple: %s for operation: %s",
-		 YbHeapTupleToString(tuple, tupdesc),
-		 (change_type == REORDER_BUFFER_CHANGE_INSERT) ? "INSERT" : "DELETE");
+	if (log_min_messages <= DEBUG2)
+	{
+		const char *tuple_string =
+			YbHeapTupleToStringWithIsOmitted(tuple, tupdesc, NULL);
+
+		elog(DEBUG2,
+			 "yb_decode: The heap tuple: %s for operation: %s", tuple_string,
+			 (change_type == REORDER_BUFFER_CHANGE_INSERT) ? "INSERT" :
+															 "DELETE");
+
+		pfree((char *) tuple_string);
+	}
 
 	RelationClose(relation);
 	return tuple;
@@ -482,35 +528,21 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 		{
-			bool needs_invalidation =
-				ctx->yb_handle_relcache_invalidation_startup;
-			
-			if (!needs_invalidation)
-				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-							HASH_FIND, &needs_invalidation);
+			bool needs_invalidation = false;
+
+			hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+						HASH_FIND, &needs_invalidation);
 
 			if (needs_invalidation)
 			{
-				uint64_t	read_time_ht;
-				bool		for_startup;
+				uint64_t read_time_ht;
 
-				for_startup = ctx->yb_handle_relcache_invalidation_startup;
-				if (for_startup)
-				{
-					/*
-					 * Use the record_commit_time we received from the
-					 * replication slot metadata (cdc state table).
-					 */
-					read_time_ht =
-						MyReplicationSlot->data.yb_initial_record_commit_time_ht;
-					ctx->yb_handle_relcache_invalidation_startup = false;
-				}
-				else
-				{
-					/* Use the commit_time of the DML. */
-					read_time_ht = record->yb_virtual_wal_record->commit_time;
-				}
+				/* Use the commit_time of the DML. */
+				read_time_ht = record->yb_virtual_wal_record->commit_time;
 
+				elog(DEBUG2,
+					 "Setting yb_read_time to record's commit_time: %" PRIu64,
+					 read_time_ht);
 				YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
 
 				/*
@@ -520,13 +552,10 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 				 */
 				YBReorderBufferSchemaChange(ctx->reorder, table_oid);
 
-				if (!for_startup)
-				{
-					bool		found;
-					hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-								HASH_REMOVE, &found);
-					Assert(found);
-				}
+				bool found;
+				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+							HASH_REMOVE, &found);
+				Assert(found);
 			}
 			break;
 		}

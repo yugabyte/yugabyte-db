@@ -154,6 +154,11 @@ logicalrep_write_insert(StringInfo out, Relation rel, HeapTuple newtuple)
 	/* use Oid as relation identifier */
 	pq_sendint32(out, RelationGetRelid(rel));
 
+	if (IsYugaByteEnabled())
+		elog(DEBUG2, "proto: INSERT newtuple: %s",
+			 YbHeapTupleToStringWithIsOmitted(newtuple, RelationGetDescr(rel),
+											  NULL /* yb_is_omitted */));
+
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newtuple, NULL /* yb_is_omitted */);
 }
@@ -206,8 +211,20 @@ logicalrep_write_update(StringInfo out, Relation rel, HeapTuple oldtuple,
 			pq_sendbyte(out, 'O');	/* old tuple follows */
 		else
 			pq_sendbyte(out, 'K');	/* old key follows */
+
+		if (IsYugaByteEnabled())
+			elog(DEBUG2, "proto: UPDATE oldtuple: %s",
+				 YbHeapTupleToStringWithIsOmitted(oldtuple,
+												  RelationGetDescr(rel),
+												  yb_old_is_omitted));
+
 		logicalrep_write_tuple(out, rel, oldtuple, yb_old_is_omitted);
 	}
+
+	if (IsYugaByteEnabled())
+		elog(DEBUG2, "proto: UPDATE newtuple: %s",
+			 YbHeapTupleToStringWithIsOmitted(newtuple, RelationGetDescr(rel),
+											  yb_new_is_omitted));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newtuple, yb_new_is_omitted);
@@ -274,6 +291,11 @@ logicalrep_write_delete(StringInfo out, Relation rel, HeapTuple oldtuple)
 		pq_sendbyte(out, 'O');	/* old tuple follows */
 	else
 		pq_sendbyte(out, 'K');	/* old key follows */
+
+	if (IsYugaByteEnabled())
+		elog(DEBUG2, "proto: DELETE oldtuple: %s",
+			 YbHeapTupleToStringWithIsOmitted(oldtuple, RelationGetDescr(rel),
+											  NULL /* yb_is_omitted */));
 
 	logicalrep_write_tuple(out, rel, oldtuple, NULL /* yb_is_omitted */);
 }

@@ -34,6 +34,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -188,20 +189,18 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             machineImage);
         continue;
       }
-      List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
-      List<NodeDetails> masters = new ArrayList<>();
+      Set<UniverseTaskBase.ServerType> processTypes = new LinkedHashSet<>();
       if (node.isMaster) {
         processTypes.add(ServerType.MASTER);
-        masters.add(node);
       }
-      List<NodeDetails> tservers = new ArrayList<>();
       if (node.isTserver) {
         processTypes.add(ServerType.TSERVER);
-        tservers.add(node);
       }
       if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
-      createCheckNodesAreSafeToTakeDownTask(masters, tservers, null);
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(MastersAndTservers.from(node, processTypes)),
+          getTargetSoftwareVersion());
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.

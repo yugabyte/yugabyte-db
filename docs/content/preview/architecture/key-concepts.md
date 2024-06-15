@@ -49,6 +49,12 @@ DocDB is the underlying document storage engine of YugabyteDB and is built on to
 
 A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../../explore/fault-tolerance/#fault-domains">}}
 
+## Follower reads
+
+Normally, only the [tablet leader](#tablet-leader) can process user-facing write and read requests. Follower reads allow you to lower read latencies by serving reads from the tablet followers. This is similar to reading from a cache, which can provide more read IOPS with low latency. The data might be slightly stale, but is timeline-consistent, meaning no out of order data is possible.
+
+Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link "../../explore/going-beyond-sql/follower-reads-ysql/">}}
+
 ## Hybrid time
 
 Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link "../transactions/transactions-overview#hybrid-logical-clocks">}}
@@ -58,7 +64,7 @@ Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hyb
 [Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link "../../explore/transactions/isolation-levels/">}}
 
 {{<tip>}}
-YugabyteDB offers 3 isolation levels, [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) in the {{<product "ysql">}} API and one isolation level, [Snapshot](../../develop/learn/transactions/acid-transactions-ycql/) in the {{<product "ycql">}} API.
+YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](../../develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
 {{</tip>}}
 
 ## Leader balancing
@@ -100,8 +106,18 @@ Object Identifier (OID) is a unique identifier assigned to each database object,
 While OIDs are an integral part of PostgreSQL's internal architecture, they are not always visible or exposed to users. In most cases, users interact with database objects using their names rather than their OIDs. However, there are cases where OIDs become relevant, such as when querying system catalogs or when dealing with low-level database operations.
 
 {{<note>}}
-OIDs are unique only within the context of a specific universe and are not guaranteed to be unique across different universes.
+OIDs are unique only in the context of a specific universe and are not guaranteed to be unique across different universes.
 {{</note>}}
+
+## Preferred region
+
+By default, YugabyteDB distributes client requests equally across the regions in a cluster. If application reads and writes are known to be originating primarily from a single region, you can designate a preferred region, which pins the [tablet leaders](#tablet-leader) to that single region. As a result, the preferred region handles all read and write requests from clients. Non-preferred regions are used only for hosting tablet follower replicas.
+
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a [smart driver](#smart-driver), you can set the topology keys to target the preferred region. This means that the smart driver will distribute connections uniformly among the nodes in the preferred region, further optimizing performance.
+
+Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
+
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link "../../develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 
@@ -115,7 +131,7 @@ Raft stands for Replication for availability and fault tolerance. This is the al
 
 Read replica clusters are optional clusters that can be set up in conjunction with a [primary cluster](#primary-cluster) to perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
 
-Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. {{<link "../docdb-replication/read-replicas">}}
+Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. Reading from read replicas requires enabling [follower reads](#follower-reads). {{<link "../docdb-replication/read-replicas">}}
 
 ## Rebalancing
 
@@ -135,6 +151,13 @@ The RF should be an odd number to ensure majority consensus can be established d
 
 Sharding is the process of mapping a table row to a [tablet](#tablet). YugabyteDB supports 2 types of sharding, Hash and Range. {{<link "../docdb-sharding">}}
 
+## Smart driver
+
+A smart driver in the context of YugabyteDB is essentially a PostgreSQL driver with additional "smart" features that leverage the distributed nature of YugabyteDB. These smart drivers intelligently distribute application connections across the nodes and regions of a YugabyteDB cluster, eliminating the need for external load balancers. This results in balanced connections that provide lower latencies and prevent hot nodes. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
+
+Smart drivers are optimized for use with a distributed SQL database, and are both cluster-aware and topology-aware. They keep track of the members of the cluster as well as their locations. As nodes are added or removed from clusters, the driver updates its membership and topology information. The drivers read the database cluster topology from the metadata table, and route new connections to individual instance endpoints without relying on high-level cluster endpoints. The smart drivers are also capable of load balancing read-only connections across the available YB-TServers.
+. {{<link "../../drivers-orms/smart-drivers/">}}
+
 ## Tablet
 
 YugabyteDB splits a table into multiple small pieces called tablets for data distribution. The word "tablet" finds its origins in ancient history, when civilizations utilized flat slabs made of clay or stone as surfaces for writing and maintaining records. {{<link "../../explore/linear-scalability/data-distribution/">}}
@@ -143,9 +166,13 @@ YugabyteDB splits a table into multiple small pieces called tablets for data dis
 Tablets are also referred as shards.
 {{</tip>}}
 
+## Tablet follower
+
+See [Tablet leader](#tablet-leader).
+
 ## Tablet leader
 
-In a cluster, each [tablet](#tablet) is replicated as per the [replication factor](#replication-factor-rf) for high availability. Amongst these tablet replicas one tablet is elected as the leader and is responsible for handling writes and consistent reads. The other replicas as termed followers.
+In a cluster, each [tablet](#tablet) is replicated as per the [replication factor](#replication-factor-rf) for high availability. Amongst these tablet replicas one tablet is elected as the leader and is responsible for handling writes and consistent reads. The other replicas are called followers.
 
 ## Tablet splitting
 
@@ -161,7 +188,7 @@ The [YB-TServer](../yb-tserver) service is responsible for maintaining and manag
 
 ## Universe
 
-A YugabyteDB universe comprises one primary cluster and zero or more read replica clusters that collectively function as a resilient and scalable distributed database.
+A YugabyteDB universe comprises one [primary cluster](#primary-cluster) and zero or more [read replica clusters](#read-replica-cluster) that collectively function as a resilient and scalable distributed database.
 
 {{<note>}}
 Sometimes the terms *universe* and *cluster* are used interchangeably. However, the two are not always equivalent, as a universe can contain one or more [clusters](#cluster).

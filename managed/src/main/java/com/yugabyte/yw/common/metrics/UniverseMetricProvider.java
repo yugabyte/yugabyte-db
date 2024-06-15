@@ -195,12 +195,14 @@ public class UniverseMetricProvider implements MetricsProvider {
                 }
               }
 
-              universeGroup.metric(
-                  createUniverseMetric(
-                      customer,
-                      universe,
-                      PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
-                      universeOSUpdateRequired));
+              if (universeOSUpdateRequired > 0) {
+                universeGroup.metric(
+                    createUniverseMetric(
+                        customer,
+                        universe,
+                        PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
+                        universeOSUpdateRequired));
+              }
             }
           }
           ReleaseContainer releaseContainer = releaseContainers.get(dbVersion);

@@ -2,7 +2,7 @@
 Description=Yugabyte IP Bind Check
 Requires=network-online.target
 After=network.target network-online.target multi-user.target
-Before=yb-controller.service yb-tserver.service yb-master.service yb-collect_metrics.timer
+Before=yb-controller.service yb-tserver.service yb-master.service
 StartLimitInterval=100
 StartLimitBurst=10
 

@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/viper"
 
@@ -46,7 +45,6 @@ type postgresDirectories struct {
 	dataDir             string
 	PgBin               string
 	LogFile             string
-	cronScript          string
 }
 
 func newPostgresDirectories() postgresDirectories {
@@ -61,8 +59,7 @@ func newPostgresDirectories() postgresDirectories {
 		dataDir:          common.GetBaseInstall() + "/data/postgres",
 		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
 		LogFile:          common.GetBaseInstall() + "/data/logs/postgres.log",
-		cronScript: filepath.Join(
-			common.GetInstallerSoftwareDir(), common.CronDir, "managePostgres.sh")}
+	}
 }
 
 // Component 1: Postgres
@@ -74,7 +71,6 @@ type Postgres struct {
 
 // NewPostgres creates a new postgres service struct at installRoot with specific version.
 func NewPostgres(version string) Postgres {
-
 	return Postgres{
 		name:                "postgres",
 		version:             version,
@@ -85,6 +81,10 @@ func NewPostgres(version string) Postgres {
 // TemplateFile returns service's templated config file path
 func (pg Postgres) TemplateFile() string {
 	return pg.templateFileName
+}
+
+func (pg Postgres) SystemdFile() string {
+	return pg.SystemdFileLocation
 }
 
 // Name returns the name of the service.
@@ -146,61 +146,30 @@ func (pg Postgres) Install() error {
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
 	}
-
-	if !common.HasSudoAccess() {
-		pg.createCronJob()
-	}
 	return nil
 }
 
 // TODO: This should generate the correct start string based on installation mode
-// and write it to the correct service file OR cron script.
-// Start starts the postgres process either via systemd or cron script.
+// and write it to the correct service file
+// Start starts the postgres process either via systemd.
 func (pg Postgres) Start() error {
-
-	if common.HasSudoAccess() {
-
-		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
-			return out.Error
-		}
-
-		if out := shell.Run(common.Systemctl, "enable",
-			filepath.Base(pg.SystemdFileLocation)); !out.SucceededOrLog() {
-			return out.Error
-		}
-
-		if out := shell.Run(common.Systemctl, "start",
-			filepath.Base(pg.SystemdFileLocation)); !out.SucceededOrLog() {
-			return out.Error
-		}
-
-		if out := shell.Run(common.Systemctl, "status",
-			filepath.Base(pg.SystemdFileLocation)); !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-		restartSeconds := config.GetYamlPathData("postgres.install.restartSeconds")
-
-		shell.RunShell(pg.cronScript, common.GetSoftwareRoot(), common.GetDataRoot(), restartSeconds,
-			"> /dev/null 2>&1 &")
-		// Non-root script does not wait for postgres to start, so check for it to be running.
-		for {
-			status, err := pg.Status()
-			if err != nil {
-				return err
-			}
-			if status.Status == common.StatusRunning {
-				break
-			}
-			log.Info("waiting for non-root script to start postgres...")
-			time.Sleep(time.Second * 2)
-		}
+	serviceName := filepath.Base(pg.SystemdFileLocation)
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to start postgres: %w", err)
 	}
+	if err := systemd.Enable(false, serviceName); err != nil {
+		return fmt.Errorf("failed to start postgres: %w", err)
+	}
+	if err := systemd.Start(serviceName); err != nil {
+		return fmt.Errorf("failed to start postgres: %w", err)
+	}
+	log.Debug("started postgres")
 	return nil
 }
 
-// Stop stops the postgres process either via systemd or cron script.
+// Stop stops the postgres process either via systemd.
 func (pg Postgres) Stop() error {
+	serviceName := filepath.Base(pg.SystemdFileLocation)
 	status, err := pg.Status()
 	if err != nil {
 		return err
@@ -209,44 +178,21 @@ func (pg Postgres) Stop() error {
 		log.Debug(pg.name + " is already stopped")
 		return nil
 	}
-
-	if common.HasSudoAccess() {
-		out := shell.Run(common.Systemctl, "stop", filepath.Base(pg.SystemdFileLocation))
-		if !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-		// Delete the file used by the crontab bash script for monitoring.
-		common.RemoveAll(common.GetSoftwareRoot() + "/postgres/testfile")
-		out := shell.Run(pg.PgBin+"/pg_ctl", "-D", pg.ConfFileLocation, "-o", "\"-k "+pg.MountPath+"\"",
-			"-l", pg.LogFile, "stop")
-		if !out.SucceededOrLog() {
-			return out.Error
-		}
+	if err := systemd.Stop(serviceName); err != nil {
+		return fmt.Errorf("failed to stop postgres: %w", err)
 	}
+	log.Info("stopped postgres")
 	return nil
 }
 
 func (pg Postgres) Restart() error {
+	serviceName := filepath.Base(pg.SystemdFileLocation)
 	log.Info("Restarting postgres..")
-
-	if common.HasSudoAccess() {
-		// reload systemd daemon
-		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
-			return out.Error
-		}
-
-		if out := shell.Run(common.Systemctl, "restart",
-			filepath.Base(pg.SystemdFileLocation)); !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-		if err := pg.Stop(); err != nil {
-			return err
-		}
-		if err := pg.Start(); err != nil {
-			return err
-		}
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to restart postgres: %w", err)
+	}
+	if err := systemd.Restart(serviceName); err != nil {
+		return fmt.Errorf("failed to restart postgres: %w", err)
 	}
 	return nil
 }
@@ -275,38 +221,25 @@ func (pg Postgres) Status() (common.Status, error) {
 
 	status.ConfigLoc = pg.ConfFileLocation
 	status.LogFileLoc = pg.postgresDirectories.LogFile
+	status.BinaryLoc = pg.PgBin
 
 	// Set the systemd service file location if one exists
-	if common.HasSudoAccess() {
-		status.ServiceFileLoc = pg.SystemdFileLocation
-	} else {
-		status.ServiceFileLoc = "N/A"
-	}
+	status.ServiceFileLoc = pg.SystemdFileLocation
 
 	// Get the service status
-	if common.HasSudoAccess() {
-		props := systemd.Show(filepath.Base(pg.SystemdFileLocation), "LoadState", "SubState",
-			"ActiveState")
-		if props["LoadState"] == "not-found" {
-			status.Status = common.StatusNotInstalled
-		} else if props["SubState"] == "running" {
-			status.Status = common.StatusRunning
-		} else if props["ActiveState"] == "inactive" {
-			status.Status = common.StatusStopped
-		} else {
-			status.Status = common.StatusErrored
-		}
+	props := systemd.Show(filepath.Base(pg.SystemdFileLocation), "LoadState", "SubState",
+		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if props["LoadState"] == "not-found" {
+		status.Status = common.StatusNotInstalled
+	} else if props["SubState"] == "running" {
+		status.Status = common.StatusRunning
+		status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
+	} else if props["ActiveState"] == "inactive" {
+		status.Status = common.StatusStopped
+		status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 	} else {
-		out := shell.Run("pgrep", "postgres")
-
-		if out.Succeeded() {
-			status.Status = common.StatusRunning
-		} else if out.ExitCode == 1 {
-			status.Status = common.StatusStopped
-		} else {
-			out.SucceededOrLog()
-			return status, out.Error
-		}
+		status.Status = common.StatusErrored
+		status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 	}
 	return status, nil
 }
@@ -332,15 +265,13 @@ func (pg Postgres) Uninstall(removeData bool) error {
 		}
 	}
 
-	if common.HasSudoAccess() {
-		err := os.Remove(pg.SystemdFileLocation)
-		if err != nil {
-			pe := err.(*fs.PathError)
-			if !errors.Is(pe.Err, fs.ErrNotExist) {
-				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
-					err.Error(), pg.SystemdFileLocation))
-				return err
-			}
+	err := os.Remove(pg.SystemdFileLocation)
+	if err != nil {
+		pe := err.(*fs.PathError)
+		if !errors.Is(pe.Err, fs.ErrNotExist) {
+			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+				err.Error(), pg.SystemdFileLocation))
+			return err
 		}
 
 		// reload systemd daemon
@@ -445,9 +376,6 @@ func (pg Postgres) UpgradeMajorVersion() error {
 	backupFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
 	pg.RestoreBackup(backupFile)
 
-	if !common.HasSudoAccess() {
-		pg.createCronJob()
-	}
 	log.Info("Completed Postgres major upgrade")
 	return nil
 }
@@ -456,7 +384,9 @@ func (pg Postgres) UpgradeMajorVersion() error {
 func (pg Postgres) Upgrade() error {
 	log.Info("Starting Postgres upgrade")
 	pg.postgresDirectories = newPostgresDirectories()
-	config.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
+	if err := config.GenerateTemplate(pg); err != nil {
+		return err
+	}
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
@@ -467,10 +397,6 @@ func (pg Postgres) Upgrade() error {
 
 	if err := pg.modifyPostgresConf(); err != nil {
 		return err
-	}
-
-	if !common.HasSudoAccess() {
-		pg.createCronJob()
 	}
 	return nil
 }
@@ -511,10 +437,6 @@ func (pg Postgres) replicatedMigrateStep2() error {
 
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
-	}
-
-	if !common.HasSudoAccess() {
-		pg.createCronJob()
 	}
 	return nil
 }
@@ -568,8 +490,8 @@ func (pg Postgres) runInitDB() error {
 func (pg Postgres) alterPassword() error {
 	// Reload hba conf
 	passwordCmd := fmt.Sprintf("ALTER USER %s PASSWORD '%s';",
-															viper.GetString("postgres.install.username"),
-															viper.GetString("postgres.install.password"))
+		viper.GetString("postgres.install.username"),
+		viper.GetString("postgres.install.password"))
 	psql := filepath.Join(pg.PgBin, "psql")
 	args := []string{
 		"-d", "postgres",
@@ -724,15 +646,6 @@ func (pg Postgres) createYugawareDatabase() {
 		}
 		log.Fatal(fmt.Sprintf("Could not create yugaware database: %s", out.Error.Error()))
 	}
-}
-
-// createCronJob creates the cron job for managing postgres with cron script in non-root.
-func (pg Postgres) createCronJob() {
-	restartSeconds := viper.GetString("postgres.install.restartSeconds")
-
-	shell.RunShell("(crontab", "-l", "2>/dev/null;", "echo", "\"@reboot", pg.cronScript,
-		common.GetSoftwareRoot(), common.GetDataRoot(), restartSeconds, ")\"", "|",
-		"sort", "-", "|", "uniq", "-", "|", "crontab", "-")
 }
 
 func (pg Postgres) createFilesAndDirs() error {

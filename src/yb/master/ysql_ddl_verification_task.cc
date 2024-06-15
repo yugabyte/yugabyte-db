@@ -240,6 +240,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   auto read_data = VERIFY_RESULT(sys_catalog->TableReadData(pg_catalog_table_id, read_time));
   auto oid_col_id = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
   auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
+  auto relkind_col_id = VERIFY_RESULT(read_data.ColumnByName("relkind")).rep();
   dockv::ReaderProjection projection;
 
   ColumnIdRep relfilenode_col_id = kInvalidColumnId.rep();
@@ -250,7 +251,8 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   bool check_relfilenode = !table->is_system() && !table->IsColocationParentTable();
   if (check_relfilenode) {
     relfilenode_col_id = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
-    projection.Init(read_data.schema(), {oid_col_id, relname_col_id, relfilenode_col_id});
+    projection.Init(read_data.schema(),
+        {oid_col_id, relname_col_id, relfilenode_col_id, relkind_col_id});
   } else {
     projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
   }
@@ -275,7 +277,9 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     // One row found in pg_class matching the oid. Perform the check on the relfilenode column, if
     // required (as in the case of table rewrite).
     table_found = true;
-    if (check_relfilenode) {
+    // Table rewrites don't affect parent partition tables (only their children),
+    // so we can skip relfilenode checks for them.
+    if (check_relfilenode && row.GetValue(relkind_col_id)->int8_value() != int8_t('p')) {
       const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
       if (relfilenode_col->uint32_value() != VERIFY_RESULT(table->GetPgRelfilenodeOid())) {
         table_found = false;

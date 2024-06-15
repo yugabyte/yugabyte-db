@@ -3,9 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	osuser "os/user"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"syscall"
 	"time"
 
@@ -44,6 +43,9 @@ The migration will stop, but not delete, all replicated app instances.
 
 NOTE: THIS FEATURE IS EARLY ACCESS
 `,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.Initialize()
 		if err != nil {
@@ -148,7 +150,9 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		initServices()
 
 		// Lay out new YBA bits, don't start
-		common.Install(ybaCtl.Version())
+		if err := common.Install(ybaCtl.Version()); err != nil {
+			log.Fatal(fmt.Sprintf("error installing new ybactl %s: %s", ybaCtl.Version(), err.Error()))
+		}
 		for _, name := range serviceOrder {
 			log.Info("About to migrate component " + name)
 			if err := services[name].MigrateFromReplicated(); err != nil {
@@ -164,8 +168,13 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 
 		// Take a backup of running YBA using replicated settings.
-		replBackupDir := "/tmp/replBackupDir"
+		replBackupDir := filepath.Join(common.GetDataRoot(), "replBackupDir")
 		common.MkdirAllOrFail(replBackupDir, common.DirMode)
+		defer func() {
+			if err := common.RemoveAll(replBackupDir); err != nil {
+				log.Warn("error cleaning up " + replBackupDir)
+			}
+		}()
 		dataDir, err := configView.Get("storage_path")
 		if err != nil {
 			log.Fatal("no storage path found in config view: " + err.Error())
@@ -230,31 +239,8 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 
 		// Restore data using yugabundle method, pass in ybai data dir so that data can be copied over
 		log.Info("Restoring data to newly installed YBA.")
-		files, err := os.ReadDir(replBackupDir)
-		if err != nil {
-			log.Fatal(fmt.Sprintf("error reading directory %s: %s", replBackupDir, err.Error()))
-		}
-		// Looks for most recent backup first.
-		sort.Slice(files, func(i, j int) bool {
-			iinfo, e1 := files[i].Info()
-			jinfo, e2 := files[j].Info()
-			if e1 != nil || e2 != nil {
-				log.Fatal("Error determining modification time for backups.")
-			}
-			return iinfo.ModTime().After(jinfo.ModTime())
-		})
-		// Find the old backup.
-		for _, file := range files {
-			log.Info(file.Name())
-			match, _ := regexp.MatchString(`^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`, file.Name())
-			if match {
-				input := fmt.Sprintf("%s/%s", replBackupDir, file.Name())
-				log.Info(fmt.Sprintf("Restoring replicated backup %s to YBA.", input))
-				// backup path, destination, skipRestart, verbose, platform, migration, systemPG, disableVersion
-				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false, true)
-				break
-			}
-		}
+		RestoreBackupScript(common.FindRecentBackup(replBackupDir), common.GetBaseInstall(), false,
+			true, plat, true, false, true)
 
 		// Start YBA once postgres is fully ready.
 		if err := plat.Start(); err != nil {
@@ -262,7 +248,9 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 		log.Info("Started yb-platform after restoring data.")
 
-		common.WaitForYBAReady(ybaCtl.Version())
+		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
+			log.Fatal(err.Error())
+		}
 
 		var statuses []common.Status
 		for _, name := range serviceOrder {
@@ -295,6 +283,7 @@ var replicatedMigrateFinish = &cobra.Command{
 		"yba installer, delete replicated data, and remove all replicated containers." +
 		"\n\nNOTE: THIS FEATURE IS EARLY ACCESS",
 	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
 		prompt := `replicated-migrate finish will completely uninstall replicated, completing the
 migration to yba-installer. This involves deleting the storage directory (default /opt/yugabyte).
 Are you sure you want to continue?`
@@ -333,6 +322,9 @@ Are you sure you want to continue?`
 var replicatedMigrationConfig = &cobra.Command{
 	Use:   "config",
 	Short: "generated yba-ctl.yml equivalent of replicated config [EA]",
+	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		ctl := replicatedctl.New(replicatedctl.Config{})
 		config, err := ctl.AppConfigExport()
@@ -361,6 +353,9 @@ var replicatedRollbackCmd = &cobra.Command{
 		"rolling back to the replicated install. As this is a rollback, any changes made to YBA after " +
 		"migrate will not be reflected after the rollback completes.\n\n" +
 		"NOTE: THIS FEATURE IS EARLY ACCESS",
+	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.Initialize()
 		if err != nil {
@@ -444,6 +439,19 @@ func rollbackMigrations(state *ybactlstate.State) error {
 	log.Info("Removing yba-installer yugaware install")
 	common.Uninstall(serviceOrder, true)
 	return nil
+}
+
+func replicatedRootCheck() {
+	user, err := osuser.Current()
+	if err != nil {
+		log.Fatal("failed to get current user: " + err.Error())
+	}
+	if user.Uid != "0" {
+		log.Fatal("cannot run replicated migration commands without root access")
+	}
+	if viper.InConfig("as_root") && !viper.GetBool("as_root") {
+		log.Fatal("running replicated migration commands with 'as_root' set to false is not supported")
+	}
 }
 
 func init() {

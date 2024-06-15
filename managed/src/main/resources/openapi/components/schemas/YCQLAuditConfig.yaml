@@ -1,6 +1,6 @@
-title: YCQL Audit Logging Configuration
+title: YCQLAuditConfig
+description: YCQL Audit Logging Configuration. Part of AuditLogConfig.
 type: object
-description: YCQL Audit Logging Configuration
 required:
   - enabled
   - excluded_categories

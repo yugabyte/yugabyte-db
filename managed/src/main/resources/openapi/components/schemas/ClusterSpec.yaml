@@ -1,4 +1,5 @@
-title: Universe Cluster Spec
+title: ClusterSpec
+description: Universe Cluster Spec. Part of UniverseSpec.
 type: object
 required:
   - cluster_type

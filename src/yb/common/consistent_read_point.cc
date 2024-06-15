@@ -12,6 +12,10 @@
 //
 #include "yb/common/consistent_read_point.h"
 
+#include <mutex>
+#include <type_traits>
+#include <utility>
+
 #include "yb/common/common.pb.h"
 
 namespace yb {
@@ -33,11 +37,10 @@ void ConsistentReadPoint::SetReadTimeUnlocked(
   restarts_.clear();
 }
 
-void ConsistentReadPoint::SetCurrentReadTimeUnlocked(const ClampUncertaintyWindow clamp) {
+void ConsistentReadPoint::SetCurrentReadTimeUnlocked(ClampUncertaintyWindow clamp) {
   SetReadTimeUnlocked(
-    clamp
-    ? ReadHybridTime::SingleTime(clock_->Now())
-    : ReadHybridTime::FromHybridTimeRange(clock_->NowRange()));
+      clamp ? ReadHybridTime::SingleTime(clock_->Now())
+            : ReadHybridTime::FromHybridTimeRange(clock_->NowRange()));
 }
 
 void ConsistentReadPoint::SetReadTime(
@@ -46,7 +49,7 @@ void ConsistentReadPoint::SetReadTime(
   SetReadTimeUnlocked(read_time, &local_limits);
 }
 
-void ConsistentReadPoint::SetCurrentReadTime(const ClampUncertaintyWindow clamp) {
+void ConsistentReadPoint::SetCurrentReadTime(ClampUncertaintyWindow clamp) {
   std::lock_guard lock(mutex_);
   SetCurrentReadTimeUnlocked(clamp);
 }
@@ -72,8 +75,6 @@ ReadHybridTime ConsistentReadPoint::GetReadTime(const TabletId& tablet) const {
     const auto it = local_limits_.find(tablet);
     if (it != local_limits_.end()) {
       read_time.local_limit = it->second;
-    } else {
-      read_time.local_limit = read_time.local_limit;
     }
   }
   return read_time;
@@ -145,7 +146,7 @@ void ConsistentReadPoint::PrepareChildTransactionData(ChildTransactionDataPB* da
   read_time_.AddToPB(data);
   auto& local_limits = *data->mutable_local_limits();
   for (const auto& entry : local_limits_) {
-    typedef std::remove_reference<decltype(*local_limits.begin())>::type PairType;
+    using PairType = std::remove_reference_t<decltype(*local_limits.begin())>;
     local_limits.insert(PairType(entry.first, entry.second.ToUint64()));
   }
 }
@@ -157,7 +158,7 @@ void ConsistentReadPoint::FinishChildTransactionResult(
     result->set_restart_read_ht(restart_read_ht_.ToUint64());
     auto& restarts = *result->mutable_read_restarts();
     for (const auto& restart : restarts_) {
-      typedef std::remove_reference<decltype(*restarts.begin())>::type PairType;
+      using PairType = std::remove_reference_t<decltype(*restarts.begin())>;
       restarts.insert(PairType(restart.first, restart.second.ToUint64()));
     }
   } else {
@@ -201,7 +202,7 @@ ReadHybridTime ConsistentReadPoint::GetReadTime() const {
   return read_time_;
 }
 
-// NO_THREAD_SAFETY_ANALYSIS is required here because anylysis does not understand std::lock.
+// NO_THREAD_SAFETY_ANALYSIS is required here because analysis does not understand std::lock.
 void ConsistentReadPoint::MoveFrom(ConsistentReadPoint* rhs) NO_THREAD_SAFETY_ANALYSIS {
   std::lock(mutex_, rhs->mutex_);
   std::lock_guard lock1(mutex_, std::adopt_lock);
@@ -210,6 +211,19 @@ void ConsistentReadPoint::MoveFrom(ConsistentReadPoint* rhs) NO_THREAD_SAFETY_AN
   restart_read_ht_ = rhs->restart_read_ht_;
   local_limits_ = std::move(rhs->local_limits_);
   restarts_ = std::move(rhs->restarts_);
+}
+
+ConsistentReadPoint::Momento ConsistentReadPoint::GetMomento() const {
+  std::lock_guard lock(mutex_);
+  return {read_time_, restart_read_ht_, local_limits_, restarts_};
+}
+
+void ConsistentReadPoint::SetMomento(ConsistentReadPoint::Momento&& momento) {
+  std::lock_guard lock(mutex_);
+  read_time_ = std::move(momento.read_time_);
+  restart_read_ht_ = std::move(momento.restart_read_ht_);
+  local_limits_ = std::move(momento.local_limits_);
+  restarts_ = std::move(momento.restarts_);
 }
 
 } // namespace yb

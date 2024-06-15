@@ -1,14 +1,14 @@
 import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useFormContext } from 'react-hook-form';
 
 import { YBTooltip } from '../../../../redesign/components';
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
-import { useFormContext } from 'react-hook-form';
 import { EditTablesFormValues } from './EditTablesModal';
+import { INPUT_FIELD_WIDTH_PX } from '../../constants';
 
 interface ConfigureBootstrapStepProps {
   isDrInterface: boolean;
@@ -104,7 +104,7 @@ export const ConfigureBootstrapStep = ({
           name="storageConfig"
           rules={{ required: t('error.backupStorageConfigRequired') }}
           isDisabled={isFormDisabled}
-          autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+          autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
           maxWidth="100%"
         />
       )}

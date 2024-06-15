@@ -249,8 +249,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             currentIntent,
             targetIntent,
             defaultUniverse,
-            mockBaseTaskDependencies.getConfGetter(),
-            true));
+            mockBaseTaskDependencies.getConfGetter()));
   }
 
   @Test
@@ -269,8 +268,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             primaryCluster.userIntent,
             targetIntent,
             defaultUniverse,
-            mockBaseTaskDependencies.getConfGetter(),
-            true));
+            mockBaseTaskDependencies.getConfGetter()));
     RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "3");
     defaultUniverse =
         Universe.saveDetails(
@@ -285,8 +283,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             primaryCluster.userIntent,
             targetIntent,
             defaultUniverse,
-            mockBaseTaskDependencies.getConfGetter(),
-            true));
+            mockBaseTaskDependencies.getConfGetter()));
     // Just changing instance type is available, even within cooldown window.
     assertTrue(
         ResizeNodeParams.checkResizeIsPossible(
@@ -294,8 +291,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             primaryCluster.userIntent,
             targetIntentJustType,
             defaultUniverse,
-            mockBaseTaskDependencies.getConfGetter(),
-            true));
+            mockBaseTaskDependencies.getConfGetter()));
     // Changing window size.
     RuntimeConfigEntry.upsertGlobal("yb.aws.disk_resize_cooldown_hours", "1");
     assertTrue(
@@ -304,8 +300,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             primaryCluster.userIntent,
             targetIntent,
             defaultUniverse,
-            mockBaseTaskDependencies.getConfGetter(),
-            true));
+            mockBaseTaskDependencies.getConfGetter()));
   }
 
   /*
@@ -360,8 +355,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             currentIntent,
             targetIntent,
             defaultUniverse,
-            mockBaseTaskDependencies.getConfGetter(),
-            true));
+            mockBaseTaskDependencies.getConfGetter()));
   }
 
   private void applyConfig(

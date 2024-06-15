@@ -6,9 +6,14 @@ import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditSpec;
-import api.v2.models.YBPTask;
+import api.v2.models.UniverseSoftwareUpgradeFinalize;
+import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
+import api.v2.models.UniverseSoftwareUpgradeStart;
+import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
+import api.v2.models.YBATask;
 import com.google.inject.Inject;
 import java.util.UUID;
 import play.mvc.Http.Request;
@@ -23,35 +28,70 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
-  public YBPTask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec)
+  public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec)
       throws Exception {
     return universeHandler.createUniverse(cUUID, universeSpec);
   }
 
   @Override
-  public YBPTask editUniverse(
+  public YBATask editUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec)
       throws Exception {
     return universeHandler.editUniverse(cUUID, uniUUID, universeEditSpec);
   }
 
   @Override
-  public YBPTask addCluster(
+  public YBATask addCluster(
       Request request, UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) throws Exception {
     return universeHandler.addCluster(cUUID, uniUUID, clusterAddSpec);
   }
 
   @Override
-  public YBPTask deleteCluster(
+  public YBATask deleteCluster(
       Request request, UUID cUUID, UUID uniUUID, UUID clsUUID, Boolean forceDelete)
       throws Exception {
     return universeHandler.deleteReadReplicaCluster(cUUID, uniUUID, clsUUID, forceDelete);
   }
 
   @Override
-  public YBPTask editGFlags(
+  public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags universeEditGFlags)
       throws Exception {
     return universeUpgradeHandler.editGFlags(request, cUUID, uniUUID, universeEditGFlags);
+  }
+
+  @Override
+  public YBATask deleteUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseDeleteSpec universeDeleteSpec)
+      throws Exception {
+    return universeHandler.deleteUniverse(cUUID, uniUUID, universeDeleteSpec);
+  }
+
+  @Override
+  public YBATask startSoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart uniUpgrade)
+      throws Exception {
+    return universeUpgradeHandler.startSoftwareUpgrade(request, cUUID, uniUUID, uniUpgrade);
+  }
+
+  @Override
+  public YBATask finalizeSoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeFinalize finalizeInfo)
+      throws Exception {
+    return universeUpgradeHandler.finalizeSoftwareUpgrade(request, cUUID, uniUUID, finalizeInfo);
+  }
+
+  @Override
+  public UniverseSoftwareUpgradeFinalizeInfo getFinalizeSoftwareUpgradeInfo(
+      Request request, UUID cUUID, UUID uniUUID) throws Exception {
+    return universeUpgradeHandler.getSoftwareUpgradeFinalizeInfo(request, cUUID, uniUUID);
+  }
+
+  @Override
+  public YBATask startThirdPartySoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseThirdPartySoftwareUpgradeStart uniUpgrade)
+      throws Exception {
+    return universeUpgradeHandler.startThirdPartySoftwareUpgrade(
+        request, cUUID, uniUUID, uniUpgrade);
   }
 }

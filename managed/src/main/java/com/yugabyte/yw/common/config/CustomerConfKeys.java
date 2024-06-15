@@ -143,6 +143,17 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> enableSkipBootstrapping =
+      new ConfKeyInfo<>(
+          "yb.ui.xcluster.enable_skip_bootstrapping",
+          ScopeType.CUSTOMER,
+          "Enable the option to skip creating a full copy for xCluster operations",
+          "Enabling this runtime config will expose an option in the create xCluster modal and"
+              + " select tables modal to skip creating a full copy for xCluster replication"
+              + " configs.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",

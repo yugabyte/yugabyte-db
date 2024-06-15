@@ -1,0 +1,21 @@
+title: ImpactedXClusterInfo
+description: |
+  ImpactedXClusterInfo
+
+  XCluster info that are impacted by software upgrade. Part of SoftwareUpgradesFinalize schema.
+type: object
+required:
+  - universe_uuid
+  - universe_name
+  - universe_version
+properties:
+  universe_uuid:
+    description: UUID of the Universe
+    type: string
+    format: uuid
+  universe_name:
+    description: Name of the Universe
+    type: string
+  universe_version:
+    description: Version of the Universe
+    type: string

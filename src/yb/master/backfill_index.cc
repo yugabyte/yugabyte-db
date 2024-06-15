@@ -138,6 +138,9 @@ DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
     "Skips updating an index table to GC delete markers and sending of the corresponding RPC "
     "to the TServer.");
 
+DEFINE_test_flag(int32, delay_clearing_fully_applied_ms, 0,
+    "Amount of time to delay clearing the fully applied schema.");
+
 namespace yb {
 namespace master {
 
@@ -244,6 +247,9 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
     boost::optional<uint32_t> expected_version,
     bool update_state_to_running,
     const LeaderEpoch& epoch) {
+  if (PREDICT_FALSE(FLAGS_TEST_delay_clearing_fully_applied_ms > 0)) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_delay_clearing_fully_applied_ms));
+  }
   auto l = table->LockForWrite();
   uint32_t current_version = l->pb.version();
   if (expected_version && *expected_version != current_version) {

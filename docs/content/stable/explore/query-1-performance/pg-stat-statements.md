@@ -224,7 +224,7 @@ SELECT query, calls, total_time, min_time, max_time, mean_time, rows,
   yb_latency_histogram,
   yb_get_percentile(yb_latency_histogram, 99),
   yb_get_percentile(yb_latency_histogram, 95),
-  yb_get_percentile(yb_latency_histogram, 90),
+  yb_get_percentile(yb_latency_histogram, 90)
   FROM pg_stat_statements WHERE query like '%select v from foo where customer_id%';
 ```
 
@@ -449,3 +449,4 @@ yugabyte=# select pg_stat_statements_reset();
 ## Learn more
 
 - [Latency histogram and P99 latencies](../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
+- [Active Session History](../../observability/active-session-history)

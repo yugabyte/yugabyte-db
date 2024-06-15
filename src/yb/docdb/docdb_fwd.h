@@ -70,5 +70,6 @@ using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteReq
 
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
+YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
 
 }  // namespace yb::docdb

@@ -50,6 +50,7 @@
 
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/tserver/remote_bootstrap.pb.h"
@@ -405,7 +406,7 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
       TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
   if (download_retryable_requests_) {
-    RETURN_NOT_OK(DownloadRetryableRequestsFile());
+    RETURN_NOT_OK(DownloadTabletBootstrapStateFile());
   }
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->Download());
@@ -658,11 +659,11 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   return Status::OK();
 }
 
-Status RemoteBootstrapClient::DownloadRetryableRequestsFile() {
+Status RemoteBootstrapClient::DownloadTabletBootstrapStateFile() {
   VLOG_WITH_PREFIX(1) << "Downloading retryable requests file";
   DataIdPB data_id;
   data_id.set_type(DataIdPB::RETRYABLE_REQUESTS);
-  auto dest_path = consensus::RetryableRequestsManager::FilePath(meta_->wal_dir());
+  auto dest_path = tablet::TabletBootstrapStateManager::FilePath(meta_->wal_dir());
   const auto temp_dest_path = dest_path + ".tmp";
   bool ok = false;
   auto se = ScopeExit([this, &temp_dest_path, &ok] {

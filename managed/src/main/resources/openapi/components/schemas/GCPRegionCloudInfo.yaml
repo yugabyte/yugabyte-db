@@ -1,4 +1,5 @@
-title: Region in GCP provider
+title: GCPRegionCloudInfo
+description: Region in GCP provider. Part of RegionCloudInfo.
 type: object
 properties:
   instance_template:

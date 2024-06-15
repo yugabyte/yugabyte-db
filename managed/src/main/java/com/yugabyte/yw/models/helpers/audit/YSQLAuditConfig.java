@@ -30,7 +30,12 @@ public class YSQLAuditConfig {
   private boolean logClient;
 
   @NotNull
-  @ApiModelProperty(value = "Log level", accessMode = READ_WRITE)
+  @ApiModelProperty(
+      value =
+          "Log level. For NOTICE, INFO, DEBUG levels, user also needs to set"
+              + " 'log_min_messages' to the required level for the audit logs to be exported."
+              + " Default 'log_min_messages' is WARNING.",
+      accessMode = READ_WRITE)
   private YSQLAuditLogLevel logLevel;
 
   @NotNull

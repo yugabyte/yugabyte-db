@@ -66,13 +66,13 @@ func mkdirAllHelper(path string, children []string, perm os.FileMode) error {
 	return nil
 }
 
-func RenameOrFail(src string, dst string) {
+func Rename(src string, dst string) error {
 	log.Debug(fmt.Sprintf("Moving file from %s -> %s", src, dst))
 	err := os.Rename(src, dst)
 	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
+		return fmt.Errorf("error renaming %s to %s: %s", src, dst, err.Error())
 	}
-
+	return nil
 }
 
 // MkdirAllOrFail creates a directory according to the given permissions, logging an error if necessary.

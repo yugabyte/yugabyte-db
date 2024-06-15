@@ -74,6 +74,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
@@ -727,6 +728,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                         tableConfig.setStreamId(exampleTablesAndStreamIDs.get(tableId))));
 
     setupMockMetricQueryHelperResponse();
+
+    Mockito.doNothing().when(mockXClusterSyncScheduler).syncXClusterConfig(any());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 

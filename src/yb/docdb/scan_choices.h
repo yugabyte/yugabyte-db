@@ -295,6 +295,8 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
+  std::string DebugDumpCurrentScanTarget() const;
+
   const bool is_forward_scan_;
   dockv::KeyBytes current_scan_target_;
   bool finished_ = false;
@@ -304,8 +306,6 @@ class HybridScanChoices : public ScanChoices {
   // True if CurrentTargetMatchesKey should return true all the time as
   // the filter this ScanChoices iterates over is trivial.
   bool is_trivial_filter_ = false;
-
-  dockv::KeyBytes prev_scan_target_;
 
   // The following fields aid in the goal of iterating through all possible
   // scan key values based on given IN-lists and range filters.

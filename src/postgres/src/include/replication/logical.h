@@ -52,6 +52,9 @@ typedef struct LogicalDecodingContext
 	 */
 	bool		fast_forward;
 
+	/* Are we processing the end LSN of a transaction? */
+	bool		end_xact;
+
 	OutputPluginCallbacks callbacks;
 	OutputPluginOptions options;
 
@@ -96,9 +99,6 @@ typedef struct LogicalDecodingContext
 	 * do not use the snapbuild mechanism.
 	 */
 	XLogRecPtr	yb_start_decoding_at;
-
-	/* True if we are yet to handle the relcache invalidation at the startup. */
-	bool		yb_handle_relcache_invalidation_startup;
 
 	/*
 	 * A per table_oid to oid map.

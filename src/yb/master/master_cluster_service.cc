@@ -58,7 +58,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
 
     std::vector<std::shared_ptr<TSDescriptor>> descs;
     if (!req->primary_only()) {
-      server_->ts_manager()->GetAllDescriptors(&descs);
+      descs = server_->ts_manager()->GetAllDescriptors();
     } else {
       auto uuid_result = server_->catalog_manager_impl()->placement_uuid();
       if (!uuid_result.ok()) {

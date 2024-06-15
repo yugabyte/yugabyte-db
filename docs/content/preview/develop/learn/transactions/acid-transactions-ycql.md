@@ -3,6 +3,8 @@ title: ACID Transactions in YCQL
 headerTitle: Transactions in YCQL
 linkTitle: Transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
+aliases:
+  - /preview/develop/learn/acid-transactions-ycql/
 menu:
   preview:
     identifier: acid-transactions-2-ycql
@@ -248,7 +250,7 @@ String create_stmt =
                 "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
                 "END TRANSACTION;",
                 tablename, key1, value1,
-                tablename, key2, value2;
+                tablename, key2, value2);
 ```
 
 ### Prepare-bind transactions
@@ -259,10 +261,10 @@ You can prepare statements with transactions and bind variables to the prepared 
 String create_stmt =
   String.format("BEGIN TRANSACTION" +
                 "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
-                "  INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
+                "  INSERT INTO %s (k, v) VALUES (:k2, :v2);" +
                 "END TRANSACTION;",
                 tablename, key1, value1,
-                tablename, key2, value2;
+                tablename, key2, value2);
 PreparedStatement pstmt = client.prepare(create_stmt);
 
 ...

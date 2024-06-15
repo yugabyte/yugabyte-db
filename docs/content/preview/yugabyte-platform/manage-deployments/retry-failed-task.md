@@ -30,3 +30,9 @@ For example, a quota limit may prevent a universe scale up task, causing it to f
 Critical task failures, such as scaling a universe, placement changes, software upgrades, and flag changes block other critical tasks from being run on the universe. It is recommended to retry the failed task to completion before attempting other operations on the universe, or contact {{% support-platform %}} if the task continues to fail.
 
 Note that some operations, such as taking [universe backups](../../back-up-restore-universes/) or creating [support bundles](../../troubleshoot/universe-issues/#use-support-bundles), can always be attempted even after such failures.
+
+In case of certain failures, a retry of the task might continue to fail indefinitely. For example, an incorrect flag value might have been specified during a flag update operation. For such specific operations, you can do a new flag update operation with the corrected flag value instead of retrying the failed operation. This ability to fix the operation parameters instead of simply retrying is available for the following operations:
+1. Flag updates
+1. Upgrade Linux Version
+1. Update Kubernetes overrides 
+1. Changing the resource specification of a Kubernetes universe.

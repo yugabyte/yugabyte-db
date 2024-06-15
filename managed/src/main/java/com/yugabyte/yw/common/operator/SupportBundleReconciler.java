@@ -203,6 +203,7 @@ public class SupportBundleReconciler
       bundleStatus = new SupportBundleStatus();
     }
     bundleStatus.setStatus(statusEnum);
+    bundleStatus.setResourceUUID(uuid.toString());
     bundle.setStatus(bundleStatus);
     resourceClient.inNamespace(namespace).resource(bundle).replaceStatus();
   }

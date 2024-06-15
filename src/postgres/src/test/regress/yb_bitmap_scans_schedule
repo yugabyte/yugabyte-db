@@ -3,9 +3,8 @@
 ####################################################################################################
 # Bitmap Scans for YB Relations (Bitmap Index Scan + YB Bitmap Table Scan).
 ####################################################################################################
-# Dependencies for yb_bitmap_scans.
-test: yb_dep_tenk1
-
+test: yb_bitmap_scans_flags
 test: yb_bitmap_scans
-test: yb_bitmap_scan_joins
-test: yb_bitmap_scans_distinct
+test: yb_bitmap_scans_colo
+test: yb_bitmap_scans_joins
+test: yb_bitmap_scans_system

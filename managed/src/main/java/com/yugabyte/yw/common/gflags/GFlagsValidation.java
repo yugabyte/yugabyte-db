@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
@@ -164,18 +165,54 @@ public class GFlagsValidation {
     }
   }
 
-  public void fetchGFlagFilesFromTarGZipInputStream(
+  public List<GFlagGroup> extractGFlagGroups(String version) throws IOException {
+    InputStream flagStream = null;
+    try {
+      String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
+      flagStream =
+          environment.resourceAsStream(
+              "gflag_groups/" + majorVersion + "/" + Util.GFLAG_GROUPS_FILENAME);
+      if (flagStream == null) {
+        LOG.error("GFlag groups metadata file for " + majorVersion + " is not present");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "GFlag groups metadata file for " + majorVersion + " is not present");
+      }
+      ObjectMapper mapper = new ObjectMapper();
+      List<GFlagGroup> data =
+          mapper.readValue(flagStream, new TypeReference<List<GFlagGroup>>() {});
+      return data;
+    } finally {
+      if (flagStream != null) {
+        flagStream.close();
+      }
+    }
+  }
+
+  public synchronized void fetchGFlagFilesFromTarGZipInputStream(
       InputStream inputStream,
       String dbVersion,
       List<String> requiredGFlagFileList,
       String releasesPath)
       throws IOException {
-    LOG.info("Adding {} files for DB version {}", requiredGFlagFileList, dbVersion);
+    if (requiredGFlagFileList.isEmpty()) {
+      return;
+    }
+    List<String> missingRequiredGFlagFileList =
+        requiredGFlagFileList.stream()
+            .filter(
+                file ->
+                    !(new File(String.format("%s/%s/%s", releasesPath, dbVersion, file))).exists())
+            .collect(Collectors.toList());
+    if (missingRequiredGFlagFileList.isEmpty()) {
+      return;
+    }
+    LOG.info("Adding {} files for DB version {}", missingRequiredGFlagFileList, dbVersion);
     YsqlMigrationFilesList migrationFilesList = new YsqlMigrationFilesList();
     try (TarArchiveInputStream tarInput =
         new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
       TarArchiveEntry currentEntry;
-      while ((currentEntry = tarInput.getNextTarEntry()) != null) {
+      while ((currentEntry = tarInput.getNextEntry()) != null) {
         if (isYSQLMigrationFile(currentEntry.getName())) {
           String migrationFileName = getYsqlMigrationFiles(currentEntry.getName());
           migrationFilesList.ysqlMigrationsFilesList.add(migrationFileName);
@@ -194,7 +231,7 @@ public class GFlagsValidation {
         }
         String gFlagFileName = tarGFlagFilePathList.get(tarGFlagFilePathList.size() - 1);
         // Don't modify/re-write existing gFlags files, only add missing ones.
-        if (!requiredGFlagFileList.contains(gFlagFileName)) {
+        if (!missingRequiredGFlagFileList.contains(gFlagFileName)) {
           continue;
         }
         String absoluteGFlagFileName =
@@ -218,7 +255,7 @@ public class GFlagsValidation {
           }
         }
       }
-      if (requiredGFlagFileList.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)) {
+      if (missingRequiredGFlagFileList.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)) {
         File ysqlMigrationFileListFile =
             new File(
                 String.format(
