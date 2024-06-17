@@ -19,7 +19,7 @@ The Voyager Migration Assessment feature is specifically designed to optimize th
 
 When you run an assessment, Voyager collects metadata or metrics from the source database. This includes table columns metadata, sizes of tables and indexes, read and write IOPS for tables and indexes, and so on. With this data, Voyager generates an assessment report with the following key details:
 
-- **Database compatibility**. An assessment the compatibility of the source database with YugabyteDB, identifying unsupported features and data types.
+- **Database compatibility**. An assessment of the compatibility of the source database with YugabyteDB, identifying unsupported features and data types.
 
 - **Cluster size evaluation**. Estimated resource requirements for the target environment, to help with planning and scaling your infrastructure. The sizing logic depends on various factors such as the size and number of tables in the source database, as well as the throughput requirements (read/write IOPS).
 
