@@ -28,6 +28,10 @@ The recovery time objective (RTO) for failover or switchover is very low, and de
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
+{{<lead link="https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/">}}
+Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/)<br>Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.youtube.com/watch?v=q6Yq4xlj-wk)
+{{</lead>}}
+
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 
 {{<index/block>}}
