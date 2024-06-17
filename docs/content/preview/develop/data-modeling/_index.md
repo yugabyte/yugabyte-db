@@ -5,6 +5,7 @@ description: Learn to develop YugabyteDB applications
 image: fa-sharp fa-light fa-objects-column
 aliases:
   - /preview/develop/learn/data-modeling-ysql/
+  - /preview/develop/learn/data-modeling-ycql/
   - /preview/develop/data-modeling-ysql/
 menu:
   preview:

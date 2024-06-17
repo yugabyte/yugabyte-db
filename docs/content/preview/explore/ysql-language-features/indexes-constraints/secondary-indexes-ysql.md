@@ -31,9 +31,9 @@ CREATE INDEX idx_name ON table_name
 
 The columns that are specified in the [CREATE INDEX](../../../../api/ysql/the-sql-language/statements/ddl_create_index) statement are of three kinds:
 
-- **Sharding** - These columns determine how the index data is distributed.
-- **Clustering** - These optional columns determine how index rows that match the same sharding key are ordered.
-- **Covering** - These are optional additional columns that are stored in the index to avoid a trip to the table.
+- **Sharding** - Columns that determine how the index data is distributed.
+- **Clustering** - Optional columns that determine how index rows that match the same sharding key are ordered.
+- **Covering** - Optional columns that are stored in the index to avoid a trip to the table.
 
 ## Create indexes
 
