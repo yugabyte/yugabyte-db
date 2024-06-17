@@ -1177,6 +1177,33 @@ SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
 (4 rows)
 
 --
+-- #22065: test pushdowns on Subplans
+--
+CREATE TABLE text_pushdown_test (a text, b text);
+CREATE INDEX ON text_pushdown_test (a ASC);
+CREATE INDEX ON text_pushdown_test (b ASC);
+INSERT INTO text_pushdown_test VALUES ('hi', 'hello');
+/*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+ a | b
+---+---
+(0 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+                                           QUERY PLAN
+-------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on text_pushdown_test (actual rows=0 loops=1)
+   InitPlan 1 (returns $0)
+     ->  YB Bitmap Table Scan on text_pushdown_test text_pushdown_test_1 (actual rows=1 loops=1)
+           ->  Bitmap Index Scan on text_pushdown_test_b_idx (actual rows=1 loops=1)
+                 Index Cond: (b = 'hello'::text)
+   ->  Bitmap Index Scan on text_pushdown_test_a_idx (actual rows=0 loops=1)
+         Index Cond: (a = 'hi'::text)
+         Storage Index Filter: (a <> $0)
+(8 rows)
+
+--
 -- #22622: test local recheck of condition for a column that is not a target
 --
 create table local_recheck_test (k1 character(10), k2 character(10));
