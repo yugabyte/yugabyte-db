@@ -28,11 +28,11 @@ PostgreSQL compatibility has two aspects:
 
 ## Enhanced Postgres Compatibility Mode
 
-To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can turn on Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity.
+To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity.
 
 After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new {{<badge/ea>}} PostgreSQL compatibility features. As features included in the PostgreSQL compatibility mode transition from {{<badge/ea>}} to {{<badge/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under Enhanced Postgres Compatibility Mode.
 
-Depending on the version of YugabyteDB, this flag enables different early access features as described in the following table.
+Depending on the version of YugabyteDB, this flag configures different features as described in the following table.
 
 | YugabyteDB Version | Feature | Flag |
 | :--- | :--- | :--- |
