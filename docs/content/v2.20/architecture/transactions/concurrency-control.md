@@ -309,11 +309,7 @@ Note that the retries will not be performed in case the amount of data to be sen
 
 ## Wait-on-Conflict
 
-{{< note >}}
-
-Wait-on-conflict is [Tech Preview](/preview/releases/versioning/#feature-availability).
-
-{{</note >}}
+Wait-on-conflict feature is in {{<badge/tp>}}.
 
 This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
 
