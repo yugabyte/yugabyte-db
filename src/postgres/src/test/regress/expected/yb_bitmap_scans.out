@@ -863,6 +863,53 @@ NOTICE:  exceeded work_mem, switching to full table scan
                            Index Cond: ((b > 0) AND (c > 15000))
 (14 rows)
 
+-- check aggregates
+SET yb_enable_expression_pushdown = true;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on multi (actual rows=9990 loops=1)
+         Storage Filter: (a > 10)
+         Exceeded work_mem: true
+         ->  Bitmap Index Scan on multi_pkey (actual rows=0 loops=1)
+               Index Cond: (a > 10)
+(6 rows)
+
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+ count
+-------
+  9990
+(1 row)
+
+SET yb_enable_expression_pushdown = false;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on multi (actual rows=9990 loops=1)
+         Filter: (a > 10)
+         Rows Removed by Filter: 10
+         Exceeded work_mem: true
+         ->  Bitmap Index Scan on multi_pkey (actual rows=0 loops=1)
+               Index Cond: (a > 10)
+(7 rows)
+
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+ count
+-------
+  9990
+(1 row)
+
+RESET yb_enable_expression_pushdown;
 RESET work_mem;
 --
 -- test limits
