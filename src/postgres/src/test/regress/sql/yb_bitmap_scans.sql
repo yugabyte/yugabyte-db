@@ -309,6 +309,19 @@ explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
 
 --
+-- #22065: test pushdowns on Subplans
+--
+CREATE TABLE text_pushdown_test (a text, b text);
+CREATE INDEX ON text_pushdown_test (a ASC);
+CREATE INDEX ON text_pushdown_test (b ASC);
+INSERT INTO text_pushdown_test VALUES ('hi', 'hello');
+
+/*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+
+--
 -- #22622: test local recheck of condition for a column that is not a target
 --
 create table local_recheck_test (k1 character(10), k2 character(10));
