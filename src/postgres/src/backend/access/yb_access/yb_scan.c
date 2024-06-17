@@ -2079,7 +2079,7 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
 		{
 			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
-				YBFirstLowInvalidAttributeNumber, keys[i]->sk_attno);
+				YBFirstLowInvalidAttributeNumber, ybScan->target_key_attnums[i]);
 			columns = bms_add_member(columns, bms_idx);
 		}
 	}
