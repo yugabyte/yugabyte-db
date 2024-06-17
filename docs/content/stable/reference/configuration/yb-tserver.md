@@ -1495,7 +1495,7 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## DDL atomicity flags
 
-DDL atomicity flags are currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+DDL atomicity feature is in {{<badge/ea>}}.
 
 ##### ysql_yb_ddl_rollback_enabled
 
