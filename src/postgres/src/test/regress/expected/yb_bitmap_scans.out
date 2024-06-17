@@ -1531,5 +1531,25 @@ SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
  1
 (1 row)
 
+--
+-- #22062: variable not found in subplan target list
+--
+CREATE TABLE t2 (k1 INT, k2 INT);
+CREATE INDEX ON t2 (k1 ASC);
+CREATE INDEX ON t2 (k2 ASC);
+EXPLAIN (COSTS OFF) /*+ BitmapScan(t2) */ SELECT * FROM t2 AS a JOIN t2 AS b ON a.k1 = b.k1 OR (a.k2 = b.k1 AND a.k1 = 1);
+                          QUERY PLAN
+---------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2 a
+   ->  YB Bitmap Table Scan on t2 b
+         Filter: ((a.k1 = k1) OR ((a.k2 = k1) AND (a.k1 = 1)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on t2_k1_idx
+                     Index Cond: (a.k1 = k1)
+               ->  Bitmap Index Scan on t2_k1_idx
+                     Index Cond: (a.k2 = k1)
+(9 rows)
+
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;
