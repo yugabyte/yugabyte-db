@@ -145,6 +145,14 @@ SELECT * from cypher('graph123', $$ CREATE (:A)-[:`my&label2`]->(:C) $$) as (a a
 SELECT * from cypher('graph123', $$ CREATE (a:`mylabel`) $$) as (a agtype);
 SELECT * from cypher('graph123', $$ CREATE (:A)-[:`mylabel2`]->(:C) $$) as (a agtype);
 
+-- user label validation
+-- invalid
+SELECT * from cypher('graph123', $$ return is_valid_label_name('1label') $$) as (result agtype);
+SELECT * from cypher('graph123', $$ return is_valid_label_name('2label') $$) as (result agtype);
+-- valid
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label1') $$) as (result agtype);
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label2') $$) as (result agtype);
+
 -- clean up
 SELECT drop_graph('graph123', true);
 

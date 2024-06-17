@@ -369,6 +369,33 @@ SELECT * from cypher('graph123', $$ CREATE (:A)-[:`mylabel2`]->(:C) $$) as (a ag
 ---
 (0 rows)
 
+-- user label validation
+-- invalid
+SELECT * from cypher('graph123', $$ return is_valid_label_name('1label') $$) as (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * from cypher('graph123', $$ return is_valid_label_name('2label') $$) as (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+-- valid
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label1') $$) as (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label2') $$) as (result agtype);
+ result 
+--------
+ true
+(1 row)
+
 -- clean up
 SELECT drop_graph('graph123', true);
 NOTICE:  drop cascades to 18 other objects

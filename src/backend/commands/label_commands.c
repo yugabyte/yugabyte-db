@@ -94,7 +94,52 @@ static void range_var_callback_for_remove_relation(const RangeVar *rel,
                                                    Oid odl_rel_oid,
                                                    void *arg);
 
+PG_FUNCTION_INFO_V1(age_is_valid_label_name);
 
+Datum age_is_valid_label_name(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_value *agtv_value = NULL;
+    char *label_name = NULL;
+    bool is_valid = false;
+
+    if (PG_ARGISNULL(0))
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("label name must not be NULL")));
+    }
+
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+
+    if (!AGT_ROOT_IS_SCALAR(agt_arg))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("is_valid_label_name() only supports scalar arguments")));
+    }
+
+    agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+    if (agtv_value->type != AGTV_STRING)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("is_valid_label_name() only supports string arguments")));
+    }
+
+    label_name = pnstrdup(agtv_value->val.string.val,
+                          agtv_value->val.string.len);
+
+    is_valid = is_valid_label(label_name, 0);
+    pfree(label_name);
+
+    if (is_valid)
+    {
+        PG_RETURN_BOOL(true);
+    }
+
+    PG_RETURN_BOOL(false);
+}
 
 PG_FUNCTION_INFO_V1(create_vlabel);
 
