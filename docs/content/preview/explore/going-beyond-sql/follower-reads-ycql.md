@@ -14,10 +14,7 @@ menu:
 type: docs
 ---
 
-{{<tabs>}}
-{{<tabitem href="../follower-reads-ysql/" text="YSQL" icon="postgres" >}}
-{{<tabitem href="../follower-reads-ycql/" text="YCQL" icon="cassandra" active="true">}}
-{{</tabs>}}
+{{<api-tabs>}}
 
 Use follower reads to lower read latencies. With follower reads, the database has less work to do at read time, including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency, but might have slightly stale yet timeline-consistent data (that is, no out of order data is possible).
 

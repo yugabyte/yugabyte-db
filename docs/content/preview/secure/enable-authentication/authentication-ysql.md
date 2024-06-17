@@ -13,10 +13,7 @@ aliases:
 type: docs
 ---
 
-{{<tabs>}}
-{{<tabitem href="../authentication-ysql/" text="YSQL" icon="postgres" active="true" >}}
-{{<tabitem href="../authentication-ycql/" text="YCQL" icon="cassandra" >}}
-{{</tabs>}}
+{{<api-tabs>}}
 
 YSQL authentication, the process of identifying that YSQL users are who they say they are, is based on roles. Users, groups, and roles in YugabyteDB are created using roles. Typically, a role that has login privileges is known as a *user*, while a *group* is a role that can have multiple users as members.
 

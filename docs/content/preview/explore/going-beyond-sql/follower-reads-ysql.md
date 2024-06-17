@@ -11,10 +11,7 @@ menu:
 type: docs
 ---
 
-{{<tabs>}}
-{{<tabitem href="../follower-reads-ysql/" text="YSQL" icon="postgres" active="true">}}
-{{<tabitem href="../follower-reads-ycql/" text="YCQL" icon="cassandra" >}}
-{{</tabs>}}
+{{<api-tabs>}}
 
 YugabyteDB requires reading from the leader to read the latest data. However, for applications that do not require the latest data or are working with unchanging data, the cost of contacting a potentially remote leader to fetch the data may be wasteful. Your application may benefit from better latency by reading from a replica that is closer to the client.
 

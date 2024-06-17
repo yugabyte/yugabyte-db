@@ -11,10 +11,7 @@ menu:
 type: docs
 ---
 
-{{<tabs>}}
-{{<tabitem href="../acid-transactions-ysql/" text="YSQL" icon="postgres" >}}
-{{<tabitem href="../acid-transactions-ycql/" text="YCQL" icon="cassandra" active="true" >}}
-{{</tabs>}}
+{{<api-tabs>}}
 
 A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](../../../../architecture/key-concepts#acid) guarantees for all transactions:
 
