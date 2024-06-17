@@ -255,6 +255,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     flagMap.put("ysql_beta_features", "true");
     flagMap.put("ysql_enable_reindex", "true");
+    flagMap.put("TEST_ysql_hide_catalog_version_increment_log", "true");
 
     return flagMap;
   }

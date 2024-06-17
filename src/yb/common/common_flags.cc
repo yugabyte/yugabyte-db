@@ -102,6 +102,10 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
 TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
 
+DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
+                        "Hide catalog version increment log messages.");
+TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

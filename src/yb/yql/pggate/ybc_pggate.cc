@@ -1549,7 +1549,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
       .ysql_enable_pg_per_database_oid_allocator =
-          &FLAGS_ysql_enable_pg_per_database_oid_allocator
+          &FLAGS_ysql_enable_pg_per_database_oid_allocator,
+      .TEST_ysql_hide_catalog_version_increment_log =
+          &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
   };
   // clang-format on
   return &accessor;

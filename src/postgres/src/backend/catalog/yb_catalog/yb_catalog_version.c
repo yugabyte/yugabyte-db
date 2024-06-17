@@ -83,7 +83,8 @@ uint64_t YbGetMasterCatalogVersion()
 /* Modify Catalog Version */
 
 static void
-YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
+YbCallSQLIncrementCatalogVersions(bool is_breaking_change,
+								  const char *command_tag)
 {
 	List* names =
 		list_make2(makeString("pg_catalog"),
@@ -113,6 +114,19 @@ YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
 	GetUserIdAndSecContext(&save_userid, &save_sec_context);
 	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
 						   SECURITY_RESTRICTED_OPERATION);
+
+	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
+	{
+		bool log_ysql_catalog_versions =
+			*YBCGetGFlags()->log_ysql_catalog_versions;
+		ereport(LOG,
+				(errmsg("%s: incrementing all master db catalog versions (%sbreaking)",
+						__func__, is_breaking_change ? "" : "non"),
+				errdetail("Node tag: %s.", command_tag ? command_tag : "n/a"),
+				errhidestmt(!log_ysql_catalog_versions),
+				errhidecontext(!log_ysql_catalog_versions)));
+	}
+
 	PG_TRY();
 	{
 		FunctionCallInvoke(&fcinfo);
@@ -132,7 +146,8 @@ YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
 
 static void
 YbIncrementMasterDBCatalogVersionTableEntryImpl(
-	Oid db_oid, bool is_breaking_change, bool is_global_ddl)
+	Oid db_oid, bool is_breaking_change, bool is_global_ddl,
+	const char *command_tag)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
@@ -140,7 +155,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	{
 		Assert(YBIsDBCatalogVersionMode());
 		/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
-		YbCallSQLIncrementCatalogVersions(is_breaking_change);
+		YbCallSQLIncrementCatalogVersions(is_breaking_change, command_tag);
 		return;
 	}
 
@@ -209,15 +224,23 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	}
 
 	int rows_affected_count = 0;
-	if (*YBCGetGFlags()->log_ysql_catalog_versions)
+
+	if (!(*YBCGetGFlags()->TEST_ysql_hide_catalog_version_increment_log))
 	{
+		bool log_ysql_catalog_versions =
+			*YBCGetGFlags()->log_ysql_catalog_versions;
 		char tmpbuf[30] = "";
 		if (YBIsDBCatalogVersionMode())
 			snprintf(tmpbuf, sizeof(tmpbuf), " for database %u", db_oid);
 		ereport(LOG,
 				(errmsg("%s: incrementing master catalog version (%sbreaking)%s",
-						__func__, is_breaking_change ? "" : "non", tmpbuf)));
+						__func__, is_breaking_change ? "" : "non", tmpbuf),
+				errdetail("Local version: %" PRIu64 ", node tag: %s.",
+						  YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				errhidestmt(!log_ysql_catalog_versions),
+				errhidecontext(!log_ysql_catalog_versions)));
 	}
+
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
 	/*
 	 * Under normal situation rows_affected_count should be exactly 1. However
@@ -240,7 +263,8 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 }
 
 bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
-											   bool is_global_ddl)
+											   bool is_global_ddl,
+											   const char *command_tag)
 {
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
@@ -249,7 +273,7 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 	 */
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(
 		YBIsDBCatalogVersionMode() ? MyDatabaseId : TemplateDbOid,
-		is_breaking_change, is_global_ddl);
+		is_breaking_change, is_global_ddl, command_tag);
 
 	if (yb_test_fail_next_inc_catalog_version)
 	{

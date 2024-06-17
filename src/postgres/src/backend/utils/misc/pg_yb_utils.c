@@ -1410,6 +1410,7 @@ typedef struct DdlTransactionState {
 	bool is_breaking_catalog_change;
 	bool is_global_ddl;
 	NodeTag original_node_tag;
+	const char *original_ddl_command_tag;
 } DdlTransactionState;
 
 static DdlTransactionState ddl_transaction_state = {0};
@@ -1527,6 +1528,8 @@ YBDecrementDdlNestingLevel()
 		bool is_catalog_version_increment = ddl_transaction_state.is_catalog_version_increment;
 		bool is_breaking_catalog_change = ddl_transaction_state.is_breaking_catalog_change;
 		bool is_global_ddl = ddl_transaction_state.is_global_ddl;
+		const char *original_ddl_command_tag =
+			ddl_transaction_state.original_ddl_command_tag;
 		/*
 		 * Reset these flags to false prior to executing
 		 * YbIncrementMasterCatalogVersionTableEntry() such that
@@ -1535,12 +1538,14 @@ YBDecrementDdlNestingLevel()
 		ddl_transaction_state.is_catalog_version_increment = false;
 		ddl_transaction_state.is_breaking_catalog_change = false;
 		ddl_transaction_state.is_global_ddl = false;
+		ddl_transaction_state.original_ddl_command_tag = "";
 
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
 			YbIncrementMasterCatalogVersionTableEntry(
-					is_breaking_catalog_change, is_global_ddl);
+					is_breaking_catalog_change, is_global_ddl,
+					original_ddl_command_tag);
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -1633,6 +1638,8 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		 * be incremented.
 		 */
 		ddl_transaction_state.original_node_tag = node_tag;
+		ddl_transaction_state.original_ddl_command_tag =
+			CreateCommandTag(parsetree);
 	}
 	else
 	{
