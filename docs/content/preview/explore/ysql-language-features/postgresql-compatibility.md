@@ -16,9 +16,7 @@ YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-c
 
 Because YugabyteDB is PostgreSQL compatible, it works with the majority of PostgreSQL database tools such as various language drivers, ORM tools, schema migration tools, and many more third-party database tools.
 
-## PostgreSQL parity
-
-PostgreSQL parity is shorthand for two concepts:
+PostgreSQL compatibility has two aspects:
 
 - Feature compatibility
 
@@ -28,9 +26,9 @@ PostgreSQL parity is shorthand for two concepts:
 
     Performance parity refers to the capabilities of YugabyteDB that allow applications running on PostgreSQL to run with predictable performance on YugabyteDB. In other words, the performance degradation experienced by small and medium scale applications going from a single server database to a distributed database should be predictable and bounded.
 
-### Enhanced Postgres Compatibility Mode
+## Enhanced Postgres Compatibility Mode
 
-To test and take advantage of features developed for PostgreSQL parity in YugabyteDB that are currently in {{<badge/ea>}}, you can turn on Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity.
+To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can turn on Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity.
 
 After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new {{<badge/ea>}} PostgreSQL compatibility features. As features included in the PostgreSQL compatibility mode transition from {{<badge/ea>}} to {{<badge/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under Enhanced Postgres Compatibility Mode.
 
