@@ -1319,6 +1319,22 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   public static Map<String, List<String>> getMainTableIndexTablesMap(
+      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    Map<String, List<String>> mainTableIndexTablesMap = new HashMap<>();
+    tableInfoList.forEach(
+        tableInfo -> {
+          if (TableInfoUtil.isIndexTable(tableInfo)) {
+            String mainTableId = tableInfo.getIndexedTableId().replace("-", "");
+            mainTableIndexTablesMap
+                .computeIfAbsent(mainTableId, k -> new ArrayList<>())
+                .add(getTableId(tableInfo));
+          }
+        });
+    log.debug("mainTableIndexTablesMap is {}", mainTableIndexTablesMap);
+    return mainTableIndexTablesMap;
+  }
+
+  public static Map<String, List<String>> getMainTableIndexTablesMap(
       YBClientService ybService, Universe universe, Set<String> mainTableUuidList) {
     Map<String, GetTableSchemaResponse> tableSchemaMap =
         getTableSchemas(ybService, universe, mainTableUuidList);
@@ -1511,6 +1527,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           }
         });
     return namespaces;
+  }
+
+  public static Map<String, MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+      getTableIdToTableInfoMap(
+          Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
+    return tablesInfoList.stream()
+        .collect(Collectors.toMap(XClusterConfigTaskBase::getTableId, Function.identity()));
   }
 
   public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
