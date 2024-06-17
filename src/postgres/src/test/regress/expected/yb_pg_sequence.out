@@ -2,11 +2,6 @@
 -- CREATE SEQUENCE
 --
 -- various error cases
-CREATE UNLOGGED SEQUENCE sequence_testx;
-ERROR:  UNLOGGED database object not supported yet
-LINE 1: CREATE UNLOGGED SEQUENCE sequence_testx;
-               ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
 CREATE SEQUENCE sequence_testx INCREMENT BY 0;
 ERROR:  INCREMENT must not be zero
 CREATE SEQUENCE sequence_testx INCREMENT BY -1 MINVALUE 20;
@@ -24,8 +19,12 @@ CREATE SEQUENCE sequence_testx OWNED BY nobody;  -- nonsense word
 ERROR:  invalid OWNED BY option
 HINT:  Specify OWNED BY table.column or OWNED BY NONE.
 CREATE SEQUENCE sequence_testx OWNED BY pg_class_oid_index.oid;  -- not a table
-ERROR:  referenced relation "pg_class_oid_index" is not a table or foreign table
--- CREATE SEQUENCE sequence_testx OWNED BY pg_class.relname;  -- not same schema
+ERROR:  sequence cannot be owned by relation "pg_class_oid_index"
+DETAIL:  This operation is not supported for indexes.
+SET SESSION AUTHORIZATION postgres; -- YB: the following query expects to be run as the owner of pg_class
+CREATE SEQUENCE sequence_testx OWNED BY pg_class.relname;  -- not same schema
+ERROR:  sequence must be in same schema as table it is linked to
+RESET SESSION AUTHORIZATION; -- YB: undo above
 CREATE TABLE sequence_test_table (a int);
 CREATE SEQUENCE sequence_testx OWNED BY sequence_test_table.b;  -- wrong column
 ERROR:  column "b" of relation "sequence_test_table" does not exist
@@ -73,11 +72,11 @@ INSERT INTO serialTest1 VALUES ('force', 100);
 INSERT INTO serialTest1 VALUES ('wrong', NULL);
 ERROR:  null value in column "f2" of relation "serialtest1" violates not-null constraint
 DETAIL:  Failing row contains (wrong, null).
-SELECT * FROM serialTest1 ORDER BY f1;
+SELECT * FROM serialTest1 ORDER BY f2; -- YB: add ordering
   f1   | f2
 -------+-----
- bar   |   2
  foo   |   1
+ bar   |   2
  force | 100
 (3 rows)
 
@@ -261,22 +260,23 @@ SELECT nextval('foo_seq_new');
        2
 (1 row)
 
--- YB log_cnt is always zero
-SELECT last_value, log_cnt, is_called FROM foo_seq_new;
- last_value | log_cnt | is_called
-------------+---------+-----------
-          2 |       0 | t
+-- log_cnt can be higher if there is a checkpoint just at the right
+-- time, so just test for the expected range
+SELECT last_value, log_cnt IN (0) AS log_cnt_ok, is_called FROM foo_seq_new; -- YB: log_cnt is always zero
+ last_value | log_cnt_ok | is_called 
+------------+------------+-----------
+          2 | t          | t
 (1 row)
 
 DROP SEQUENCE foo_seq_new;
 -- renaming serial sequences
 ALTER TABLE serialtest1_f2_seq RENAME TO serialtest1_f2_foo;
 INSERT INTO serialTest1 VALUES ('more');
-SELECT * FROM serialTest1 ORDER BY f1;
+SELECT * FROM serialTest1 ORDER BY substr(f1, 3); -- YB: add ordering
   f1   | f2
 -------+-----
- bar   |   2
  foo   |   1
+ bar   |   2
  force | 100
  more  |   3
 (4 rows)
@@ -503,8 +503,7 @@ SELECT * FROM information_schema.sequences
  yugabyte         | public          | serialtest2_f6_seq | bigint    |                64 |                       2 |             0 | 1           | 1                    | 9223372036854775807 | 1         | NO
 (19 rows)
 
--- Yugabyte does not store last_value in the pg_sequences
-SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size
+SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size -- YB: YB doesn't store last_value in pg_sequences
 FROM pg_sequences
 WHERE sequencename ~ ANY(ARRAY['sequence_test', 'serialtest'])
   ORDER BY sequencename ASC;
@@ -601,7 +600,20 @@ DROP SEQUENCE seq2;
 -- should fail
 SELECT lastval();
 ERROR:  lastval is not yet defined in this session
-CREATE USER regress_seq_user;
+-- unlogged sequences
+-- (more tests in src/test/recovery/)
+CREATE UNLOGGED SEQUENCE sequence_test_unlogged;
+ERROR:  UNLOGGED database object not supported yet
+LINE 1: CREATE UNLOGGED SEQUENCE sequence_test_unlogged;
+               ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+/* YB: uncomment when UNLOGGED SEQUENCE is supported
+ALTER SEQUENCE sequence_test_unlogged SET LOGGED;
+\d sequence_test_unlogged
+ALTER SEQUENCE sequence_test_unlogged SET UNLOGGED;
+\d sequence_test_unlogged
+DROP SEQUENCE sequence_test_unlogged;
+*/ -- YB
 -- Test sequences in read-only transactions
 CREATE TEMPORARY SEQUENCE sequence_test_temp1;
 START TRANSACTION READ ONLY;
@@ -625,6 +637,7 @@ SELECT setval('sequence_test2', 1);  -- error
 ERROR:  cannot execute setval() in a read-only transaction
 ROLLBACK;
 -- privileges tests
+CREATE USER regress_seq_user;
 -- nextval
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -634,8 +647,7 @@ GRANT SELECT ON seq3 TO regress_seq_user;
 SELECT nextval('seq3');
 ERROR:  permission denied for sequence seq3
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
@@ -648,8 +660,7 @@ SELECT nextval('seq3');
 (1 row)
 
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
@@ -662,8 +673,7 @@ SELECT nextval('seq3');
 (1 row)
 
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 -- currval
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -683,8 +693,7 @@ SELECT currval('seq3');
 (1 row)
 
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
@@ -699,8 +708,7 @@ GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT currval('seq3');
 ERROR:  permission denied for sequence seq3
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
@@ -719,8 +727,7 @@ SELECT currval('seq3');
 (1 row)
 
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 -- lastval
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -740,8 +747,7 @@ SELECT lastval();
 (1 row)
 
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
@@ -756,8 +762,7 @@ GRANT UPDATE ON seq3 TO regress_seq_user;
 SELECT lastval();
 ERROR:  permission denied for sequence seq3
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
 CREATE SEQUENCE seq3;
@@ -776,8 +781,7 @@ SELECT lastval();
 (1 row)
 
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 -- setval
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;
@@ -801,8 +805,7 @@ SELECT nextval('seq3');
 (1 row)
 
 ROLLBACK;
--- YB sequences are not transactional
-DROP SEQUENCE seq3;
+DROP SEQUENCE seq3; -- YB: sequences are not transactional, so need to manually drop in addition to above ROLLBACK
 -- ALTER SEQUENCE
 BEGIN;
 SET LOCAL SESSION AUTHORIZATION regress_seq_user;

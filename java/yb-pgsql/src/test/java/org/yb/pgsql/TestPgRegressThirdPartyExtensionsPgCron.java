@@ -16,20 +16,30 @@ import java.io.File;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
-@RunWith(value = YBTestRunner.class)
-public class TestPgRegressThirdPartyExtensionsPgCron extends BasePgSQLTest {
+// Disable in TSAN since it times out on pg_cron exist #22295.
+@RunWith(value = YBTestRunnerNonTsanOnly.class)
+public class TestPgRegressThirdPartyExtensionsPgCron extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
   @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("allowed_preview_flags_csv", "enable_pg_cron");
+    flagMap.put("enable_pg_cron", "true");
+    return flagMap;
+  }
+
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_enable_pg_cron", "true");
+    flagMap.put("allowed_preview_flags_csv", "enable_pg_cron");
+    flagMap.put("enable_pg_cron", "true");
     return flagMap;
   }
 

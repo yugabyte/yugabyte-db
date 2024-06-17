@@ -1,0 +1,38 @@
+title: Add a Cluster to an existing Universe
+type: object
+required:
+  - cluster_type
+  - num_nodes
+  - instance_type
+  - provider_spec
+properties:
+  cluster_type:
+    description: 'Cluster type can be one of READ_REPLICA, ADDON'
+    type: string
+    example: READ_REPLICA
+    enum:
+      - READ_REPLICA
+      - ADDON
+  num_nodes:
+    description: Set the number of nodes (tservers) to provision in this cluster
+    type: integer
+    format: int32
+    example: 3
+    minimum: 1
+  instance_type:
+    description: Set instance type for tserver nodes of cluster
+    type: string
+    example: c5.xlarge
+  storage_spec:
+    $ref: "./ClusterStorageSpec.yaml"
+  provider_spec:
+    $ref: "./ClusterProviderEditSpec.yaml"
+  placement_spec:
+    $ref: "./ClusterPlacementSpec.yaml"
+  instance_tags:
+    description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
+    type: object
+    additionalProperties:
+      type: string
+  gflags:
+    $ref: "./ClusterGFlags.yaml"

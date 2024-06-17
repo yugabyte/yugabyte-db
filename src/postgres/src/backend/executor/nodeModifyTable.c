@@ -1172,8 +1172,7 @@ ExecInsert(ModifyTableContext *context,
 				 * locked and released in this call.
 				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
 				 */
-
-				YBCTupleTableInsert(resultRelInfo, slot, blockInsertStmt, estate);
+				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot, estate, true, true,
@@ -1237,7 +1236,7 @@ ExecInsert(ModifyTableContext *context,
 			if (IsYBRelation(resultRelationDesc))
 			{
 				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-				YBCTupleTableInsert(resultRelInfo, slot, blockInsertStmt, estate);
+				YBCHeapInsert(resultRelInfo, slot, blockInsertStmt, estate);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))

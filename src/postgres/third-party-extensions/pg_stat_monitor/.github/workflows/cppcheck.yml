@@ -1,0 +1,18 @@
+name: cppcheck-action-test
+on: [push]
+
+jobs:
+  build:
+    name: cppcheck-test
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install cppcheck
+        run: sudo apt-get install cppcheck
+
+      - name: Execute linter check with cppcheck
+        run: |
+          set -x
+          cppcheck --enable=all --inline-suppr --template='{file}:{line},{severity},{id},{message}' --error-exitcode=1 --suppress=missingIncludeSystem --suppress=missingInclude --suppress=unmatchedSuppression:pg_stat_monitor.c --check-config .
+

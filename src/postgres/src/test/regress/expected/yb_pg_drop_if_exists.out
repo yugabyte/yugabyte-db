@@ -85,6 +85,31 @@ DROP GROUP IF EXISTS regress_test_g1, regress_test_g2;
 NOTICE:  role "regress_test_g2" does not exist, skipping
 DROP GROUP regress_test_g1;
 ERROR:  role "regress_test_g1" does not exist
+-- collation
+DROP COLLATION IF EXISTS test_collation_exists;
+NOTICE:  collation "test_collation_exists" does not exist, skipping
+-- conversion
+DROP CONVERSION test_conversion_exists;
+ERROR:  DROP CONVERSION not supported yet
+LINE 1: DROP CONVERSION test_conversion_exists;
+             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+DROP CONVERSION IF EXISTS test_conversion_exists;
+ERROR:  DROP CONVERSION not supported yet
+LINE 1: DROP CONVERSION IF EXISTS test_conversion_exists;
+             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+CREATE CONVERSION test_conversion_exists
+    FOR 'LATIN1' TO 'UTF8' FROM iso8859_1_to_utf8;
+ERROR:  CREATE CONVERSION not supported yet
+LINE 1: CREATE CONVERSION test_conversion_exists
+        ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+DROP CONVERSION test_conversion_exists;
+ERROR:  DROP CONVERSION not supported yet
+LINE 1: DROP CONVERSION test_conversion_exists;
+             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 -- text search parser
 DROP TEXT SEARCH PARSER test_tsparser_exists;
 ERROR:  text search parser "test_tsparser_exists" does not exist
@@ -144,6 +169,11 @@ NOTICE:  operator @#@ does not exist, skipping
 CREATE OPERATOR @#@
         (leftarg = int8, rightarg = int8, procedure = int8xor);
 DROP OPERATOR @#@ (int8, int8);
+-- language
+DROP LANGUAGE test_language_exists;
+ERROR:  language "test_language_exists" does not exist
+DROP LANGUAGE IF EXISTS test_language_exists;
+NOTICE:  language "test_language_exists" does not exist, skipping
 -- cast
 DROP CAST (text AS text);
 ERROR:  cast from type text to type text does not exist
@@ -211,6 +241,11 @@ DROP OPERATOR FAMILY test_operator_family USING no_such_am;
 ERROR:  access method "no_such_am" does not exist
 DROP OPERATOR FAMILY IF EXISTS test_operator_family USING no_such_am;
 ERROR:  access method "no_such_am" does not exist
+-- access method
+DROP ACCESS METHOD no_such_am;
+ERROR:  access method "no_such_am" does not exist
+DROP ACCESS METHOD IF EXISTS no_such_am;
+NOTICE:  access method "no_such_am" does not exist, skipping
 -- drop the table
 DROP TABLE IF EXISTS test_exists;
 DROP TABLE test_exists;
@@ -230,6 +265,13 @@ DROP CAST IF EXISTS (INTEGER AS no_such_schema.bar);
 NOTICE:  schema "no_such_schema" does not exist, skipping
 DROP CAST IF EXISTS (no_such_schema.foo AS INTEGER);
 NOTICE:  schema "no_such_schema" does not exist, skipping
+DROP COLLATION IF EXISTS no_such_schema.foo;
+NOTICE:  schema "no_such_schema" does not exist, skipping
+DROP CONVERSION IF EXISTS no_such_schema.foo;
+ERROR:  DROP CONVERSION not supported yet
+LINE 1: DROP CONVERSION IF EXISTS no_such_schema.foo;
+             ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 DROP DOMAIN IF EXISTS no_such_schema.foo;
 NOTICE:  schema "no_such_schema" does not exist, skipping
 DROP FOREIGN TABLE IF EXISTS no_such_schema.foo;
@@ -241,6 +283,8 @@ NOTICE:  type "no_such_type" does not exist, skipping
 DROP FUNCTION IF EXISTS foo(no_such_schema.no_such_type);
 NOTICE:  schema "no_such_schema" does not exist, skipping
 DROP INDEX IF EXISTS no_such_schema.foo;
+NOTICE:  schema "no_such_schema" does not exist, skipping
+DROP MATERIALIZED VIEW IF EXISTS no_such_schema.foo;
 NOTICE:  schema "no_such_schema" does not exist, skipping
 DROP OPERATOR IF EXISTS no_such_schema.+ (int, int);
 NOTICE:  schema "no_such_schema" does not exist, skipping
@@ -274,6 +318,35 @@ DROP TYPE IF EXISTS no_such_schema.foo;
 NOTICE:  schema "no_such_schema" does not exist, skipping
 DROP VIEW IF EXISTS no_such_schema.foo;
 NOTICE:  schema "no_such_schema" does not exist, skipping
+-- Check we receive an ambiguous function error when there are
+-- multiple matching functions.
+CREATE FUNCTION test_ambiguous_funcname(int) returns int as $$ select $1; $$ language sql;
+CREATE FUNCTION test_ambiguous_funcname(text) returns text as $$ select $1; $$ language sql;
+DROP FUNCTION test_ambiguous_funcname;
+ERROR:  function name "test_ambiguous_funcname" is not unique
+HINT:  Specify the argument list to select the function unambiguously.
+DROP FUNCTION IF EXISTS test_ambiguous_funcname;
+ERROR:  function name "test_ambiguous_funcname" is not unique
+HINT:  Specify the argument list to select the function unambiguously.
+-- cleanup
+DROP FUNCTION test_ambiguous_funcname(int);
+DROP FUNCTION test_ambiguous_funcname(text);
+-- Likewise for procedures.
+CREATE PROCEDURE test_ambiguous_procname(int) as $$ begin end; $$ language plpgsql;
+CREATE PROCEDURE test_ambiguous_procname(text) as $$ begin end; $$ language plpgsql;
+DROP PROCEDURE test_ambiguous_procname;
+ERROR:  procedure name "test_ambiguous_procname" is not unique
+HINT:  Specify the argument list to select the procedure unambiguously.
+DROP PROCEDURE IF EXISTS test_ambiguous_procname;
+ERROR:  procedure name "test_ambiguous_procname" is not unique
+HINT:  Specify the argument list to select the procedure unambiguously.
+-- Check we get a similar error if we use ROUTINE instead of PROCEDURE.
+DROP ROUTINE IF EXISTS test_ambiguous_procname;
+ERROR:  routine name "test_ambiguous_procname" is not unique
+HINT:  Specify the argument list to select the routine unambiguously.
+-- cleanup
+DROP PROCEDURE test_ambiguous_procname(int);
+DROP PROCEDURE test_ambiguous_procname(text);
 -- This test checks both the functionality of 'if exists' and the syntax
 -- of the drop database command.
 drop database test_database_exists (force);

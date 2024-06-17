@@ -902,6 +902,15 @@ Status Tablet::OpenKeyValueTablet() {
           block_based_table_mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
   rocksdb_options.block_based_table_mem_tracker = regulardb_mem_tracker_;
 
+
+  if (metadata()->primary_table_info()->index_info) {
+    const auto &ind_info = metadata()->primary_table_info()->index_info;
+    if (ind_info->is_vector_idx()) {
+      auto vec_options = ind_info->get_vector_idx_options();
+      LOG_WITH_PREFIX(INFO) << "Opening vector index tablet";
+    }
+  }
+
   // We may not have a metrics_entity_ instantiated in tests.
   if (tablet_metrics_entity_) {
     rocksdb_options.block_based_table_mem_tracker->SetMetricEntity(tablet_metrics_entity_);

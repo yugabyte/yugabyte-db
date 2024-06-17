@@ -21,7 +21,7 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressYbExtensionsYbYcqlUtils extends BasePgSQLTest {
+public class TestPgRegressYbExtensionsYbYcqlUtils extends BasePgRegressTest {
 
   @Override
   public int getTestMethodTimeoutSec() {

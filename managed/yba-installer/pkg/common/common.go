@@ -73,7 +73,7 @@ func createInstallDirs() {
 		// Only change ownership for root installs.
 		if HasSudoAccess() {
 			serviceuser := viper.GetString("service_username")
-			err := Chown(dir, serviceuser, serviceuser, true)
+			err := Chown(dir, serviceuser, serviceuser, false)
 			if err != nil {
 				log.Fatal("failed to change ownership of " + dir + " to " +
 					serviceuser + ": " + err.Error())

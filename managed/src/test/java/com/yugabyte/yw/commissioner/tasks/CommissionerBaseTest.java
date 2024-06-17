@@ -364,7 +364,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
-    return waitForTask(taskUUID, 100);
+    return waitForTask(taskUUID, 200);
   }
 
   public static TaskInfo waitForTask(UUID taskUUID, long sleepDuration)

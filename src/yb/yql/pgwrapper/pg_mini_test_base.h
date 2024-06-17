@@ -84,7 +84,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   void EnableFailOnConflict();
 
  private:
-  Result<PgProcessConf> CreatePgProcessConf(uint16_t port);
+  Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
 
   std::unique_ptr<PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;

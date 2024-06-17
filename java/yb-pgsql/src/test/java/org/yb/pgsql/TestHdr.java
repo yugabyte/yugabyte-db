@@ -338,11 +338,6 @@ public class TestHdr extends BasePgSQLTest {
     }
   }
 
-  @Test
-  public void testPgRegressPercentile() throws Exception {
-    runPgRegressTest("yb_percentile_schedule");
-  }
-
   private static void verifyStatementHist(String statName, int iterations) throws Exception {
     int currIterations = 0;
     for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {

@@ -229,19 +229,17 @@ The following are examples of possible rules:
   map1 OIDC.Test.Read read_only_user
   ```
 
-<!--
-#### yb.runtime_conf_ui.tag_filter flag
+#### yb.security.oidc_feature_enhancements
 
-[Tech Preview] Use the following API to set values for this flag:
+This flag must be enabled to expose the OIDC functionality in Yugabyte Anywhere. Use the following API to set values for this flag.
 
 ```sh
-curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUID>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.runtime_conf_ui.tag_filter' \
+curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUID>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.oidc_feature_enhancements' \
 --header 'Content-Type: text/plain' \
 --header 'Accept: application/json' \
 --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
---data '["PUBLIC", "BETA"]'
+--data 'true'
 ```
--->
 
 ## Manage users and roles
 

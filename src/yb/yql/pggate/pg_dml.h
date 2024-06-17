@@ -58,6 +58,12 @@ class PgDml : public PgStatement {
   // - For a primary-index-scan, this bind specify the value of the keys of the table.
   Status BindColumn(int attnum, PgExpr *attr_value);
 
+  // Bind query vector to the current vector index search.
+  Status ANNBindVector(PgExpr *query_vec);
+
+  // Bind prefetch size to the current vector index search.
+  Status ANNSetPrefetchSize(int32_t prefetch_size);
+
   // Bind the whole table.
   Status BindTable();
 

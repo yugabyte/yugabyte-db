@@ -2079,6 +2079,71 @@ public class YBClient implements AutoCloseable {
     return waitForReplicationDrain(streamIds, null /* targetTime */);
   }
 
+  // DB Scoped replication methods.
+  // --------------------------------------------------------------------------------
+
+  /**
+   * @see AsyncYBClient#xClusterCreateOutboundReplicationGroup(String, Set<String>)
+   */
+  public XClusterCreateOutboundReplicationGroupResponse xClusterCreateOutboundReplicationGroup(
+      String replicationGroupId, Set<String> namespaceIds) throws Exception {
+    Deferred<XClusterCreateOutboundReplicationGroupResponse> d =
+        asyncClient.xClusterCreateOutboundReplicationGroup(replicationGroupId, namespaceIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#isXClusterBootstrapRequired(String, String)
+   */
+  public IsXClusterBootstrapRequiredResponse isXClusterBootstrapRequired(
+      String replicationGroupId, String namespaceId) throws Exception {
+    Deferred<IsXClusterBootstrapRequiredResponse> d =
+        asyncClient.isXClusterBootstrapRequired(replicationGroupId, namespaceId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#createXClusterReplication(String, Set<CommonNet.HostPortPB>)
+   */
+  public CreateXClusterReplicationResponse createXClusterReplication(
+      String replicationGroupId, Set<CommonNet.HostPortPB> targetMasterAddresses) throws Exception {
+    Deferred<CreateXClusterReplicationResponse> d =
+        asyncClient.createXClusterReplication(replicationGroupId, targetMasterAddresses);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#isCreateXClusterReplicationDone(String, Set<CommonNet.HostPortPB>)
+   */
+  public IsCreateXClusterReplicationDoneResponse isCreateXClusterReplicationDone(
+      String replicationGroupId, Set<CommonNet.HostPortPB> targetMasterAddresses) throws Exception {
+    Deferred<IsCreateXClusterReplicationDoneResponse> d =
+        asyncClient.isCreateXClusterReplicationDone(replicationGroupId, targetMasterAddresses);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  // Used by YBA to delete outbound replication from the source universe,
+  public XClusterDeleteOutboundReplicationGroupResponse xClusterDeleteOutboundReplicationGroup(
+      String replicationGroupId) throws Exception {
+    Deferred<XClusterDeleteOutboundReplicationGroupResponse> d =
+        asyncClient.xClusterDeleteOutboundReplicationGroup(replicationGroupId, null);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#xClusterDeleteOutboundReplicationGroup(String, Set<CommonNet.HostPortPB>)
+   */
+  public XClusterDeleteOutboundReplicationGroupResponse xClusterDeleteOutboundReplicationGroup(
+    String replicationGroupId, @Nullable Set<CommonNet.HostPortPB> targetMasterAddresses)
+    throws Exception {
+  Deferred<XClusterDeleteOutboundReplicationGroupResponse> d =
+      asyncClient.xClusterDeleteOutboundReplicationGroup(replicationGroupId, targetMasterAddresses);
+  return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  // --------------------------------------------------------------------------------
+  // End of DB Scoped replication methods.
+
   /**
    * Get information about the namespace/database.
    * @param keyspaceName namespace name to get details about.

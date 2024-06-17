@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useSelector } from 'react-redux';
 import { useInterval } from 'react-use';
 import { toast } from 'react-toastify';
-import { Box, Typography, makeStyles } from '@material-ui/core';
+import { Box, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 import { YBBanner } from '../YBBanner';
 import {
@@ -32,15 +32,12 @@ import {
   UrlArtifactStatus,
   ReleaseType
 } from '../dtos';
-import {
-  IMPORT_METHOD_OPTIONS,
-  FILE_SIZE_LIMIT,
-  REFETCH_URL_METADATA_MS
-} from '../../helpers/constants';
+import { FILE_SIZE_LIMIT, REFETCH_URL_METADATA_MS } from '../../helpers/constants';
 import { isEmptyString, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 
-import Path from '../../../../../redesign/assets/path.svg';
-import PathDown from '../../../../../redesign/assets/path-down.svg';
+import PathIcon from '../../../../../redesign/assets/path.svg';
+import PathDownIcon from '../../../../../redesign/assets/path-down.svg';
+import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
 
 interface AddReleaseModalProps {
   open: boolean;
@@ -54,10 +51,10 @@ interface AddReleaseModalProps {
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    padding: `${theme.spacing(3)}px ${theme.spacing(4.5)}px`
+    padding: `${theme.spacing(3)}px ${theme.spacing(3)}px`
   },
   modalTitle: {
-    marginLeft: theme.spacing(2.25)
+    marginLeft: theme.spacing(1)
   },
   marginTop: {
     marginTop: theme.spacing(2)
@@ -109,6 +106,10 @@ const useStyles = makeStyles((theme) => ({
   bannerBox: {
     marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(6)
+  },
+  flexRow: {
+    display: 'flex',
+    flexDirection: 'row'
   }
 }));
 
@@ -562,8 +563,7 @@ export const AddReleaseModal = ({
       onSubmit={handleFormSubmit}
       cancelLabel={t('common.cancel')}
       submitLabel={modalTitle === ModalTitle.ADD_RELEASE ? t('releases.addRelease') : modalTitle}
-      overrideHeight="860px"
-      overrideWidth="800px"
+      overrideHeight="920px"
       size="lg"
       titleSeparator
       enableBackdropDismiss
@@ -586,12 +586,28 @@ export const AddReleaseModal = ({
           </Box>
           <Box>
             <Typography variant={'body1'}>{t('releases.chooseImportMethod')}</Typography>
-            <Box mt={2}>
+            <Box mt={2} className={helperClasses.flexRow}>
               <YBRadioGroupField
                 control={control}
-                options={IMPORT_METHOD_OPTIONS}
                 name="importMethod"
                 orientation={RadioGroupOrientation.HORIZONTAL}
+                options={[
+                  {
+                    value: AddReleaseImportMethod.FILE_UPLOAD,
+                    label: <Box display="flex">{t('releases.fileUploadLabel')}</Box>
+                  },
+                  {
+                    value: AddReleaseImportMethod.URL,
+                    label: (
+                      <Box display="flex">
+                        {t('releases.urlLabel')}
+                        <Tooltip title={t('releases.addReleaseModal.urlTooltipText')}>
+                          <img src={InfoMessageIcon} alt="info" />
+                        </Tooltip>
+                      </Box>
+                    )
+                  }
+                ]}
               />
             </Box>
           </Box>
@@ -688,12 +704,12 @@ export const AddReleaseModal = ({
                 {isAddRelease && (
                   <Box className={helperClasses.reviewReleaseMetadataColumn}>
                     <Box
-                      mt={4}
+                      mt={5}
                       className={helperClasses.reviewReleaseMetadataRow}
                       style={{ cursor: 'pointer' }}
                       onClick={handleViewTag}
                     >
-                      <img src={viewTag ? PathDown : Path} alt="path" />
+                      <img src={viewTag ? PathDownIcon : PathIcon} alt="path" />
                       <span
                         className={clsx(helperClasses.largerMetaData, helperClasses.marginLeft)}
                       >

@@ -131,7 +131,8 @@ TEST_F_EX(YBBackupTest,
 
   // Restore should notice that the index it creates from ysql_dump file (2 tablets) differs from
   // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
@@ -350,7 +351,8 @@ TEST_F_EX(YBBackupTest,
   // Restore should notice that the table it creates from ysql_dump file has different partition
   // boundaries from the one in the external snapshot EVEN THOUGH the number of partitions is four
   // in both, so it should recreate partitions to match the splits in the snapshot.
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -420,7 +422,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -512,7 +515,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -604,7 +608,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore.
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate number of tablets after restore.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -700,7 +705,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
@@ -805,7 +811,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
@@ -908,13 +915,105 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
   auto post_restore_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
   ASSERT_EQ(two_split_points,
+            post_restore_split_points);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Test backup/restore when a range-partitioned GIN index undergoes manual tablet splitting and
+// GinNullItem become part of its tablets' partition bounds.
+// Any kind of GinNull (GinNullKey, GinEmptyItem, and GinNullItem) can be used for this test.
+// In the case where GinNull is part of one partition bound of a GIN index, during backup,
+// yb_get_range_split_clause fails to decode the partition bound, and YSQL_DUMP doesn't dump the
+// SPLIT AT clause of the index.
+// During restore, restoring snapshot to the index with different partition boundaries
+// should be detected and handled by repartitioning the index. See CatalogManager::RepartitionTable.
+// This test exercises that:
+// 1. create a table and a GIN index
+// 2. insert NULL data into the table
+// 3. split the GIN index into 2 tablets to make GinNull become part of partition bounds
+// 4. backup
+// 5. drop table
+// 6. restore
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitGINIndexWithGinNullInPartitionBounds),
+          YBBackupTestNumTablets) {
+  const string table_name = "mytbl";
+  const string index_name = "my_gin_idx";
+
+  // Create table and index
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (v tsvector)", table_name)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX $0 ON $1 USING ybgin(v)",
+                                      index_name, table_name)));
+
+  // Verify the index has only one tablet
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 1);
+  // Use this function for side effects. It validates the begin and end partitions are empty.
+  ASSERT_OK(GetSplitPoints(tablets));
+
+  // Insert data
+  const string insert_null_sql = Format(R"#(
+    DO $$$$
+    BEGIN
+      FOR i in 1..1000 LOOP
+        INSERT INTO $0 VALUES (NULL);
+      END LOOP;
+    END $$$$;
+  )#", table_name);
+  ASSERT_NO_FATALS(RunPsqlCommand(insert_null_sql, "DO"));
+
+  // Flush index
+  auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
+  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+
+  // Split the GIN index into two tablets and wait for its split to complete.
+  // The splits make GinNull become part of its tablets' partition bounds:
+  // tablet-1 boundaries: [ "", (GinNullItem, <ybctid>) )
+  // tablet-2 boundaries: [ (GinNullItem, <ybctid>), "" )
+  const auto num_tablets = 2;
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db_, index_name, /* wait_for_parent_deletion */ true, tablets[0].tablet_id()));
+
+  // Verify that it has two tablets:
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  // Verify GinNull is in the split point.
+  // 'v' represents the KeyEntryType for kGinNull.
+  auto split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(split_points.size(), num_tablets - 1);
+  ASSERT_EQ(split_points[0][0], 'v');
+
+  // Backup
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // Drop the table
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+
+  // Restore
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
+
+  // Validate
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
+  ASSERT_EQ(tablets.size(), 2);
+  auto post_restore_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  // Rely on CatalogManager::RepartitionTable to repartition the GIN index with correct partition
+  // boundaries. Validate if repartition works correctly.
+  ASSERT_EQ(split_points,
             post_restore_split_points);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -972,7 +1071,8 @@ TEST_F(
        "create"}));
 
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+      {"--backup_location", backup_dir, "--use_tablespaces", "--keyspace", restore_keyspace,
+       "restore"}));
 
   SetDbName(restore_db_name);
 
@@ -1211,7 +1311,8 @@ TEST_F_EX(
   //    partitioning version above 0 should contain additional `null` value for a hidden columns
   //    `ybuniqueidxkeysuffix` or `ybidxbasectid`.
   ASSERT_OK(ForceSetPartitioningVersion(1));
-  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
   // 5) Make sure new tables are created with a new patitioning version.
   // 5.1) Create regular tablet and check partitioning verison and structure.
@@ -1827,12 +1928,13 @@ Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjectio
 
   auto client = VERIFY_RESULT(cluster_->CreateClient());
 
-  // Run all DDLs after pausing DDL rollback.
   RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
 
   if (inject_error) {
-    RETURN_NOT_OK(RunAllDdlsWithErrorInjection(&conn));
+    // Run one failed DDL after pausing DDL rollback.
+    RETURN_NOT_OK(RunOneDdlWithErrorInjection(&conn));
   } else {
+    // Run all DDLs after pausing DDL rollback.
     RETURN_NOT_OK(RunAllDdls(&conn));
   }
 
@@ -1891,6 +1993,10 @@ TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomic
 // 5. Drop table and index.
 // 5. Restore, validate 123 -> 456, index isn't restored
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithoutIndexes)) {
+  // need to disable the test since yb controller doesn't support skipping indexes
+  if (UseYbController()) {
+    return;
+  }
   // Create table and index.
   auto session = client_->NewSession(120s);
   client::kv_table_test::CreateTable(

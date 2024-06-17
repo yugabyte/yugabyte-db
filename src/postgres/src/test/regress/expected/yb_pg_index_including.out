@@ -1,3 +1,4 @@
+SET yb_use_hash_splitting_by_default = false; -- YB: TODO: remove this when it is set for ported regress tests by default
 /*
  * 1.test CREATE INDEX
  *
@@ -5,8 +6,8 @@
  * coverage.
  */
 -- Regular index with included columns
-CREATE TABLE tbl_include_reg (c1 int, c2 int, c3 int, c4 int);
-INSERT INTO tbl_include_reg SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
+CREATE TABLE tbl_include_reg (c1 int, c2 int, c3 int, c4 box);
+INSERT INTO tbl_include_reg SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 CREATE INDEX tbl_include_reg_idx ON tbl_include_reg (c1, c2) INCLUDE (c3, c4);
 -- duplicate column is pretty pointless, but we allow it anyway
 CREATE INDEX ON tbl_include_reg (c1, c2) INCLUDE (c1, c3);
@@ -14,9 +15,9 @@ SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_reg'::regclass ORDER BY c.relname;
                                                    pg_get_indexdef
-----------------------------------------------------------------------------------------------------------------------
- CREATE INDEX tbl_include_reg_c1_c2_c11_c3_idx ON public.tbl_include_reg USING lsm (c1 HASH, c2 ASC) INCLUDE (c1, c3)
- CREATE INDEX tbl_include_reg_idx ON public.tbl_include_reg USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+---------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX tbl_include_reg_c1_c2_c11_c3_idx ON public.tbl_include_reg USING lsm (c1 ASC, c2 ASC) INCLUDE (c1, c3)
+ CREATE INDEX tbl_include_reg_idx ON public.tbl_include_reg USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (2 rows)
 
 \d tbl_include_reg_idx
@@ -26,50 +27,36 @@ WHERE i.indrelid = 'tbl_include_reg'::regclass ORDER BY c.relname;
  c1     | integer | yes  | c1
  c2     | integer | yes  | c2
  c3     | integer | no   | c3
- c4     | integer | no   | c4
+ c4     | box     | no   | c4
 lsm, for table "public.tbl_include_reg"
 
 -- Unique index and unique constraint
-CREATE TABLE tbl_include_unique1 (c1 int, c2 int, c3 int, c4 int);
-INSERT INTO tbl_include_unique1 SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
-CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON tbl_include_unique1 using lsm (c1 ASC, c2) INCLUDE (c3, c4);
+CREATE TABLE tbl_include_unique1 (c1 int, c2 int, c3 int, c4 box);
+INSERT INTO tbl_include_unique1 SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON tbl_include_unique1 using btree (c1, c2) INCLUDE (c3, c4);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 ALTER TABLE tbl_include_unique1 add UNIQUE USING INDEX tbl_include_unique1_idx_unique;
 ALTER TABLE tbl_include_unique1 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
                                                           pg_get_indexdef
-------------------------------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_include_unique1_c1_c2_c3_c4_key ON public.tbl_include_unique1 USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+-----------------------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_include_unique1_c1_c2_c3_c4_key ON public.tbl_include_unique1 USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
  CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON public.tbl_include_unique1 USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (2 rows)
 
--- Unique index and unique constraint. Both must fail due to duplicate key values.
-CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 int);
-INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
-CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using lsm (c1, c2) INCLUDE (c3, c4);
+-- Unique index and unique constraint. Both must fail.
+CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 box);
+INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using btree (c1, c2) INCLUDE (c3, c4);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 ERROR:  ERROR:  duplicate key value violates unique constraint "tbl_include_unique2_idx_unique"
 ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 ERROR:  duplicate key value violates unique constraint "tbl_include_unique2_c1_c2_c3_c4_key"
--- Unique index and unique constraint. Must fail setting non-unique index as constraint.
-CREATE TABLE tbl_include_non_unique (c1 int, c2 int, c3 int, c4 int);
-CREATE INDEX tbl_include_non_unique_idx on tbl_include_non_unique (c1);
-ALTER TABLE tbl_include_non_unique ADD CONSTRAINT constr_non_unique UNIQUE USING INDEX tbl_include_non_unique_idx;
-ERROR:  "tbl_include_non_unique_idx" is not a unique index
-LINE 1: ALTER TABLE tbl_include_non_unique ADD CONSTRAINT constr_non...
-                                               ^
-DETAIL:  Cannot create a primary key or unique constraint using such an index.
--- Unique index and unique constraint. Must fail setting DESC unique index as constraint.
-CREATE TABLE tbl_include_desc_unique (c1 int, c2 int, c3 int, c4 int);
-CREATE UNIQUE INDEX tbl_include_desc_unique_idx on tbl_include_desc_unique (c1 DESC);
-ALTER TABLE tbl_include_desc_unique ADD CONSTRAINT constr_desc_unique UNIQUE USING INDEX tbl_include_desc_unique_idx;
-ERROR:  index "tbl_include_desc_unique_idx" does not have default sorting behavior
-LINE 1: ALTER TABLE tbl_include_desc_unique ADD CONSTRAINT constr_de...
-                                                ^
-DETAIL:  Cannot create a primary key or unique constraint using such an index.
 -- PK constraint
-CREATE TABLE tbl_include_pk (c1 int, c2 int, c3 int, c4 int);
-INSERT INTO tbl_include_pk SELECT 1, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
+CREATE TABLE tbl_include_pk (c1 int, c2 int, c3 int, c4 box);
+INSERT INTO tbl_include_pk SELECT 1, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ALTER TABLE tbl_include_pk add PRIMARY KEY (c1, c2) INCLUDE (c3, c4);
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
@@ -77,33 +64,37 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_pk'::regclass ORDER BY c.relname;
-                                                pg_get_indexdef
----------------------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_include_pk_pkey ON public.tbl_include_pk USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+                                               pg_get_indexdef
+--------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_include_pk_pkey ON public.tbl_include_pk USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
--- NOT SUPPORTED
---
--- CREATE TABLE tbl_include_c4 (c1 int, c2 int, c3 int, c4 int);
--- INSERT INTO tbl_include_c4 SELECT 1, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
--- CREATE UNIQUE INDEX tbl_include_c4_idx_unique ON tbl_include_c4 using lsm (c1, c2) INCLUDE (c3, c4);
--- ALTER TABLE tbl_include_c4 add PRIMARY KEY USING INDEX tbl_include_c4_idx_unique;
--- SELECT pg_get_indexdef(i.indexrelid)
--- FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
--- WHERE i.indrelid = 'tbl_include_c4'::regclass ORDER BY c.relname;
---
+CREATE TABLE tbl_include_box (c1 int, c2 int, c3 int, c4 box);
+INSERT INTO tbl_include_box SELECT 1, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+CREATE UNIQUE INDEX tbl_include_box_idx_unique ON tbl_include_box using btree (c1, c2) INCLUDE (c3, c4);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+ALTER TABLE tbl_include_box add PRIMARY KEY USING INDEX tbl_include_box_idx_unique;
+ERROR:  ALTER TABLE / ADD CONSTRAINT PRIMARY KEY USING INDEX is not supported
+SELECT pg_get_indexdef(i.indexrelid)
+FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
+WHERE i.indrelid = 'tbl_include_box'::regclass ORDER BY c.relname;
+                                                   pg_get_indexdef
+----------------------------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_include_box_idx_unique ON public.tbl_include_box USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
+(1 row)
+
 -- PK constraint. Must fail.
-CREATE TABLE tbl_include_c4_pk (c1 int, c2 int, c3 int, c4 int);
-INSERT INTO tbl_include_c4_pk SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
-ALTER TABLE tbl_include_c4_pk add PRIMARY KEY (c1, c2) INCLUDE (c3, c4);
+CREATE TABLE tbl_include_box_pk (c1 int, c2 int, c3 int, c4 box);
+INSERT INTO tbl_include_box_pk SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+ALTER TABLE tbl_include_box_pk add PRIMARY KEY (c1, c2) INCLUDE (c3, c4);
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
-ERROR:  duplicate key value violates unique constraint "tbl_include_c4_pk"
+ERROR:  duplicate key value violates unique constraint "tbl_include_box_pk"
 /*
  * 2. Test CREATE TABLE with constraint
  */
-CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				CONSTRAINT covering UNIQUE(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
  indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
@@ -117,10 +108,11 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
  UNIQUE (c1, c2) INCLUDE (c3, c4) | covering | {1,2}
 (1 row)
 
-INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
+-- ensure that constraint works
+INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ERROR:  duplicate key value violates unique constraint "covering"
 DROP TABLE tbl;
-CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				CONSTRAINT covering PRIMARY KEY(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
  indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
@@ -135,19 +127,20 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 (1 row)
 
 -- ensure that constraint works
-INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
+INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ERROR:  duplicate key value violates unique constraint "covering"
-INSERT INTO tbl SELECT 1, NULL, 3*x, 4 FROM generate_series(1,10) AS x;
+INSERT INTO tbl SELECT 1, NULL, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ERROR:  null value in column "c2" of relation "tbl" violates not-null constraint
-DETAIL:  Failing row contains (1, null, 3, 4).
-INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,10) AS x;
+DETAIL:  Failing row contains (1, null, 3, (4,4),(4,4)).
+INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,300) AS x;
 explain (costs off)
-select * from tbl where (c1,c2,c3) < (2,5,1);
+select * from tbl where (c1,c2,c3) < (2,5,1); -- YB: output differs from upstream PG likely because, in YB, pk index = table
                  QUERY PLAN
 --------------------------------------------
- Seq Scan on tbl
+ Index Scan using covering on tbl
+   Index Cond: (ROW(c1, c2) <= ROW(2, 5))
    Filter: (ROW(c1, c2, c3) < ROW(2, 5, 1))
-(2 rows)
+(3 rows)
 
 select * from tbl where (c1,c2,c3) < (2,5,1);
  c1 | c2 | c3 | c4
@@ -156,8 +149,27 @@ select * from tbl where (c1,c2,c3) < (2,5,1);
   2 |  4 |    |
 (2 rows)
 
+-- row comparison that compares high key at page boundary
+SET enable_seqscan = off;
+explain (costs off)
+select * from tbl where (c1,c2,c3) < (262,1,1) limit 1; -- YB: output differs from upstream PG likely because, in YB, pk index = table
+                     QUERY PLAN
+----------------------------------------------------
+ Limit
+   ->  Index Scan using covering on tbl
+         Index Cond: (ROW(c1, c2) <= ROW(262, 1))
+         Filter: (ROW(c1, c2, c3) < ROW(262, 1, 1))
+(4 rows)
+
+select * from tbl where (c1,c2,c3) < (262,1,1) limit 1;
+ c1 | c2 | c3 | c4 
+----+----+----+----
+  1 |  2 |    | 
+(1 row)
+
 DROP TABLE tbl;
-CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
+RESET enable_seqscan;
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				UNIQUE(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
      indexrelid      | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
@@ -172,10 +184,10 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 (1 row)
 
 -- ensure that constraint works
-INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
+INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ERROR:  duplicate key value violates unique constraint "tbl_c1_c2_c3_c4_key"
 DROP TABLE tbl;
-CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
 				PRIMARY KEY(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
  indexrelid | indnatts | indnkeyatts | indisunique | indisprimary | indkey  | indclass
@@ -190,34 +202,38 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 (1 row)
 
 -- ensure that constraint works
-INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
+INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ERROR:  duplicate key value violates unique constraint "tbl_pkey"
-INSERT INTO tbl SELECT 1, NULL, 3*x, 4 FROM generate_series(1,10) AS x;
+INSERT INTO tbl SELECT 1, NULL, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
 ERROR:  null value in column "c2" of relation "tbl" violates not-null constraint
-DETAIL:  Failing row contains (1, null, 3, 4).
+DETAIL:  Failing row contains (1, null, 3, (4,4),(4,4)).
 INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,10) AS x;
 DROP TABLE tbl;
--- NOT SUPPORTED
---
--- CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
--- 				EXCLUDE USING lsm (c1 WITH =) INCLUDE(c3,c4));
--- SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
--- SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
--- -- ensure that constraint works
--- INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
--- INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,10) AS x;
--- DROP TABLE tbl;
---
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box,
+				EXCLUDE USING btree (c1 WITH =) INCLUDE(c3,c4));
+ERROR:  EXCLUDE constraint not supported yet
+LINE 2:     EXCLUDE USING btree (c1 WITH =) INCLUDE(c3,c4));
+            ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/3944. React with thumbs up to raise its priority
+/* YB: disabled because above CREATE TABLE failed
+SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
+SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
+-- ensure that constraint works
+INSERT INTO tbl SELECT 1, 2, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,10) AS x;
+DROP TABLE tbl;
+*/ -- YB
 /*
  * 3.0 Test ALTER TABLE DROP COLUMN.
  * Any column deletion leads to index deletion.
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
-CREATE UNIQUE INDEX tbl_idx ON tbl using lsm(c1, c2, c3, c4);
+CREATE UNIQUE INDEX tbl_idx ON tbl using btree(c1, c2, c3, c4);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
                                        indexdef
----------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 HASH, c2 ASC, c3 ASC, c4 ASC)
+--------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 ASC, c2 ASC, c3 ASC, c4 ASC)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
@@ -232,12 +248,13 @@ DROP TABLE tbl;
  * Included column deletion leads to the index deletion,
  * AS well AS key columns deletion. It's explained in documentation.
  */
-CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
-CREATE UNIQUE INDEX tbl_idx ON tbl using lsm(c1, c2) INCLUDE(c3,c4);
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box);
+CREATE UNIQUE INDEX tbl_idx ON tbl using btree(c1, c2) INCLUDE(c3,c4);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                        indexdef
-----------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+                                       indexdef
+---------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_idx ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
@@ -252,11 +269,11 @@ DROP TABLE tbl;
  * Included column deletion leads to the index deletion.
  * AS well AS key columns deletion. It's explained in documentation.
  */
-CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int, UNIQUE(c1, c2) INCLUDE(c3,c4));
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                              indexdef
-----------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+                                             indexdef
+---------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
@@ -272,35 +289,42 @@ SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
 (0 rows)
 
 DROP TABLE tbl;
--- NOT SUPPORTED
---
--- /*
---  * 3.3 Test ALTER TABLE SET STATISTICS
---  */
--- CREATE TABLE tbl (c1 int, c2 int);
--- CREATE INDEX tbl_idx ON tbl (c1, (c1+0)) INCLUDE (c2);
--- ALTER INDEX tbl_idx ALTER COLUMN 1 SET STATISTICS 1000;
--- ALTER INDEX tbl_idx ALTER COLUMN 2 SET STATISTICS 1000;
--- ALTER INDEX tbl_idx ALTER COLUMN 3 SET STATISTICS 1000;
--- ALTER INDEX tbl_idx ALTER COLUMN 4 SET STATISTICS 1000;
--- DROP TABLE tbl;
---
--- /*
---  * 4. CREATE INDEX CONCURRENTLY
---  */
--- CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int, UNIQUE(c1, c2) INCLUDE(c3,c4));
--- INSERT INTO tbl SELECT x, 2*x, 3*x, 4 FROM generate_series(1,1000) AS x;
--- CREATE UNIQUE INDEX CONCURRENTLY on tbl (c1, c2) INCLUDE (c3, c4);
--- SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
--- DROP TABLE tbl;
+/*
+ * 3.3 Test ALTER TABLE SET STATISTICS
+ */
+CREATE TABLE tbl (c1 int, c2 int);
+CREATE INDEX tbl_idx ON tbl (c1, (c1+0)) INCLUDE (c2);
+ALTER INDEX tbl_idx ALTER COLUMN 1 SET STATISTICS 1000;
+ERROR:  cannot alter statistics on non-expression column "c1" of index "tbl_idx"
+HINT:  Alter statistics on table column instead.
+ALTER INDEX tbl_idx ALTER COLUMN 2 SET STATISTICS 1000;
+ALTER INDEX tbl_idx ALTER COLUMN 3 SET STATISTICS 1000;
+ERROR:  cannot alter statistics on included column "c2" of index "tbl_idx"
+ALTER INDEX tbl_idx ALTER COLUMN 4 SET STATISTICS 1000;
+ERROR:  column number 4 of relation "tbl_idx" does not exist
+DROP TABLE tbl;
+/*
+ * 4. CREATE INDEX CONCURRENTLY
+ */
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
+INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,1000) AS x;
+CREATE UNIQUE INDEX CONCURRENTLY on tbl (c1, c2) INCLUDE (c3, c4);
+SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
+                                             indexdef
+---------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_idx ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
+ CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
+(2 rows)
+
+DROP TABLE tbl;
 /*
  * 5. REINDEX
  */
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
 SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
-                                              indexdef
-----------------------------------------------------------------------------------------------------
- CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+                                             indexdef
+---------------------------------------------------------------------------------------------------
+ CREATE UNIQUE INDEX tbl_c1_c2_c3_c4_key ON public.tbl USING lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 (1 row)
 
 ALTER TABLE tbl DROP COLUMN c3;
@@ -324,13 +348,13 @@ SELECT indexdef FROM pg_indexes WHERE tablename = 'tbl' ORDER BY indexname;
 
 DROP TABLE tbl;
 /*
- * 7. Check various AMs. All but btree and lsm must fail.
+ * 7. Check various AMs. All but btree and lsm must fail. -- YB: updated comment
  */
-CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int);
+CREATE TABLE tbl (c1 int,c2 int, c3 box, c4 box);
 CREATE INDEX on tbl USING brin(c1, c2) INCLUDE (c3, c4);
 ERROR:  index method "brin" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
-CREATE INDEX on tbl USING gist(c3) INCLUDE (c4);
+CREATE INDEX on tbl USING gist(c3) INCLUDE (c1, c4);
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 CREATE INDEX on tbl USING spgist(c3) INCLUDE (c4);
@@ -340,27 +364,26 @@ CREATE INDEX on tbl USING gin(c1, c2) INCLUDE (c3, c4);
 ERROR:  access method "ybgin" does not support included columns
 CREATE INDEX on tbl USING hash(c1, c2) INCLUDE (c3, c4);
 NOTICE:  index method "hash" was replaced with "lsm" in YugabyteDB
-CREATE INDEX on tbl USING rtree(c1, c2) INCLUDE (c3, c4);
+CREATE INDEX on tbl USING rtree(c3) INCLUDE (c1, c4);
 NOTICE:  substituting access method "gist" for obsolete method "rtree"
 ERROR:  index method "gist" not supported yet
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1337. React with thumbs up to raise its priority
 CREATE INDEX on tbl USING btree(c1, c2) INCLUDE (c3, c4);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
-CREATE INDEX on tbl USING lsm(c1, c2) INCLUDE (c3, c4);
 DROP TABLE tbl;
 /*
  * 8. Update, delete values in indexed table.
  */
-CREATE TABLE tbl (c1 int, c2 int, c3 int, c4 int);
-INSERT INTO tbl SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
-CREATE UNIQUE INDEX tbl_idx_unique ON tbl using lsm(c1, c2) INCLUDE (c3,c4);
+CREATE TABLE tbl (c1 int, c2 int, c3 int, c4 box);
+INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+CREATE UNIQUE INDEX tbl_idx_unique ON tbl using btree(c1, c2) INCLUDE (c3,c4);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 UPDATE tbl SET c1 = 100 WHERE c1 = 2;
 UPDATE tbl SET c1 = 1 WHERE c1 = 3;
+-- should fail
 UPDATE tbl SET c2 = 2 WHERE c1 = 1;
 ERROR:  duplicate key value violates unique constraint "tbl_idx_unique"
--- Disabled due to issue https://github.com/YugaByte/yugabyte-db/issues/1448:
--- UPDATE tbl SET c3 = 1;
---
+UPDATE tbl SET c3 = 1;
 DELETE FROM tbl WHERE c1 = 5 OR c3 = 12;
 DROP TABLE tbl;
 /*
@@ -385,7 +408,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
  c3     | bigint  |           |          |
  c4     | box     |           |          |
 Indexes:
-    "tbl_c1_c2_c3_c4_key" UNIQUE CONSTRAINT, lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+    "tbl_c1_c2_c3_c4_key" UNIQUE CONSTRAINT, lsm (c1 ASC, c2 ASC) INCLUDE (c3, c4)
 
 DROP TABLE tbl;
 

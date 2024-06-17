@@ -1,0 +1,38 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SET application_name = 'naeem' ; 
+SELECT 1 AS num;
+ num 
+-----
+   1
+(1 row)
+
+SET application_name = 'psql' ; 
+SELECT 1 AS num;
+ num 
+-----
+   1
+(1 row)
+
+SELECT query,application_name FROM pg_stat_monitor ORDER BY query, application_name COLLATE "C";
+             query              |             application_name
+--------------------------------+------------------------------------------
+ SELECT 1 AS num                | naeem
+ SELECT 1 AS num                | psql
+ SELECT pg_stat_monitor_reset() | pg_regress/yb_pg_application_name_unique
+ SET application_name = 'naeem' | naeem
+ SET application_name = 'psql'  | psql
+(5 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

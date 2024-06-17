@@ -94,6 +94,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -101,6 +102,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 #define YB_FORWARD_FLAG(flag_name) \
   "--" BOOST_PP_STRINGIZE(flag_name) "="s + FlagToString(BOOST_PP_CAT(FLAGS_, flag_name))
@@ -295,8 +297,7 @@ void ExternalMiniClusterOptions::AdjustMasterRpcPorts() {
 // ExternalMiniCluster
 // ------------------------------------------------------------------------------------------------
 
-ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
-    : opts_(opts), add_new_master_at_(-1) {
+ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts) : opts_(opts) {
   opts_.AdjustMasterRpcPorts();
   // These "extra mini cluster options" are added in the end of the command line.
   const auto common_extra_flags = {
@@ -396,7 +397,6 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
 
   LOG(INFO) << "Starting " << opts_.num_masters << " masters";
   RETURN_NOT_OK_PREPEND(StartMasters(), "Failed to start masters.");
-  add_new_master_at_ = opts_.num_masters;
 
   if (opts_.num_tablet_servers > 0) {
     LOG(INFO) << "Starting " << opts_.num_tablet_servers << " tablet servers";
@@ -408,37 +408,6 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
         opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
-
-    if (UseYbController()) {
-      vector<string> extra_flags;
-      for (const auto& flag : opts_.extra_tserver_flags) {
-        if (flag.find("certs_dir") != string::npos) {
-          extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
-        }
-      }
-      // we need 1 yb controller server for each tserver
-      // yb controller uses the same IP as corresponding tserver
-      yb_controller_servers_.reserve(opts_.num_tablet_servers);
-      // all yb controller servers need to be on the same port
-      const auto server_port = AllocateFreePort();
-      for (size_t i = 0; i < opts_.num_tablet_servers; ++i) {
-        const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", i));
-        const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", i));
-        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-        scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-            yb_controller_log_dir, yb_controller_tmp_dir, tablet_servers_[i]->bind_host(),
-            GetToolPath("yb-admin"), GetToolPath("../../../bin", "yb-ctl"),
-            GetToolPath("../../../bin", "ycqlsh"), GetPgToolPath("ysql_dump"),
-            GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"), server_port,
-            masters_[0]->http_port(), tablet_servers_[i]->http_port(),
-            tablet_servers_[i]->bind_host(), GetYbcToolPath("yb-controller-server"), extra_flags);
-
-        RETURN_NOT_OK_PREPEND(
-            yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(i));
-        yb_controller_servers_.push_back(yb_controller);
-      }
-    }
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
@@ -552,60 +521,58 @@ vector<string> SubstituteInFlags(const vector<string>& orig_flags, size_t index)
 
 }  // anonymous namespace
 
-Result<ExternalMaster *> ExternalMiniCluster::StartMasterWithPeers(const string& peer_addrs) {
-  uint16_t rpc_port = AllocateFreePort();
+Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
+    const std::string& peer_addrs, uint16_t rpc_port, bool shell_mode) {
+  if (rpc_port == 0) {
+    rpc_port = AllocateFreePort();
+  }
+
   uint16_t http_port = AllocateFreePort();
-  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
-            << " to start a new external mini-cluster master with peers '" << peer_addrs << "'.";
+  LOG(INFO) << "Using " << YB_STRUCT_TO_STRING(peer_addrs, rpc_port, shell_mode)
+            << " to start a new external mini-cluster master with index " << add_new_master_at_;
 
   string addr = MasterAddressForPort(rpc_port);
   string exe = GetBinaryPath(GetMasterBinaryName());
 
-  ExternalMaster* master =
-      new ExternalMaster(add_new_master_at_, messenger_, proxy_cache_.get(), exe,
-                         GetDataPath(Format("master-$0", add_new_master_at_)),
-                         opts_.extra_master_flags, addr, http_port, peer_addrs);
+  vector<string> flags = opts_.extra_master_flags;
+  // Disable WAL fsync for tests
+  flags.push_back("--durable_wal_write=false");
+  flags.push_back("--enable_leader_failure_detection=true");
+  if (opts_.replication_factor > 0) {
+    flags.push_back(Format("--replication_factor=$0", opts_.replication_factor));
+  }
+  // Limit number of transaction table tablets to help avoid timeouts.
+  flags.push_back(
+      Format("--transaction_table_num_tablets=$0", NumTabletsPerTransactionTable(opts_)));
+  // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
+  // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
+  if (IsSanitizer()) {
+    flags.push_back("--leader_failure_max_missed_heartbeat_periods=10");
+  }
+  if (opts_.enable_ysql) {
+    flags.push_back("--enable_ysql=true");
+    flags.push_back("--master_auto_run_initdb");
+  } else {
+    flags.push_back("--enable_ysql=false");
+  }
 
-  RETURN_NOT_OK(master->Start());
+  ExternalMasterPtr master = new ExternalMaster(
+      add_new_master_at_, messenger_, proxy_cache_.get(), exe,
+      GetDataPath(Format("master-$0", add_new_master_at_)),
+      SubstituteInFlags(flags, add_new_master_at_), addr, http_port, peer_addrs);
 
+  RETURN_NOT_OK(master->Start(shell_mode));
   add_new_master_at_++;
+
   return master;
+}
+
+Result<ExternalMasterPtr> ExternalMiniCluster::StartShellMaster() {
+  return StartMaster(/*peer_addrs=*/"", /*rpc_port=*/0, /*shell_mode=*/true);
 }
 
 std::string ExternalMiniCluster::MasterAddressForPort(uint16_t port) const {
   return Format(opts_.use_even_ips ? "127.0.0.2:$0" : "127.0.0.1:$0", port);
-}
-
-void ExternalMiniCluster::StartShellMaster(ExternalMaster** new_master) {
-  uint16_t rpc_port = AllocateFreePort();
-  uint16_t http_port = AllocateFreePort();
-  LOG(INFO) << "Using auto-assigned rpc_port " << rpc_port << "; http_port " << http_port
-            << " to start a new external mini-cluster shell master.";
-
-  string addr = MasterAddressForPort(rpc_port);
-
-  string exe = GetBinaryPath(GetMasterBinaryName());
-
-  ExternalMaster* master = new ExternalMaster(
-      add_new_master_at_,
-      messenger_,
-      proxy_cache_.get(),
-      exe,
-      GetDataPath(Format("master-$0", add_new_master_at_)),
-      opts_.extra_master_flags,
-      addr,
-      http_port,
-      "");
-
-  Status s = master->Start(true);
-
-  if (!s.ok()) {
-    LOG(FATAL) << Format("Unable to start 'shell' mode master at index $0, due to error $1.",
-                             add_new_master_at_, s.ToString());
-  }
-
-  add_new_master_at_++;
-  *new_master = master;
 }
 
 Status ExternalMiniCluster::CheckPortAndMasterSizes() const {
@@ -620,7 +587,7 @@ Status ExternalMiniCluster::CheckPortAndMasterSizes() const {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::AddMaster(ExternalMaster* master) {
+Status ExternalMiniCluster::AddMaster(const ExternalMasterPtr& master) {
   auto iter = std::find_if(masters_.begin(), masters_.end(), MasterComparator(master));
 
   if (iter != masters_.end()) {
@@ -637,7 +604,7 @@ Status ExternalMiniCluster::AddMaster(ExternalMaster* master) {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::RemoveMaster(ExternalMaster* master) {
+Status ExternalMiniCluster::RemoveMaster(const ExternalMasterPtr& master) {
   auto iter = std::find_if(masters_.begin(), masters_.end(), MasterComparator(master));
 
   if (iter == masters_.end()) {
@@ -718,10 +685,9 @@ Status ExternalMiniCluster::StepDownMasterLeaderAndWaitForNewLeader(
   return Status::OK();
 }
 
-Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
-                                         ChangeConfigType type,
-                                         consensus::PeerMemberType member_type,
-                                         bool use_hostport) {
+Status ExternalMiniCluster::ChangeConfig(
+    const ExternalMasterPtr& master, ChangeConfigType type, consensus::PeerMemberType member_type,
+    bool use_hostport) {
   if (type != consensus::ADD_SERVER && type != consensus::REMOVE_SERVER) {
     return STATUS(InvalidArgument, Format("Invalid Change Config type $0", type));
   }
@@ -792,9 +758,9 @@ Status ExternalMiniCluster::ChangeConfig(ExternalMaster* master,
 
   if (type == consensus::ADD_SERVER || type == consensus::REMOVE_SERVER) {
     if (type == consensus::ADD_SERVER) {
-      RETURN_NOT_OK(AddMaster(master));
+      RETURN_NOT_OK(AddMaster(master.get()));
     } else if (type == consensus::REMOVE_SERVER) {
-      RETURN_NOT_OK(RemoveMaster(master));
+      RETURN_NOT_OK(RemoveMaster(master.get()));
     }
 
     UpdateMasterAddressesOnTserver();
@@ -1288,50 +1254,17 @@ Status ExternalMiniCluster::StartMasters() {
 
   vector<string> peer_addrs;
   for (size_t i = 0; i < num_masters; i++) {
-    string addr = MasterAddressForPort(opts_.master_rpc_ports[i]);
-    peer_addrs.push_back(addr);
+    peer_addrs.push_back(MasterAddressForPort(opts_.master_rpc_ports[i]));
   }
-  string peer_addrs_str = JoinStrings(peer_addrs, ",");
-  vector<string> flags = opts_.extra_master_flags;
-  // Disable WAL fsync for tests
-  flags.push_back("--durable_wal_write=false");
-  flags.push_back("--enable_leader_failure_detection=true");
-  if (opts_.replication_factor > 0) {
-    flags.push_back(Format("--replication_factor=$0", opts_.replication_factor));
-  }
-  // Limit number of transaction table tablets to help avoid timeouts.
-  int num_transaction_table_tablets = NumTabletsPerTransactionTable(opts_);
-  flags.push_back(Format("--transaction_table_num_tablets=$0", num_transaction_table_tablets));
-  // For sanitizer builds, it is easy to overload the master, leading to quorum changes.
-  // This could end up breaking ever trivial DDLs like creating an initial table in the cluster.
-  if (IsSanitizer()) {
-    flags.push_back("--leader_failure_max_missed_heartbeat_periods=10");
-  }
-  if (opts_.enable_ysql) {
-    flags.push_back("--enable_ysql=true");
-    flags.push_back("--master_auto_run_initdb");
-  } else {
-    flags.push_back("--enable_ysql=false");
-  }
-  string exe = GetBinaryPath(GetMasterBinaryName());
+  const auto peer_addrs_str = JoinStrings(peer_addrs, ",");
 
   // Start the masters.
   for (size_t i = 0; i < num_masters; i++) {
-    uint16_t http_port = AllocateFreePort();
-    scoped_refptr<ExternalMaster> peer =
-      new ExternalMaster(
-        i,
-        messenger_,
-        proxy_cache_.get(),
-        exe,
-        GetDataPath(Format("master-$0", i)),
-        SubstituteInFlags(flags, i),
-        peer_addrs[i],
-        http_port,
-        peer_addrs_str);
-    RETURN_NOT_OK_PREPEND(peer->Start(),
-                          Format("Unable to start Master at index $0", i));
-    masters_.push_back(peer);
+    auto master = VERIFY_RESULT_PREPEND(
+        StartMaster(peer_addrs_str, opts_.master_rpc_ports[i]),
+        Format("Unable to start Master at index $0", i));
+
+    masters_.push_back(master);
   }
 
   if (opts_.enable_ysql) {
@@ -1527,6 +1460,53 @@ Status ExternalMiniCluster::AddTabletServer(
       master_hostports, SubstituteInFlags(flags, idx));
   RETURN_NOT_OK(ts->Start(start_cql_proxy));
   tablet_servers_.push_back(ts);
+
+  // add new yb controller for the new ts
+  if (UseYbController()) {
+    RETURN_NOT_OK(AddYbControllerServer(ts));
+  }
+
+  return Status::OK();
+}
+
+Status ExternalMiniCluster::AddYbControllerServer(const scoped_refptr<ExternalTabletServer> ts) {
+  // Return if we already have a Yb Controller for the given ts
+  for (auto ybController : yb_controller_servers_) {
+    if (ybController->GetServerAddress() == ts->bind_host()) {
+      return Status::OK();
+    }
+  }
+
+  size_t idx = yb_controller_servers_.size() + 1;
+  vector<string> extra_flags;
+  for (const auto& flag : opts_.extra_tserver_flags) {
+    if (flag.find("certs_dir") != string::npos) {
+      extra_flags.push_back("--certs_dir_name" + flag.substr(flag.find("=")));
+    }
+  }
+
+  // all yb controller servers need to be on the same port
+  uint16_t server_port;
+  if (idx == 1) {
+    server_port = AllocateFreePort();
+  } else {
+    server_port = yb_controller_servers_[0]->GetServerPort();
+  }
+  const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", idx));
+  const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", idx));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
+  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
+      idx, yb_controller_log_dir, yb_controller_tmp_dir, ts->bind_host(), GetToolPath("yb-admin"),
+      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
+      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
+      server_port, masters_[0]->http_port(), ts->http_port(), ts->bind_host(),
+      GetYbcToolPath("yb-controller-server"), extra_flags);
+
+  RETURN_NOT_OK_PREPEND(
+      yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
+  yb_controller_servers_.push_back(yb_controller);
+
   return Status::OK();
 }
 
@@ -1939,15 +1919,6 @@ std::vector<ExternalTabletServer*> ExternalMiniCluster::tserver_daemons() const 
   return result;
 }
 
-vector<ExternalYbController*> ExternalMiniCluster::yb_controller_daemons() const {
-  vector<ExternalYbController*> results;
-  results.reserve(yb_controller_servers_.size());
-  for (const scoped_refptr<ExternalYbController>& yb_controller : yb_controller_servers_) {
-    results.push_back(yb_controller.get());
-  }
-  return results;
-}
-
 HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
   return HostPort(tablet_servers_[node_index]->bind_host(),
                   tablet_servers_[node_index]->pgsql_rpc_port());
@@ -2087,6 +2058,60 @@ Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
       timeout,
       "IsLoadBalancerIdle"));
   return Status::OK();
+}
+
+Result<pgwrapper::PGConn> ExternalMiniCluster::ConnectToDB(
+    const std::string& db_name, std::optional<size_t> node_index, bool simple_query_protocol) {
+  if (!node_index) {
+    node_index = RandomUniformInt<size_t>(0, num_tablet_servers() - 1);
+  }
+  LOG(INFO) << "Connecting to PG database " << db_name << " on tserver " << *node_index;
+
+  auto* ts = tablet_server(*node_index);
+  return pgwrapper::PGConnBuilder(
+             {.host = ts->bind_host(), .port = ts->pgsql_rpc_port(), .dbname = db_name})
+      .Connect(simple_query_protocol);
+}
+
+namespace {
+Result<itest::TabletServerMap> CreateTabletServerMap(ExternalMiniCluster& cluster) {
+  auto master = cluster.GetLeaderMaster();
+  SCHECK_NOTNULL(master);
+  return itest::CreateTabletServerMap(
+      cluster.GetProxy<master::MasterClusterProxy>(master), &cluster.proxy_cache());
+}
+}  // namespace
+
+Status ExternalMiniCluster::MoveTabletLeader(
+    const TabletId& tablet_id, std::optional<size_t> new_leader_idx, MonoDelta timeout) {
+  if (timeout == MonoDelta::kMin) {
+    timeout = MonoDelta::FromSeconds(10 * kTimeMultiplier);
+  }
+
+  const auto ts_map = VERIFY_RESULT(CreateTabletServerMap(*this));
+
+  itest::TServerDetails* leader_ts;
+  RETURN_NOT_OK(itest::FindTabletLeader(ts_map, tablet_id, timeout, &leader_ts));
+
+  itest::TServerDetails* new_leader_ts = nullptr;
+  if (new_leader_idx) {
+    new_leader_ts = ts_map.at(tablet_server(*new_leader_idx)->uuid()).get();
+  } else {
+    for (const auto& [ts_id, ts_details] : ts_map) {
+      if (ts_id != leader_ts->uuid()) {
+        new_leader_ts = ts_details.get();
+      }
+    }
+  }
+  SCHECK_NOTNULL(new_leader_ts);
+
+  // Step down the leader onto the second follower.
+  RETURN_NOT_OK(
+      (itest::WaitForAllPeersToCatchup(tablet_id, TServerDetailsVector(ts_map), timeout)));
+  RETURN_NOT_OK(
+      itest::LeaderStepDown(leader_ts, tablet_id, new_leader_ts, timeout, false, nullptr));
+
+  return itest::WaitUntilLeader(new_leader_ts, tablet_id, timeout);
 }
 
 //------------------------------------------------------------

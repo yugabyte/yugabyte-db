@@ -1,7 +1,5 @@
-title: Universe Details
-type: object
-properties:
-  spec:
-    $ref: ../schemas/UniverseSpec.yaml
-  info:
-    $ref: ../schemas/UniverseInfo.yaml
+description: success
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/Universe.yaml"

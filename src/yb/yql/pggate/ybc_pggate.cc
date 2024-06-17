@@ -231,7 +231,7 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
                       const YBCPgTypeEntity **type_entities,
                       YBCPgTypeAttrs *type_attrs_arr,
                       YBCPgSplitDatum *split_datums,
-                      bool *has_null) {
+                      bool *has_null, bool *has_gin_null) {
   CHECK(table_desc->IsRangePartitioned());
   const Schema& schema = table_desc->schema();
   size_t num_range_key_columns = table_desc->num_range_key_columns();
@@ -256,6 +256,9 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
       } else if (entry_type == dockv::KeyEntryType::kHighest) {
         column_bounds.consume_byte();
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
+      } else if (entry_type == dockv::KeyEntryType::kGinNull) {
+        *has_gin_null = true;
+        return Status::OK();
       } else {
         table_row.Reset();
         RETURN_NOT_OK(dockv::PgKeyDecoder::DecodeEntry(
@@ -1090,9 +1093,9 @@ YBCStatus YBCGetSplitPoints(YBCPgTableDesc table_desc,
                             const YBCPgTypeEntity **type_entities,
                             YBCPgTypeAttrs *type_attrs_arr,
                             YBCPgSplitDatum *split_datums,
-                            bool *has_null) {
+                            bool *has_null, bool *has_gin_null) {
   return ToYBCStatus(GetSplitPoints(table_desc, type_entities, type_attrs_arr, split_datums,
-                                    has_null));
+                                    has_null, has_gin_null));
 }
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
@@ -1166,6 +1169,10 @@ YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name
 
 YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_tablets) {
   return ToYBCStatus(pgapi->CreateIndexSetNumTablets(handle, num_tablets));
+}
+
+YBCStatus YBCPgCreateIndexSetVectorOptions(YBCPgStatement handle, YbPgVectorIdxOptions *options) {
+  return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
 }
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
@@ -1303,6 +1310,14 @@ YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
                                int attr_num,
                                YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlAssignColumn(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgDmlANNBindVector(YBCPgStatement handle, YBCPgExpr vector) {
+  return ToYBCStatus(pgapi->DmlANNBindVector(handle, vector));
+}
+
+YBCStatus YBCPgDmlANNSetPrefetchSize(YBCPgStatement handle, int prefetch_size) {
+  return ToYBCStatus(pgapi->DmlANNSetPrefetchSize(handle, prefetch_size));
 }
 
 YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
@@ -2575,6 +2590,8 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
   }
   return YBCStatusOK();
 }
+
+bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
 
 } // extern "C"
 

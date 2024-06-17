@@ -442,6 +442,29 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
 
+// Must be kept in sync with PgVectorDistanceType in common.proto
+typedef enum YbPgVectorDistType {
+  YB_VEC_DIST_INVALID,
+  YB_VEC_DIST_L2,
+  YB_VEC_DIST_IP,
+  YB_VEC_DIST_COSINE
+} YbPgVectorDistType;
+
+// Must be kept in sync with PgVectorIndexType in common.proto
+typedef enum YbPgVectorIdxType {
+  YB_VEC_INVALID,
+  YB_VEC_DUMMY,
+  YB_VEC_IVFFLAT,
+  YB_VEC_HNSW
+} YbPgVectorIdxType;
+
+typedef struct YbPgVectorIdxOptions {
+  YbPgVectorDistType dist_type;
+  YbPgVectorIdxType idx_type;
+  uint32_t dimensions;
+  // TODO(tanuj): Add vector index type-specific options
+} YbPgVectorIdxOptions;
+
 typedef struct PgExecReadWriteStats {
   uint64_t reads;
   uint64_t writes;

@@ -778,17 +778,7 @@ class PostgresBuilder(YbBuildToolBase):
         pg_compile_commands_paths = []
 
         external_extension_dirs = [os.path.join(self.pg_build_root, d) for d
-                                   # YB_TODO: begin: workaround for some extensions not supported.
-                                   # in ('third-party-extensions', 'yb-extensions')]
-                                   in ('third-party-extensions/hypopg',
-                                       'third-party-extensions/orafce',
-                                       'third-party-extensions/pg_cron',
-                                       'third-party-extensions/pg_hint_plan',
-                                       'third-party-extensions/pgaudit',
-                                       'third-party-extensions/pgvector',
-                                       'third-party-extensions/postgresql-hll',
-                                       'yb-extensions')]
-        # YB_TODO: end: workaround for some extensions not supported.
+                                   in ('third-party-extensions', 'yb-extensions')]
         work_dirs = [
             self.pg_build_root,
             # self.pg_build_root,

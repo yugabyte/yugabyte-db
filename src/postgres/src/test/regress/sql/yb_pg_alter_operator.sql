@@ -1,10 +1,3 @@
-
---
--- ALTER OPERATOR
---
--- Based on "alter_operator" test.
---
-
 CREATE FUNCTION alter_op_test_fn(boolean, boolean)
 RETURNS boolean AS $$ SELECT NULL::BOOLEAN; $$ LANGUAGE sql IMMUTABLE;
 
@@ -97,39 +90,11 @@ ALTER OPERATOR & (bit, bit) SET ("Restrict" = _int_contsel, "Join" = _int_contjo
 CREATE USER regress_alter_op_user;
 SET SESSION AUTHORIZATION regress_alter_op_user;
 
-ALTER OPERATOR === (boolean, boolean) SET (RESTRICT = NONE); -- error
-
--- SET OWNER check
-RESET SESSION AUTHORIZATION;
-ALTER OPERATOR === (boolean, boolean) OWNER TO regress_alter_op_user;
-DROP USER regress_alter_op_user; -- error
-SET SESSION AUTHORIZATION regress_alter_op_user;
 ALTER OPERATOR === (boolean, boolean) SET (RESTRICT = NONE);
-SELECT oprrest FROM pg_operator WHERE oprname = '==='
-  AND oprleft = 'boolean'::regtype AND oprright = 'boolean'::regtype;
 
--- Cleanup
+-- Clean up
 RESET SESSION AUTHORIZATION;
-ALTER OPERATOR === (boolean, boolean) OWNER TO yugabyte;
 DROP USER regress_alter_op_user;
-
---
--- Test SET SCHEMA
---
-CREATE SCHEMA op_schema;
-ALTER OPERATOR === (boolean, boolean) SET SCHEMA op_schema;
-SELECT ns.nspname FROM pg_operator op
-    INNER JOIN pg_namespace ns ON ns.oid = op.oprnamespace
-    WHERE op.oprname = '==='
-      AND op.oprleft = 'boolean'::regtype AND op.oprright = 'boolean'::regtype;
-
--- Cleanup
-ALTER OPERATOR op_schema.=== (boolean, boolean) SET SCHEMA public;
-DROP SCHEMA op_schema;
-
---
--- Cleanup
---
 DROP OPERATOR === (boolean, boolean);
 DROP FUNCTION customcontsel(internal, oid, internal, integer);
 DROP FUNCTION alter_op_test_fn(boolean, boolean);

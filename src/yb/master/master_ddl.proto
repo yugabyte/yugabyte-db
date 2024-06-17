@@ -123,6 +123,7 @@ message CreateTableRequestPB {
 
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
   optional bool is_truncate = 31;
+  optional PgVectorIdxOptionsPB vector_idx_options = 32;
 }
 
 message CreateTableResponsePB {

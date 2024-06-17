@@ -1,13 +1,6 @@
 --
 -- Test for ALTER some_object {RENAME TO, OWNER TO, SET SCHEMA}
 --
--- Based on "alter_generic" test.
--- The following sections are missing as they are not supported yet:
--- * ALTER CONVERSION
--- * ALTER LANGUAGE
--- * ALTER OPERATOR CLASS
--- * ALTER STATISTICS
---
 
 -- directory paths and dlsuffix are passed to us in environment variables
 \getenv libdir PG_LIBDIR
@@ -106,6 +99,47 @@ SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
   ORDER BY nspname, proname;
 
 --
+-- We would test collations here, but it's not possible because the error
+-- messages tend to be nonportable.
+--
+
+--
+-- Conversion
+--
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE CONVERSION alt_conv1 FOR 'LATIN1' TO 'UTF8' FROM iso8859_1_to_utf8;
+/* YB: uncomment when CREATE CONVERSION is supported
+CREATE CONVERSION alt_conv2 FOR 'LATIN1' TO 'UTF8' FROM iso8859_1_to_utf8;
+
+ALTER CONVERSION alt_conv1 RENAME TO alt_conv2;  -- failed (name conflict)
+ALTER CONVERSION alt_conv1 RENAME TO alt_conv3;  -- OK
+ALTER CONVERSION alt_conv2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER CONVERSION alt_conv2 OWNER TO regress_alter_generic_user3;  -- OK
+ALTER CONVERSION alt_conv2 SET SCHEMA alt_nsp2;  -- OK
+
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE CONVERSION alt_conv1 FOR 'LATIN1' TO 'UTF8' FROM iso8859_1_to_utf8;
+CREATE CONVERSION alt_conv2 FOR 'LATIN1' TO 'UTF8' FROM iso8859_1_to_utf8;
+
+ALTER CONVERSION alt_conv3 RENAME TO alt_conv4;  -- failed (not owner)
+ALTER CONVERSION alt_conv1 RENAME TO alt_conv4;  -- OK
+ALTER CONVERSION alt_conv3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ALTER CONVERSION alt_conv2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ALTER CONVERSION alt_conv3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+ALTER CONVERSION alt_conv2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+*/ -- YB
+
+RESET SESSION AUTHORIZATION;
+
+/* YB: uncomment when CREATE CONVERSION is supported
+SELECT n.nspname, c.conname, a.rolname
+  FROM pg_conversion c, pg_namespace n, pg_authid a
+  WHERE c.connamespace = n.oid AND c.conowner = a.oid
+    AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
+  ORDER BY nspname, conname;
+*/ -- YB
+
+--
 -- Foreign Data Wrapper and Foreign Server
 --
 CREATE FOREIGN DATA WRAPPER alt_fdw1;
@@ -122,6 +156,34 @@ ALTER SERVER alt_fserv1 RENAME TO alt_fserv3;   -- OK
 
 SELECT fdwname FROM pg_foreign_data_wrapper WHERE fdwname like 'alt_fdw%';
 SELECT srvname FROM pg_foreign_server WHERE srvname like 'alt_fserv%';
+
+--
+-- Procedural Language
+--
+CREATE LANGUAGE alt_lang1 HANDLER plpgsql_call_handler;
+CREATE LANGUAGE alt_lang2 HANDLER plpgsql_call_handler;
+
+ALTER LANGUAGE alt_lang1 OWNER TO regress_alter_generic_user1;  -- OK
+ALTER LANGUAGE alt_lang2 OWNER TO regress_alter_generic_user2;  -- OK
+
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+ALTER LANGUAGE alt_lang1 RENAME TO alt_lang2;   -- failed (name conflict)
+/* YB: uncomment when ALTER LANGUAGE RENAME TO is supported
+ALTER LANGUAGE alt_lang2 RENAME TO alt_lang3;   -- failed (not owner)
+ALTER LANGUAGE alt_lang1 RENAME TO alt_lang3;   -- OK
+
+ALTER LANGUAGE alt_lang2 OWNER TO regress_alter_generic_user3;  -- failed (not owner)
+ALTER LANGUAGE alt_lang3 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER LANGUAGE alt_lang3 OWNER TO regress_alter_generic_user3;  -- OK
+*/ -- YB
+
+RESET SESSION AUTHORIZATION;
+/* YB: uncomment when ALTER LANGUAGE RENAME TO is supported
+SELECT lanname, a.rolname
+  FROM pg_language l, pg_authid a
+  WHERE l.lanowner = a.oid AND l.lanname like 'alt_lang%'
+  ORDER BY lanname;
+*/ -- YB
 
 --
 -- Operator
@@ -162,6 +224,11 @@ CREATE OPERATOR FAMILY alt_opf2 USING hash;
 ALTER OPERATOR FAMILY alt_opf1 USING hash OWNER TO regress_alter_generic_user1;
 ALTER OPERATOR FAMILY alt_opf2 USING hash OWNER TO regress_alter_generic_user1;
 
+CREATE OPERATOR CLASS alt_opc1 FOR TYPE uuid USING hash AS STORAGE uuid;
+CREATE OPERATOR CLASS alt_opc2 FOR TYPE uuid USING hash AS STORAGE uuid;
+ALTER OPERATOR CLASS alt_opc1 USING hash OWNER TO regress_alter_generic_user1;
+ALTER OPERATOR CLASS alt_opc2 USING hash OWNER TO regress_alter_generic_user1;
+
 SET SESSION AUTHORIZATION regress_alter_generic_user1;
 
 ALTER OPERATOR FAMILY alt_opf1 USING hash RENAME TO alt_opf2;  -- failed (name conflict)
@@ -170,12 +237,24 @@ ALTER OPERATOR FAMILY alt_opf2 USING hash OWNER TO regress_alter_generic_user2; 
 ALTER OPERATOR FAMILY alt_opf2 USING hash OWNER TO regress_alter_generic_user3;  -- OK
 ALTER OPERATOR FAMILY alt_opf2 USING hash SET SCHEMA alt_nsp2;  -- OK
 
+ALTER OPERATOR CLASS alt_opc1 USING hash RENAME TO alt_opc2;  -- failed (name conflict)
+/* YB: uncomment when ALTER OPERATOR CLASS is supported
+ALTER OPERATOR CLASS alt_opc1 USING hash RENAME TO alt_opc3;  -- OK
+ALTER OPERATOR CLASS alt_opc2 USING hash OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER OPERATOR CLASS alt_opc2 USING hash OWNER TO regress_alter_generic_user3;  -- OK
+ALTER OPERATOR CLASS alt_opc2 USING hash SET SCHEMA alt_nsp2;  -- OK
+
 RESET SESSION AUTHORIZATION;
 
 CREATE OPERATOR FAMILY alt_opf1 USING hash;
 CREATE OPERATOR FAMILY alt_opf2 USING hash;
 ALTER OPERATOR FAMILY alt_opf1 USING hash OWNER TO regress_alter_generic_user2;
 ALTER OPERATOR FAMILY alt_opf2 USING hash OWNER TO regress_alter_generic_user2;
+
+CREATE OPERATOR CLASS alt_opc1 FOR TYPE macaddr USING hash AS STORAGE macaddr;
+CREATE OPERATOR CLASS alt_opc2 FOR TYPE macaddr USING hash AS STORAGE macaddr;
+ALTER OPERATOR CLASS alt_opc1 USING hash OWNER TO regress_alter_generic_user2;
+ALTER OPERATOR CLASS alt_opc2 USING hash OWNER TO regress_alter_generic_user2;
 
 SET SESSION AUTHORIZATION regress_alter_generic_user2;
 
@@ -186,14 +265,30 @@ ALTER OPERATOR FAMILY alt_opf2 USING hash OWNER TO regress_alter_generic_user3; 
 ALTER OPERATOR FAMILY alt_opf3 USING hash SET SCHEMA alt_nsp2;  -- failed (not owner)
 ALTER OPERATOR FAMILY alt_opf2 USING hash SET SCHEMA alt_nsp2;  -- failed (name conflict)
 
+ALTER OPERATOR CLASS alt_opc3 USING hash RENAME TO alt_opc4;	-- failed (not owner)
+ALTER OPERATOR CLASS alt_opc1 USING hash RENAME TO alt_opc4;  -- OK
+ALTER OPERATOR CLASS alt_opc3 USING hash OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ALTER OPERATOR CLASS alt_opc2 USING hash OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ALTER OPERATOR CLASS alt_opc3 USING hash SET SCHEMA alt_nsp2;  -- failed (not owner)
+ALTER OPERATOR CLASS alt_opc2 USING hash SET SCHEMA alt_nsp2;  -- failed (name conflict)
+*/ -- YB
+
 RESET SESSION AUTHORIZATION;
 
+/* YB: uncomment when ALTER OPERATOR CLASS is supported
 SELECT nspname, opfname, amname, rolname
   FROM pg_opfamily o, pg_am m, pg_namespace n, pg_authid a
   WHERE o.opfmethod = m.oid AND o.opfnamespace = n.oid AND o.opfowner = a.oid
     AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
 	AND NOT opfname LIKE 'alt_opc%'
   ORDER BY nspname, opfname;
+
+SELECT nspname, opcname, amname, rolname
+  FROM pg_opclass o, pg_am m, pg_namespace n, pg_authid a
+  WHERE o.opcmethod = m.oid AND o.opcnamespace = n.oid AND o.opcowner = a.oid
+    AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
+  ORDER BY nspname, opcname;
+*/ -- YB
 
 -- ALTER OPERATOR FAMILY ... ADD/DROP
 
@@ -358,42 +453,89 @@ ALTER OPERATOR FAMILY alt_opf18 USING btree ADD
   OPERATOR 4 >= (int4, int2) ,
   OPERATOR 5 > (int4, int2) ,
   FUNCTION 1 btint42cmp(int4, int2);
+-- Should fail. Not allowed to have cross-type equalimage function.
+ALTER OPERATOR FAMILY alt_opf18 USING btree
+  ADD FUNCTION 4 (int4, int2) btequalimage(oid);
 ALTER OPERATOR FAMILY alt_opf18 USING btree DROP FUNCTION 2 (int4, int4);
 DROP OPERATOR FAMILY alt_opf18 USING btree;
 
--- Don't enable AlterTSDictionaryStmt and AlterTSConfigurationStmt for now.
--- Uncommet these tests once AlterTSDictionaryStmt and AlterTSConfigurationStmt are supported.
+-- Should fail. Invalid opclass options function (#5) specifications.
+CREATE OPERATOR FAMILY alt_opf19 USING btree;
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 test_opclass_options_func(internal, text[], bool);
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) btint42cmp(int4, int2);
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4, int2) btint42cmp(int4, int2);
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) test_opclass_options_func(internal); -- Ok
+ALTER OPERATOR FAMILY alt_opf19 USING btree DROP FUNCTION 5 (int4, int4);
+DROP OPERATOR FAMILY alt_opf19 USING btree;
+
+--
+-- Statistics
+--
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE TABLE alt_regress_1 (a INTEGER, b INTEGER);
+CREATE STATISTICS alt_stat1 ON a, b FROM alt_regress_1;
+CREATE STATISTICS alt_stat2 ON a, b FROM alt_regress_1;
+
+ALTER STATISTICS alt_stat1 RENAME TO alt_stat2;   -- failed (name conflict)
+/* YB: uncomment when ALTER STATISTICS is supported
+ALTER STATISTICS alt_stat1 RENAME TO alt_stat3;   -- OK
+ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user3;  -- OK
+ALTER STATISTICS alt_stat2 SET SCHEMA alt_nsp2;    -- OK
+
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE TABLE alt_regress_2 (a INTEGER, b INTEGER);
+CREATE STATISTICS alt_stat1 ON a, b FROM alt_regress_2;
+CREATE STATISTICS alt_stat2 ON a, b FROM alt_regress_2;
+
+ALTER STATISTICS alt_stat3 RENAME TO alt_stat4;    -- failed (not owner)
+ALTER STATISTICS alt_stat1 RENAME TO alt_stat4;    -- OK
+ALTER STATISTICS alt_stat3 OWNER TO regress_alter_generic_user2; -- failed (not owner)
+ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user3; -- failed (no role membership)
+ALTER STATISTICS alt_stat3 SET SCHEMA alt_nsp2;		-- failed (not owner)
+ALTER STATISTICS alt_stat2 SET SCHEMA alt_nsp2;		-- failed (name conflict)
+*/ -- YB
+
+RESET SESSION AUTHORIZATION;
+/* YB: uncomment when ALTER STATISTICS is supported
+SELECT nspname, stxname, rolname
+  FROM pg_statistic_ext s, pg_namespace n, pg_authid a
+ WHERE s.stxnamespace = n.oid AND s.stxowner = a.oid
+   AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+ ORDER BY nspname, stxname;
+*/ -- YB
+
 --
 -- Text Search Dictionary
 --
--- SET SESSION AUTHORIZATION regress_alter_generic_user1;
--- CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
--- CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
+CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
 
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict2;  -- failed (name conflict)
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict3;  -- OK
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- OK
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- OK
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict2;  -- failed (name conflict)
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict3;  -- OK
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- OK
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- OK
 
--- SET SESSION AUTHORIZATION regress_alter_generic_user2;
--- CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
--- CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
+CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
 
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 RENAME TO alt_ts_dict4;  -- failed (not owner)
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict4;  -- OK
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 SET SCHEMA alt_nsp2;  -- failed (not owner)
--- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 RENAME TO alt_ts_dict4;  -- failed (not owner)
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict4;  -- OK
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
 
--- RESET SESSION AUTHORIZATION;
+RESET SESSION AUTHORIZATION;
 
--- SELECT nspname, dictname, rolname
---   FROM pg_ts_dict t, pg_namespace n, pg_authid a
---   WHERE t.dictnamespace = n.oid AND t.dictowner = a.oid
---     AND n.nspname in ('alt_nsp1', 'alt_nsp2')
---   ORDER BY nspname, dictname;
+SELECT nspname, dictname, rolname
+  FROM pg_ts_dict t, pg_namespace n, pg_authid a
+  WHERE t.dictnamespace = n.oid AND t.dictowner = a.oid
+    AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+  ORDER BY nspname, dictname;
 
 --
 -- Text Search Configuration
@@ -472,16 +614,20 @@ SELECT nspname, prsname
   FROM pg_ts_parser t, pg_namespace n
   WHERE t.prsnamespace = n.oid AND nspname like 'alt_nsp%'
   ORDER BY nspname, prsname;
+
 ---
 --- Cleanup resources
 ---
-RESET SESSION AUTHORIZATION;
-\set VERBOSITY terse \\ -- suppress cascade details
+DROP FOREIGN DATA WRAPPER alt_fdw2 CASCADE;
+DROP FOREIGN DATA WRAPPER alt_fdw3 CASCADE;
 
-DROP SCHEMA alt_nsp1 CASCADE;
+DROP LANGUAGE alt_lang2 CASCADE;
+DROP LANGUAGE alt_lang3 CASCADE; -- YB: fails due to above commenting out
+
+\set VERBOSITY terse \\ -- YB: suppress cascade details
+DROP SCHEMA alt_nsp1 CASCADE; -- YB: output numbers different due to above commenting out
 DROP SCHEMA alt_nsp2 CASCADE;
 
-DROP USER regress_alter_generic_user1;
+DROP USER regress_alter_generic_user1; -- YB: fails likely due to above commenting out
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;
-

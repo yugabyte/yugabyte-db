@@ -5,7 +5,7 @@ required:
   - arch
 properties:
   spec:
-    $ref: ./UniverseSpec.yaml
+    $ref: "./UniverseSpec.yaml"
   arch:
     description: CPU Arch of DB nodes.
     type: string

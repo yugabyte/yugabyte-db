@@ -647,9 +647,14 @@ InsertOneTuple(void)
 
 	tupDesc = CreateTupleDesc(numattr, attrtypes);
 	tuple = heap_form_tuple(tupDesc, values, Nulls);
-
 	if (IsYugaByteEnabled())
-		YBCExecuteInsert(boot_reldesc, tupDesc, tuple, ONCONFLICT_NONE);
+	{
+		TupleTableSlot *slot = MakeSingleTupleTableSlot(tupDesc,
+														&TTSOpsHeapTuple);
+		ExecStoreHeapTuple(tuple, slot, false);
+		YBCExecuteInsert(boot_reldesc, slot, ONCONFLICT_NONE);
+		ExecDropSingleTupleTableSlot(slot);
+	}
 	else
 		simple_heap_insert(boot_reldesc, tuple);
 

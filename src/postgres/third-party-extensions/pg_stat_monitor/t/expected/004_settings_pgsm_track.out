@@ -1,0 +1,38 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_track';
+            name            | setting | unit | context | vartype |       source       | min_val | max_val |    enumvals    | boot_val | reset_val | pending_restart 
+----------------------------+---------+------+---------+---------+--------------------+---------+---------+----------------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_track | none    |      | user    | enum    | configuration file |         |         | {none,top,all} | top      | none      | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_track';
+            name            | setting | unit | context | vartype |       source       | min_val | max_val |    enumvals    | boot_val | reset_val | pending_restart 
+----------------------------+---------+------+---------+---------+--------------------+---------+---------+----------------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_track | all     |      | user    | enum    | configuration file |         |         | {none,top,all} | top      | all       | f
+(1 row)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_track';
+            name            | setting | unit | context | vartype |       source       | min_val | max_val |    enumvals    | boot_val | reset_val | pending_restart 
+----------------------------+---------+------+---------+---------+--------------------+---------+---------+----------------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_track | top     |      | user    | enum    | configuration file |         |         | {none,top,all} | top      | top       | f
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

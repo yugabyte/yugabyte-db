@@ -329,7 +329,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   void InvokeCallback(const Result<HybridTime>& result) {
     // ConflictResolution_ResolveConficts lasts until InvokeCallback.
     ADOPT_WAIT_STATE(wait_state_);
-    SET_WAIT_STATUS(OnCpu_Passive);
+    SET_WAIT_STATUS(OnCpu_Active);
     YB_TRANSACTION_DUMP(
         Conflicts, context_->transaction_id(),
         result.ok() ? *result : HybridTime::kInvalid,
@@ -473,6 +473,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void FetchTransactionStatuses() {
+    ASH_ENABLE_CONCURRENT_UPDATES();
     static const std::string kRequestReason = "conflict resolution"s;
     auto self = shared_from_this();
     pending_requests_.store(conflict_data_->NumActiveTransactions());

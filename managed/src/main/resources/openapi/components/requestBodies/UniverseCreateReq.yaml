@@ -1,4 +1,5 @@
+required: true
 content:
   application/json:
     schema:
-      $ref: ../schemas/UniverseCreateSpec.yaml
+      $ref: "../schemas/UniverseCreateSpec.yaml"

@@ -18,7 +18,7 @@ SET search_path TO temp_func_test, public;
 CREATE FUNCTION functest_A_1(text, date) RETURNS bool LANGUAGE 'sql'
        AS 'SELECT $1 = ''abcd'' AND $2 > ''2001-01-01''';
 CREATE FUNCTION functest_A_2(text[]) RETURNS int LANGUAGE 'sql'
-       AS 'SELECT $1[0]::int';
+       AS 'SELECT $1[1]::int';
 CREATE FUNCTION functest_A_3() RETURNS bool LANGUAGE 'sql'
        AS 'SELECT false';
 SELECT proname, prorettype::regtype, proargtypes::regtype[] FROM pg_proc
@@ -31,6 +31,24 @@ SELECT proname, prorettype::regtype, proargtypes::regtype[] FROM pg_proc
  functest_a_2 | integer    | [0:0]={text[]}
  functest_a_3 | boolean    | {}
 (3 rows)
+
+SELECT functest_A_1('abcd', '2020-01-01');
+ functest_a_1 
+--------------
+ t
+(1 row)
+
+SELECT functest_A_2(ARRAY['1', '2', '3']);
+ functest_a_2 
+--------------
+            1
+(1 row)
+
+SELECT functest_A_3();
+ functest_a_3 
+--------------
+ f
+(1 row)
 
 --
 -- IMMUTABLE | STABLE | VOLATILE
@@ -62,7 +80,7 @@ SELECT proname, provolatile FROM pg_proc
        WHERE oid in ('functest_B_1'::regproc,
                      'functest_B_2'::regproc,
                      'functest_B_3'::regproc,
- 		     'functest_B_4'::regproc) ORDER BY proname;
+		     'functest_B_4'::regproc) ORDER BY proname;
    proname    | provolatile
 --------------+-------------
  functest_b_1 | v
@@ -238,6 +256,205 @@ SELECT pg_get_functiondef('functest_F_2'::regproc);
 
 (1 row)
 
+--
+-- SQL-standard body
+--
+CREATE FUNCTION functest_S_1(a text, b date) RETURNS boolean
+    LANGUAGE SQL
+    RETURN a = 'abcd' AND b > '2001-01-01';
+CREATE FUNCTION functest_S_2(a text[]) RETURNS int
+    RETURN a[1]::int;
+CREATE FUNCTION functest_S_3() RETURNS boolean
+    RETURN false;
+CREATE FUNCTION functest_S_3a() RETURNS boolean
+    BEGIN ATOMIC
+        ;;RETURN false;;
+    END;
+CREATE FUNCTION functest_S_10(a text, b date) RETURNS boolean
+    LANGUAGE SQL
+    BEGIN ATOMIC
+        SELECT a = 'abcd' AND b > '2001-01-01';
+    END;
+CREATE FUNCTION functest_S_13() RETURNS boolean
+    BEGIN ATOMIC
+        SELECT 1;
+        SELECT false;
+    END;
+-- check display of function arguments in sub-SELECT
+CREATE TABLE functest1 (i int);
+CREATE FUNCTION functest_S_16(a int, b int) RETURNS void
+    LANGUAGE SQL
+    BEGIN ATOMIC
+        INSERT INTO functest1 SELECT a + $2;
+    END;
+-- error: duplicate function body
+CREATE FUNCTION functest_S_xxx(x int) RETURNS int
+    LANGUAGE SQL
+    AS $$ SELECT x * 2 $$
+    RETURN x * 3;
+ERROR:  duplicate function body specified
+-- polymorphic arguments not allowed in this form
+CREATE FUNCTION functest_S_xx(x anyarray) RETURNS anyelement
+    LANGUAGE SQL
+    RETURN x[1];
+ERROR:  SQL function with unquoted function body cannot have polymorphic arguments
+-- check reporting of parse-analysis errors
+CREATE FUNCTION functest_S_xx(x date) RETURNS boolean
+    LANGUAGE SQL
+    RETURN x > 1;
+ERROR:  operator does not exist: date > integer
+LINE 3:     RETURN x > 1;
+                     ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+-- tricky parsing
+CREATE FUNCTION functest_S_15(x int) RETURNS boolean
+LANGUAGE SQL
+BEGIN ATOMIC
+    select case when x % 2 = 0 then true else false end;
+END;
+SELECT functest_S_1('abcd', '2020-01-01');
+ functest_s_1 
+--------------
+ t
+(1 row)
+
+SELECT functest_S_2(ARRAY['1', '2', '3']);
+ functest_s_2 
+--------------
+            1
+(1 row)
+
+SELECT functest_S_3();
+ functest_s_3 
+--------------
+ f
+(1 row)
+
+SELECT functest_S_10('abcd', '2020-01-01');
+ functest_s_10 
+---------------
+ t
+(1 row)
+
+SELECT functest_S_13();
+ functest_s_13 
+---------------
+ f
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_1'::regproc);
+                           pg_get_functiondef                           
+------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_1(a text, b date)+
+  RETURNS boolean                                                      +
+  LANGUAGE sql                                                         +
+ RETURN ((a = 'abcd'::text) AND (b > '01-01-2001'::date))              +
+ 
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_2'::regproc);
+                        pg_get_functiondef                        
+------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_2(a text[])+
+  RETURNS integer                                                +
+  LANGUAGE sql                                                   +
+ RETURN ((a)[1])::integer                                        +
+ 
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_3'::regproc);
+                    pg_get_functiondef                    
+----------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_3()+
+  RETURNS boolean                                        +
+  LANGUAGE sql                                           +
+ RETURN false                                            +
+ 
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_3a'::regproc);
+                    pg_get_functiondef                     
+-----------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_3a()+
+  RETURNS boolean                                         +
+  LANGUAGE sql                                            +
+ BEGIN ATOMIC                                             +
+  RETURN false;                                           +
+ END                                                      +
+ 
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_10'::regproc);
+                           pg_get_functiondef                            
+-------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_10(a text, b date)+
+  RETURNS boolean                                                       +
+  LANGUAGE sql                                                          +
+ BEGIN ATOMIC                                                           +
+  SELECT ((a = 'abcd'::text) AND (b > '01-01-2001'::date));             +
+ END                                                                    +
+ 
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_13'::regproc);
+                    pg_get_functiondef                     
+-----------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_13()+
+  RETURNS boolean                                         +
+  LANGUAGE sql                                            +
+ BEGIN ATOMIC                                             +
+  SELECT 1;                                               +
+  SELECT false;                                           +
+ END                                                      +
+ 
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_15'::regproc);
+                         pg_get_functiondef                         
+--------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_15(x integer)+
+  RETURNS boolean                                                  +
+  LANGUAGE sql                                                     +
+ BEGIN ATOMIC                                                      +
+  SELECT                                                           +
+          CASE                                                     +
+              WHEN ((x % 2) = 0) THEN true                         +
+              ELSE false                                           +
+          END AS "case";                                           +
+ END                                                               +
+ 
+(1 row)
+
+SELECT pg_get_functiondef('functest_S_16'::regproc);
+                              pg_get_functiondef                               
+-------------------------------------------------------------------------------
+ CREATE OR REPLACE FUNCTION temp_func_test.functest_s_16(a integer, b integer)+
+  RETURNS void                                                                +
+  LANGUAGE sql                                                                +
+ BEGIN ATOMIC                                                                 +
+  INSERT INTO functest1 (i)  SELECT (functest_s_16.a + functest_s_16.b);      +
+ END                                                                          +
+ 
+(1 row)
+
+DROP TABLE functest1 CASCADE;
+NOTICE:  drop cascades to function functest_s_16(integer,integer)
+-- test with views
+CREATE TABLE functest3 (a int);
+INSERT INTO functest3 VALUES (1), (2);
+CREATE VIEW functestv3 AS SELECT * FROM functest3;
+CREATE FUNCTION functest_S_14() RETURNS bigint
+    RETURN (SELECT count(*) FROM functestv3);
+SELECT functest_S_14();
+ functest_s_14 
+---------------
+             2
+(1 row)
+
+\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
+DROP TABLE functest3 CASCADE;
+NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default \\ -- YB
 -- information_schema tests
 CREATE FUNCTION functest_IS_1(a int, b int default 1, c text default 'foo')
     RETURNS int
@@ -267,6 +484,68 @@ SELECT routine_name, ordinal_position, parameter_name, parameter_default
 (7 rows)
 
 DROP FUNCTION functest_IS_1(int, int, text), functest_IS_2(int), functest_IS_3(int);
+-- routine usage views
+CREATE FUNCTION functest_IS_4a() RETURNS int LANGUAGE SQL AS 'SELECT 1';
+CREATE FUNCTION functest_IS_4b(x int DEFAULT functest_IS_4a()) RETURNS int LANGUAGE SQL AS 'SELECT x';
+CREATE SEQUENCE functest1;
+CREATE FUNCTION functest_IS_5(x int DEFAULT nextval('functest1'))
+    RETURNS int
+    LANGUAGE SQL
+    AS 'SELECT x';
+CREATE FUNCTION functest_IS_6()
+    RETURNS int
+    LANGUAGE SQL
+    RETURN nextval('functest1');
+CREATE TABLE functest2 (a int, b int);
+CREATE FUNCTION functest_IS_7()
+    RETURNS int
+    LANGUAGE SQL
+    RETURN (SELECT count(a) FROM functest2);
+SELECT r0.routine_name, r1.routine_name
+  FROM information_schema.routine_routine_usage rru
+       JOIN information_schema.routines r0 ON r0.specific_name = rru.specific_name
+       JOIN information_schema.routines r1 ON r1.specific_name = rru.routine_name
+  WHERE r0.routine_schema = 'temp_func_test' AND
+        r1.routine_schema = 'temp_func_test'
+  ORDER BY 1, 2;
+  routine_name  |  routine_name  
+----------------+----------------
+ functest_is_4b | functest_is_4a
+(1 row)
+
+SELECT routine_name, sequence_name FROM information_schema.routine_sequence_usage
+  WHERE routine_schema = 'temp_func_test'
+  ORDER BY 1, 2;
+ routine_name  | sequence_name 
+---------------+---------------
+ functest_is_5 | functest1
+ functest_is_6 | functest1
+(2 rows)
+
+SELECT routine_name, table_name, column_name FROM information_schema.routine_column_usage
+  WHERE routine_schema = 'temp_func_test'
+  ORDER BY 1, 2;
+ routine_name  | table_name | column_name 
+---------------+------------+-------------
+ functest_is_7 | functest2  | a
+(1 row)
+
+SELECT routine_name, table_name FROM information_schema.routine_table_usage
+  WHERE routine_schema = 'temp_func_test'
+  ORDER BY 1, 2;
+ routine_name  | table_name 
+---------------+------------
+ functest_is_7 | functest2
+(1 row)
+
+DROP FUNCTION functest_IS_4a CASCADE;
+NOTICE:  drop cascades to function functest_is_4b(integer)
+\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
+DROP SEQUENCE functest1 CASCADE;
+NOTICE:  drop cascades to 2 other objects
+\set VERBOSITY default \\ -- YB
+DROP TABLE functest2 CASCADE;
+NOTICE:  drop cascades to function functest_is_7()
 -- overload
 CREATE FUNCTION functest_B_2(bigint) RETURNS bool LANGUAGE 'sql'
        IMMUTABLE AS 'SELECT $1 > 0';
@@ -285,6 +564,53 @@ CREATE OR REPLACE PROCEDURE functest1(a int) LANGUAGE SQL AS 'SELECT $1';
 ERROR:  cannot change routine kind
 DETAIL:  "functest1" is a function.
 DROP FUNCTION functest1(a int);
+-- inlining of set-returning functions
+CREATE TABLE functest3 (a int);
+INSERT INTO functest3 VALUES (1), (2), (3);
+CREATE FUNCTION functest_sri1() RETURNS SETOF int
+LANGUAGE SQL
+STABLE
+AS '
+    SELECT * FROM functest3;
+';
+SELECT * FROM functest_sri1() ORDER BY functest_sri1; -- YB: add ordering
+ functest_sri1 
+---------------
+             1
+             2
+             3
+(3 rows)
+
+EXPLAIN (verbose, costs off) SELECT * FROM functest_sri1();
+              QUERY PLAN              
+--------------------------------------
+ Seq Scan on temp_func_test.functest3
+   Output: functest3.a
+(2 rows)
+
+CREATE FUNCTION functest_sri2() RETURNS SETOF int
+LANGUAGE SQL
+STABLE
+BEGIN ATOMIC
+    SELECT * FROM functest3;
+END;
+SELECT * FROM functest_sri2() ORDER BY functest_sri2; -- YB: add ordering
+ functest_sri2 
+---------------
+             1
+             2
+             3
+(3 rows)
+
+EXPLAIN (verbose, costs off) SELECT * FROM functest_sri2();
+              QUERY PLAN              
+--------------------------------------
+ Seq Scan on temp_func_test.functest3
+   Output: functest3.a
+(2 rows)
+
+DROP TABLE functest3 CASCADE;
+NOTICE:  drop cascades to function functest_sri2()
 -- Check behavior of VOID-returning SQL functions
 CREATE FUNCTION voidtest1(a int) RETURNS VOID LANGUAGE SQL AS
 $$ SELECT a + 1 $$;
@@ -327,7 +653,7 @@ SELECT voidtest4(39);
 
 (1 row)
 
-TABLE sometable ORDER BY f1;
+TABLE sometable ORDER BY f1; -- YB: add ordering
  f1
 ----
  18
@@ -340,6 +666,22 @@ SELECT * FROM voidtest5(3);
  voidtest5
 -----------
 (0 rows)
+
+-- Regression tests for bugs:
+-- Check that arguments that are R/W expanded datums aren't corrupted by
+-- multiple uses.  This test knows that array_append() returns a R/W datum
+-- and will modify a R/W array input in-place.  We use SETOF to prevent
+-- inlining of the SQL function.
+CREATE FUNCTION double_append(anyarray, anyelement) RETURNS SETOF anyarray
+LANGUAGE SQL IMMUTABLE AS
+$$ SELECT array_append($1, $2) || array_append($1, $2) $$;
+SELECT double_append(array_append(ARRAY[q1], q2), q3)
+  FROM (VALUES(1,2,3), (4,5,6)) v(q1,q2,q3);
+ double_append 
+---------------
+ {1,2,3,1,2,3}
+ {4,5,6,4,5,6}
+(2 rows)
 
 -- Things that shouldn't work:
 CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
@@ -366,9 +708,9 @@ CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
 ERROR:  only one AS item needed for language "sql"
 -- Cleanup
-\set VERBOSITY terse \\ -- suppress cascade details
+\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
 DROP SCHEMA temp_func_test CASCADE;
-NOTICE:  drop cascades to 21 other objects
-\set VERBOSITY default
--- DROP USER regress_unpriv_user;
+NOTICE:  drop cascades to 30 other objects
+\set VERBOSITY default \\ -- YB
+DROP USER regress_unpriv_user;
 RESET search_path;

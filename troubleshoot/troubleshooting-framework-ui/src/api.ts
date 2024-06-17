@@ -1,12 +1,17 @@
 import axios from 'axios';
 import { IN_DEVELOPMENT_MODE, DEV_HOST_URL, PROD_HOST_URL } from './helpers/config';
-import { Anomaly, GraphResponse } from './helpers/dtos';
+import { Anomaly, GraphResponse, MetadataFields } from './helpers/dtos';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
   fetchAnamolies = 'fetchAnamolies',
   fetchGraphs = 'fetchGraphs',
-  fetchQueries = 'fetchQueries'
+  fetchQueries = 'fetchQueries',
+  fetchUniverseMetadataList = 'fetchUniverseMetadataList',
+  deleteUniverseMetadata = 'deleteUniverseMetadata',
+  updateUniverseMetadata = 'updateUniverseMetadata',
+  fetchUniverseListDetails = 'fetchUniverseListDetails',
+  fetchUniverseById = 'fetchUniverseById'
 }
 
 class ApiService {
@@ -57,6 +62,32 @@ class ApiService {
     }
     return axios.get<any>(requestURL, {
       params: params}).then((res) => res.data);
+  };
+
+  fetchUniverseMetadataList = (hostUrl?: string) => {
+    const baseUrl = hostUrl ??  IN_DEVELOPMENT_MODE ? DEV_HOST_URL : PROD_HOST_URL;
+    const requestURL = `${baseUrl}/universe_metadata`;
+    return axios.get<MetadataFields[]>(requestURL).then((res) => res.data);
+  };
+  updateUniverseMetadata = (universeUuid: string, data: any, hostUrl?: string) => {
+    const baseUrl = hostUrl ??  IN_DEVELOPMENT_MODE ? DEV_HOST_URL : PROD_HOST_URL;
+    const requestUrl = `${baseUrl}/universe_metadata/${universeUuid}`;
+    return axios.put(requestUrl, data).then((resp) => resp.data);
+  };
+  deleteUniverseMetadata = (universeUuid: string, hostUrl?: string) => {
+    const baseUrl = hostUrl ??  IN_DEVELOPMENT_MODE ? DEV_HOST_URL : PROD_HOST_URL;
+    const requestUrl = `${baseUrl}/universe_metadata/${universeUuid}`;
+    return axios.delete(requestUrl).then((resp) => resp.data);
+  };
+  fetchUniverseListDetails = (hostUrl?: string) => {
+    const baseUrl = hostUrl ??  IN_DEVELOPMENT_MODE ? DEV_HOST_URL : PROD_HOST_URL;
+    const requestUrl = `${baseUrl}/universe_details`;
+    return axios.get(requestUrl).then((res) => res.data);
+  };
+  fetchUniverseById = (universeUuid: string, hostUrl?: string) => {
+    const baseUrl = hostUrl ??  IN_DEVELOPMENT_MODE ? DEV_HOST_URL : PROD_HOST_URL;
+    const requestUrl = `${baseUrl}/universe_details/${universeUuid}`;
+    return axios.get(requestUrl).then((res) => res.data);
   };
 }
 

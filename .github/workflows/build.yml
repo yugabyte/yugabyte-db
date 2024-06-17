@@ -42,20 +42,26 @@ jobs:
       # This should be a sub-set of the build flavors in jenkins_jobs.yml.
       matrix:
         include:
-          - name: "GCC 11, fastdebug, Almalinux 8"
+          - name: "GCC 11, fastdebug, AlmaLinux 8"
             os: ubuntu-20.04
             yb_build_args: --gcc11 fastdebug --no-linuxbrew
-            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
+            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:v2024-04-25T17_54_46
 
-          - name: "Clang 16, release, Almalinux 8"
+          - name: "GCC 12, debug, AlmaLinux 9"
             os: ubuntu-20.04
-            yb_build_args: --clang16 release --no-linuxbrew
-            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
+            yb_build_args: --gcc12 debug --no-linuxbrew
+            docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:v2024-04-25T17_54_47
 
-          - name: "Clang 16, debug, Ubuntu 22.04"
+          - name: "Clang 17, release, AlmaLinux 8"
             os: ubuntu-20.04
-            yb_build_args: --clang16 debug --no-linuxbrew
-            docker_image:  yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2023-10-25T03_33_00
+            yb_build_args: --clang17 release --no-linuxbrew
+            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:v2024-04-25T17_54_46
+
+          - name: "Clang 17, debug, Ubuntu 22.04"
+            os: ubuntu-20.04
+            yb_build_args: --clang17 debug --no-linuxbrew
+            docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2024-04-25T17_54_47
+
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&

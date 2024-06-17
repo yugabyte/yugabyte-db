@@ -551,6 +551,17 @@ public class NodeManager extends DevopsBase {
       if (providerDetails.airGapInstall) {
         subCommand.add("--air_gap");
       }
+    } else if (params instanceof AnsibleConfigureServers.Params) {
+      AnsibleConfigureServers.Params configureServerParams =
+          (AnsibleConfigureServers.Params) params;
+
+      if (providerDetails.installNodeExporter) {
+        subCommand.add("--install_node_exporter");
+        subCommand.add("--node_exporter_port");
+        subCommand.add(Integer.toString(configureServerParams.communicationPorts.nodeExporterPort));
+        subCommand.add("--node_exporter_user");
+        subCommand.add("yugabyte");
+      }
     }
 
     return subCommand;

@@ -25,7 +25,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressColocatedTablesWithTablespaces extends BasePgSQLTest {
+public class TestPgRegressColocatedTablesWithTablespaces extends BasePgRegressTest {
   private List<Map<String, String>> perTserverZonePlacementFlags =
       Arrays.asList(ImmutableMap.of("placement_cloud", "cloud1", "placement_region", "region1",
                         "placement_zone", "zone1"),

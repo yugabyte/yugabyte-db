@@ -49,7 +49,8 @@ YB_DEFINE_ENUM(SampleFilter, (kAllSamples)(kGrowthOnly));
 Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
     SampleOrder order = SampleOrder::kSampledCount,
     HeapSnapshotType snapshot_type = HeapSnapshotType::kCurrentHeap,
-    SampleFilter filter = SampleFilter::kAllSamples);
+    SampleFilter filter = SampleFilter::kAllSamples,
+    const std::string& separator = "\n");
 
 #if YB_GOOGLE_TCMALLOC
 
@@ -59,14 +60,18 @@ Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes)
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);
 
 std::vector<Sample> AggregateAndSortProfile(
-    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order);
+    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order,
+    const std::string& separator = "\n");
 
 #endif // YB_GOOGLE_TCMALLOC
 
 #if YB_GPERFTOOLS_TCMALLOC
 
-std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(SampleOrder order);
+std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(
+    SampleOrder order, const std::string& separator);
 
 #endif // YB_GPERFTOOLS_TCMALLOC
+
+bool DumpHeapSnapshotUnlessThrottled();
 
 } // namespace yb

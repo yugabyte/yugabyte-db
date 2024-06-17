@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import api.v2.models.ClusterGFlags;
-import api.v2.models.UpgradeUniverseGFlags;
+import api.v2.models.UniverseEditGFlags;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Sets;
@@ -41,7 +41,7 @@ public class GFlagsAuditHandler {
   }
 
   public JsonNode constructGFlagAuditPayload(
-      String universeUuid, UpgradeUniverseGFlags requestParams) {
+      String universeUuid, UniverseEditGFlags requestParams) {
     Map<String, GFlagsAuditPayload> auditPayload = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
     Map<UUID, UniverseDefinitionTaskParams.Cluster> oldVersionsOfClusters =

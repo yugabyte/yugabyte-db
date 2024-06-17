@@ -471,6 +471,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 		case YB_OID_DETAILS:
 			/* Read the oid details */
 			yb_handle_oid_pkt_client(instance, client, msg);
+			machine_msg_free(msg);
 			continue;
 
 		case KIWI_BE_ERROR_RESPONSE:

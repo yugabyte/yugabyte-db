@@ -89,6 +89,11 @@ class HybridTime;
 class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
+using ExternalMasterPtr = scoped_refptr<ExternalMaster>;
+
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
 
 namespace rpc {
 class SecureContext;
@@ -247,6 +252,9 @@ class ExternalMiniCluster : public MiniClusterBase {
       const std::vector<std::string>& extra_flags = {},
       int num_drives = -1);
 
+  // Add a new YB Controller server for the given tablet server
+  Status AddYbControllerServer(const scoped_refptr<ExternalTabletServer>);
+
   void UpdateMasterAddressesOnTserver();
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
@@ -288,9 +296,6 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerHTTPAddresses() const;
 
-  // Start a new master with `peer_addrs` as the master_addresses parameter.
-  Result<ExternalMaster *> StartMasterWithPeers(const std::string& peer_addrs);
-
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   Status PingMaster(const ExternalMaster* master) const;
 
@@ -308,16 +313,20 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Empty blacklist.
   Status ClearBlacklist(ExternalMaster* master);
 
-  // Starts a new master and returns the handle of the new master object on success.  Not thread
-  // safe for now. We could move this to a static function outside External Mini Cluster, but
-  // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any
-  // errors and if a new master could not be spawned, it will crash internally.
-  void StartShellMaster(ExternalMaster** new_master);
+  // Start a new master with `peer_addrs` as the master_addresses parameter.
+  // ChangeConfig with consensus::ADD_SERVER must be called after this to add the new master to the
+  // cluster.
+  Result<ExternalMasterPtr> StartMaster(
+      const std::string& peer_addrs, uint16_t rpc_port = 0, bool shell_mode = false);
+
+  // ChangeConfig with consensus::ADD_SERVER must be called after this to add the new master to the
+  // cluster.
+  Result<ExternalMasterPtr> StartShellMaster();
 
   // Performs an add or remove from the existing config of this EMC, of the given master.
   // When use_hostport is true, the master is deemed as dead and its UUID is not used.
-  Status ChangeConfig(ExternalMaster* master,
-      ChangeConfigType type,
+  Status ChangeConfig(
+      const ExternalMasterPtr& master, ChangeConfigType type,
       consensus::PeerMemberType member_type = consensus::PeerMemberType::PRE_VOTER,
       bool use_hostport = false);
 
@@ -372,7 +381,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::vector<ExternalTabletServer*> tserver_daemons() const;
 
   // Return all YBController servers.
-  std::vector<ExternalYbController*> yb_controller_daemons() const;
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
+    return yb_controller_servers_;
+  }
 
   // Get tablet server host.
   HostPort pgsql_hostport(int node_index) const;
@@ -541,6 +552,16 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status WaitForLoadBalancerToBecomeIdle(
       const std::unique_ptr<yb::client::YBClient>& client, MonoDelta timeout);
 
+  // Create a PG connection to the given database. If node_index is not set, a random node is
+  // chosen.
+  Result<pgwrapper::PGConn> ConnectToDB(
+      const std::string& db_name = "yugabyte", std::optional<size_t> node_index = std::nullopt,
+      bool simple_query_protocol = false);
+
+  Status MoveTabletLeader(
+      const TabletId& tablet_id, std::optional<size_t> new_leader_idx = std::nullopt,
+      MonoDelta timeout = MonoDelta::kMin);
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
@@ -562,8 +583,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetPeerMasterIndex(bool is_leader);
 
   // API to help update the cluster state (rpc ports)
-  Status AddMaster(ExternalMaster* master);
-  Status RemoveMaster(ExternalMaster* master);
+  Status AddMaster(const ExternalMasterPtr& master);
+  Status RemoveMaster(const ExternalMasterPtr& master);
 
   // Get the index of this master in the vector of masters. This might not be the insertion order as
   // we might have removed some masters within the vector.
@@ -579,12 +600,6 @@ class ExternalMiniCluster : public MiniClusterBase {
       std::vector<OpIdPB>* op_ids,
       const std::vector<ExternalMaster*>& masters);
 
-  // Ensure that the leader server is allowed to process a config change (by having at least one
-  // commit in the current term as leader).
-  Status WaitForLeaderToAllowChangeConfig(
-      const std::string& uuid,
-      consensus::ConsensusServiceProxy* leader_proxy);
-
   // Return master address for specified port.
   std::string MasterAddressForPort(uint16_t port) const;
 
@@ -597,7 +612,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // This variable is incremented every time a new master is spawned (either in shell mode or create
   // mode). Avoids reusing an index of a killed/removed master. Useful for master side logging.
-  size_t add_new_master_at_;
+  size_t add_new_master_at_ = 0;
 
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
@@ -1012,16 +1027,14 @@ class ExternalTabletServer : public ExternalDaemon {
 
 // Custom functor for predicate based comparison with the master list.
 struct MasterComparator {
-  explicit MasterComparator(ExternalMaster* master) : master_(master) { }
+  explicit MasterComparator(const ExternalMasterPtr& master) : master_(master) {}
 
   // We look for the exact master match. Since it is possible to stop/restart master on a given
   // host/port, we do not want a stale master pointer input to match a newer master.
-  bool operator()(const scoped_refptr<ExternalMaster>& other) const {
-    return master_ == other.get();
-  }
+  bool operator()(const ExternalMasterPtr& other) const { return master_.get() == other.get(); }
 
  private:
-  const ExternalMaster* master_;
+  const ExternalMasterPtr& master_;
 };
 
 template <class T>

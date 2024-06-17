@@ -161,7 +161,7 @@ public class Release extends Model {
     List<ReleaseArtifact> artifacts = ReleaseArtifact.getAllPlatformArchitecture(plat, arch);
     return find.query()
         .where()
-        .idIn(artifacts.stream().map(a -> a.getReleaseUUID()).toArray())
+        .idIn(artifacts.stream().map(a -> a.getReleaseUUID()).filter(a -> a != null).toArray())
         .findList();
   }
 

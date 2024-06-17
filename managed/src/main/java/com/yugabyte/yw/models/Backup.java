@@ -909,6 +909,9 @@ public class Backup extends Model {
     if (!CollectionUtils.isEmpty(filter.getStorageConfigUUIDList())) {
       appendInClause(query, "storage_config_uuid", filter.getStorageConfigUUIDList());
     }
+    if (!CollectionUtils.isEmpty(filter.getBackupUUIDList())) {
+      appendInClause(query, "backup_uuid", filter.getBackupUUIDList());
+    }
     if (!CollectionUtils.isEmpty(filter.getUniverseNameList())) {
       appendLikeClause(query, "universe_name", filter.getUniverseNameList());
     }

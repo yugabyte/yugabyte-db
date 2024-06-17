@@ -111,6 +111,7 @@ DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_uint64(max_clock_skew_usec);
 
 DECLARE_string(time_source);
+DECLARE_string(ysql_yb_default_replica_identity);
 
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_uint64(pg_client_session_expiration_ms);
@@ -1370,6 +1371,29 @@ TEST_F(PgMiniTest, AlterTableWithReplicaIdentity) {
 
   ASSERT_OK(conn.Execute("ALTER TABLE t REPLICA IDENTITY NOTHING"));
   ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(NOTHING, tablet_peers, table_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "FULL";
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (a int primary key)"));
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("t1"));
+  tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(FULL, tablet_peers, table_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "DEFAULT";
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (a int primary key)"));
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("t2"));
+  tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(DEFAULT, tablet_peers, table_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "NOTHING";
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (a int primary key)"));
+  table_id = ASSERT_RESULT(GetTableIDFromTableName("t3"));
+  tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_OK(IsReplicaIdentityPopulatedInTabletPeers(NOTHING, tablet_peers, table_id));
+
+  // If an invalid value is provided to the flag ysql_yb_default_replica_identity, table creation
+  // will fail.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_default_replica_identity) = "INVALID";
+  ASSERT_NOK(conn.Execute("CREATE TABLE t4 (a int primary key)"));
 }
 
 TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {

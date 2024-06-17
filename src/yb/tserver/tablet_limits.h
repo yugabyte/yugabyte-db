@@ -13,35 +13,9 @@
 
 #pragma once
 
-#include "yb/util/flags.h"
-
-DECLARE_uint32(tablet_replicas_per_gib_limit);
-DECLARE_uint32(tablet_replicas_per_core_limit);
+#include "yb/common/tablet_limits.h"
 
 namespace yb::tserver {
-
-struct TabletReplicaPerResourceLimits {
-  std::optional<int64_t> per_gib;
-  std::optional<int64_t> per_core;
-};
-
-TabletReplicaPerResourceLimits GetTabletReplicaPerResourceLimits();
-
-
-struct AggregatedClusterInfo {
-  // Total memory reserved for tablet replica overheads across all TServers in the cluster. Only
-  // set if every TServer in the cluster provides a value in its heartbeat.
-  std::optional<int64_t> total_memory;
-  // Total cores across all TServers in the cluster. Only set if every TServer in the cluster
-  // provides a value in its heartbeat.
-  std::optional<int64_t> total_cores;
-  int64_t total_live_replicas;
-};
-
-// Returns std::numeric_limits<int64_t>::max() if there is no limit.
-// Does not use cluster_info.total_live_replicas.
-int64_t ComputeTabletReplicaLimit(
-    const AggregatedClusterInfo& cluster_info, const TabletReplicaPerResourceLimits& limits);
 
 // Returns number of tablet peers that this TServer can support or -1 if no tablet limit in effect.
 int64_t GetNumSupportableTabletPeers();

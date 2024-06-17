@@ -169,20 +169,30 @@ CloneStateManager::CloneStateManager(
     std::unique_ptr<CloneStateManagerExternalFunctionsBase> external_funcs):
     external_funcs_(std::move(external_funcs)) {}
 
-Status CloneStateManager::IsCloneDone(
-    const IsCloneDoneRequestPB* req, IsCloneDoneResponsePB* resp) {
-  auto clone_state = VERIFY_RESULT(GetCloneStateFromSourceNamespace(req->source_namespace_id()));
-  auto lock = clone_state->LockForRead();
-  auto seq_no = req->seq_no();
-  auto current_seq_no = lock->pb.clone_request_seq_no();
-  if (current_seq_no > seq_no) {
-    resp->set_is_done(true);
-  } else if (current_seq_no == seq_no) {
-    resp->set_is_done(lock->IsDone());
-  } else {
-    return STATUS_FORMAT(IllegalState,
-        "Clone seq_no $0 never started for namespace $1 (current seq no $2)",
-        seq_no, req->source_namespace_id(), current_seq_no);
+Status CloneStateManager::ListClones(const ListClonesRequestPB* req, ListClonesResponsePB* resp) {
+  if (!req->has_source_namespace_id()) {
+    return STATUS_FORMAT(InvalidArgument, "Missing source namespace id in request: $0",
+                         req->ShortDebugString());
+  }
+
+  // Get matching clone states.
+  std::vector<CloneStateInfoPtr> clone_states;
+  {
+    std::lock_guard l(mutex_);
+    auto it = source_clone_state_map_.find(req->source_namespace_id());
+    if (it != source_clone_state_map_.end()) {
+      std::copy_if(
+        it->second.begin(), it->second.end(), std::back_inserter(clone_states),
+        [req](const auto& clone) {
+          return !req->has_seq_no() ||
+                 req->seq_no() == clone->LockForRead()->pb.clone_request_seq_no();
+      });
+    }
+  }
+
+  // Populate the response.
+  for (const auto& clone_state : clone_states) {
+    *resp->add_entries() = clone_state->LockForRead()->pb;
   }
   return Status::OK();
 }
@@ -359,36 +369,25 @@ Status CloneStateManager::ClearAndRunLoaders() {
 Status CloneStateManager::LoadCloneState(const std::string& id, const SysCloneStatePB& metadata) {
   auto clone_state = CloneStateInfoPtr(new CloneStateInfo(id));
   clone_state->Load(metadata);
-  std::lock_guard lock(mutex_);
 
   std::string source_namespace_id;
-  uint32_t seq_no;
   bool is_done;
   {
+    // Release the read lock before calling MarkCloneAborted to avoid deadlock.
     auto read_lock = clone_state->LockForRead();
     source_namespace_id = read_lock->pb.source_namespace_id();
-    seq_no = read_lock->pb.clone_request_seq_no();
     is_done = read_lock->IsDone();
-  }
-
-  auto it = source_clone_state_map_.find(source_namespace_id);
-  if (it != source_clone_state_map_.end()) {
-    auto existing_seq_no = it->second->LockForRead()->pb.clone_request_seq_no();
-    LOG(INFO) << Format(
-        "Found existing clone state for source namespace $0 with seq_no $1. This clone "
-        "state's seq_no is $2", source_namespace_id, existing_seq_no, seq_no);
-    if (seq_no < existing_seq_no) {
-      // Do not overwrite the higher seq_no clone state.
-      return Status::OK();
-    }
-    // TODO: Delete clone state with lower seq_no from sys catalog.
   }
 
   // Abort the clone if it was not in a terminal state.
   if (!is_done) {
     RETURN_NOT_OK(MarkCloneAborted(clone_state, "aborted by master failover"));
   }
-  source_clone_state_map_[source_namespace_id] = clone_state;
+
+  {
+    std::lock_guard lock(mutex_);
+    source_clone_state_map_[source_namespace_id].insert(clone_state);
+  }
   return Status::OK();
 }
 
@@ -397,15 +396,19 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
     const NamespaceId& source_namespace_id,
     const std::string& target_namespace_name,
     const HybridTime& restore_time) {
+  // Check if there is an ongoing clone for the source namespace.
   std::lock_guard lock(mutex_);
   auto it = source_clone_state_map_.find(source_namespace_id);
   if (it != source_clone_state_map_.end()) {
-    auto lock = it->second->LockForRead();
-    if (!lock->IsDone()) {
-      return STATUS_FORMAT(
-          AlreadyPresent, "Cannot create new clone state because there is already an ongoing "
-          "clone for source namespace $0 in state $1", source_namespace_id,
-          lock->pb.aggregate_state());
+    auto latest_clone_it = it->second.rbegin();
+    if (latest_clone_it != it->second.rend()) {
+      auto lock = (*latest_clone_it)->LockForRead();
+      if (!lock->IsDone()) {
+        return STATUS_FORMAT(
+            AlreadyPresent, "Cannot create new clone state because there is already an ongoing "
+            "clone for source namespace $0 in state $1", source_namespace_id,
+            lock->pb.aggregate_state());
+      }
     }
   }
 
@@ -421,7 +424,7 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
   clone_state->mutable_metadata()->CommitMutation();
 
   // Add to the in-memory map.
-  source_clone_state_map_[source_namespace_id] = clone_state;
+  source_clone_state_map_[source_namespace_id].insert(clone_state);
 
   return clone_state;
 }
@@ -495,12 +498,6 @@ Status CloneStateManager::ScheduleCloneOps(
   lock.Commit();
 
   return Status::OK();
-}
-
-Result<CloneStateInfoPtr> CloneStateManager::GetCloneStateFromSourceNamespace(
-    const NamespaceId& namespace_id) {
-  std::lock_guard lock(mutex_);
-  return FIND_OR_STATUS(source_clone_state_map_, namespace_id);
 }
 
 AsyncClonePgSchema::ClonePgSchemaCallbackType CloneStateManager::MakeDoneClonePgSchemaCallback(
@@ -596,14 +593,15 @@ Status CloneStateManager::Run() {
     std::lock_guard lock(mutex_);
     source_clone_state_map = source_clone_state_map_;
   }
-  for (auto& [source_namespace_id, clone_state] : source_clone_state_map) {
+  for (auto& [source_namespace_id, clone_states] : source_clone_state_map) {
     Status s;
-    switch (clone_state->LockForRead()->pb.aggregate_state()) {
+    auto& latest_clone_state = *clone_states.rbegin();
+    switch (latest_clone_state->LockForRead()->pb.aggregate_state()) {
       case SysCloneStatePB::CREATING:
-        s = HandleCreatingState(clone_state);
+        s = HandleCreatingState(latest_clone_state);
         break;
       case SysCloneStatePB::RESTORING:
-        s = HandleRestoringState(clone_state);
+        s = HandleRestoringState(latest_clone_state);
         break;
       case SysCloneStatePB::CLONE_SCHEMA_STARTED: FALLTHROUGH_INTENDED;
       case SysCloneStatePB::RESTORED: FALLTHROUGH_INTENDED;
@@ -611,7 +609,7 @@ Status CloneStateManager::Run() {
         break;
     }
     if (!s.ok()) {
-      RETURN_NOT_OK(MarkCloneAborted(clone_state, s.ToString()));
+      RETURN_NOT_OK(MarkCloneAborted(latest_clone_state, s.ToString()));
     }
   }
   return Status::OK();

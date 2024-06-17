@@ -22,7 +22,7 @@ import org.yb.YBTestRunner;
 
 // Runs the pg_regress test suite on YB code.
 @RunWith(value = YBTestRunner.class)
-public class TestPgRegressProfile extends BasePgSQLTest {
+public class TestPgRegressProfile extends BasePgRegressTest {
     private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressProfile.class);
 
     @Override

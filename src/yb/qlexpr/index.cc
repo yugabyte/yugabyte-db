@@ -110,6 +110,10 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       has_index_by_expr_ = true;
     }
   }
+
+  if (pb.has_vector_idx_options()) {
+    vector_idx_options_ = pb.vector_idx_options();
+  }
 }
 
 IndexInfo::IndexInfo() = default;
@@ -142,6 +146,10 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (where_predicate_spec_) {
     pb->mutable_where_predicate_spec()->CopyFrom(*where_predicate_spec_);
+  }
+
+  if (is_vector_idx()) {
+    *pb->mutable_vector_idx_options() = get_vector_idx_options();
   }
 }
 
@@ -272,6 +280,14 @@ size_t IndexInfo::DynamicMemoryUsage() const {
   size += DynamicMemoryUsageOf(backfill_error_message_);
   size += covered_column_ids_.size() * sizeof(ColumnId);
   return size;
+}
+
+bool IndexInfo::is_vector_idx() const {
+  return has_vector_idx_options_;
+}
+
+const PgVectorIdxOptionsPB &IndexInfo::get_vector_idx_options() const {
+  return vector_idx_options_;
 }
 
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {

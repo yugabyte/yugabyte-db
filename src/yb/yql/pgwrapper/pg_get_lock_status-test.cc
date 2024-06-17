@@ -876,6 +876,7 @@ TEST_F(PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns) {
   thread_holder.WaitAndStop(20s * kTimeMultiplier);
 }
 
+#ifndef NDEBUG
 TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
   constexpr auto table = "foo";
   constexpr int kMinTxnAgeMs = 1;
@@ -930,13 +931,19 @@ TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
   )));
   // Wait for kSingleShardWaiterRetryMs and check that the start time of the
   // single shard waiter remains consistent.
-  SleepFor(1ms * 2 * kSingleShardWaiterRetryMs * kTimeMultiplier);
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestLocksOfSingleShardWaiters"}});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  DEBUG_ONLY_TEST_SYNC_POINT("TestLocksOfSingleShardWaiters");
   ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<MonoDelta>(
       "SELECT DISTINCT(waitstart) FROM pg_locks WHERE fastpath"
   )));
   ASSERT_OK(conn.CommitTransaction());
   thread_holder.WaitAndStop(5s * kTimeMultiplier);
 }
+#endif // NDEBUG
 
 TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterTableRewrite) {
   const auto colo_db = "colo_db";

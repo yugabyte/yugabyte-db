@@ -8,8 +8,8 @@
         "name": "node1"
       }
     ],
-    "endTime": "2024-01-18T16:31:12Z",
-    "graphEndTime": "2024-01-18T17:46:48Z",
+    "endTime": "2024-01-18T16:28:48Z",
+    "graphEndTime": "2024-01-18T17:44:24Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
     "graphStepSeconds": 144,
     "category": "SQL",
@@ -245,7 +245,7 @@
     ],
     "title": "SQL query latency increase detected",
     "type": "SQL_QUERY_LATENCY_INCREASE",
-    "startTime": "2024-01-18T15:40:48Z",
+    "startTime": "2024-01-18T15:38:24Z",
     "summary": "Latencies increased for query 'select * from some_table' in database 'yugabyte'",
     "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
   },
@@ -255,8 +255,8 @@
         "name": "node3"
       }
     ],
-    "endTime": "2024-01-18T17:21:36Z",
-    "graphEndTime": "2024-01-18T18:51:36Z",
+    "endTime": "2024-01-18T17:19:12Z",
+    "graphEndTime": "2024-01-18T18:49:12Z",
     "graphStartTime": "2024-01-18T15:00:00Z",
     "graphStepSeconds": 144,
     "category": "SQL",
@@ -492,7 +492,7 @@
     ],
     "title": "SQL query latency increase detected",
     "type": "SQL_QUERY_LATENCY_INCREASE",
-    "startTime": "2024-01-18T16:21:36Z",
+    "startTime": "2024-01-18T16:19:12Z",
     "summary": "Latencies increased for query 'select * from some_table' in database 'postgres'",
     "universeUuid": "9ad06d1f-0355-4e3c-a42c-d052b38af7bc"
   }

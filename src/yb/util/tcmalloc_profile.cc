@@ -69,7 +69,8 @@ bool Symbolize(void *pc, char *out, int out_size) {
 #endif
 
 Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
-    SampleOrder order, HeapSnapshotType snapshot_type, SampleFilter filter) {
+    SampleOrder order, HeapSnapshotType snapshot_type, SampleFilter filter,
+    const std::string& separator) {
 #if YB_GPERFTOOLS_TCMALLOC
   switch (order) {
     case SampleOrder::kSampledBytes:
@@ -91,10 +92,10 @@ Result<std::vector<Sample>> GetAggregateAndSortHeapSnapshot(
     case SampleFilter::kAllSamples:
       break;
   }
-  return GetAggregateAndSortHeapSnapshotGperftools(order);
+  return GetAggregateAndSortHeapSnapshotGperftools(order, separator);
 #elif YB_GOOGLE_TCMALLOC
   auto current_profile = GetHeapSnapshot(snapshot_type);
-  return AggregateAndSortProfile(current_profile, filter, order);
+  return AggregateAndSortProfile(current_profile, filter, order, separator);
 #else
   return STATUS(NotSupported, "Heap snapshot is only available if tcmalloc is enabled.");
 #endif
@@ -134,7 +135,8 @@ tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type) {
 }
 
 std::vector<Sample> AggregateAndSortProfile(
-    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order) {
+    const tcmalloc::Profile& profile, SampleFilter filter, SampleOrder order,
+    const std::string& separator) {
   LOG(INFO) << "Analyzing TCMalloc sampling profile";
   int failed_symbolizations = 0;
   std::unordered_map<std::string, SampleInfo> samples_map;
@@ -157,9 +159,10 @@ std::vector<Sample> AggregateAndSortProfile(
     std::stringstream sstream;
     // 256 is arbitrary. Symbolize will return false if the symbol is longer than that.
     char buf[256];
+    sstream << separator;
     for (int64_t i = 0; i < sample.depth; ++i) {
       if (Symbolize(sample.stack[i], buf, sizeof(buf))) {
-        sstream << buf << std::endl;
+        sstream << buf << separator;
       } else {
         ++failed_symbolizations;
         sstream << "Failed to symbolize" << std::endl;
@@ -218,7 +221,8 @@ void* GetSampleProgramCounter(void** entry, uintptr_t i) {
 
 // Do not call this directly, instead use GetAggregateAndSortHeapSnapshot.
 // Assumes that the supplied sample order is valid for gperftools tcmalloc.
-std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(SampleOrder order) {
+std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(
+    SampleOrder order, const std::string& separator) {
   int sample_period;
   void** samples = MallocExtension::instance()->ReadStackTraces(&sample_period);
 
@@ -234,7 +238,7 @@ std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(SampleOrder order)
     char buf[256];
     for (uintptr_t i = 0; i < GetSampleDepth(sample); ++i) {
       if (Symbolize(GetSampleProgramCounter(sample, i), buf, sizeof(buf))) {
-        sstream << buf << std::endl;
+        sstream << buf << separator;
       } else {
         ++failed_symbolizations;
         sstream << "Failed to symbolize" << std::endl;
@@ -265,5 +269,54 @@ std::vector<Sample> GetAggregateAndSortHeapSnapshotGperftools(SampleOrder order)
 }
 
 #endif // YB_GPERFTOOLS_TCMALLOC
+
+#if YB_GOOGLE_TCMALLOC
+// Initialize to nullopt to indicate that we have not yet dumped a snapshot.
+static std::atomic<std::optional<yb::CoarseTimePoint>> last_heap_snapshot_dump_time(std::nullopt);
+#endif // YB_GOOGLE_TCMALLOC
+
+// Returns true if we attempted to dump the heap snapshot, false otherwise.
+bool DumpHeapSnapshotUnlessThrottled() {
+#if YB_GOOGLE_TCMALLOC
+  auto orig_last_dump_time = last_heap_snapshot_dump_time.load();
+  if (orig_last_dump_time) {
+    auto time_since_last_log_sec = ToSeconds(CoarseMonoClock::Now() - *orig_last_dump_time);
+    if (time_since_last_log_sec <= FLAGS_dump_heap_snapshot_min_interval_sec) {
+      VLOG(3) << Format(
+          "Not dumping snapshot since it was last dumped $0 seconds ago", time_since_last_log_sec);
+      return false;
+    }
+  }
+
+  if (!last_heap_snapshot_dump_time.compare_exchange_strong(
+      orig_last_dump_time, CoarseMonoClock::Now())) {
+    // Lost the race to update last_heap_snapshot_dump_time.
+    return false;
+  }
+
+  // Use a non-newline separator to keep logs readable.
+  auto result = GetAggregateAndSortHeapSnapshot(
+      SampleOrder::kEstimatedBytes, HeapSnapshotType::kCurrentHeap, SampleFilter::kAllSamples,
+      ";;" /* separator */);
+  if (!result.ok()) {
+    LOG(WARNING) << result.status();
+    return false;
+  }
+
+  const int32 stacks_to_dump =
+      std::min(FLAGS_dump_heap_snapshot_max_call_stacks, narrow_cast<int32>(result->size()));
+  LOG(INFO) << Format("Dumping top $0 stacks from heap snapshot", stacks_to_dump);
+  for (auto i = 0; i < stacks_to_dump; ++i) {
+    const auto& [stack, sample_info] = (*result)[i];
+    LOG(INFO) << Format(
+        "Estimated bytes: $0, estimated count: $1, sampled bytes: $2, sampled count: $3, stack: $4",
+        sample_info.estimated_bytes, sample_info.estimated_count,
+        sample_info.sampled_allocated_bytes, sample_info.sampled_count, stack);
+  }
+  return true;
+#else
+  return false;
+#endif
+}
 
 } // namespace yb

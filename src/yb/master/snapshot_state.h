@@ -49,6 +49,7 @@ using TabletSnapshotOperations = std::vector<TabletSnapshotOperation>;
 
 class SnapshotState : public StateWithTablets {
  public:
+  // TODO: Should we throttle per tserver instead of per snapshot?
   SnapshotState(
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
       const tserver::TabletSnapshotOpRequestPB& request,
@@ -90,12 +91,19 @@ class SnapshotState : public StateWithTablets {
     return retention_duration_hours_ ? true : false;
   }
 
+  // Whether to block object (table / tablet) cleanup until the retention window specified in
+  // retention_duration_hours (if set) has passed. If true, the objects will be hidden instead
+  // of deleted until retention_duration_hours have passed.
+  bool ShouldBlockObjectCleanup() const {
+    return HasTtl() && !schedule_id() && !imported_;
+  }
+
   bool ShouldAddToCoveringMap() const {
-    return HasTtl() && !schedule_id() && AllInState(SysSnapshotEntryPB::COMPLETE);
+    return ShouldBlockObjectCleanup() && AllInState(SysSnapshotEntryPB::COMPLETE);
   }
 
   bool ShouldRemoveFromCoveringMap() const {
-    return HasTtl() && !schedule_id() && AllInState(SysSnapshotEntryPB::DELETING);
+    return ShouldBlockObjectCleanup() && AllInState(SysSnapshotEntryPB::DELETING);
   }
 
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
@@ -105,10 +113,10 @@ class SnapshotState : public StateWithTablets {
   // The `options` argument for `ToPB` and `ToEntryPB` controls which entry types are serialized.
   // Pass `nullopt` to serialize all entry types.
   Status ToPB(
-      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options);
+      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) const;
   Status ToEntryPB(
       SysSnapshotEntryPB* out, ForClient for_client,
-      ListSnapshotsDetailOptionsPB options);
+      ListSnapshotsDetailOptionsPB options) const;
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
@@ -122,18 +130,24 @@ class SnapshotState : public StateWithTablets {
   std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status CheckDoneStatus(const Status& status) override;
 
-  TxnSnapshotId id_;
-  HybridTime snapshot_hybrid_time_;
-  HybridTime previous_snapshot_hybrid_time_;
+  const TxnSnapshotId id_;
+  const HybridTime snapshot_hybrid_time_;
+  const HybridTime previous_snapshot_hybrid_time_;
   SysRowEntries entries_;
   // When snapshot is taken as a part of snapshot schedule schedule_id_ will contain this
   // schedule id. Otherwise it will be nil.
-  SnapshotScheduleId schedule_id_;
+  const SnapshotScheduleId schedule_id_;
   int64_t version_;
   bool delete_started_ = false;
   AsyncTaskTracker cleanup_tracker_;
   AsyncTaskThrottler throttler_;
+
+  // How long to retain this snapshot. See the comment in SysSnapshotEntryPB for a longer
+  // description.
   std::optional<int32_t> retention_duration_hours_ = std::nullopt;
+
+  // Whether this snapshot is imported. Imported snapshots do not block object cleanup.
+  bool imported_;
 };
 
 Result<dockv::KeyBytes> EncodedSnapshotKey(

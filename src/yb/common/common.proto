@@ -120,6 +120,31 @@ message ColocatedTableIdentifierPB {
   }
 }
 
+enum PgVectorDistanceType {
+  INVALID_DIST = 0;
+  DIST_L2 = 1;
+  DIST_IP = 2;
+  DIST_COSINE = 3;
+}
+
+enum PgVectorIndexType {
+  UNKNOWN_IDX = 0;
+  DUMMY = 1;
+  IVFFLAT = 2;
+  HNSW = 3;
+}
+
+message PgVectorIdxOptionsPB {
+  required PgVectorDistanceType dist_type = 1;
+  required PgVectorIndexType idx_type = 2;
+  required int32 dimensions = 3;
+}
+
+message PgVectorReadOptionsPB {
+  required QLValuePB vector = 1;
+  required int32 prefetch_size = 2;
+}
+
 message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;
@@ -239,6 +264,8 @@ message IndexInfoPB {
   // table rows processed by the backfill job. The (default) value is zero, otherwise.
   // For partial indexes, this includes non-matching rows of the indexed table.
   optional uint64 num_rows_processed_by_backfill_job = 34;
+
+  optional PgVectorIdxOptionsPB vector_idx_options = 35;
 }
 
 // The possible order modes for clients.

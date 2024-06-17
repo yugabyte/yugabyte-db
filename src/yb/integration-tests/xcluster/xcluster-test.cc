@@ -727,7 +727,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
   }
 }
 
-TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrap) {
+TEST_P(XClusterTest, YB_DISABLE_TEST(SetupNamespaceReplicationWithBootstrap)) {
   constexpr int kNTabletsPerTable = 1;
   ASSERT_OK(SetUpReplicationWithBootstrap(kNTabletsPerTable));
 
@@ -765,12 +765,14 @@ TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrap) {
   ASSERT_OK(DeleteUniverseReplication());
 }
 
-TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapFailToSendSnapshot) {
+TEST_P(XClusterTest, YB_DISABLE_TEST(SetupNamespaceReplicationWithBootstrapFailToSendSnapshot)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_to_send_create_snapshot_request) = true;
   ASSERT_OK(TestSetupReplicationWithBootstrapFailure());
 }
 
-TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapFailCreateProducerSnapshot) {
+TEST_P(
+    XClusterTest,
+    YB_DISABLE_TEST(SetupNamespaceReplicationWithBootstrapFailCreateProducerSnapshot)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_create_producer_snapshot) = true;
   ASSERT_OK(TestSetupReplicationWithBootstrapFailure());
 }
@@ -780,12 +782,12 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(SetupNamespaceReplicationWithBootstrapFailT
   ASSERT_OK(TestSetupReplicationWithBootstrapFailure());
 }
 
-TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapFailRestoreSnapshot) {
+TEST_P(XClusterTest, YB_DISABLE_TEST(SetupNamespaceReplicationWithBootstrapFailRestoreSnapshot)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_restore_consumer_snapshot) = true;
   ASSERT_OK(TestSetupReplicationWithBootstrapFailure());
 }
 
-TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapRequestFailures) {
+TEST_P(XClusterTest, YB_DISABLE_TEST(SetupNamespaceReplicationWithBootstrapRequestFailures)) {
   constexpr int kNTabletsPerTable = 1;
   ASSERT_OK(SetUpReplicationWithBootstrap(kNTabletsPerTable));
 

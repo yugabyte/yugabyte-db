@@ -1,0 +1,63 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name LIKE '%pg_stat_monitor%';
+                   name                    | setting | unit |  context   | vartype | source  | min_val |  max_val   |    enumvals    | boot_val | reset_val | pending_restart 
+-------------------------------------------+---------+------+------------+---------+---------+---------+------------+----------------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_bucket_time          | 60      | s    | postmaster | integer | default | 1       | 2147483647 |                | 60       | 60        | f
+ pg_stat_monitor.pgsm_enable_overflow      | on      |      | postmaster | bool    | default |         |            |                | on       | on        | f
+ pg_stat_monitor.pgsm_enable_pgsm_query_id | on      |      | user       | bool    | default |         |            |                | on       | on        | f
+ pg_stat_monitor.pgsm_enable_query_plan    | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_extract_comments     | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_histogram_buckets    | 20      |      | postmaster | integer | default | 2       | 50         |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_histogram_max        | 100000  | ms   | postmaster | real    | default | 10      | 5e+07      |                | 100000   | 100000    | f
+ pg_stat_monitor.pgsm_histogram_min        | 1       | ms   | postmaster | real    | default | 0       | 5e+07      |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_max                  | 256     | MB   | postmaster | integer | default | 10      | 10240      |                | 256      | 256       | f
+ pg_stat_monitor.pgsm_max_buckets          | 10      |      | postmaster | integer | default | 1       | 20000      |                | 10       | 10        | f
+ pg_stat_monitor.pgsm_normalized_query     | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_overflow_target      | 1       |      | postmaster | integer | default | 0       | 1          |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_query_max_len        | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |                | 2048     | 2048      | f
+ pg_stat_monitor.pgsm_query_shared_buffer  | 20      | MB   | postmaster | integer | default | 1       | 10000      |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_track                | top     |      | user       | enum    | default |         |            | {none,top,all} | top      | top       | f
+ pg_stat_monitor.pgsm_track_utility        | on      |      | user       | bool    | default |         |            |                | on       | on        | f
+(16 rows)
+
+SELECT datname, substr(query,0,100) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
+ datname  |                                                query                                                | calls 
+----------+-----------------------------------------------------------------------------------------------------+-------
+ postgres | SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_v |     1
+ postgres | SELECT pg_stat_monitor_reset()                                                                      |     1
+(2 rows)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name LIKE '%pg_stat_monitor%';
+                   name                    | setting | unit |  context   | vartype | source  | min_val |  max_val   |    enumvals    | boot_val | reset_val | pending_restart 
+-------------------------------------------+---------+------+------------+---------+---------+---------+------------+----------------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_bucket_time          | 60      | s    | postmaster | integer | default | 1       | 2147483647 |                | 60       | 60        | f
+ pg_stat_monitor.pgsm_enable_overflow      | on      |      | postmaster | bool    | default |         |            |                | on       | on        | f
+ pg_stat_monitor.pgsm_enable_pgsm_query_id | on      |      | user       | bool    | default |         |            |                | on       | on        | f
+ pg_stat_monitor.pgsm_enable_query_plan    | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_extract_comments     | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_histogram_buckets    | 20      |      | postmaster | integer | default | 2       | 50         |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_histogram_max        | 100000  | ms   | postmaster | real    | default | 10      | 5e+07      |                | 100000   | 100000    | f
+ pg_stat_monitor.pgsm_histogram_min        | 1       | ms   | postmaster | real    | default | 0       | 5e+07      |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_max                  | 256     | MB   | postmaster | integer | default | 10      | 10240      |                | 256      | 256       | f
+ pg_stat_monitor.pgsm_max_buckets          | 10      |      | postmaster | integer | default | 1       | 20000      |                | 10       | 10        | f
+ pg_stat_monitor.pgsm_normalized_query     | off     |      | user       | bool    | default |         |            |                | off      | off       | f
+ pg_stat_monitor.pgsm_overflow_target      | 1       |      | postmaster | integer | default | 0       | 1          |                | 1        | 1         | f
+ pg_stat_monitor.pgsm_query_max_len        | 2048    |      | postmaster | integer | default | 1024    | 2147483647 |                | 2048     | 2048      | f
+ pg_stat_monitor.pgsm_query_shared_buffer  | 20      | MB   | postmaster | integer | default | 1       | 10000      |                | 20       | 20        | f
+ pg_stat_monitor.pgsm_track                | top     |      | user       | enum    | default |         |            | {none,top,all} | top      | top       | f
+ pg_stat_monitor.pgsm_track_utility        | on      |      | user       | bool    | default |         |            |                | on       | on        | f
+(16 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

@@ -991,6 +991,8 @@ class ControlScript(object):
             Output.print_out("Stopped {} using config {}.".format(SCRIPT_NAME, self.conf_file))
         logpath = self.configs.saved_data.get("log_dir")
         datapath = self.configs.saved_data.get("data_dir")
+        additional_datapaths = self.configs.saved_data.get(
+                                            "additional_data_dir").split(',')
         gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
         certs_dir = self.configs.saved_data.get("certs_dir")
         config_path = os.path.dirname(self.conf_file)
@@ -1007,6 +1009,16 @@ class ControlScript(object):
         if os.path.isdir(datapath):
             shutil.rmtree(datapath)
             Output.print_out("Deleted data at {}.".format(datapath))
+
+        is_additional_datapath_deleted = False
+        for path in additional_datapaths:
+            if os.path.isdir(path):
+                is_additional_datapath_deleted = True
+                shutil.rmtree(path)
+
+        if is_additional_datapath_deleted:
+            Output.print_out("Deleted additional data at {}".format(
+                                                ", ".join(additional_datapaths)))
 
         if os.path.isdir(gen_certs_dir):
             shutil.rmtree(gen_certs_dir)
@@ -2763,10 +2775,17 @@ class ControlScript(object):
         if tserver_flags.find("enable_ysql_conn_mgr") != -1:
             METRICS_SNAPSHOT_LIST.append("ysql_conn_mgr")
 
+        # Check for multiple data directories
+        fs_data_dirs = self.configs.saved_data.get("data_dir")
+        additional_data_dirs = self.configs.saved_data.get(
+                                        "additional_data_dir")
+        if additional_data_dirs:
+            fs_data_dirs += "," + additional_data_dirs
+
         common_gflags = [
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
-            "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
+            "--fs_data_dirs={}".format(fs_data_dirs),
             "--webserver_interface={}".format(advertise_ip),
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
@@ -5112,8 +5131,37 @@ class ControlScript(object):
                 os.path.abspath(
                 os.path.expanduser(args.config)))
             user_configs = Configs.parse_user_config_file(args.config)
+            # User should not be able to override data_dir
+            if (self.configs.saved_data.get("cluster_member")
+                                    and args.data_dir is None):
+                user_configs_data_dir = [
+                    path for path in user_configs.get("data_dir").split(',')
+                ]
+                config_data_dir = [self.configs.saved_data.get("data_dir")] + \
+                  [x for x in self.configs.saved_data.get(
+                    "additional_data_dir").split(',') if x]
+                # Existing data directories cannot be removed or changed
+                # through changing the user config file during restart
+                if len(user_configs_data_dir) < len(config_data_dir) or \
+                    user_configs_data_dir[:len(config_data_dir)] != config_data_dir:
+                    Output.print_out(
+                        "Data directory already exists at: {}.".format(
+                                                ", ".join(config_data_dir))
+                    )
+                    sys.exit(1)
+
+            data_dir = self.configs.saved_data.get("data_dir")
+            additional_data_dir = self.configs.saved_data.get(
+                                            "additional_data_dir")
             # Update saved configs with user configurations
             self.configs.saved_data.update(user_configs)
+            # If args.data_dir is given then do not
+            # change the data_path with user configs
+            if (args.data_dir is not None and
+                        self.configs.saved_data.get("cluster_member")):
+                self.configs.saved_data["data_dir"] = data_dir
+                self.configs.saved_data["additional_data_dir"] = \
+                                                    additional_data_dir
 
         return self.configs
     # Parse the config file and input parent flags to validate and set them.
@@ -5138,31 +5186,32 @@ class ControlScript(object):
         conf_dir = os.path.dirname(self.conf_file)
         self.configs = self.handle_config_files(args, conf_dir, self.conf_file, base_dir)
 
-        for path_args in ("data_dir", "log_dir"):
-            path = getattr(args, path_args, None)
-            if path:
-                setattr(args, path_args, os.path.abspath(os.path.realpath(path)))
-
-        if args.data_dir is not None:
-            args.data_dir = os.path.expanduser(args.data_dir)
-
-            config_data_dir = self.configs.saved_data.get("data_dir")
-            if (config_data_dir and os.path.exists(config_data_dir) and
-                    config_data_dir != args.data_dir):
-                has_errors = True
-                # TODO: Gradefully handle this case... User should be able to override config.
-                Output.print_out(
-                    "Data directory already exists at {}.".format(config_data_dir))
-
-        if args.log_dir is not None:
-            args.log_dir = os.path.expanduser(args.log_dir)
-
-            config_log_dir = self.configs.saved_data.get("log_dir")
-            if (config_log_dir and os.path.exists(config_log_dir) and
-                    config_log_dir != args.log_dir):
-                Output.print_out(
-                    "Old log directory already exists at {}. New logs will go to {}".format(
-                        config_log_dir, args.log_dir))
+        if self.configs.saved_data.get("cluster_member"):
+            if args.data_dir is not None:
+                data_dir_list = [
+                    os.path.abspath(os.path.realpath(os.path.expanduser(path)))
+                    for path in args.data_dir.split(',')
+                ]
+                config_data_dir = [self.configs.saved_data.get("data_dir")] + \
+                  [x for x in self.configs.saved_data.get(
+                    "additional_data_dir").split(',') if x]
+                # Existing data directories cannot be removed or changed
+                if len(data_dir_list) < len(config_data_dir) or \
+                    data_dir_list[:len(config_data_dir)] != config_data_dir:
+                    has_errors = True
+                    Output.print_out(
+                        "Data directory already exists at: {}.".format(
+                                                ", ".join(config_data_dir))
+                    )
+            if args.log_dir is not None:
+                args.log_dir = os.path.abspath(os.path.realpath(
+                                                os.path.expanduser(args.log_dir)))
+                config_log_dir = self.configs.saved_data.get("log_dir")
+                # Existing log directory can be changed
+                if config_log_dir != args.log_dir:
+                    Output.print_out(
+                        "Old log directory already exists at {}. New logs will go to {}".format(
+                            config_log_dir, args.log_dir))
 
         if has_errors:
             sys.exit(1)
@@ -5170,20 +5219,26 @@ class ControlScript(object):
         parent_flags = ["log_dir", "data_dir"]
         # Override configs and defaults with user specified variables
         for k, v in get_kv(args.__dict__):
-            if (v is not None and k in parent_flags and k in self.configs.saved_data
-                    and v != self.configs.saved_data.get(k)):
+            if (v is not None and k in parent_flags and k in self.configs.saved_data):
                 self.configs.saved_data[k] = v
 
         data_dir = self.configs.saved_data["data_dir"]
+        data_dir_paths = data_dir.split(',')
+        self.configs.saved_data["data_dir"] = data_dir_paths[0]
+        if len(data_dir_paths) > 1:
+            self.configs.saved_data["additional_data_dir"] = \
+                                            ','.join(data_dir_paths[1:])
         log_dir = self.configs.saved_data["log_dir"]
         self.configs.save_configs()
 
-        if not os.path.isdir(data_dir):
-            os.makedirs(data_dir)
+        for dir_path in data_dir_paths:
+            if not os.path.isdir(dir_path):
+                os.makedirs(dir_path)
         if not os.path.isdir(log_dir):
             os.makedirs(log_dir)
 
-        self.script = ScriptProcessManager(log_dir, data_dir)
+        self.script = ScriptProcessManager(log_dir,
+                            self.configs.saved_data.get("data_dir"))
 
     # Check and validate the flags regarding the secure deployment of the node.
     # Check whether the certs files are present or not.
@@ -6769,6 +6824,7 @@ class Configs(object):
     def __init__(self, config_file, base_dir):
         self.saved_data = {
             "data_dir": os.path.join(base_dir, "data"),
+            "additional_data_dir": "",
             "log_dir": os.path.join(base_dir, "logs"),
             "gen_certs_dir": os.path.join(base_dir, "generated_certs"),
             "master_rpc_port": DEFAULT_MASTER_RPC_PORT,
@@ -6890,13 +6946,25 @@ class Configs(object):
     # Expand path variables in config files
     @staticmethod
     def expand_path_variables(configs):
-        paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
+        paths = ["log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
+        multi_paths = ["data_dir"]
         for key, value in configs.items():
-            if value is not None and key in paths:
-                if "$" in value:
-                    configs[key] = os.path.expanduser(os.path.expandvars(value))
-                else:
-                    configs[key] = os.path.expanduser(value)
+            if value is not None:
+                if key in multi_paths:
+                    configs[key] = ','.join([
+                        os.path.abspath(os.path.realpath(
+                            os.path.expanduser(os.path.expandvars(path))) \
+                            if "$" in path else \
+                            os.path.abspath(os.path.realpath(os.path.expanduser(path)))
+                        ) for path in value.split(',')
+                    ])
+                elif key in paths:
+                    configs[key] = (
+                        os.path.abspath(os.path.realpath(
+                            os.path.expanduser(os.path.expandvars(value))))
+                        if "$" in value else
+                        os.path.abspath(os.path.realpath(os.path.expanduser(value)))
+                    )
 
         return configs
 

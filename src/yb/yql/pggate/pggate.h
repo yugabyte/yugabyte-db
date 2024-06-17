@@ -402,6 +402,8 @@ class PgApiImpl {
 
   Status CreateIndexSetNumTablets(PgStatement *handle, int32_t num_tablets);
 
+  Status CreateIndexSetVectorOptions(PgStatement *handle, YbPgVectorIdxOptions *options);
+
   Status CreateIndexAddSplitRow(PgStatement *handle, int num_cols,
                                 YBCPgTypeEntity **types, uint64_t *data);
 
@@ -603,6 +605,10 @@ class PgApiImpl {
   Status FetchRequestedYbctids(PgStatement *handle, const PgExecParameters *exec_params,
                                ConstSliceVector ybctids);
 
+  Status DmlANNBindVector(PgStatement *handle, PgExpr *vector);
+
+  Status DmlANNSetPrefetchSize(PgStatement *handle, int prefetch_size);
+
 
   //------------------------------------------------------------------------------------------------
   // Functions.
@@ -800,6 +806,8 @@ class PgApiImpl {
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+
+  bool IsCronLeader() const;
 
  private:
   void ClearSessionState();

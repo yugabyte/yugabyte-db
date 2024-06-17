@@ -961,19 +961,6 @@ explain (costs off) select * from rlp where a = 1 or b = 'ab';
 (25 rows)
 
 -- YB_TODO: end
--- YB_TODO: Remove after tracking yb_create_index
-CREATE TABLE test_include (c1 int, c2 int, c3 int);
-INSERT INTO test_include VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
-CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-UPDATE test_include SET c2 = 22 WHERE c1 = 2;
-SELECT * FROM test_include WHERE c1 = 2;
- c1 | c2 | c3 
-----+----+----
-  2 | 22 |  2
-(1 row)
-
-DROP TABLE test_include;
--- YB_TODO: end
 -- suppress warning that depends on wal_level
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION p;

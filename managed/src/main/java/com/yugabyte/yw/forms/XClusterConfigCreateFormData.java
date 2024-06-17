@@ -2,6 +2,7 @@ package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
+import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
@@ -67,6 +68,14 @@ public class XClusterConfigCreateFormData {
     @Required
     @ApiModelProperty(value = "Parameters used to do Backup/restore", required = true)
     public BootstarpBackupParams backupRequestParams;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Allow backup on whole database when"
+                + " only set of tables require bootstrap",
+        required = false)
+    @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+    public boolean allowBootstrap = false;
 
     @ApiModel(description = "Backup parameters for bootstrapping")
     @ToString

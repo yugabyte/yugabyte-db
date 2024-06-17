@@ -1510,6 +1510,101 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  // DB Scoped replication methods.
+  // --------------------------------------------------------------------------------
+
+  /**
+   *  Checkpoints the source universe's databases.
+   *
+   * @param replicationGroupId name of the replication group to create
+   * @param namespaceIds set of namespace ids to checkpoint.
+   * @return A deferred object that yields a {@link XClusterCreateOutboundReplicationGroupResponse}
+   */
+  public Deferred<XClusterCreateOutboundReplicationGroupResponse>
+      xClusterCreateOutboundReplicationGroup(String replicationGroupId, Set<String> namespaceIds) {
+    checkIsClosed();
+    XClusterCreateOutboundReplicationGroupRequest request =
+        new XClusterCreateOutboundReplicationGroupRequest(
+          this.masterTable, replicationGroupId, namespaceIds);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   *  Checks whether checkpointing one of the source universe's namespaces from
+   *    xClusterCreateOutboundReplicationGroup is complete with 'notReady' boolean and
+   *    also whether or not the database requires bootstrapping.
+   * @param replicationGroupId name of the replication group to check
+   * @param namespaceId name of database to validate.
+   * @return A deferred object that yields a {@link IsXClusterBootstrapRequiredResponse}
+   *   which contains whether checkpointing is complete with 'notReady' and whether
+   *   bootstrapping is required with initialBootstrapRequired
+   */
+  public Deferred<IsXClusterBootstrapRequiredResponse> isXClusterBootstrapRequired(
+        String replicationGroupId, String namespaceId) {
+    checkIsClosed();
+    IsXClusterBootstrapRequiredRequest request = new IsXClusterBootstrapRequiredRequest(
+        this.masterTable, replicationGroupId, namespaceId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Set up replication with specified replication group name and target universe.
+   * @param replicationGroupId name of the replication group to set up
+   * @param targetMasterAddresses target univere's master addresses
+   * @return  A deferred object that yields a {@link CreateXClusterReplicationResponse}
+   */
+  public Deferred<CreateXClusterReplicationResponse> createXClusterReplication(
+      String replicationGroupId, Set<CommonNet.HostPortPB> targetMasterAddresses) {
+    checkIsClosed();
+    CreateXClusterReplicationRequest request = new CreateXClusterReplicationRequest(
+        this.masterTable, replicationGroupId, targetMasterAddresses);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Checks whether the set up replication has succeeded.
+   * @param replicationGroupId name of the replication group to validate
+   * @param targetMasterAddresses target univere's master addresses used to set up replicaiton
+   * @return A deferred object that yields a {@link IsCreateXClusterReplicationDoneResponse}
+   *   containing whether the the replication has succeeded with 'done' bit, along with
+   *   replicationError errors
+   */
+  public Deferred<IsCreateXClusterReplicationDoneResponse> isCreateXClusterReplicationDone(
+      String replicationGroupId, Set<CommonNet.HostPortPB> targetMasterAddresses) {
+    checkIsClosed();
+    IsCreateXClusterReplicationDoneRequest request = new IsCreateXClusterReplicationDoneRequest(
+        this.masterTable, replicationGroupId, targetMasterAddresses);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Deletes the replication by running on the source universe. If target universe master
+   *   addresses are set, will delete both outbound and inbound replication. If target universe
+   *   master addresses are not set, will only delete the outbound replication on the source
+   *   universe.
+   * @param replicationGroupId name of the replication group to delete
+   * @param targetMasterAddresses target universe master addresses correcponding to replication.
+   * @return A deferred object that yields a {@link XClusterDeleteOutboundReplicationGroupResponse}
+   *
+   */
+  public Deferred<XClusterDeleteOutboundReplicationGroupResponse>
+      xClusterDeleteOutboundReplicationGroup(
+      String replicationGroupId, @Nullable Set<CommonNet.HostPortPB> targetMasterAddresses) {
+    checkIsClosed();
+    XClusterDeleteOutboundReplicationGroupRequest request =
+        new XClusterDeleteOutboundReplicationGroupRequest(
+        this.masterTable, replicationGroupId, targetMasterAddresses);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  // --------------------------------------------------------------------------------
+  // End of DB Scoped replication methods.
+
   /**
    * It returns information about a database/namespace after we pass in the databse name.
    * @param keyspaceName database name to get details about.

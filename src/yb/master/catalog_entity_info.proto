@@ -596,10 +596,22 @@ message SysSnapshotEntryPB {
 
   optional fixed64 previous_snapshot_hybrid_time = 7;
 
-  // Number of hours the snapshot needs to be kept around
-  // before it is deleted. Set to -1 to retain indefinitely until
-  // an explicit delete_snapshot.
+  // This field specifies the TTL of this snapshot.
+  // 1. Not set: the snapshot has no explicit TTL, will be retained until a DeleteSnapshot, and
+  //             does not block object cleanup. This is used to handle a few special cases:
+  //   a. Snapshots which are part of a snapshot schedule do not have this field set. This is
+  //      because their TTL is controlled by the snapshot schedule's retention.
+  //   b. Snapshots created before D28005 (when this field was introduced).
+  // 2. < 0: the snapshot will not be automatically cleaned up until a `DeleteSnapshot`, and might
+  //         block object cleanup until then.
+  // 3. > 0: the snapshot will automatically be cleaned up when
+  //         now() > snapshot_hybrid_time + retention_duration_hours.
+  // 4. 0: explicitly forbidden.
   optional int32 retention_duration_hours = 8;
+
+  // Whether this is an imported snapshot (part of a restore). Default is false to maintain
+  // historical behavior when deciding whether to block object cleanup.
+  optional bool imported = 9 [default = false];
 }
 
 message SysCloneStatePB {

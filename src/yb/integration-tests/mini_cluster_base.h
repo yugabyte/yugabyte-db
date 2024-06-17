@@ -21,6 +21,8 @@
 
 namespace yb {
 
+class ExternalYbController;
+
 namespace client {
 class YBClientBuilder;
 class YBClient;
@@ -54,6 +56,8 @@ class MiniClusterBase {
   Result<HostPort> GetLeaderMasterBoundRpcAddr();
 
   bool running() const { return running_.load(std::memory_order_acquire); }
+
+  virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;
 
  protected:
   virtual ~MiniClusterBase() = default;

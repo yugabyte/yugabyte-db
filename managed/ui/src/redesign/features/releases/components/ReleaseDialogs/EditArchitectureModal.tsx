@@ -45,15 +45,14 @@ interface EditArchitectureModalProps {
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    padding: `${theme.spacing(3)}px ${theme.spacing(4.5)}px`
+    padding: `${theme.spacing(3)}px ${theme.spacing(3)}px`
   },
   modalTitle: {
-    marginLeft: theme.spacing(2.25)
+    marginLeft: theme.spacing(1)
   },
   flexRow: {
     display: 'flex',
-    flexDirection: 'row',
-    marginTop: theme.spacing(0.5)
+    flexDirection: 'row'
   },
   flexColumn: {
     display: 'flex',
@@ -88,7 +87,8 @@ const useStyles = makeStyles((theme) => ({
     marginTop: theme.spacing(2)
   },
   importTypeSelect: {
-    marginTop: theme.spacing(1)
+    marginTop: theme.spacing(1),
+    width: '250px'
   },
   reviewReleaseMetadataRow: {
     display: 'flex',
@@ -210,7 +210,6 @@ export const EditArchitectureModal = ({
 
   // Since it is the edit view, on the component mount, we need to prepopulate the metadata
   useEffect(() => {
-    setReviewReleaseDetails(true);
     setUrlMetadata({
       version: data?.version,
       releaseType: data?.release_type,
@@ -228,21 +227,12 @@ export const EditArchitectureModal = ({
     ) {
       setReviewReleaseDetails(false);
     }
-    if (importMethodValue === AddReleaseImportMethod.URL) {
-      artifact?.package_url !== installationPackageUrlValue
-        ? setReviewReleaseDetails(false)
-        : setReviewReleaseDetails(true);
-    }
   }, [importMethodValue, installationPackageUrlValue]);
 
   // componentDidUpdate that gets triggered when file uploaded changes
   useEffect(() => {
     if (importMethodValue === AddReleaseImportMethod.FILE_UPLOAD) {
-      if (isNonEmptyString(artifact?.package_file_id)) {
-        artifact?.package_file_id !== packageFileId
-          ? setReviewReleaseDetails(false)
-          : setReviewReleaseDetails(true);
-      } else {
+      if (isEmptyString(artifact?.package_file_id)) {
         setReviewReleaseDetails(false);
       }
     }
@@ -599,11 +589,10 @@ export const EditArchitectureModal = ({
               </Box>
             </>
           )}
-          <Box mt={3}>
+          <Box mt={artifact?.platform === ReleasePlatform.KUBERNETES ? 2 : 0}>
             <Typography variant={'body2'}>{t('releases.architecture.importMethod')}</Typography>
             <YBSelect
               className={helperClasses.importTypeSelect}
-              fullWidth
               value={defaultImportMethod}
               inputProps={{
                 'data-testid': `EditArchitectureModal-ImportSelect`
@@ -652,7 +641,7 @@ export const EditArchitectureModal = ({
                     }}
                   />
                 </Box>
-                <Box mt={2}>
+                <Box mt={2} ml={2}>
                   {isFileUploaded && (
                     <YBButton
                       variant="secondary"
@@ -687,7 +676,7 @@ export const EditArchitectureModal = ({
                 </Box>
               </Box>
 
-              <Box mt={2}>
+              <Box mt={2} ml={2}>
                 <YBButton
                   variant="secondary"
                   data-testid="EditArchitectureModal-ReleaseMetadataButton"

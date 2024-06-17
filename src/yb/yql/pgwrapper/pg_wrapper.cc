@@ -251,6 +251,13 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replica_identity, false,
     "Enable replica identity command for Alter Table query");
 
+DEFINE_RUNTIME_PG_FLAG(
+    string, yb_default_replica_identity, "CHANGE",
+    "The default replica identity to be assigned to user defined tables at the time of creation. "
+    "The flag is case sensitive and can take four possible values, 'FULL', 'DEFAULT', 'NOTHING' "
+    "and 'CHANGE'. If any value other than these is assigned to the flag, the replica identity "
+    "CHANGE will be used as default at the time of table creation.");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
     "The number of rows to plan per parallel worker, zero disables the feature");
 
@@ -291,7 +298,10 @@ DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
     "Number of samples captured from each component per sampling event");
 
-DEFINE_test_flag(bool, enable_pg_cron, false, "Enables the pg_cron extension");
+DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
+    "Database in which pg_cron metadata is kept.");
+
+DECLARE_bool(enable_pg_cron);
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -457,7 +467,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
 
-  if (FLAGS_TEST_enable_pg_cron) {
+  if (FLAGS_enable_pg_cron) {
     metricsLibs.push_back("pg_cron");
   }
 
@@ -497,6 +507,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
                            conf.cert_base_name));
     lines.push_back(Format("ssl_ca_file='$0/ca.crt'", conf.certs_for_client_dir));
   }
+
+  // Add cron.database_name
+  lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
 
   // Finally add gFlags.
   // If the file contains multiple entries for the same parameter, all but the last one are

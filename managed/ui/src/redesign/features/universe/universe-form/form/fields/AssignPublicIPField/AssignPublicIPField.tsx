@@ -1,20 +1,34 @@
-import { ReactElement } from 'react';
+import { ReactElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { Box } from '@material-ui/core';
 import { YBLabel, YBToggleField, YBTooltip } from '../../../../../../components';
-import { UniverseFormData } from '../../../utils/dto';
+import { CloudType, UniverseFormData } from '../../../utils/dto';
 import { ASSIGN_PUBLIC_IP_FIELD } from '../../../utils/constants';
 import InfoMessageIcon from '../../../../../../assets/info-message.svg';
 
 interface AssignPublicIPFieldProps {
   disabled: boolean;
+  isCreateMode: boolean;
+  providerCode: CloudType;
 }
 
-export const AssignPublicIPField = ({ disabled }: AssignPublicIPFieldProps): ReactElement => {
-  const { control } = useFormContext<UniverseFormData>();
+export const AssignPublicIPField = ({
+  disabled,
+  isCreateMode,
+  providerCode
+}: AssignPublicIPFieldProps): ReactElement => {
+  const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const assignIPTooltipText = t('universeForm.instanceConfig.assignPublicIPHelper');
+
+  useEffect(() => {
+    if (isCreateMode) {
+      providerCode === CloudType.azu
+        ? setValue(ASSIGN_PUBLIC_IP_FIELD, false)
+        : setValue(ASSIGN_PUBLIC_IP_FIELD, true);
+    }
+  }, [providerCode]);
 
   return (
     <Box

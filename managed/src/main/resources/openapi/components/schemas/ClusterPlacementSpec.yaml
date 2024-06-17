@@ -6,4 +6,4 @@ properties:
   cloud_list:
     type: array
     items:
-      $ref: ./PlacementCloud.yaml
+      $ref: "./PlacementCloud.yaml"

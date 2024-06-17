@@ -609,6 +609,8 @@ TAG_FLAG(initial_tserver_registration_duration_secs, advanced);
 
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
+DECLARE_bool(enable_pg_cron);
+
 namespace yb {
 namespace master {
 
@@ -882,6 +884,11 @@ IndexStatusPB::BackfillStatus GetBackfillStatus(const IndexInfoPB& index) {
   // It is expected index permissions are always specified.
   return index.has_index_permissions() ? GetBackfillStatus(index.index_permissions())
                                        : IndexStatusPB::BACKFILL_UNKNOWN;
+}
+
+bool IsPgCronJobTable(const CreateTableRequestPB& req) {
+  return req.has_schema() && req.schema().has_pgschema_name() &&
+         req.schema().pgschema_name() == "cron" && req.name() == "job";
 }
 
 }  // anonymous namespace
@@ -4340,6 +4347,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  if (FLAGS_enable_pg_cron && IsPgCronJobTable(req)) {
+    RETURN_NOT_OK(CreatePgCronService(epoch));
+  }
+
   s = sys_catalog_->Upsert(epoch, table, tablets);
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(
@@ -5172,6 +5183,30 @@ Status CatalogManager::CreatePgAutoAnalyzeService(const LeaderEpoch& epoch) {
   }
 
   pg_auto_analyze_service_created = true;
+  return Status::OK();
+}
+
+Status CatalogManager::CreatePgCronService(const LeaderEpoch& epoch) {
+  if (pg_cron_service_created_) {
+    return Status::OK();
+  }
+
+  // Use a generic schema that can be extended later on.
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn("id")->HashPrimaryKey()->Type(DataType::INT64);
+  schema_builder.AddColumn("data")->Type(DataType::JSONB);
+
+  client::YBSchema yb_schema;
+  CHECK_OK(schema_builder.Build(&yb_schema));
+
+  auto s = CreateStatefulService(StatefulServiceKind::PG_CRON_LEADER, yb_schema, epoch);
+  // It is possible that the table was already created. If so, there is nothing to do so we just
+  // ignore the "AlreadyPresent" error.
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
+
+  pg_cron_service_created_ = true;
   return Status::OK();
 }
 

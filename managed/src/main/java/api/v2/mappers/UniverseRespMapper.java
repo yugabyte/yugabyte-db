@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package api.v2.mappers;
 
-import api.v2.models.UniverseResp;
+import api.v2.models.Universe;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.ZoneOffset;
@@ -23,7 +23,7 @@ public interface UniverseRespMapper {
 
   @Mapping(target = "spec", source = "universeDetails.delegate")
   @Mapping(target = "info", source = "universeDetails.delegate")
-  UniverseResp toV2UniverseResp(com.yugabyte.yw.forms.UniverseResp v1UniverseResp);
+  Universe toV2UniverseResp(com.yugabyte.yw.forms.UniverseResp v1UniverseResp);
 
   // below methods are used implicitly to generate above mapping
   default java.time.OffsetDateTime parseToOffsetDateTime(String datetime) throws ParseException {

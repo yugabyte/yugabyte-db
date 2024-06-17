@@ -47,7 +47,7 @@ properties:
     example: yb-dev-universe-name
     readOnly: true
   encryption_at_rest_info:
-    $ref: ./EncryptionAtRestInfo.yaml
+    $ref: "./EncryptionAtRestInfo.yaml"
   update_in_progress:
     description: Whether a create/edit/destroy intent on the universe is currently running.
     type: boolean
@@ -114,15 +114,15 @@ properties:
     type: boolean
     x-yba-api-visibility: internal
   x_cluster_info:
-    $ref: ./XClusterInfo.yaml
+    $ref: "./XClusterInfo.yaml"
   clusters:
     type: array
     items:
-      $ref: ./ClusterInfo.yaml
+      $ref: "./ClusterInfo.yaml"
     maxItems: 16
     minItems: 1
   node_details_set:
     description: Node details
     type: array
     items:
-      $ref: ./NodeDetails.yaml
+      $ref: "./NodeDetails.yaml"
