@@ -2042,9 +2042,8 @@ drop function sp_id_user(text);
 --
 -- tests for refcursors
 --
-create table rc_test (a int, b int, ybsort serial, PRIMARY KEY (ybsort ASC));
--- YB note: avoid specifying serial ybsort column.
-copy rc_test (a, b) from stdin;
+create table rc_test (a int, b int);
+copy rc_test from stdin;
 5	10
 50	100
 500	1000
@@ -3989,7 +3988,7 @@ create function conflict_test() returns setof int8_tbl as $$
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
+  for r in select q1,q2 from int8_tbl loop
     return next r;
   end loop;
 end;
@@ -4002,26 +4001,26 @@ create or replace function conflict_test() returns setof int8_tbl as $$
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
+  for r in select q1,q2 from int8_tbl loop
     return next r;
   end loop;
 end;
 $$ language plpgsql;
 
-select q1, q2 from conflict_test(); -- YB: avoid ybsort column
+select * from conflict_test();
 
 create or replace function conflict_test() returns setof int8_tbl as $$
 #variable_conflict use_column
 declare r record;
   q1 bigint := 42;
 begin
-  for r in select q1,q2,ybsort from int8_tbl loop -- YB: must select ybsort because of return type.
+  for r in select q1,q2 from int8_tbl loop
     return next r;
   end loop;
 end;
 $$ language plpgsql;
 
-select q1, q2 from conflict_test(); -- YB: avoid ybsort column
+select * from conflict_test();
 
 drop function conflict_test();
 

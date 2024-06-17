@@ -14,47 +14,47 @@ INSERT INTO INT8_TBL(q1) VALUES ('- 123');
 INSERT INTO INT8_TBL(q1) VALUES ('  345     5');
 INSERT INTO INT8_TBL(q1) VALUES ('');
 
-SELECT q1, q2 FROM INT8_TBL; -- YB: avoid ybsort column
+SELECT * FROM INT8_TBL;
 
 -- int8/int8 cmp
-SELECT q1, q2 FROM INT8_TBL WHERE q2 = 4567890123456789; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 <> 4567890123456789; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 < 4567890123456789; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 > 4567890123456789; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 <= 4567890123456789; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 >= 4567890123456789; -- YB: avoid ybsort column
+SELECT * FROM INT8_TBL WHERE q2 = 4567890123456789;
+SELECT * FROM INT8_TBL WHERE q2 <> 4567890123456789;
+SELECT * FROM INT8_TBL WHERE q2 < 4567890123456789;
+SELECT * FROM INT8_TBL WHERE q2 > 4567890123456789;
+SELECT * FROM INT8_TBL WHERE q2 <= 4567890123456789;
+SELECT * FROM INT8_TBL WHERE q2 >= 4567890123456789;
 
 -- int8/int4 cmp
-SELECT q1, q2 FROM INT8_TBL WHERE q2 = 456; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 <> 456; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 < 456; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 > 456; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 <= 456; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 >= 456; -- YB: avoid ybsort column
+SELECT * FROM INT8_TBL WHERE q2 = 456;
+SELECT * FROM INT8_TBL WHERE q2 <> 456;
+SELECT * FROM INT8_TBL WHERE q2 < 456;
+SELECT * FROM INT8_TBL WHERE q2 > 456;
+SELECT * FROM INT8_TBL WHERE q2 <= 456;
+SELECT * FROM INT8_TBL WHERE q2 >= 456;
 
 -- int4/int8 cmp
-SELECT q1, q2 FROM INT8_TBL WHERE 123 = q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE 123 <> q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE 123 < q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE 123 > q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE 123 <= q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE 123 >= q1; -- YB: avoid ybsort column
+SELECT * FROM INT8_TBL WHERE 123 = q1;
+SELECT * FROM INT8_TBL WHERE 123 <> q1;
+SELECT * FROM INT8_TBL WHERE 123 < q1;
+SELECT * FROM INT8_TBL WHERE 123 > q1;
+SELECT * FROM INT8_TBL WHERE 123 <= q1;
+SELECT * FROM INT8_TBL WHERE 123 >= q1;
 
 -- int8/int2 cmp
-SELECT q1, q2 FROM INT8_TBL WHERE q2 = '456'::int2; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 <> '456'::int2; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 < '456'::int2; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 > '456'::int2; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 <= '456'::int2; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE q2 >= '456'::int2; -- YB: avoid ybsort column
+SELECT * FROM INT8_TBL WHERE q2 = '456'::int2;
+SELECT * FROM INT8_TBL WHERE q2 <> '456'::int2;
+SELECT * FROM INT8_TBL WHERE q2 < '456'::int2;
+SELECT * FROM INT8_TBL WHERE q2 > '456'::int2;
+SELECT * FROM INT8_TBL WHERE q2 <= '456'::int2;
+SELECT * FROM INT8_TBL WHERE q2 >= '456'::int2;
 
 -- int2/int8 cmp
-SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 = q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 <> q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 < q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 > q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 <= q1; -- YB: avoid ybsort column
-SELECT q1, q2 FROM INT8_TBL WHERE '123'::int2 >= q1; -- YB: avoid ybsort column
+SELECT * FROM INT8_TBL WHERE '123'::int2 = q1;
+SELECT * FROM INT8_TBL WHERE '123'::int2 <> q1;
+SELECT * FROM INT8_TBL WHERE '123'::int2 < q1;
+SELECT * FROM INT8_TBL WHERE '123'::int2 > q1;
+SELECT * FROM INT8_TBL WHERE '123'::int2 <= q1;
+SELECT * FROM INT8_TBL WHERE '123'::int2 >= q1;
 
 
 SELECT q1 AS plus, -q1 AS minus FROM INT8_TBL;

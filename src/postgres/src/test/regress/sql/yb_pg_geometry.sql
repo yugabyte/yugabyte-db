@@ -516,30 +516,24 @@ SELECT c.f1, p.f1, c.f1 <-> p.f1 FROM CIRCLE_TBL c, POLYGON_TBL p;
 
 CREATE INDEX gcircleind ON circle_tbl USING gist (f1);
 
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
+SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
     ORDER BY area(f1);
 
 EXPLAIN (COSTS OFF)
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
+SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
     ORDER BY area(f1);
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
+SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
     ORDER BY area(f1);
 
 -- Check index behavior for polygons
 
 CREATE INDEX gpolygonind ON polygon_tbl USING gist (f1);
 
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
 
 EXPLAIN (COSTS OFF)
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
     ORDER BY (poly_center(f1))[0];

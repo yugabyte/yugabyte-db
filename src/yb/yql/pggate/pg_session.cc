@@ -61,6 +61,15 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
+DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
+                 "For new tables without PK, make the ybrowid column ASC and generated using a"
+                 " naive per-node sequential counter. This can fail with collisions for a"
+                 " multi-node cluster, and the ordering can be inconsistent in case multiple"
+                 " connections generate ybrowid at the same time. In case a SPLIT INTO clause is"
+                 " provided, fall back to the old behavior. The primary use case of this flag is"
+                 " for ported pg_regress tests that expect deterministic output ordering based on"
+                 " ctid. This is a best-effort reproduction of that, but it still falls short in"
+                 " case of UPDATEs because PG regenerates ctid while YB doesn't.");
 
 namespace yb::pggate {
 namespace {
@@ -699,6 +708,17 @@ PgIsolationLevel PgSession::GetIsolationLevel() {
 bool PgSession::IsHashBatchingEnabled() {
   return yb_enable_hash_batch_in &&
       GetIsolationLevel() != PgIsolationLevel::SERIALIZABLE;
+}
+
+std::string PgSession::GenerateNewYbrowid() {
+  if (PREDICT_FALSE(FLAGS_TEST_generate_ybrowid_sequentially)) {
+    unsigned char buf[sizeof(uint64_t)];
+    BigEndian::Store64(buf, MonoTime::Now().ToUint64());
+    return std::string(reinterpret_cast<char*>(buf), sizeof(buf));
+  }
+
+  // Generate a new random and unique v4 UUID.
+  return GenerateObjectId(true /* binary_id */);
 }
 
 Result<bool> PgSession::IsInitDbDone() {

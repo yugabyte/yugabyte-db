@@ -359,10 +359,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     connected_database_ = "";
   }
 
-  // Generate a new random and unique rowid. It is a v4 UUID.
-  std::string GenerateNewRowid() {
-    return GenerateObjectId(true /* binary_id */);
-  }
+  std::string GenerateNewYbrowid();
 
   void InvalidateAllTablesCache();
 

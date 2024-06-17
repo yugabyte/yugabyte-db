@@ -3,8 +3,7 @@
 -- Infinite lines
 --
 --DROP TABLE LINE_TBL;
--- YB note: add sorting column.
-CREATE TABLE LINE_TBL (s line, ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE LINE_TBL (s line);
 INSERT INTO LINE_TBL VALUES ('{0,-1,5}');	-- A == 0
 INSERT INTO LINE_TBL VALUES ('{1,0,5}');	-- B == 0
 INSERT INTO LINE_TBL VALUES ('{0,3,0}');	-- A == C == 0
@@ -64,8 +63,7 @@ LINE 1: INSERT INTO LINE_TBL VALUES ('[(1,2),(1,2)]');
                                      ^
 INSERT INTO LINE_TBL VALUES (line(point '(1,0)', point '(1,0)'));
 ERROR:  invalid line specification: must be two distinct points
--- YB note: avoid selecting ybsort column.
-select s from LINE_TBL;
+select * from LINE_TBL;
                        s
 ------------------------------------------------
  {0,-1,5}

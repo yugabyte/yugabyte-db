@@ -4,8 +4,7 @@
 -- polygon logic
 --
 
--- YB note: add sorting column.
-CREATE TABLE POLYGON_TBL(f1 polygon, ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE POLYGON_TBL(f1 polygon);
 
 
 INSERT INTO POLYGON_TBL(f1) VALUES ('(2.0,0.0),(2.0,4.0),(0.0,0.0)');
@@ -33,8 +32,7 @@ INSERT INTO POLYGON_TBL(f1) VALUES ('(0,1,2,3');
 INSERT INTO POLYGON_TBL(f1) VALUES ('asdf');
 
 
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM POLYGON_TBL;
+SELECT * FROM POLYGON_TBL;
 
 --
 -- Test the SP-GiST index
