@@ -628,19 +628,19 @@ LINE 1: SELECT * FROM tab_range_nonkey_noco2;
 -- DROP INDEX
 -- drop index on non-colocated table
 DROP INDEX idx_range2;
-EXPLAIN SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
-                                               QUERY PLAN
---------------------------------------------------------------------------------------------------------
- Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco  (cost=0.00..4.11 rows=1 width=8)
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
    Index Cond: (a = 1)
 (2 rows)
 
 -- drop index on colocated table
 DROP INDEX idx_range5;
-EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Index Scan using tab_range_nonkey5_pkey on tab_range_nonkey5  (cost=0.00..4.11 rows=1 width=8)
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey5 WHERE a = 1;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Index Scan using tab_range_nonkey5_pkey on tab_range_nonkey5
    Index Cond: (a = 1)
 (2 rows)
 
@@ -842,7 +842,7 @@ EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
  Unique
    ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
          Index Cond: (r3 <= 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
@@ -859,7 +859,7 @@ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
  Unique
    ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
          Index Cond: (r3 <= 1)
-         Distinct Prefix: 1
+         Distinct Keys: r1
 (4 rows)
 
 /*+Set(enable_hashagg false)*/ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
@@ -1065,3 +1065,109 @@ CREATE INDEX ON qux (b) SPLIT AT VALUES((10), (20), (30));
 ERROR:  cannot create colocated index with split option
 CREATE TABLE split_table(a int primary key, b int) SPLIT AT VALUES ((1000),(2000),(3000));
 ERROR:  cannot create colocated table with split option
+-- Test Table Rewrite operations with table colocation option
+CREATE TABLE non_col_tbl_without_pk (k INT) WITH (colocation=0);
+INSERT INTO non_col_tbl_without_pk SELECT generate_series(1, 100);
+ALTER TABLE non_col_tbl_without_pk ADD PRIMARY KEY(k);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d non_col_tbl_without_pk
+       Table "public.non_col_tbl_without_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+Indexes:
+    "non_col_tbl_without_pk_pkey" PRIMARY KEY, lsm (k ASC)
+
+SELECT min(k), max(k) FROM non_col_tbl_without_pk;
+ min | max
+-----+-----
+   1 | 100
+(1 row)
+
+CREATE TABLE col_tbl_without_pk (k INT) WITH (colocation=1);
+INSERT INTO col_tbl_without_pk SELECT generate_series(1, 10);
+ALTER TABLE col_tbl_without_pk ADD PRIMARY KEY(k);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d col_tbl_without_pk
+         Table "public.col_tbl_without_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+Indexes:
+    "col_tbl_without_pk_pkey" PRIMARY KEY, lsm (k ASC), colocation: true
+Colocation: true
+
+SELECT sum(k) FROM col_tbl_without_pk;
+ sum
+-----
+  55
+(1 row)
+
+CREATE MATERIALIZED VIEW non_col_mv WITH (colocation=0) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 0;
+CREATE MATERIALIZED VIEW col_mv WITH (colocation=1) AS SELECT * FROM col_tbl_without_pk WHERE k % 2 = 1;
+SELECT sum(k) FROM non_col_mv;
+ sum
+-----
+  30
+(1 row)
+
+SELECT sum(k) FROM col_mv;
+ sum
+-----
+  25
+(1 row)
+
+INSERT INTO col_tbl_without_pk VALUES (11);
+REFRESH MATERIALIZED VIEW non_col_mv;
+REFRESH MATERIALIZED VIEW col_mv;
+SELECT sum(k) FROM non_col_mv;
+ sum
+-----
+  30
+(1 row)
+
+SELECT sum(k) FROM col_mv;
+ sum
+-----
+  36
+(1 row)
+
+-- Test table partitions with colocation option
+CREATE TABLE partitioned_table (k INT) PARTITION BY LIST (k);
+CREATE TABLE col_table_partition PARTITION OF partitioned_table FOR VALUES IN (2) WITH (COLOCATION=TRUE);
+\d col_table_partition
+        Table "public.col_table_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           |          |
+Partition of: partitioned_table FOR VALUES IN (2)
+Colocation: true
+
+CREATE TABLE non_col_table_partition PARTITION OF partitioned_table FOR VALUES IN (4) WITH (COLOCATION=FALSE);
+\d non_col_table_partition
+      Table "public.non_col_table_partition"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           |          |
+Partition of: partitioned_table FOR VALUES IN (4)
+Colocation: true
+
+INSERT INTO partitioned_table VALUES (2), (4);
+SELECT * FROM col_table_partition;
+ k
+---
+ 2
+(1 row)
+
+SELECT * FROM non_col_table_partition;
+ k
+---
+ 4
+(1 row)
+
+\c yugabyte
+DROP DATABASE colocation_test;

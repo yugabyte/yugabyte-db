@@ -50,6 +50,10 @@ For each node, perform the following:
 
 After you have provisioned the nodes, you can proceed to [add instances to the on-prem provider](../on-premises/#add-instances).
 
+{{<note title="Root-level systemd or cron">}}
+You can configure nodes to use either cron or root-level systemd to provide the necessary access to system resources. All nodes in a provider need to be provisioned in the same way. If you use cron or root-level systemd on one node, be sure to provision all nodes in the provider using cron or root-level systemd, respectively.
+{{</note>}}
+
 ## Set up time synchronization
 
 A local Network Time Protocol (NTP) server or equivalent must be available.
@@ -101,12 +105,14 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
     ```bash
-    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte_home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte_home>)
+    sudo useradd -u <yugabyte_user_uid> -s /bin/bash --create-home --home-dir <yugabyte_home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte_home>)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    `yugabyte_home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
+    - `yugabyte_user_uid` is a common UID for the `yugabyte` user to use across all nodes. Use the same UID for the `yugabyte` user on all nodes in the same cluster. If you don't use a common UID, you may run into issues, for example, if you are using NFS for backups.
+
+    - `yugabyte_home` is the path to the Yugabyte home directory. By default, this is `/home/yugabyte`. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
@@ -161,7 +167,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
     For airgapped environments, make sure your Yum repository mirror contains these packages.
 
-1. If running on a virtual machine, execute the following to tune kernel settings:
+1. Execute the following to tune kernel settings:
 
     1. Configure the parameter `vm.swappiness` as follows:
 
@@ -218,14 +224,14 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 Download the 1.3.1 version of the Prometheus node exporter, as follows:
 
 ```sh
-wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
 ```
 
 If you are doing an airgapped installation, download the node exporter using a computer connected to the internet and copy it over to the database nodes.
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
+1. Copy the `node_exporter-1.7.0.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
@@ -235,7 +241,7 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
     sudo mkdir -p /tmp/yugabyte/metrics
-    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar.gz  /opt/prometheus
+    sudo mv /tmp/node_exporter-1.7.0.linux-amd64.tar.gz  /opt/prometheus
     sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
@@ -243,7 +249,7 @@ On each node, perform the following as a user with sudo access:
     sudo chown -R prometheus:prometheus /var/run/prometheus
     sudo chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
     sudo chmod -R 755 /tmp/yugabyte/metrics
-    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar.gz
+    sudo chmod +r /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz
     sudo su - prometheus (user session is now as user "prometheus")
     ```
 
@@ -251,7 +257,7 @@ On each node, perform the following as a user with sudo access:
 
     ```sh
     cd /opt/prometheus
-    tar zxf node_exporter-1.3.1.linux-amd64.tar.gz
+    tar zxf node_exporter-1.7.0.linux-amd64.tar.gz
     exit   # (exit from prometheus user back to previous user)
     ```
 
@@ -278,7 +284,7 @@ On each node, perform the following as a user with sudo access:
     User=prometheus
     Group=prometheus
 
-    ExecStart=/opt/prometheus/node_exporter-1.3.1.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
+    ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
     ```
 
 1. Exit from vi, and continue, as follows:
@@ -699,11 +705,13 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 ## Install node agent
 
-The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+The node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/preview/faq/yugabyte-platform/#node-agent) FAQ.
 
-Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
+For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
 
-You can install the YugabyteDB node agent manually. As the `yugabyte` user, do the following:
+Use the following procedure to install node agent for fully manual provisioning.
+
+To install the YugabyteDB node agent manually, as the `yugabyte` user, do the following:
 
 1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
@@ -718,13 +726,13 @@ You can install the YugabyteDB node agent manually. As the `yugabyte` user, do t
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
-   ./installer.sh -c install -u https://<yba_address>:9000 -t <api_token>
+   ./installer.sh -c install -u https://<yba_address> -t <api_token>
    ```
 
    For example, if you run the following:
 
    ```sh
-   ./installer.sh  -c install -u http://10.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
+   ./installer.sh  -c install -u https://10.98.0.42 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
    ```
 
    You should get output similar to the following:
@@ -791,7 +799,9 @@ node-agent node preflight-check --add_node
 
 ### Reconfigure a node agent
 
-If you need to reconfigure a node agent, you can use the following procedure:
+If you want to use a node that has already been provisioned in a different provider, you can reconfigure the node agent.
+
+To reconfigure a node for use in a different provider, do the following:
 
 1. If the node instance has been added to a provider, remove the node instance from the provider.
 
@@ -848,13 +858,13 @@ If you need to reconfigure a node agent, you can use the following procedure:
 1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
 
     ```sh
-    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    node-agent node configure -t <api_token> -u https://<yba_address>
     ```
 
     For example, if you run the following:
 
     ```sh
-    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u https://10.98.0.42:9000
     ```
 
     ```output

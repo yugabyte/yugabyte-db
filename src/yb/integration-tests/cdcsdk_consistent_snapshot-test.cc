@@ -108,6 +108,14 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentYbAdminYsq
       false /* use_replication_slot */, false /* enable_replication_commands */);
 }
 
+TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) {
+  ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(USE_SNAPSHOT,
+      true /* verify_snapshot_name */));
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(NOEXPORT_SNAPSHOT,
+      true /* verify_snapshot_name */));
+}
+
 void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
     std::string sync_point, std::string expected_error) {
   // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
@@ -607,28 +615,29 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestMultipleTableAlterWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
   // Add column value_2 column, Table Alter happen.
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
   ASSERT_OK(WriteRows(
       101 /* start */, 201 /* end */, &test_cluster_, {kValue2ColumnName, kValue3ColumnName}));
 
   // Drop value_2 column, Tablet Alter happen.
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(201 /* start */, 301 /* end */, &test_cluster_, {kValue3ColumnName}));
 
   // Add the 2 columns, value_2 and value_4
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName));
-  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue4ColumnName, &conn));
+  ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
   ASSERT_OK(WriteRows(
       301 /* start */, 401 /* end */, &test_cluster_,
       {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
-  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName, &conn));
+  ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue3ColumnName, &conn));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
@@ -1453,7 +1462,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
   ASSERT_EQ(tablets.size(), num_tablets);
 
   ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
+  ASSERT_OK(WaitForFlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 

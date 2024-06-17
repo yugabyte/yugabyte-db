@@ -57,6 +57,9 @@ DEFINE_test_flag(double, fault_crash_before_cmeta_flush, 0.0,
               "Fraction of the time when the server will crash just before flushing "
               "consensus metadata. (For testing only!)");
 
+DEFINE_test_flag(bool, error_before_flushing_consensus_metadata, false,
+                 "Whether to return error at beginning of ConsensusMetadata::Flush");
+
 namespace yb {
 namespace consensus {
 
@@ -108,6 +111,9 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
   RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->encrypted_env(),
       VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id)),
       &cmeta->pb_));
+  cmeta->committed_consensus_state_cache_.set_config(cmeta->committed_config());
+  cmeta->committed_consensus_state_cache_.set_leader_uuid(cmeta->leader_uuid());
+  cmeta->committed_consensus_state_cache_.set_current_term(cmeta->current_term());
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
   RETURN_NOT_OK(cmeta->UpdateOnDiskSize());
   cmeta_out->swap(cmeta);
@@ -137,6 +143,7 @@ int64_t ConsensusMetadata::current_term() const {
 void ConsensusMetadata::set_current_term(int64_t term) {
   DCHECK_GE(term, kMinimumTerm);
   pb_.set_current_term(term);
+  committed_consensus_state_cache_.set_current_term(term);
   UpdateRoleAndTermCache();
 }
 
@@ -199,6 +206,7 @@ void ConsensusMetadata::set_committed_config(const RaftConfigPB& config) {
   if (!has_pending_config_) {
     UpdateActiveRole();
   }
+  committed_consensus_state_cache_.set_config(committed_config());
 }
 
 bool ConsensusMetadata::has_pending_config() const {
@@ -250,6 +258,7 @@ const string& ConsensusMetadata::leader_uuid() const {
 void ConsensusMetadata::set_leader_uuid(const string& uuid) {
   leader_uuid_ = uuid;
   UpdateActiveRole();
+  committed_consensus_state_cache_.set_leader_uuid(uuid);
 }
 
 void ConsensusMetadata::clear_leader_uuid() {
@@ -279,6 +288,20 @@ ConsensusStatePB ConsensusMetadata::ToConsensusStatePB(ConsensusConfigType type)
   return cstate;
 }
 
+ConsensusStatePB ConsensusMetadata::GetConsensusStateFromCache() const {
+  ConsensusStatePB consensus_state_cache;
+  *consensus_state_cache.mutable_config() = committed_consensus_state_cache_.config();
+  consensus_state_cache.set_current_term(committed_consensus_state_cache_.current_term());
+  auto outgoing_leader_uuid = committed_consensus_state_cache_.leader_uuid();
+  // It's possible, though unlikely, that a new node from a pending configuration
+  // could be elected leader. Do not indicate a leader in this case.
+  if (PREDICT_TRUE(IsRaftConfigVoter(
+          outgoing_leader_uuid, consensus_state_cache.config()))) {
+    consensus_state_cache.set_leader_uuid(outgoing_leader_uuid);
+  }
+  return consensus_state_cache;
+}
+
 void ConsensusMetadata::MergeCommittedConsensusStatePB(const ConsensusStatePB& committed_cstate) {
   if (committed_cstate.current_term() > current_term()) {
     set_current_term(committed_cstate.current_term());
@@ -292,6 +315,10 @@ void ConsensusMetadata::MergeCommittedConsensusStatePB(const ConsensusStatePB& c
 
 Status ConsensusMetadata::Flush() {
   MAYBE_FAULT(FLAGS_TEST_fault_crash_before_cmeta_flush);
+  if (PREDICT_FALSE(FLAGS_TEST_error_before_flushing_consensus_metadata)) {
+    return STATUS(
+        IOError, "Failed to flush due to FLAGS_TEST_error_before_flushing_consensus_metadata");
+  }
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500, LogPrefix(), "flushing consensus metadata");
   // Sanity test to ensure we never write out a bad configuration.
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(pb_.committed_config(), COMMITTED_QUORUM),

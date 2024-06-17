@@ -264,7 +264,11 @@ extern int	yb_bnl_batch_size;
 extern bool  yb_bnl_optimize_first_batch;
 extern bool  yb_bnl_enable_hashing;
 
+extern int yb_explicit_row_locking_batch_size;
+
 extern bool yb_lock_pk_single_rpc;
+
+extern int yb_toast_catcache_threshold;
 
 extern int	temp_file_limit;
 

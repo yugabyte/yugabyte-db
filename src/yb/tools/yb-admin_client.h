@@ -70,6 +70,7 @@ class ConsensusServiceProxy;
 
 namespace client {
 class YBClient;
+class XClusterClient;
 }
 
 namespace tools {
@@ -350,6 +351,11 @@ class ClusterAdminClient {
   Result<rapidjson::Document> DeleteSnapshotSchedule(const SnapshotScheduleId& schedule_id);
   Result<rapidjson::Document> RestoreSnapshotSchedule(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+  Result<rapidjson::Document> CloneNamespace(
+      const TypedNamespaceName& source_namespace, const std::string& target_namespace_name,
+      HybridTime restore_at);
+  Result<rapidjson::Document> ListClones(
+      const NamespaceId& source_namespace_id, std::optional<uint32_t> seq_no);
   Status RestoreSnapshot(const std::string& snapshot_id, HybridTime timestamp);
 
   Result<rapidjson::Document> EditSnapshotSchedule(
@@ -384,8 +390,6 @@ class ClusterAdminClient {
   Status DisableEncryptionInMemory();
 
   Status WriteUniverseKeyToFile(const std::string& key_id, const std::string& file_name);
-
-  Status CreateCDCStream(const TableId& table_id);
 
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
@@ -423,7 +427,8 @@ class ClusterAdminClient {
       const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
       const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
       const std::vector<std::string>& producer_bootstrap_ids_to_add,
-      const std::string& new_replication_group_id, bool remove_table_ignore_errors = false);
+      const std::string& new_replication_group_id, const NamespaceId& source_namespace_to_remove,
+      bool remove_table_ignore_errors = false);
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);
@@ -431,8 +436,6 @@ class ClusterAdminClient {
   Status WaitForReplicationBootstrapToFinish(const std::string& replication_id);
 
   Status WaitForSetupUniverseReplicationToFinish(const std::string& replication_group_id);
-
-  Status ChangeXClusterRole(cdc::XClusterRole role);
 
   Status SetUniverseReplicationEnabled(const std::string& replication_group_id,
                                        bool is_enabled);
@@ -452,6 +455,29 @@ class ClusterAdminClient {
   Status GetReplicationInfo(const std::string& replication_group_id);
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
+
+  Result<bool> IsXClusterBootstrapRequired(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id);
+
+  Status WaitForCreateXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  Status WaitForAlterXClusterReplication(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::string& target_master_addresses);
+
+  client::XClusterClient XClusterClient();
+
+  Status RepairOutboundXClusterReplicationGroupAddTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
+      const xrepl::StreamId& stream_id);
+
+  Status RepairOutboundXClusterReplicationGroupRemoveTable(
+      const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id);
+
+  using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
+  Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -526,12 +552,6 @@ class ClusterAdminClient {
 
   void ResetMasterProxy(const HostPort& leader_addr = HostPort());
 
-  Result<master::DisableTabletSplittingResponsePB> DisableTabletSplitsInternal(
-      int64_t disable_duration_ms, const std::string& feature_name);
-
-  Result<master::IsTabletSplittingCompleteResponsePB> IsTabletSplittingCompleteInternal(
-      bool wait_for_parent_deletion, const MonoDelta timeout = MonoDelta());
-
   std::string master_addr_list_;
   HostPort init_master_addr_;
   const MonoDelta timeout_;
@@ -586,9 +606,6 @@ class ClusterAdminClient {
       Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
       const Object& obj, const Request& req, const char* error_message = nullptr,
       const MonoDelta timeout = MonoDelta());
-
-  using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
-  Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
 
   Result<TxnSnapshotId> SuitableSnapshotId(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline);

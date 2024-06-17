@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.inject.Inject;
@@ -46,7 +47,9 @@ public class PlatformScheduler {
                   synchronized (lock) {
                     // Synchronized block in shutdown and this should be serialized.
                     shouldRun =
-                        !shutdownHookHandler.isShutdown() && isRunning.compareAndSet(false, true);
+                        !shutdownHookHandler.isShutdown()
+                            && !HighAvailabilityConfig.isFollower()
+                            && isRunning.compareAndSet(false, true);
                   }
                   if (shouldRun) {
                     try {
@@ -61,7 +64,8 @@ public class PlatformScheduler {
                     }
                   } else {
                     log.warn(
-                        "Previous run of scheduler {} is in progress or it is being shut down",
+                        "Previous run of scheduler {} is in progress, is being shut down, or YBA is"
+                            + " in follower mode.",
                         name);
                   }
                 },

@@ -1,16 +1,19 @@
 import { FC } from 'react';
 import { Box, Divider, Tooltip } from '@material-ui/core';
 import { Link } from 'react-router';
-// import { Link as DOMLink } from 'react-router-dom';
 import _ from 'lodash';
-import { YBLabel } from '@yugabytedb/ui-components';
+import {
+  YBButton,
+  YBLabel,
+  YBTimeFormats,
+  formatDatetime,
+  isNonEmptyString
+} from '@yugabytedb/ui-components';
 import { Anomaly, AnomalyCategory, AppName, NodeInfo } from '../helpers/dtos';
-import { isNonEmptyString } from '../helpers/ObjectUtils';
-import { useStyles } from './styles';
+import { useHelperStyles } from './styles';
 
 import LightBulbIcon from '../assets/lightbulb.svg';
 import WarningIcon from '../assets/warning-solid.svg';
-import { YBTimeFormats, formatDatetime } from '../helpers/DateUtils';
 
 interface IssueMetadataProps {
   data: Anomaly;
@@ -18,8 +21,8 @@ interface IssueMetadataProps {
   uuid: string;
   universeUuid: string;
   appName: AppName;
-  baseUrl?: string;
   timezone?: string;
+  onSelectedIssue?: (troubleshootUuid: string) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -29,10 +32,10 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
   uuid,
   universeUuid,
   appName,
-  baseUrl,
-  timezone
+  timezone,
+  onSelectedIssue
 }) => {
-  const classes = useStyles();
+  const classes = useHelperStyles();
   // const defaultUniverseUUID = 'b19a09a8-aa2c-4a5d-a248-5702dd1839b4';
   const troubleshootUUID = uuid;
   let anomalySummary = data.summary;
@@ -49,6 +52,10 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
     }
   }
 
+  const routeToSecondary = () => {
+    onSelectedIssue?.(troubleshootUUID);
+  };
+
   return (
     <Box>
       <Box className={classes.troubleshootBox}>
@@ -57,8 +64,6 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
           <Divider />
         </Box>
 
-        {/* <Box className={classes.recommendationAdvice}> */}
-        {/* <img src={lightBulbIcon} alt="more" className={classes.learnMoreImage} /> */}
         <Box mt={2} className={classes.flexRow}>
           <YBLabel>{`Observation: `}</YBLabel>
           <span>
@@ -94,7 +99,6 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
             {data.affectedNodes?.map((affectedNode: NodeInfo, idx: number) => {
               return (
                 <Box>
-                  {/* {idx > 0 && <>{', '}</>} */}
                   <li>{affectedNode.name}</li>
                 </Box>
               );
@@ -104,22 +108,29 @@ export const IssueMetadata: FC<IssueMetadataProps> = ({
 
         <Box mt={2.5} mb={1}>
           <img src={LightBulbIcon} alt="more" className={classes.learnMoreImage} />
-          {'To troubleshoot, '}
           {appName === AppName.YBA ? (
             <Link
               to={`/universes/${universeUuid}/troubleshoot/${troubleshootUUID}`}
               target="_blank"
             >
-              <span className={classes.redirectLinkText}>{'refer to the dashboard.'}</span>
+              <span className={classes.redirectLinkText}>
+                {'To troubleshoot, refer to the dashboard.'}
+              </span>
             </Link>
           ) : (
-            <a href={`${baseUrl}/${troubleshootUUID}`} target="_blank">
-              <span className={classes.redirectLinkText}>{'refer to the dashboard.'}</span>
-            </a>
+            <Box>
+              <YBButton
+                variant="pill"
+                data-testid="PrimaryDashboard-RouteToSecondaryButton"
+                onClick={() => routeToSecondary()}
+              >
+                <span className={classes.redirectLinkText}>
+                  {'To troubleshoot, refer to the dashboard.'}
+                </span>
+              </YBButton>
+            </Box>
           )}
         </Box>
-
-        {/* </Box> */}
       </Box>
     </Box>
   );

@@ -32,13 +32,13 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 {{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using YugabyteDB Managed? Install the [prerequisites](../../../../develop/build-apps/cloud-add-ip/).
+Are you using YugabyteDB Managed? Install the [prerequisites](/preview/tutorials/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 
 ## Prerequisites
 
-This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](/preview/quick-start/).
 
 ## Clone the orm-examples repository
 

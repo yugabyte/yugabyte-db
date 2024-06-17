@@ -318,6 +318,7 @@
 #enable_parallel_hash = on
 #enable_partition_pruning = on
 #yb_enable_geolocation_costing = on
+#yb_enable_parallel_append = off
 #yb_enable_expression_pushdown = on
 #yb_enable_sequence_pushdown = on
 #yb_enable_distinct_pushdown = on
@@ -346,6 +347,7 @@
 #min_parallel_index_scan_size = 512kB
 #effective_cache_size = 4GB
 #yb_parallel_range_rows = 0
+#yb_parallel_range_size = 1024kB
 
 # - Genetic Query Optimizer -
 

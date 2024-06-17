@@ -14,6 +14,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/path_util.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
@@ -313,6 +314,12 @@ class PgCatalogVersionTest : public LibPqTestBase {
     conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
     LOG(INFO) << "Create a new database";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+    {
+      // In PG15, SCHEMA public by default is more restrictive, grant CREATE privilege
+      // to all users to allow this test to run successfully in both PG11 and PG15.
+      auto conn_yugabyte_on_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+      ASSERT_OK(conn_yugabyte_on_test.Execute("GRANT CREATE ON SCHEMA public TO public"));
+    }
     LOG(INFO) << "Create two new test users";
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser1));
     ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser2));
@@ -765,6 +772,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   const auto max_oid = ASSERT_RESULT(
       conn_template1.FetchRow<PGOid>("SELECT max(oid) FROM pg_database"));
   // Delete the row with max_oid from pg_catalog.pg_yb_catalog_version.
+  ASSERT_OK(conn_template1.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
   ASSERT_OK(conn_template1.ExecuteFormat(
       "DELETE FROM pg_catalog.pg_yb_catalog_version WHERE db_oid = $0", max_oid));
   // Add an extra row to pg_catalog.pg_yb_catalog_version.
@@ -1181,7 +1189,7 @@ TEST_F(PgCatalogVersionTest, InvalidateWholeRelCache) {
   RestartClusterWithDBCatalogVersionMode();
   conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
-  // CREATE PUBLICATION is not a global-impact DDL.
+  // CREATE PUBLICATION is not a global-impact DDL in PG11, but is a global-impact DDL in PG15.
   ASSERT_OK(conn_yugabyte.Execute("SET yb_enable_replication_commands = true"));
   ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
 
@@ -1197,8 +1205,11 @@ ALTER PUBLICATION testpub_foralltables SET (publish = 'insert, update, delete, t
         )#"));
   auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   ASSERT_TRUE(expected_versions.find(yugabyte_db_oid) != expected_versions.end());
+  auto version_string = ASSERT_RESULT(GetPGVersionString(&conn_yugabyte));
+  LOG(INFO) << "PG version string: " << version_string;
+  auto is_pg11 = StringStartsWithOrEquals(version_string, "PostgreSQL 11");
   for (const auto& entry : expected_versions) {
-    if (entry.first != yugabyte_db_oid) {
+    if (entry.first != yugabyte_db_oid && is_pg11) {
       ASSERT_OK(CheckMatch(entry.second, {2, 2}));
     } else {
       ASSERT_OK(CheckMatch(entry.second, {3, 3}));
@@ -1324,6 +1335,32 @@ TEST_F(PgCatalogVersionTest, SimulateLaggingPGInUpgradeFinalization) {
   ASSERT_STR_CONTAINS(status.ToString(), msg);
 }
 
+class PgCatalogVersionMasterLeadershipChange : public PgCatalogVersionTest {
+ protected:
+  int GetNumMasters() const override { return 3; }
+};
+
+TEST_F_EX(PgCatalogVersionTest, ChangeMasterLeadership,
+          PgCatalogVersionMasterLeadershipChange) {
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, true /* per_database_mode */));
+  RestartClusterWithDBCatalogVersionMode();
+  WaitForCatalogVersionToPropagate();
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE t(id INT)"));
+  ASSERT_OK(conn_yugabyte.Execute("ALTER TABLE t ADD COLUMN c2 TEXT"));
+  LOG(INFO) << "Disable next master leader to set catalog version table in perdb mode";
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_disable_set_catalog_version_table_in_perdb_mode", "true"));
+  auto leader_master_index = CHECK_RESULT(cluster_->GetLeaderMasterIndex());
+  LOG(INFO) << "Failing over master leader.";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  auto new_leader_master_index = CHECK_RESULT(cluster_->GetLeaderMasterIndex());
+  LOG(INFO) << "The new master leader is at " << leader_master_index;
+  CHECK_NE(leader_master_index, new_leader_master_index);
+  ASSERT_OK(conn_yugabyte.Execute("CREATE INDEX idx ON t(id)"));
+}
+
 TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
 
   const std::vector<std::vector<string>> ddlLists = {
@@ -1417,7 +1454,9 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
     }
   }
   TestThreadHolder thread_holder;
-  const int iterations = IsTsan() ? 2 : 4;
+  const int iterations = 4 / kTimeMultiplier;
+  LOG(INFO) << "iterations: " << iterations;
+  ASSERT_GE(iterations, 1);
   for (const auto& db_name : db_names) {
     thread_holder.AddThreadFunctor([this, &ddlLists, &tableList, &db_name] {
 
@@ -1429,11 +1468,13 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
             const auto max_index = static_cast<int>(ddlLists.size() - 1);
             const size_t random_index = RandomUniformInt(0, max_index);
             // Run the DDLs in the current randomly selected DDL list.
+            int k = 0;
             for (const auto& query : ddlLists[random_index]) {
               auto ddlQuery = Format(query, table_name);
-              LOG(INFO) << "Executing (" << i << "," << j << ") "
+              LOG(INFO) << "Executing (" << i << "," << j << "," << k << ") "
                         << db_name << ":" << table_name << " ddl: " << ddlQuery;
               ASSERT_OK(conn_test.Execute(ddlQuery));
+              ++k;
             }
           }
         }

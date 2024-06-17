@@ -7,7 +7,7 @@ import { toast } from 'react-toastify';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 
-import { KeyPairManagement, NTPSetupType, ProviderCode } from '../../constants';
+import { KeyPairManagement, NTPSetupType, ProviderCode, ProviderOperation } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import {
   ConfigureOnPremRegionModal,
@@ -278,6 +278,7 @@ export const OnPremProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.ON_PREM}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -285,7 +286,7 @@ export const OnPremProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.KUBERNETES,
                   'regions',
                   isFormDisabled,
@@ -645,11 +646,7 @@ const constructProviderPayload = async (
           regionFormValues.code
         );
         return {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid,
-            details: existingRegion.details
-          }),
+          ...existingRegion,
           latitude: regionFormValues.latitude,
           longitude: regionFormValues.longitude,
           code: regionFormValues.code,
@@ -663,8 +660,7 @@ const constructProviderPayload = async (
               return {
                 ...(existingZone
                   ? {
-                      active: existingZone.active,
-                      uuid: existingZone.uuid
+                      ...existingZone
                     }
                   : { active: true }),
                 code: azFormValues.code,

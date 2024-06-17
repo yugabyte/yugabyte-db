@@ -60,6 +60,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected Universe defaultUniverse;
 
   protected AccessKey defaultAccessKey;
+  protected AccessKey onPremAccessKey;
 
   protected Users defaultUser;
 
@@ -78,6 +79,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultAccessKey = createAccessKeyForProvider("default-key", defaultProvider);
     defaultUniverse = createUniverseForProvider("Test Universe", defaultProvider);
+    onPremAccessKey = createAccessKeyForProvider("default-key", onPremProvider);
     onPremUniverse = createUniverseForProvider("Test onPrem Universe", onPremProvider);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";

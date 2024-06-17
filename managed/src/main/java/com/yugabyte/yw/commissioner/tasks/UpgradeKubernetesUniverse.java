@@ -62,7 +62,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),
@@ -247,13 +249,17 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           ybSoftwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
-          universeOverrides, // Is this old code to update k8s universe?
+          getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
+          universeOverrides,
           azOverrides,
           masterChanged,
           tserverChanged,
           newNamingStyle,
-          isReadOnlyCluster);
+          /*isReadOnlyCluster*/ false,
+          CommandType.HELM_UPGRADE,
+          enableYbc,
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -276,7 +282,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           CommandType.HELM_UPGRADE,
           enableYbc,
-          ybcSoftwareVersion);
+          ybcSoftwareVersion,
+          /* addDelayAfterStartup */ true);
 
       if (enableYbc) {
         if (isReadOnlyCluster) {

@@ -19,6 +19,7 @@
 
 /* YB includes. */
 #include "replication/walsender.h"
+#include "utils/uuid.h"
 
 /*
  * Behaviour of replication slots, upon release or crash.
@@ -85,6 +86,26 @@ typedef struct ReplicationSlotPersistentData
 
 	/* plugin name */
 	NameData	plugin;
+
+	/* The CDC stream_id (32 bytes + 1 for null terminator) */
+	char yb_stream_id[33];
+
+	/*
+	 * Stores the replica identity value of the tables as they existed during
+	 * the creation of the replication slot.
+	 */
+	HTAB *yb_replica_identities;
+
+	/*
+	 * The record_commit_time of the replication slot as received at the time
+	 * this information was fetched from the CDC state table. This information
+	 * is not kept up to date, it should only be used at the start of streaming
+	 * right after fetching the replication slot information.
+	 */
+	uint64_t yb_initial_record_commit_time_ht;
+
+	/* The last time at which a publication's table list was refreshed */
+	uint64_t yb_last_pub_refresh_time;
 } ReplicationSlotPersistentData;
 
 /*
@@ -178,7 +199,7 @@ extern PGDLLIMPORT ReplicationSlot *MyReplicationSlot;
 /* GUCs */
 extern PGDLLIMPORT int max_replication_slots;
 
-extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
+extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
 
 /* shmem initialization functions */
 extern Size ReplicationSlotsShmemSize(void);
@@ -187,7 +208,9 @@ extern void ReplicationSlotsShmemInit(void);
 /* management of individual slots */
 extern void ReplicationSlotCreate(const char *name, bool db_specific,
 					  ReplicationSlotPersistency p,
-					  CRSSnapshotAction yb_snapshot_action);
+					  char *yb_plugin_name,
+					  CRSSnapshotAction yb_snapshot_action,
+					  uint64_t *yb_consistent_snapshot_time);
 extern void ReplicationSlotPersist(void);
 extern void ReplicationSlotDrop(const char *name, bool nowait);
 
@@ -211,5 +234,7 @@ extern void StartupReplicationSlots(void);
 extern void CheckPointReplicationSlots(void);
 
 extern void CheckSlotRequirements(void);
+
+extern char YBCGetReplicaIdentityForRelation(Oid relid);
 
 #endif							/* SLOT_H */

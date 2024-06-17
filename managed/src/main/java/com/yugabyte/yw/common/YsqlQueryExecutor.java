@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
+import com.yugabyte.yw.forms.DatabaseUserFormData.RoleAttribute;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -68,11 +69,8 @@ public class YsqlQueryExecutor {
           + "('pg_execute_server_program', 'pg_read_server_files', "
           + "'pg_write_server_files'));";
   private static final String DEL_PG_ROLES_CMD_2 =
-      "SET YB_NON_DDL_TXN_FOR_SYS_TABLES_ALLOWED=ON; "
-          + "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
-          + "pg_write_server_files; "
-          + "UPDATE pg_yb_catalog_version "
-          + "SET current_version = current_version + 1 WHERE db_oid = 1;";
+      "DROP ROLE IF EXISTS pg_execute_server_program, pg_read_server_files, "
+          + "pg_write_server_files; ";
 
   RuntimeConfigFactory runtimeConfigFactory;
   NodeUniverseManager nodeUniverseManager;
@@ -307,6 +305,15 @@ public class YsqlQueryExecutor {
                 "GRANT EXECUTE ON FUNCTION pg_stat_statements_reset TO \"%1$s\"; ", data.username))
         .append(DEL_PG_ROLES_CMD_1);
 
+    // Construct ALTER ROLE statements based on the roleAttributes specified
+    if (data.dbRoleAttributes != null) {
+      for (RoleAttribute roleAttribute : data.dbRoleAttributes) {
+        createUserWithPrivileges.append(
+            String.format(
+                "ALTER ROLE \"%s\" %s;", data.username, roleAttribute.getName().toString()));
+      }
+    }
+
     try {
       runUserDbCommands(createUserWithPrivileges.toString(), data.dbName, universe);
       LOG.info("Created restricted user and deleted dependencies");
@@ -410,6 +417,16 @@ public class YsqlQueryExecutor {
               "GRANT \"%s\" TO \"%s\" WITH ADMIN OPTION", DB_ADMIN_ROLE_NAME, data.username);
       allQueries.append(String.format("%s; ", query));
     }
+
+    // Construct ALTER ROLE statements based on the roleAttributes specified
+    if (data.dbRoleAttributes != null) {
+      for (RoleAttribute roleAttribute : data.dbRoleAttributes) {
+        allQueries.append(
+            String.format(
+                "ALTER ROLE \"%s\" %s;", data.username, roleAttribute.getName().toString()));
+      }
+    }
+
     query = "SELECT pg_stat_statements_reset();";
     allQueries.append(query);
 

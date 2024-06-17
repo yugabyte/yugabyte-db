@@ -236,15 +236,15 @@ SET yb_fetch_row_limit = 1024;
 SET yb_fetch_size_limit = 0;
 -- the default behaviour sends 6 RPCs per table
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
-                                        QUERY PLAN
-------------------------------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_small.a = t_large.a)
    ->  Seq Scan on t_small (actual rows=5000 loops=1)
          Storage Table Read Requests: 6
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 4096 (originally 1024)  Batches: 2 (originally 1)  Memory Usage: 4065kB
+         Buckets: 4096 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
                Storage Table Rows Scanned: 5000
@@ -255,15 +255,15 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT
 (14 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
-                                       QUERY PLAN
------------------------------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_large.a = t_small.a)
    ->  Seq Scan on t_large (actual rows=5000 loops=1)
          Storage Table Read Requests: 6
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 367kB
+         Buckets: 8192 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
                Storage Table Rows Scanned: 5000
@@ -277,15 +277,15 @@ SET yb_fetch_row_limit = 0;
 -- size limit affects both tables in a HashJoin
 SET yb_fetch_size_limit = '500kB';
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
-                                        QUERY PLAN
-------------------------------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_small.a = t_large.a)
    ->  Seq Scan on t_small (actual rows=5000 loops=1)
          Storage Table Read Requests: 3
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 4096 (originally 1024)  Batches: 2 (originally 1)  Memory Usage: 4065kB
+         Buckets: 4096 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 12
                Storage Table Rows Scanned: 5000
@@ -296,15 +296,15 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT
 (14 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
-                                       QUERY PLAN
------------------------------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_large.a = t_small.a)
    ->  Seq Scan on t_large (actual rows=5000 loops=1)
          Storage Table Read Requests: 12
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 367kB
+         Buckets: 8192 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 3
                Storage Table Rows Scanned: 5000
@@ -316,15 +316,15 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT
 
 SET yb_fetch_size_limit = '50kB';
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_small JOIN t_large ON t_large.a = t_small.a;
-                                        QUERY PLAN
-------------------------------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_small.a = t_large.a)
    ->  Seq Scan on t_small (actual rows=5000 loops=1)
          Storage Table Read Requests: 6
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 4096 (originally 1024)  Batches: 2 (originally 1)  Memory Usage: 4065kB
+         Buckets: 4096 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 99
                Storage Table Rows Scanned: 5000
@@ -335,15 +335,15 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT
 (14 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT * FROM t_large JOIN t_small ON t_large.a = t_small.a;
-                                       QUERY PLAN
------------------------------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Hash Join (actual rows=5000 loops=1)
    Hash Cond: (t_large.a = t_small.a)
    ->  Seq Scan on t_large (actual rows=5000 loops=1)
          Storage Table Read Requests: 99
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 8192 (originally 1024)  Batches: 1 (originally 1)  Memory Usage: 367kB
+         Buckets: 8192 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_small (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
                Storage Table Rows Scanned: 5000

@@ -151,6 +151,7 @@ class WriteQuery {
 
   Result<bool> SimplePrepareExecute();
   Result<bool> RedisPrepareExecute();
+  Result<bool> CqlRePrepareExecuteIfNecessary();
   Result<bool> CqlPrepareExecute();
   Result<bool> PgsqlPrepareExecute();
 
@@ -171,8 +172,12 @@ class WriteQuery {
   template <class Code, class Resp>
   void SchemaVersionMismatch(Code code, int size, Resp* resp);
 
-  bool CqlCheckSchemaVersion();
-  bool PgsqlCheckSchemaVersion();
+  Result<bool> ExecuteSchemaVersionCheck();
+  Result<bool> CqlCheckSchemaVersion();
+  Result<bool> PgsqlCheckSchemaVersion();
+
+  void CqlRespondSchemaVersionMismatch();
+  void PgsqlRespondSchemaVersionMismatch();
 
   void IncrementActiveWriteQueryObjectsBy(int64_t value);
 
@@ -216,6 +221,8 @@ class WriteQuery {
   CoarseTimePoint start_time_;
 
   HybridTime restart_read_ht_;
+
+  bool schema_version_mismatch_ = false;
 
   docdb::DocOperations doc_ops_;
 

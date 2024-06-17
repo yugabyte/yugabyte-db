@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +29,6 @@ type platformDirectories struct {
 	ConfFileLocation    string
 	templateFileName    string
 	DataDir             string
-	cronScript          string
 	PgBin               string
 	YsqlDump            string
 	YsqlBin             string
@@ -43,12 +41,10 @@ func newPlatDirectories(version string) platformDirectories {
 		ConfFileLocation:    common.GetSoftwareRoot() + "/yb-platform/conf/yb-platform.conf",
 		templateFileName:    "yba-installer-platform.yml",
 		DataDir:             common.GetBaseInstall() + "/data/yb-platform",
-		cronScript: filepath.Join(
-			common.GetInstallerSoftwareDir(), common.CronDir, "managePlatform.sh"),
-		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
-		YsqlDump:         common.GetActiveSymlink() + "/ybdb/postgres/bin/ysql_dump",
-		YsqlBin:          common.GetSoftwareRoot() + "/ybdb/bin/ysqlsh",
-		PlatformPackages: common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
+		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
+		YsqlDump:            common.GetActiveSymlink() + "/ybdb/postgres/bin/ysql_dump",
+		YsqlBin:             common.GetSoftwareRoot() + "/ybdb/bin/ysqlsh",
+		PlatformPackages:    common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
 	}
 }
 
@@ -101,6 +97,10 @@ func (plat Platform) Name() string {
 	return plat.name
 }
 
+func (plat Platform) SystemdFile() string {
+	return plat.SystemdFileLocation
+}
+
 // Version gets the version
 func (plat Platform) Version() string {
 	return plat.version
@@ -143,18 +143,10 @@ func (plat Platform) Install() error {
 		return err
 	}
 
-	//Crontab based monitoring for non-root installs.
-	if !common.HasSudoAccess() {
-		if err := plat.CreateCronJob(); err != nil {
-			return err
-		}
-	} else {
+	if common.HasSudoAccess() {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		chownClosure := func() error {
-			return common.Chown(common.GetBaseInstall(), userName, userName, true)
-		}
-		if err := chownClosure(); err != nil {
+		if err := changeAllPermissions(userName); err != nil {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
@@ -327,33 +319,23 @@ func (plat Platform) renameAndCreateSymlinks() error {
 
 // Start the YBA platform service.
 func (plat Platform) Start() error {
-	if common.HasSudoAccess() {
-		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
-			return out.Error
-		}
-		if out := shell.Run(common.Systemctl, "enable",
-			filepath.Base(plat.SystemdFileLocation)); !out.SucceededOrLog() {
-			return out.Error
-		}
-		if out := shell.Run(common.Systemctl, "start",
-			filepath.Base(plat.SystemdFileLocation)); !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-		containerExposedPort := config.GetYamlPathData("platform.port")
-		restartSeconds := config.GetYamlPathData("platform.restartSeconds")
-
-		arg1 := []string{common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort,
-			restartSeconds, " > /dev/null 2>&1 &"}
-		if out := shell.RunShell(plat.cronScript, arg1...); !out.SucceededOrLog() {
-			return out.Error
-		}
+	serviceName := filepath.Base(plat.SystemdFileLocation)
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to start platform: %w", err)
 	}
+	if err := systemd.Enable(false, serviceName); err != nil {
+		return fmt.Errorf("failed to start platform: %w", err)
+	}
+	if err := systemd.Start(serviceName); err != nil {
+		return fmt.Errorf("failed to start platform: %w", err)
+	}
+	log.Debug("started platform")
 	return nil
 }
 
 // Stop the YBA platform service.
 func (plat Platform) Stop() error {
+	serviceName := filepath.Base(plat.SystemdFileLocation)
 	status, err := plat.Status()
 	if err != nil {
 		return err
@@ -362,57 +344,22 @@ func (plat Platform) Stop() error {
 		log.Debug(plat.name + " is already stopped")
 		return nil
 	}
-	if common.HasSudoAccess() {
-
-		if out := shell.Run(common.Systemctl, "stop",
-			filepath.Base(plat.SystemdFileLocation)); !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-
-		// Delete the file used by the crontab bash script for monitoring.
-		common.RemoveAll(common.GetSoftwareRoot() + "/yb-platform/testfile")
-
-		out := shell.Run("pgrep", "-fl", "yb-platform")
-		if !out.SucceededOrLog() {
-			return out.Error
-		}
-		result := out.StdoutString()
-		// Need to stop the binary if it is running, can just do kill -9 PID (will work as the
-		// process itself was started by a non-root user.)
-
-		// Java check because pgrep will count the execution of yba-ctl as a process itself.
-		if strings.TrimSuffix(string(result), "\n") != "" {
-			pids := strings.Split(string(result), "\n")
-			for _, pid := range pids {
-				if strings.Contains(pid, "java") {
-					log.Debug("kill platform pid: " + pid)
-					if out := shell.Run("kill", "-9", pid); !out.SucceededOrLog() {
-						return out.Error
-					}
-				}
-			}
-		}
+	if err := systemd.Stop(serviceName); err != nil {
+		return fmt.Errorf("failed to stop platform: %w", err)
 	}
+	log.Info("stopped platform")
 	return nil
 }
 
 // Restart the YBA platform service.
 func (plat Platform) Restart() error {
+	serviceName := filepath.Base(plat.SystemdFileLocation)
 	log.Info("Restarting YBA..")
-
-	if common.HasSudoAccess() {
-		out := shell.Run(common.Systemctl, "restart", "yb-platform.service")
-		if !out.SucceededOrLog() {
-			return out.Error
-		}
-	} else {
-		if err := plat.Stop(); err != nil {
-			return err
-		}
-		if err := plat.Start(); err != nil {
-			return err
-		}
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to restart platform: %w", err)
+	}
+	if err := systemd.Restart(serviceName); err != nil {
+		return fmt.Errorf("failed to restart platform: %w", err)
 	}
 	return nil
 }
@@ -427,18 +374,16 @@ func (plat Platform) Uninstall(removeData bool) error {
 	}
 
 	// Clean up systemd file
-	if common.HasSudoAccess() {
-		err := os.Remove(plat.SystemdFileLocation)
-		if err != nil {
-			pe := err.(*fs.PathError)
-			if !errors.Is(pe.Err, fs.ErrNotExist) {
-				log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
-					pe.Error(), plat.SystemdFileLocation))
-			}
+	err := os.Remove(plat.SystemdFileLocation)
+	if err != nil {
+		pe := err.(*fs.PathError)
+		if !errors.Is(pe.Err, fs.ErrNotExist) {
+			log.Info(fmt.Sprintf("Error %s removing systemd service %s.",
+				pe.Error(), plat.SystemdFileLocation))
 		}
 		// reload systemd daemon
-		if out := shell.Run(common.Systemctl, "daemon-reload"); !out.SucceededOrLog() {
-			return out.Error
+		if err := systemd.DaemonReload(); err != nil {
+			return fmt.Errorf("failed to uninstall platform: %w")
 		}
 	}
 
@@ -463,35 +408,22 @@ func (plat Platform) Status() (common.Status, error) {
 	}
 
 	// Set the systemd service file location if one exists
-	if common.HasSudoAccess() {
-		status.ServiceFileLoc = plat.SystemdFileLocation
-	} else {
-		status.ServiceFileLoc = "N/A"
-	}
+	status.ServiceFileLoc = plat.SystemdFileLocation
 
 	// Get the service status
-	if common.HasSudoAccess() {
-		props := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
-			"ActiveState")
-		if props["LoadState"] == "not-found" {
-			status.Status = common.StatusNotInstalled
-		} else if props["SubState"] == "running" {
-			status.Status = common.StatusRunning
-		} else if props["ActiveState"] == "inactive" {
-			status.Status = common.StatusStopped
-		} else {
-			status.Status = common.StatusErrored
-		}
+	props := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
+		"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
+	if props["LoadState"] == "not-found" {
+		status.Status = common.StatusNotInstalled
+	} else if props["SubState"] == "running" {
+		status.Status = common.StatusRunning
+		status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
+	} else if props["ActiveState"] == "inactive" {
+		status.Status = common.StatusStopped
+		status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 	} else {
-		out := shell.Run("pgrep", "-f", "yb-platform")
-		if out.Succeeded() {
-			status.Status = common.StatusRunning
-		} else if out.ExitCode == 1 {
-			status.Status = common.StatusStopped
-		} else {
-			out.SucceededOrLog()
-			return status, out.Error
-		}
+		status.Status = common.StatusErrored
+		status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 	}
 	return status, nil
 }
@@ -500,14 +432,24 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories(plat.version)
-	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
+	if err := config.GenerateTemplate(plat); err != nil {
+		return err
+	} // systemctl reload is not needed, start handles it for us.
 	if err := plat.createNecessaryDirectories(); err != nil {
 		return err
 	}
-	plat.untarDevopsAndYugawarePackages()
-	plat.copyYbcPackages()
-	plat.deleteNodeAgentPackages()
-	plat.copyNodeAgentPackages()
+	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
+		return err
+	}
+	if err := plat.copyYbcPackages(); err != nil {
+		return err
+	}
+	if err := plat.deleteNodeAgentPackages(); err != nil {
+		return err
+	}
+	if err := plat.copyNodeAgentPackages(); err != nil {
+		return err
+	}
 	if err := plat.renameAndCreateSymlinks(); err != nil {
 		return err
 	}
@@ -522,22 +464,28 @@ func (plat Platform) Upgrade() error {
 		return err
 	}
 
-	//Crontab based monitoring for non-root installs.
-	if !common.HasSudoAccess() {
-		plat.CreateCronJob()
-	} else {
+	if common.HasSudoAccess() {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		chownClosure := func() error {
-			return common.Chown(common.GetBaseInstall(), userName, userName, true)
-		}
-		if err := chownClosure(); err != nil {
+		if err := changeAllPermissions(userName); err != nil {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
 	}
 	err := plat.Start()
 	return err
+}
+
+// Helper function to update the data/software directories ownership to yugabyte user
+func changeAllPermissions(user string) error {
+	if err := common.Chown(common.GetBaseInstall()+"/data", user, user, true); err != nil {
+		return err
+	}
+
+	if err := common.Chown(common.GetBaseInstall()+"/software", user, user, true); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (plat Platform) MigrateFromReplicated() error {
@@ -604,18 +552,10 @@ func (plat Platform) MigrateFromReplicated() error {
 		return err
 	}
 
-	//Crontab based monitoring for non-root installs.
-	if !common.HasSudoAccess() {
-		if err := plat.CreateCronJob(); err != nil {
-			return err
-		}
-	} else {
+	if common.HasSudoAccess() {
 		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		chownClosure := func() error {
-			return common.Chown(common.GetBaseInstall(), userName, userName, true)
-		}
-		if err := chownClosure(); err != nil {
+		if err := changeAllPermissions(userName); err != nil {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
@@ -636,10 +576,11 @@ func (plat Platform) FinishReplicatedMigrate() error {
 			log.DebugLF("skipping directory " + file.Name() + " as it is not a symlink")
 			continue
 		}
-		err = common.ResolveSymlink(filepath.Join(
-			common.GetBaseInstall(), "data/yb-platform/releases", file.Name()))
+		src := filepath.Join(common.GetReplicatedBaseDir(), "releases", file.Name())
+		target := filepath.Join(common.GetBaseInstall(), "data/yb-platform/releases", file.Name())
+		err = common.ResolveSymlink(src, target)
 		if err != nil {
-			return fmt.Errorf("Could not complete migration of platform: %w", err)
+			return fmt.Errorf("could not complete migration of platform: %w", err)
 		}
 	}
 	return nil
@@ -699,7 +640,7 @@ func createPemFormatKeyAndCert() error {
 
 func (plat Platform) symlinkReplicatedData() error {
 	// First do the previous releases.
-	releases, err := ioutil.ReadDir(filepath.Join(common.GetReplicatedBaseDir(), "releases/"))
+	releases, err := os.ReadDir(filepath.Join(common.GetReplicatedBaseDir(), "releases/"))
 	if err != nil {
 		return fmt.Errorf("could not read replicated releases dir: %w", err)
 	}
@@ -711,16 +652,6 @@ func (plat Platform) symlinkReplicatedData() error {
 			return fmt.Errorf("failed symlinked release %s: %w", release.Name(), err)
 		}
 	}
-	return nil
-}
-
-// CreateCronJob creates the cron job for managing YBA platform with cron script in non-root.
-func (plat Platform) CreateCronJob() error {
-	containerExposedPort := config.GetYamlPathData("platform.port")
-	restartSeconds := config.GetYamlPathData("platform.restartSeconds")
-	shell.RunShell("(crontab", "-l", "2>/dev/null;", "echo", "\"@reboot", plat.cronScript,
-		common.GetSoftwareRoot(), common.GetDataRoot(), containerExposedPort, restartSeconds, ")\"", "|",
-		"sort", "-", "|", "uniq", "-", "|", "crontab", "-")
 	return nil
 }
 

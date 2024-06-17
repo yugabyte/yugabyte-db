@@ -45,7 +45,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.Scanner;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -120,10 +119,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String SNAPSHOT_TOO_OLD_PSQL_STATE = "72000";
   protected static final String DEADLOCK_DETECTED_PSQL_STATE = "40P01";
 
-  // Postgres flags.
-  private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
-  private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
-
   // Metric names.
   protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
   protected static final String SELECT_STMT_METRIC = METRIC_PREFIX + "SelectStmt";
@@ -141,6 +136,38 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
   protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
+
+  // Some reasons why the test should not be run with connection manager
+  protected static final String UNIQUE_PHYSICAL_CONNS_NEEDED =
+      "Test needs two different physical connections. With Connection Manager the logical" +
+        " connections will share the same physical connection in a single threaded test if" +
+        " no active transactions are there on the first connection";
+
+  protected static final String LESSER_PHYSICAL_CONNS =
+      "Skipping this test with Ysql Connection Manager as logical connections " +
+        "created are lesser than physical connections and the real maximum limit for creating " +
+        "connections is never reached";
+
+  protected static final String NO_PHYSICAL_CONN_ATTACHED =
+      "Skipping this test with Ysql Connection Manager as no physical connection "+
+        "is being assigned therefore no backend id present when logical connection is not " +
+        "executing any transaction";
+
+  protected static final String SAME_PHYSICAL_CONN_AFFECTING_DIFF_LOGICAL_CONNS_MEM =
+      "Skipping this test with Ysql Connection Manager as all 3 logical " +
+        "connections will be using same physical conn, due to which it will affect the memory " +
+        "allocated to connection1 by connection2";
+
+  protected static final String CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN =
+      "Test needs two different physical connections while testing catalog cache misses." +
+      "With Connection Manager, logical connections will share the same physical connection " +
+      "due to which catalog cache hits occur for the same query executed on different logical " +
+      "connections";
+
+  protected static final String GUC_REPLAY_AFFECTS_CONN_STATE =
+      "Skipping this test with Connection Manager enabled. Connection Manager replays session " +
+        "variables at the beginning of transaction boundaries, causing erroneous results in " +
+        "the test, leading to failure.";
 
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
@@ -165,38 +192,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       new ConcurrentSkipListSet<>();
 
   protected static boolean pgInitialized = false;
-
-  public void runPgRegressTest(
-      File inputDir, String schedule, long maxRuntimeMillis, File executable) throws Exception {
-    final int tserverIndex = 0;
-    PgRegressRunner pgRegress = new PgRegressRunner(inputDir, schedule, maxRuntimeMillis);
-    ProcessBuilder procBuilder = new PgRegressBuilder(executable)
-        .setDirs(inputDir, pgRegress.outputDir())
-        .setSchedule(schedule)
-        .setHost(getPgHost(tserverIndex))
-        .setPort(getPgPort(tserverIndex))
-        .setUser(DEFAULT_PG_USER)
-        .setDatabase("yugabyte")
-        .setEnvVars(getPgRegressEnvVars())
-        .getProcessBuilder();
-    pgRegress.run(procBuilder);
-  }
-
-  public void runPgRegressTest(File inputDir, String schedule) throws Exception {
-    runPgRegressTest(
-        inputDir, schedule, 0 /* maxRuntimeMillis */,
-        PgRegressBuilder.PG_REGRESS_EXECUTABLE);
-  }
-
-  public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
-    runPgRegressTest(
-        PgRegressBuilder.PG_REGRESS_DIR /* inputDir */, schedule, maxRuntimeMillis,
-        PgRegressBuilder.PG_REGRESS_EXECUTABLE);
-  }
-
-  public void runPgRegressTest(String schedule) throws Exception {
-    runPgRegressTest(schedule, 0 /* maxRuntimeMillis */);
-  }
 
   public static void perfAssertLessThan(double time1, double time2) {
     if (TestUtils.isReleaseBuild()) {
@@ -265,6 +260,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     flagMap.put("ysql_beta_features", "true");
     flagMap.put("ysql_enable_reindex", "true");
+    flagMap.put("TEST_ysql_hide_catalog_version_increment_log", "true");
 
     return flagMap;
   }
@@ -293,16 +289,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enableYsql(true);
-    String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
-    if ((enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")){
+
+    if (isTestRunningWithConnectionManager()) {
       builder.enableYsqlConnMgr(true);
+      builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
+        Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
     }
   }
 
   @Before
-  public void initYBBackupUtil() {
+  public void initYBBackupUtil() throws Exception {
     YBBackupUtil.setMasterAddresses(masterAddresses);
     YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
+    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Before
@@ -407,27 +406,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   public int getPgPort(int tserverIndex) {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
-  }
-
-  protected Map<String, String> getPgRegressEnvVars() {
-    Map<String, String> pgRegressEnvVars = new TreeMap<>();
-    pgRegressEnvVars.put(MASTERS_FLAG, masterAddresses);
-    pgRegressEnvVars.put(YB_ENABLED_IN_PG_ENV_VAR_NAME, "1");
-
-    for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
-      String envVarName = entry.getKey();
-      if (envVarName.startsWith("postgres_FLAGS_")) {
-        String downstreamEnvVarName = envVarName.substring(9);
-        LOG.info("Found env var " + envVarName + ", setting " + downstreamEnvVarName + " for " +
-                 "pg_regress to " + entry.getValue());
-        pgRegressEnvVars.put(downstreamEnvVarName, entry.getValue());
-      }
-    }
-
-    // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
-    pgRegressEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "yugabyte");
-
-    return pgRegressEnvVars;
   }
 
   @After
@@ -559,6 +537,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       destroyMiniCluster();
       miniCluster = null;
     }
+  }
+
+  protected boolean isTestRunningWithConnectionManager() {
+    return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
   }
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
@@ -1573,7 +1555,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   /** Whether or not this query pushes down a filter condition */
   protected boolean doesPushdownCondition(Statement stmt, String query) throws SQLException {
-    return doesQueryPlanContainsSubstring(stmt, query, "Remote Filter:");
+    return doesQueryPlanContainsSubstring(stmt, query, "Storage Filter:");
   }
 
   /**
@@ -2178,7 +2160,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return null;
   }
 
-  protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {
+  protected long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
     Long rpc_count_before =
@@ -2304,5 +2286,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     ResultSet resultSet = statement.executeQuery("SELECT CURRENT_USER");
     resultSet.next();
     return resultSet.getString(1);
+  }
+
+  // yb-tserver flag ysql_conn_mgr_stats_interval (stats_interval field
+  // in the odyssey's config) controls the interval at which the
+  // stats gets updated (src/odyssey/sources/cron.c:332).
+  public static final int CONNECTIONS_STATS_UPDATE_INTERVAL_SECS = 1;
+
+  public static void waitForStatsToGetUpdated() throws InterruptedException {
+    Thread.sleep(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS * 1000 * 2);
   }
 }

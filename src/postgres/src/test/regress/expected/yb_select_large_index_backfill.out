@@ -102,7 +102,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND i
          Sort Key: ident
          ->  Index Scan using airports_idx_name on airports
                Index Cond: ((name > 'H'::text) AND (name < 'R'::text))
-               Remote Filter: (iso_region = 'US-CA'::text)
+               Storage Filter: (iso_region = 'US-CA'::text)
 (6 rows)
 
 SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'
@@ -132,7 +132,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND i
          Sort Key: ident DESC
          ->  Index Scan using airports_idx_name on airports
                Index Cond: ((name > 'H'::text) AND (name < 'R'::text))
-               Remote Filter: (iso_region = 'US-CA'::text)
+               Storage Filter: (iso_region = 'US-CA'::text)
 (6 rows)
 
 SELECT * FROM airports WHERE name > 'H' AND name < 'R' AND iso_region = 'US-CA'

@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <vector>
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_manager.h"
 
@@ -95,6 +96,11 @@ TEST_F(PgMasterFailoverTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInTableg
 }
 
 void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
+  // Start Yb Controllers for backup/restore.
+  if (UseYbController()) {
+    CHECK_OK(cluster_->StartYbControllerServers());
+  }
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs) = true;
   tools::TmpDirProvider tmp_dir;
 
@@ -122,10 +128,17 @@ void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
     }, 10s, "Wait all TServers to be registered"));
   }
 
-  ASSERT_OK(tools::RunBackupCommand(
-      pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
-      *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
-       "create"}));
+  Status status = Status::OK();
+  std::vector<std::string> args = {"--backup_location", tmp_dir / "backup", "--no_upload",
+                                   "--keyspace",        "ysql.test",        "create"};
+  if (UseYbController()) {
+    status = tools::RunYbControllerCommand(cluster_.get(), *tmp_dir, args);
+  } else {
+    status = tools::RunBackupCommand(
+        pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
+        *tmp_dir, args);
+  }
+  ASSERT_OK(status);
 }
 
 // Use special mode when non leader master times out all rpcs.

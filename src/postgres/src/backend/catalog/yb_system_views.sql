@@ -29,6 +29,10 @@ CREATE VIEW yb_active_session_history AS
     SELECT *
     FROM yb_active_session_history();
 
+CREATE VIEW yb_local_tablets AS
+    SELECT *
+    FROM yb_local_tablets();
+
 CREATE VIEW pg_roles AS
     SELECT
         rolname,
@@ -852,7 +856,8 @@ CREATE VIEW pg_replication_slots AS
             L.catalog_xmin,
             L.restart_lsn,
             L.confirmed_flush_lsn,
-            L.yb_stream_id
+            L.yb_stream_id,
+            L.yb_restart_commit_ht
     FROM pg_get_replication_slots() AS L
             LEFT JOIN pg_database D ON (L.datoid = D.oid);
 

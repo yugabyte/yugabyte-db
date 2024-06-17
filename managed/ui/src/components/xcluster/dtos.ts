@@ -12,7 +12,7 @@ export interface XClusterTableDetails {
   status: XClusterTableStatus;
   streamId: string;
   tableId: string;
-
+  replicationStatusErrors: string[];
   bootstrapCreateTime?: string;
   restoreTime?: string;
 }

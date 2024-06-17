@@ -109,6 +109,11 @@ typedef FormData_pg_class *Form_pg_class;
 #define		  RELPERSISTENCE_UNLOGGED	'u' /* unlogged permanent table */
 #define		  RELPERSISTENCE_TEMP		't' /* temporary table */
 
+/*
+ * YB Note: The Replica Identity values must be kept in the sync with the YBC_*
+ * declarations in ybc_pg_typedefs.h
+ */
+
 /* default selection for replica identity (primary key or nothing) */
 #define		  REPLICA_IDENTITY_DEFAULT	'd'
 /* no replica identity is logged for this relation */
@@ -121,6 +126,8 @@ typedef FormData_pg_class *Form_pg_class;
  * has the same meaning as 'd'.
  */
 #define		  REPLICA_IDENTITY_INDEX	'i'
+/* only the modified columns of the updated record are logged as replica identity */
+#define		  YB_REPLICA_IDENTITY_CHANGE 'c'
 
 /*
  * Relation kinds that have physical storage. These relations normally have

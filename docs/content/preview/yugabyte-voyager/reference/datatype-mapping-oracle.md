@@ -33,7 +33,7 @@ The following table includes a list of supported data type mappings for migratin
 | NVARCHAR2 | VARCHAR | Unsupported in [Live migration](../../migrate/live-migrate/), or [Live migration with fall-forward](../../migrate/live-fall-forward/) |
 | RAW | BYTEA |
 | LONG RAW | BYTEA |
-| DATE | DATE |
+| DATE | TIMESTAMP |
 | TIMESTAMP WITH TIMEZONE | TIMESTAMP WITH TIMEZONE |
 | TIMESTAMP WITH LOCAL TIME ZONE | TIMESTAMP WITH TIMEZONE |
 | TIMESTAMP | TIMESTAMP |

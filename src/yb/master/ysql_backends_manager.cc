@@ -37,7 +37,12 @@
 
 using namespace std::chrono_literals;
 
-DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
+
+DEFINE_RUNTIME_int32(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms,
+    60 * 1000, // 60s
+    "WaitForYsqlBackendsCatalogVersion master-to-tserver RPC timeout.");
+TAG_FLAG(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms, advanced);
 
 DEFINE_RUNTIME_uint32(ysql_backends_catalog_version_job_expiration_sec, 120, // 2m
     "Expiration time in seconds for a YSQL BackendsCatalogVersionJob. Recommended to set several"
@@ -52,6 +57,8 @@ DEFINE_test_flag(bool, block_wait_for_ysql_backends_catalog_version, false, // r
     "If true, enable toggleable busy-wait at the beginning of WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, true,
     "Take leader lock in WaitForYsqlBackendsCatalogVersion.");
+DEFINE_test_flag(bool, ysql_backends_catalog_version_disable_abort_all_jobs, false,
+    "Make YsqlBackendsManager::AbortAllJobs a no-op.");
 
 namespace yb {
 namespace master {
@@ -67,15 +74,28 @@ YsqlBackendsManager::YsqlBackendsManager(
 
 namespace {
 
-// Check the leadership (and initialization of catalog).  Return ok if those conditions are
-// satisfied.  If not satisfied, fill the response error code and then return status.
+// Check the leadership:
+// - initialization of catalog
+// - lease period elapsed since leadership
+// Return ok if those conditions are satisfied.  If not satisfied, fill the response error code and
+// return status.
 Status CheckLeadership(
-    ScopedLeaderSharedLock* l, WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
+    ScopedLeaderSharedLock* l, CatalogManager* catalog_manager,
+    WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
   if (!l->IsInitializedAndIsLeader()) {
     // Do the same thing as case !l.CheckIsInitializedAndIsLeaderOrRespond(resp, rpc) in
     // MasterServiceBase::HandleOnLeader.
     resp->mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     return l->first_failed_status();
+  }
+  if (catalog_manager->TimeSinceElectedLeader() <
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms))) {
+    return SetupError(
+        resp->mutable_error(),
+        STATUS(
+          TryAgain,
+          "Recently became leader: cannot yet serve WaitForYsqlBackendsCatalogVersion requests")
+          .CloneAndAddErrorCode(MasterError(MasterErrorPB::IN_TRANSITION_CAN_RETRY)));
   }
   return Status::OK();
 }
@@ -127,13 +147,16 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     if (PREDICT_FALSE(!FLAGS_TEST_wait_for_ysql_backends_catalog_version_take_leader_lock)) {
       l.Unlock();
     } else {
-      RETURN_NOT_OK(CheckLeadership(&l, resp));
+      RETURN_NOT_OK(CheckLeadership(&l, master_->catalog_manager_impl(), resp));
     }
     Status s;
+    bool perdb_mode = false;
     // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make sure
     // to handle that case if initdb ever goes through this codepath.
-    if (FLAGS_ysql_enable_db_catalog_version_mode &&
-        master_->catalog_manager_impl()->catalog_version_table_in_perdb_mode()) {
+    if (FLAGS_ysql_enable_db_catalog_version_mode) {
+      RETURN_NOT_OK(master_->catalog_manager_impl()->IsCatalogVersionTableInPerdbMode(&perdb_mode));
+    }
+    if (perdb_mode) {
       s = master_->catalog_manager_impl()->GetYsqlDBCatalogVersion(
           db_oid, &master_version, nullptr /* last_breaking_version */);
     } else {
@@ -253,7 +276,6 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
-  auto epoch = l.epoch();
   if (job->state() != MonitoredTaskState::kRunning) {
     // The only reason for this to happen is if catalog manager bg thread does AbortAllJobs or
     // AbortInactiveJobs between CompareAndSwapState and SCOPED_LEADER_SHARED_LOCK above.  Any
@@ -269,10 +291,10 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     // tracker and then we add the job to the jobs tracker, meaning that job would be missed
     // by the one-time cleanup.  But this is a test flag, so don't worry about it.
   } else {
-    RETURN_NOT_OK(CheckLeadership(&l, resp));
+    RETURN_NOT_OK(CheckLeadership(&l, master_->catalog_manager_impl(), resp));
   }
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(job);
-  RETURN_NOT_OK(job->Launch(epoch));
+  RETURN_NOT_OK(job->Launch(master_->catalog_manager()->leader_ready_term()));
   return Status::OK();
 }
 
@@ -358,6 +380,11 @@ void YsqlBackendsManager::TerminateJob(
 }
 
 void YsqlBackendsManager::AbortAllJobs() {
+  if (FLAGS_TEST_ysql_backends_catalog_version_disable_abort_all_jobs) {
+    LOG(INFO) << "avoiding abort all jobs";
+    return;
+  }
+
   std::vector<std::shared_ptr<BackendsCatalogVersionJob>> jobs;
   {
     std::lock_guard l(mutex_);
@@ -461,7 +488,7 @@ MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Stat
   return old_state;
 }
 
-Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
+Status BackendsCatalogVersionJob::Launch(int64_t term) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "launching tserver RPCs";
 
   const auto& descs = master_->ts_manager()->GetAllDescriptors();
@@ -475,12 +502,12 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
     std::lock_guard l(mutex_);
 
     // Commit term now.
-    epoch_ = epoch;
+    term_ = term;
 
     for (const auto& ts_desc : descs) {
-      if (!ts_desc->IsLive()) {
-        // Ignore dead tservers since they should be resolved.
-        // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
+      if (!ts_desc->HasYsqlCatalogLease()) {
+        // Ignore tservers with expired lease since they should be resolved.
+        // TODO(#13369): ensure these tservers abort/block ops until they successfully heartbeat.
         continue;
       }
 
@@ -491,14 +518,13 @@ Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
   }
 
   for (const auto& ts_uuid : ts_uuids) {
-    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */, epoch));
+    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */));
   }
 
   return Status::OK();
 }
 
-Status BackendsCatalogVersionJob::LaunchTS(
-    TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch) {
+Status BackendsCatalogVersionJob::LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
       shared_from_this(), ts_uuid, num_lagging_backends);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
@@ -533,11 +559,11 @@ bool BackendsCatalogVersionJob::IsInactive() const {
 bool BackendsCatalogVersionJob::IsSameTerm() const {
   const int64_t term = master_->catalog_manager()->leader_ready_term();
   std::lock_guard l(mutex_);
-  if (epoch_.leader_term == term) {
+  if (term_ == term) {
     VLOG_WITH_PREFIX(3) << "Sys catalog term is " << term;
     return true;
   }
-  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << epoch_.leader_term;
+  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << term_;
   return false;
 }
 
@@ -612,14 +638,12 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     auto s = num_lagging_backends.status();
     if (s.IsTryAgain()) {
       int last_known_num_lagging_backends;
-      LeaderEpoch epoch;
       {
         std::lock_guard l(mutex_);
         last_known_num_lagging_backends = ts_map_[ts_uuid];
-        epoch = epoch_;
       }
       // Ignore returned status since it is already logged/handled.
-      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends, epoch);
+      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends);
     } else {
       LOG_WITH_PREFIX(WARNING) << "got bad status " << s.ToString() << " from TS " << ts_uuid;
       master_->ysql_backends_manager()->TerminateJob(
@@ -630,10 +654,8 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
   DCHECK_GE(*num_lagging_backends, 0);
 
   // Update num_lagging_backends.
-  LeaderEpoch epoch;
   {
     std::lock_guard l(mutex_);
-    epoch = epoch_;
 
 #ifndef NDEBUG
     if (ts_map_[ts_uuid] != -1) {
@@ -650,7 +672,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     VLOG_WITH_PREFIX(2) << "still waiting on " << *num_lagging_backends << " backends of TS "
                         << ts_uuid;
     // Ignore returned status since it is already logged/handled.
-    (void)LaunchTS(ts_uuid, *num_lagging_backends, epoch);
+    (void)LaunchTS(ts_uuid, *num_lagging_backends);
     return;
   }
   DCHECK_EQ(*num_lagging_backends, 0);
@@ -730,6 +752,12 @@ std::string BackendsCatalogVersionTS::description() const {
   return "BackendsCatalogVersionTS RPC";
 }
 
+MonoTime BackendsCatalogVersionTS::ComputeDeadline() {
+  MonoTime timeout = MonoTime::Now() + MonoDelta::FromMilliseconds(
+      FLAGS_wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms);
+  return MonoTime::Earliest(timeout, deadline_);
+}
+
 TabletServerId BackendsCatalogVersionTS::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
@@ -754,16 +782,18 @@ bool BackendsCatalogVersionTS::SendRequest(int attempt) {
 void BackendsCatalogVersionTS::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << resp_.ShortDebugString();
 
-  // First, check if the tserver is considered dead.
-  if (!target_ts_desc_->IsLive()) {
+  // First, check if the tserver's lease expired.
+  if (!target_ts_desc_->HasYsqlCatalogLease()) {
     // A similar check is done in RetryingTSRpcTask::DoRpcCallback.  That check is hit when this RPC
-    // failed and tserver is dead.  This check is hit when this RPC succeeded and tserver is dead.
-    // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
+    // failed and tserver's leaes expired.  This check is hit when this RPC succeeded and tserver's
+    // lease expired.
+    // TODO(#13369): ensure lease-expired tservers abort/block ops until they successfully
+    // heartbeat.
     LOG_WITH_PREFIX(WARNING)
-        << "TS " << permanent_uuid() << " is DEAD. Assume backends on that TS"
+        << "TS " << permanent_uuid() << " catalog lease expired. Assume backends on that TS"
         << " will be resolved to sufficient catalog version";
     TransitionToCompleteState();
-    found_dead_ = true;
+    found_lease_expired_ = true;
     return;
   }
 
@@ -830,16 +860,16 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
 
   // There are multiple cases where we consider a tserver to be resolved:
   // - Num lagging backends is zero: directly resolved
-  // - Tserver was found dead in HandleResponse: indirectly resolved assuming issue #13369.
-  // - Tserver was found dead in DoRpcCallback: (same).
+  // - Tserver lease expired in HandleResponse: indirectly resolved assuming issue #13369.
+  // - Tserver lease expired in DoRpcCallback: (same).
   // - Tserver was found behind in HandleResponse: indirectly resolved for compatibility during
   //   upgrade: it is possible backends are actually behind.
   // - Tserver was found behind in DoRpcCallback: (same).
-  bool indirectly_resolved = found_dead_ || found_behind_;
+  bool indirectly_resolved = found_lease_expired_ || found_behind_;
   if (!rpc_.status().ok()) {
     // Only way for rpc status to be not okay is from TransitionToCompleteState in
     // RetryingTSRpcTask::DoRpcCallback.  That can happen in any of the following ways:
-    // - ts died.
+    // - ts expired lease.
     // - ts is on an older version that doesn't support the RPC.
     DCHECK_EQ(state(), MonitoredTaskState::kComplete);
     DCHECK(!resp_.has_error()) << LogPrefix() << resp_.error().ShortDebugString();
@@ -849,10 +879,12 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
   // Find failures.
   Status status;
   if (!indirectly_resolved) {
-    // Only live tservers can be considered to have failures since dead or behind tservers are
-    // considered resolved.  Dead tservers could still get resp error like catalog version too old,
-    // but we don't want to throw error when they are already considered resolved.
-    // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
+    // Only tservers holding valid leases can be considered to have failures since lease-expired or
+    // behind tservers are considered resolved.  Tservers with expired leases could still get resp
+    // error like catalog version too old, but we don't want to throw an error when they are already
+    // considered resolved.
+    // TODO(#13369): ensure lease-expired tservers abort/block ops until they successfully
+    // heartbeat.
 
     if (resp_.has_error()) {
       if (state() == MonitoredTaskState::kComplete) {
@@ -874,11 +906,12 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
 
   if (auto job = job_.lock()) {
     if (indirectly_resolved) {
-      // There are three cases of indirectly resolved tservers, outlined in a comment above.
-      if (found_dead_ || !target_ts_desc_->IsLive()) {
-        // The two tserver-found-dead cases.
+      // There are four cases of indirectly resolved tservers, outlined in a comment above.
+      if (found_lease_expired_ || !target_ts_desc_->HasYsqlCatalogLease()) {
+        // The two tserver-lease-expired cases.
         LOG_WITH_PREFIX(INFO)
-            << "tserver died, so assuming its backends are at latest catalog version";
+            << "tserver catalog lease expired, so assuming its backends are at latest catalog"
+            << " version";
       } else {
         // The two tserver-found-behind cases.
         LOG_WITH_PREFIX(INFO) << "tserver behind, so skipping backends catalog version check";

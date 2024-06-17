@@ -27,6 +27,9 @@
 
 #include "access/xlogrecord.h"
 
+/* YB includes. */
+#include "replication/yb_virtual_wal_client_typedefs.h"
+
 typedef struct XLogReaderState XLogReaderState;
 
 /* Function type definition for the read_page callback */
@@ -140,6 +143,8 @@ struct XLogReaderState
 
 	int			max_block_id;	/* highest block_id in use (-1 if none) */
 
+	YBCPgVirtualWalRecord *yb_virtual_wal_record;
+
 	/* ----------------------------------------
 	 * private/internal state
 	 * ----------------------------------------
@@ -242,5 +247,7 @@ extern char *XLogRecGetBlockData(XLogReaderState *record, uint8 block_id, Size *
 extern bool XLogRecGetBlockTag(XLogReaderState *record, uint8 block_id,
 				   RelFileNode *rnode, ForkNumber *forknum,
 				   BlockNumber *blknum);
+
+extern void YBResetDecoder(XLogReaderState *state);
 
 #endif							/* XLOGREADER_H */

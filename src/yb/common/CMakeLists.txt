@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX common)
-set(YB_PCH_DEP_LIBS gmock gtest gutil opid_proto yb_test_util yb_util)
+set(YB_PCH_DEP_LIBS gmock gtest gutil yb_test_util yb_util)
 
 YRPC_GENERATE(
   COMMON_PROTO_SRCS COMMON_PROTO_HDRS COMMON_PROTO_TGTS
@@ -41,6 +41,7 @@ YRPC_GENERATE(
       common.proto
       common_net.proto
       common_types.proto
+      opid.proto
       pgsql_protocol.proto
       redis_protocol.proto
       ql_protocol.proto
@@ -76,6 +77,7 @@ ADD_YB_LIBRARY(yb_common_base
 set(COMMON_SRCS
   clock.cc
   colocated_util.cc
+  common_consensus_util.cc
   common_flags.cc
   common_types_util.cc
   common_util.cc
@@ -85,8 +87,8 @@ set(COMMON_SRCS
   doc_hybrid_time.cc # must be after hybrid_time.cc
   id_mapping.cc
   key_encoder.cc
+  opid.cc
   pgsql_error.cc
-  path-handler-util.cc
   placement_info.cc
   pg_types.cc
   ql_protocol_util.cc
@@ -97,6 +99,7 @@ set(COMMON_SRCS
   schema.cc
   schema_pbutil.cc
   snapshot.cc
+  tablet_limits.cc
   termination_monitor.cc
   transaction.cc
   transaction_error.cc
@@ -115,7 +118,6 @@ set(COMMON_LIBS
 
 if (NOT APPLE)
   list(APPEND COMMON_LIBS libuuid)
-  list(APPEND COMMON_LIBS absl)
 endif()
 
 ADD_YB_LIBRARY(yb_common
@@ -132,6 +134,7 @@ ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
+ADD_YB_TEST(subtxn_set_and_pb-test)
+ADD_YB_TEST(tablet_limits_test)
 ADD_YB_TEST(types-test)
 ADD_YB_TEST(wire_protocol-test)
-ADD_YB_TEST(subtxn_set_and_pb-test)

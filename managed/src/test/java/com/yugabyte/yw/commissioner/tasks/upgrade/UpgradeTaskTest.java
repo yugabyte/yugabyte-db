@@ -23,6 +23,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.MockUpgrade;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -135,7 +137,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.UpdateClusterUserIntent,
-          TaskType.CheckUnderReplicatedTablets);
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.WaitStartingFromTime);
 
   @Override
   @Before
@@ -171,7 +175,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.ybSoftwareVersion = "2.14.12.0-b1";
+    userIntent.ybSoftwareVersion = "2.21.1.1-b1";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
@@ -349,7 +353,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
         subTasks.stream()
-            .map(t -> t.getDetails().get("nodeName").textValue())
+            .map(t -> t.getTaskParams().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
     assertEquals(nodeCount, nodeNames.size());
@@ -360,7 +364,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     }
 
     List<JsonNode> subTaskDetails =
-        subTasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+        subTasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
     assertValues.forEach(
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
@@ -383,44 +387,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
                         "Unexpected value for key " + expectedKey, expectedValue, actualValue));
           }
         });
-  }
-
-  protected void assertTasksSequence(
-      final int startPosition,
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      List<TaskType> expectedTaskTypes,
-      Map<Integer, Map<String, Object>> expectedParams,
-      boolean wholeSequence) {
-    int position = startPosition;
-    try {
-      for (TaskType expectedTaskType : expectedTaskTypes) {
-        List<TaskInfo> tasks = subTasksByPosition.get(position);
-        TaskType taskType = tasks.get(0).getTaskType();
-        assertEquals(1, tasks.size());
-        assertEquals(expectedTaskType, taskType);
-        Map<String, Object> expectedParamsForType =
-            expectedParams.getOrDefault(position - startPosition, Collections.emptyMap());
-        try {
-          if (expectedParamsForType != null && expectedParamsForType.size() > 0) {
-            assertNodeSubTask(tasks, expectedParamsForType);
-          }
-        } catch (RuntimeException e) {
-          log.error("", e);
-          assertTrue("Failed to compare params: " + e.getMessage(), false);
-        }
-        position++;
-      }
-      if (wholeSequence) {
-        assertNull("No more tasks", subTasksByPosition.get(position));
-      }
-    } catch (AssertionError err) {
-      try {
-        printTaskSequence(
-            startPosition, subTasksByPosition, expectedTaskTypes, expectedParams, position);
-      } catch (RuntimeException re) {
-      }
-      throw err;
-    }
   }
 
   private void printTaskSequence(
@@ -470,7 +436,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       if (key.equals("nodeNames") || key.equals("nodeCount")) {
         result.put(key, "?");
       } else {
-        JsonNode details = task.getDetails();
+        JsonNode details = task.getTaskParams();
         JsonNode data =
             PROPERTY_KEYS.contains(key) ? details.get("properties").get(key) : details.get(key);
         Object dataObj = null;
@@ -482,18 +448,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       }
     }
     return result;
-  }
-
-  protected void assertCommonTasks(
-      Map<Integer, List<TaskInfo>> subTasksByPosition, int startPosition) {
-    int position = startPosition;
-    List<TaskType> commonNodeTasks =
-        new ArrayList<>(
-            ImmutableList.of(TaskType.LoadBalancerStateChange, TaskType.UniverseUpdateSucceeded));
-    for (TaskType commonNodeTask : commonNodeTasks) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTask, position);
-      position++;
-    }
   }
 
   // Configures default universe to have 5 nodes with RF=3.
@@ -542,5 +496,20 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     postNodeScope.addHook(postNodeHook);
     preUpgradeScope.addHook(preUpgradeHook);
     postUpgradeScope.addHook(postUpgradeHook);
+  }
+
+  protected MockUpgrade initMockUpgrade(Class<? extends UpgradeTaskBase> upgradeClass) {
+    MockUpgrade mockUpgrade =
+        new MockUpgrade(mockBaseTaskDependencies, defaultUniverse, upgradeClass);
+
+    return mockUpgrade;
+  }
+
+  protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
+    List<TaskType> types = new ArrayList<>();
+    if (hasRollingRestarts) {
+      types.add(TaskType.CheckNodesAreSafeToTakeDown);
+    }
+    return types.toArray(new TaskType[0]);
   }
 }

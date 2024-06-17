@@ -2990,7 +2990,7 @@ ORDER BY ref_0."C 1";
                Output: ref_0.c2, ref_0."C 1", ref_1.c3, (ref_0.c2)
                ->  Seq Scan on "S 1"."T 1" ref_0
                      Output: ref_0.c2, ref_0."C 1"
-                     Remote Filter: (ref_0."C 1" < 10)
+                     Storage Filter: (ref_0."C 1" < 10)
                ->  Foreign Scan on public.ft1 ref_1
                      Output: ref_1.c3, ref_0.c2
                      Remote Filter: (ref_1.c3 = '00001'::text)
@@ -8487,12 +8487,12 @@ SELECT t1.a, t1.phv, t2.b, t2.phv FROM (SELECT 't1_phv' phv, * FROM fprt1 WHERE 
    Sort Key: ftprt1_p1.a, ftprt2_p1.b
    ->  Append
          ->  Hash Full Join
-               Hash Cond: (ftprt2_p1.b = ftprt1_p1.a)
-               ->  Foreign Scan on ftprt2_p1
-                     Remote Filter: ((b % 25) = 0)
+               Hash Cond: (ftprt1_p1.a = ftprt2_p1.b)
+               ->  Foreign Scan on ftprt1_p1
+                     Remote Filter: ((a % 25) = 0)
                ->  Hash
-                     ->  Foreign Scan on ftprt1_p1
-                           Remote Filter: ((a % 25) = 0)
+                     ->  Foreign Scan on ftprt2_p1
+                           Remote Filter: ((b % 25) = 0)
          ->  Hash Full Join
                Hash Cond: (ftprt2_p2.b = ftprt1_p2.a)
                ->  Foreign Scan on ftprt2_p2

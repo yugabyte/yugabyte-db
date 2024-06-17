@@ -282,9 +282,9 @@ class AbstractInstancesMethod(AbstractMethod):
         if args.instance_tags:
             updated_args["instance_tags"] = json.loads(args.instance_tags)
         updated_args["offload_ansible"] = args.offload_ansible
+        updated_args["imdsv2required"] = args.imdsv2required
 
         self.extra_vars.update(updated_args)
-        self.extra_vars["imdsv2required"] = args.imdsv2required
 
     def update_ansible_vars_with_host_info(self, host_info, custom_ssh_port):
         """Hook for subclasses to update Ansible extra-vars with host specifics before calling out.
@@ -643,6 +643,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
         self.can_ssh = True
         self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+        self.INSTANCE_LOOKUP_RETRY_LIMIT = 5
 
     def add_extra_args(self):
         """Setup the CLI options for creating instances.
@@ -684,7 +685,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         })
         self.update_ansible_vars_with_args(args)
         create_output = self.run_ansible_create(args)
-        host_info = self.cloud.get_host_info(args)
+        host_info = self.wait_for_host(args)
         normalized_state = self.cloud.normalize_instance_state(host_info.get("instance_state"))
         logging.info("Host {} is in normalized state {}({})."
                      .format(args.search_pattern, normalized_state,
@@ -695,21 +696,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Host {} is in invalid state {}."
                                         .format(args.search_pattern,
                                                 host_info.get("instance_state")))
-        # Set the host and default port.
-        self.extra_vars.update(
-            self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
-        # Update with the open port.
-        self.update_open_ssh_port(args)
-        self.extra_vars['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
-        # Port is already open. Wait for connection to server to succeed.
-        connected = wait_for_server(self.extra_vars)
-        if not connected:
-            host_port_user = get_host_port_user(self.extra_vars)
-            raise YBOpsRecoverableError("Connection({}) to host {} by user {} failed at port {}"
-                                        .format(host_port_user["connection_type"],
-                                                host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
 
         if args.boot_script:
             logging.info(
@@ -823,6 +809,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
         if not args.skip_preprovision:
             self.preprovision(args)
+            self.extra_vars["device_names"] = self.get_device_names(args, host_info)
 
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
@@ -845,7 +832,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars.update({"configure_ybc": args.configure_ybc})
-        self.extra_vars["device_names"] = self.get_device_names(args, host_info)
         self.extra_vars["lun_indexes"] = args.lun_indexes
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
@@ -871,7 +857,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                                 host_port_user["user"],
                                                 host_port_user["port"]))
 
-    def get_device_names(self, args, host_info):
+    def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args)
 
     def update_ansible_vars(self, args):
@@ -1058,13 +1044,19 @@ class UpdateMountedDisksMethod(AbstractInstancesMethod):
 
     def update_ansible_vars_with_args(self, args):
         super(UpdateMountedDisksMethod, self).update_ansible_vars_with_args(args)
-        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+    def get_device_names(args, host_info=None):
+        self.cloud.get_device_names(args)
 
     def callback(self, args):
         # Need to verify that all disks are mounted by UUUID
         host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find host {} to provision!".format(
+                args.search_pattern))
         ansible = self.cloud.setup_ansible(args)
         self.update_ansible_vars_with_args(args)
+        self.extra_vars["device_names"] = self.get_device_names(args, host_info)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
         logging.debug(pprint(self.extra_vars))
@@ -1186,6 +1178,10 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     def prepare(self):
         super(ConfigureInstancesMethod, self).prepare()
 
+        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+                                 help="The port for node_exporter to bind to.")
+        self.parser.add_argument("--node_exporter_user", default="prometheus")
+        self.parser.add_argument("--install_node_exporter", action="store_true")
         self.parser.add_argument('--package', default=None)
         self.parser.add_argument('--num_releases_to_keep', type=int,
                                  help="Number of releases to keep after upgrade.")
@@ -1269,6 +1265,17 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  required=False,
                                  help="The maximum number of checking the clock skew before "
                                       "failing.")
+        self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument('--otel_col_config_file', default=None,
+                                 help="Path to OpenTelemetry Collector config file.")
+        self.parser.add_argument('--otel_col_aws_access_key', default=None,
+                                 help="AWS Access Key used for logs export")
+        self.parser.add_argument('--otel_col_aws_secret_key', default=None,
+                                 help="AWS Secret Key used for logs export.")
+        self.parser.add_argument('--otel_col_gcp_creds_file', default=None,
+                                 help="Path to GCP credentials file used for logs export.")
+        self.parser.add_argument('--ycql_audit_log_level', default=None,
+                                 help="YCQL audit log level.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1363,6 +1370,13 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 raise YBOpsRuntimeError(
                     "Supported actions for this command are only: {}".format(
                         self.CERT_ROTATE_ACTIONS))
+
+        if args.node_exporter_port:
+            self.extra_vars.update({"node_exporter_port": args.node_exporter_port})
+        if args.install_node_exporter:
+            self.extra_vars.update({"install_node_exporter": args.install_node_exporter})
+        if args.node_exporter_user:
+            self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
 
         host_info = None
         if args.search_pattern != 'localhost':
@@ -1476,12 +1490,13 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
                         ybc_package_path, args.search_pattern, time.time() - start_time))
 
+        if args.local_package_path:
+            self.extra_vars.update({"local_package_path": args.local_package_path})
+        else:
+            logging.warn("Local Directory Tarball Path not specified skipping")
+            return
+
         if args.install_third_party_packages:
-            if args.local_package_path:
-                self.extra_vars.update({"local_package_path": args.local_package_path})
-            else:
-                logging.warn("Local Directory Tarball Path not specified skipping")
-                return
             self.cloud.setup_ansible(args).run(
                 "install-third-party.yml", self.extra_vars, host_info)
             return
@@ -1578,6 +1593,19 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 args.encryption_key_source_file, args.encryption_key_target_dir))
             self.cloud.create_encryption_at_rest_file(self.extra_vars, self.extra_vars)
 
+        if args.install_otel_collector:
+            self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_config_file:
+            self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
+        if args.otel_col_aws_access_key:
+            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
+        if args.otel_col_aws_secret_key:
+            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
+        if args.otel_col_gcp_creds_file:
+            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
+        if args.ycql_audit_log_level:
+            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+
         if args.reset_master_state and args.extra_gflags is not None:
             delete_paths = []
             extra_gflags = self.extra_vars.get('extra_gflags')
@@ -1631,6 +1659,12 @@ class ControlInstanceMethod(AbstractInstancesMethod):
         # Force control instances to use the "yugabyte" user.
         return "yugabyte"
 
+    def add_extra_args(self):
+        super(ControlInstanceMethod, self).add_extra_args()
+        self.parser.add_argument("--deconfigure", required=False,
+                                 action="store_true", default=False,
+                                 help="Deconfigure the server")
+
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if not host_info:
@@ -1654,6 +1688,8 @@ class ControlInstanceMethod(AbstractInstancesMethod):
 
         self.update_ansible_vars_with_args(args)
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+        if args.deconfigure:
+            self.extra_vars.update({"deconfigure": True})
         self.cloud.run_control_script(
             self.base_command.name, self.name, args, self.extra_vars, host_info)
 
@@ -2117,6 +2153,7 @@ class ManageOtelCollector(AbstractInstancesMethod):
         self.parser.add_argument("--local_package_path",
                                  required=False,
                                  help="Path to local directory with third party software tarballs.")
+        self.parser.add_argument("--use_sudo", action='store_true', default=False)
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -2146,6 +2183,8 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
         if args.ycql_audit_log_level:
             self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        if args.use_sudo:
+            self.extra_vars.update({"use_sudo": args.use_sudo})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-otel-collector.yml",

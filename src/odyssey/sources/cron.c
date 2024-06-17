@@ -10,6 +10,7 @@
 #include <odyssey.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
@@ -54,25 +55,23 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		} else {
 			if (route->id.yb_stats_index == -1) {
 				route->id.yb_stats_index = yb_get_stats_index(
-					instance->yb_stats, route->id.database,
+					instance->yb_stats,
+					(char *)route->yb_database_entry->name,
 					route->id.user);
 			}
 
 			index = route->id.yb_stats_index;
 			strncpy(instance->yb_stats[index].database_name,
-				route->id.database, DB_NAME_MAX_LEN);
+				(char *)route->yb_database_entry->name,
+				DB_NAME_MAX_LEN);
 			strncpy(instance->yb_stats[index].user_name,
 				route->id.user, USER_NAME_MAX_LEN);
 		}
 
-		od_debug(&instance->logger, "stats", NULL, NULL,
-			 "Updating stats for db %s with index %d",
-			 route->id.database, index);
-
 		if (index == -1) {
 			od_error(&instance->logger, "stats", NULL, NULL,
 				 "Unable to find the index for db %s",
-				 route->id.database);
+				 (char *)route->yb_database_entry->name);
 			return -1;
 		}
 
@@ -90,7 +89,6 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		instance->yb_stats[index].query_rate = avg->count_query;
 		instance->yb_stats[index].transaction_rate = avg->count_tx;
 		instance->yb_stats[index].avg_wait_time_ns = avg->wait_time;
-		instance->yb_stats[index].last_updated_time = machine_time_us();
 		od_route_unlock(route);
 	}
 
@@ -175,6 +173,14 @@ static inline void od_cron_stat(od_cron_t *cron)
 	od_router_t *router = cron->global->router;
 	od_instance_t *instance = cron->global->instance;
 	od_worker_pool_t *worker_pool = cron->global->worker_pool;
+
+	/* Update last updated timestamp */
+	if (instance->yb_stats != NULL) {
+		struct timespec t;
+		clock_gettime(CLOCK_REALTIME, &t);
+		uint64_t time_ns = t.tv_sec * (uint64_t)1e9 + t.tv_nsec;
+		instance->yb_stats[0].last_updated_timestamp = time_ns/1000000;
+	}
 
 	if (instance->config.log_stats) {
 		/* system worker stats */

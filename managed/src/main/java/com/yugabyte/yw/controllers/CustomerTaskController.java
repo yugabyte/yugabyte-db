@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -25,6 +24,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.FailedSubtasks;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -45,7 +45,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -77,8 +76,8 @@ public class CustomerTaskController extends AuthenticatedController {
     LinkedList<TaskInfo> result = new LinkedList<>(subTaskQuery.findList());
 
     if (TaskInfo.ERROR_STATES.contains(parentTask.getTaskState()) && result.isEmpty()) {
-      JsonNode taskError = parentTask.getDetails().get("errorString");
-      if ((taskError != null) && !StringUtils.isEmpty(taskError.asText())) {
+      TaskError taskError = parentTask.getTaskError();
+      if (taskError != null) {
         // Parent task hasn't `sub_task_group_type` set but can have some error details
         // which are not present in subtasks. Usually these errors encountered on a
         // stage of the action preparation (some initial checks plus preparation of
@@ -98,8 +97,11 @@ public class CustomerTaskController extends AuthenticatedController {
       subTaskData.subTaskState = taskInfo.getTaskState().name();
       subTaskData.creationTime = taskInfo.getCreateTime();
       subTaskData.subTaskGroupType = taskInfo.getSubTaskGroupType().name();
-      JsonNode taskError = taskInfo.getDetails().get("errorString");
-      subTaskData.errorString = (taskError == null) ? "null" : taskError.asText();
+      TaskError taskError = taskInfo.getTaskError();
+      if (taskError != null) {
+        subTaskData.errorCode = taskError.getCode();
+        subTaskData.errorString = taskError.getMessage();
+      }
       subTasks.add(subTaskData);
     }
     return subTasks;
@@ -129,6 +131,11 @@ public class CustomerTaskController extends AuthenticatedController {
         taskData.details = taskProgress.get("details");
       } else {
         ObjectNode details = Json.newObject();
+        // Add auditLogConfig from the task details if it is present.
+        // This info is useful to render the UI properly while task is in progress.
+        if (taskInfo.getTaskParams().has("auditLogConfig")) {
+          details.set("auditLogConfig", taskInfo.getTaskParams().get("auditLogConfig"));
+        }
         ObjectNode versionNumbers = commissioner.getVersionInfo(task, taskInfo);
         if (versionNumbers != null && !versionNumbers.isEmpty()) {
           details.set("versionNumbers", versionNumbers);

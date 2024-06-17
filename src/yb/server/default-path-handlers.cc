@@ -71,7 +71,7 @@
 #include "yb/rpc/secure_stream.h"
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -83,6 +83,7 @@
 #include "yb/util/jsonwriter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stack_trace_tracker.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
@@ -94,6 +95,12 @@ TAG_FLAG(web_log_bytes, advanced);
 DEFINE_RUNTIME_bool(export_help_and_type_in_prometheus_metrics, true,
     "Include #TYPE and #HELP in Prometheus metrics output by default");
 
+DEFINE_RUNTIME_uint32(max_prometheus_metric_entries, UINT32_MAX,
+    "The maximum number of Prometheus metric entries returned in each scrape. Note that if "
+    "adding a metric with all its entities would exceed the limit, then we will drop them all."
+    "Thus, the actual number of metric entries returned might be smaller than the limit.");
+
+DECLARE_bool(track_stack_traces);
 DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
@@ -249,7 +256,8 @@ void ConvertFlagsToJson(const vector<FlagInfo>& flag_infos, std::stringstream* o
   jw.EndObject();
 }
 
-vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req, Webserver* webserver) {
+vector<FlagInfo> GetFlagInfos(
+    const Webserver::WebRequest& req, Webserver* webserver, bool skip_default_test_flags) {
   const std::set<string> node_info_flags{
       "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
       "placement_cloud", "placement_region",   "placement_zone"};
@@ -281,6 +289,12 @@ vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req, Webserver* webse
       flag_info.type = FlagType::kAuto;
     }
 
+    if (skip_default_test_flags && flag_info.type == FlagType::kDefault &&
+        flag_tags.contains(FlagTag::kHidden) && flag_info.name.starts_with("TEST_")) {
+      // Skip Default TEST flags.
+      continue;
+    }
+
     flag_infos.push_back(std::move(flag_info));
   }
 
@@ -299,7 +313,7 @@ vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req, Webserver* webse
 // JSON format.
 static void GetFlagsJsonHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
-  const auto flag_infos = GetFlagInfos(req, webserver);
+  const auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/false);
   ConvertFlagsToJson(std::move(flag_infos), &resp->output);
 }
 
@@ -308,7 +322,7 @@ static void GetFlagsJsonHandler(
 static void FlagsHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
   std::stringstream& output = resp->output;
-  auto flag_infos = GetFlagInfos(req, webserver);
+  auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/true);
   if (req.parsed_args.find("raw") != req.parsed_args.end()) {
     for (const auto& flag_info : flag_infos) {
       output << "--" << flag_info.name << "=" << flag_info.value << endl;
@@ -543,6 +557,19 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
           ExportHelpAndType(ParseLeadingBoolValue(arg_p->c_str(), false));
     }
 
+    if (const std::string* arg_p = FindOrNull(req.parsed_args, "max_metric_entries")) {
+        try {
+          if (arg_p->starts_with('-')) {
+            throw std::invalid_argument("Input value is negative");
+          }
+          prometheus_opts->max_metric_entries = static_cast<uint32_t>(std::stoul(*arg_p));
+        } catch (const std::exception& e) {
+          LOG(WARNING) << "Prometheus metric endpoint URL parameter max_metric_entries=" << *arg_p
+                       << ". Failed to convert its value to unsigned 32 bits integer: "
+                       << e.what();
+        }
+    }
+
     prometheus_opts->version = FindWithDefault(req.parsed_args, "version",
         kFilterVersionOne);
 
@@ -601,6 +628,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
   MetricPrometheusOptions opts;
   opts.export_help_and_type =
       ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
+  opts.max_metric_entries = GetAtomicFlag(&FLAGS_max_prometheus_metric_entries);
   ParseRequestOptions(req, &opts);
 
   std::stringstream* output = &resp->output;
@@ -643,6 +671,87 @@ static void HandleGetVersionInfo(
   jw.EndObject();
 }
 
+static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+
+  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
+    (*output) << "track_stack_traces must be turned on to use this page.";
+    return;
+  }
+
+  Tags tags(false /* as_text */);
+
+  auto traces = GetTrackedStackTraces();
+  std::sort(traces.begin(), traces.end(),
+            [](const auto& left, const auto& right) { return left.weight > right.weight; });
+
+  (*output) << tags.header << "I/O stack traces" << tags.end_header;
+
+  (*output) << tags.table << tags.row
+            << tags.table_header << "Type" << tags.end_table_header
+            << tags.table_header << "Count" << tags.end_table_header
+            << tags.table_header << "Bytes" << tags.end_table_header
+            << tags.table_header << "Stack Trace" << tags.end_table_header
+            << tags.end_row;
+  for (const auto& entry : traces) {
+    if (entry.count == 0 ||
+        (entry.group != StackTraceTrackingGroup::kReadIO &&
+         entry.group != StackTraceTrackingGroup::kWriteIO)) {
+      continue;
+    }
+    (*output) << tags.row
+              << tags.cell
+              << (entry.group == StackTraceTrackingGroup::kReadIO ? "Read" : "Write")
+              << tags.end_cell
+              << tags.cell << entry.count << tags.end_cell
+              << tags.cell << HumanReadableNumBytes::ToString(entry.weight) << tags.end_cell
+              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
+              << tags.end_pre_tag << tags.end_cell
+              << tags.end_row;
+  }
+
+  (*output) << tags.end_table;
+}
+
+static void DebugStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+
+  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
+    (*output) << "track_stack_traces must be turned on to use this page.";
+    return;
+  }
+
+  Tags tags(false /* as_text */);
+
+  auto traces = GetTrackedStackTraces();
+  std::sort(traces.begin(), traces.end(),
+            [](const auto& left, const auto& right) { return left.count > right.count; });
+
+  (*output) << tags.header << "Tracked stack traces" << tags.end_header;
+
+  (*output) << tags.table << tags.row
+            << tags.table_header << "Count" << tags.end_table_header
+            << tags.table_header << "Stack Trace" << tags.end_table_header
+            << tags.end_row;
+  for (const auto& entry : traces) {
+    if (entry.count == 0 || entry.group != StackTraceTrackingGroup::kDebugging) {
+      continue;
+    }
+    (*output) << tags.row
+              << tags.cell << entry.count << tags.end_cell
+              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
+              << tags.end_pre_tag << tags.end_cell
+              << tags.end_row;
+  }
+
+  (*output) << tags.end_table;
+}
+
+static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  ResetTrackedStackTraces();
+  resp->output << "Tracked stack traces reset.";
+}
+
 } // anonymous namespace
 
 // Registered to handle "/memz", and prints out memory allocation statistics.
@@ -681,6 +790,12 @@ void AddDefaultPathHandlers(Webserver* webserver) {
       "/api/v1/varz", "Flags", std::bind(&GetFlagsJsonHandler, _1, _2, webserver), false, false);
   webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
                                  HandleGetVersionInfo, false, false);
+  webserver->RegisterPathHandler("/io-stack-traces", "I/O Stack Traces",
+                                 IOStackTraceHandler, true, false);
+  webserver->RegisterPathHandler("/debug-stack-traces", "Debugging Stack Traces",
+                                 DebugStackTraceHandler, true, false);
+  webserver->RegisterPathHandler("/reset-stack-traces", "Reset Stack Traces",
+                                 ResetStackTraceHandler, true, false);
 
   AddPprofPathHandlers(webserver);
 }
@@ -746,10 +861,10 @@ static void CertificateHandler(server::RpcServerBase* server,
   (*output) << tags.pre_tag;
 
   (*output) << "Node to node encryption enabled: "
-      << (yb::server::IsNodeToNodeEncryptionEnabled() ? "true" : "false");
+      << (yb::rpc::IsNodeToNodeEncryptionEnabled() ? "true" : "false");
 
   (*output) << tags.line_break << "Client to server encryption enabled: "
-      << (yb::server::IsClientToServerEncryptionEnabled() ? "true" : "false");
+      << (yb::rpc::IsClientToServerEncryptionEnabled() ? "true" : "false");
 
   (*output) << tags.line_break << "Allow insecure connections: "
       << (yb::rpc::AllowInsecureConnections() ? "on" : "off");

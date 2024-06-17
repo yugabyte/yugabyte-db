@@ -54,8 +54,10 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 using std::pair;
+using namespace std::literals;
 
 DECLARE_int32(metrics_retirement_age_ms);
+DECLARE_bool(TEST_pause_flush_aggregated_metrics);
 
 namespace yb {
 
@@ -99,9 +101,18 @@ class MetricsTest : public YBTest {
                           const string& metric_name,
                           int expected_aggregation_value,
                           const MetricEntity::AttributeMap& expected_attrs) {
-    auto attrs_it = writer.aggregated_id_to_attributes_.find(entity_id);
-    ASSERT_NE(attrs_it, writer.aggregated_id_to_attributes_.end());
-    auto actual_attrs = attrs_it->second;
+    auto metric_entity_type_it = writer.metric_name_to_entity_type_.find(metric_name);
+    ASSERT_NE(metric_entity_type_it, writer.metric_name_to_entity_type_.end());
+    auto expected_metric_entity_type = expected_attrs.at("metric_type");
+    ASSERT_EQ(metric_entity_type_it->second, expected_metric_entity_type);
+
+    auto attrs_it =
+        writer.aggregated_attributes_by_metric_type_.find(metric_entity_type_it->second);
+    ASSERT_NE(attrs_it, writer.aggregated_attributes_by_metric_type_.end());
+    auto attr_it = attrs_it->second.find(entity_id);
+    ASSERT_NE(attr_it, attrs_it->second.end());
+
+    auto actual_attrs = attr_it->second;
     for (const auto& expected_attr : expected_attrs) {
       auto actual_attr_it = actual_attrs.find(expected_attr.first);
       ASSERT_NE(actual_attr_it, actual_attrs.end());
@@ -281,6 +292,7 @@ TEST_F(MetricsTest, AggregationTest) {
     }
     // Check table aggregation.
     MetricEntity::AttributeMap expected_attrs;
+    expected_attrs["metric_type"] = "tablet";
     expected_attrs["table_id"] = "table_1_id";
     expected_attrs["table_name"] = "table_1";
     DoAggregationCheck(writer, "table_1_id", METRIC_test_sum_gauge.name(), 19, expected_attrs);
@@ -298,9 +310,11 @@ TEST_F(MetricsTest, AggregationTest) {
     for (const auto& tablet : tablets) {
       ASSERT_OK(entities[tablet.first]->WriteForPrometheus(&writer, opts));
     }
-    // Check server aggregation. Using metric_type as entity_id.
-    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, {});
-    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, {});
+    MetricEntity::AttributeMap expected_attrs;
+    expected_attrs["metric_type"] = "tablet";
+    // Check server aggregation. Using metric_entity_type as entity_id.
+    DoAggregationCheck(writer, "tablet", METRIC_test_sum_gauge.name(), 34, expected_attrs);
+    DoAggregationCheck(writer, "tablet", METRIC_test_max_gauge.name(), 10, expected_attrs);
   }
 }
 
@@ -676,6 +690,51 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   // Check lag output.
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_lag Test lag description\n# TYPE t_lag gauge"));
+}
+
+TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
+  const std::string kDescription = "gauge description";
+
+  MetricEntity::AttributeMap entity_attr;
+  entity_attr["tablet_id"] = "tablet_id_49";
+  entity_attr["table_name"] = "test_table";
+  entity_attr["table_id"] = "table_id_50";
+  auto tablet_entity =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_51", entity_attr);
+  scoped_refptr<AtomicGauge<int64_t>> gauge =
+      tablet_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
+        std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+            tablet_entity->prototype().name(), "t_gauge",
+            kDescription, MetricUnit::kBytes,
+            kDescription, yb::MetricLevel::kInfo)),
+        static_cast<int64_t>(0));
+
+  SetAtomicFlag(true, &FLAGS_TEST_pause_flush_aggregated_metrics);
+  std::thread metric_deletion_thread([&]{
+    // Simulate metric deletion in the middle of WriteForPrometheus.
+    std::this_thread::sleep_for(2s);
+    tablet_entity->Remove(gauge->prototype());
+    gauge.reset(nullptr);
+    SetAtomicFlag(false, &FLAGS_TEST_pause_flush_aggregated_metrics);
+  });
+
+  MetricPrometheusOptions opts;
+  opts.export_help_and_type = ExportHelpAndType::kTrue;
+  {
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    metric_deletion_thread.join();
+    // Check that the metric is still present in the output.
+    ASSERT_NE(output.str().find(kDescription), string::npos);
+  }
+  {
+    // Pull the metric again and check that it is not present in the output.
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_EQ(output.str().find(kDescription), string::npos);
+  }
 }
 
 } // namespace yb

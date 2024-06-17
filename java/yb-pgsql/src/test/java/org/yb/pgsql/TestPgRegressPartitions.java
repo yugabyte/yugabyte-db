@@ -20,7 +20,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressPartitions extends BasePgSQLTest {
+public class TestPgRegressPartitions extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
@@ -38,7 +38,7 @@ public class TestPgRegressPartitions extends BasePgSQLTest {
 
   @Test
   public void pruning() throws Exception {
-    runPgRegressTest("yb_pg_partition_prune_schedule");
+    runPgRegressTest("yb_partition_prune_schedule");
   }
 
   @Test

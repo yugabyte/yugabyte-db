@@ -17,11 +17,11 @@
 
 #include <cstdint>
 
+#include "yb/common/opid.h"
+
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/opid.h"
 
 namespace yb {
 namespace consensus {

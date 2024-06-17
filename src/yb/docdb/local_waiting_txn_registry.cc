@@ -60,6 +60,7 @@ using StatusTabletDataPtr = std::shared_ptr<StatusTabletData>;
 // StatusTabletData instance being tracked by the LocalWaitingTxnRegistry.
 struct WaitingTransactionData {
   TransactionId id;
+  int64_t request_id;
   std::shared_ptr<ConflictDataManager> blockers;
   StatusTabletDataPtr status_tablet_data;
   HybridTime wait_start_time;
@@ -93,6 +94,7 @@ void AttachWaitingTransaction(
   auto* txn = req->add_waiting_transactions();
   txn->set_transaction_id(data.id.data(), data.id.size());
   txn->set_wait_start_time(data.wait_start_time.ToUint64());
+  txn->set_request_id(data.request_id);
   for (const auto& blocker : data.blockers->RemainingTransactions()) {
     auto* blocking_txn = txn->add_blocking_transaction();
     blocking_txn->set_transaction_id(blocker.id.data(), blocker.id.size());
@@ -247,9 +249,11 @@ class LocalWaitingTxnRegistry::Impl {
 
     Status Register(
         const TransactionId& waiting,
+        int64_t request_id,
         std::shared_ptr<ConflictDataManager> blockers,
         const TabletId& status_tablet) override {
-      return registry_->RegisterWaitingFor(waiting, std::move(blockers), status_tablet, this);
+      return registry_->RegisterWaitingFor(
+          waiting, request_id, std::move(blockers), status_tablet, this);
     }
 
     Status RegisterSingleShardWaiter(
@@ -396,13 +400,15 @@ class LocalWaitingTxnRegistry::Impl {
   }
 
   Status RegisterWaitingFor(
-      const TransactionId& waiting, std::shared_ptr<ConflictDataManager> blockers,
+      const TransactionId& waiting, int64_t request_id,
+      std::shared_ptr<ConflictDataManager> blockers,
       const TabletId& status_tablet_id, WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
     DCHECK(!status_tablet_id.empty());
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
     auto blocked_data = std::make_shared<WaitingTransactionData>(WaitingTransactionData {
       .id = waiting,
+      .request_id = request_id,
       .blockers = std::move(blockers),
       .status_tablet_data = shared_tablet_data,
       .wait_start_time = clock_->Now(),

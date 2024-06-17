@@ -55,7 +55,7 @@ static const uint32_t kRangePartitionInterval = 500;
 
 template <typename TabletServer>
 auto GetSafeTime(const TabletServer* tserver, const NamespaceId& namespace_id) {
-  return tserver->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+  return tserver->GetXClusterContext().GetSafeTime(namespace_id);
 }
 
 class XClusterTestBase : public YBTest {
@@ -85,6 +85,16 @@ class XClusterTestBase : public YBTest {
         .host = pg_host_port_.host(),
         .port = pg_host_port_.port(),
         .dbname = dbname
+      }).Connect(simple_query_protocol);
+    }
+
+    Result<pgwrapper::PGConn> ConnectToDB(
+        const std::string& dbname, const std::string& user, bool simple_query_protocol = false) {
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname,
+        .user = user
       }).Connect(simple_query_protocol);
     }
   };
@@ -150,6 +160,7 @@ class XClusterTestBase : public YBTest {
 
   Status CreateDatabase(
       Cluster* cluster, const std::string& namespace_name, bool colocated = false);
+  Status DropDatabase(Cluster& cluster, const std::string& namespace_name);
 
   static Result<client::YBTableName> CreateTable(
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
@@ -210,11 +221,13 @@ class XClusterTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id, int num_expected_table);
 
-  virtual Status ChangeXClusterRole(const cdc::XClusterRole role, Cluster* cluster = nullptr);
-
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled);
+
+  Result<master::GetUniverseReplicationResponsePB> GetUniverseReplicationInfo(
+      Cluster& cluster,
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId);
 
   Status VerifyUniverseReplicationDeleted(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -250,9 +263,12 @@ class XClusterTestBase : public YBTest {
   Status WaitForValidSafeTimeOnAllTServers(
       const NamespaceId& namespace_id, Cluster* cluster = nullptr,
       boost::optional<CoarseTimePoint> deadline = boost::none);
+  Status WaitForValidSafeTimeOnAllTServers(
+      const NamespaceId& namespace_id, MiniCluster& cluster,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
 
-  Status WaitForRoleChangeToPropogateToAllTServers(
-      cdc::XClusterRole expected_xcluster_role, Cluster* cluster = nullptr,
+  Status WaitForReadOnlyModeOnAllTServers(
+      const NamespaceId& namespace_id, bool is_read_only = true, Cluster* cluster = nullptr,
       boost::optional<CoarseTimePoint> deadline = boost::none);
 
   Result<std::vector<xrepl::StreamId>> BootstrapProducer(
@@ -306,13 +322,13 @@ class XClusterTestBase : public YBTest {
   }
 
   Result<std::string> CallAdminVec(const std::vector<std::string>& args) {
-    std::string result;
+    std::string output, error;
     LOG(INFO) << "Execute: " << AsString(args);
-    auto status = Subprocess::Call(args, &result, StdFdTypes{StdFdType::kOut, StdFdType::kErr});
+    auto status = Subprocess::Call(args, &output, &error);
     if (!status.ok()) {
-      return status.CloneAndAppend(result);
+      return status.CloneAndAppend(error);
     }
-    return result;
+    return output;
   }
 
   // Wait for the xcluster safe time to advance to the given time on all TServers.
@@ -333,6 +349,8 @@ class XClusterTestBase : public YBTest {
   Result<TableId> GetColocatedDatabaseParentTableId();
 
   Result<master::MasterReplicationProxy> GetProducerMasterProxy();
+
+  Status ClearFailedUniverse(Cluster& cluster);
 
  protected:
   CoarseTimePoint PropagationDeadline() const {

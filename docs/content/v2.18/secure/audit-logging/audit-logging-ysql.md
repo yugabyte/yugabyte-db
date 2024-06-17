@@ -34,23 +34,31 @@ The goal of the YSQL audit logging is to provide YugabyteDB users with capabilit
 
 To enable audit logging, first configure audit logging for the cluster. This is done in one of the following ways:
 
-- Use the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
+- At cluster startup.
 
-    Database administrators can use `ysql_pg_conf_csv` to configure audit logging with [pgAudit flags](#customize-audit-logging).
+    Use the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
 
-    For example, `ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice"`
+    Database administrators can use `ysql_pg_conf_csv` to configure audit logging using [pgaudit flags](#customize-audit-logging).
 
-    Use double quotes to enclose any settings having commas within.
+    Provide the options as comma-separated values. Use double quotation marks to enclose any settings that include commas or single quotation marks. For example:
 
-    These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
+    ```sh
+    --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
+    ```
 
-- Use the [SET](../../../api/ysql/the-sql-language/statements/cmd_set/) command in a running session.
+    These [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-server-options) are set when the YugabyteDB cluster is restarted, and they apply for all users and for every session. For clusters with replication factor 3 or greater, this can be done with a rolling restart, without interrupting application workloads.
+
+- Per session.
+
+    Use the [SET](../../../api/ysql/the-sql-language/statements/cmd_set/) command in a running session.
 
     The `SET` command essentially changes the run-time configuration parameters.
 
     For example, `SET pgaudit.log='DDL'`
 
     `SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-set.html).
+
+### Create the extension
 
 After configuring the YB-TServer and starting the cluster, create the `pgAudit` extension by executing the following statement in ysqlsh:
 

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Abortable
 public class ConfigureDBApis extends UpgradeTaskBase {
 
   @Inject
@@ -40,7 +42,13 @@ public class ConfigureDBApis extends UpgradeTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+  }
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
   }
 
   @Override
@@ -114,8 +122,8 @@ public class ConfigureDBApis extends UpgradeTaskBase {
           // intent fetched during runtime will not be correct as universe details are not updated
           // upto this point so passing the new expected user intent as part of the
           // waitForServer(YSQL sevrver check) in params.
-          RUN_BEFORE_STOPPING
-              .builder()
+          UpgradeContext.builder()
+              .runBeforeStopping(true)
               .userIntent(userIntent)
               .communicationPorts(taskParams().communicationPorts)
               .build(),

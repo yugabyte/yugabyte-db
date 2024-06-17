@@ -23,7 +23,7 @@ If you simultaneously require strong consistency, low latency, and high density,
 
 - Lightweight transactions are obviated altogether in YugabyteDB because the Raft-based writes on a single key are automatically linearizable.
 
-- Secondary indexes are global similar to the primary indexes so only the nodes storing the secondary indexes are queried.
+- Secondary indexes are global, similar to the primary indexes, so only the nodes storing the secondary indexes are queried.
 
 Following are the details of the key differences between YugabyteDB and [Apache Cassandra](http://cassandra.apache.org/).
 
@@ -37,7 +37,7 @@ even those do NOT offer [clean rollback semantics on write failures](https://sta
 
 1. Deletes resurfacing: Another problem due to an eventually-consistent core is [deleted values resurfacing](https://stackoverflow.com/questions/35392430/cassandra-delete-not-working).
 
-YugabyteDB avoids these pitfalls by using a theoretically sound replication model based on RAFT, with strong consistency on writes and tunable consistency options for reads.
+YugabyteDB avoids these pitfalls by using a theoretically sound replication model based on Raft, with strong consistency on writes and tunable consistency options for reads.
 
 ## High read latency of eventual consistency
 
@@ -67,7 +67,7 @@ With YugabyteDB's native JSON support, developers can now benefit from the struc
 
 1. Apache Cassandra is implemented in Java. Garbage collection poses additional problems, especially when running with large heap sizes. YugabyteDB, however, is implemented in C++.
 
-1. Operations like anti-entropy and read-pair hurt steady-state stability of cluster as they consume additional system resources. With Yugabyte, which does replication using distributed consensus, these operations are not needed because the replicas stay in sync using RAFT, or catch up the deltas cleanly from the transaction log of the current leader.
+1. Operations like anti-entropy and read-pair hurt steady-state stability of cluster as they consume additional system resources. With Yugabyte, which does replication using distributed consensus, these operations are not needed because the replicas stay in sync using Raft, or catch up the deltas cleanly from the transaction log of the current leader.
 
 1. Apache Cassandra needs constant tuning of compactions (because of Java implementation, non-scalable, non-partitioned bloom filters and index metadata, lack of scan-resistant caches, and so on).
 

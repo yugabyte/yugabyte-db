@@ -3,7 +3,7 @@ title: Encryption at rest
 linkTitle: Encryption at rest
 description: YugabyteDB Managed cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
-earlyAccess: /preview/releases/versioning/#feature-availability
+earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   preview_yugabyte-cloud:
     identifier: managed-ear
@@ -59,18 +59,18 @@ Create a key vault using the [Azure portal](https://docs.microsoft.com/en-us/azu
 
     ```json
     "permissions": [ {
-        "actions": [ 
-          "Microsoft.KeyVault/vaults/keys/read", 
-          "Microsoft.KeyVault/vaults/read" 
-        ], 
-        "notActions": [], 
-        "dataActions": [ 
-          "Microsoft.KeyVault/vaults/keys/read", 
-          "Microsoft.KeyVault/vaults/keyrotationpolicies/read", 
-          "Microsoft.KeyVault/vaults/keys/wrap/action", 
+        "actions": [
+          "Microsoft.KeyVault/vaults/keys/read",
+          "Microsoft.KeyVault/vaults/read"
+        ],
+        "notActions": [],
+        "dataActions": [
+          "Microsoft.KeyVault/vaults/keys/read",
+          "Microsoft.KeyVault/vaults/keyrotationpolicies/read",
+          "Microsoft.KeyVault/vaults/keys/wrap/action",
           "Microsoft.KeyVault/vaults/keys/unwrap/action"
-        ], 
-        "notDataActions": [] 
+        ],
+        "notDataActions": []
     } ]
     ```
 

@@ -450,7 +450,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       // Letting CatalogManagerBgTasks do the cleanup.
       Thread.sleep(BuildTypeUtil.adjustTimeout(5000));
-
       stmt.execute(ddlSql);
 
       String selectSql = "SELECT * FROM simple_system_table";
@@ -1497,6 +1496,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     for (Row tableInfoRow : tablesInfo) {
       String tableName = tableInfoRow.getString(0);
+      // Different runs of ANALYZE on catalog tables can result in different statistics,
+      // and we don't know the state of existing clusters,
+      // so we don't provide YSQL migration scripts for catalog statistics.
+      // Thus, exclude capturing pg_statistic catalog from "snapshot".
+      if (tableName.equals("pg_statistic")) {
+        continue;
+      }
       String query;
       // Filter out stuff created for shared entities.
       switch (tableName) {

@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX integration-tests)
-set(YB_PCH_DEP_LIBS boost_regex opid_proto)
+set(YB_PCH_DEP_LIBS boost_regex)
 
 add_custom_command(
   OUTPUT ${CMAKE_BINARY_DIR}/test_certs
@@ -57,6 +57,7 @@ set(INTEGRATION_TESTS_SRCS
   cluster_verifier.cc
   create-table-itest-base.cc
   external_mini_cluster.cc
+  external_daemon.cc
   external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
   external_mini_cluster_validator.cc
@@ -166,6 +167,7 @@ ADD_YB_TEST(tserver_path_handlers-itest)
 ADD_YB_TEST(master_failover-itest)
 ADD_YB_TEST(master_config-itest)
 ADD_YB_TEST(master_tasks-test)
+ADD_YB_TEST(metacache_refresh-itest)
 ADD_YB_TEST(network_failure-test)
 ADD_YB_TEST(system_table_fault_tolerance)
 ADD_YB_TEST(raft_consensus-itest)
@@ -174,7 +176,6 @@ ADD_YB_TEST(ts_tablet_manager-itest)
 ADD_YB_TEST(ts_recovery-itest)
 ADD_YB_TEST(create-table-stress-test)
 ADD_YB_TEST(master-partitioned-test)
-ADD_YB_TEST(minicluster-snapshot-test)
 ADD_YB_TEST(delete_table-test)
 ADD_YB_TEST(external_mini_cluster-test)
 ADD_YB_TEST(linked_list-test)
@@ -186,6 +187,7 @@ ADD_YB_TEST(placement_info-itest)
 ADD_YB_TEST(kv_table-test)
 ADD_YB_TEST(kv_table_ts_failover-test)
 ADD_YB_TEST(kv_table_ts_failover_write_if-test)
+ADD_YB_TEST(faulty_drive-itest)
 ADD_YB_TEST(flush_under_load-test)
 ADD_YB_TEST(stepdown_under_load-test)
 ADD_YB_TEST(full_stack-insert-scan-test)
@@ -211,6 +213,7 @@ ADD_YB_TEST(cdc_state_table-test)
 ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
+ADD_YB_TEST(cdcsdk_replica_identity-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
 ADD_YB_TEST(cdcsdk_consumption_consistent_changes-test)
 ADD_YB_TEST(cdcsdk_snapshot-test)
@@ -218,9 +221,11 @@ ADD_YB_TEST(cdcsdk_tablet_split-test)
 ADD_YB_TEST(cdcsdk_consistent_snapshot-test)
 ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
+ADD_YB_TEST(pg_cron-test)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
 ADD_YB_TEST(xcluster/xcluster_db_scoped-test)
+ADD_YB_TEST(xcluster/xcluster_ddl_replication-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
 ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)
@@ -256,6 +261,12 @@ endfunction()
 
 ADD_YB_TEST(wait_states-itest)
 YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
+
+ADD_YB_TEST(minicluster-snapshot-test)
+YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
+
+ADD_YB_TEST(disk_full-test)
+YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

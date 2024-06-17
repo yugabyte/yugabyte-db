@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -210,7 +211,8 @@ public class BackupTableYbc extends YbcTaskBase {
         Throwables.propagate(e);
       }
     } catch (CancellationException ce) {
-      if (!taskExecutor.isShutdown()) {
+      if (!taskExecutor.isShutdown()
+          || !getRunnableTask().getTaskInfo().getTaskType().equals(TaskType.CreateBackup)) {
         if (ce.getMessage().contains("Task aborted on YB-Controller")) {
           // Remove task on YB-Controller server.
           ybcManager.deleteYbcBackupTask(taskParams().taskID, ybcClient);

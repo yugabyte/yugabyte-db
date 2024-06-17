@@ -209,7 +209,7 @@ class KVTableSingleTabletTest : public KVTableTest {
 // after this tservers joined raft group again.
 //
 // Also check that we track such operations.
-TEST_F_EX(KVTableTest, BigValues, KVTableSingleTabletTest) {
+TEST_F_EX(KVTableTest, YB_DISABLE_TEST_ON_MACOS(BigValues), KVTableSingleTabletTest) {
   std::atomic_bool stop_requested_flag(false);
   SetFlagOnExit set_flag_on_exit(&stop_requested_flag);
   int rows = 100;

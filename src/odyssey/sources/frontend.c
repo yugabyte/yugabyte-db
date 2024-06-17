@@ -123,6 +123,26 @@ od_frontend_error_is_too_many_connections(od_client_t *client)
 	return strcmp(error.code, KIWI_TOO_MANY_CONNECTIONS) == 0;
 }
 
+static inline bool
+yb_frontend_error_is_db_does_not_exist(od_client_t *client)
+{
+	od_instance_t *instance = client->global->instance;
+	od_server_t *server = client->server;
+	assert(server != NULL);
+	if (server->error_connect == NULL)
+		return false;
+	kiwi_fe_error_t error;
+
+	int rc;
+	rc = kiwi_fe_read_error(machine_msg_data(server->error_connect),
+				machine_msg_size(server->error_connect),
+				&error);
+	if (rc == -1)
+		return false;
+
+	return strcmp(error.code, KIWI_UNDEFINED_DATABASE) == 0;
+}
+
 static int od_frontend_startup(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
@@ -215,6 +235,9 @@ od_frontend_attach(od_client_t *client, char *context,
 
 	bool wait_for_idle = false;
 	for (;;) {
+		if (yb_is_route_invalid(route))
+			return OD_EATTACH;
+
 		od_router_status_t status;
 		status = od_router_attach(router, client, wait_for_idle, client);
 		if (status != OD_ROUTER_OK) {
@@ -267,6 +290,19 @@ od_frontend_attach(od_client_t *client, char *context,
 				}
 				continue;
 			}
+
+			if (yb_frontend_error_is_db_does_not_exist(client)) {
+				yb_resolve_db_status(server->global,
+					((od_route_t *)server->route)->yb_database_entry,
+					NULL);
+
+				if (((od_route_t *)server->route)
+					    ->yb_database_entry->status == YB_DB_ACTIVE) {
+					od_router_close(router, client);
+					continue;
+				}
+			}
+
 			return OD_ESERVER_CONNECT;
 		}
 
@@ -289,6 +325,9 @@ od_frontend_attach_and_deploy(od_client_t *client, char *context)
 	rc = od_deploy(client, context);
 	if (rc == -1)
 		return OD_ESERVER_WRITE;
+
+	if (client->deploy_err)
+		return YB_OD_DEPLOY_ERR;
 
 	/* set number of replies to discard */
 	client->server->deploy_sync = rc;
@@ -337,11 +376,16 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 		return OD_EOOM;
 
 	while (param) {
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+		kiwi_var_t *var;
+		var = yb_kiwi_vars_get(&client->vars, kiwi_param_name(param));
+#else
 		kiwi_var_type_t type;
 		type = kiwi_vars_find(&client->vars, kiwi_param_name(param),
 				      param->name_len);
 		kiwi_var_t *var;
 		var = kiwi_vars_get(&client->vars, type);
+#endif
 
 		machine_msg_t *msg;
 		if (var) {
@@ -757,6 +801,8 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 	case KIWI_BE_ERROR_RESPONSE:
 		od_backend_error(server, "main", data, size);
 		break;
+	/* fallthrough */
+	case YB_ROLE_OID_PARAMETER_STATUS:
 	case KIWI_BE_PARAMETER_STATUS:
 		rc = od_backend_update_parameter(server, "main", data, size, 0);
 		if (rc == -1)
@@ -801,6 +847,17 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		break;
 	}
 
+	/*
+	 * If route is invalid, no need to wait for READYFORQUERY packet
+	 * from the backend. Physical connection will be closed.
+	 */
+	if (yb_is_route_invalid(server->route))
+		return OD_ESERVER_READ;
+
+	/* error was caught during the deploy phase, return and forward to client */
+	if (client->deploy_err)
+		return YB_OD_DEPLOY_ERR;
+
 	/* discard replies during configuration deploy */
 	if (is_deploy)
 		return OD_SKIP;
@@ -819,12 +876,11 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 			case OD_RULE_POOL_TRANSACTION:
 				if (!server->is_transaction) {
 					/* Check for stickiness */
-					if(server->yb_sticky_connection)
-					{
+					if (server->yb_sticky_connection) {
 						od_debug(&instance->logger, "sticky connection", client,
 							server, "sticky connection established");
 					} else
-					return OD_DETACH;
+						return OD_DETACH;
 				}
 				break;
 			case OD_RULE_POOL_SESSION:
@@ -996,6 +1052,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	(void)size;
 	od_route_t *route = client->route;
 	assert(route != NULL);
+
+	int prev_named_prep_stmt = 1;
 
 	kiwi_fe_type_t type = *data;
 	if (type == KIWI_FE_TERMINATE)
@@ -1170,6 +1228,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			rc = kiwi_be_read_parse_dest(data, size, &desc);
 			if (rc) {
 				return OD_ECLIENT_READ;
+			}
+
+			if (desc.operator_name[0] == '\0') {
+				/* no need for odyssey to track unnamed prepared statements */
+				prev_named_prep_stmt = 0;
+				break;
 			}
 
 			od_hash_t keyhash = od_murmur_hash(
@@ -1348,6 +1412,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (rc == -1) {
 				return OD_ECLIENT_READ;
+			}
+
+			/* unnamed prepared statement, ignore processing of the packet */
+			if (operator_name[0] == '\0') {
+				break;
 			}
 
 			int opname_start_offset =
@@ -1529,9 +1598,36 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	/* If the retstatus is not SKIP */
 	if (route->rule->pool->reserve_prepared_statement && forwarded != 1) {
 		msg = kiwi_fe_copy_msg(msg, data, size);
-		od_write(&server->io, msg);
+		int rc = od_write(&server->io, msg);
+		if (rc == -1) {
+			od_error(&instance->logger, "error while forwarding",
+				client, server, "Got error while forwarding the packet");
+			return OD_ESERVER_WRITE;
+		}
+
+		/* unnamed prepared statement was parsed, send ParseComplete to client */
+		if (prev_named_prep_stmt == 0) {
+
+			machine_msg_t *pcmsg;
+			pcmsg = kiwi_be_write_parse_complete(NULL);
+
+			if (pcmsg == NULL) {
+				return OD_ESERVER_WRITE;
+			}
+
+			rc = od_write(&client->io, pcmsg);
+
+			if (rc == -1) {
+				od_error(&instance->logger, "parse", client,
+					 NULL, "write error: %s",
+					 od_io_error(&client->io));
+				return OD_ESERVER_WRITE;
+			}
+		}
+
 		retstatus = OD_SKIP;
 	}
+
 	/* update server stats */
 	od_stat_query_start(&server->stats_state);
 	return retstatus;
@@ -1657,6 +1753,14 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 
 	for (;;) {
 		for (;;) {
+			if (yb_is_route_invalid(client->route)) {
+				od_frontend_fatal(
+					client, KIWI_CONNECTION_FAILURE,
+					"Database might have been dropped by another user");
+				status = OD_ECLIENT_READ;
+				break;
+			}
+
 			if (od_should_drop_connection(client, server)) {
 				/* Odyssey is going to shut down or client conn is dropped
 				* due some idle timeout, we drop the connection  */
@@ -1705,9 +1809,14 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 		status = od_relay_step(&client->relay);
 		if (status == OD_ATTACH) {
 			uint32_t catchup_timeout = route->rule->catchup_timeout;
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+			kiwi_var_t *timeout_var =
+				yb_kiwi_vars_get(&client->vars, "odyssey_catchup_timeout");
+#else
 			kiwi_var_t *timeout_var =
 				kiwi_vars_get(&client->vars,
 					      KIWI_VAR_ODYSSEY_CATCHUP_TIMEOUT);
+#endif
 
 			if (timeout_var != NULL) {
 				/* if there is catchup pgoption variable in startup packet */
@@ -1799,6 +1908,14 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 
 	if (od_frontend_status_is_err(status)) {
 		od_error_logger_store_err(l, status);
+
+		if (yb_is_route_invalid(client->route)) {
+			if (client->type == OD_POOL_CLIENT_EXTERNAL)
+				od_frontend_fatal(
+					client, KIWI_CONNECTION_FAILURE,
+					"Database might have been dropped by another user");
+			return;
+		}
 
 		if (route->extra_logging_enabled &&
 		    !od_route_is_dynamic(route)) {
@@ -1932,6 +2049,16 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 			 od_frontend_status_to_str(status), (uint32)status);
 		od_router_close(router, client);
 		break;
+	case YB_OD_DEPLOY_ERR:
+		/* close both client and server connection */
+		/* backend connection is not in a usable state */ 
+		od_error(&instance->logger, context, client, server,
+				"deploy error: %s, status %s", client->deploy_err,
+				od_frontend_status_to_str(status));
+		od_frontend_fatal(client, client->deploy_err->code, client->deploy_err->message);
+		/* close backend connection */
+		od_router_close(router, client);
+		break;
 	default:
 		od_error(
 			&instance->logger, context, client, server,
@@ -1949,8 +2076,13 @@ static void od_application_name_add_host(od_client_t *client)
 	char peer_name[KIWI_MAX_VAR_SIZE];
 	int app_name_len = 7;
 	char *app_name = "unknown";
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_t *app_name_var =
+		yb_kiwi_vars_get(&client->vars, "application_name");
+#else
 	kiwi_var_t *app_name_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_APPLICATION_NAME);
+#endif
 	if (app_name_var != NULL) {
 		app_name_len = app_name_var->value_len;
 		app_name = app_name_var->value;
@@ -1961,9 +2093,14 @@ static void od_application_name_add_host(od_client_t *client)
 	int length =
 		od_snprintf(app_name_with_host, KIWI_MAX_VAR_SIZE, "%.*s - %s",
 			    app_name_len, app_name, peer_name);
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_vars_update(&client->vars, "application_name", 17,
+		      app_name_with_host, length + 1); // return code ignored
+#else
 	kiwi_vars_set(&client->vars, KIWI_VAR_APPLICATION_NAME,
 		      app_name_with_host,
 		      length + 1); // return code ignored
+#endif
 }
 
 /*
@@ -2010,6 +2147,8 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 		od_debug(&instance->logger, "clean shared memory", server->client,
 			 server, "Got a packet of type: %s",
 			 kiwi_be_type_to_string(type));
+
+		machine_msg_free(msg);
 
 		if (type == KIWI_BE_READY_FOR_QUERY) {
 			return 0;
@@ -2107,6 +2246,72 @@ void od_frontend(void *arg)
 	 */
 	client->key.key_pid = client->id.id_a;
 	client->key.key = client->id.id_b;
+
+	/* pre-auth callback */
+	od_list_t *i;
+	od_list_foreach(&modules->link, i)
+	{
+		od_module_t *module;
+		module = od_container_of(i, od_module_t, link);
+		if (module->auth_attempt_cb(client) ==
+		    OD_MODULE_CB_FAIL_RETCODE) {
+			goto cleanup;
+		}
+	}
+
+#ifdef YB_SUPPORT_FOUND
+	/* HBA check */
+	rc = od_hba_process(client);
+#endif
+
+	char client_ip[64];
+	od_getpeername(client->io.io, client_ip, sizeof(client_ip), 1, 0);
+
+	/* client authentication */
+	if (rc == OK_RESPONSE) {
+		rc = od_auth_frontend(client);
+		od_log(&instance->logger, "auth", client, NULL,
+		       "ip '%s' user '%s.%s': host based authentication allowed",
+		       client_ip, client->startup.database.value,
+		       client->startup.user.value);
+	} else {
+/* For auth passthrough, error message will be directly forwaded to the client */
+#ifndef YB_SUPPORT_FOUND
+		od_error(
+			&instance->logger, "auth", client, NULL,
+			"ip '%s' user '%s.%s': host based authentication rejected",
+			client_ip, client->startup.database.value,
+			client->startup.user.value);
+		od_frontend_error(client, KIWI_INVALID_PASSWORD,
+				  "host based authentication rejected");
+#endif
+	}
+
+	if (rc != OK_RESPONSE) {
+		/* rc == -1
+		 * here we ignore module retcode because auth already failed
+		 * we just inform side modules that usr was trying to log in
+		 */
+		od_list_foreach(&modules->link, i)
+		{
+			od_module_t *module;
+			module = od_container_of(i, od_module_t, link);
+			module->auth_complete_cb(client, rc);
+		}
+		goto cleanup;
+	}
+
+	/* auth result callback */
+	od_list_foreach(&modules->link, i)
+	{
+		od_module_t *module;
+		module = od_container_of(i, od_module_t, link);
+		rc = module->auth_complete_cb(client, rc);
+		if (rc != OD_MODULE_CB_OK_RETCODE) {
+			// user blocked from module callback
+			goto cleanup;
+		}
+	}
 
 	/* route client */
 	od_router_status_t router_status;
@@ -2217,70 +2422,6 @@ void od_frontend(void *arg)
 		return;
 	}
 
-	/* pre-auth callback */
-	od_list_t *i;
-	od_list_foreach(&modules->link, i)
-	{
-		od_module_t *module;
-		module = od_container_of(i, od_module_t, link);
-		if (module->auth_attempt_cb(client) ==
-		    OD_MODULE_CB_FAIL_RETCODE) {
-			goto cleanup;
-		}
-	}
-
-	/* HBA check */
-	rc = od_hba_process(client);
-
-	char client_ip[64];
-	od_getpeername(client->io.io, client_ip, sizeof(client_ip), 1, 0);
-
-	/* client authentication */
-	if (rc == OK_RESPONSE) {
-		rc = od_auth_frontend(client);
-		od_log(&instance->logger, "auth", client, NULL,
-		       "ip '%s' user '%s.%s': host based authentication allowed",
-		       client_ip, client->startup.database.value,
-		       client->startup.user.value);
-	} else {
-/* For auth passthrough, error message will be directly forwaded to the client */
-#ifndef YB_SUPPORT_FOUND
-		od_error(
-			&instance->logger, "auth", client, NULL,
-			"ip '%s' user '%s.%s': host based authentication rejected",
-			client_ip, client->startup.database.value,
-			client->startup.user.value);
-		od_frontend_error(client, KIWI_INVALID_PASSWORD,
-				  "host based authentication rejected");
-#endif
-	}
-
-	if (rc != OK_RESPONSE) {
-		/* rc == -1
-		 * here we ignore module retcode because auth already failed
-		 * we just inform side modules that usr was trying to log in
-		 */
-		od_list_foreach(&modules->link, i)
-		{
-			od_module_t *module;
-			module = od_container_of(i, od_module_t, link);
-			module->auth_complete_cb(client, rc);
-		}
-		goto cleanup;
-	}
-
-	/* auth result callback */
-	od_list_foreach(&modules->link, i)
-	{
-		od_module_t *module;
-		module = od_container_of(i, od_module_t, link);
-		rc = module->auth_complete_cb(client, rc);
-		if (rc != OD_MODULE_CB_OK_RETCODE) {
-			// user blocked from module callback
-			goto cleanup;
-		}
-	}
-
 	/* setup client and run main loop */
 	od_route_t *route = client->route;
 
@@ -2326,7 +2467,9 @@ cleanup:
 #endif
 
 	/* detach client from its route */
-	od_router_unroute(router, client);
+	if (client->route != NULL)
+		od_router_unroute(router, client);
+
 	/* close frontend connection */
 	od_frontend_close(client);
 }
@@ -2353,10 +2496,17 @@ int yb_execute_on_control_connection(od_client_t *client,
 	}
 
 	/* set control connection route user and database */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	yb_kiwi_var_set(&control_conn_client->startup.user,
+		     "control_connection_user", 24);
+	yb_kiwi_var_set(&control_conn_client->startup.database,
+		     "control_connection_db", 22);
+#else
 	kiwi_var_set(&control_conn_client->startup.user, KIWI_VAR_UNDEF,
 		     "control_connection_user", 24);
 	kiwi_var_set(&control_conn_client->startup.database, KIWI_VAR_UNDEF,
 		     "control_connection_db", 22);
+#endif
 
 	/* route */
 	od_router_status_t status;
@@ -2367,6 +2517,11 @@ int yb_execute_on_control_connection(od_client_t *client,
 			control_conn_client, NULL,
 			"failed to route internal client for control connection: %s",
 			od_router_status_to_str(status));
+
+		if (control_conn_client->io.io) {
+			machine_close(control_conn_client->io.io);
+			machine_io_free(control_conn_client->io.io);
+		}
 		od_client_free(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
@@ -2380,6 +2535,10 @@ int yb_execute_on_control_connection(od_client_t *client,
 			"failed to attach internal client for control connection to route: %s",
 			od_router_status_to_str(status));
 		od_router_unroute(router, control_conn_client);
+		if (control_conn_client->io.io) {
+			machine_close(control_conn_client->io.io);
+			machine_io_free(control_conn_client->io.io);
+		}
 		od_client_free(control_conn_client);
 		goto failed_to_acquire_control_connection;
 	}
@@ -2403,6 +2562,10 @@ int yb_execute_on_control_connection(od_client_t *client,
 				 od_io_error(&server->io));
 			od_router_close(router, control_conn_client);
 			od_router_unroute(router, control_conn_client);
+			if (control_conn_client->io.io) {
+				machine_close(control_conn_client->io.io);
+				machine_io_free(control_conn_client->io.io);
+			}
 			od_client_free(control_conn_client);
 			goto failed_to_acquire_control_connection;
 		}
@@ -2413,6 +2576,10 @@ int yb_execute_on_control_connection(od_client_t *client,
 	/* detach and unroute */
 	od_router_detach(router, control_conn_client);
 	od_router_unroute(router, control_conn_client);
+	if (control_conn_client->io.io) {
+		machine_close(control_conn_client->io.io);
+		machine_io_free(control_conn_client->io.io);
+	}
 	od_client_free(control_conn_client);
 
 	if (rc == -1)

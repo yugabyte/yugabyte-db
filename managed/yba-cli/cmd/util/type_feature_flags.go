@@ -16,14 +16,15 @@ type FeatureFlag string
 
 const (
 	// TOOLS is a feature flag enabling doc generation
-	TOOLS FeatureFlag = "TOOLS"
+	TOOLS   FeatureFlag = "TOOLS"
+	PREVIEW FeatureFlag = "PREVIEW"
 )
 
 func (f FeatureFlag) String() string {
 	return string(f)
 }
 
-// IsFeatureFlagEnabled checks if festure flag is set in the env variable
+// IsFeatureFlagEnabled checks if feature flag is set in the env variable
 func IsFeatureFlagEnabled(featureFlag FeatureFlag) bool {
 	envVarName := "YBA_FF_" + featureFlag.String()
 	return strings.ToLower(os.Getenv(envVarName)) == "true"

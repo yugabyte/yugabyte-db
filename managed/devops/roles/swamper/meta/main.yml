@@ -8,22 +8,23 @@
 
 dependencies:
   - role: get_prometheus_user_group
-    become: yes
-    become_method: sudo
+    become: "{{ 'yes' if use_sudo|default(false) else 'no' }}"
+    become_method: "{{ 'sudo' if use_sudo|default(false) else '' }}"
     tags: yb-prebuilt-ami
 
   - role: ansible-prometheus
-    become: yes
-    become_method: sudo
+    become: "{{ 'yes' if use_sudo|default(false) else 'no' }}"
+    become_method: "{{ 'sudo' if use_sudo|default(false) else '' }}"
     prometheus_go_version: 1.7
     prometheus_use_service: true
     prometheus_node_exporter_version: 1.7.0
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
-                                    --collector.textfile.directory={{ remote_tmp_dir | default('/tmp') }}/yugabyte/metrics"
+                                    --collector.textfile.directory={{ home_dir | default('/home/yugabyte') }}/metrics"
     prometheus_node_exporter_use_systemd: true
     prometheus_platform_suffix: "{{ 'linux-arm64' if ansible_architecture == 'aarch64' \
                                     else 'linux-amd64'}}"
+    prometheus_home_dir: "{{ home_dir | default('/home/yugabyte') }}"
+    use_user_level_systemd: "{{ not use_sudo|default(false) }}"
     prometheus_user: "{{ node_exporter_user }}"
     prometheus_group: "{{ node_exporter_group }}"
-    when: install_node_exporter is not defined or install_node_exporter|bool
     tags: yb-prebuilt-ami

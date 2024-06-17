@@ -17,13 +17,17 @@ import { YBModalForm } from '../../common/forms';
 import { YBFormSelect, YBNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BACKUP_API_TYPES } from '../common/IBackup';
-import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { createPITRConfig, getNameSpaces } from '../common/PitrAPI';
+import { AllowedTasks, TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+
 import './PointInTimeRecoveryEnableModal.scss';
 
 interface PointInTimeRecoveryEnableModalProps {
   universeUUID: string;
   visible: boolean;
+  allowedTasks: AllowedTasks;
   onHide: () => void;
 }
 
@@ -49,6 +53,7 @@ const REFETCH_CONFIGS_INTERVAL = 5000; //ms
 export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalProps> = ({
   universeUUID,
   visible,
+  allowedTasks,
   onHide
 }) => {
   const queryClient = useQueryClient();
@@ -109,11 +114,14 @@ export const PointInTimeRecoveryEnableModal: FC<PointInTimeRecoveryEnableModalPr
 
   if (isLoading) return <YBLoading />;
 
+  const isCreateActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.ENABLE_PITR);
+
   return (
     <YBModalForm
       title="Enable Point-in-time Recovery"
       visible={visible}
       onHide={onHide}
+      isButtonDisabled={isCreateActionFrozen}
       submitLabel="Enable"
       onFormSubmit={handleSubmit}
       showCancelButton

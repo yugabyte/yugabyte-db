@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <span>
+
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -111,6 +113,16 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   std::unordered_map<KeyBuffer, dockv::IntentTypeSet, ByteBufferHash> weak_intents_;
 };
 
+class PostApplyMetadataWriter : public rocksdb::DirectWriter {
+ public:
+  explicit PostApplyMetadataWriter(std::span<const PostApplyTransactionMetadata> metadatas);
+
+  Status Apply(rocksdb::DirectWriteHandler* handler) override;
+
+ private:
+  std::span<const PostApplyTransactionMetadata> metadatas_;
+};
+
 // Base class used by IntentsWriter to handle found intents.
 class IntentsWriterContext {
  public:
@@ -165,6 +177,7 @@ class IntentsWriterContext {
 class IntentsWriter : public rocksdb::DirectWriter {
  public:
   IntentsWriter(const Slice& start_key,
+                HybridTime file_filter_ht,
                 rocksdb::DB* intents_db,
                 IntentsWriterContext* context);
 
@@ -207,6 +220,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
       const SubtxnSet& aborted,
       HybridTime commit_ht,
       HybridTime log_ht,
+      HybridTime file_filter_ht,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
       rocksdb::DB* intents_db);

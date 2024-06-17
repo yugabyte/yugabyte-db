@@ -14,6 +14,7 @@ import static org.flywaydb.play.FileUtils.readFileToString;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import java.io.BufferedWriter;
@@ -65,6 +66,11 @@ public class PrometheusConfigManager {
    * Update the Prometheus scrape config entries for all the Kubernetes providers in the background.
    */
   public void updateK8sScrapeConfigs() {
+    boolean COMMUNITY_OP_ENABLED = OperatorConfig.getOssMode();
+    if (COMMUNITY_OP_ENABLED) {
+      log.info("Skipping Prometheus config update as community edition is enabled");
+      return;
+    }
     Thread syncThread =
         new Thread(
             () -> {

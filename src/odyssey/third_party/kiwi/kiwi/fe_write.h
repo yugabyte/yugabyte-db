@@ -116,6 +116,8 @@ kiwi_fe_write_password(machine_msg_t *msg, char *password, int len)
 	msg = machine_msg_create_or_advance(msg, size);
 	if (kiwi_unlikely(msg == NULL))
 		return NULL;
+
+	assert(password != NULL);
 	char *pos;
 	pos = (char *)machine_msg_data(msg) + offset;
 	kiwi_write8(&pos, KIWI_FE_PASSWORD_MESSAGE);

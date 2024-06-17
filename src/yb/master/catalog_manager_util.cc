@@ -533,25 +533,6 @@ void CatalogManagerUtil::FillTableInfoPB(
   partition_schema.ToPB(pb->mutable_partition_schema());
 }
 
-bool CatalogManagerUtil::RetainTablet(
-    const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
-    const ScheduleMinRestoreTime& schedule_to_min_restore_time,
-    HybridTime hide_hybrid_time, const TabletId& tablet_id) {
-  for (const auto& schedule_id_str : retaining_snapshot_schedules) {
-    auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
-    auto it = schedule_to_min_restore_time.find(schedule_id);
-    // If schedule is not present in schedule_min_restore_time then it means that schedule
-    // was deleted, so it should not retain the tablet.
-    if (it != schedule_to_min_restore_time.end() && it->second <= hide_hybrid_time) {
-      VLOG(1) << "Retaining tablet: " << tablet_id << ", hide hybrid time: "
-              << hide_hybrid_time << ", because of schedule: " << schedule_id
-              << ", min restore time: " << it->second;
-      return true;
-    }
-  }
-  return false;
-}
-
 Result<bool> CMPerTableLoadState::CompareReplicaLoads(
     const TabletServerId &ts1, const TabletServerId &ts2) {
   auto ts1_load = per_ts_replica_load_.find(ts1);
@@ -582,6 +563,10 @@ void CMPerTableLoadState::SortLoad() {
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info) {
   return placement_info.num_replicas() > 0 ? placement_info.num_replicas()
                                            : FLAGS_replication_factor;
+}
+
+const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader) {
+  return blacklist_leader ? pb.leader_blacklist() : pb.server_blacklist();
 }
 
 } // namespace master

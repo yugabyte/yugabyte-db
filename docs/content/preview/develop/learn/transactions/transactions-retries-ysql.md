@@ -3,6 +3,8 @@ title: Transaction retries in YSQL
 headerTitle: Transaction retries in YSQL
 linkTitle: Transaction retries
 description: Learn how to retry transactions in YSQL.
+aliases:
+   - /preview/develop/learn/transactions-retries-ysql/
 menu:
   preview:
     identifier: transactions-retries-ysql
@@ -232,3 +234,4 @@ The only valid statements at this point would be [ROLLBACK](../../../../api/ysql
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
+- [Designing a Retry Mechanism for Resilient Spring Boot Applications](https://www.yugabyte.com/blog/retry-mechansim-spring-boot-app/)

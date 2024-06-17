@@ -74,6 +74,7 @@ static void reorderqueue_push(IndexScanState *node, HeapTuple tuple,
 				  Datum *orderbyvals, bool *orderbynulls);
 static HeapTuple reorderqueue_pop(IndexScanState *node);
 static void yb_init_index_scandesc(IndexScanState *node);
+static void yb_agg_pushdown_init_scan_slot(IndexScanState *node);
 
 
 /* ----------------------------------------------------------------
@@ -106,8 +107,8 @@ IndexNext(IndexScanState *node)
 		else if (ScanDirectionIsBackward(direction))
 			direction = ForwardScanDirection;
 	}
-	/* "Don't care about order" direction. */
-	if (IsYugaByteEnabled() &&
+	/* YB relation scans are optimized for the "Don't care about order" direction. */
+	if (IsYBRelation(node->ss.ss_currentRelation) &&
 		ScanDirectionIsNoMovement(((IndexScan *) node->ss.ps.plan)->indexorderdir))
 	{
 		direction = NoMovementScanDirection;
@@ -120,17 +121,7 @@ IndexNext(IndexScanState *node)
 	{
 		if (IsYugaByteEnabled() && node->yb_iss_aggrefs)
 		{
-			/*
-			 * For aggregate pushdown, we only read aggregate results from
-			 * DocDB and pass that up to the aggregate node (agg pushdown
-			 * wouldn't be enabled if we needed to read other expressions). Set
-			 * up a dummy scan slot to hold as many attributes as there are
-			 * pushed aggregates.
-			 */
-			TupleDesc tupdesc =
-				CreateTemplateTupleDesc(list_length(node->yb_iss_aggrefs),
-										false /* hasoid */);
-			ExecInitScanTupleSlot(estate, &node->ss, tupdesc);
+			yb_agg_pushdown_init_scan_slot(node);
 			/* Refresh the local pointer. */
 			slot = node->ss.ss_ScanTupleSlot;
 		}
@@ -1490,12 +1481,13 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   opfuncid,	/* reg proc to use */
 								   scanvalue);	/* constant */
 		}
-		else if (IsA(clause, RowCompareExpr))
+		else if (IsA(clause, RowCompareExpr) &&
+				 castNode(RowCompareExpr, clause)->rctype != ROWCOMPARE_EQ)
 		{
 			/* (indexkey, indexkey, ...) op (expression, expression, ...) */
 			RowCompareExpr *rc = (RowCompareExpr *) clause;
 			ListCell   *largs_cell = list_head(rc->largs);
-			ListCell   *rargs_cell = list_head(rc->rargs);
+			ListCell   *rargs_cell = list_head(castNode(List, rc->rargs));
 			ListCell   *opnos_cell = list_head(rc->opnos);
 			ListCell   *collids_cell = list_head(rc->inputcollids);
 			ScanKey		first_sub_key;
@@ -1637,9 +1629,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			/* sk_subtype, sk_collation, sk_func not used in a header */
 			this_scan_key->sk_argument = PointerGetDatum(first_sub_key);
 		}
-		else if (IsA(clause, ScalarArrayOpExpr) &&
-				 (!IsYugaByteEnabled() ||
-				  !IsA(yb_get_saop_left_op(clause), RowExpr)))
+		else if (IsA(clause, ScalarArrayOpExpr))
 		{
 			Assert(!IsYugaByteEnabled() ||
 				   IsA(yb_get_saop_left_op(clause), Var));
@@ -1760,12 +1750,11 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   opfuncid,	/* reg proc to use */
 								   scanvalue);	/* constant */
 		}
-		else if (IsA(clause, ScalarArrayOpExpr))
+		else if (IsA(clause, RowCompareExpr))
 		{
 			Assert(IsYugaByteEnabled());
-			Assert(IsA(yb_get_saop_left_op(clause), RowExpr));
 			/* indexkey op ANY (array-expression) */
-			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
+			RowCompareExpr *rcexpr = (RowCompareExpr *) clause;
 			int			flags = 0;
 			Datum		scanvalue;
 
@@ -1776,25 +1765,13 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 			Assert(!isorderby);
 
-			Assert(saop->useOr);
-			opno = saop->opno;
-			opfuncid = saop->opfuncid;
-
 			/*
 			 * leftop should be the index key Var, possibly relabeled
 			 */
-			leftop = (Expr *) linitial(saop->args);
-
-			if (leftop && IsA(leftop, RelabelType))
-				leftop = ((RelabelType *) leftop)->arg;
-
-			Assert(leftop != NULL);
 
 			ScanKey this_key = this_scan_key;
 
-			RowExpr *rexpr = (RowExpr *) leftop;
-
-			total_keys = list_length(rexpr->args);
+			total_keys = list_length(castNode(List, rcexpr->largs));
 			first_sub_key = (ScanKey)
 				palloc0(total_keys * sizeof(ScanKeyData));
 			this_key = first_sub_key;
@@ -1813,19 +1790,35 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 			while (n_sub_key < total_keys)
 			{
-				RowExpr *rexpr = (RowExpr *) leftop;
-				varattno = ((Var *) list_nth(rexpr->args, n_sub_key))->varattno;
+				varattno = ((Var *) list_nth(rcexpr->largs, n_sub_key))->varattno;
 				this_key = &first_sub_key[n_sub_key];
 				op_strategy = BTEqualStrategyNumber;
 				op_righttype = InvalidOid;
+				opno = list_nth_oid(rcexpr->opnos, n_sub_key);
+				Oid inputcollid = list_nth_oid(rcexpr->inputcollids, n_sub_key);
 
 				if (varattno < 1 || varattno > indnkeyatts)
 					elog(ERROR, "bogus index qualification");
 
+				opfamily = index->rd_opfamily[varattno - 1];
+
+				get_op_opfamily_properties(opno, opfamily, isorderby,
+										   &op_strategy,
+										   &op_lefttype,
+										   &op_righttype);
+
+				if (op_strategy != rcexpr->rctype)
+					elog(ERROR, "RowCompare index qualification contains wrong operator");
+
+				opfuncid = get_opfamily_proc(opfamily,
+											 op_lefttype,
+											 op_righttype,
+											 BTORDER_PROC);
+
 				/*
 				 * rightop is the constant or variable array value
 				 */
-				rightop = (Expr *) lsecond(saop->args);
+				rightop = (Expr *) rcexpr->rargs;
 
 				if (rightop && IsA(rightop, RelabelType))
 					rightop = ((RelabelType *) rightop)->arg;
@@ -1901,7 +1894,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 									   varattno,  /* attribute number to scan */
 									   op_strategy, /* op's strategy */
 									   op_righttype,	/* strategy subtype */
-									   saop->inputcollid,	/* collation */
+									   inputcollid,	/* collation */
 									   opfuncid,	/* reg proc to use */
 									   scanvalue);	/* constant */
 				n_sub_key++;
@@ -2013,6 +2006,7 @@ yb_init_index_scandesc(IndexScanState *node)
 			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_iss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
+		scandesc->fetch_ybctids_only = false;
 	}
 }
 
@@ -2067,6 +2061,9 @@ ExecIndexScanInitializeDSM(IndexScanState *node,
 								 piscan);
 	yb_init_index_scandesc(node);
 
+	if (node->yb_iss_aggrefs)
+		yb_agg_pushdown_init_scan_slot(node);
+
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
 	 * the scankeys to the index AM.
@@ -2111,6 +2108,9 @@ ExecIndexScanInitializeWorker(IndexScanState *node,
 								 piscan);
 	yb_init_index_scandesc(node);
 
+	if (node->yb_iss_aggrefs)
+		yb_agg_pushdown_init_scan_slot(node);
+
 	/*
 	 * If no run-time keys to calculate or they are ready, go ahead and pass
 	 * the scankeys to the index AM.
@@ -2119,4 +2119,21 @@ ExecIndexScanInitializeWorker(IndexScanState *node,
 		index_rescan(node->iss_ScanDesc,
 					 node->iss_ScanKeys, node->iss_NumScanKeys,
 					 node->iss_OrderByKeys, node->iss_NumOrderByKeys);
+}
+
+static void
+yb_agg_pushdown_init_scan_slot(IndexScanState *node)
+{
+	Assert(node->yb_iss_aggrefs);
+	/*
+	 * For aggregate pushdown, we only read aggregate results from
+	 * DocDB and pass that up to the aggregate node (agg pushdown
+	 * wouldn't be enabled if we needed to read other expressions). Set
+	 * up a dummy scan slot to hold as many attributes as there are
+	 * pushed aggregates.
+	 */
+	TupleDesc tupdesc =
+		CreateTemplateTupleDesc(list_length(node->yb_iss_aggrefs),
+								false /* hasoid */);
+	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc);
 }

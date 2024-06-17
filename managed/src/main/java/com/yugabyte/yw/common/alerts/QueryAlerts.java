@@ -16,6 +16,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -102,7 +103,14 @@ public class QueryAlerts {
 
   @VisibleForTesting
   void scheduleRunner() {
+
     try {
+      boolean COMMUNITY_OP_ENABLED = OperatorConfig.getOssMode();
+      if (COMMUNITY_OP_ENABLED) {
+        log.debug("Skipping alert query as community edition is enabled");
+        resolveAllAlerts();
+        return;
+      }
       if (HighAvailabilityConfig.isFollower()) {
         log.debug("Resolving all the alerts on the standby instance and skipping alerts query");
         resolveAllAlerts();

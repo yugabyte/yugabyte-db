@@ -37,6 +37,7 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -62,7 +63,6 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"

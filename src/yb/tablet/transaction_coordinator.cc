@@ -123,6 +123,10 @@ DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
                  "When enabled, the txn coordinator responds to all abort transaction requests "
                  "with TryAgain error status, for the set of transactions it hosts.");
 
+DEFINE_test_flag(bool, skip_returning_old_transactions, false,
+                 "When set, the coordinator returns an empty response to all GetOldTransactions "
+                 "requests.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_int32(rpc_workers_limit);
@@ -276,6 +280,10 @@ class TransactionState {
   bool Completed() const {
     return status_ == TransactionStatus::ABORTED ||
            status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
+  }
+
+  bool IsRunning() const {
+    return status_ == TransactionStatus::PENDING || status_ == TransactionStatus::PROMOTED;
   }
 
   bool ShouldBeRetained() const {
@@ -1107,22 +1115,35 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
   }
 
-  // Note: IsAnySubtxnActive returns the result from a consistent state of the transaction, and does
-  // not reflect real time status. It could happen that the function returns true and the txn gets
-  // aborted/removed just after that. The subsequent call to IsAnySubtxnActive would return false.
-  bool IsAnySubtxnActive(const TransactionId& transaction_id,
-                         const SubtxnSet& subtxn_set) override {
-    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info;
+  // Note: CheckProbeActive returns the result from a consistent state of the transaction, and does
+  // not reflect real time status. It could happen that the function returns ok and the txn gets
+  // resolved just after that. The subsequent call to CheckProbeActive would return Aborted.
+  Status CheckProbeActive(
+      const TransactionId& transaction_id, const SubtxnSet& subtxn_set) override {
+    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info = nullptr;
     {
       std::lock_guard lock(managed_mutex_);
       auto it = managed_transactions_.find(transaction_id);
-      if (it == managed_transactions_.end()) {
-        return false;
+      if (it != managed_transactions_.end() && it->IsRunning()) {
+        aborted_subtxn_info = it->GetAbortedSubtxnInfo();
       }
-      aborted_subtxn_info = it->GetAbortedSubtxnInfo();
     }
+    if (aborted_subtxn_info && !aborted_subtxn_info->set().Contains(subtxn_set)) {
+      return Status::OK();
+    }
+    return STATUS(Aborted,
+                  Format("txn: $0, subtxn_set: $1 is inactive", transaction_id, subtxn_set));
+  }
 
-    return !aborted_subtxn_info->set().Contains(subtxn_set);
+  std::optional<MicrosTime> GetTxnStart(const TransactionId& transaction_id) override {
+    {
+      std::lock_guard lock(managed_mutex_);
+      auto it = managed_transactions_.find(transaction_id);
+      if (it == managed_transactions_.end() || !it->IsRunning()) {
+        return std::nullopt;
+      }
+      return it->first_touch();
+    }
   }
 
   void Shutdown() {
@@ -1150,6 +1171,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                             tserver::GetOldTransactionsResponsePB* resp,
                             CoarseTimePoint deadline) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Request to GetOldTransactions " << req->ShortDebugString();
+    if (PREDICT_FALSE(FLAGS_TEST_skip_returning_old_transactions)) {
+      return Status::OK();
+    }
 
     auto min_age = req->min_txn_age_ms() * 1ms;
     auto now = context_.clock().Now();
@@ -1530,7 +1554,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   // Returns logs prefix for this transaction coordinator.
-  const std::string& LogPrefix() {
+  const std::string& LogPrefix() override {
     return log_prefix_;
   }
 

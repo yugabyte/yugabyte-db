@@ -136,7 +136,8 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
   ysql_conn_mgr_prometheus_attr = prometheus_attr;
 }
 
-static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
+static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats,
+                                uint64_t *last_updated_timestamp) {
   char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if(stats_shm_key == NULL)
     return;
@@ -164,15 +165,20 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
     stats->push_back(shmp[itr]);
   }
 
+  if (last_updated_timestamp != NULL) {
+    // Read last updated timestamp from control connection pool struct, present at index 0.
+    *last_updated_timestamp = shmp[0].last_updated_timestamp;
+  }
+
   shmdt(shmp);
 }
 
 void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
-  uint64_t num_pools = 0;
+  uint64_t num_pools = 0, last_updated_timestamp = 0;
 
-  GetYsqlConnMgrStats(&stats_list);
+  GetYsqlConnMgrStats(&stats_list, &last_updated_timestamp);
   num_pools = stats_list.size();
 
   ysql_conn_mgr_prometheus_attr.erase(DATABASE);
@@ -186,17 +192,11 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
         "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
 
   // Publish the last time ysql conn mgr metrics are emitted.
-  if (stats_list.size() > 0) {
-    assert(strcmp(stats_list[0].database_name, "control_connection") == 0 &&
-              strcmp(stats_list[0].user_name, "control_connection") == 0);
-    WARN_NOT_OK(
-      pwriter->WriteSingleEntry(
-        ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_time_updated",
-        // Index 0 of list denotes control connection pool, fetching last time updated metric
-        // from its field.
-        stats_list[0].last_updated_time, AggregationFunction::kSum, kServerLevel),
-        "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
-  }
+  WARN_NOT_OK(
+    pwriter->WriteSingleEntry(
+      ysql_conn_mgr_prometheus_attr, "ysql_conn_mgr_last_updated_timestamp",
+      last_updated_timestamp, AggregationFunction::kSum, kServerLevel),
+      "Cannot publish Ysql Connection Manager metric to Promotheus-metircs endpoint");
 
   // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
@@ -261,6 +261,12 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
 }
 
 static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *stat) {
+  writer->String("userid");
+  writer->Int64(stat->userid);
+
+  writer->String("dbid");
+  writer->Int64(stat->dbid);
+
   writer->String("query_id");
   // Use Int64 for this uint64 field to keep consistent output with PG.
   writer->Int64(stat->query_id);
@@ -290,6 +296,24 @@ static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *st
 
   writer->String("rows");
   writer->Int64(stat->rows);
+
+  writer->String("local_blks_hit");
+  writer->Int64(stat->local_blks_hit);
+
+  writer->String("local_blks_read");
+  writer->Int64(stat->local_blks_read);
+
+  writer->String("local_blks_dirtied");
+  writer->Int64(stat->local_blks_dirtied);
+
+  writer->String("local_blks_written");
+  writer->Int64(stat->local_blks_written);
+
+  writer->String("temp_blks_read");
+  writer->Int64(stat->temp_blks_read);
+
+  writer->String("temp_blks_written");
+  writer->Int64(stat->temp_blks_written);
 }
 
 static void PgStatStatementsHandler(
@@ -426,7 +450,7 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
   std::stringstream *output = &resp->output;
   JsonWriter writer(output, json_mode);
   std::vector<ConnectionStats> stats_list;
-  GetYsqlConnMgrStats(&stats_list);
+  GetYsqlConnMgrStats(&stats_list, NULL);
 
   writer.StartObject();
   writer.String("pools");
@@ -598,6 +622,11 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
 
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
+}
+
+void DestroyWebserver(struct WebserverWrapper *webserver) {
+  Webserver *webserver_impl = reinterpret_cast<Webserver *>(webserver);
+  delete webserver_impl;
 }
 
 void SetWebserverConfig(

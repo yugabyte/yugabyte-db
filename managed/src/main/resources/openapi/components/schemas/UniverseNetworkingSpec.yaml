@@ -1,0 +1,20 @@
+title: UniverseNetworkingSpec
+description: Networking specification that is used for nodes in this Universe. Part of UniverseSpec.
+type: object
+properties:
+  communication_ports:
+    $ref: "./CommunicationPortsSpec.yaml"
+  assign_public_ip:
+    description: Whether to assign a public IP for nodes in this Universe.
+    type: boolean
+    example: true
+    default: true
+  assign_static_public_ip:
+    description: Whether to assign a static public IP for nodes in this Universe.
+    type: boolean
+    example: false
+    default: false
+  enable_ipv6:
+    description: Whether to enable IPv6 on nodes in this cluster. Defaults to false.
+    type: boolean
+    example: false

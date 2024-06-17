@@ -5,25 +5,28 @@ import { makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useMutation, useQueryClient } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
 
 import { YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, EditDrConfigRequest } from '../../../../redesign/helpers/api';
-import { handleServerError } from '../../../../utils/errorHandlingUtils';
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 import {
   ReactSelectStorageConfigField,
   StorageConfigOption
 } from '../../sharedComponents/ReactSelectStorageConfig';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
-
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { handleServerError } from '../../../../utils/errorHandlingUtils';
+import { isActionFrozen } from '../../../../redesign/helpers/utils';
+import { AllowedTasks } from '../../../../redesign/helpers/dtos';
+import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
+import { INPUT_FIELD_WIDTH_PX } from '../../constants';
 import { DrConfig } from '../dtos';
-import { toast } from 'react-toastify';
+
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 
 interface EditConfigModalProps {
   drConfig: DrConfig;
   modalProps: YBModalProps;
-
+  allowedTasks: AllowedTasks;
   redirectUrl?: string;
 }
 
@@ -56,7 +59,12 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.editModal'
  * This modal handles editing editing:
  * - Backup storage config used for DR
  */
-export const EditConfigModal = ({ drConfig, modalProps, redirectUrl }: EditConfigModalProps) => {
+export const EditConfigModal = ({
+  drConfig,
+  modalProps,
+  redirectUrl,
+  allowedTasks
+}: EditConfigModalProps) => {
   const classes = useStyles();
   const queryClient = useQueryClient();
   const theme = useTheme();
@@ -128,7 +136,9 @@ export const EditConfigModal = ({ drConfig, modalProps, redirectUrl }: EditConfi
         label: currentBackupStorageConfig.configName
       }
     : undefined;
-  const isFormDisabled = formMethods.formState.isSubmitting;
+  const isEditActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_DR);
+  const isFormDisabled = formMethods.formState.isSubmitting || isEditActionFrozen;
+
   return (
     <YBModal
       title={modalTitle}
@@ -169,7 +179,7 @@ export const EditConfigModal = ({ drConfig, modalProps, redirectUrl }: EditConfi
         name="storageConfig"
         rules={{ required: t('error.backupStorageConfigRequired') }}
         isDisabled={isFormDisabled}
-        autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+        autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
         maxWidth="100%"
         defaultValue={defaultBackupStorageConfigOption}
       />

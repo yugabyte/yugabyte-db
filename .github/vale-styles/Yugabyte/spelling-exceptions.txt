@@ -59,6 +59,7 @@ backport
 backported
 backporting
 backports
+backquote
 backtrace
 backtraced
 backtraces
@@ -138,6 +139,7 @@ crosslinked
 crosslinking
 crosslinks
 Crossplane
+crosstab
 CrowdIn
 CSV
 Cutover
@@ -145,6 +147,8 @@ cutover
 cybersecurity
 Dangerfile
 Datadog
+datacenter
+datacenters
 datasource
 datasources
 datetime
@@ -848,6 +852,8 @@ viewports
 virtualized
 virtualizing
 Vitess
+VMs
+VMware
 VPCs
 Vue
 Vuex
@@ -878,6 +884,8 @@ YBase
 ycqlsh
 YouTrack
 ysqlsh
+ysql_dump
+ysql_dumpall
 ytt
 Yubico
 Yugabyte

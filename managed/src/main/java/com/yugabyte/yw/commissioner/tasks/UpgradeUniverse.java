@@ -69,6 +69,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
  */
 @Deprecated
 @Slf4j
+// TODO This should be removed soon as the task type has no mapping.
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   // Variable to mark if the loadbalancer state was changed.
   boolean loadbalancerOff = false;
@@ -312,7 +313,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion, null /* Txn callback */);
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       UserIntent primIntent = primaryCluster.userIntent;
 
@@ -688,8 +691,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
       // Wait for server to get ready
       createWaitForServersTasks(nodeList, processType).setSubTaskGroupType(subGroupType);
-      createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-          .setSubTaskGroupType(subGroupType);
+      createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
 
       // If there are no universe keys on the universe, it will have no effect.
       if (processType == ServerType.MASTER
@@ -825,8 +827,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               createGFlagsOverrideTasks(nodeList, processType);
               createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
               createWaitForServersTasks(new HashSet<NodeDetails>(nodeList), processType);
-              createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-                  .setSubTaskGroupType(subGroupType);
+              createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
               // If there are no universe keys on the universe, it will have no effect.
               if (processType == ServerType.MASTER
                   && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
@@ -960,8 +961,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
       createWaitForServersTasks(new HashSet<>(Collections.singletonList(node)), processType)
           .setSubTaskGroupType(subGroupType);
-      createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-          .setSubTaskGroupType(subGroupType);
+      createWaitForServerReady(node, processType).setSubTaskGroupType(subGroupType);
       if (processType == ServerType.MASTER
           && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
         // If there are no universe keys on the universe, it will have no effect.
@@ -991,17 +991,26 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       createSetFlagInMemoryTasks(
               nodes,
               processType,
-              true,
-              processType == ServerType.MASTER
-                  ? taskParams().masterGFlags
-                  : taskParams().tserverGFlags)
+              (node, params) -> {
+                params.force = true;
+                params.gflags =
+                    processType == ServerType.MASTER
+                        ? taskParams().masterGFlags
+                        : taskParams().tserverGFlags;
+              })
           .setSubTaskGroupType(subGroupType);
     } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
       Map<String, String> gflags = new HashMap<>();
       gflags.put(
           "allow_insecure_connections",
           upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
-      createSetFlagInMemoryTasks(nodes, processType, true, gflags)
+      createSetFlagInMemoryTasks(
+              nodes,
+              processType,
+              (node, params) -> {
+                params.force = true;
+                params.gflags = gflags;
+              })
           .setSubTaskGroupType(subGroupType);
     }
 
@@ -1220,7 +1229,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
-    params.auditLogConfig = userIntent.auditLogConfig;
+
+    // Add audit log config from the primary cluster
+    params.auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;

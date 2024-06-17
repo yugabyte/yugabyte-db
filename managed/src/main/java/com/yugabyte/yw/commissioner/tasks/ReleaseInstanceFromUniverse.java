@@ -44,10 +44,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
-  @Override
-  public void validateParams(boolean isFirstTry) {
-    super.validateParams(isFirstTry);
-    Universe universe = getUniverse();
+  private void runBasicChecks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     if (currentNode == null) {
       String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
@@ -61,8 +58,15 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
   }
 
   @Override
-  protected void createPrecheckTasks(Universe universe) {
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    runBasicChecks(getUniverse());
+  }
 
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    // Check again after locking.
+    runBasicChecks(universe);
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
     createCheckNodeSafeToDeleteTasks(universe, currentNodeDetails);
@@ -100,9 +104,21 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       if (instanceExists) {
         if (userIntent.providerType == CloudType.onprem) {
           // Stop master and tservers.
-          createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
+          createStopServerTasks(
+                  currentNodeDetails,
+                  ServerType.MASTER,
+                  params -> {
+                    params.isIgnoreError = true;
+                    params.deconfigure = true;
+                  })
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createStopServerTasks(currentNodeDetails, ServerType.TSERVER, true /* isForceDelete */)
+          createStopServerTasks(
+                  currentNodeDetails,
+                  ServerType.TSERVER,
+                  params -> {
+                    params.isIgnoreError = true;
+                    params.deconfigure = true;
+                  })
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           if (universe.isYbcEnabled()) {
             createStopYbControllerTasks(new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
@@ -128,8 +144,10 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
                 true /* deleteRootVolumes */,
                 false /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      } else {
+        createRemoveNodeAgentTasks(universe, currentNodeDetails, true /* isForceDelete */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
-
       // If the node fails in Adding state during ADD action, IP may not be available.
       // Check to make sure that the node IP is available.
       if (Util.getNodeIp(universe, currentNode) != null) {

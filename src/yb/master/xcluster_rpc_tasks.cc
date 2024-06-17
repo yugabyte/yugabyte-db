@@ -26,7 +26,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/secure.h"
+#include "yb/rpc/secure.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
@@ -75,8 +75,8 @@ Result<std::shared_ptr<XClusterRpcTasks>> XClusterRpcTasks::CreateWithMasterAddr
           FLAGS_certs_for_cdc_dir,
           xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
     }
-    xcluster_rpc_tasks->secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        dir, "", "", server::SecureContextType::kInternal, &messenger_builder));
+    xcluster_rpc_tasks->secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
+        dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal, &messenger_builder));
     xcluster_rpc_tasks->messenger_ = VERIFY_RESULT(messenger_builder.Build());
   }
 

@@ -29,6 +29,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction_error.h"
 
@@ -53,7 +54,6 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/opid.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -82,6 +82,7 @@ DECLARE_uint64(clock_skew_force_crash_bound_usec);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_check_retryable_request_timeout);
 DECLARE_bool(enable_wait_queues);
+DECLARE_double(TEST_txn_participant_error_on_load);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -114,6 +115,7 @@ class SnapshotTxnTestBase
      std::atomic<int64_t>* updates, TransactionPool* pool);
   void TestRemoteBootstrap();
   void TestMultiWriteWithRestart();
+  void TestDeleteOnLoad();
 };
 
 class SnapshotTxnTest
@@ -428,7 +430,7 @@ TEST_P(SnapshotTxnTest, BankAccountsDelayCreate) {
                    0.0 /* select_update_probability */);
 }
 
-TEST_P(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
+TEST_P(SnapshotTxnTest, YB_DISABLE_TEST_ON_MACOS(BankAccountsDelayAddLeaderPending)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disallow_lmp_failures) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 20;
@@ -1017,7 +1019,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   }
 }
 
-TEST_P(SnapshotTxnTest, DeleteOnLoad) {
+void SnapshotTxnTestBase::TestDeleteOnLoad() {
   constexpr int kTransactions = 400;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_status_resolver_delay_ms) = 150 * kTimeMultiplier;
@@ -1038,6 +1040,15 @@ TEST_P(SnapshotTxnTest, DeleteOnLoad) {
   std::this_thread::sleep_for(1s * kTimeMultiplier);
 
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
+}
+
+TEST_P(SnapshotTxnTest, DeleteOnLoad) {
+  TestDeleteOnLoad();
+}
+
+TEST_P(SnapshotTxnTest, DeleteOnErroredLoad) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_txn_participant_error_on_load) = 0.4;
+  TestDeleteOnLoad();
 }
 
 } // namespace client

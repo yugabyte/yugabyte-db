@@ -198,7 +198,7 @@ class BootstrapTest : public LogTestBase {
     auto table_info = std::make_shared<TableInfo>(
         "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
         schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-        partition.first, "" /* pg_table_id */);
+        partition.first, "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
@@ -256,7 +256,6 @@ class BootstrapTest : public LogTestBase {
       .append_pool = log_thread_pool_.get(),
       .allocation_pool = log_thread_pool_.get(),
       .log_sync_pool = log_thread_pool_.get(),
-      .retryable_requests_manager = nullptr,
       .test_hooks = test_hooks_,
     };
     RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));

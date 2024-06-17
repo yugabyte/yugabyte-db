@@ -581,6 +581,35 @@ _copyBitmapIndexScan(const BitmapIndexScan *from)
 }
 
 /*
+ * _copyYbBitmapIndexScan
+ */
+static YbBitmapIndexScan *
+_copyYbBitmapIndexScan(const YbBitmapIndexScan *from)
+{
+	YbBitmapIndexScan *newnode = makeNode(YbBitmapIndexScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((const Scan *) from, (Scan *) newnode);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_SCALAR_FIELD(indexid);
+	COPY_SCALAR_FIELD(isshared);
+	COPY_NODE_FIELD(indexqual);
+	COPY_NODE_FIELD(indexqualorig);
+
+	COPY_NODE_FIELD(indextlist);
+
+	COPY_NODE_FIELD(yb_idx_pushdown.quals);
+	COPY_NODE_FIELD(yb_idx_pushdown.colrefs);
+
+	return newnode;
+}
+
+/*
  * _copyBitmapHeapScan
  */
 static BitmapHeapScan *
@@ -597,6 +626,36 @@ _copyBitmapHeapScan(const BitmapHeapScan *from)
 	 * copy remainder of node
 	 */
 	COPY_NODE_FIELD(bitmapqualorig);
+
+	return newnode;
+}
+
+/*
+ * _copyBitmapHeapScan
+ */
+static YbBitmapTableScan *
+_copyYbBitmapTableScan(const YbBitmapTableScan *from)
+{
+	YbBitmapTableScan *newnode = makeNode(YbBitmapTableScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((const Scan *) from, (Scan *) newnode);
+
+	/*
+	 * copy remainder of node
+	 */
+	COPY_NODE_FIELD(rel_pushdown.quals);
+	COPY_NODE_FIELD(rel_pushdown.colrefs);
+
+	COPY_NODE_FIELD(recheck_pushdown.quals);
+	COPY_NODE_FIELD(recheck_pushdown.colrefs);
+	COPY_NODE_FIELD(recheck_local_quals);
+
+	COPY_NODE_FIELD(fallback_pushdown.quals);
+	COPY_NODE_FIELD(fallback_pushdown.colrefs);
+	COPY_NODE_FIELD(fallback_local_quals);
 
 	return newnode;
 }
@@ -4171,6 +4230,8 @@ _copyAlterTableMoveAllStmt(const AlterTableMoveAllStmt *from)
 	COPY_NODE_FIELD(roles);
 	COPY_STRING_FIELD(new_tablespacename);
 	COPY_SCALAR_FIELD(nowait);
+	COPY_NODE_FIELD(yb_relation);
+	COPY_SCALAR_FIELD(yb_cascade);
 
 	return newnode;
 }
@@ -5034,8 +5095,14 @@ copyObjectImpl(const void *from)
 		case T_BitmapIndexScan:
 			retval = _copyBitmapIndexScan(from);
 			break;
+		case T_YbBitmapIndexScan:
+			retval = _copyYbBitmapIndexScan(from);
+			break;
 		case T_BitmapHeapScan:
 			retval = _copyBitmapHeapScan(from);
+			break;
+		case T_YbBitmapTableScan:
+			retval = _copyYbBitmapTableScan(from);
 			break;
 		case T_TidScan:
 			retval = _copyTidScan(from);

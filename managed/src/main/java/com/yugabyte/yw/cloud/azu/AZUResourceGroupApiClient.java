@@ -4,12 +4,15 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.azure.core.credential.TokenCredential;
+import com.azure.core.http.policy.ExponentialBackoffOptions;
+import com.azure.core.http.policy.RetryOptions;
 import com.azure.core.management.AzureEnvironment;
 import com.azure.core.management.SubResource;
 import com.azure.core.management.profile.AzureProfile;
 import com.azure.core.util.Context;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
+import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.LoadBalancerInner;
 import com.azure.resourcemanager.network.fluent.models.NetworkInterfaceInner;
@@ -29,10 +32,12 @@ public class AZUResourceGroupApiClient {
 
   private AzureResourceManager azureResourceManager;
   private String resourceGroup;
+  private MarketplaceOrderingManager azureMarketplaceOrderingManager;
 
   public AZUResourceGroupApiClient(AzureCloudInfo azureCloudInfo) {
     this.resourceGroup = azureCloudInfo.getAzuRG();
     this.azureResourceManager = getResourceManager(azureCloudInfo);
+    this.azureMarketplaceOrderingManager = getAzureMarketplaceOrderingManager(azureCloudInfo);
   }
 
   public BackendAddressPoolInner createNewBackendPoolForIPs(
@@ -122,6 +127,11 @@ public class AZUResourceGroupApiClient {
   }
 
   private AzureResourceManager getResourceManager(AzureCloudInfo azCloudInfo) {
+    // azure sdk generally has a retry count of 3 so keeping that default
+    return getResourceManager(azCloudInfo, 3);
+  }
+
+  public AzureResourceManager getResourceManager(AzureCloudInfo azCloudInfo, int retryCount) {
     AzureProfile azureProfile =
         new AzureProfile(
             azCloudInfo.getAzuTenantId(),
@@ -129,9 +139,24 @@ public class AZUResourceGroupApiClient {
             AzureEnvironment.AZURE);
     TokenCredential credential = AZUCloudImpl.getCredsOrFallbackToDefault(azCloudInfo);
     AzureResourceManager.Authenticated authenticated =
-        AzureResourceManager.authenticate(credential, azureProfile);
-    String subscriptionId = authenticated.subscriptions().list().iterator().next().subscriptionId();
-    AzureResourceManager azure = authenticated.withSubscription(subscriptionId);
+        AzureResourceManager.configure()
+            .withRetryOptions(
+                new RetryOptions(new ExponentialBackoffOptions().setMaxRetries(retryCount)))
+            .authenticate(credential, azureProfile);
+    AzureResourceManager azure = authenticated.withSubscription(azCloudInfo.getAzuSubscriptionId());
     return azure;
+  }
+
+  private MarketplaceOrderingManager getAzureMarketplaceOrderingManager(
+      AzureCloudInfo azCloudInfo) {
+    AzureProfile azureProfile =
+        new AzureProfile(
+            azCloudInfo.getAzuTenantId(),
+            azCloudInfo.getAzuSubscriptionId(),
+            AzureEnvironment.AZURE);
+    TokenCredential credential = AZUCloudImpl.getCredsOrFallbackToDefault(azCloudInfo);
+    MarketplaceOrderingManager manager =
+        MarketplaceOrderingManager.authenticate(credential, azureProfile);
+    return manager;
   }
 }

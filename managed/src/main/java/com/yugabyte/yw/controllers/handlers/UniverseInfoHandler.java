@@ -28,7 +28,6 @@ import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInterruptionResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -61,7 +60,6 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.GetMasterRegistrationResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
-import play.mvc.Http;
 
 @Slf4j
 @Singleton
@@ -265,12 +263,7 @@ public class UniverseInfoHandler {
 
   public Path downloadNodeLogs(
       Customer customer, Universe universe, NodeDetails node, Path targetFile) {
-    ShellResponse response =
-        nodeUniverseManager.downloadNodeLogs(node, universe, targetFile.toString());
-
-    if (response.code != 0) {
-      throw new PlatformServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
-    }
+    nodeUniverseManager.downloadNodeLogs(node, universe, targetFile.toString());
     return targetFile;
   }
 
@@ -281,13 +274,8 @@ public class UniverseInfoHandler {
       String ybHomeDir,
       List<String> sourceNodeFile,
       Path targetFile) {
-    ShellResponse response =
-        nodeUniverseManager.downloadNodeFile(
-            node, universe, ybHomeDir, sourceNodeFile, targetFile.toString());
-
-    if (response.code != 0) {
-      throw new PlatformServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
-    }
+    nodeUniverseManager.downloadNodeFile(
+        node, universe, ybHomeDir, sourceNodeFile, targetFile.toString());
     return targetFile;
   }
 

@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -67,11 +68,23 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
     if (currentNode.isTserver) {
       createNodePrecheckTasks(
           currentNode,
-          EnumSet.of(ServerType.TSERVER),
+          currentNode.getAllProcesses(),
           SubTaskGroupType.StoppingNodeProcesses,
+          false,
+          null);
+    } else {
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(
+              new UpgradeTaskBase.MastersAndTservers(
+                  Collections.singletonList(currentNode), Collections.emptyList())),
           null);
     }
     addBasicPrecheckTasks();
@@ -122,11 +135,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       boolean instanceExists = instanceExists(taskParams());
       if (instanceExists) {
         if (currentNode.isTserver) {
-          stopProcessesOnNode(
-              currentNode,
+          stopProcessesOnNodes(
+              Collections.singletonList(currentNode),
               EnumSet.of(ServerType.TSERVER),
-              true,
-              false,
+              false /* remove master from quorum */,
+              true /* deconfigure */,
               SubTaskGroupType.StoppingNodeProcesses);
           // Remove leader blacklist.
           removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.StoppingNodeProcesses);
@@ -148,7 +161,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           universe,
           currentNode,
           () -> findNewMasterIfApplicable(universe, currentNode),
-          instanceExists);
+          instanceExists,
+          false /* ignore stop error */);
 
       // Update Node State to Stopped
       createSetNodeStateTask(currentNode, NodeState.Stopped)

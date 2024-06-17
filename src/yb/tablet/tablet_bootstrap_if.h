@@ -40,6 +40,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/opid.h"
+
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/consensus_fwd.h"
 
@@ -49,7 +51,6 @@
 #include "yb/tablet/tablet_options.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/opid.h"
 #include "yb/util/shared_lock.h"
 
 namespace yb {
@@ -66,8 +67,9 @@ class Clock;
 }
 
 namespace tablet {
-class Tablet;
 class RaftGroupMetadata;
+class Tablet;
+class TabletBootstrapStateManager;
 class TransactionCoordinatorContext;
 class TransactionParticipantContext;
 struct TabletOptions;
@@ -170,7 +172,8 @@ struct BootstrapTabletData {
   ThreadPool* append_pool = nullptr;
   ThreadPool* allocation_pool = nullptr;
   ThreadPool* log_sync_pool = nullptr;
-  consensus::RetryableRequestsManager* retryable_requests_manager = nullptr;
+  consensus::RetryableRequests* retryable_requests = nullptr;
+  TabletBootstrapStateManager* bootstrap_state_manager = nullptr;
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks = nullptr;
   bool bootstrap_retryable_requests = true;
   consensus::ConsensusMetadata* consensus_meta = nullptr;

@@ -20,6 +20,7 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/version.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/pg_types.h"
@@ -54,7 +55,7 @@ struct DdlMode {
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable) \
-    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
@@ -121,8 +122,7 @@ class PgClient {
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
                std::optional<uint64_t> session_id,
-               const YBCAshMetadata* ash_metadata,
-               bool* is_ash_metadata_set);
+               const YBCPgAshConfig* ash_config);
 
   void Shutdown();
 
@@ -225,12 +225,31 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
+  Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
+      tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
-  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+  Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
       const ReplicationSlotName& slot_name);
 
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
+  Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
+  Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+
+  Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
+
+  Result<cdc::GetConsistentChangesResponsePB> GetConsistentChangesForCDC(
+      const std::string& stream_id);
+
+  Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
+      const std::string& stream_id, YBCPgXLogRecPtr restart_lsn, YBCPgXLogRecPtr confirmed_flush);
+
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
@@ -245,6 +264,8 @@ class PgClient {
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DECLARE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
 
   Status CancelTransaction(const unsigned char* transaction_id);
+
+  Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
 
  private:
   class Impl;

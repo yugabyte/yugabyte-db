@@ -27,6 +27,8 @@
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 
+#include "yb/rocksdb/util/multi_drive_test_env.h"
+
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tablet/tablet_peer.h"
@@ -55,6 +57,7 @@ DECLARE_int32(TEST_load_balancer_wait_ms);
 DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
 DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_bool(TEST_fail_async_delete_replica_task);
 
 using namespace std::literals;
 
@@ -167,52 +170,6 @@ Status GetTabletsDriveStats(DriveStats* stats,
   return Status::OK();
 }
 
-class RocksDbMultiDriveTestEnv : public rocksdb::EnvWrapper, public MultiDriveTestEnvBase {
- public:
-  RocksDbMultiDriveTestEnv() : EnvWrapper(Env::Default()) {}
-
-  Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
-                           const rocksdb::EnvOptions& options) override;
-  Status NewRandomAccessFile(const std::string& f,
-                             std::unique_ptr<RandomAccessFile>* r,
-                             const rocksdb::EnvOptions& options) override;
-  Status NewWritableFile(const std::string& f, std::unique_ptr<rocksdb::WritableFile>* r,
-                         const rocksdb::EnvOptions& options) override;
-  Status ReuseWritableFile(const std::string& f,
-                           const std::string& old_fname,
-                           std::unique_ptr<rocksdb::WritableFile>* r,
-                           const rocksdb::EnvOptions& options) override;
-};
-
-Status RocksDbMultiDriveTestEnv::NewSequentialFile(const std::string& f,
-                                                   std::unique_ptr<SequentialFile>* r,
-                                                   const rocksdb::EnvOptions& options) {
-  RETURN_NOT_OK(FailureStatus(f));
-  return target()->NewSequentialFile(f, r, options);
-}
-
-Status RocksDbMultiDriveTestEnv::NewRandomAccessFile(const std::string& f,
-                                                     std::unique_ptr<RandomAccessFile>* r,
-                                                     const rocksdb::EnvOptions& options) {
-  RETURN_NOT_OK(FailureStatus(f));
-  return target()->NewRandomAccessFile(f, r, options);
-}
-
-Status RocksDbMultiDriveTestEnv::NewWritableFile(const std::string& f,
-                                                 std::unique_ptr<rocksdb::WritableFile>* r,
-                                                 const rocksdb::EnvOptions& options) {
-  RETURN_NOT_OK(FailureStatus(f));
-  return target()->NewWritableFile(f, r, options);
-}
-
-Status RocksDbMultiDriveTestEnv::ReuseWritableFile(const std::string& f,
-                                                   const std::string& old_fname,
-                                                   std::unique_ptr<rocksdb::WritableFile>* r,
-                                                   const rocksdb::EnvOptions& options) {
-  RETURN_NOT_OK(FailureStatus(f));
-  return target()->ReuseWritableFile(f, old_fname, r, options);
-}
-
 } // namespace
 
 
@@ -258,6 +215,26 @@ class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
     RETURN_NOT_OK(
         yb_admin_client_->ChangeBlacklist({ts_hostport}, false /* add */, leader_blacklist));
     return Status::OK();
+  }
+
+  Status WaitForNoPendingDeletes() {
+    auto ts_descriptors = VERIFY_RESULT(
+        mini_cluster()->GetLeaderMiniMaster())->master()->ts_manager()->GetAllDescriptors();
+    return WaitFor([&]() -> Result<bool> {
+      for (const auto& ts : ts_descriptors) {
+        if (ts->HasTabletDeletePending()) {
+          return false;
+        }
+      }
+      return true;
+    }, kDefaultTimeout, "WaitForNoPendingDeletes");
+  }
+
+  void DeleteTableAsync() {
+    if (table_exists_) {
+      ASSERT_OK(client_->DeleteTable(table_name(), false /* wait */));
+      table_exists_ = false;
+    }
   }
 };
 
@@ -680,18 +657,46 @@ TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
   ASSERT_TRUE(found);
 }
 
+TEST_F(LoadBalancerMiniClusterTest, ClearPendingDeletesOnFailure) {
+  // Make sure that deleting tablet task is failed/times out.
+  FLAGS_TEST_fail_async_delete_replica_task = true;
+  // Delete the table, async. The sync call will fail since the table will not get deleted.
+  DeleteTableAsync();
+  // This sleep currently functions to wait until all DeleteTablet RPCs have been sent out and have
+  // failed. Need a better condition here.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto& catalog_manager =
+        VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    auto recent_tasks = catalog_manager.GetRecentTasks();
+    auto num_delete_tasks = 0;
+    // Make sure that all deleted tasks triggered have failed and at least 1 delete has been
+    // triggered.
+    for (const auto& task : recent_tasks) {
+      if (task->type() == server::MonitoredTaskType::kDeleteReplica) {
+        if (task->state() != server::MonitoredTaskState::kFailed) {
+          return false;
+        }
+        num_delete_tasks++;
+      }
+    }
+    return num_delete_tasks > 0;
+  }, kDefaultTimeout, "deleted tasks failed"));
+  ASSERT_OK(WaitForNoPendingDeletes());
+}
+
+
 class LoadBalancerFailedDrive : public LoadBalancerMiniClusterTestBase {
  protected:
   void SetUp() override {
     ts_env_.reset(new MultiDriveTestEnv());
-    ts_rocksdb_env_.reset(new RocksDbMultiDriveTestEnv());
+    ts_rocksdb_env_.reset(new rocksdb::MultiDriveTestEnv());
     YBTableTestBase::SetUp();
   }
 
   void BeforeStartCluster() override {
     auto ts1_drive0 = mini_cluster()->GetTabletServerDrive(0, 0);
     dynamic_cast<MultiDriveTestEnv*>(ts_env_.get())->AddFailedPath(ts1_drive0);
-    dynamic_cast<RocksDbMultiDriveTestEnv*>(ts_rocksdb_env_.get())->AddFailedPath(ts1_drive0);
+    dynamic_cast<rocksdb::MultiDriveTestEnv*>(ts_rocksdb_env_.get())->AddFailedPath(ts1_drive0);
   }
 
   int num_drives() override {

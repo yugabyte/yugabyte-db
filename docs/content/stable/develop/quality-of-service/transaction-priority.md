@@ -3,7 +3,7 @@ title: Transaction priorities
 headerTitle: Transaction priorities
 linkTitle: Transaction priorities
 description: Transaction priorities in YugabyteDB.
-headcontent: Transaction priorities in YugabyteDB.
+headcontent: Transaction priorities in YugabyteDB
 menu:
   stable:
     name: Transaction priorities
@@ -46,10 +46,10 @@ Currently, transaction priorities work in the following scenarios:
 
 ## Examples
 
-Create a [YugabyteDB universe](../../../quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
+Create a [YugabyteDB universe](/preview/quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
-You can create a free cluster with [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
+You can create a free cluster with [YugabyteDB Managed](/preview/quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
 
 {{< /tip >}}
 

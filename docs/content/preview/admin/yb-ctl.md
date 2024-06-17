@@ -117,12 +117,6 @@ Restarts the specified node in a running cluster. It also takes an optional flag
 
 For details and examples, see [Restart node with placement information](#restart-node-with-placement-information).
 
-##### setup_redis
-
-Enables YugabyteDB support for the Redis-compatible YEDIS API.
-
-For details and examples, see [Initialize the YEDIS API](#initialize-the-yedis-api).
-
 ## Flags
 
 ##### --help, -h
@@ -157,7 +151,7 @@ For details and examples, see [Create a local cluster with custom flags](#create
 
 **Example**
 
-To enable [YSQL authentication](../../secure/enable-authentication/ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/authentication-ysql/), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable_auth`](../../reference/configuration/yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
@@ -310,7 +304,6 @@ Following is the output shown for a 3-node RF3 cluster.
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
 | YCQL Shell          : bin/ycqlsh                                                                 |
-| YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /Users/testuser12/yugabyte-data                                            |
 ----------------------------------------------------------------------------------------------------
@@ -320,7 +313,6 @@ Following is the output shown for a 3-node RF3 cluster.
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
 | YCQL Shell          : bin/ycqlsh                                                                 |
-| YEDIS Shell         : bin/redis-cli                                                              |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-1/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-1/disk-1/yb-data/tserver/logs         |
 | yb-master Logs      : /Users/testuser12/yugabyte-data/node-1/disk-1/yb-data/master/logs          |
@@ -331,7 +323,6 @@ Following is the output shown for a 3-node RF3 cluster.
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.2                                                    |
 | YCQL Shell          : bin/ycqlsh 127.0.0.2                                                       |
-| YEDIS Shell         : bin/redis-cli -h 127.0.0.2                                                 |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-2/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-2/disk-1/yb-data/tserver/logs         |
 | yb-master Logs      : /Users/testuser12/yugabyte-data/node-2/disk-1/yb-data/master/logs          |
@@ -342,7 +333,6 @@ Following is the output shown for a 3-node RF3 cluster.
 | JDBC                : jdbc:postgresql://127.0.0.3:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.3                                                    |
 | YCQL Shell          : bin/ycqlsh 127.0.0.3                                                       |
-| YEDIS Shell         : bin/redis-cli -h 127.0.0.3                                                 |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data/tserver/logs         |
 | yb-master Logs      : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data/master/logs          |
@@ -573,12 +563,4 @@ $ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1"
 
 ```sh
 $ ./bin/yb-ctl wipe_restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
-```
-
-### Initialize the YEDIS API
-
-The `setup_redis` command to initialize YugabyteDB's Redis-compatible YEDIS API.
-
-```sh
-$ ./bin/yb-ctl setup_redis
 ```

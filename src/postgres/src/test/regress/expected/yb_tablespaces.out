@@ -372,7 +372,6 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
-Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
     Index "testschema.test_index2"
@@ -398,7 +397,6 @@ ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
 --------+---------+------+------------
  id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
-Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
     Index "testschema.test_index2"
@@ -419,7 +417,6 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppr
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
-Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
    Index "testschema.test_index2"
@@ -558,7 +555,9 @@ SET SESSION ROLE regress_tablespace_user2;
 CREATE TABLE tablespace_table (i int) TABLESPACE regress_tblspace; -- fail
 ERROR:  permission denied for tablespace regress_tblspace
 ALTER TABLE testschema.tablespace_acl ALTER c TYPE bigint;
-ERROR:  permission denied for schema testschema
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 RESET ROLE;
 ALTER TABLESPACE regress_tblspace RENAME TO regress_tblspace_renamed;
 ERROR:  ALTER TABLESPACE not supported yet
@@ -589,12 +588,12 @@ DROP ROLE regress_tablespace_user2;
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
--- Should fail to set tablespace on a table in a colocated database
-CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
-ERROR:  cannot create colocated table with a tablespace
+-- Should succeed in setting tablespace on a table in a colocated database
+CREATE TABLE tab_key (a INT) TABLESPACE x;
 -- Should succeed in setting tablespace on a table in a colocated database when opted out
 CREATE TABLE tab_nonkey (a INT) WITH (COLOCATION = false) TABLESPACE x;
 -- cleanup
+DROP TABLE tab_key;
 DROP TABLE tab_nonkey;
 \c yugabyte
 DROP DATABASE colocation_test;
@@ -738,6 +737,51 @@ DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
 DROP TABLESPACE LP;
+-- Test ALTER TABLE/INDEX/MATERILIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ...
+CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');
+CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud2", "region" : "region2", "zone" : "zone2", "min_num_replicas" : 1 }]}');
+CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone2", "min_num_replicas" : 1 }]}');
+CREATE TABLE table_1(a int PRIMARY KEY, b int, c int) TABLESPACE tsp1;
+CREATE TABLE table_2(a int PRIMARY KEY, b int, c int) TABLESPACE tsp1;
+CREATE INDEX index_1 ON table_1(b) TABLESPACE tsp2;
+CREATE MATERIALIZED VIEW mat_view TABLESPACE tsp1 AS SELECT * FROM table_1;
+-- Moving Table will also move the Primary Key indexes as the primary key index is an intrinsic part of its base table itself.
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+NOTICE:  Data movement for table table_1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+NOTICE:  Data movement for table table_2 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+ALTER INDEX ALL IN TABLESPACE tsp2 SET TABLESPACE tsp1;
+NOTICE:  Data movement for table index_1 is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+ALTER MATERIALIZED VIEW ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3;
+NOTICE:  Data movement for table mat_view is successfully initiated.
+DETAIL:  Data movement is a long running asynchronous process and can be monitored by checking the tablet placement in http://<YB-Master-host>:7000/tables
+-- View all relations present in pg_class in tablespace tsp1, tsp2 and tsp3 and if the relations were moved to the intended tablespaces.
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+   relname    | spcname
+--------------+---------
+ index_1      | tsp1
+ mat_view     | tsp3
+ table_1      | tsp2
+ table_1_pkey | tsp2
+ table_2      | tsp2
+ table_2_pkey | tsp2
+(6 rows)
+
+DROP MATERIALIZED VIEW mat_view;
+DROP INDEX index_1;
+DROP TABLE table_1;
+DROP TABLE table_2;
+DROP TABLESPACE tsp1;
+DROP TABLESPACE tsp2;
+DROP TABLESPACE tsp3;
 /*
 Testing that an index in a tablespace with leader preference on a closer placement is preferred
 over one on a tablespace with leader preference on a farther placement.

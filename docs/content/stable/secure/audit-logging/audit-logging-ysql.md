@@ -34,21 +34,19 @@ The goal of YSQL audit logging is to provide you with the capability to produce 
 
 To enable audit logging, first configure audit logging for the cluster. This is done in one of the following ways:
 
-- At database startup.
+- At cluster startup.
 
     Use the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
 
     Database administrators can use `ysql_pg_conf_csv` to configure audit logging using [pgaudit flags](#customize-audit-logging).
 
-    Provide the options as a comma separated values. For example:
+    Provide the options as comma-separated values. Use double quotation marks to enclose any settings that include commas or single quotation marks. For example:
 
     ```sh
-    --ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_client=on,pgaudit.log_level=notice"
+    --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","pgaudit.log='all, -misc'",pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
     ```
 
-    Use double quotes to enclose any settings that include commas.
-
-    These configuration values are set when the YugabyteDB cluster is created and therefore apply for all users and for every session.
+    These [configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-server-options) are set when the YugabyteDB cluster is restarted, and they apply for all users and for every session. For clusters with replication factor 3 or greater, this can be done with a rolling restart, without interrupting application workloads.
 
 - Per session.
 

@@ -31,7 +31,7 @@
 #
 
 set(YB_PCH_PREFIX tserver)
-set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+set(YB_PCH_DEP_LIBS yb_test_util)
 
 #########################################
 # tserver_proto
@@ -222,6 +222,7 @@ set(TSERVER_SRCS
   pg_sequence_cache.cc
   pg_table_cache.cc
   pg_table_mutation_count_sender.cc
+  tserver_xcluster_context.cc
   read_query.cc
   remote_bootstrap_anchor_client.cc
   remote_client_base.cc
@@ -232,6 +233,7 @@ set(TSERVER_SRCS
   remote_bootstrap_snapshots.cc
   remote_snapshot_transfer_client.cc
   service_util.cc
+  tablet_limits.cc
   tablet_memory_manager.cc
   tablet_server.cc
   tablet_server_options.cc
@@ -243,6 +245,7 @@ set(TSERVER_SRCS
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
+  stateful_services/pg_cron_leader_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
   xcluster_async_executor.cc

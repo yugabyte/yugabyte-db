@@ -6,7 +6,8 @@ import {
   PLACEMENTS_FIELD,
   TOTAL_NODES_FIELD,
   INSTANCE_TYPE_FIELD,
-  DEVICE_INFO_FIELD
+  DEVICE_INFO_FIELD,
+  PROVIDER_FIELD
 } from '../../../utils/constants';
 import {
   CloudType,
@@ -14,9 +15,11 @@ import {
   InstanceType,
   RunTimeConfigEntry,
   StorageType,
-  UniverseFormData
+  UniverseFormData,
+  UpdateActions
 } from '../../../utils/dto';
 import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
+import { isNonEmptyArray } from '../../../../../../../utils/ObjectUtils';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;
@@ -210,14 +213,15 @@ export const getDeviceInfoFromInstance = (
   };
 };
 
-export const useVolumeControls = (isEditMode: boolean) => {
-  const [numVolumesDisable, setNumVolumesDisable] = useState(isEditMode ? true : false);
+export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) => {
+  const [numVolumesDisable, setNumVolumesDisable] = useState(false);
   const [volumeSizeDisable, setVolumeSizeDisable] = useState(false);
   const [userTagsDisable, setUserTagsDisable] = useState(false);
   const [minVolumeSize, setMinVolumeSize] = useState(1);
   const { setValue } = useFormContext<UniverseFormData>();
 
   //watchers
+  const provider = useWatch({ name: PROVIDER_FIELD });
   const totalNodes = useWatch({ name: TOTAL_NODES_FIELD });
   const placements = useWatch({ name: PLACEMENTS_FIELD });
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
@@ -231,34 +235,17 @@ export const useVolumeControls = (isEditMode: boolean) => {
   });
 
   useUpdateEffect(() => {
-    if (isEditMode) {
-      if (
-        !_.isEqual(initialCombination.current.instanceType, instanceType) ||
-        _.intersectionBy(initialCombination.current.placements, placements, 'name').length <= 0
-      ) {
-        //Enable numVolumes and volumeSize when instancetype is updated
-        setMinVolumeSize(1);
+    if (isEditMode && provider.code !== CloudType.kubernetes) {
+      if (isNonEmptyArray(updateOptions) && updateOptions.includes(UpdateActions.UPDATE)) {
+      setNumVolumesDisable(true);
+      setVolumeSizeDisable(true);
+      setUserTagsDisable(true);
+      setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
+      //  Volume Size Increase,  Other device Info changes (Count, Storage type, provisioned IOPS) , Instance Type Change
+      } else {
         setNumVolumesDisable(false);
         setVolumeSizeDisable(false);
         setUserTagsDisable(false);
-      } else if (!_.isEqual(initialCombination.current.totalNodes, Number(totalNodes))) {
-        //On total nodes changed
-        //Disable numVolumes and volumeSize when Total Nodes is updated
-        setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
-        setNumVolumesDisable(true);
-        setVolumeSizeDisable(true);
-        setUserTagsDisable(false);
-      } else if (!_.isEqual(initialCombination.current.placements, placements)) {
-        setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
-        setNumVolumesDisable(true);
-        setVolumeSizeDisable(true);
-        setUserTagsDisable(true);
-      } else {
-        //Smart Resize/Resize disk
-        setMinVolumeSize(initialCombination.current.deviceInfo.volumeSize);
-        setNumVolumesDisable(true);
-        setVolumeSizeDisable(false);
-        setUserTagsDisable(true);
       }
     }
   }, [totalNodes, placements, instanceType, deviceInfo?.volumeSize]);

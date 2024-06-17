@@ -12,11 +12,11 @@ export function timeFormatter(cell) {
   }
 }
 
-export function timeFormatterISO8601(cell) {
+export function timeFormatterISO8601(cell, timezone) {
   if (!isValidObject(cell)) {
     return '<span>-</span>';
   } else {
-    return formatDatetime(cell, YBTimeFormats.YB_ISO8601_TIMESTAMP);
+    return formatDatetime(cell, YBTimeFormats.YB_ISO8601_TIMESTAMP, timezone);
   }
 }
 

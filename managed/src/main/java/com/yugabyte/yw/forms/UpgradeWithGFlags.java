@@ -2,9 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
@@ -29,6 +32,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
 
+  @Inject protected GFlagsValidation gFlagsValidation;
+
   protected boolean verifyGFlagsHasChanges(Universe universe) {
     if (isUsingSpecificGFlags(universe)) {
       return verifySpecificGFlags(universe);
@@ -44,14 +49,22 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
    * @return true if changed
    */
   private boolean verifySpecificGFlags(Universe universe) {
+    // verify changes to groups here
+    // if groups are added, cannot allow changes to those gflags
+    Cluster currentPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    SpecificGFlags currentSpecificGFlags = new SpecificGFlags();
+    if (currentPrimaryCluster.userIntent.specificGFlags != null) {
+      currentSpecificGFlags = currentPrimaryCluster.userIntent.specificGFlags;
+    }
     Map<UUID, Cluster> newClusters =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
     boolean hasClustersToUpdate = false;
     for (Cluster curCluster : universe.getUniverseDetails().clusters) {
       Cluster newCluster = newClusters.get(curCluster.uuid);
       if (newCluster == null
-          || Objects.equals(
-              newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)) {
+          || (Objects.equals(
+                  newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)
+              && !skipMatchWithUserIntent)) {
         continue;
       }
       if (newCluster.clusterType == ClusterType.PRIMARY) {
@@ -65,6 +78,11 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       }
       if (newCluster.userIntent.specificGFlags != null) {
         newCluster.userIntent.specificGFlags.validateConsistency();
+        GFlagsUtil.validateGFlagGroupsOnUpgrade(
+            newCluster.userIntent.specificGFlags,
+            currentSpecificGFlags,
+            newCluster.userIntent.ybSoftwareVersion,
+            gFlagsValidation);
       }
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
@@ -92,7 +110,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
 
   private boolean verifyGFlagsOld(Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    if (masterGFlags.equals(userIntent.masterGFlags)
+    if (!skipMatchWithUserIntent
+        && masterGFlags.equals(userIntent.masterGFlags)
         && tserverGFlags.equals(userIntent.tserverGFlags)) {
       return false;
     }

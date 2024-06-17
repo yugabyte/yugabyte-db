@@ -52,6 +52,9 @@
 } while (0)
 
 namespace yb {
+
+class CurlGlobalInitializer;
+
 namespace rpc {
 
 class Messenger;
@@ -87,6 +90,7 @@ class YBTest : public ::testing::Test {
 
  private:
   std::string test_dir_;
+  std::unique_ptr<CurlGlobalInitializer> global_curl_;
 };
 
 // Returns true if slow tests are runtime-enabled.
@@ -191,9 +195,9 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
-// For now this assumes that YB Controller binaries are present in build/latest/ybc.
+// For now this assumes that YB Controller binaries are present in build/ybc.
 inline std::string GetYbcToolPath(const std::string& tool_name) {
-  return GetToolPath("../../latest/ybc", tool_name);
+  return GetToolPath("../../ybc", tool_name);
 }
 
 std::string GetCertsDir();
@@ -201,6 +205,17 @@ std::string GetCertsDir();
 // Read YB_TEST_YB_CONTROLLER from env.
 // If true, spawn YBC servers for backup operations.
 bool UseYbController();
+
+/*
+Returns true if YB_DISABLE_MINICLUSTER_TESTS is set true.
+We disable the Minicluster backup tests when we use YB Controller for backups.
+This is because the varz endpoint in MiniTabletServer is not functional currently which causes the
+backups to fail.
+TODO: Re-enable the tests once GH#21689 is done.
+*/
+bool DisableMiniClusterBackupTests();
+
+void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest);
 
 int CalcNumTablets(size_t num_tablet_servers);
 

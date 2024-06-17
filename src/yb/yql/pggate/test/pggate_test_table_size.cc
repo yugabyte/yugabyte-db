@@ -83,8 +83,9 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, kTabname,
                                        kDefaultDatabaseOid, kTabOid,
                                        false /* is_shared_table */,
+                                       false /* is_sys_catalog_table */,
                                        true /* if_not_exist */,
-                                       false /* add_primary_key */,
+                                       PG_YBROWID_MODE_NONE,
                                        false /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kInvalidOid /* colocation_id */,
@@ -92,6 +93,7 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                                DataType::INT64, true, true));
@@ -205,8 +207,9 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, kTabname,
                                        kDefaultDatabaseOid, kTabOid,
                                        false /* is_shared_table */,
+                                       false /* is_sys_catalog_table */,
                                        true /* if_not_exist */,
-                                       false /* add_primary_key */,
+                                       PG_YBROWID_MODE_NONE,
                                        false /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kInvalidOid /* colocation_id */,
@@ -214,6 +217,7 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                                DataType::INT64, true, true));

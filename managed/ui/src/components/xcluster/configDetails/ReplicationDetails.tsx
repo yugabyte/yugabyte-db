@@ -13,8 +13,7 @@ import { closeDialog, openDialog } from '../../../actions/modal';
 import {
   fetchXClusterConfig,
   fetchTaskUntilItCompletes,
-  editXClusterState,
-  fetchTablesInUniverse
+  editXClusterState
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -28,8 +27,6 @@ import {
   XClusterTableStatus,
   XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
-  AlertName,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS,
   MetricName,
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue
@@ -38,9 +35,8 @@ import {
   MaxAcceptableLag,
   CurrentReplicationLag,
   getEnabledConfigActions,
-  getXClusterConfigTableType
+  getStrictestReplicationLagAlertThreshold
 } from '../ReplicationUtils';
-import { EditConfigModal } from './EditConfigModal';
 import { LagGraph } from './LagGraph';
 import { ReplicationTables } from './ReplicationTables';
 import { ReplicationOverview } from './ReplicationOverview';
@@ -63,10 +59,12 @@ import {
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { EditTablesModal } from '../disasterRecovery/editTables/EditTablesModal';
 
 import { XClusterConfig } from '../dtos';
-import { MetricsQueryParams, TableType, YBTable } from '../../../redesign/helpers/dtos';
+import { MetricsQueryParams } from '../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
+import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import './ReplicationDetails.scss';
 
@@ -105,25 +103,12 @@ export function ReplicationDetails({
     { enabled: xClusterConfigQuery.data?.targetUniverseUUID !== undefined }
   );
 
-  const sourceUniverseTableQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(
-      xClusterConfigQuery.data?.sourceUniverseUUID,
-      XCLUSTER_UNIVERSE_TABLE_FILTERS
-    ),
-    () =>
-      fetchTablesInUniverse(
-        xClusterConfigQuery.data?.sourceUniverseUUID,
-        XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((response) => response.data),
-    { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
-  );
-
   const replicationLagMetricSettings = {
     metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
     nodeAggregation: NodeAggregation.MAX,
     splitType: SplitType.TABLE
   };
-  const replciationLagMetricRequestParams: MetricsQueryParams = {
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     xClusterConfigUuid: xClusterConfigUuid,
@@ -132,21 +117,21 @@ export function ReplicationDetails({
   };
   const tableReplicationLagQuery = useQuery(
     metricQueryKey.live(
-      replciationLagMetricRequestParams,
+      replicationLagMetricRequestParams,
       liveMetricTimeRangeValue,
       liveMetricTimeRangeUnit
     ),
-    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: currentUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -216,6 +201,7 @@ export function ReplicationDetails({
     return <YBErrorIndicator customErrorMessage={customErrorMessage} />;
   }
 
+  const allowedTasks = sourceUniverseQuery.data?.allowedTasks;
   const hideModal = () => dispatch(closeDialog());
   const isDeleteConfigModalVisible = showModal && visibleModal === XClusterModalName.DELETE_CONFIG;
   const xClusterConfig = xClusterConfigQuery.data;
@@ -242,6 +228,7 @@ export function ReplicationDetails({
         />
         {isDeleteConfigModalVisible && (
           <DeleteConfigModal
+            allowedTasks={allowedTasks!}
             sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
             targetUniverseUUID={xClusterConfig.targetUniverseUUID}
             xClusterConfigUUID={xClusterConfig.uuid}
@@ -259,9 +246,7 @@ export function ReplicationDetails({
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     targetUniverseQuery.isLoading ||
-    targetUniverseQuery.isIdle ||
-    sourceUniverseTableQuery.isLoading ||
-    sourceUniverseTableQuery.isIdle
+    targetUniverseQuery.isIdle
   ) {
     return <YBLoading />;
   }
@@ -279,94 +264,18 @@ export function ReplicationDetails({
     sourceUniverse,
     targetUniverse
   );
-  const configTableType = getXClusterConfigTableType(xClusterConfig);
-  if (configTableType === undefined || sourceUniverseTableQuery.isError) {
-    const redirectUrl = `/universes/${xClusterConfig.sourceUniverseUUID}/replication`;
-    const errorMessage = sourceUniverseTableQuery.isError
-      ? 'Encounter an error fetching information for tables from the source universe.'
-      : 'Unexpected state. All tables in the xCluster config were dropped in the source universe.';
-    return (
-      <div className="xCluster-details-error-container">
-        <YBErrorIndicator customErrorMessage={errorMessage} />
-        <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
-          <Typography variant="h4">{`Replication Name: ${xClusterConfig.name}`}</Typography>
-          <Typography variant="h4">
-            {'Replication Status: '}
-            <XClusterConfigStatusLabel xClusterConfig={xClusterConfig} />
-          </Typography>
-        </Box>
-        <Box display="flex" marginTop={3} gridGap={theme.spacing(1)}>
-          {!xClusterConfig.paused && (
-            <RbacValidator
-              customValidateFunction={() => {
-                return (
-                  hasNecessaryPerm({
-                    ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
-                    onResource: xClusterConfig.sourceUniverseUUID
-                  }) &&
-                  hasNecessaryPerm({
-                    ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
-                    onResource: xClusterConfig.targetUniverseUUID
-                  })
-                );
-              }}
-              isControl
-            >
-              <YBButton
-                btnText="Pause Replication"
-                btnClass="btn btn-orange"
-                disabled={!_.includes(enabledConfigActions, XClusterConfigAction.PAUSE)}
-                onClick={() => {
-                  toast.success('Pausing Replication...');
-                  toggleConfigPausedState.mutateAsync(xClusterConfig);
-                }}
-              />
-            </RbacValidator>
-          )}
-          <YBButton
-            btnText="Delete Replication"
-            btnClass="btn btn-orange"
-            onClick={() => dispatch(openDialog(XClusterModalName.DELETE_CONFIG))}
-          />
-          {isDeleteConfigModalVisible && (
-            <DeleteConfigModal
-              sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
-              targetUniverseUUID={xClusterConfig.targetUniverseUUID}
-              xClusterConfigUUID={xClusterConfig.uuid}
-              xClusterConfigName={xClusterConfig.name}
-              onHide={hideModal}
-              visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
-              redirectUrl={redirectUrl}
-            />
-          )}
-        </Box>
-      </div>
-    );
-  }
-
-  if (
-    configTableType !== TableType.PGSQL_TABLE_TYPE &&
-    configTableType !== TableType.YQL_TABLE_TYPE
-  ) {
-    // Unexpected state. Illegal xCluster table type.
-    return (
-      <YBErrorIndicator
-        customErrorMessage={`Unexpected state. Illegal xCluster table type: ${configTableType}`}
-      />
-    );
-  }
 
   let numTablesAboveLagThreshold = 0;
-  if (maxAcceptableLagQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
-    // TODO: Add type for alert configurations.
-    const maxAcceptableLag = Math.min(
-      ...maxAcceptableLagQuery.data.map(
-        (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-      )
+  if (replicationLagAlertConfigQuery.isSuccess && tableReplicationLagQuery.isSuccess) {
+    const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+      replicationLagAlertConfigQuery.data
     );
-
     tableReplicationLagQuery.data.async_replication_sent_lag?.data.forEach((trace) => {
-      if (trace.y[trace.y.length - 1] && trace.y[trace.y.length - 1] > maxAcceptableLag) {
+      if (
+        trace.y[trace.y.length - 1] &&
+        maxAcceptableLag &&
+        trace.y[trace.y.length - 1] > maxAcceptableLag
+      ) {
         numTablesAboveLagThreshold += 1;
       }
     });
@@ -384,11 +293,11 @@ export function ReplicationDetails({
   const xClusterConfigTables = xClusterConfigQuery.data?.tableDetails ?? [];
   const shouldShowConfigError = numTablesRequiringBootstrap > 0;
   const shouldShowTableLagWarning =
-    maxAcceptableLagQuery.isSuccess &&
+    replicationLagAlertConfigQuery.isSuccess &&
     tableReplicationLagQuery.isSuccess &&
     numTablesAboveLagThreshold > 0 &&
     xClusterConfigTables.length > 0;
-  const isEditConfigModalVisible = showModal && visibleModal === XClusterModalName.EDIT_CONFIG;
+  const isEditTableModalVisible = showModal && visibleModal === XClusterModalName.EDIT_TABLES;
   const isRestartConfigModalVisible =
     showModal && visibleModal === XClusterModalName.RESTART_CONFIG;
   const isSyncConfigModalVisible =
@@ -418,11 +327,11 @@ export function ReplicationDetails({
                   customValidateFunction={() => {
                     return (
                       hasNecessaryPerm({
-                        ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                        ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                         onResource: xClusterConfig.sourceUniverseUUID
                       }) &&
                       hasNecessaryPerm({
-                        ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                        ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                         onResource: xClusterConfig.targetUniverseUUID
                       })
                     );
@@ -463,11 +372,11 @@ export function ReplicationDetails({
                             customValidateFunction={() => {
                               return (
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.sourceUniverseUUID
                                 }) &&
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.targetUniverseUUID
                                 })
                               );
@@ -475,20 +384,16 @@ export function ReplicationDetails({
                             isControl
                           >
                             <MenuItem
-                              onClick={() => {
-                                if (_.includes(enabledConfigActions, XClusterConfigAction.EDIT)) {
-                                  dispatch(openDialog(XClusterModalName.EDIT_CONFIG));
-                                }
-                              }}
+                              onSelect={() => dispatch(openDialog(XClusterModalName.EDIT_TABLES))}
                               disabled={
-                                !_.includes(enabledConfigActions, XClusterConfigAction.EDIT)
+                                !_.includes(enabledConfigActions, XClusterConfigAction.MANAGE_TABLE)
                               }
                             >
                               <YBLabelWithIcon
                                 className="xCluster-dropdown-button"
                                 icon="fa fa-pencil"
                               >
-                                Edit Replication Name
+                                Select Databases and Tables
                               </YBLabelWithIcon>
                             </MenuItem>
                           </RbacValidator>
@@ -496,11 +401,11 @@ export function ReplicationDetails({
                             customValidateFunction={() => {
                               return (
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.sourceUniverseUUID
                                 }) &&
                                 hasNecessaryPerm({
-                                  ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                                  ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
                                   onResource: xClusterConfig.targetUniverseUUID
                                 })
                               );
@@ -662,9 +567,11 @@ export function ReplicationDetails({
             </Col>
             <Col lg={8} className="lag-status-graph">
               <div className="lag-stats">
-                <Row>
-                  <Col lg={6}>Current Lag</Col>
-                  <Col lg={6}>
+                <Box display="flex">
+                  <Box whiteSpace="pre-wrap" width="50%">
+                    Current Lag
+                  </Box>
+                  <Box marginLeft={2}>
                     <span className="lag-text">
                       <CurrentReplicationLag
                         xClusterConfigUuid={xClusterConfig.uuid}
@@ -672,17 +579,19 @@ export function ReplicationDetails({
                         sourceUniverseUuid={xClusterConfig.sourceUniverseUUID}
                       />
                     </span>
-                  </Col>
-                </Row>
+                  </Box>
+                </Box>
                 <div className="replication-divider" />
-                <Row>
-                  <Col lg={6}>Max acceptable lag</Col>
-                  <Col lg={6}>
+                <Box display="flex">
+                  <Box whiteSpace="pre-wrap" width="50%">
+                    Lowest Replication Lag Alert Threshold
+                  </Box>
+                  <Box marginLeft={2}>
                     <span className="lag-value">
                       <MaxAcceptableLag currentUniverseUUID={xClusterConfig.sourceUniverseUUID} />
                     </span>
-                  </Col>
-                </Row>
+                  </Box>
+                </Box>
               </div>
               <div>
                 <LagGraph
@@ -721,15 +630,16 @@ export function ReplicationDetails({
             </Col>
           </Row>
         </div>
-        {isEditConfigModalVisible && (
-          <EditConfigModal
+        {isEditTableModalVisible && (
+          <EditTablesModal
             xClusterConfig={xClusterConfig}
-            visible={isEditConfigModalVisible}
-            onHide={hideModal}
+            isDrInterface={false}
+            modalProps={{ open: isEditTableModalVisible, onClose: hideModal }}
           />
         )}
         {isDeleteConfigModalVisible && (
           <DeleteConfigModal
+            allowedTasks={allowedTasks!}
             sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
             targetUniverseUUID={xClusterConfig.targetUniverseUUID}
             xClusterConfigUUID={xClusterConfig.uuid}
@@ -742,7 +652,7 @@ export function ReplicationDetails({
         {isRestartConfigModalVisible && (
           <RestartConfigModal
             isDrInterface={false}
-            configTableType={configTableType}
+            allowedTasks={allowedTasks!}
             isVisible={isRestartConfigModalVisible}
             onHide={hideModal}
             xClusterConfig={xClusterConfig}
@@ -750,6 +660,7 @@ export function ReplicationDetails({
         )}
         {isSyncConfigModalVisible && (
           <SyncXClusterConfigModal
+            allowedTasks={allowedTasks!}
             xClusterConfig={xClusterConfig}
             isDrInterface={false}
             modalProps={{ open: isSyncConfigModalVisible, onClose: hideModal }}

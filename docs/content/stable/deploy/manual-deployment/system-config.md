@@ -125,6 +125,35 @@ In the case of ubuntu-desktop, in `/etc/systemd/user.conf` and `/etc/systemd/sys
 Something similar may be needed for other distributions.
 {{< /note >}}
 
+### Kernel settings
+
+If running on a virtual machine, execute the following to tune kernel settings:
+
+1. Configure the parameter `vm.swappiness` as follows:
+
+    ```sh
+    sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'
+    ```
+
+1. Setup path for core files as follows:
+
+    ```sh
+    sudo sysctl kernel.core_pattern=/home/yugabyte/cores/core_%p_%t_%E
+    ```
+
+1. Configure the parameter `vm.max_map_count` as follows:
+
+    ```sh
+    sudo sysctl -w vm.max_map_count=262144
+    sudo bash -c 'sysctl vm.max_map_count=262144 >> /etc/sysctl.conf'
+    ```
+
+1. Validate the change as follows:
+
+    ```sh
+    sysctl vm.max_map_count
+    ```
+
 ### Using systemd
 
 If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, add the ulimits in the `Service` section of the systemd configuration file:

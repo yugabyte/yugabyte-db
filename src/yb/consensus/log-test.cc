@@ -51,6 +51,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/random.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
@@ -67,9 +68,12 @@ DECLARE_int32(o_direct_block_size_bytes);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_file_close);
 DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
+DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 
 namespace yb {
 namespace log {
+
+using namespace std::literals;
 
 using std::shared_ptr;
 using std::vector;
@@ -1751,6 +1755,28 @@ TEST_F(LogTest, TestLogIndex) {
   ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
 
   ASSERT_OK(log_->Close());
+}
+
+TEST_F(LogTest, AsyncRolloverMarker) {
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+  options_.async_preallocate_segments = true;
+  // Always rotate the wal.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_segment_size_bytes_to_rollover_at_flush) = 0;
+  BuildLog();
+  const auto kNumBatches = 2;
+  const auto kNumEntriesPerBatch = 10;
+  for (size_t i = 0; i < kNumBatches; ++i) {
+    AppendReplicateBatchToLog(kNumEntriesPerBatch, AppendSync::kTrue);
+  }
+  const auto seq_no = log_->active_segment_sequence_number();
+  ASSERT_OK(log_->AsyncAllocateSegmentAndRollover());
+  ASSERT_OK(WaitFor([&] {
+    return log_->allocation_state() == SegmentAllocationState::kAllocationFinished;
+  }, 10s, "allocation finished"));
+  ASSERT_EQ(log_->active_segment_sequence_number(), seq_no);
+
+  AppendReplicateBatchToLog(kNumEntriesPerBatch, AppendSync::kTrue);
+  ASSERT_EQ(log_->active_segment_sequence_number(), seq_no + 1);
 }
 
 } // namespace log

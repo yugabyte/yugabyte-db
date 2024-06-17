@@ -42,8 +42,6 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/xrepl_stream_stats.h"
 
-#include "yb/common/path-handler-util.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -58,6 +56,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_parser.h"
 
+#include "yb/server/html_print_helper.h"
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/maintenance_manager.h"
@@ -515,7 +514,7 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
       true /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
-      "/xcluster", "xcluster",
+      "/xcluster", "xCluster",
       std::bind(&TabletServerPathHandlers::HandleXClusterPage, this, _1, _2), true /* styled */,
       false /* is_on_nav_bar */);
 
@@ -535,6 +534,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/tablets", "Tablets",
       std::bind(&TabletServerPathHandlers::HandleTabletsJSON, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/meta-cache", "MetaCache",
+      std::bind(&TabletServerPathHandlers::HandleTabletMetaCacheJSON, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
   server->RegisterPathHandler(
       "/api/v1/xcluster", "xcluster",
@@ -717,17 +720,14 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
 void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
                                                 Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
+  HtmlPrintHelper html_print_helper(*output);
   auto peers = tserver_->tablet_manager()->GetTabletPeers();
   auto table_map = GetTablesInfo(peers);
   bool show_missing_size_footer = false;
 
-  *output << "<h1>Tables</h1>\n"
-          << "<table class='table table-striped'>\n"
-          << "  <tr>\n"
-          << "    <th>Namespace</th><th>Table name</th><th>Table UUID</th>\n"
-          << "    <th>State</th><th>Hidden</th><th>Num SST Files</th>\n"
-          << "    <th>On-disk size</th><th>Raft roles</th>\n"
-          << "  </tr>\n";
+  auto html_table = html_print_helper.CreateTablePrinter(
+      "table", {"Namespace", "Table name", "Table UUID", "State", "Num SST Files", "On-disk size",
+                "Raft roles"});
 
   for (const auto& table_iter : table_map) {
     const auto& identifier = table_iter.first;
@@ -747,20 +747,14 @@ void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req
     }
     role_counts_html << "</ul>";
 
-    *output << Substitute(
-        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
-        "<td>$5</td><td>$6</td><td>$7</td></tr>\n",
-        EscapeForHtmlToString(info.namespace_name),
-        EscapeForHtmlToString(info.name),
+    html_table.AddRow(
+        EscapeForHtmlToString(info.namespace_name), EscapeForHtmlToString(info.name),
         EscapeForHtmlToString(identifier.uuid),
-        EscapeForHtmlToString(identifier.state),
-        info.is_hidden,
-        info.num_sst_files,
-        tables_disk_size_html,
-        role_counts_html.str());
+        Format("$0$1", identifier.state, (info.is_hidden ? " (HIDDEN)" : "")), info.num_sst_files,
+        tables_disk_size_html, role_counts_html.str());
   }
 
-  *output << "</table>\n";
+  html_table.Print();
 
   if (show_missing_size_footer) {
     *output << "<p>* Some tablets did not provide disk size estimates,"
@@ -1057,6 +1051,7 @@ std::vector<XClusterPollerStats> GetXClusterInboundStreamStats(TabletServer* con
 void TabletServerPathHandlers::HandleXClusterPage(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream& output = resp->output;
+  HtmlPrintHelper html_print_helper(output);
 
   if (!FLAGS_enable_xcluster_stat_collection) {
     output << "<h3>xCluster stats collection is not enabled. Set enable_xcluster_stat_collection "
@@ -1076,47 +1071,45 @@ void TabletServerPathHandlers::HandleXClusterPage(
   if (!xcluster_outbound_stream_stats.empty()) {
     output << "<h3>xCluster outbound streams</h3>\n";
 
-    HTML_PRINT_TABLE_WITH_HEADER_ROW(
-        xcluster_streams, "Stream Id", "Produce Table Id", "Producer Tablet Id", "State",
-        "Avg poll delay (ms)", "Throughput (KiBps)", "Data sent (MiB)", "Records sent",
-        "Avg GetChanges latency (ms)", "WAL index sent", "WAL end index", "Last poll at", "Status");
+    auto xcluster_streams = html_print_helper.CreateTablePrinter(
+        "xcluster_streams",
+        {"Stream Id", "Produce Table Id", "Producer Tablet Id", "State", "Avg poll delay (ms)",
+         "Throughput (KiBps)", "Data sent (MiB)", "Records sent", "Avg GetChanges latency (ms)",
+         "WAL index sent", "WAL end index", "Last poll at", "Status"});
 
     for (const auto& stat : xcluster_outbound_stream_stats) {
-      HTML_PRINT_TABLE_ROW(
+      xcluster_streams.AddRow(
           stat.stream_id_str, stat.producer_table_id, stat.producer_tablet_id, stat.state,
           stat.avg_poll_delay_ms, StringPrintf("%.3f", stat.avg_throughput_kbps),
           StringPrintf("%.3f", stat.mbs_sent), stat.records_sent, stat.avg_get_changes_latency_ms,
           stat.sent_index, stat.latest_index, stat.last_poll_time.ToFormattedString(), stat.status);
     }
-
-    HTML_END_TABLE;
+    xcluster_streams.Print();
   }
 
   if (!xcluster_inbound_stream_stats.empty()) {
     output << "<h3>xCluster inbound streams</h3>\n";
 
-    HTML_PRINT_TABLE_WITH_HEADER_ROW(
-        xcluster_pollers, "ReplicationGroup Id", "Stream Id", "Consumer Table Id",
-        "Consumer Tablet Id", "Producer Tablet Id", "State", "Avg poll delay (ms)",
-        "Throughput (KiBps)", "Data received (MiB)", "Records received",
-        "Avg GetChanges latency (ms)", "Avg apply latency (ms)", "WAL index received",
-        "Last poll At", "Status");
+    auto xcluster_pollers = html_print_helper.CreateTablePrinter(
+        "xcluster_pollers",
+        {"ReplicationGroup Id", "Stream Id", "Consumer Table Id", "Consumer Tablet Id",
+         "Producer Tablet Id", "State", "Avg poll delay (ms)", "Throughput (KiBps)",
+         "Data received (MiB)", "Records received", "Avg GetChanges latency (ms)",
+         "Avg apply latency (ms)", "WAL index received", "Last poll At", "Status"});
 
     for (const auto& stat : xcluster_inbound_stream_stats) {
-      HTML_PRINT_TABLE_ROW(
+      xcluster_pollers.AddRow(
           stat.replication_group_id, stat.stream_id_str, stat.consumer_table_id,
           stat.consumer_tablet_id, stat.producer_tablet_id, stat.state, stat.avg_poll_delay_ms,
           StringPrintf("%.3f", stat.avg_throughput_kbps), StringPrintf("%.3f", stat.mbs_received),
           stat.records_received, stat.avg_get_changes_latency_ms, stat.avg_apply_latency_ms,
           stat.received_index, stat.last_poll_time.ToFormattedString(), stat.status);
     }
-
-    HTML_END_TABLE;
+    xcluster_pollers.Print();
   }
 
   output << "\n<aside><h5>Note:</h5><p>This data is collected over the last few polls. Check "
-             "metrics or logs for older and detailed information.</p></aside>";
-  HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
+            "metrics or logs for older and detailed information.</p></aside>";
 }
 
 void TabletServerPathHandlers::HandleXClusterJSON(
@@ -1325,6 +1318,13 @@ void TabletServerPathHandlers::HandleTabletsJSON(const Webserver::WebRequest& re
     jw.EndObject();
   }
   jw.EndObject();
+}
+
+void TabletServerPathHandlers::HandleTabletMetaCacheJSON(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream* output = &resp->output;
+  JsonWriter writer(output, JsonWriter::COMPACT);
+  tserver_->WriteServerMetaCacheAsJson(&writer);
 }
 
 }  // namespace tserver

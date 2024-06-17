@@ -15,6 +15,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -22,7 +24,9 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -30,6 +34,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -50,7 +55,11 @@ public class UniverseResp {
     UniverseResourceDetails resourceDetails =
         UniverseResourceDetails.create(universe.getUniverseDetails(), context);
     fillRegions(Collections.singletonList(universe));
-    return new UniverseResp(universe, taskUUID, resourceDetails);
+    // Universe UUID to AllowedTasks object map.
+    Map<UUID, AllowedTasks> allowedTasks =
+        getAllowedTasksOnFailure(Collections.singletonList(universe));
+    return new UniverseResp(
+        universe, taskUUID, resourceDetails, allowedTasks.get(universe.getUniverseUUID()));
   }
 
   public static List<UniverseResp> create(
@@ -60,6 +69,8 @@ public class UniverseResp {
     UniverseResourceDetails.Context context =
         new Context(config, customer, universeDefinitionTaskParams);
     fillRegions(universeList);
+    // Universe UUID to AllowedTasks object map.
+    Map<UUID, AllowedTasks> allowedTasks = getAllowedTasksOnFailure(universeList);
     return universeList.stream()
         .map(
             universe ->
@@ -70,7 +81,8 @@ public class UniverseResp {
                     context.getProvider(
                         UUID.fromString(
                             universe.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
-                    UniverseResourceDetails.create(universe.getUniverseDetails(), context)))
+                    UniverseResourceDetails.create(universe.getUniverseDetails(), context),
+                    allowedTasks.get(universe.getUniverseUUID())))
         .collect(Collectors.toList());
   }
 
@@ -79,6 +91,25 @@ public class UniverseResp {
         universes.stream()
             .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
             .collect(Collectors.toList()));
+  }
+
+  private static Map<UUID, AllowedTasks> getAllowedTasksOnFailure(Collection<Universe> universes) {
+    // Universe UUID to placement modification task UUID map.
+    Map<UUID, UUID> placementModificationTaskUuids =
+        universes.stream()
+            .filter(u -> u.getUniverseDetails().placementModificationTaskUuid != null)
+            .filter(Objects::nonNull)
+            .collect(
+                Collectors.toMap(
+                    u -> u.getUniverseDetails().placementModificationTaskUuid,
+                    u -> u.getUniverseUUID(),
+                    (u1, u2) -> u2));
+    // Fetch all the task info records in one shot for performance.
+    return TaskInfo.find(placementModificationTaskUuids.keySet()).stream()
+        .collect(
+            Collectors.toMap(
+                t -> placementModificationTaskUuids.get(t.getUuid()),
+                t -> UniverseTaskBase.getAllowedTasksOnFailure(t)));
   }
 
   public static void fillClusterRegions(List<Cluster> clusters) {
@@ -141,22 +172,32 @@ public class UniverseResp {
   @ApiModelProperty(value = "UUIDs of DR configs where this universe is the target (secondary)")
   public final Set<UUID> drConfigUuidsAsTarget;
 
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Allowed tasks on the universe")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.0.0")
+  public final AllowedUniverseTasksResp allowedTasks;
+
   public UniverseResp(Universe entity) {
-    this(entity, null, null);
+    this(entity, null, null, null);
   }
 
   public UniverseResp(Universe entity, UUID taskUUID) {
-    this(entity, taskUUID, null);
+    this(entity, taskUUID, null, null);
   }
 
-  public UniverseResp(Universe entity, UUID taskUUID, UniverseResourceDetails resources) {
+  public UniverseResp(
+      Universe entity,
+      UUID taskUUID,
+      UniverseResourceDetails resources,
+      AllowedTasks allowedTasks) {
     this(
         entity,
         taskUUID,
         Customer.get(entity.getCustomerId()),
         Provider.getOrBadRequest(
             UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
-        resources);
+        resources,
+        allowedTasks);
   }
 
   public UniverseResp(
@@ -164,7 +205,8 @@ public class UniverseResp {
       UUID taskUUID,
       Customer customer,
       Provider provider,
-      UniverseResourceDetails resources) {
+      UniverseResourceDetails resources,
+      AllowedTasks allowedTasks) {
     universeUUID = entity.getUniverseUUID();
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
@@ -183,6 +225,9 @@ public class UniverseResp {
         DrConfig.getByTargetUniverseUuid(universeUUID).stream()
             .map(DrConfig::getUuid)
             .collect(Collectors.toSet());
+    this.allowedTasks =
+        new AllowedUniverseTasksResp(
+            allowedTasks == null ? AllowedTasks.builder().build() : allowedTasks);
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources

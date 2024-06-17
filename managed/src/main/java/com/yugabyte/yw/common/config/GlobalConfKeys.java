@@ -264,6 +264,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " it is passed as a component while creating.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleNodeCheckTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.node_check_timeout_sec",
+          ScopeType.GLOBAL,
+          "Node reachable check timeout in Support Bundle",
+          "This global config is a timeout after which the node is deemed unreachable when creating"
+              + " a support bundle.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",
@@ -359,14 +368,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC operation timeout",
           "YBC client timeout in milliseconds for operations",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> customCAStoreEnabled =
-      new ConfKeyInfo<>(
-          "yb.customCATrustStore.enabled",
-          ScopeType.GLOBAL,
-          "Enable YBA's custom CA trust-store",
-          "Enable YBA's custom CA trust-store",
-          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
       new ConfKeyInfo<>(
@@ -702,14 +703,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "How frequently do we check for completed tasks in database",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static ConfKeyInfo<Boolean> editProviderNewEnabled =
-      new ConfKeyInfo<>(
-          "yb.edit_provider.new.enabled",
-          ScopeType.GLOBAL,
-          "Enable New Edit Provider",
-          "Enable new edit provider workflow",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<List> tagList =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.tag_filter",
@@ -784,6 +777,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether creating disaster recovery configs are enabled",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> dbScopedXClusterEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.db_scoped.enabled",
+          ScopeType.GLOBAL,
+          "Flag to enable db scoped xcluster replication",
+          "If flag is enabled, allows DR support with db scoped xcluster replication",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> xclusterEnableAutoFlagValidation =
       new ConfKeyInfo<>(
           "yb.xcluster.enable_auto_flag_validation",
@@ -810,6 +811,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "YBA version is allowed on universe nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipVersionChecks =
+      new ConfKeyInfo<>(
+          "yb.skip_version_checks",
+          ScopeType.GLOBAL,
+          "Skip DB / YBA version comparison checks",
+          "Whether we should skip DB / YBA version comparison checks during upgrades, etc. "
+              + "Gives more flexibilty, but user should be careful when enabling this.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> pgDumpPath =
       new ConfKeyInfo<>(
           "db.default.pg_dump_path",
@@ -828,14 +838,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "installation",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> allowUsedProviderEdit =
-      new ConfKeyInfo<>(
-          "yb.provider.allow_used_provider_edit",
-          ScopeType.GLOBAL,
-          "Allow editing of used providers",
-          "Provider associated with universes can be edited",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<String> ybdbReleasePathRegex =
       new ConfKeyInfo<>(
           "yb.regex.release_pattern.ybdb",
@@ -1030,7 +1032,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA"
               + " on login, etc.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> installLocalesDbNodes =
       new ConfKeyInfo<>(
           "yb.install_locales_db_nodes",
@@ -1053,6 +1055,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Devops command timeout",
           "Devops command timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> destroyServerCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_ops.destroy_server_timeout",
+          ScopeType.GLOBAL,
+          "Node destroy command timeout",
+          "Timeout for node destroy command before failing.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
@@ -1142,7 +1152,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Operator owned resources api block",
           "A resource controlled by the kubernetes operator cannot be updated using the REST API",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> devTagsMap =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.dev_tags",
@@ -1168,14 +1178,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows user to enter postgres hba rules and ident map rules in multiple rows",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> releasesRedesign =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.releases_redesign",
-          ScopeType.GLOBAL,
-          "Enable the option to view new releases page",
-          "Enable the option to view new releases page",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Duration> replicationFrequency =
       new ConfKeyInfo<>(
           "yb.ha.replication_frequency",
@@ -1233,20 +1235,35 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.security.oidc_enable_auto_create_users",
           ScopeType.GLOBAL,
           "Auto create user on SSO login",
-          "Enable user creation on OIDC login",
+          "Enable user creation on SSO login",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
-  // TODO(bhavin192): this could be removed or moved to customer keys
-  // later.
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  // TODO(bhavin192): this could be moved to customer keys later, and
+  // become public.
   public static final ConfKeyInfo<Boolean> enableK8sProviderValidation =
       new ConfKeyInfo<>(
           "yb.provider.kubernetes_provider_validation",
           ScopeType.GLOBAL,
           "Kubernetes provider validation",
-          "Hidden as the feature is work in progress"
-              + " and returns a mock response with validation errors.",
+          "Enable the Kubernetes provider quick validation",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.poll_result_tries",
+          ScopeType.GLOBAL,
+          "YBC poll upgrade result tries",
+          "YBC poll upgrade result tries count.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ybcUpgradePollResultSleepMs =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.poll_result_sleep_ms",
+          ScopeType.GLOBAL,
+          "YBC poll upgrade result Sleep time",
+          "YBC poll upgrade result sleep time.",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Role> oidcDefaultRole =
       new ConfKeyInfo<>(
           "yb.security.oidc_default_role",
@@ -1255,4 +1272,87 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Which role to use incase group memberships are not found",
           ConfDataType.UserRoleEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> enableReleasesRedesign =
+      new ConfKeyInfo<>(
+          "yb.releases.use_redesign",
+          ScopeType.GLOBAL,
+          "Use new releases",
+          "Enable the new releases design",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableAzureProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.azure_provider_validation",
+          ScopeType.GLOBAL,
+          "Azure provider validation",
+          "Enable Azure Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> haShutdownLevel =
+      new ConfKeyInfo<>(
+          "yb.ha.shutdown_level",
+          ScopeType.GLOBAL,
+          "HA Shutdown Level",
+          "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableGcpProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.gcp_provider_validation",
+          ScopeType.GLOBAL,
+          "GCP provider validation",
+          "Enables validation for GCP Provider and returns the validation errors json if any",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<String> ldapSearchFilter =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_search_filter",
+          ScopeType.GLOBAL,
+          "LDAP Search Filter",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<String> oidcRefreshTokenEndpoint =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenEndpoint",
+          ScopeType.GLOBAL,
+          "Endpoint for fetching the access token",
+          "YBA will fetch the access token using the refresh token if specified from the endpoint",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Duration> oidcRefreshTokenInterval =
+      new ConfKeyInfo<>(
+          "yb.security.oidcRefreshTokenInterval",
+          ScopeType.GLOBAL,
+          "OIDC Refresh Access Token Interval",
+          "If configured, YBA will refresh the access token at the specified duration, defaulted to"
+              + " 5 minutes.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowUsedBundleEdit =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.allow_used_bundle_edit",
+          ScopeType.GLOBAL,
+          "Allow Editing of in-use Linux Versions",
+          "Caution: If enabled, YBA will blindly allow editing the name/AMI associated with the"
+              + " bundle, without propagating it to the in-use Universes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> dbAuditLoggingEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.audit_logging_enabled",
+          ScopeType.GLOBAL,
+          "Enable DB Audit Logging",
+          "If this flag is enabled, user will be able to create telemetry providers and"
+              + " enable/disable DB audit logging on universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_sync_scheduler_interval",
+          ScopeType.GLOBAL,
+          "XCluster Sync Scheduler Interval",
+          "Interval at which the XCluster Sync Scheduler runs",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

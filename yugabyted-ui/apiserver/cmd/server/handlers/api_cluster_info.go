@@ -384,9 +384,11 @@ func (c *Container) getRawMetricsForAllNodes(
     var ts int64
     var value int
     var details string
+    c.logger.Infof("Getting metrics for nodes: %v", nodeList)
     for _, hostName := range nodeList {
         query := fmt.Sprintf(QUERY_FORMAT_NODE, "system.metrics", metricColumnValue,
             hostToUuid[hostName], startTime*1000, endTime*1000)
+        c.logger.Infof("Metrics query for node %s: %s", hostName, query)
         iter := session.Query(query).Iter()
         values := [][]float64{}
         for iter.Scan(&ts, &value, &details) {
@@ -463,6 +465,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
             return ctx.String(http.StatusInternalServerError, err.Error())
         }
     }
+    c.logger.Infof("Getting metrics for nodes: %v", nodeList)
     hostToUuid, err := c.helper.GetHostToUuidMap(helpers.HOST)
     if err != nil {
         c.logger.Errorf("[GetHostToUuidMap]: %s", err.Error())
@@ -811,7 +814,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
         }
     }
     mastersFuture := make(chan helpers.MastersFuture)
-    go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
+    go c.helper.GetMastersFuture(mastersFuture)
 
     nodeList := c.helper.GetNodesList(tabletServersResponse)
     versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
@@ -1442,7 +1445,7 @@ func (c *Container) GetVersion(ctx echo.Context) error {
 // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
 func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
     mastersFuture := make(chan helpers.MastersFuture)
-    go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
+    go c.helper.GetMastersFuture(mastersFuture)
     masters := map[string]helpers.Master{}
     mastersResponse := <-mastersFuture
     // Build comma separated master addresses list for yb-admin
@@ -1665,6 +1668,27 @@ func (c *Container) GetClusterAlerts(ctx echo.Context) error {
         }
     }
 
+    // Check for version mismatches among nodes
+    nodeVersions, err := c.helper.GetAllNodeVersions()
+    if err != nil {
+        c.logger.Errorf("Error fetching node versions: %s", err.Error())
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+    isVersionMismatch := c.helper.ValidateVersions(nodeVersions)
+    if isVersionMismatch {
+        var versionDetails []string
+        for nodeIP, version := range nodeVersions {
+            versionDetails = append(versionDetails, fmt.Sprintf("%s:%s", nodeIP, version))
+        }
+        mismatchInfo := fmt.Sprintf(
+            "Node version mismatch detected. Following are the version of nodes: %s",
+            strings.Join(versionDetails, ", "),
+        )
+        alertsResponse.Data = append(alertsResponse.Data, models.AlertsInfo{
+            Name: "version mismatch",
+            Info: mismatchInfo,
+        })
+    }
     return ctx.JSON(http.StatusOK, alertsResponse)
 }
 

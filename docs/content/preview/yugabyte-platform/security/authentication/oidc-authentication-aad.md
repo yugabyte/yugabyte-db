@@ -4,7 +4,7 @@ headerTitle: OIDC authentication with Azure AD
 linkTitle: OIDC with Azure AD
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Azure AD to authenticate accounts for database access
-earlyAccess: /preview/releases/versioning/#feature-availability
+earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   preview_yugabyte-platform:
     identifier: oidc-authentication-platform
@@ -99,7 +99,7 @@ For more information on configuring group claims and app roles, refer to [Config
 To enable OIDC authentication with Azure AD, you need to do the following:
 
 - Create an app registration in Azure AD - The Azure AD IdP configuration includes application registration (registering YugabyteDB Anywhere in the Azure AD tenant) and configuring Azure AD to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
-- Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the login screen.
+- Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the sign in screen.
 - Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping Azure AD attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba.conf` and `yb_ident.conf` files.
 
 ### Register an application in Azure
@@ -229,19 +229,17 @@ The following are examples of possible rules:
   map1 OIDC.Test.Read read_only_user
   ```
 
-<!--
-#### yb.runtime_conf_ui.tag_filter flag
+#### yb.security.oidc_feature_enhancements
 
-[Tech Preview] Use the following API to set values for this flag:
+This flag must be enabled to expose the OIDC functionality in Yugabyte Anywhere. Use the following API to set values for this flag.
 
 ```sh
-curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUID>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.runtime_conf_ui.tag_filter' \
+curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUID>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.oidc_feature_enhancements' \
 --header 'Content-Type: text/plain' \
 --header 'Accept: application/json' \
 --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
---data '["PUBLIC", "BETA"]'
+--data 'true'
 ```
--->
 
 ## Manage users and roles
 

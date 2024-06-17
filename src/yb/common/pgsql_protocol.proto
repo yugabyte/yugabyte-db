@@ -372,8 +372,7 @@ message GetTabletKeyRangesEmbeddedRequestPB {
   optional bytes lower_bound_key = 1;
   optional bytes upper_bound_key = 2;
   optional uint64 range_size_bytes = 3;
-  optional bool is_forward = 4 [ default = true ];
-  optional uint32 max_key_length = 5;
+  optional uint32 max_key_length = 4;
 }
 
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
@@ -543,6 +542,8 @@ message PgsqlReadRequestPB {
   // TODO(get_table_key_ranges): deprecate this field after separate separate GetTabletKeyRanges
   // RPC to the tablet leader is used.
   optional GetTabletKeyRangesEmbeddedRequestPB get_tablet_key_ranges_request = 41;
+
+  optional PgVectorReadOptionsPB vector_idx_options = 42;
 }
 
 //--------------------------------------------------------------------------------------------------

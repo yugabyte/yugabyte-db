@@ -35,7 +35,8 @@ const initialStateFeatureInTest = {
   enableLDAPRoleMapping: true,
   enableNewRestoreModal: true,
   enableCACertRotation: true,
-  enableNewAdvancedRestoreModal: false
+  enableNewAdvancedRestoreModal: false,
+  showReplicationSlots: true
 };
 
 const initialStateFeatureReleased = {
@@ -70,12 +71,16 @@ const initialStateFeatureReleased = {
 export const testFeatureFlagsLocalStorageKey = 'featureFlags-test';
 
 //Get feature flags from the local storage
-const featureFlagsInLocalStorage = JSON.parse(localStorage.getItem(testFeatureFlagsLocalStorageKey) ?? "{}");
+const featureFlagsInLocalStorage = JSON.parse(
+  localStorage.getItem(testFeatureFlagsLocalStorageKey) ?? '{}'
+);
 
-//Rather than directly utilizing the values stored in the local storage, we opt to map them to the test feature flag. 
+//Rather than directly utilizing the values stored in the local storage, we opt to map them to the test feature flag.
 //This approach ensures that we do not overwrite any newly added values in the test feature flag
-const testFeatureFlags = mapValues(initialStateFeatureInTest, (val, key) => featureFlagsInLocalStorage[key] ?? val);
-
+const testFeatureFlags = mapValues(
+  initialStateFeatureInTest,
+  (val, key) => featureFlagsInLocalStorage[key] ?? val
+);
 
 export const FeatureFlag = (
   state = {
@@ -84,7 +89,6 @@ export const FeatureFlag = (
   },
   action
 ) => {
-
   switch (action.type) {
     case TOGGLE_FEATURE:
       if (!state.released[action.feature]) {

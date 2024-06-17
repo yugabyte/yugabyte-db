@@ -3,12 +3,12 @@ title: Explore Security
 headerTitle: Security
 linkTitle: Security
 description: Overview of security in YugabyteDB.
-headcontent: Security in YugabyteDB.
+headcontent: Secure your YugabyteDB universes
 menu:
   stable:
     identifier: explore-security
     parent: explore
-    weight: 300
+    weight: 310
 type: docs
 ---
 
@@ -44,7 +44,7 @@ The methods include the following:
 
 You can choose the method to use to authenticate a particular client connection based on the client host address, the database they are connecting to, and user credentials.
 
-YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
+YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL and YCQL APIs.
 
 Read more about [how to enable authentication in YugabyteDB](../../../secure/authentication/).
 

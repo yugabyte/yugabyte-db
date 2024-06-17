@@ -43,6 +43,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.certmgmt.CertificateHelperTest;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -66,6 +67,7 @@ import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -77,7 +79,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
-import org.mockito.Mockito;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -169,7 +170,6 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     provider =
         Provider.create(
             defaultCustomer.getUuid(), Common.CloudType.aws, "test", new ProviderDetails());
-    when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(any())).thenReturn("AHAHA");
     AccessKey.create(
         provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     Region region = Region.create(provider, "us-west-1", "us-west-1", "yb-image1");
@@ -211,8 +211,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   private void setUpCredsValidation(boolean valid) {
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
-    Mockito.doNothing().when(mockCloudAPI).validateInstanceTemplate(any(), any());
-    when(mockCloudAPI.isValidCreds(any(), any())).thenReturn(valid);
+    when(mockCloudAPI.isValidCreds(any())).thenReturn(valid);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
   }
 
@@ -456,7 +455,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     provider.setUsabilityState(Provider.UsabilityState.ERROR);
     provider.save();
     provider.setName("new name");
-    when(mockAWSCloudImpl.getPrivateKeyAlgoOrBadRequest(any())).thenReturn("RSA");
+    provider.setAllAccessKeys(createTempAccesskeys());
     Image image = new Image();
     image.setArchitecture("x86_64");
     image.setRootDeviceType("ebs");
@@ -476,6 +475,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
     assertNull(provider.getLastValidationErrors());
     provider.setName("new name");
+    createImageBundle(provider, null);
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString()))
         .thenThrow(
             new PlatformServiceException(BAD_REQUEST, "AMI details extraction failed: Not found"));
@@ -486,7 +486,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertNotNull(provider.getLastValidationErrors());
     assertEquals(
         Json.parse("[\"AMI details extraction failed: Not found\"]"),
-        provider.getLastValidationErrors().get("error").get("REGION.us-west-1.IMAGE"));
+        provider.getLastValidationErrors().get("error").get("REGION.us-west-1.IMAGE.test-image"));
     assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
     assertEquals("new name", provider.getName());
   }
@@ -816,6 +816,15 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     p = Provider.getOrBadRequest(p.getUuid());
     assertEquals(2, p.getImageBundles().size());
+    p.getImageBundles()
+        .forEach(
+            bundle -> {
+              if (bundle.getName().equals("ib-2")) {
+                assertEquals(false, bundle.getUseAsDefault());
+              } else {
+                assertEquals(true, bundle.getUseAsDefault());
+              }
+            });
   }
 
   @Test
@@ -837,7 +846,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
-    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();
     ScheduleTask.create(backupTaskUUID, UUID.randomUUID());
@@ -870,7 +879,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
-    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setTaskParams(Json.newObject());
     backupTaskInfo.setOwner("Myself");
     backupTaskInfo.save();
     ScheduleTask.create(backupTaskUUID, UUID.randomUUID());
@@ -888,16 +897,15 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testImageBundleEditViaProviderRegionAdd() throws InterruptedException {
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.enableVMOSPatching.getKey(), "false");
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
-    ImageBundleDetails details = new ImageBundleDetails();
-    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
-    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
-    details.setRegions(regionImageInfo);
-    details.setArch(Architecture.x86_64);
     ImageBundle.Metadata metadata = new ImageBundle.Metadata();
     metadata.setType(ImageBundleType.YBA_ACTIVE);
-    ImageBundle.create(awsProvider, "ib-1", details, metadata, true);
+    createImageBundle(awsProvider, metadata);
 
     Result providerRes = getProvider(awsProvider.getUuid());
     JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
@@ -967,16 +975,14 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testEditProviderRegionAddYBADeprecatedBundle() throws InterruptedException {
+    factory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
-    ImageBundleDetails details = new ImageBundleDetails();
-    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
-    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
-    details.setRegions(regionImageInfo);
-    details.setArch(Architecture.x86_64);
     ImageBundle.Metadata metadata = new ImageBundle.Metadata();
     metadata.setType(ImageBundleType.YBA_DEPRECATED);
-    ImageBundle iB = ImageBundle.create(awsProvider, "ib-1", details, metadata, true);
+    ImageBundle iB = createImageBundle(awsProvider, metadata);
 
     Result providerRes = getProvider(awsProvider.getUuid());
     JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
@@ -997,14 +1003,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   public void testRegionDeleteImageBundleUpdate() throws InterruptedException {
     Provider awsProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(awsProvider, "us-west-1", "us-west-1", "yb-image1");
-    ImageBundleDetails details = new ImageBundleDetails();
-    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
-    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
-    details.setRegions(regionImageInfo);
-    details.setArch(Architecture.x86_64);
     ImageBundle.Metadata metadata = new ImageBundle.Metadata();
     metadata.setType(ImageBundleType.YBA_DEPRECATED);
-    ImageBundle.create(awsProvider, "ib-1", details, metadata, true);
+    createImageBundle(awsProvider, metadata);
 
     Result providerRes = getProvider(awsProvider.getUuid());
     JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
@@ -1024,12 +1025,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(p, "us-west-1", "us-west-1", "yb-image1");
-    ImageBundleDetails details = new ImageBundleDetails();
-    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
-    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
-    details.setRegions(regionImageInfo);
-    details.setGlobalYbImage("yb_image");
-    ImageBundle.create(p, "ib-1", details, true);
+    createImageBundle(p, null);
 
     // Ensure adding a region updates the imageBundle
     JsonNode regionBody = getAWSRegionJson();
@@ -1066,12 +1062,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
     Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(p, "us-west-1", "us-west-1", "yb-image1");
-    ImageBundleDetails details = new ImageBundleDetails();
-    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
-    regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
-    details.setRegions(regionImageInfo);
-    details.setGlobalYbImage("yb_image");
-    ImageBundle.create(p, "ib-1", details, true);
+    createImageBundle(p, null);
 
     // Ensure adding a region using legacy region updates the imageBundle (YBM)
     JsonNode regionBody = getAWSRegionJsonLegacy();
@@ -1205,5 +1196,25 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     bodyJson.put("vnetName", "vnetName");
 
     return bodyJson;
+  }
+
+  private List<AccessKey> createTempAccesskeys() {
+    AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
+    keyInfo.sshPrivateKeyContent = CertificateHelperTest.getServerKeyContent();
+    AccessKey accessKeyTemp = AccessKey.create(provider.getUuid(), "access-key-temp", keyInfo);
+    List<AccessKey> accessKeys = new ArrayList<>();
+    accessKeys.add(accessKeyTemp);
+    return accessKeys;
+  }
+
+  private ImageBundle createImageBundle(Provider provider, ImageBundle.Metadata metadata) {
+    ImageBundleDetails details = new ImageBundleDetails();
+    Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
+    ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
+    bundleInfo.setYbImage("yb_image");
+    regionImageInfo.put("us-west-1", bundleInfo);
+    details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
+    return ImageBundle.create(provider, "test-image", details, metadata, true);
   }
 }

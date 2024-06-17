@@ -203,25 +203,6 @@ Status LeaderTabletPeer::FillTerm() {
   return Status::OK();
 }
 
-Result<LeaderTabletPeer> LookupLeaderTablet(
-    TabletPeerLookupIf* tablet_manager,
-    const std::string& tablet_id,
-    TabletPeerTablet peer) {
-  if (peer.tablet_peer) {
-    LOG_IF(DFATAL, peer.tablet_peer->tablet_id() != tablet_id)
-        << "Mismatching table ids: peer " << peer.tablet_peer->tablet_id()
-        << " vs " << tablet_id;
-    LOG_IF(DFATAL, !peer.tablet) << "Empty tablet pointer for tablet id : " << tablet_id;
-  } else {
-    peer = VERIFY_RESULT(LookupTabletPeer(tablet_manager, tablet_id));
-  }
-  LeaderTabletPeer result;
-  result.FillTabletPeer(std::move(peer));
-
-  RETURN_NOT_OK(result.FillTerm());
-  return result;
-}
-
 Status CheckPeerIsReady(
     const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet) {
   auto consensus_result = tablet_peer.GetConsensus();
@@ -262,6 +243,24 @@ Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer) {
   return ResultToStatus(LeaderTerm(tablet_peer));
 }
 
+bool IsErrorCodeNotTheLeader(const Status& status) {
+  auto code = TabletServerError::FromStatus(status);
+  return code && code.value() == TabletServerErrorPB::NOT_THE_LEADER;
+}
+
+std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
+    const tablet::TabletPeerPtr& peer) {
+  if (auto consensus = peer->GetRaftConsensus()) {
+    std::shared_ptr<TabletConsensusInfoPB> tablet_consensus_info =
+        std::make_shared<TabletConsensusInfoPB>();
+    tablet_consensus_info->set_tablet_id(peer->tablet_id());
+    *(tablet_consensus_info->mutable_consensus_state()) =
+        consensus.get()->GetConsensusStateFromCache();
+    return tablet_consensus_info;
+  }
+  return nullptr;
+}
+
 namespace {
 
 template <class Key>
@@ -300,19 +299,25 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const TabletId& tablet_id) {
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = tablet_id});
+  }
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const Slice& tablet_id) {
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = tablet_id.ToBuffer()});
+  }
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet) {
+    AllowSplitTablet allow_split_tablet, ReadResponsePB* resp) {
   tablet::TabletPtr tablet_ptr = nullptr;
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), tablet_id);
@@ -323,7 +328,6 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     tablet_peer = std::move(tablet_peer_result.tablet_peer);
     tablet_ptr = std::move(tablet_peer_result.tablet);
   }
-
   RETURN_NOT_OK(CheckPeerIsReady(*tablet_peer, allow_split_tablet));
 
   // Check for leader only in strong consistency level.
@@ -332,11 +336,15 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       LOG(FATAL) << "--TEST_assert_reads_from_follower_rejected_because_of_staleness is true but "
                     "consistency level is invalid: YBConsistencyLevel::STRONG";
     }
-
-    RETURN_NOT_OK(CheckPeerIsLeader(*tablet_peer));
+    auto status = CheckPeerIsLeader(*tablet_peer);
+    if (!status.ok()) {
+      if (IsErrorCodeNotTheLeader(status)) {
+        FillTabletConsensusInfo(resp, tablet_id, tablet_peer);
+      }
+      return status;
+    }
   } else {
     auto s = CheckPeerIsLeader(*tablet_peer.get());
-
     // Peer is not the leader, so check that the time since it last heard from the leader is less
     // than FLAGS_max_stale_read_bound_time_ms.
     if (PREDICT_FALSE(!s.ok())) {
@@ -375,14 +383,12 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
       }
     }
   }
-
   auto tablet = tablet_peer->shared_tablet();
   if (PREDICT_FALSE(!tablet)) {
     return STATUS_EC_FORMAT(
         IllegalState, TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING),
         "Tablet $0 is not running", tablet_id);
   }
-
   return tablet;
 }
 

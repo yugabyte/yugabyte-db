@@ -83,24 +83,6 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
-#define DECLARE_SYNC_LEADER_MASTER_RPC_IMP(service, method) \
-  Result<master::BOOST_PP_CAT(method, ResponsePB)> method( \
-      const master::BOOST_PP_CAT(method, RequestPB)& req);
-
-#define DECLARE_SYNC_LEADER_MASTER_RPC(i, data, set) DECLARE_SYNC_LEADER_MASTER_RPC_IMP set
-
-#define DECLARE_SYNC_LEADER_MASTER_RPCS(rpcs) \
-  BOOST_PP_SEQ_FOR_EACH(DECLARE_SYNC_LEADER_MASTER_RPC, ~, rpcs)
-
-// Add the methods that we want to invoke on master leader here.
-// These functions will take a const reference to the request of the corresponding type as input and
-// return a Result of the appropriate response.
-// Ex: Result<SetupUniverseReplicationResponsePB>
-// SetupUniverseReplication(SetupUniverseReplicationRequestPB req);
-#define CLIENT_SYNC_LEADER_MASTER_RPC_LIST \
-  ((Replication, SetupUniverseReplication)) \
-  ((Replication, IsSetupUniverseReplicationDone)) \
-
 template<class T> class scoped_refptr;
 
 namespace yb {
@@ -117,6 +99,7 @@ class GetAutoFlagsConfigResponsePB;
 
 namespace tserver {
 class LocalTabletServer;
+class TabletConsensusInfoPB;
 class TabletServerServiceProxy;
 }
 
@@ -138,6 +121,7 @@ struct CDCSDKStreamInfo {
     std::string stream_id;
     uint32_t database_oid;
     ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+    std::string cdcsdk_ysql_replication_slot_plugin_name;
     std::unordered_map<std::string, std::string> options;
 
     template <class PB>
@@ -146,6 +130,9 @@ struct CDCSDKStreamInfo {
       pb->set_database_oid(database_oid);
       if (!cdcsdk_ysql_replication_slot_name.empty()) {
         pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+      }
+      if (!cdcsdk_ysql_replication_slot_plugin_name.empty()) {
+        pb->set_output_plugin_name(cdcsdk_ysql_replication_slot_plugin_name);
       }
     }
 
@@ -163,6 +150,7 @@ struct CDCSDKStreamInfo {
           .database_oid = database_oid,
           .cdcsdk_ysql_replication_slot_name =
               ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+          .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
           .options = std::move(options)};
 
       return stream_info;
@@ -178,9 +166,6 @@ using GetTableLocationsCallback =
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
-using GetXClusterStreamsCallback =
-    std::function<void(Result<master::GetXClusterStreamsResponsePB>)>;
-using IsXClusterBootstrapRequiredCallback = std::function<void(Result<bool>)>;
 
 struct TransactionStatusTablets {
   std::vector<TabletId> global_tablets;
@@ -470,20 +455,25 @@ class YBClient {
                          const boost::optional<uint32_t>& next_pg_oid = boost::none,
                          const TransactionMetadata* txn = nullptr,
                          const bool colocated = false,
-                         CoarseTimePoint deadline = CoarseTimePoint());
+                         CoarseTimePoint deadline = CoarseTimePoint(),
+                         const std::optional<std::string> source_namespace_name = std::nullopt,
+                         std::optional<HybridTime> clone_time = std::nullopt);
+
+  Status CloneNamespace(const std::string& target_namespace_name,
+                        const std::string& source_namespace_name,
+                        const YQLDatabase& database_type,
+                        std::optional<HybridTime> clone_time);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   Status CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                    const boost::optional<YQLDatabase>& database_type =
-                                    boost::none,
+                                    const boost::optional<YQLDatabase>& database_type = boost::none,
                                     const std::string& creator_role_name = "",
                                     const std::string& namespace_id = "",
                                     const std::string& source_namespace_id = "",
-                                    const boost::optional<uint32_t>& next_pg_oid =
-                                    boost::none,
+                                    const boost::optional<uint32_t>& next_pg_oid = boost::none,
                                     const bool colocated = false);
 
   // Set 'create_in_progress' to true if a CreateNamespace operation is in-progress.
@@ -607,25 +597,14 @@ class YBClient {
 
   // CDC Stream related methods.
 
-  // Create a new CDC stream.
-  Result<xrepl::StreamId> CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      bool active = true,
-      const xrepl::StreamId& db_stream_id = xrepl::StreamId::Nil());
-
-  void CreateCDCStream(
-      const TableId& table_id,
-      const std::unordered_map<std::string, std::string>& options,
-      cdc::StreamModeTransactional transactional,
-      CreateCDCStreamCallback callback);
-
   Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
+      const std::optional<std::string>& replication_slot_plugin_name = std::nullopt,
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
-      CoarseTimePoint deadline = CoarseTimePoint());
+      CoarseTimePoint deadline = CoarseTimePoint(),
+      uint64_t *consistent_snapshot_time = nullptr);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -663,11 +642,12 @@ class YBClient {
       cdc::StreamModeTransactional* transactional,
       std::optional<uint64_t>* consistent_snapshot_time = nullptr,
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
-      std::optional<uint64_t>* stream_creation_time = nullptr);
+      std::optional<uint64_t>* stream_creation_time = nullptr,
+      std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr);
 
-  Status GetCDCStream(
+  Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
-      xrepl::StreamId* stream_id);
+      std::unordered_map<uint32_t, PgReplicaIdentity>* replica_identities);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
@@ -698,28 +678,6 @@ class YBClient {
       const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
 
-  Result<std::vector<NamespaceId>> XClusterCreateOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const std::vector<NamespaceName>& namespace_names);
-
-  Status GetXClusterStreams(
-      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
-      const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
-
-  Status IsXClusterBootstrapRequired(
-      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
-
-  Status XClusterDeleteOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id);
-
-  Result<NamespaceId> XClusterAddNamespaceToOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id,
-      const NamespaceName& namespace_name);
-
-  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
-      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
@@ -768,11 +726,15 @@ class YBClient {
   const internal::RemoteTabletServer* GetLocalTabletServer() const;
 
   // List only those tables whose names pass a substring match on 'filter'.
+  // For YSQL tables, ysql_db_filter can be used to filter by the db they
+  // belong to.
   //
   // 'tables' is appended to only on success.
   Result<std::vector<YBTableName>> ListTables(
       const std::string& filter = "",
-      bool exclude_ysql = false);
+      bool exclude_ysql = false,
+      const std::string& ysql_db_filter = "",
+      bool skip_hidden = false);
 
   // List tables in a namespace.
   //
@@ -852,9 +814,9 @@ class YBClient {
     CoarseTimePoint deadline,
     std::vector<std::string>* master_uuids);
 
-  // Check if the table given by 'table_name' exists.
-  // Result value is set only on success.
-  Result<bool> TableExists(const YBTableName& table_name);
+  // Check if the table given by 'table_name' exists. 'skip_hidden' indicates whether to consider
+  // hidden tables. Result value is set only on success.
+  Result<bool> TableExists(const YBTableName& table_name, bool skip_hidden = false);
 
   Result<bool> IsLoadBalanced(uint32_t num_servers);
   Result<bool> IsLoadBalancerIdle();
@@ -970,6 +932,8 @@ class YBClient {
   // Provide the completion status of 'txn' to the YB-Master.
   Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
+  Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
+
   Result<bool> CheckIfPitrActive();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
@@ -1024,8 +988,6 @@ class YBClient {
   Result<google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>> ListSnapshots(
       const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool prepare_for_backup = false);
 
-  DECLARE_SYNC_LEADER_MASTER_RPCS(CLIENT_SYNC_LEADER_MASTER_RPC_LIST);
-
   rpc::Messenger* messenger() const;
 
   const scoped_refptr<MetricEntity>& metric_entity() const;
@@ -1041,10 +1003,7 @@ class YBClient {
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
-  // Get a RemoteTabletServer pointer from this client's meta_cache, if there is one present. Return
-  // null if none is found.
-  Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
-      const std::string& permanent_uuid);
+  void AddMetaCacheInfo(JsonWriter* writer);
 
   void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
@@ -1053,6 +1012,18 @@ class YBClient {
   const std::string& LogPrefix() const;
 
   server::Clock* Clock() const;
+
+  const std::string& client_name() const;
+
+  void ClearAllMetaCachesOnServer();
+
+  // Uses the TabletConsensusInfo piggybacked from a response to
+  // refresh a RemoteTablet in metacache. Returns true if the
+  // RemoteTablet was indeed refreshed, false otherwise.
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::TabletConsensusInfoPB& newly_received_info);
+
+  int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
  private:
   class Data;
@@ -1075,10 +1046,13 @@ class YBClient {
   friend class internal::TabletInvoker;
   friend class internal::ClientMasterRpcBase;
   friend class PlacementInfoTest;
+  friend class XClusterClient;
+  friend class XClusterRemoteClient;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
+  FRIEND_TEST(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);

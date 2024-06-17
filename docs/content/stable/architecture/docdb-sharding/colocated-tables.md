@@ -61,7 +61,7 @@ Colocation can be enabled at the cluster, database, or table level. For a coloca
 
 ### Clusters
 
-To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../concepts/yb-master/) and [YB-TServer](../../concepts/yb-tserver/) services as follows:
+To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../yb-master/) and [YB-TServer](../../yb-tserver/) services as follows:
 
 ```sql
 ysql_colocate_database_by_default = true
@@ -97,6 +97,20 @@ You can create a backup of a database that was colocated with the deprecated syn
 
 {{< /warning >}}
 
+To check if a database is colocated or not, you can use the `yb_is_database_colocated` function as follows:
+
+```sql
+select yb_is_database_colocated();
+```
+
+You should see an output similar to the following:
+
+```output
+ yb_is_database_colocated
+--------------------------
+ t
+```
+
 ### Tables
 
 All the tables in a colocated database are colocated by default. There is no need to enable colocation when creating tables. You can choose to opt specific tables out of colocation in a colocated database. To do this, use the following command:
@@ -116,6 +130,20 @@ CREATE TABLE <name> (columns) WITH (colocated = <true|false>)
 ```
 
 {{< /warning >}}
+
+To check if a table is colocated or not, you can use the [`\d`](../../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
+
+```sql
+select is_colocated from yb_table_properties('table_name'::regclass);
+```
+
+You should see an output similar to the following:
+
+```output
+ is_colocated
+--------------
+ f
+```
 
 #### Change table colocation
 

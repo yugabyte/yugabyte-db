@@ -381,6 +381,25 @@ GetAllTablesPublicationRelations(void)
 }
 
 /*
+ * Gets list of publications by its name.
+ */
+List *
+YBGetPublicationsByNames(List *pubnames, bool missing_ok)
+{
+	List	   *result = NIL;
+	ListCell   *lc;
+
+	foreach(lc, pubnames)
+	{
+		char	   *pubname = (char *) lfirst(lc);
+		Publication *pub = GetPublicationByName(pubname, missing_ok);
+		result = lappend(result, pub);
+	}
+
+	return result;
+}
+
+/*
  * Get publication using oid
  *
  * The Publication struct and its data are palloc'ed here.
@@ -526,6 +545,63 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 	}
 
 	SRF_RETURN_DONE(funcctx);
+}
+
+List *
+yb_pg_get_publications_tables(List *publications)
+{
+	/* hash table for O(1) rel_oid lookup */
+	HTAB	   *seen_tables;
+	HASHCTL		ctl;
+	List	   *tables = NIL;
+	ListCell   *lc;
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(Oid);
+	ctl.entrysize = sizeof(Oid);
+	ctl.hcxt = GetCurrentMemoryContext();
+
+	seen_tables = hash_create("yb_pg_get_publications_tables temporary table",
+							32, /* start small and extend */
+							&ctl,
+							HASH_ELEM | HASH_BLOBS);
+
+	foreach (lc, publications)
+	{
+		List		*pub_tables;
+		ListCell	*lc_tables;
+		Publication *pub = (Publication *) lfirst(lc);
+		bool		has_alltables = pub->alltables;
+
+		if (has_alltables)
+			pub_tables = GetAllTablesPublicationRelations();
+		else
+			pub_tables = GetPublicationRelations(pub->oid);
+
+		foreach(lc_tables, pub_tables)
+		{
+			Oid			rel = lfirst_oid(lc_tables);
+			bool		found;
+
+			hash_search(seen_tables, &rel, HASH_ENTER, &found);
+			if (!found)
+				tables = lappend_oid(tables, rel);
+		}
+
+		list_free(pub_tables);
+
+		/*
+		 * Once we have processed a publication with alltables, we have found
+		 * all tables of the database. So, we don't need to process other
+		 * publications.
+		 */
+		if (has_alltables)
+			break;
+	}
+
+	hash_destroy(seen_tables);
+
+	return tables;
 }
 
 static Datum

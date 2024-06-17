@@ -120,10 +120,19 @@ def commonSettings = Seq(
   scalaVersion := "2.13.12"
 )
 
+lazy val TestLocalProviderSuite = config("testLocalSuite") extend(Test)
+lazy val TestQuickSuite = config("testQuickSuite") extend(Test)
+lazy val TestRetrySuite = config("testRetrySuite") extend(Test)
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
+  .configs(TestLocalProviderSuite, TestQuickSuite, TestRetrySuite)
   .disablePlugins(PlayLayoutPlugin)
   .settings(commonSettings)
+  .settings(
+    inConfig(TestLocalProviderSuite)(Defaults.testTasks),
+    inConfig(TestQuickSuite)(Defaults.testTasks),
+    inConfig(TestRetrySuite)(Defaults.testTasks)
+  )
   .settings(commands += Command.command("deflake") { state =>
     "test" :: "deflake" :: state
   })
@@ -149,13 +158,13 @@ libraryDependencies ++= Seq(
   guice,
   "com.google.inject"            % "guice"                % "5.1.0",
   "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
-  "org.postgresql" % "postgresql" % "42.3.3",
+  "org.postgresql" % "postgresql" % "42.3.9",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.14.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
-  "org.apache.commons" % "commons-compress" % "1.25.0",
+  "org.apache.commons" % "commons-compress" % "1.26.0",
   "org.apache.commons" % "commons-csv" % "1.10.0",
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
@@ -165,7 +174,7 @@ libraryDependencies ++= Seq(
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
-  "org.springframework.security" % "spring-security-core" % "5.8.3",
+  "org.springframework.security" % "spring-security-core" % "5.8.11",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.599",
   "com.amazonaws" % "aws-java-sdk-kms" % "1.12.599",
   "com.amazonaws" % "aws-java-sdk-iam" % "1.12.599",
@@ -184,6 +193,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.28.0",
+  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
@@ -215,13 +225,13 @@ libraryDependencies ++= Seq(
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
-  "org.apache.directory.api" % "api-all" % "2.1.0",
+  "org.apache.directory.api" % "api-all" % "2.1.6",
   "io.fabric8" % "crd-generator-apt" % "6.8.0",
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
   "io.fabric8" % "kubernetes-model" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
-
+  "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -230,6 +240,9 @@ libraryDependencies ++= Seq(
   // Prod dependency temporary as we use HSQLDB as a dummy perf_advisor DB for YBM scenario
   // Remove once YBM starts using real PG DB.
   "org.hsqldb" % "hsqldb" % "2.7.1",
+  "org.mapstruct" %"mapstruct" % "1.5.5.Final",
+  "org.mapstruct" %"mapstruct-processor" % "1.5.5.Final",
+  "org.projectlombok" %"lombok-mapstruct-binding" % "0.2.0",
   // ---------------------------------------------------------------------------------------------//
   //                                   TEST DEPENDENCIES                                          //
   // ---------------------------------------------------------------------------------------------//
@@ -245,7 +258,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % "test",
+  "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
 )
 
 // Clear default resolvers.
@@ -342,6 +355,8 @@ externalResolvers := {
   downloadThirdPartyDeps.value
 }
 
+clean := (clean dependsOn cleanV2ServerStubs).value
+
 cleanPlatform := {
   clean.value
   (swagger / clean).value
@@ -364,12 +379,12 @@ versionGenerate := {
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
+  var downloadYbcCmd = "./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -i"
   if (moveYbcPackage) {
-    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf" + " -s", baseDirectory.value).!
-  } else {
-    Process("./download_ybc.sh -c " + (Compile / resourceDirectory).value / "reference.conf", baseDirectory.value).!
+    downloadYbcCmd = downloadYbcCmd + " -s"
   }
-  status
+  val status2 = Process(downloadYbcCmd, baseDirectory.value).!
+  status | status2
 }
 
 lazy val ybLogTask = inputKey[Unit]("Task to log a message")
@@ -406,6 +421,7 @@ releaseModulesLocally := {
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
   (Compile / openApiProcessServer).value
+  openApiProcessClients.value
   generateCrdObjects.value
   generateOssConfig.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
@@ -450,7 +466,7 @@ generateCrdObjects := {
 
 downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
-  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+  val status = Process("wget -Nqi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
   status
 }
 
@@ -502,10 +518,7 @@ cleanCrd := {
 lazy val cleanV2ServerStubs = taskKey[Int]("Clean v2 server stubs")
 cleanV2ServerStubs := {
   ybLog("Cleaning Openapi v2 server stubs...")
-  val apiDir = baseDirectory.value / "src/main/java/api/v2/"
-  Process("find . -name *ApiController.java -o -name *ApiControllerImpInterface.java", apiDir) #|
-      Process("xargs rm -f", apiDir) #|
-      Process("rm -rf models", apiDir) !
+  Process("rm -rf openapi", target.value) !
   val openapiDir = baseDirectory.value / "src/main/resources/openapi"
   Process("rm -f paths/_index.yaml", openapiDir) #|
       Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
@@ -517,7 +530,8 @@ cleanClients := {
   val javaDir = baseDirectory.value / "client/java"
   val pythonDir = baseDirectory.value / "client/python"
   val goDir = baseDirectory.value / "client/go"
-  Process("rm -rf v1 v2", javaDir) #|
+  Process("find . -depth ! -path . ! -name pom.xml -exec rm -rf {} +", javaDir / "v1") #|
+      Process("find . -depth ! -path . ! -name pom.xml -exec rm -rf {} +", javaDir / "v2") #|
       Process("rm -rf v1 v2 target", pythonDir) #|
       Process("rm -rf v1 v2 target", goDir) !
 }
@@ -531,11 +545,21 @@ openApiBundle := {
 }
 
 lazy val openApiFormat = taskKey[Unit]("Format openapi files")
+openApiFormat / fileInputs += baseDirectory.value.toGlob /
+    "src/main/resources/openapi" / ** / "[!_]*.yaml"
 openApiFormat := {
-  val rc = Process("./openapi_format.sh", baseDirectory.value / "scripts").!
-  if (rc != 0) {
-    throw new RuntimeException("openapi format failed!!!")
+  import java.nio.file.Path
+  def formatFile(file: Path): Unit = {
+    ybLog(s"formatting api file $file")
+    val rc = Process(s"./openapi_format.sh $file", baseDirectory.value / "scripts").!
+    if (rc != 0) {
+      throw new RuntimeException("openapi format failed!!!")
+    }
   }
+  val changes = openApiFormat.inputFileChanges
+  val changedFiles = (changes.created ++ changes.modified).toSet
+  changedFiles.foreach(formatFile)
+
 }
 
 lazy val openApiLint = taskKey[Unit]("Running lint on openapi spec")
@@ -547,16 +571,18 @@ openApiLint := {
 }
 
 lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
-openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
-openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
+Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi_templates" / ** / "*.mustache"
 // Process and compile open api files
 Compile / openApiProcessServer := {
-  if (openApiProcessServer.inputFileChanges.hasChanges) {
+  if (openApiProcessServer.inputFileChanges.hasChanges ||
+      !(baseDirectory.value / "src/main/resources/openapi.yaml").exists ||
+      !(baseDirectory.value / "target/openapi/src").exists) {
     Def.taskDyn {
       val output = Def.sequential(
-          ybLogTask.toTask(" Detected changes in OpenApi spec files, regenerating server stubs..."),
+          ybLogTask.toTask(" Generating V2 server stubs..."),
           openApiFormat,
           openApiBundle,
           javaGenV2Server / openApiGenerate
@@ -573,6 +599,10 @@ Compile / openApiProcessServer := {
     Seq()
   }
 }
+Compile / openApiProcessServer / fileOutputs := Seq(
+  target.value.toGlob / "openapi/src/main/java/" / ** / "*.java",
+  baseDirectory.value.toGlob / "src/main/resources/openapi.yaml",
+  baseDirectory.value.toGlob / "src/main/resources/openapi_public.yaml")
 Compile / sourceGenerators += (Compile / openApiProcessServer)
 Compile / unmanagedSourceDirectories += target.value / "openapi/src/main/java"
 
@@ -603,11 +633,18 @@ lazy val javaGenV2Client = project.in(file("client/java"))
   )
 
 // Compile generated java v1 and v2 clients
-lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
-compileJavaGenClient := {
+lazy val compileJavaGenV1Client = taskKey[Int]("Compile generated v1 Java client code")
+compileJavaGenV1Client := {
   val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
   val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
-  val status = Process("mvn clean install " + cmdOpt, new File(baseDirectory.value + "/client/java/")).!
+  val status = Process("mvn clean install -pl v1 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
+  status
+}
+lazy val compileJavaGenV2Client = taskKey[Int]("Compile generated v2 Java client code")
+compileJavaGenV2Client := {
+  val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
+  val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
+  val status = Process("mvn clean install -pl v2 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
   status
 }
 
@@ -664,57 +701,99 @@ lazy val goGenV2Client = project.in(file("client/go"))
   )
 
 // Compile generated go v1 and v2 clients
-lazy val compileGoGenClient = taskKey[Int]("Compile generated Go clients")
-compileGoGenClient := {
-  val status = Process("make", new File(baseDirectory.value + "/client/go/")).!
+lazy val compileGoGenV1Client = taskKey[Int]("Compile generated v1 Go clients")
+compileGoGenV1Client := {
+  val status = Process("make testv1", new File(baseDirectory.value + "/client/go/")).!
+  status
+}
+lazy val compileGoGenV2Client = taskKey[Int]("Compile generated v2 Go clients")
+compileGoGenV2Client := {
+  val status = Process("make testv2", new File(baseDirectory.value + "/client/go/")).!
   status
 }
 
 // Compile the YBA CLI binary
 lazy val compileYbaCliBinary = taskKey[(Int, Seq[String])]("Compile YBA CLI Binary")
 compileYbaCliBinary := {
-  cleanYbaCliBinary.value
   var status = 0
-  var output = Seq.empty[String]
+  var completeFileList = Seq.empty[String]
   var fileList = Seq.empty[String]
 
   ybLog("Generating YBA CLI go binary.")
-  val processLogger = ProcessLogger(
-    line => output :+= line,
-    line => println(s"Error: $line")
-  )
 
-  val process = Process("make package", new File(baseDirectory.value + "/yba-cli/"))
-  status = process.!(processLogger)
-  if (status == 0) {
-    val fileListIndex = output.indexWhere(_.startsWith("List of files in"))
-    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
-  } else {
-    fileList = Seq.empty[String]
-  }
-  (status, fileList)
+  val (status1, fileList1) = makeYbaCliPackage("linux", "amd64", baseDirectory.value)
+  completeFileList = fileList1
+  status = status1
+
+  val (status2, fileList2) = makeYbaCliPackage("linux", "arm64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList2
+  status = status max status2
+
+  val (status3, fileList3) = makeYbaCliPackage("darwin", "amd64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList3
+  status = status max status3
+
+  val (status4, fileList4) = makeYbaCliPackage("darwin", "arm64", baseDirectory.value)
+  completeFileList = completeFileList ++ fileList4
+  status = status max status4
+
+
+  (status, completeFileList)
 }
 
 compileYbaCliBinary := ((compileYbaCliBinary) dependsOn versionGenerate).value
 
+def makeYbaCliPackage(goos: String, goarch: String, directory: java.io.File): (Int, Seq[String]) = {
+
+  var status = 0
+  var output = Seq.empty[String]
+  var fileList = Seq.empty[String]
+
+  val processLogger = ProcessLogger(
+    line => output :+= line,
+    line => println(s"Error: $line")
+  )
+  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val process = Process("make package", new File(directory + "/yba-cli/"), env: _*)
+  status = process.!(processLogger)
+  if (status == 0) {
+    val fileListIndex = output.indexWhere(_.startsWith("Folder path for"))
+    fileList = if (fileListIndex != -1) output.drop(fileListIndex + 1) else Seq.empty[String]
+  } else {
+    fileList = Seq.empty[String]
+  }
+
+  (status, fileList)
+}
+
 // Clean the YBA CLI binary
 lazy val cleanYbaCliBinary = taskKey[Int]("Clean YBA CLI Binary")
 cleanYbaCliBinary := {
-   ybLog("Cleaning YBA CLI go binary.")
-  val status = Process("make clean", new File(baseDirectory.value + "/yba-cli/")).!
+  ybLog("Cleaning YBA CLI go binary.")
+
+  var status = cleanYbaCliPackage("linux", "amd64", baseDirectory.value)
+  status = cleanYbaCliPackage("linux", "arm64", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", "amd64", baseDirectory.value)
+  status = cleanYbaCliPackage("darwin", "arm64", baseDirectory.value)
+
   status
 }
 
-// Require sbt to first generate clients and install in local mvn repo
-// so that unit tests libraryDependencies can depend on them
-update := update.dependsOn(openApiProcessClients).value
+def cleanYbaCliPackage(goos: String, goarch: String, directory: java.io.File): Int = {
+  val env = Seq("GOOS" -> goos, "GOARCH" -> goarch)
+  val status = Process("make clean", new File(directory + "/yba-cli/"), env: _*).!
+
+  status
+}
 
 lazy val openApiProcessClients = taskKey[Unit]("Generate and compile openapi clients")
 openApiProcessClients / fileInputs += baseDirectory.value.toGlob / "src/main/resources/openapi.yaml"
 openApiProcessClients := {
-  if (openApiProcessClients.inputFileChanges.hasChanges)
+  if (openApiProcessClients.inputFileChanges.hasChanges |
+      !(baseDirectory.value / "client/java/v2/build.sbt").exists())
     Def.sequential(
       ybLogTask.toTask(" openapi.yaml file has changed, so regenerating clients..."),
+      cleanClients,
       openApiGenClients,
       openApiCompileClients,
     ).value
@@ -722,21 +801,32 @@ openApiProcessClients := {
     ybLog("Generated Openapi clients are up to date. Run 'cleanClients' to force generation.")
 }
 
-lazy val openApiGenClients = taskKey[Unit]("Generating openapi clients")
+lazy val openApiGenClients = taskKey[Unit]("Generating openapi v2 clients")
 openApiGenClients := {
-  (javagen / openApiGenerate).value
-  (pythongen / openApiGenerate).value
-  (gogen / openApiGenerate).value
   (javaGenV2Client / openApiGenerate).value
   (pythonGenV2Client / openApiGenerate).value
   (goGenV2Client / openApiGenerate).value
 }
 openApiGenClients := openApiGenClients.dependsOn(Compile/openApiProcessServer).value
 
-lazy val openApiCompileClients = taskKey[Unit]("Compiling openapi clients")
+lazy val openApiCompileClients = taskKey[Unit]("Compiling openapi v2 clients")
 openApiCompileClients := {
-  compileJavaGenClient.value
-  compileGoGenClient.value
+  compileJavaGenV2Client.value
+  compileGoGenV2Client.value
+  // no compilation or running tests for python client
+}
+
+lazy val swaggerGenClients = taskKey[Unit]("Generating swagger v1 clients")
+swaggerGenClients := {
+  (javagen / openApiGenerate).value
+  (pythongen / openApiGenerate).value
+  (gogen / openApiGenerate).value
+}
+
+lazy val swaggerCompileClients = taskKey[Unit]("Compiling swagger v1 clients")
+swaggerCompileClients := {
+  compileJavaGenV1Client.value
+  compileGoGenV1Client.value
   // no compilation or running tests for python client
 }
 
@@ -776,24 +866,36 @@ Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, bu
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 
+// Enable viewing Java call stacks in "perf" tool
+Universal / javaOptions += "-J-XX:+PreserveFramePointer"
+
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
 Universal / mappings ++= {
-  val (status, cliFiles) = compileYbaCliBinary.value
+  val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {
-    val targetFolderOpt: Option[String] = Some("bin")
-    val filesWithRelativePaths: Seq[(File, String)] = cliFiles.map { filePath =>
-      val targetPath = "bin/" + Paths.get(filePath).getFileName.toString
-      (file(filePath), targetPath)
+    cliFolders.flatMap { folderPath =>
+      val folder = file(folderPath)
+      if (folder.isDirectory) {
+        val targetPath = s"yba-cli/${folder.getName}"
+        val folderMappings = (folder ** "*") pair Path.rebase(folder, targetPath)
+        folderMappings
+      } else {
+        println(s"Warning: $folderPath is not a directory and will not be included in the package.")
+        Nil
+      }
     }
-
-    ybLog("Added YBA CLI files to package.")
-    filesWithRelativePaths
   } else {
     ybLog("Error generating YBA CLI binary.")
     Seq.empty
   }
+}
+
+// Copying 'support/thirdparty-dependencies.txt' into the YBA tarball at 'conf/thirdparty-dependencies.txt'.
+Universal / mappings ++= {
+  val tpdSourceFile = baseDirectory.value / "support" / "thirdparty-dependencies.txt"
+  Seq((tpdSourceFile, "conf/thirdparty-dependencies.txt"))
 }
 
 
@@ -815,13 +917,14 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.78-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b2"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.89-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
+  "io.projectreactor.netty" % "reactor-netty-http" % "1.0.39",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
@@ -832,6 +935,31 @@ dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
+
+// Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
+// jackson-module-jaxb-annotations are needed by the openapi java client. The
+// datadog-api-client library also needs them, but the newer versions
+// pulled by datadog-api-client are not compatible with the openapi java client. So
+// fixing these to older versions.
+val jerseyVersion = "2.30.1"
+dependencyOverrides += "org.glassfish.jersey.connectors" % "jersey-apache-connector" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.core" % "jersey-client" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.core" % "jersey-common" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.ext" % "jersey-entity-filtering" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.inject" % "jersey-hk2" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.media" % "jersey-media-json-jackson" % jerseyVersion % Test
+dependencyOverrides += "org.glassfish.jersey.media" % "jersey-media-multipart" % jerseyVersion % Test
+
+val hk2Version = "2.6.1"
+dependencyOverrides += "org.glassfish.hk2.external" % "aopalliance-repackaged" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2.external" % "javax.inject" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2" % "hk2-api" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2" % "hk2-locator" % hk2Version % Test
+dependencyOverrides += "org.glassfish.hk2" % "hk2-utils" % hk2Version % Test
+
+dependencyOverrides += "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5" % Test
+dependencyOverrides += "jakarta.ws.rs" % "jakarta.ws.rs-api" % "2.1.6" % Test
+dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-jaxb-annotations" % "2.10.1" % Test
 
 val jacksonVersion         = "2.15.3"
 
@@ -883,6 +1011,34 @@ Test / testGrouping := partitionTests( (Test / definedTests).value, testShardSiz
 
 Test / javaOptions += "-Dconfig.resource=application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testOptions += Tests.Filter(s =>
+  !s.contains("com.yugabyte.yw.commissioner.tasks.local")
+)
+
+lazy val testLocal = taskKey[Unit]("Runs local provider tests")
+lazy val testFast = taskKey[Unit]("Runs quick tests")
+lazy val testUpgradeRetry = taskKey[Unit]("Runs retry tests")
+
+def localTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.local")
+def quickTestSuiteFilter(name: String): Boolean =
+  !(name.startsWith("com.yugabyte.yw.commissioner.tasks.local") ||
+    name.startsWith("com.yugabyte.yw.commissioner.tasks.upgrade"))
+def upgradeRetryTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.upgrade")
+
+TestLocalProviderSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestLocalProviderSuite / testOptions := Seq(Tests.Filter(localTestSuiteFilter))
+TestLocalProviderSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testLocal := (TestLocalProviderSuite / test).value
+
+TestQuickSuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestQuickSuite / testOptions := Seq(Tests.Filter(quickTestSuiteFilter))
+TestQuickSuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testFast := (TestQuickSuite / test).value
+
+TestRetrySuite / javaOptions += "-Dconfig.resource=application.test.conf"
+TestRetrySuite / testOptions := Seq(Tests.Filter(upgradeRetryTestSuiteFilter))
+TestRetrySuite / testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
+testUpgradeRetry := (TestRetrySuite / test).value
 
 // Skip packaging javadoc for now
 Compile / doc / sources := Seq()
@@ -989,6 +1145,8 @@ Test / test := (Test / test).dependsOn(swagger / Test / test).value
 commands += Command.command("swaggerGen") { state =>
   "swagger/swaggerGen" ::
   "swagger/swaggerGenTest" ::
+  "swaggerGenClients" ::
+  "swaggerCompileClients" ::
   "openApiGenClients" ::
   "openApiCompileClients" ::
   state

@@ -19,6 +19,7 @@ public class RestoreFilter {
   Set<String> sourceUniverseNameList;
   Set<UUID> storageConfigUUIDList;
   Set<UUID> universeUUIDList;
+  Set<UUID> restoreUUIDList;
   UUID customerUUID;
   boolean onlyShowDeletedSourceUniverses;
 }

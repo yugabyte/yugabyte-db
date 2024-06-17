@@ -14,5 +14,6 @@ test: yb_dep_onek
 test: yb_pg_create_table_like
 test: yb_pg_alter_table
 test: yb_alter_table
+test: yb_alter_table_rewrite
 test: yb_create_table
 test: yb_drop_table

@@ -54,10 +54,12 @@
   flex-direction: column;
   gap: 5px;
 
+  margin-top: 16px;
+
   .validation {
     display: flex;
 
-    margin-top: 20px;
+    margin-top: 16px;
     padding: 12px;
 
     border-radius: 4px;
@@ -77,20 +79,6 @@
 
       i {
         color: colors.$YB_WARNING_ICON_COLOR;
-      }
-    }
-
-    .message {
-      margin-left: 10px;
-
-      h5 {
-        font-size: 13px;
-        font-weight: 700;
-        font-family: inherit;
-      }
-
-      p:last-child {
-        margin-bottom: 0;
       }
     }
   }

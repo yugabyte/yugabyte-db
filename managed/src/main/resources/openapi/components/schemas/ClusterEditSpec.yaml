@@ -1,0 +1,32 @@
+title: ClusterEditSpec
+description: Edit Cluster Spec. Part of UniverseEditSpec.
+type: object
+required:
+  - uuid
+properties:
+  uuid:
+    description: The system generated cluster uuid to edit. This can be fetched from ClusterInfo.
+    type: string
+    format: uuid
+    example: 19ebde21-d537-47dc-8fab-3edc243c6f68
+  num_nodes:
+    description: Set the number of nodes (tservers) to provision in this cluster
+    type: integer
+    format: int32
+    example: 3
+    minimum: 1
+  instance_type:
+    description: Set instance type for tserver nodes of cluster
+    type: string
+    example: c5.xlarge
+  storage_spec:
+    $ref: "./ClusterStorageSpec.yaml"
+  provider_spec:
+    $ref: "./ClusterProviderEditSpec.yaml"
+  placement_spec:
+    $ref: "./ClusterPlacementSpec.yaml"
+  instance_tags:
+    description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
+    type: object
+    additionalProperties:
+      type: string

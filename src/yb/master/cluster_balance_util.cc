@@ -19,6 +19,7 @@
 #include "yb/master/master_cluster.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 using std::vector;
@@ -501,10 +502,12 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
         << "incompatible with tablet " << tablet_id << ". Not allowing it to host this tablet.";
     return false;
   }
-  // If this server has a pending tablet delete, don't use it.
-  if (global_state_->servers_with_pending_deletes_.count(to_ts)) {
-    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts << " has a pending delete. "
-              << "Not allowing it to take more tablets";
+  // If this server has a pending tablet delete for this tablet, don't use it.
+  auto ts_it = global_state_->pending_deletes_.find(to_ts);
+  if (ts_it != global_state_->pending_deletes_.end() && ts_it->second.contains(tablet_id)) {
+    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts
+                                  << " has a pending delete for tablet " << tablet_id
+                                  << ". Not allowing it to take another replica.";
     return false;
   }
   // If all checks pass, return true.
@@ -636,6 +639,9 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
 }
 
 Status PerTableLoadState::AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts) {
+  SCHECK_FORMAT(initialized_, IllegalState,
+      "PerTableLoadState not initialized before calling $0 for tablet $1", __func__, tablet_id);
+
   RETURN_NOT_OK(AddStartingTablet(tablet_id, to_ts));
   tablets_added_.insert(tablet_id);
   SortLoad();
@@ -643,6 +649,9 @@ Status PerTableLoadState::AddReplica(const TabletId& tablet_id, const TabletServ
 }
 
 Status PerTableLoadState::RemoveReplica(const TabletId& tablet_id, const TabletServerId& from_ts) {
+  SCHECK_FORMAT(initialized_, IllegalState,
+      "PerTableLoadState not initialized before calling $0 for tablet $1", __func__, tablet_id);
+
   RETURN_NOT_OK(RemoveRunningTablet(tablet_id, from_ts));
   if (per_ts_meta_[from_ts].starting_tablets.count(tablet_id)) {
     LOG(DFATAL) << "Invalid request: remove starting tablet " << tablet_id
@@ -712,6 +721,11 @@ Status PerTableLoadState::MoveLeader(const TabletId& tablet_id,
                                      const TabletServerId& from_ts,
                                      const TabletServerId& to_ts,
                                      const TabletServerId& to_ts_path) {
+  SCHECK_FORMAT(initialized_, IllegalState,
+      "PerTableLoadState not initialized before calling $0 for tablet $1", __func__, tablet_id);
+
+  SCHECK_NE(&per_tablet_meta_[tablet_id].leader_uuid, &from_ts, InvalidArgument,
+      "from_ts should not be a reference to the leader_uuid in per_tablet_meta_");
   if (per_tablet_meta_[tablet_id].leader_uuid != from_ts) {
     return STATUS_SUBSTITUTE(IllegalState, "Tablet $0 has leader $1, but $2 expected.",
                               tablet_id, per_tablet_meta_[tablet_id].leader_uuid, from_ts);
@@ -806,7 +820,12 @@ Status PerTableLoadState::AddRunningTablet(const TabletId& tablet_id,
                                            const TabletServerId& ts_uuid,
                                            const std::string& path) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
-          Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+         Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
+
+  // Check not initialized since we don't add to the over-replicated set here.
+  SCHECK_FORMAT(!initialized_, IllegalState,
+      "$0 called after PerTableLoadState initialized for tablet $1", __func__, tablet_id);
+
   // Set::Insert returns a pair where the second value is whether or not an item was inserted.
   auto& meta_ts = per_ts_meta_.at(ts_uuid);
   auto ret = meta_ts.running_tablets.insert(tablet_id);
@@ -823,7 +842,11 @@ Status PerTableLoadState::AddRunningTablet(const TabletId& tablet_id,
 Status PerTableLoadState::RemoveRunningTablet(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
-          Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+         Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
+
+  SCHECK_FORMAT(initialized_, IllegalState,
+      "PerTableLoadState not initialized before calling $0 for tablet $1", __func__, tablet_id);
+
   auto& meta_ts = per_ts_meta_.at(ts_uuid);
   auto num_erased = meta_ts.running_tablets.erase(tablet_id);
   if (num_erased == 0) {
@@ -850,15 +873,18 @@ Status PerTableLoadState::RemoveRunningTablet(
 Status PerTableLoadState::AddStartingTablet(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
-          Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+         Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
   auto ret = per_ts_meta_.at(ts_uuid).starting_tablets.insert(tablet_id);
   if (ret.second) {
     ++global_state_->per_ts_global_meta_[ts_uuid].starting_tablets_count;
     ++total_starting_;
     ++global_state_->total_starting_tablets_;
     ++per_tablet_meta_[tablet_id].starting;
-    // If the tablet wasn't over replicated before the add, it's over replicated now.
-    if (tablets_missing_replicas_.count(tablet_id) == 0) {
+    // If we are initializing, tablets_missing_replicas_ is not initialized yet, but
+    // UpdateTabletInfo will add the tablet to the over-replicated map if required.
+    // If we have already initialized and the tablet wasn't over replicated before the
+    // add, it's over replicated now.
+    if (initialized_ && tablets_missing_replicas_.count(tablet_id) == 0) {
       tablets_over_replicated_.insert(tablet_id);
     }
     VLOG(3) << "Increased total_starting to "
@@ -868,9 +894,10 @@ Status PerTableLoadState::AddStartingTablet(
 }
 
 Status PerTableLoadState::AddLeaderTablet(
-    const TabletId& tablet_id, const TabletServerId& ts_uuid, const TabletServerId& ts_path) {
+    const TabletId& tablet_id, const TabletServerId& ts_uuid, const std::string& ts_path) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
-          Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+         Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
+
   auto& meta_ts = per_ts_meta_.at(ts_uuid);
   auto ret = meta_ts.leaders.insert(tablet_id);
   if (ret.second) {
@@ -884,7 +911,11 @@ Status PerTableLoadState::AddLeaderTablet(
 Status PerTableLoadState::RemoveLeaderTablet(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
-          Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+         Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
+
+  SCHECK_FORMAT(initialized_, IllegalState,
+      "PerTableLoadState not initialized before calling $0 for tablet $1", __func__, tablet_id);
+
   VLOG(3) << "Removing leader tablet " << tablet_id << " from " << ts_uuid;
   auto num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
   global_state_->per_ts_global_meta_[ts_uuid].leaders_count -= num_erased;
@@ -894,7 +925,7 @@ Status PerTableLoadState::RemoveLeaderTablet(
 Status PerTableLoadState::AddDisabledByTSTablet(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
-          Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+          Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
   per_ts_meta_.at(ts_uuid).disabled_by_ts_tablets.insert(tablet_id);
   return Status::OK();
 }

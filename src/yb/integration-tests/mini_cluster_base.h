@@ -21,6 +21,8 @@
 
 namespace yb {
 
+class ExternalYbController;
+
 namespace client {
 class YBClientBuilder;
 class YBClient;
@@ -55,12 +57,7 @@ class MiniClusterBase {
 
   bool running() const { return running_.load(std::memory_order_acquire); }
 
-  template <class T>
-  Result<std::unique_ptr<T>> CreateStatefulServiceClient() {
-    auto client = std::make_unique<T>();
-    RETURN_NOT_OK(InitStatefulServiceClient(client.get()));
-    return client;
-  }
+  virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;
 
  protected:
   virtual ~MiniClusterBase() = default;
@@ -79,7 +76,6 @@ class MiniClusterBase {
   virtual void ConfigureClientBuilder(client::YBClientBuilder* builder) = 0;
 
   virtual Result<HostPort> DoGetLeaderMasterBoundRpcAddr() = 0;
-  Status InitStatefulServiceClient(client::StatefulServiceClientBase* client);
 };
 
 }  // namespace yb

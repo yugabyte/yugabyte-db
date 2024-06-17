@@ -14,6 +14,10 @@ type: docs
 
 Use the `CREATE INDEX` statement to create an index on the specified columns of the specified table. Indexes are primarily used to improve query performance.
 
+{{<note>}}
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
+{{</note>}}
+
 ## Syntax
 
 {{%ebnf%}}
@@ -85,7 +89,7 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### TABLESPACE clause
 
-Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
+Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
 
 ### WHERE clause
 
@@ -246,7 +250,7 @@ CREATE UNIQUE INDEX users_email_idx ON users(lower(email));
 
 Creating a unique index prevents inserting duplicate email addresses using a different case.
 
-Note that index expressions are only evaluated at index time, so to use the index for a specific query the expression must match exactly. 
+Note that index expressions are only evaluated at index time, so to use the index for a specific query the expression must match exactly.
 
 ```plpgsql
 SELECT * FROM users WHERE lower(email)='user@example.com'; # will use the index created above

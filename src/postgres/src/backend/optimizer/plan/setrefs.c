@@ -24,6 +24,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/tlist.h"
+#include "pg_yb_utils.h"
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -541,6 +542,36 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->indexqualorig, rtoffset);
 			}
 			break;
+		case T_YbBitmapIndexScan:
+			{
+				YbBitmapIndexScan *splan = (YbBitmapIndexScan *) plan;
+
+				splan->scan.scanrelid += rtoffset;
+				/* no need to fix targetlist and qual */
+				Assert(splan->scan.plan.targetlist == NIL);
+				Assert(splan->scan.plan.qual == NIL);
+				splan->indexqual =
+					fix_scan_list(root, splan->indexqual, rtoffset);
+				splan->indexqualorig =
+					fix_scan_list(root, splan->indexqualorig, rtoffset);
+
+				indexed_tlist *index_itlist;
+				index_itlist = build_tlist_index(splan->indextlist);
+
+				splan->yb_idx_pushdown.quals = (List *)
+					fix_upper_expr(root,
+								   (Node *) splan->yb_idx_pushdown.quals,
+								   index_itlist,
+								   INDEX_VAR,
+								   rtoffset);
+				splan->yb_idx_pushdown.colrefs = (List *)
+					fix_upper_expr(root,
+								   (Node *) splan->yb_idx_pushdown.colrefs,
+								   index_itlist,
+								   INDEX_VAR,
+								   rtoffset);
+			}
+			break;
 		case T_BitmapHeapScan:
 			{
 				BitmapHeapScan *splan = (BitmapHeapScan *) plan;
@@ -552,6 +583,30 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
 				splan->bitmapqualorig =
 					fix_scan_list(root, splan->bitmapqualorig, rtoffset);
+			}
+			break;
+		case T_YbBitmapTableScan:
+			{
+				YbBitmapTableScan *splan = (YbBitmapTableScan *) plan;
+
+				splan->scan.scanrelid += rtoffset;
+				splan->scan.plan.targetlist =
+					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
+				splan->scan.plan.qual =
+					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
+
+				splan->rel_pushdown.quals =
+					fix_scan_list(root, splan->rel_pushdown.quals, rtoffset);
+
+				splan->recheck_pushdown.quals =
+					fix_scan_list(root, splan->recheck_pushdown.quals, rtoffset);
+				splan->recheck_local_quals =
+					fix_scan_list(root, splan->recheck_local_quals, rtoffset);
+
+				splan->fallback_pushdown.quals =
+					fix_scan_list(root, splan->fallback_pushdown.quals, rtoffset);
+				splan->fallback_local_quals =
+					fix_scan_list(root, splan->fallback_local_quals, rtoffset);
 			}
 			break;
 		case T_TidScan:
@@ -1577,22 +1632,14 @@ fix_scan_expr_mutator(Node *node, fix_scan_expr_context *context)
 	if (IsA(node, Aggref))
 	{
 		Aggref	   *aggref = (Aggref *) node;
+		Param	   *aggparam;
 
 		/* See if the Aggref should be replaced by a Param */
-		if (context->root->minmax_aggs != NIL &&
-			list_length(aggref->args) == 1)
+		aggparam = find_minmax_agg_replacement_param(context->root, aggref);
+		if (aggparam != NULL)
 		{
-			TargetEntry *curTarget = (TargetEntry *) linitial(aggref->args);
-			ListCell   *lc;
-
-			foreach(lc, context->root->minmax_aggs)
-			{
-				MinMaxAggInfo *mminfo = (MinMaxAggInfo *) lfirst(lc);
-
-				if (mminfo->aggfnoid == aggref->aggfnoid &&
-					equal(mminfo->target, curTarget->expr))
-					return (Node *) copyObject(mminfo->param);
-			}
+			/* Make a copy of the Param for paranoia's sake */
+			return (Node *) copyObject(aggparam);
 		}
 		/* If no match, just fall through to process it normally */
 	}
@@ -1638,10 +1685,10 @@ YbBNL_hinfo_cmp_inner_att(const void *arg_1,
 
 	if (!OidIsValid(hinfo_1->hashOp))
 		return -1;
-	
+
 	if (!OidIsValid(hinfo_2->hashOp))
 		return 1;
-	
+
 	return (hinfo_1->innerHashAttNo > hinfo_2->innerHashAttNo) -
 		   (hinfo_1->innerHashAttNo < hinfo_2->innerHashAttNo);
 }
@@ -1682,7 +1729,7 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 	/* Now do join-type-specific stuff */
 	if (IsA(join, NestLoop) || IsA(join, YbBatchedNestLoop))
 	{
-		NestLoop   *nl = IsA(join, NestLoop) 
+		NestLoop   *nl = IsA(join, NestLoop)
 						 ? (NestLoop *) join
 						 : &((YbBatchedNestLoop *) join)->nl;
 		ListCell   *lc;
@@ -2589,22 +2636,14 @@ fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
 	if (IsA(node, Aggref))
 	{
 		Aggref	   *aggref = (Aggref *) node;
+		Param	   *aggparam;
 
 		/* See if the Aggref should be replaced by a Param */
-		if (context->root->minmax_aggs != NIL &&
-			list_length(aggref->args) == 1)
+		aggparam = find_minmax_agg_replacement_param(context->root, aggref);
+		if (aggparam != NULL)
 		{
-			TargetEntry *curTarget = (TargetEntry *) linitial(aggref->args);
-			ListCell   *lc;
-
-			foreach(lc, context->root->minmax_aggs)
-			{
-				MinMaxAggInfo *mminfo = (MinMaxAggInfo *) lfirst(lc);
-
-				if (mminfo->aggfnoid == aggref->aggfnoid &&
-					equal(mminfo->target, curTarget->expr))
-					return (Node *) copyObject(mminfo->param);
-			}
+			/* Make a copy of the Param for paranoia's sake */
+			return (Node *) copyObject(aggparam);
 		}
 		/* If no match, just fall through to process it normally */
 	}
@@ -2677,6 +2716,38 @@ set_returning_clause_references(PlannerInfo *root,
 	pfree(itlist);
 
 	return rlist;
+}
+
+
+/*
+ * find_minmax_agg_replacement_param
+ *		If the given Aggref is one that we are optimizing into a subquery
+ *		(cf. planagg.c), then return the Param that should replace it.
+ *		Else return NULL.
+ *
+ * This is exported so that SS_finalize_plan can use it before setrefs.c runs.
+ * Note that it will not find anything until we have built a Plan from a
+ * MinMaxAggPath, as root->minmax_aggs will never be filled otherwise.
+ */
+Param *
+find_minmax_agg_replacement_param(PlannerInfo *root, Aggref *aggref)
+{
+	if (root->minmax_aggs != NIL &&
+		list_length(aggref->args) == 1)
+	{
+		TargetEntry *curTarget = (TargetEntry *) linitial(aggref->args);
+		ListCell   *lc;
+
+		foreach(lc, root->minmax_aggs)
+		{
+			MinMaxAggInfo *mminfo = (MinMaxAggInfo *) lfirst(lc);
+
+			if (mminfo->aggfnoid == aggref->aggfnoid &&
+				equal(mminfo->target, curTarget->expr))
+				return mminfo->param;
+		}
+	}
+	return NULL;
 }
 
 

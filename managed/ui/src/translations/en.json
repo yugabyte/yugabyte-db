@@ -9,6 +9,7 @@
       "continue": "Continue",
       "create": "Create",
       "disable": "Disable",
+      "enable": "Enable",
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
@@ -47,13 +48,18 @@
     "queryError": {
       "failedToFetchUniverselist": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
+      "failedToFetchUniverseRuntimeConfig": "Failed to fetch runtime configurations for the current universe.",
       "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryUniverse": "Unable to fetch universe details for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchDrReplicaUniverse": "Unable to fetch universe details for DR replica universe UUID: {{universeUuid}}",
-      "failedToFetchTargetUniverseNamespaces": "Unable to fetch namespaces for target universe UUID: {{}}",
-      "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{}}",
+      "failedToFetchSourceUniverseNamespaces": "Unable to fetch namespaces for source universe UUID: {{universeUuid}}",
+      "failedToFetchDrPrimaryNamespaces": "Unable to fetch namespaces for DR primary universe UUID: {{universeUuid}}",
+      "failedToFetchTargetUniverseNamespaces": "Unable to fetch namespaces for target universe UUID: {{universeUuid}}",
+      "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{universeUuid}}",
+      "failedToFetchSourceUniverseTables": "Unable to fetch tables for source universe UUID: {{universeUuid}}",
+      "failedToFetchDrPrimaryTables": "Unable to fetch tables for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
@@ -413,7 +419,8 @@
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
-        "showRetired": "Show retired recommendations"
+        "showRetired": "Show retired recommendations",
+        "cooldownHours": "Disk can be resized after a cooldown period of 6 hours"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -526,6 +533,36 @@
             "InfraIssue": "INFRASTRUCTURE ISSUE",
             "SQLIssue ": "SQL ISSUE"
           }
+        },
+        "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
+        "registrationSuccess": "Registered to Troubleshooting Platform service successfully",
+        "registrationFailed": "Failed to register to Troubleshooting Platform service",
+        "tpServiceUrlLabel": "Troubleshooting Platform Service URL",
+        "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
+        "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "registerButton": "Register",
+        "urlPlaceholder": "http(s)://<ip>:<port>",
+        "universeDetailsErrorMessage": "Failed to fetch universe details",
+        "tpConfigErrorMessage": "Failed to fetch troubleshooting platform configuration",
+        "configTabTitle": "Configuration",
+        "universesTabTitle": "Universes",
+        "urlRequired": "Platform Url required",
+        "editDialog": {
+          "title": "Update Troubleshooting Platform Configuration",
+          "updateButton": "Update",
+          "forceUpdateCheckBoxLabel": "Force Update",
+          "updateMetadataSuccess": "Successfully updated the Troubleshooting Platform configuration",
+          "updateMetadataFailed": "Failed to update the Troubleshooting Platform configuration",
+          "tooltipMessage": "The current troubleshooting platform service may be consumed by some universes currently, to update its metadata, please select the 'Force Update' checkbox"
+        },
+        "deleteDialog": {
+          "title": "Unregister Troubleshooting Platform Configuration",
+          "unregistrationSuccess": "Successfully unregistered from the Troubleshooting Platform service",
+          "unregistrationFailed": "Failed to unregister from the Troubleshooting Platform service",
+          "tooltipMessage": "Please unregister existing universes being monitored by the troubleshooting Platform service, if not, you can force unregister by checking the 'Force Unregister' checkbox",
+          "forceUnregisterCheckBoxLabel": "Force Unregister",
+          "unregisterButton": "Unregister",
+          "unregisterMessage": "Are you sure you want to unregister the Troubleshooting Platform service with URL: {{url}} ?"
         }
       },
       "performance": {
@@ -631,8 +668,8 @@
           "viewTaskDetails": "View Details",
           "actionMenu": {
             "label": "Actions",
-            "deleteConfig": "Remove disaster recovery",
-            "editDrConfig": "Edit DR configuration",
+            "deleteConfig": "Remove Disaster Recovery",
+            "editDrConfig": "Edit DR Configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select Database and Tables",
             "switchover": "Switchover",
@@ -758,8 +795,11 @@
             "drConfigTabs": "DR Config Tabs"
           },
           "tab": {
-            "metrics": "Metrics",
-            "tables": "Tables"
+            "metrics": {
+              "label": "Metrics",
+              "metricsUnavailableDuringFailover": "Metrics are unavailable during failover."
+            },
+            "tables": { "label": "Tables" }
           },
           "status": {
             "Initializing": "Initializing",
@@ -840,7 +880,7 @@
               },
               "confirmAlert": {
                 "instruction": "Confirm alert threshold for acceptable replication lag",
-                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Learn More",
+                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. <configureReplicationLagAlertDocLink>Learn More</configureReplicationLagAlertDocLink>",
                 "currentLowestReplicationLagLabel": "Lowest replication lag alert threshold on this DR primary universe ({{sourceUniverseName}}):",
                 "setUpReplicationLagAlertPrompt": "<paragraph>This DR primary universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>",
                 "editReplicationLagAlertPrompt": "<manageAlertConfigLink>Change this alert</manageAlertConfigLink>",
@@ -916,14 +956,26 @@
           },
           "editTablesModal": {
             "title": "Select Databases and Tables",
-            "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Confirm Full Copy",
-                "matchingTableNote": "<bold>Note!</bold> Only matching databases on both universes are eligible for disaster recovery. Ensure the databases are created with the same name on both universes to enable Disaster Recovery for them."
+                "instruction": {
+                  "dr": "Select the tables to enable disaster recovery for",
+                  "xCluster": "Select the tables to enable xCluster replication for"
+                },
+                "submitButton": {
+                  "skipBootstrapping": "Skip Creating Full Copy",
+                  "validateSelection": "Validate Table Selection",
+                  "configureBootstrap": {
+                    "dr": "Next: Confirm Full Copy",
+                    "xCluster": "Next: Configure Full Copy"
+                  }
+                }
               },
               "configureBootstrap": {
-                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
+                "infoText": {
+                  "dr": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a full copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
+                  "xCluster": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold>. To enable xCluster replication for these databases and/or tables, a full copy will be required before aynchronous replication from the source universe to the target universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>"
+                },
                 "backupStorageConfig": {
                   "label": "Backup Storage Config"
                 },
@@ -932,15 +984,10 @@
                 }
               }
             },
-            "submitButton": {
-              "validate": "Validate Selection",
-              "applyChanges": "Apply Changes"
-            },
             "error": {
               "requestFailureLabel": "Edit tables request failed",
               "taskFailure": "Edit tables task failed.",
               "fetchSourceUniverseDetailsFailure": "Failed to fetch source universe details.",
-              "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
               "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
               "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe."
             },
@@ -957,20 +1004,119 @@
           "createXClusterConfig": {
             "label": "Configure Replication",
             "tooltip": {
+              "universeUnavailable": "This universe is currently unavailable for setting up further xCluster replication configs.",
               "universeLinkedToTxnXCluster": "Another xCluster replication config cannot be configure as this universe is already participating in a transactional xCluster config."
             }
           },
           "configureReplicationLagAlert": "Max acceptable lag time"
+        },
+        "config": {
+          "tableStatus": {
+            "Running": "Operational",
+            "Warning": "Warning",
+            "Failed": "Failed",
+            "Error": "Error",
+            "Updating": "In Progress",
+            "Validated": "Validated",
+            "Bootstrapping": "Bootstrapping",
+            "UnableToFetch": "Unable to Fetch",
+            "Dropped": "Dropped from DB"
+          }
+        },
+        "createConfigModal": {
+          "title": "Configure Replication",
+          "step": {
+            "selectTargetUniverse": {
+              "instruction": {
+                "text": "Select a universe to use as the target universe"
+              },
+              "submitButton": {
+                "selectDatabases": "Next: Select Databases",
+                "selectTables": "Next: Select Tables"
+              },
+              "field": {
+                "configName": "Replication Name",
+                "targetUniverse": "Target Universe",
+                "tableType": "Table Type",
+                "isTransactionalConfig": "Enable transactional atomicity"
+              },
+              "isTransactionalConfigTooltip": "<paragraph>YBA support for transactional atomicity has the following constraints:<orderedList><listItem>The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.</listItem><listItem>PITR must be enabled on the target universe.</listItem><listItem>Neither the source universe nor the target universe is a participant in any other xCluster configuration.</listItem></orderedList>You may find further information on this feature on our<xClusterDocLink> public docs.</xClusterDocLink></paragraph>",
+              "backupStorageConfigNote": "<paragraph><bold>Note!</bold> If the tables to replicate are not empty on this source universe, ensure that the <bold> backup storage config can be accessed from both source and target universe </bold> for creating an initial full copy. Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions. In that case, refer to the <ybAdminDocsLink>documentation for creating replication using yb-admin</ybAdminDocsLink>.</paragraph>",
+              "fullCopyNote": "<bold>What is a full copy?</bold><paragraph>A full copy of your source universe is created to bring the target universe to the same checkpoint before turning on async replication. First, YBAnywhere creates a backup of the source universe. Then it restores the backup to the target universe. Hence the need to ensure the backup storage config is accessible from both source &amp; target universe. If the tables selected for xcluster replication are empty on the source universe, no full copy creation is required.</paragraph>",
+              "warning": {
+                "nonTxnXCluster": "Warning: Non-transactional xCluster should only be used for bi-directional replication."
+              },
+              "error": {
+                "requiredField": "Required.",
+                "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
+              }
+            },
+            "selectTables": {
+              "instruction": {
+                "ysql": "Select the databases to enable xCluster replication for",
+                "ycql": "Select the tables to enable xCluster replication for"
+              },
+              "submitButton": {
+                "validateSelection": "Validate Table Selection",
+                "configureBootstrap": "Next: Configure Full Copy",
+                "confirmAlert": "Next: Confirm Alert Threshold",
+                "skipBootstrapping": "Skip Creating Full Copy"
+              }
+            },
+            "configureBootstrap": {
+              "instruction": "Choose the storage config to use for performing the initial copy",
+              "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+              "submitButton": "Next: Confirm Alert Threshold",
+              "backupStorageConfig": {
+                "label": "Backup Storage Config",
+                "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+              },
+              "error": {
+                "backupStorageConfigRequired": "Required."
+              }
+            }
+          },
+          "error": {
+            "requestFailureLabel": "Create xCluster replication config request failed",
+            "taskFailure": "Failed to create xCluster replication config."
+          },
+          "success": {
+            "requestSuccess": "Creating xCluster replication config...",
+            "taskSuccess": "Created xCluster replication replication config."
+          }
+        },
+        "shared": {
+          "confirmAlert": {
+            "instruction": "Confirm alert threshold for acceptable replication lag",
+            "infoText": {
+              "xCluster": "Replication lag measures how far behind in time the target universe lags the source universe. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. <configureReplicationLagAlertDocLink>Learn More</configureReplicationLagAlertDocLink>",
+              "dr": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. <configureReplicationLagAlertDocLink>Learn More</configureReplicationLagAlertDocLink>"
+            },
+            "currentLowestReplicationLagLabel": {
+              "xCluster": "Lowest replication lag alert threshold on this source universe ({{sourceUniverseName}}):",
+              "dr": "Lowest replication lag alert threshold on this DR primary universe ({{sourceUniverseName}}):"
+            },
+            "setUpReplicationLagAlertPrompt": {
+              "xCluster": "<paragraph>This source universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>",
+              "dr": "<paragraph>This DR primary universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>"
+            },
+            "editReplicationLagAlertPrompt": "<manageAlertConfigLink>Change this alert</manageAlertConfigLink>",
+            "submitButton": "Confirm and Enable Replication"
+          }
         },
         "selectTable": {
           "selectionDescriptorDr": "List of databases and tables in the DR primary universe.",
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
           "databaseSelectionCount": "{{selectedDatabaseCount}} out of {{availableDatabaseCount}} database(s) selected",
+          "droppedTablesInfoTextDr": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster DR configuration have been dropped on the DR primary univese. These table(s) will be removed from the configuration upon submission of this select table request.",
+          "droppedTablesInfoTextXCluster": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster replication configuration have been dropped on the source universe. These tables will be removed from the configuration upon submission of this select table request.",
+          "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
+          "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",
-              "body": "An error occured while verifying whether the selected tables require fully copying."
+              "body": "An error occured while verifying whether the selected tables require a full copy."
             },
             "validationMinimumTableUuids": {
               "title": "No tables selected.",
@@ -1019,7 +1165,7 @@
           "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
         },
         "error": {
-          "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
+          "undefinedXClusterTableType": "Unable to determine the table type of the current xCluster configuration. Please ensure the source universe is reachable and contains at least one table among those configured for xCluster replication.",
           "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
           "undefinedTargetUniverseUuid": "The xCluster config does not have an assoicated target universe.",
           "failedToFindSourceUniverse": "Unable to find a universe with the source universe UUID: {{universeUuid}}",
@@ -1032,8 +1178,8 @@
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
-          "syncXClusterConfirmation": "If out-of-band changes to an xCluster configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
-          "syncDrConfirmation": "If out-of-band changes to a disaster recovery configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
+          "syncXClusterConfirmation": "If changes have been made to your xCluster configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the xCluster configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
+          "syncDrConfirmation": "If changes have been made to your disaster recovery configuration outside of YugabyteDB Anywhere (for example, using yb-admin), reconciling the DR configuration with the database updates the configuration in YugabyteDB Anywhere to match the changes.",
           "submitButton": "Reconcile Config with Database",
           "error": {
             "requestFailureLabel": "Reconcile config with database request failed.",
@@ -1094,6 +1240,20 @@
           "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
         }
       }
+    },
+    "cdc": {
+      "emptyContainerTitle": "Replication Slots",
+      "emptyContainerSubtitle": "Use Change Data Capture (CDC) replication slots to capture and emit database change events.",
+      "emptyContainerLink": "Learn how to use CLI to create and manage CDC replication slots",
+      "name": "Name",
+      "status": "Status",
+      "database": "Database",
+      "currentLag": "Current Lag",
+      "replicationSlots": "Replication Slots",
+      "timeToExpiry": "Time to expiry",
+      "replicationStatus": "Replication slot status",
+      "replicationSlot": "Replication Slot",
+      "autoRefresh": "Auto Refresh"
     },
     "metric": {
       "tooltip": {
@@ -1560,6 +1720,7 @@
       "linuxVersionCatalog": "Linux Version Catalog",
       "linuxVersions": "Linux versions",
       "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
+      "sshOverrideMsg": "You should configure or override the SSH user and port inside the Linux versions",
       "emptyCard": {
         "info": "Add Linux versions that you want to use to deploy universes using this provider"
       },
@@ -1577,9 +1738,12 @@
         "amiId": "AMI ID",
         "portDetails": "Provide SSH user and SSH port details",
         "sshUser": "SSH User",
-        "sshUserPlaceholder": "e.g. centos",
+        "sshUserPlaceholder": "ec2-user",
         "sshPort": "SSH Port",
-        "sshPortPlaceholder": "e.g. 22",
+        "sshPortPlaceholder": "22",
+        "otherConfiguration": "Other Configurations",
+        "useIMDSv2": "Use IMDSv2",
+        "useIMDSv2Info": "This should be turned on if the Image bundle requires Instance Metadata Service v2",
         "menuActions": {
           "edit": "Edit",
           "delete": "Delete",
@@ -1591,7 +1755,11 @@
         "validationMsg": {
           "nameRequired": "Name is required",
           "globalYBImagenameRequired": "Machine Image ID is required",
-          "amiRequired": "Ami ID is Required"
+          "amiRequired": "Ami ID is Required",
+          "linuxVersionAlreadyExists": "Image bundle with same name exists",
+          "cannotModfiyYBABundles": "You cannot modify YBA Managed bundles",
+          "sshUserRequired": "SSH User is required",
+          "sshPortRequired": "SSH Port is required"
         }
       },
       "upgradeModal": {
@@ -1603,7 +1771,8 @@
         "infoContent": "<b>Note!</b><br/><br/>The process of upgrading the Universe OS is <b>time-consuming</b>, as it involves upgrading one node at a time through a rolling upgrade approach. Each individual node upgrade consists of detaching the current boot disk, attaching a new boot disk, and then rebooting the node. <br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
         "submitLabel": "Upgrade",
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
-        "successMsg": "Success. Click <0>here</0> for task details"
+        "successMsg": "Success. Click <0>here</0> for task details",
+        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
@@ -1615,24 +1784,28 @@
       }
     },
     "releases": {
-      "headerTitle": "Releases",
+      "headerTitle": "YugabyteDB Releases",
       "tag": "Tag",
       "tags": {
-        "LINUX": "Linux",
+        "LINUX": "VMs",
         "KUBERNETES": "Kubernetes",
         "x86_64": "VM x86",
         "aarch64": "VM ARM",
         "kubernetes": "Kubernetes"
       },
       "state": {
-        "active": "Active",
-        "disabled": "Disabled"
+        "active": "Allowed",
+        "disabled": "Not Allowed",
+        "Incomplete": "Incomplete"
       },
       "type": {
         "STS": "STS",
         "LTS": "LTS",
-        "PREVIEW (DEFAULT)": "PREVIEW"
+        "PREVIEW (DEFAULT)": "PREVIEW",
+        "PREVIEW": "PREVIEW"
       },
+      "fileUploadLabel": "File Upload",
+      "urlLabel": "URL",
       "fetchMetadata": "Fetch Metadata",
       "bannerFileUploadMessage": "Fetching artifacts may take some time. please wait for it to finish and then add the release",
       "genericError": "Failed to fetch list of releases",
@@ -1646,10 +1819,10 @@
       "releaseDate": "Release Date",
       "releaseDetails": "Release Details",
       "releaseNote": "Release Note",
-      "releaseSupport": "Release Support",
+      "releaseSupport": "Release Type",
       "releaseUsage": "Usage",
-      "enableDeployment": "Enable Deployment",
-      "disableDeployment": "Disable Deployment",
+      "enableDeployment": "Allow Deployment",
+      "disableDeployment": "Disallow Deployment",
       "importArchitecture": "Imported Architecture",
       "releaseDeployment": "Deployment",
       "deploymentType": "Deployment Type",
@@ -1665,6 +1838,8 @@
         "importMethod": "Import Method",
         "location": "Location"
       },
+      "disableActionsTooltipMessage": "This action is disabled as this release is currently used by one or multiple universes",
+      "incompleteTooltipMessage": "Kubernetes (Helm) artifacts require a YugabyteDB build before the release can be used. Please select Add Architecture and upload the appropriate release *.tar.gz file.",
       "allowedReleases": "Show only allowed releases",
       "releaseType": "Release Type:",
       "searchVersions": "Search Versions",
@@ -1672,13 +1847,13 @@
       "inUseUniverses": "In-Use Universes",
       "notInUse": "Not in Use",
       "reviewReleaseMetadataSection": {
-        "viewReleaseDetails": "View Release Details",
+        "viewReleaseDetails": "Review Release Details",
         "version": "VERSION",
         "deploymentType": "DEPLOYMENT TYPE",
         "architecture": "ARCHITECTURE",
-        "releaseSupport": "RELEASE SUPPORT",
+        "releaseSupport": "RELEASE TYPE",
         "releaseDate": "RELEASE DATE",
-        "unableFetchRelease": "Unable to fetch release details.Provide the following information"
+        "unableFetchRelease": "Unable to fetch release details. Provide the following information"
       },
       "editArchitectureModal": {
         "uploadDBInstaller": "Upload Database Installer(Linux) or helm chart (Kubernetes)",
@@ -1686,23 +1861,65 @@
         "upload": "Upload",
         "installerURL": "Database Installer(Linux) or helm chart (Kubernetes)",
         "uploadSignatureFile": "Upload signature file",
-        "signature": "Signature"
+        "signature": "Signature",
+        "extractMetadataUrlSuccess": "Extracted metadata from URL successfully"
       },
       "addReleaseModal": {
-        "addReleaseTag": "Add a release tag (optional)"
+        "addReleaseTag": "Add a release tag (optional)",
+        "uploadSuccess": "Uploaded file successfully",
+        "uploadFailure": "Not able to upload file, please try again",
+        "addReleaseSucess": "Added release successfully",
+        "addReleaseFailure": "Failed to add release",
+        "updateArtifactsSuccess": "Updated release artifacts successfully",
+        "updateArtifactsFailure": "Failed to update release artifacts",
+        "extractMetadataFileSuccess": "Extracted metadata from file successfully",
+        "extractMetadataFileFailure": "Failed to extract metadata from the file",
+        "extractMetadataUrlFailure": "Failed to extract metadata from URL",
+        "urlTooltipText": "Choose the URL option if the installation package is hosted on either an internal server or a public S3 bucket."
       },
       "disableReleaseModal": {
-        "disableMessage": "Are you sure you want to disable the release {{release_version}}?",
+        "disableMessage": "Are you sure you want to {{release_status}} the release {{release_version}}?",
         "enableRelease": "Enable Release",
-        "disableRelease": "Disable Release"
+        "disableRelease": "Disable Release",
+        "enable": "enable",
+        "disable": "disable",
+        "enabled": "Enabled",
+        "disabled": "Disabled",
+        "releaseStateSuccess": "{{release_status}} release successfully",
+        "releaseStateFailure": "Failed to {{release_status}} release"
+      },
+      "editReleaseTagModal": {
+        "updateReleaseTagSuccess": "Updated release tag successfully",
+        "updateReleaseTagFailure": "Failed to update release tag"
       },
       "deleteReleaseModal": {
         "deleteMessage": "Are you sure you want to delete the release {{release_version}}?",
-        "modalTile": "Delete Release"
+        "modalTitle": "Delete Release",
+        "deleteReleaseSuccess": "Deleted release successfully",
+        "deleteReleaseFailure": "Failed to delete release"
       },
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "ha": {
+      "config": {
+        "globalState": {
+          "Unknown": "Unknown",
+          "NoReplicas": "No Replicas",
+          "AwaitingReplicas": "Awaiting Connection to Replicas",
+          "Operational": "Operational",
+          "Error": "Error",
+          "Warning": "Warning",
+          "StandbyConnected": "Standby Connected",
+          "StandbyDisconnected": "Standby Disconnected"
+        },
+        "instanceState": {
+          "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
+          "Connected": "Connected",
+          "Disconnected": "Disconnected"
+        }
       }
     }
   }

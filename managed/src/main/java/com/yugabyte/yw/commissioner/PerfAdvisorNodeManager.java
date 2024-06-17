@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Scanner;
 import java.util.UUID;
 import org.yb.perf_advisor.configs.UniverseNodeConfigInterface;
@@ -55,27 +56,29 @@ public class PerfAdvisorNodeManager implements NodeManagerInterface {
                   .processErrors();
         } else if (command instanceof FileUploadCommand) {
           FileUploadCommand fileUpload = (FileUploadCommand) command;
-          InputStream s =
-              Class.forName("org.yb.perf_advisor.Utils")
-                  .getClassLoader()
-                  .getResourceAsStream(fileUpload.getSrcFilePath());
-          String pythonText = new Scanner(s).useDelimiter("\\A").next();
-          String prefix = String.format("pa_script_%s", UUID.randomUUID());
-          tempPath = fileHelperService.createTempFile(prefix, ".py");
-          Files.write(tempPath, pythonText.getBytes(StandardCharsets.UTF_8));
-          response =
-              nodeUniverseManager
-                  .uploadFileToNode(
-                      universeConfig.getNodeDetails(),
-                      universe,
-                      tempPath.toString(),
-                      fileUpload.getDestFilePath(),
-                      fileUpload.getFilePermissions(),
-                      universeConfig.getShellProcessContext())
-                  .processErrors();
+          try (InputStream s =
+                  Class.forName("org.yb.perf_advisor.Utils")
+                      .getClassLoader()
+                      .getResourceAsStream(fileUpload.getSrcFilePath());
+              Scanner scanner = new Scanner(s)) {
+            String pythonText = scanner.useDelimiter("\\A").next();
+            String prefix = String.format("pa_script_%s", UUID.randomUUID());
+            tempPath = fileHelperService.createTempFile(prefix, ".py");
+            Files.write(tempPath, pythonText.getBytes(StandardCharsets.UTF_8));
+            nodeUniverseManager.uploadFileToNode(
+                universeConfig.getNodeDetails(),
+                universe,
+                tempPath.toString(),
+                fileUpload.getDestFilePath(),
+                fileUpload.getFilePermissions(),
+                universeConfig.getShellProcessContext());
+          }
         }
       }
-      return response.extractRunCommandOutput();
+      // TODO revisit - this does not make sense as the number of iterations can be more than 1.
+      // Moreover, upload does not print the formatted message. Looks like the caller sends the
+      // command last.
+      return Objects.requireNonNull(response).extractRunCommandOutput();
     } catch (ClassNotFoundException e) {
       throw new IOException("ClassLoader failed in to retrieve info from module.");
     } finally {

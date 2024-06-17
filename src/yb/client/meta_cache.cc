@@ -53,6 +53,7 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_consensus_util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/map-util.h"
@@ -124,6 +125,7 @@ METRIC_DEFINE_event_stats(
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
+DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
 
 namespace yb {
 
@@ -163,6 +165,16 @@ int64_t TEST_GetLookupSerial() {
 RemoteTabletServer::RemoteTabletServer(const master::TSInfoPB& pb)
     : uuid_(pb.permanent_uuid()) {
   Update(pb);
+}
+
+RemoteTabletServer::RemoteTabletServer(const master::TSInformationPB& pb)
+    : uuid_(pb.tserver_instance().permanent_uuid()) {
+  Update(pb);
+}
+
+RemoteTabletServer::RemoteTabletServer(const consensus::RaftPeerPB& raft_peer)
+    : uuid_(raft_peer.permanent_uuid()) {
+  UpdateFromRaftPeer(raft_peer);
 }
 
 RemoteTabletServer::RemoteTabletServer(const string& uuid,
@@ -221,8 +233,31 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   private_rpc_hostports_ = pb.private_rpc_addresses();
   public_rpc_hostports_ = pb.broadcast_addresses();
   cloud_info_pb_ = pb.cloud_info();
-  capabilities_.assign(pb.capabilities().begin(), pb.capabilities().end());
-  std::sort(capabilities_.begin(), capabilities_.end());
+}
+
+void RemoteTabletServer::Update(const master::TSInformationPB& pb) {
+  if (pb.tserver_instance().permanent_uuid() != uuid_) {
+    LOG(WARNING) << "RemoteTabletServer " << uuid_ << " cannot be updated "
+                 << "because the TSInformationPB has a wrong permanent_uuid "
+                 << pb.tserver_instance().permanent_uuid();
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  private_rpc_hostports_ = pb.registration().common().private_rpc_addresses();
+  public_rpc_hostports_ = pb.registration().common().broadcast_addresses();
+  cloud_info_pb_ = pb.registration().common().cloud_info();
+}
+
+void RemoteTabletServer::UpdateFromRaftPeer(const consensus::RaftPeerPB& raft_peer) {
+  if (raft_peer.permanent_uuid() != uuid_) {
+    VLOG(1) << "RemoteTabletServer " << raft_peer.permanent_uuid()
+            << " cannot be updated because the raft_peer has a wrong permanent_uuid";
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  private_rpc_hostports_ = raft_peer.last_known_private_addr();
+  public_rpc_hostports_ = raft_peer.last_known_broadcast_addr();
+  cloud_info_pb_ = raft_peer.cloud_info();
 }
 
 bool RemoteTabletServer::IsLocal() const {
@@ -271,11 +306,6 @@ bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& host
   return false;
 }
 
-bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
-  SharedLock lock(mutex_);
-  return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
-}
-
 bool RemoteTabletServer::IsLocalRegion() const {
   SharedLock lock(mutex_);
   return cloud_info_pb_.placement_cloud() == FLAGS_placement_cloud &&
@@ -311,14 +341,16 @@ RemoteTablet::RemoteTablet(std::string tablet_id,
                            dockv::Partition partition,
                            boost::optional<PartitionListVersion> partition_list_version,
                            uint64 split_depth,
-                           const TabletId& split_parent_tablet_id)
+                           const TabletId& split_parent_tablet_id,
+                           int64_t raft_config_opid_index)
     : tablet_id_(std::move(tablet_id)),
       log_prefix_(Format("T $0: ", tablet_id_)),
       partition_(std::move(partition)),
       partition_list_version_(partition_list_version),
       split_depth_(split_depth),
       split_parent_tablet_id_(split_parent_tablet_id),
-      stale_(false) {
+      stale_(false),
+      raft_config_opid_index_(raft_config_opid_index) {
 }
 
 RemoteTablet::~RemoteTablet() {
@@ -335,6 +367,33 @@ RemoteTablet::~RemoteTablet() {
   }
 }
 
+Status RemoteTablet::RefreshFromRaftConfig(
+    const TabletServerMap& tservers, const consensus::RaftConfigPB& raft_config,
+    const consensus::ConsensusStatePB& consensus_state) {
+  std::lock_guard lock(mutex_);
+  std::vector<std::shared_ptr<RemoteReplica>> new_replicas;
+  std::string leader_uuid = "";
+  for (const auto& peer : raft_config.peers()) {
+    auto tserver = FindOrNull(tservers, peer.permanent_uuid());
+    SCHECK(tserver, NotFound, Format("TServer with ID $0 not found.", peer.permanent_uuid()));
+    auto role = GetConsensusRole(peer.permanent_uuid(), consensus_state);
+    if (role == PeerRole::LEADER) {
+      leader_uuid = peer.permanent_uuid();
+    }
+    new_replicas.emplace_back(std::make_shared<RemoteReplica>((*tserver).get(), role));
+  }
+  replicas_ = std::move(new_replicas);
+  raft_config_opid_index_ = consensus_state.config().opid_index();
+  VLOG(1) << "Raft config refresh succeeded with opid_index: " << raft_config_opid_index_
+            << " for tablet: " << tablet_id_
+            << ", replicas are now: " << ReplicasAsStringUnlocked();
+  current_leader_uuid_ = leader_uuid;
+  return Status::OK();
+  // Note that we do not update the stale_ variable here: because this is a partial refresh -- we
+  // are not updating the partition information, in particular -- it is not safe to mark us as
+  // no longer stale.
+}
+
 void RemoteTablet::Refresh(
     const TabletServerMap& tservers,
     const google::protobuf::RepeatedPtrField<TabletLocationsPB_ReplicaPB>& replicas) {
@@ -348,10 +407,14 @@ void RemoteTablet::Refresh(
   std::sort(old_uuids.begin(), old_uuids.end());
   replicas_.clear();
   bool has_new_replica = false;
+  current_leader_uuid_ = "";
   for (const TabletLocationsPB_ReplicaPB& r : replicas) {
     auto it = tservers.find(r.ts_info().permanent_uuid());
     CHECK(it != tservers.end());
     replicas_.emplace_back(std::make_shared<RemoteReplica>(it->second.get(), r.role()));
+    if(r.role() == PeerRole::LEADER) {
+      current_leader_uuid_ = r.ts_info().permanent_uuid();
+    }
     has_new_replica =
         has_new_replica ||
         !std::binary_search(old_uuids.begin(), old_uuids.end(), r.ts_info().permanent_uuid());
@@ -362,7 +425,7 @@ void RemoteTablet::Refresh(
     ++lookups_without_new_replicas_;
   }
   stale_ = false;
-  refresh_time_.store(MonoTime::Now(), std::memory_order_release);
+  full_refresh_time_.store(MonoTime::Now(), std::memory_order_release);
 }
 
 void RemoteTablet::MarkStale() {
@@ -440,6 +503,11 @@ void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_repl
       break;
     }
   }
+}
+
+void RemoteTablet::SetRaftConfigOpIdIndex(int64_t raft_config_opid_index) {
+  std::lock_guard lock(mutex_);
+  raft_config_opid_index_ = raft_config_opid_index;
 }
 
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
@@ -605,6 +673,11 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
                 << server->ToString() << ". Replicas: " << ReplicasAsStringUnlocked();
 }
 
+std::string RemoteTablet::current_leader_uuid() const {
+  SharedLock lock(mutex_);
+  return current_leader_uuid_;
+}
+
 std::string RemoteTablet::ReplicasAsString() const {
   SharedLock lock(mutex_);
   return ReplicasAsStringUnlocked();
@@ -634,6 +707,33 @@ void RemoteTablet::MakeLastKnownPartitionListVersionAtLeast(
   std::lock_guard lock(mutex_);
   last_known_partition_list_version_ =
       std::max(last_known_partition_list_version_, partition_list_version);
+}
+
+void RemoteTablet::AddReplicasAsJson(JsonWriter* writer) const {
+  writer->StartObject();
+  writer->String("tablet_id");
+  writer->String(tablet_id());
+  writer->String("raft_config_opid_index");
+  writer->Int64(raft_config_opid_index());
+  writer->String("replicas");
+  writer->StartArray();
+  SharedLock lock(mutex_);
+  for (const auto& replica : replicas_) {
+      writer->StartObject();
+      writer->String("permanent_uuid");
+      writer->String(replica->ts->permanent_uuid());
+      writer->String("peer_role");
+      writer->String(PeerRole_Name(replica->role));
+      writer->String("failure_status");
+      writer->String(replica->Failed() ? "FAILED" : "OK");
+      writer->String("last_failed_time");
+      writer->String(replica->last_failed_time.ToFormattedString());
+      writer->String("last_failed_time_in_ns");
+      writer->Uint64(replica->last_failed_time.ToUint64());
+      writer->EndObject();
+  }
+  writer->EndArray();
+  writer->EndObject();
 }
 
 void LookupCallbackVisitor::operator()(const LookupTabletCallback& tablet_callback) const {
@@ -677,7 +777,7 @@ void MetaCache::SetLocalTabletServer(const string& permanent_uuid,
                                      const shared_ptr<TabletServerServiceProxy>& proxy,
                                      const LocalTabletServer* local_tserver) {
   const auto entry = ts_cache_.emplace(permanent_uuid,
-                                       std::make_shared<RemoteTabletServer>(permanent_uuid,
+                                       std::make_unique<RemoteTabletServer>(permanent_uuid,
                                                                             proxy,
                                                                             local_tserver));
   CHECK(entry.second);
@@ -692,8 +792,22 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
     return;
   }
 
-  VLOG_WITH_PREFIX(1) << "Client caching new TabletServer " << permanent_uuid;
-  CHECK(ts_cache_.emplace(permanent_uuid, std::make_shared<RemoteTabletServer>(pb)).second);
+  VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Master TSInfo " << permanent_uuid;
+  CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
+}
+
+Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const consensus::RaftPeerPB& pb) {
+  const std::string& permanent_uuid = pb.permanent_uuid();
+  auto it = ts_cache_.find(permanent_uuid);
+  if (it != ts_cache_.end()) {
+    it->second->UpdateFromRaftPeer(pb);
+    return Status::OK();
+  }
+  VLOG_WITH_PREFIX(1) << "Client caching new TabletServer from Raft Peer " << permanent_uuid;
+  SCHECK(
+      ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second,
+      IllegalState, "Failed to emplace a remote tablet server into tablet server cache");
+  return Status::OK();
 }
 
 // A (table, partition_key) --> tablet lookup. May be in-flight to a master, or
@@ -1074,9 +1188,11 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
 
       dockv::Partition partition;
       dockv::Partition::FromPB(location.partition(), &partition);
+      // The committed opid is defaulted to -1 so that when we refresh the remote tablet later
+      // we will be able to update the committed opid.
       remote = new RemoteTablet(
           tablet_id, partition, table_partition_list_version, location.split_depth(),
-          location.split_parent_tablet_id());
+          location.split_parent_tablet_id(), RemoteTablet::kUnknownOpIdIndex);
 
       CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
     }
@@ -1093,6 +1209,9 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
       }
     }
     remote->Refresh(ts_cache_, location.replicas());
+    if (location.has_raft_config_opid_index()) {
+      remote->SetRaftConfigOpIdIndex(location.raft_config_opid_index());
+    }
     remote->SetExpectedReplicas(location.expected_live_replicas(),
                                 location.expected_read_replicas());
     if (table_partition_list_version.has_value()) {
@@ -1104,6 +1223,67 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
   }
 
   return remote;
+}
+
+Status MetaCache::RefreshTabletInfoWithConsensusInfo(
+    const tserver::TabletConsensusInfoPB& tablet_consensus_info) {
+  SCHECK(
+      tablet_consensus_info.has_consensus_state(), IllegalState,
+      Format(
+          "Tablet consensus info did not have a consensus state for tablet $0",
+          tablet_consensus_info.tablet_id()));
+  auto consensus_state = tablet_consensus_info.consensus_state();
+  SCHECK(
+      consensus_state.config().has_opid_index(), IllegalState,
+      "TabletConsensusInfo does not have a valid opid_index");
+  SCHECK(
+      consensus_state.has_leader_uuid() &&
+          consensus::IsRaftConfigMember(consensus_state.leader_uuid(), consensus_state.config()),
+      Incomplete, "Requires a valid leader in TabletConsensusInfo for refresh");
+  {
+    std::lock_guard lock(mutex_);
+    RemoteTabletPtr remote = FindPtrOrNull(tablets_by_id_, tablet_consensus_info.tablet_id());
+    SCHECK(
+        remote, NotFound,
+        "Cannot find a matching remote tablet for the TabletConsensusInfo from a tablet "
+        "server.");
+    auto tablet_opid = remote->raft_config_opid_index();
+    // If the opid_index of the incoming ConsensusInfo is the same as the current remote tablet, we
+    // can only proceed if the leader_uuid is different from the current one. This is because if the
+    // tablet we just requested is a hidden tablet, it is possible that it returns a NOT_THE_LEADER
+    // error, but in the consensus info it returned it is still the leader, so we will end up in a
+    // loop.
+    SCHECK(
+        consensus_state.config().opid_index() >= tablet_opid, Incomplete,
+        "TabletConsensusInfo contains a staler opid than the remote tablet");
+
+    SCHECK(
+        !(tablet_opid == consensus_state.config().opid_index() &&
+          remote->current_leader_uuid() == consensus_state.leader_uuid()),
+        Incomplete,
+        "Incoming consensus information contains the same leader and participants as the remote "
+        "tablet so no need for refresh.");
+
+    VLOG_WITH_PREFIX(1) << "Using Tablet Consensus Info to refresh metacache for tablet "
+            << tablet_consensus_info.tablet_id();
+    consensus::RaftConfigPB raft_config = consensus_state.config();
+    for (auto peer : raft_config.peers()) {
+      RETURN_NOT_OK(UpdateTabletServerWithRaftPeerUnlocked(peer));
+    }
+    return remote->RefreshFromRaftConfig(ts_cache_, raft_config, consensus_state);
+  }
+}
+
+int64_t MetaCache::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
+  SharedLock lock(mutex_);
+  if (GetAtomicFlag(&FLAGS_TEST_always_return_consensus_info_for_succeeded_rpc)) {
+    return RemoteTablet::kUnknownOpIdIndex;
+  }
+  auto remote_tablet = FindPtrOrNull(tablets_by_id_, tablet_id);
+  if (remote_tablet == nullptr) {
+    return RemoteTablet::kUnknownOpIdIndex;
+  }
+  return remote_tablet->raft_config_opid_index();
 }
 
 std::unordered_map<TableId, TableData>::iterator MetaCache::InitTableDataUnlocked(
@@ -1190,14 +1370,16 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
   }
 }
 
-std::shared_ptr<RemoteTabletServer> MetaCache::GetRemoteTabletServer(
-    const std::string& permanent_uuid) {
+void MetaCache::AddAllTabletInfo(JsonWriter* writer) {
   SharedLock lock(mutex_);
-  auto it = ts_cache_.find(permanent_uuid);
-  if (it != ts_cache_.end()) {
-    return it->second;
+  writer->StartObject();
+  writer->String("tablets");
+  writer->StartArray();
+  for (const auto& [_, tablet] : tablets_by_id_) {
+    tablet->AddReplicasAsJson(writer);
   }
-  return nullptr;
+  writer->EndArray();
+  writer->EndObject();
 }
 
 class MetaCache::CallbackNotifier {
@@ -2240,6 +2422,15 @@ std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFutur
   return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
     this->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
   });
+}
+
+void MetaCache::ClearAll() {
+  std::lock_guard lock(mutex_);
+  ts_cache_.clear();
+  tables_.clear();
+  tablets_by_id_.clear();
+  tablet_lookups_by_id_.clear();
+  deleted_tablets_.clear();
 }
 
 LookupDataGroup::~LookupDataGroup() {

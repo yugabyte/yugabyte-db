@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -62,6 +63,8 @@ import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -166,6 +169,8 @@ public class HealthChecker {
 
   private final FileHelperService fileHelperService;
 
+  private final MaintenanceService maintenanceService;
+
   @Inject
   public HealthChecker(
       Environment environment,
@@ -179,7 +184,8 @@ public class HealthChecker {
       RuntimeConfGetter confGetter,
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager,
-      FileHelperService fileHelperService) {
+      FileHelperService fileHelperService,
+      MaintenanceService maintenanceService) {
     this(
         environment,
         config,
@@ -193,7 +199,8 @@ public class HealthChecker {
         nodeUniverseManager,
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
-        fileHelperService);
+        fileHelperService,
+        maintenanceService);
   }
 
   HealthChecker(
@@ -209,7 +216,8 @@ public class HealthChecker {
       NodeUniverseManager nodeUniverseManager,
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor,
-      FileHelperService fileHelperService) {
+      FileHelperService fileHelperService,
+      MaintenanceService maintenanceService) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -223,6 +231,7 @@ public class HealthChecker {
     this.nodeExecutor = nodeExecutor;
     this.nodeUniverseManager = nodeUniverseManager;
     this.fileHelperService = fileHelperService;
+    this.maintenanceService = maintenanceService;
   }
 
   public void initialize() {
@@ -608,16 +617,17 @@ public class HealthChecker {
       return null;
     }
 
-    String disabledUntilStr = u.getConfig().getOrDefault(Universe.DISABLE_ALERTS_UNTIL, "0");
-    long disabledUntilSecs = 0;
-    try {
-      disabledUntilSecs = Long.parseLong(disabledUntilStr);
-    } catch (NumberFormatException ne) {
-      log.warn("invalid universe config for disabled alerts: [ " + disabledUntilStr + " ]");
-    }
+    // Earlier we used to use "Universe.DISABLE_ALERTS_UNTIL" to check whether or not to silence
+    // health check notifications via the "configureUniverseAlerts" API.
+    // But now we unsnoozed all those notifications and instead recommend to use the maintenance
+    // window APIs to manage health check notifications along with normal alerts.
 
-    boolean silenceEmails = ((System.currentTimeMillis() / 1000) <= disabledUntilSecs);
-    return silenceEmails ? null : String.join(",", destinations);
+    // Check if there is an active maintenance window for this universe which is supposed to
+    // suppress health check alerts.
+    boolean maintenanceWindowActiveForUniverse =
+        maintenanceService.isHealthCheckNotificationSuppressedForUniverse(u);
+
+    return (maintenanceWindowActiveForUniverse) ? null : String.join(",", destinations);
   }
 
   public void checkSingleUniverse(CheckSingleUniverseParams params) {
@@ -648,8 +658,12 @@ public class HealthChecker {
     if (lastTask != null && lastTask.getCompletionTime() != null) {
       potentialStartTime = lastTask.getCompletionTime().getTime();
     }
+    boolean isUniverseTxnXClusterTarget =
+        XClusterConfig.getByTargetUniverseUUID(params.universe.getUniverseUUID()).stream()
+            .anyMatch(x -> (x.getType() == ConfigType.Txn));
     boolean testReadWrite =
-        confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest);
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest)
+            && !isUniverseTxnXClusterTarget;
     boolean testYsqlshConnectivity =
         confGetter.getConfForScope(params.universe, UniverseConfKeys.ysqlshConnectivityTest);
     boolean testCqlshConnectivity =
@@ -915,15 +929,13 @@ public class HealthChecker {
           generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
 
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
-      nodeUniverseManager
-          .uploadFileToNode(
-              nodeInfo.nodeDetails,
-              universe,
-              generatedScriptPath,
-              scriptPath,
-              SCRIPT_PERMISSIONS,
-              context)
-          .processErrors();
+      nodeUniverseManager.uploadFileToNode(
+          nodeInfo.nodeDetails,
+          universe,
+          generatedScriptPath,
+          scriptPath,
+          SCRIPT_PERMISSIONS,
+          context);
     }
 
     String scriptPath =
@@ -937,15 +949,13 @@ public class HealthChecker {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
       String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
 
-      nodeUniverseManager
-          .uploadFileToNode(
-              nodeInfo.nodeDetails,
-              universe,
-              generatedScriptPath,
-              scriptPath,
-              SCRIPT_PERMISSIONS,
-              context)
-          .processErrors();
+      nodeUniverseManager.uploadFileToNode(
+          nodeInfo.nodeDetails,
+          universe,
+          generatedScriptPath,
+          scriptPath,
+          SCRIPT_PERMISSIONS,
+          context);
     }
     uploadedNodeInfo.put(nodeKey, nodeInfo);
 

@@ -12,7 +12,7 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 
 >**Sandbox cluster**
 >
->YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/develop/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
+>YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/tutorials/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
 >To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
@@ -94,4 +94,4 @@ Before you begin, you need the following:
 - the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](/preview/develop/build-apps/cloud-add-ip/).
+Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).

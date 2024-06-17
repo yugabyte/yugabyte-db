@@ -14,11 +14,15 @@
 //
 #include "yb/rpc/rpc_call.h"
 
+#include "yb/rpc/connection.h"
+
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
+
+RpcCall::RpcCall() : start_time_ns_(FastClockNanos()) {
+}
 
 void RpcCall::Transferred(const Status& status, const ConnectionPtr& conn) {
   auto transfer_state = transfer_state_.load(std::memory_order_acquire);
@@ -36,8 +40,10 @@ void RpcCall::Transferred(const Status& status, const ConnectionPtr& conn) {
       break;
     }
   }
+  if (status.ok()) {
+    conn->ReportQueueTime(MonoDelta::FromNanoseconds(FastClockNanos() - start_time_ns_));
+  }
   NotifyTransferred(status, conn);
 }
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

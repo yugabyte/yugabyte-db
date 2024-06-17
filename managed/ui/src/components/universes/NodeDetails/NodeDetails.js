@@ -20,6 +20,7 @@ import {
 } from '../../../utils/UniverseUtils';
 
 import { YBLoading } from '../../common/indicators';
+import { InstanceRole } from '../../../redesign/utils/dtos';
 
 export default class NodeDetails extends Component {
   componentDidMount() {
@@ -31,7 +32,7 @@ export default class NodeDetails extends Component {
       this.props.getUniversePerNodeStatus(uuid);
       this.props.resetNodeDetails();
       if (hasLiveNodes(currentUniverse.data)) {
-        this.props.getMasterNodesInfo(uuid);
+        this.props.getMasterInfo(uuid);
         this.props.getUniversePerNodeMetrics(uuid);
       }
 
@@ -63,7 +64,7 @@ export default class NodeDetails extends Component {
         universePerNodeStatus,
         universeNodeDetails,
         universePerNodeMetrics,
-        universeMasterNodes
+        universeMasterInfo
       },
       customer,
       providers
@@ -92,14 +93,14 @@ export default class NodeDetails extends Component {
       let tserverAlive = false;
       let isLoading = universeCreated;
       const privateIP = nodeDetail.cloudInfo.private_ip;
-      const hasMasterNodes =
-        getPromiseState(universeMasterNodes).isSuccess() &&
-        isNonEmptyArray(universeMasterNodes.data);
+      const hasMasterList =
+        getPromiseState(universeMasterInfo).isSuccess() && isNonEmptyArray(universeMasterInfo.data);
       const masterNode =
-        hasMasterNodes &&
-        universeMasterNodes.data?.filter((masterNode) => masterNode.host === privateIP);
-      const masterUUID = masterNode?.[0]?.masterUUID;
-      const isMasterLeader = masterNode?.[0]?.isLeader;
+        hasMasterList &&
+        universeMasterInfo.data?.find((masterNode) => masterNode.privateIp === privateIP);
+      const masterNodeUptime = masterNode?.uptimeSeconds;
+      const masterUUID = masterNode?.instanceUUID;
+      const isMasterLeader = masterNode?.peerRole === InstanceRole.LEADER;
 
       let allowedNodeActions = nodeDetail.allowedActions;
       const nodeName = nodeDetail.nodeName;
@@ -189,6 +190,7 @@ export default class NodeDetails extends Component {
         isTserverAlive: tserverAlive,
         placementUUID: nodeDetail.placementUuid,
         dedicatedTo: nodeDetail.dedicatedTo,
+        master_uptime_seconds: masterNodeUptime,
         masterUUID,
         ...metricsData
       };

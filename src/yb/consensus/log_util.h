@@ -41,6 +41,8 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "yb/common/opid.h"
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
 #include "yb/consensus/log.fwd.h"
@@ -52,7 +54,6 @@
 #include "yb/util/compare_util.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
-#include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"

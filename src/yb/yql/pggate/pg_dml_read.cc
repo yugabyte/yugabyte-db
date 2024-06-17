@@ -92,10 +92,12 @@ inline void ApplyBound(
 // Helper class to generalize logic of ybctid's generation for regular and reverse iterators.
 class InOperatorYbctidsGenerator {
  public:
-  using Ybctids = std::vector<std::string>;
+  using Ybctids = std::vector<Slice>;
 
-  InOperatorYbctidsGenerator(dockv::DocKey* doc_key, size_t value_placeholder_idx, Ybctids* ybctids)
-      : doc_key_(*doc_key),
+  InOperatorYbctidsGenerator(ThreadSafeArena* arena, dockv::DocKey* doc_key,
+                             size_t value_placeholder_idx, Ybctids* ybctids)
+      : arena_(*arena),
+        doc_key_(*doc_key),
         value_placeholder_(doc_key_.range_group()[value_placeholder_idx]),
         ybctids_(*ybctids) {}
 
@@ -103,11 +105,12 @@ class InOperatorYbctidsGenerator {
   void Generate(It it, const It& end) const {
     for (; it != end; ++it) {
       value_placeholder_ = *it;
-      ybctids_.push_back(doc_key_.Encode().ToStringBuffer());
+      ybctids_.push_back(arena_.DupSlice(doc_key_.Encode().AsSlice()));
     }
   }
 
  private:
+  ThreadSafeArena& arena_;
   dockv::DocKey& doc_key_;
   dockv::KeyEntryValue& value_placeholder_;
   Ybctids& ybctids_;
@@ -345,6 +348,79 @@ bool PgDmlRead::IsConcreteRowRead() const {
                                   read_req_->range_column_values().size())));
 }
 
+Status PgDmlRead::InitDocOpWithRowMark() {
+  if (has_doc_op()) {
+    if (GetRowMarkType(pg_exec_params_) == RowMarkType::ROW_MARK_KEYSHARE && !IsConcreteRowRead()) {
+      // ROW_MARK_KEYSHARE creates a weak read intent on DocDB side. As a result it is only
+      // applicable when the read operation reads a concrete row (by using ybctid or by specifying
+      // all primary key columns). In case some columns of the primary key are not specified,
+      // a strong read intent is required to prevent rows from being deleted by another
+      // transaction. For this purpose ROW_MARK_KEYSHARE must be replaced with ROW_MARK_SHARE.
+      auto actual_exec_params = *pg_exec_params_;
+      actual_exec_params.rowmark = RowMarkType::ROW_MARK_SHARE;
+      RETURN_NOT_OK(doc_op_->ExecuteInit(&actual_exec_params));
+    } else {
+      RETURN_NOT_OK(doc_op_->ExecuteInit(pg_exec_params_));
+    }
+  }
+  return Status::OK();
+}
+
+Status PgDmlRead::RetrieveYbctidsFromSecondaryIndex(const PgExecParameters *exec_params,
+                                                    std::vector<Slice> *ybctids,
+                                                    bool *exceeded_work_mem) {
+  SCHECK(secondary_index_query_ && secondary_index_query_->has_doc_op(), IllegalState,
+         "No secondary index present to get ybctids from");
+
+  pg_exec_params_ = exec_params;
+
+  // Set column references in protobuf and whether query is aggregate.
+  SetColumnRefs();
+
+  RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
+  RETURN_NOT_OK(InitDocOpWithRowMark());
+
+  size_t consumed_bytes = 0;
+  size_t work_mem_bytes = exec_params->work_mem * 1024L;
+
+  while (consumed_bytes < work_mem_bytes) {
+    RETURN_NOT_OK(ProcessSecondaryIndexRequest(pg_exec_params_));
+    if (!retrieved_ybctids_)
+      break;
+
+    ybctids->reserve(retrieved_ybctids_->size());
+
+    for (auto ybctid : *retrieved_ybctids_) {
+      const size_t size = ybctid.size();
+      uint8_t *data = new uint8_t[size];
+      memcpy(data, ybctid.cdata(), size);
+      consumed_bytes += size;
+      ybctids->emplace_back(Slice(data, size));
+
+      if (consumed_bytes >= work_mem_bytes) {
+        *exceeded_work_mem = true;
+        break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status PgDmlRead::SetRequestedYbctids(const std::vector<Slice> *ybctids) {
+  requested_ybctids_ = ybctids;
+  return Status::OK();
+}
+
+Status PgDmlRead::ANNBindVector(PgExpr *vector) {
+  auto vec_options = read_req_->mutable_vector_idx_options();
+  return vector->EvalTo(vec_options->mutable_vector());
+}
+
+Status PgDmlRead::ANNSetPrefetchSize(int32_t prefetch_size) {
+  read_req_->mutable_vector_idx_options()->set_prefetch_size(prefetch_size);
+  return Status::OK();
+}
+
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   // Save IN/OUT parameters from Postgres.
   pg_exec_params_ = exec_params;
@@ -352,27 +428,19 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   // Set column references in protobuf and whether query is aggregate.
   SetColumnRefs();
 
-  const auto row_mark_type = GetRowMarkType(exec_params);
-  if (has_doc_op() &&
+  if (requested_ybctids_) {
+    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(
+      first_ybctid_request_ ? exec_params : NULL,
+      *requested_ybctids_));
+    first_ybctid_request_ = false;
+  } else if (has_doc_op() &&
       !secondary_index_query_ &&
       IsAllPrimaryKeysBound()) {
-    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params));
+    const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
+    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params, ybctids));
   } else {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
-    if (has_doc_op()) {
-      if (row_mark_type == RowMarkType::ROW_MARK_KEYSHARE && !IsConcreteRowRead()) {
-        // ROW_MARK_KEYSHARE creates a weak read intent on DocDB side. As a result it is only
-        // applicable when the read operation reads a concrete row (by using ybctid or by specifying
-        // all primary key columns). In case some columns of the primary key are not specified,
-        // a strong read intent is required to prevent rows from being deleted by another
-        // transaction. For this purpose ROW_MARK_KEYSHARE must be replaced with ROW_MARK_SHARE.
-        auto actual_exec_params = *exec_params;
-        actual_exec_params.rowmark = RowMarkType::ROW_MARK_SHARE;
-        RETURN_NOT_OK(doc_op_->ExecuteInit(&actual_exec_params));
-      } else {
-        RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
-      }
-    }
+    RETURN_NOT_OK(InitDocOpWithRowMark());
   }
 
   // First, process the secondary index request.
@@ -700,24 +768,21 @@ Status PgDmlRead::AddRowLowerBound(YBCPgStatement handle,
   return Status::OK();
 }
 
-Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params) {
-  const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
+Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params,
+                                                    const std::vector<Slice>& ybctids) {
   for (auto& col : bind_.columns()) {
     col.UnbindValue();
   }
   read_req_->mutable_partition_column_values()->clear();
   read_req_->mutable_range_column_values()->clear();
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
-  auto i = ybctids.begin();
-  return doc_op_->PopulateDmlByYbctidOps({make_lw_function([&i, end = ybctids.end()] {
-    return i != end ? Slice(*i++) : Slice();
-  }), ybctids.size(), false});
+  return UpdateRequestWithYbctids(ybctids);
 }
 
 // Function builds vector of ybctids from primary key binds.
 // Required precondition that not more than one range key component has the IN operator and all
 // other key components are set must be checked by caller code.
-Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
+Result<std::vector<Slice>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   auto num_hash_key_columns = bind_->num_hash_key_columns();
   LWQLValuePBContainer hashed_values(num_hash_key_columns);
   dockv::KeyEntryValues hashed_components;
@@ -740,7 +805,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   };
 
   std::optional<InOperatorInfo> in_operator_info;
-  std::vector<std::string> ybctids;
+  std::vector<Slice> ybctids;
   for (auto i = num_hash_key_columns; i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
     auto& expr = *col.bind_pb();
@@ -758,7 +823,8 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
     const auto& column = in_operator_info->column;
     const auto provider = column.BuildSubExprKeyColumnValueProvider();
     ybctids.reserve(provider.size());
-    InOperatorYbctidsGenerator generator(&doc_key, in_operator_info->placeholder_idx, &ybctids);
+    InOperatorYbctidsGenerator generator(&arena(), &doc_key, in_operator_info->placeholder_idx,
+                                         &ybctids);
     // In some cases scan are sensitive to key values order. On DocDB side IN operator processes
     // based on column sort order and scan direction. It is necessary to preserve same order for
     // the constructed ybctids.
@@ -770,7 +836,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
       generator.Generate(begin, end);
     }
   } else {
-    ybctids.push_back(doc_key.Encode().ToStringBuffer());
+    ybctids.push_back(arena().DupSlice(doc_key.Encode().AsSlice()));
   }
   return ybctids;
 }
@@ -810,8 +876,8 @@ Status PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::opt
   return Status::OK();
 }
 
-Status PgDmlRead::BindRange(const Slice &start_value, bool start_inclusive,
-                            const Slice &end_value, bool end_inclusive) {
+Status PgDmlRead::BindRange(const Slice &lower_bound, bool lower_bound_inclusive,
+                            const Slice &upper_bound, bool upper_bound_inclusive) {
   // Clean up operations remaining from the previous range's scan
   if (has_doc_op()) {
     RETURN_NOT_OK(down_cast<PgDocReadOp*>(doc_op_.get())->ResetPgsqlOps());
@@ -819,23 +885,23 @@ Status PgDmlRead::BindRange(const Slice &start_value, bool start_inclusive,
   if (secondary_index_query_) {
     secondary_index_query_->set_is_executed(false);
     return secondary_index_query_->BindRange(
-      start_value, start_inclusive, end_value, end_inclusive);
+      lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
   }
   // Set lower bound
-  if (start_value.empty()) {
+  if (lower_bound.empty()) {
     read_req_->clear_lower_bound();
   } else {
     auto* mutable_bound = read_req_->mutable_lower_bound();
-    mutable_bound->dup_key(start_value);
-    mutable_bound->set_is_inclusive(start_inclusive);
+    mutable_bound->dup_key(lower_bound);
+    mutable_bound->set_is_inclusive(lower_bound_inclusive);
   }
   // Set upper bound
-  if (end_value.empty()) {
+  if (upper_bound.empty()) {
     read_req_->clear_upper_bound();
   } else {
     auto* mutable_bound = read_req_->mutable_upper_bound();
-    mutable_bound->dup_key(end_value);
-    mutable_bound->set_is_inclusive(end_inclusive);
+    mutable_bound->dup_key(upper_bound);
+    mutable_bound->set_is_inclusive(upper_bound_inclusive);
   }
   return Status::OK();
 }

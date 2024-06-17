@@ -1,0 +1,10 @@
+title: AzureRegionCloudInfo
+description: Region in Azure provider. Part of RegionCloudInfo.
+type: object
+properties:
+  security_group_id:
+    description: Azure security group id
+    type: string
+  vnet:
+    description: Azure vnet
+    type: string

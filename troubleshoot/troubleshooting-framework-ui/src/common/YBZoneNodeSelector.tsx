@@ -1,7 +1,6 @@
 import { MenuItem, makeStyles, Divider } from '@material-ui/core';
 import clsx from 'clsx';
-import { YBSelect } from './YBSelect';
-import { isNonEmptyArray, isNonEmptyObject } from '../helpers/ObjectUtils';
+import { YBSelect, isNonEmptyArray, isNonEmptyObject } from '@yugabytedb/ui-components';
 
 import treeIcon from '../assets/tree-icon.svg';
 

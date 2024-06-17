@@ -22,21 +22,30 @@ const useStyles = makeStyles((theme) => ({
   deploymentBox: {
     borderRadius: '6px',
     padding: '4px 6px 4px 6px',
-    gap: '2px',
     maxWidth: 'fit-content',
-    height: '28px'
+    height: '24px'
+  },
+  verticalAlignText: {
+    verticalAlign: 'super'
   },
   deploymentBoxGreen: {
     backgroundColor: theme.palette.success[100]
   },
   deploymentBoxGrey: {
-    backgroundColor: theme.palette.grey[200]
+    backgroundColor: theme.palette.grey[100]
   },
   deploymentGreenTag: {
-    color: theme.palette.success[700]
+    color: theme.palette.ybacolors.pillReadyIcon
   },
   deploymentGreyTag: {
     color: theme.palette.grey[700]
+  },
+  flexRow: {
+    display: 'flex',
+    flexDirection: 'row'
+  },
+  icon: {
+    verticalAlign: 'top'
   }
 }));
 
@@ -51,23 +60,30 @@ export const DeploymentStatus = ({ data }: ReleaseDeploymentStatusProps) => {
   const deploymentStatus = getDeploymentStatus(data.state);
   const imgSrc = data.state === ReleaseState.ACTIVE ? Check : Revoke;
   return (
-    <Box
-      className={clsx({
-        [helperClasses.deploymentBox]: true,
-        [helperClasses.deploymentBoxGreen]: data.state === ReleaseState.ACTIVE,
-        [helperClasses.deploymentBoxGrey]: data.state === ReleaseState.DISABLED
-      })}
-    >
-      <span
+    <Box className={helperClasses.flexRow}>
+      <Box
         className={clsx({
-          [helperClasses.smallerReleaseText]: true,
-          [helperClasses.deploymentGreenTag]: data.state === ReleaseState.ACTIVE,
-          [helperClasses.deploymentGreyTag]: data.state === ReleaseState.DISABLED
+          [helperClasses.deploymentBox]: true,
+          [helperClasses.deploymentBoxGreen]: data.state === ReleaseState.ACTIVE,
+          [helperClasses.deploymentBoxGrey]:
+            data.state === ReleaseState.DISABLED || data.state === ReleaseState.INCOMPLETE
         })}
       >
-        {t(`releases.state.${deploymentStatus}`)}
-      </span>
-      <img src={imgSrc} alt="status" />
+        <span
+          title={t('releases.incompleteTooltipMessage')}
+          data-testid={`DeploymentStatus-${deploymentStatus}`}
+          className={clsx({
+            [helperClasses.verticalAlignText]: true,
+            [helperClasses.smallerReleaseText]: true,
+            [helperClasses.deploymentGreenTag]: data.state === ReleaseState.ACTIVE,
+            [helperClasses.deploymentGreyTag]:
+              data.state === ReleaseState.DISABLED || data.state === ReleaseState.INCOMPLETE
+          })}
+        >
+          {t(`releases.state.${deploymentStatus}`)}
+        </span>
+        <img src={imgSrc} alt="status" className={helperClasses.icon} />
+      </Box>
     </Box>
   );
 };

@@ -25,13 +25,15 @@ The valid *arguments* for export schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
+| --assessment-report-path | Path to the generated assessment report file (JSON format) to be used for applying recommendation to exported schema. |
+| --skip-recommendations | Disable applying recommendations in the exported schema suggested by the migration assessment report. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --comments&#8209;on&#8209;objects | Enable export of comments associated with database objects. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for schema. |
 | --object-type-list, <br> &#8209;&#8209;exclude&#8209;object&#8209;type&#8209;list  | Comma-separated list of objects to export (--object-type-list) or not (--exclude-object-type-list). You can provide only one of the arguments at a time. <br> Example: `yb-voyager export schema …. –object-type-list "TABLE,FUNCTION,VIEW"` <br> Accepted parameters: <ul><li>Oracle: TYPE, SEQUENCE, TABLE, PACKAGE, TRIGGER, FUNCTION, PROCEDURE, SYNONYM, VIEW, MVIEW </li><li>PostgreSQL: TYPE, DOMAIN, SEQUENCE, TABLE, FUNCTION, PROCEDURE, AGGREGATE, VIEW, MVIEW, TRIGGER, COMMENT</li><li>MySQL: TABLE, VIEW, TRIGGER, FUNCTION, PROCEDURE</li></ul>
 | --oracle-db-sid <SID> | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
 | --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
-| [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--oracle-tns-alias](../../yb-voyager-cli/#oracle-options) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-host | Domain name or IP address of the machine on which the source database server is running. |
 | --source-db-name | Source database name. |

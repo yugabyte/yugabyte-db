@@ -3,6 +3,7 @@ package helpers
 import (
     "encoding/json"
     "errors"
+    "net/url"
 )
 
 type HealthCheckStruct struct {
@@ -21,13 +22,11 @@ func (h *HelperContainer) GetHealthCheckFuture(nodeHost string, future chan Heal
         HealthCheck: HealthCheckStruct{},
         Error: nil,
     }
-    urls, err := h.BuildMasterURLs("api/v1/health-check")
-    if err != nil {
-        healthCheck.Error = err
-        future <- healthCheck
-        return
-    }
-    body, err := h.AttemptGetRequests(urls, true)
+    body, err := h.BuildMasterURLsAndAttemptGetRequests(
+        "api/v1/health-check", // path
+        url.Values{}, // params
+        true, // expectJson
+    )
     if err != nil {
         healthCheck.Error = err
         future <- healthCheck

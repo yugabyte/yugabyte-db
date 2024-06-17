@@ -1,6 +1,7 @@
 --------------------------------------
 -- Set up tables.
 --------------------------------------
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
 CREATE TABLE t1(h int, r int, v1 int, v2 int, v3 int, primary key(h HASH, r ASC));
 CREATE INDEX t1_v1_v2_idx on t1(v1 HASH, v2 ASC);
 CREATE UNIQUE INDEX t1_v3_uniq_idx on t1(v3 HASH);
@@ -15,16 +16,16 @@ CREATE UNIQUE INDEX t3_v3_uniq_idx on t3(v3 ASC);
 INSERT INTO t3 VALUES (1,2,4,5,7), (1,3,8,6,1), (4,3,7,3,2);
 CREATE TABLE t4(h int, r int, v1 int, v2 int, primary key(h ASC, r ASC));
 -- Should make use of eq transitivity and use pkey on both tables.
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h and t1.r = t2.r
 WHERE t1.h = 2 and t2.r = 3;
-                               QUERY PLAN
--------------------------------------------------------------------------
- Nested Loop  (cost=0.00..8.24 rows=1 width=40)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..4.12 rows=1 width=20)
+                QUERY PLAN
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using t1_pkey on t1
          Index Cond: ((h = 2) AND (r = 3))
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..4.12 rows=1 width=20)
+   ->  Index Scan using t2_pkey on t2
          Index Cond: ((h = 2) AND (r = 3))
 (5 rows)
 
@@ -37,17 +38,17 @@ WHERE t1.h = 2 and t2.r = 3;
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  4 |  5 |  6
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h and t1.r = t2.r
 WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
                                   QUERY PLAN
 -------------------------------------------------------------------------------
- YB Batched Nested Loop Join  (cost=0.00..29.49 rows=5 width=40)
+ YB Batched Nested Loop Join
    Join Filter: (t1.h = t2.h)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..5.17 rows=10 width=20)
+   ->  Index Scan using t1_pkey on t1
          Index Cond: ((yb_hash_code(h) = 49348) AND (r = 3))
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..4.11 rows=1 width=20)
+   ->  Index Scan using t2_pkey on t2
          Index Cond: ((h = ANY (ARRAY[t1.h, $1, $2, ..., $1023])) AND (r = 3))
 (6 rows)
 
@@ -61,16 +62,16 @@ WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
 (1 row)
 
 -- Should make use of eq transitivity and use full pkey on t2 and partial pkey on t1.
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h
 WHERE t1.h = 2 and t2.r = 3;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
- Nested Loop  (cost=0.00..20.37 rows=100 width=40)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..4.12 rows=1 width=20)
+                QUERY PLAN
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using t2_pkey on t2
          Index Cond: ((h = 2) AND (r = 3))
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..15.25 rows=100 width=20)
+   ->  Index Scan using t1_pkey on t1
          Index Cond: (h = 2)
 (5 rows)
 
@@ -83,17 +84,17 @@ WHERE t1.h = 2 and t2.r = 3;
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  4 |  5 |  6
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h
 WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
                                   QUERY PLAN
 -------------------------------------------------------------------------------
- YB Batched Nested Loop Join  (cost=0.00..6.06 rows=500 width=40)
+ YB Batched Nested Loop Join
    Join Filter: (t1.h = t2.h)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..5.15 rows=10 width=20)
+   ->  Index Scan using t1_pkey on t1
          Index Cond: (yb_hash_code(h) = 49348)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..0.15 rows=1 width=20)
+   ->  Index Scan using t2_pkey on t2
          Index Cond: ((h = ANY (ARRAY[t1.h, $1, $2, ..., $1023])) AND (r = 3))
 (6 rows)
 
@@ -107,16 +108,16 @@ WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
 (1 row)
 
 -- Should use pkey index on t1 (a) and t2_v1_v2_idx (due to join condition).
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1 as a
      JOIN t1 as b on a.h = b.v1
 WHERE a.h = 2 and a.r = 3;
-                                    QUERY PLAN
------------------------------------------------------------------------------------
- Nested Loop  (cost=0.00..21.37 rows=100 width=40)
-   ->  Index Scan using t1_pkey on t1 a  (cost=0.00..4.12 rows=1 width=20)
+                 QUERY PLAN
+---------------------------------------------
+ Nested Loop
+   ->  Index Scan using t1_pkey on t1 a
          Index Cond: ((h = 2) AND (r = 3))
-   ->  Index Scan using t1_v1_v2_idx on t1 b  (cost=0.00..16.25 rows=100 width=20)
+   ->  Index Scan using t1_v1_v2_idx on t1 b
          Index Cond: (v1 = 2)
 (5 rows)
 
@@ -129,17 +130,17 @@ WHERE a.h = 2 and a.r = 3;
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  2 |  4 |  6
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1 as a
      JOIN t1 as b on yb_hash_code(a.h) = yb_hash_code(b.v1)
 WHERE yb_hash_code(a.h) = yb_hash_code(2) and a.r = 3;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- Nested Loop  (cost=0.00..11.70 rows=100 width=40)
-   ->  Index Scan using t1_pkey on t1 a  (cost=0.00..5.17 rows=10 width=20)
+                         QUERY PLAN
+-------------------------------------------------------------
+ Nested Loop
+   ->  Index Scan using t1_pkey on t1 a
          Index Cond: ((yb_hash_code(h) = 49348) AND (r = 3))
-   ->  Materialize  (cost=0.00..5.30 rows=10 width=20)
-         ->  Index Scan using t1_v1_v2_idx on t1 b  (cost=0.00..5.25 rows=10 width=20)
+   ->  Materialize
+         ->  Index Scan using t1_v1_v2_idx on t1 b
                Index Cond: (yb_hash_code(v1) = 49348)
 (6 rows)
 
@@ -153,23 +154,23 @@ WHERE yb_hash_code(a.h) = yb_hash_code(2) and a.r = 3;
 (1 row)
 
 -- Should make use of eq transitivity and use pkey on all 3 tables (then sort 1 row in memory).
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h and t1.r = t2.r
      JOIN t3 on t2.h = t3.h and t1.r = t3.r
 WHERE t1.h = 1 and t3.r = 2
 ORDER BY t3.v3 DESC;
-                                     QUERY PLAN
--------------------------------------------------------------------------------------
- Sort  (cost=12.38..12.38 rows=1 width=64)
+                      QUERY PLAN
+-------------------------------------------------------
+ Sort
    Sort Key: t3.v3 DESC
-   ->  Nested Loop  (cost=0.00..12.37 rows=1 width=64)
-         ->  Nested Loop  (cost=0.00..8.24 rows=1 width=40)
-               ->  Index Scan using t1_pkey on t1  (cost=0.00..4.12 rows=1 width=20)
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Index Scan using t1_pkey on t1
                      Index Cond: ((h = 1) AND (r = 2))
-               ->  Index Scan using t2_pkey on t2  (cost=0.00..4.12 rows=1 width=20)
+               ->  Index Scan using t2_pkey on t2
                      Index Cond: ((h = 1) AND (r = 2))
-         ->  Index Scan using t3_pkey on t3  (cost=0.00..4.12 rows=1 width=20)
+         ->  Index Scan using t3_pkey on t3
                Index Cond: ((h = 1) AND (r = 2))
 (10 rows)
 
@@ -184,27 +185,27 @@ ORDER BY t3.v3 DESC;
  1 | 2 |  4 |  9 |  2 | 1 | 2 |  4 |  3 |  4 | 1 | 2 |  4 |  5 |  7
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h and t1.r = t2.r
      JOIN t3 on t2.h = t3.h and t1.r = t3.r
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.r = 2
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
- Sort  (cost=21.07..21.07 rows=2 width=64)
+                                     QUERY PLAN
+-------------------------------------------------------------------------------------
+ Sort
    Sort Key: t3.v3 DESC
-   ->  YB Batched Nested Loop Join  (cost=5.34..21.06 rows=2 width=64)
+   ->  YB Batched Nested Loop Join
          Join Filter: (t1.h = t2.h)
-         ->  Merge Join  (cost=5.34..20.94 rows=1 width=40)
+         ->  Merge Join
                Merge Cond: (t1.h = t3.h)
-               ->  Sort  (cost=5.34..5.37 rows=10 width=20)
+               ->  Sort
                      Sort Key: t1.h
-                     ->  Index Scan using t1_pkey on t1  (cost=0.00..5.17 rows=10 width=20)
+                     ->  Index Scan using t1_pkey on t1
                            Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
-               ->  Index Scan using t3_pkey on t3  (cost=0.00..15.25 rows=100 width=20)
+               ->  Index Scan using t3_pkey on t3
                      Index Cond: (r = 2)
-         ->  Index Scan using t2_pkey on t2  (cost=0.00..0.12 rows=1 width=20)
+         ->  Index Scan using t2_pkey on t2
                Index Cond: ((h = ANY (ARRAY[t3.h, $1, $2, ..., $1023])) AND (r = 2))
 (14 rows)
 
@@ -231,23 +232,23 @@ ORDER BY t3.v3 DESC;
 (1 row)
 
 -- Should use v3_uniq_idx on t3 and t2 and v1_v2_idx (on partial key) for t1.
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.v1 = t2.v1
      JOIN t3 on t2.v3 = t3.v3
 WHERE t1.h = 1 and t3.v3 = 2
 ORDER BY t3.v3 ASC;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- Nested Loop  (cost=0.00..21.76 rows=1 width=64)
-   ->  YB Batched Nested Loop Join  (cost=0.00..17.63 rows=1 width=40)
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Nested Loop
+   ->  YB Batched Nested Loop Join
          Join Filter: (t1.v1 = t2.v1)
-         ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+         ->  Index Scan using t2_v3_uniq_idx on t2
                Index Cond: (v3 = 2)
-         ->  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..12.50 rows=100 width=20)
+         ->  Index Scan using t1_v1_v2_idx on t1
                Index Cond: (v1 = ANY (ARRAY[t2.v1, $1, $2, ..., $1023]))
-               Remote Filter: (h = 1)
-   ->  Index Scan using t3_v3_uniq_idx on t3  (cost=0.00..4.12 rows=1 width=20)
+               Storage Filter: (h = 1)
+   ->  Index Scan using t3_v3_uniq_idx on t3
          Index Cond: (v3 = 2)
 (10 rows)
 
@@ -262,22 +263,22 @@ ORDER BY t3.v3 ASC;
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 4 | 3 |  7 |  3 |  2
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.v1 = t2.v1
      JOIN t3 on t2.v3 = t3.v3
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.v3 = 2
 ORDER BY t3.v3 ASC;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- Nested Loop  (cost=0.00..13.53 rows=1 width=64)
-   ->  Nested Loop  (cost=0.00..9.40 rows=1 width=40)
+                     QUERY PLAN
+----------------------------------------------------
+ Nested Loop
+   ->  Nested Loop
          Join Filter: (t1.v1 = t2.v1)
-         ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+         ->  Index Scan using t2_v3_uniq_idx on t2
                Index Cond: (v3 = 2)
-         ->  Index Scan using t1_pkey on t1  (cost=0.00..5.15 rows=10 width=20)
+         ->  Index Scan using t1_pkey on t1
                Index Cond: (yb_hash_code(h) = 4624)
-   ->  Index Scan using t3_v3_uniq_idx on t3  (cost=0.00..4.12 rows=1 width=20)
+   ->  Index Scan using t3_v3_uniq_idx on t3
          Index Cond: (v3 = 2)
 (9 rows)
 
@@ -293,25 +294,25 @@ ORDER BY t3.v3 ASC;
 (1 row)
 
 -- Should still use same indexes as above, only t3.v1 > 5 condition for filtering.
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.v1 = t2.v1
      JOIN t3 on t2.v3 = t3.v3
 WHERE t1.h = 1 and t3.v3 = 2 and t3.v1 > 5
 ORDER BY t3.v3 ASC;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- Nested Loop  (cost=0.00..21.76 rows=1 width=64)
-   ->  YB Batched Nested Loop Join  (cost=0.00..17.63 rows=1 width=40)
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Nested Loop
+   ->  YB Batched Nested Loop Join
          Join Filter: (t1.v1 = t2.v1)
-         ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+         ->  Index Scan using t2_v3_uniq_idx on t2
                Index Cond: (v3 = 2)
-         ->  Index Scan using t1_v1_v2_idx on t1  (cost=0.00..12.50 rows=100 width=20)
+         ->  Index Scan using t1_v1_v2_idx on t1
                Index Cond: (v1 = ANY (ARRAY[t2.v1, $1, $2, ..., $1023]))
-               Remote Filter: (h = 1)
-   ->  Index Scan using t3_v3_uniq_idx on t3  (cost=0.00..4.13 rows=1 width=20)
+               Storage Filter: (h = 1)
+   ->  Index Scan using t3_v3_uniq_idx on t3
          Index Cond: (v3 = 2)
-         Remote Filter: (v1 > 5)
+         Storage Filter: (v1 > 5)
 (11 rows)
 
 SELECT *
@@ -325,24 +326,24 @@ ORDER BY t3.v3 ASC;
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 4 | 3 |  7 |  3 |  2
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      JOIN t2 on t1.v1 = t2.v1
      JOIN t3 on t2.v3 = t3.v3
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.v3 = 2 and t3.v1 > 5
 ORDER BY t3.v3 ASC;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- Nested Loop  (cost=0.00..13.54 rows=1 width=64)
-   ->  Nested Loop  (cost=0.00..9.40 rows=1 width=40)
+                     QUERY PLAN
+----------------------------------------------------
+ Nested Loop
+   ->  Nested Loop
          Join Filter: (t1.v1 = t2.v1)
-         ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+         ->  Index Scan using t2_v3_uniq_idx on t2
                Index Cond: (v3 = 2)
-         ->  Index Scan using t1_pkey on t1  (cost=0.00..5.15 rows=10 width=20)
+         ->  Index Scan using t1_pkey on t1
                Index Cond: (yb_hash_code(h) = 4624)
-   ->  Index Scan using t3_v3_uniq_idx on t3  (cost=0.00..4.13 rows=1 width=20)
+   ->  Index Scan using t3_v3_uniq_idx on t3
          Index Cond: (v3 = 2)
-         Remote Filter: (v1 > 5)
+         Storage Filter: (v1 > 5)
 (10 rows)
 
 SELECT *
@@ -357,24 +358,24 @@ ORDER BY t3.v3 ASC;
 (1 row)
 
 -- Should use pkey on t1, then v3_uniq_idx on t2 and v1_v2_idx on t3.
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      FULL JOIN t2 on t1.v3 = t2.v3
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE t1.h = 1 and t1.r = 2
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
- Sort  (cost=25.25..25.25 rows=1 width=64)
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Sort
    Sort Key: t3.v3 DESC
-   ->  Nested Loop Left Join  (cost=0.00..25.23 rows=1 width=64)
-         ->  YB Batched Nested Loop Left Join  (cost=0.00..8.23 rows=1 width=40)
+   ->  Nested Loop Left Join
+         ->  YB Batched Nested Loop Left Join
                Join Filter: (t1.v3 = t2.v3)
-               ->  Index Scan using t1_pkey on t1  (cost=0.00..4.12 rows=1 width=20)
+               ->  Index Scan using t1_pkey on t1
                      Index Cond: ((h = 1) AND (r = 2))
-               ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+               ->  Index Scan using t2_v3_uniq_idx on t2
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
-         ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
+         ->  Index Scan using t3_v1_v2_idx on t3
                Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
 (11 rows)
 
@@ -389,24 +390,24 @@ ORDER BY t3.v3 DESC;
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      FULL JOIN t2 on t1.v3 = t2.v3
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
- Sort  (cost=63.38..63.39 rows=1 width=64)
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Sort
    Sort Key: t3.v3 DESC
-   ->  Nested Loop Left Join  (cost=0.00..63.38 rows=1 width=64)
-         ->  YB Batched Nested Loop Left Join  (cost=0.00..46.38 rows=1 width=40)
+   ->  Nested Loop Left Join
+         ->  YB Batched Nested Loop Left Join
                Join Filter: (t1.v3 = t2.v3)
-               ->  Index Scan using t1_pkey on t1  (cost=0.00..5.17 rows=10 width=20)
+               ->  Index Scan using t1_pkey on t1
                      Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
-               ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+               ->  Index Scan using t2_v3_uniq_idx on t2
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
-         ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
+         ->  Index Scan using t3_v1_v2_idx on t3
                Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
 (11 rows)
 
@@ -422,25 +423,25 @@ ORDER BY t3.v3 DESC;
 (1 row)
 
 -- Should still use same indexes as above, only use t2.r IN condition for filtering.
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      FULL JOIN t2 on t1.v3 = t2.v3
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE t1.h = 1 and t1.r = 2 and t2.r IN (3,4,5)
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
- Sort  (cost=25.26..25.27 rows=1 width=64)
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Sort
    Sort Key: t3.v3 DESC
-   ->  Nested Loop Left Join  (cost=0.00..25.25 rows=1 width=64)
-         ->  YB Batched Nested Loop Join  (cost=0.00..8.25 rows=1 width=40)
+   ->  Nested Loop Left Join
+         ->  YB Batched Nested Loop Join
                Join Filter: (t1.v3 = t2.v3)
-               ->  Index Scan using t1_pkey on t1  (cost=0.00..4.12 rows=1 width=20)
+               ->  Index Scan using t1_pkey on t1
                      Index Cond: ((h = 1) AND (r = 2))
-               ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.13 rows=1 width=20)
+               ->  Index Scan using t2_v3_uniq_idx on t2
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
-                     Remote Filter: (r = ANY ('{3,4,5}'::integer[]))
-         ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
+                     Storage Filter: (r = ANY ('{3,4,5}'::integer[]))
+         ->  Index Scan using t3_v1_v2_idx on t3
                Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
 (12 rows)
 
@@ -455,25 +456,25 @@ ORDER BY t3.v3 DESC;
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      FULL JOIN t2 on t1.v3 = t2.v3
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t2.r IN (3,4,5)
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
- Sort  (cost=63.56..63.56 rows=1 width=64)
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Sort
    Sort Key: t3.v3 DESC
-   ->  Nested Loop Left Join  (cost=0.00..63.55 rows=1 width=64)
-         ->  YB Batched Nested Loop Join  (cost=0.00..46.55 rows=1 width=40)
+   ->  Nested Loop Left Join
+         ->  YB Batched Nested Loop Join
                Join Filter: (t1.v3 = t2.v3)
-               ->  Index Scan using t1_pkey on t1  (cost=0.00..5.17 rows=10 width=20)
+               ->  Index Scan using t1_pkey on t1
                      Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
-               ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.13 rows=1 width=20)
+               ->  Index Scan using t2_v3_uniq_idx on t2
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
-                     Remote Filter: (r = ANY ('{3,4,5}'::integer[]))
-         ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.00 rows=100 width=20)
+                     Storage Filter: (r = ANY ('{3,4,5}'::integer[]))
+         ->  Index Scan using t3_v1_v2_idx on t3
                Index Cond: ((t1.v1 = v1) AND (v1 = t1.v1))
 (12 rows)
 
@@ -489,7 +490,7 @@ ORDER BY t3.v3 DESC;
 (1 row)
 
 -- Should still use same indexes as above, but use the IN condition on v2 for t3.v1_v2_idx.
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      FULL JOIN t2 on t1.v3 = t2.v3
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
@@ -497,17 +498,17 @@ WHERE t1.h = 1 and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
                                                       QUERY PLAN
 -----------------------------------------------------------------------------------------------------------------------
- Sort  (cost=13.58..13.59 rows=1 width=64)
+ Sort
    Sort Key: t3.v3 DESC
-   ->  YB Batched Nested Loop Join  (cost=0.00..13.57 rows=1 width=64)
+   ->  YB Batched Nested Loop Join
          Join Filter: (t1.v1 = t3.v1)
-         ->  YB Batched Nested Loop Left Join  (cost=0.00..8.23 rows=1 width=40)
+         ->  YB Batched Nested Loop Left Join
                Join Filter: (t1.v3 = t2.v3)
-               ->  Index Scan using t1_pkey on t1  (cost=0.00..4.12 rows=1 width=20)
+               ->  Index Scan using t1_pkey on t1
                      Index Cond: ((h = 1) AND (r = 2))
-               ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+               ->  Index Scan using t2_v3_uniq_idx on t2
                      Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
-         ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..5.24 rows=10 width=20)
+         ->  Index Scan using t3_v1_v2_idx on t3
                Index Cond: ((v1 = ANY (ARRAY[t1.v1, $1025, $1026, ..., $2047])) AND (v2 = ANY ('{3,4,5}'::integer[])))
 (12 rows)
 
@@ -522,27 +523,27 @@ ORDER BY t3.v3 DESC;
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
 
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      FULL JOIN t2 on t1.v3 = t2.v3
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN
----------------------------------------------------------------------------------------------
- Sort  (cost=26.20..26.20 rows=1 width=64)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Sort
    Sort Key: t3.v3 DESC
-   ->  YB Batched Nested Loop Left Join  (cost=5.34..26.19 rows=1 width=64)
+   ->  YB Batched Nested Loop Left Join
          Join Filter: (t1.v3 = t2.v3)
-         ->  Merge Join  (cost=5.34..22.07 rows=1 width=40)
+         ->  Merge Join
                Merge Cond: (t3.v1 = t1.v1)
-               ->  Index Scan using t3_v1_v2_idx on t3  (cost=0.00..16.38 rows=100 width=20)
+               ->  Index Scan using t3_v1_v2_idx on t3
                      Index Cond: (v2 = ANY ('{3,4,5}'::integer[]))
-               ->  Sort  (cost=5.34..5.37 rows=10 width=20)
+               ->  Sort
                      Sort Key: t1.v1
-                     ->  Index Scan using t1_pkey on t1  (cost=0.00..5.17 rows=10 width=20)
+                     ->  Index Scan using t1_pkey on t1
                            Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
-         ->  Index Scan using t2_v3_uniq_idx on t2  (cost=0.00..4.12 rows=1 width=20)
+         ->  Index Scan using t2_v3_uniq_idx on t2
                Index Cond: (v3 = ANY (ARRAY[t1.v3, $1, $2, ..., $1023]))
 (14 rows)
 
@@ -558,30 +559,30 @@ ORDER BY t3.v3 DESC;
 (1 row)
 
 -- Should use merge join for FULL, primary key on t3 and sort t1
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t1
      FULL JOIN t3 on t1.h = t3.h;
-                                  QUERY PLAN
-------------------------------------------------------------------------------
- Merge Full Join  (cost=149.83..341.33 rows=5000 width=40)
+              QUERY PLAN
+--------------------------------------
+ Merge Full Join
    Merge Cond: (t3.h = t1.h)
-   ->  Index Scan using t3_pkey on t3  (cost=0.00..114.00 rows=1000 width=20)
-   ->  Sort  (cost=149.83..152.33 rows=1000 width=20)
+   ->  Index Scan using t3_pkey on t3
+   ->  Sort
          Sort Key: t1.h
-         ->  Seq Scan on t1  (cost=0.00..100.00 rows=1000 width=20)
+         ->  Seq Scan on t1
 (6 rows)
 
 -- Should use merge join for FULL, primary key on both t3 and t4 and materialize the inner
-EXPLAIN SELECT *
+EXPLAIN (COSTS OFF) SELECT *
 FROM t4
      FULL JOIN t3 on t4.h = t3.h;
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Merge Full Join  (cost=0.00..305.50 rows=5000 width=36)
+                 QUERY PLAN
+--------------------------------------------
+ Merge Full Join
    Merge Cond: (t4.h = t3.h)
-   ->  Index Scan using t4_pkey on t4  (cost=0.00..114.00 rows=1000 width=16)
-   ->  Materialize  (cost=0.00..116.50 rows=1000 width=20)
-         ->  Index Scan using t3_pkey on t3  (cost=0.00..114.00 rows=1000 width=20)
+   ->  Index Scan using t4_pkey on t4
+   ->  Materialize
+         ->  Index Scan using t3_pkey on t3
 (5 rows)
 
 -- Clean up

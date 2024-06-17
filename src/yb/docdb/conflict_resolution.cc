@@ -52,6 +52,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/memory/memory.h"
 
@@ -61,8 +62,7 @@ using namespace std::placeholders;
 DEFINE_RUNTIME_bool(docdb_ht_filter_conflict_with_committed, true,
     "Use hybrid time SST filter when checking for conflicts with committed transactions.");
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::IntentTypeSet;
 using dockv::KeyBytes;
@@ -194,6 +194,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     if (status.ok()) {
       auto start_time = CoarseMonoClock::Now();
       status = context_->ReadConflicts(this);
+      DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::Resolve");
       status_manager_.RecordConflictResolutionScanLatency(
           MonoDelta(CoarseMonoClock::Now() - start_time));
     }
@@ -220,7 +221,9 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
   // Reads conflicts for specified intent from DB.
   Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix) {
-    EnsureIntentIteratorCreated();
+    if (!CreateIntentIteratorIfNecessary()) {
+      return Status::OK();
+    }
 
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
 
@@ -304,17 +307,25 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     return intent_iter_.status();
   }
 
-  void EnsureIntentIteratorCreated() {
+  bool CreateIntentIteratorIfNecessary() {
     if (!intent_iter_.Initialized()) {
-      intent_iter_ = CreateRocksDBIterator(
-          doc_db_.intents,
-          doc_db_.key_bounds,
-          BloomFilterMode::DONT_USE_BLOOM_FILTER,
-          boost::none /* user_key_for_filter */,
-          rocksdb::kDefaultQueryId,
-          nullptr /* file_filter */,
-          &intent_key_upperbound_);
+      // The intent interator should not be created with key bounds set to doc_db_.key_bounds. Else
+      // it could miss detecting conflicts against existing intents for the empty doc key, and could
+      // lead to violation of isolation guarantees.
+      //
+      // For instance, consider an in progress serializable transaction that executed a
+      // 'select * from <table>;'. It would have the following intent entry -
+      //
+      // SubDocKey(DocKey([], []), []) [kStrongRead] <ht> -> <transaction>
+      //
+      // All new transactions trying to perform an update/insert look to acquire a weak lock on
+      // the empty doc key - 'DocKey([], []), [])'. The created intent iterator should see existing
+      // intent records against the empty doc key to perform conflict resolution correctly. Hence,
+      // the iterator should be created with KeyBounds::kNoBounds instead.
+      intent_iter_ = CreateIntentsIteratorWithHybridTimeFilter(
+          doc_db_.intents, &status_manager(), &KeyBounds::kNoBounds, &intent_key_upperbound_);
     }
+    return intent_iter_.Initialized();
   }
 
   Result<IntentTypesContainer> GetLockStatusInfo() {
@@ -333,7 +344,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   void InvokeCallback(const Result<HybridTime>& result) {
     // ConflictResolution_ResolveConficts lasts until InvokeCallback.
     ADOPT_WAIT_STATE(wait_state_);
-    SET_WAIT_STATUS(OnCpu_Passive);
+    SET_WAIT_STATUS(OnCpu_Active);
     YB_TRANSACTION_DUMP(
         Conflicts, context_->transaction_id(),
         result.ok() ? *result : HybridTime::kInvalid,
@@ -477,6 +488,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void FetchTransactionStatuses() {
+    ASH_ENABLE_CONCURRENT_UPDATES();
     static const std::string kRequestReason = "conflict resolution"s;
     auto self = shared_from_this();
     pending_requests_.store(conflict_data_->NumActiveTransactions());
@@ -615,11 +627,13 @@ class WaitOnConflictResolver : public ConflictResolver {
       WaitQueue* wait_queue,
       LockBatch* lock_batch,
       uint64_t request_start_us,
+      int64_t request_id,
       CoarseTimePoint deadline)
         : ConflictResolver(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
         wait_queue_(wait_queue), lock_batch_(lock_batch), serial_no_(wait_queue_->GetSerialNo()),
-        trace_(Trace::CurrentTrace()), request_start_us_(request_start_us), deadline_(deadline) {}
+        trace_(Trace::CurrentTrace()), request_start_us_(request_start_us),
+        request_id_(request_id), deadline_(deadline) {}
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
@@ -668,7 +682,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, context_->GetTxnStartUs(), request_start_us_, deadline_,
+        serial_no_, context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
@@ -690,7 +704,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
-        context_->GetTxnStartUs(), request_start_us_, deadline_,
+        context_->GetTxnStartUs(), request_start_us_, request_id_, deadline_,
         std::bind(&WaitOnConflictResolver::GetLockStatusInfo, shared_from(this)),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
   }
@@ -734,6 +748,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   TracePtr trace_;
   // Stores the start time of the underlying rpc request that created this resolver.
   uint64_t request_start_us_ = 0;
+  const int64_t request_id_;
   CoarseTimePoint deadline_;
 };
 
@@ -1145,7 +1160,9 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // This is to prevent the case when we create an iterator on the regular DB where a
     // provisional record has not yet been applied, and then create an iterator the intents
     // DB where the provisional record has already been removed.
-    resolver->EnsureIntentIteratorCreated();
+    // Even in the case where there are no intents to iterate over, the following loop must be
+    // run, so we cannot return early if the following call returns false.
+    resolver->CreateIntentIteratorIfNecessary();
 
     for (const auto& i : container) {
       const Slice intent_key = i.first.AsSlice();
@@ -1338,6 +1355,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    HybridTime read_time,
                                    int64_t txn_start_us,
                                    uint64_t request_start_us,
+                                   int64_t request_id,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
@@ -1364,7 +1382,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
     DCHECK(lock_batch);
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1382,6 +1400,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  HybridTime intial_resolution_ht,
                                  int64_t txn_start_us,
                                  uint64_t request_start_us,
+                                 int64_t request_id,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
@@ -1404,7 +1423,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
         "Cannot use Wait-on-Conflict behavior - wait queue is not initialized");
     auto resolver = std::make_shared<WaitOnConflictResolver>(
         doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback),
-        wait_queue, lock_batch, request_start_us, deadline);
+        wait_queue, lock_batch, request_start_us, request_id, deadline);
     resolver->Run();
   } else {
     // SKIP_ON_CONFLICT is piggybacked on FailOnConflictResolver since it is almost the same
@@ -1480,7 +1499,8 @@ Status PopulateLockInfoFromParsedIntent(
   tablet::TableInfoPtr table_info;
   if (doc_key.has_colocation_id()) {
     table_info = VERIFY_RESULT(table_info_provider.GetTableInfo(doc_key.colocation_id()));
-    lock_info->set_table_id(table_info->table_id);
+    lock_info->set_pg_table_id(table_info->pg_table_id.empty() ?
+        table_info->table_id : table_info->pg_table_id);
   } else {
     table_info = VERIFY_RESULT(table_info_provider.GetTableInfo(kColocationIdNotSet));
   }
@@ -1541,5 +1561,4 @@ Status PopulateLockInfoFromParsedIntent(
   return Status::OK();
 }
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb

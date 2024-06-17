@@ -1,4 +1,0 @@
-content:
-  application/json:
-    schema:
-      $ref: ../schemas/UniverseGFlags.yaml

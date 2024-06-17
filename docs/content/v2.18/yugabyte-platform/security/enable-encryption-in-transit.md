@@ -338,8 +338,6 @@ For the correct configuration, the following criteria must be met:
 - Node servers are able to validate certificates.
 - Required permissions have been provided to perform various key management operations.
 
-For details, see [Configure HashiCorp Vault](#configure-hashicorp-vault).
-
 ### Configure HashiCorp Vault
 
 Before you can start configuring HashiCorp Vault, install it on a virtual machine, as per instructions provided in [Install Vault](https://www.vaultproject.io/docs/install). The vault can be set up as a multi-node cluster. Ensure that your vault installation meets the following requirements:
@@ -443,6 +441,10 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
   - `period` — If specified, the token can be infinitely renewed.
 
+  YBA automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
+
+  For more information, refer to [Tokens](https://developer.hashicorp.com/vault/tutorials/tokens/tokens) in the Hashicorp documentation.
+
 - Create a role that maps a name in the vault to a procedure for generating a certificate, as follows:
 
   ```sh
@@ -515,7 +517,7 @@ During the universe creation, you can enable TLS certificates issued by the cert
 3. Create the universe:
 
    - Navigate to **Universes** and click **Create Universe**.
-   - In the **Provider** field, select the cloud provided that you have configured in step 2.
+   - In the **Provider** field, select the cloud provider that you have configured in step 2.
    - Complete the fields based on your requirements, and select **Enable Node-to-Node TLS** or **Enable Client-to-Node TLS**.
    - Select the root certificate that you have uploaded in step 1.
    - Click **Create**.

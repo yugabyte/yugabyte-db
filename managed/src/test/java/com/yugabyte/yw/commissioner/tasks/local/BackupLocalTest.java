@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.local;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static org.junit.Assert.assertEquals;
 
-import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -73,11 +72,11 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     initYSQL(universe);
     initAndStartPayload(universe);
     CustomerConfig customerConfig =
-        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", baseDir);
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
     log.info("Customer config here: {}", customerConfig.toString());
     BackupRequestParams params = getBackupParams(universe, customerConfig);
     UUID taskUUID = backupHelper.createBackupTask(customer.getUuid(), params);
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskUUID);
+    TaskInfo taskInfo = waitForTask(taskUUID, universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     List<Backup> backups =
         Backup.fetchByUniverseUUID(customer.getUuid(), universe.getUniverseUUID());
@@ -86,7 +85,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     // Restoring the backup on the same universe under a different keyspace.
     RestoreBackupParams rParams = getRestoreParams(universe, backup, customerConfig, "yb_restore");
     taskUUID = backupHelper.createRestoreTask(customer.getUuid(), rParams);
-    taskInfo = CommissionerBaseTest.waitForTask(taskUUID);
+    taskInfo = waitForTask(taskUUID, universe);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyYSQL(universe);
     verifyYSQL(universe, false, "yb_restore");
@@ -102,11 +101,11 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     initYSQL(source);
     initAndStartPayload(source);
     CustomerConfig customerConfig =
-        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", baseDir);
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
     log.info("Customer config here: {}", customerConfig.toString());
     BackupRequestParams params = getBackupParams(source, customerConfig);
     UUID taskUUID = backupHelper.createBackupTask(customer.getUuid(), params);
-    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskUUID);
+    TaskInfo taskInfo = waitForTask(taskUUID, source);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     List<Backup> backups = Backup.fetchByUniverseUUID(customer.getUuid(), source.getUniverseUUID());
     Backup backup = backups.get(0);
@@ -119,7 +118,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     // Restoring the backup on the same universe under a different keyspace.
     RestoreBackupParams rParams = getRestoreParams(target, backup, customerConfig, YUGABYTE_DB);
     taskUUID = backupHelper.createRestoreTask(customer.getUuid(), rParams);
-    taskInfo = CommissionerBaseTest.waitForTask(taskUUID);
+    taskInfo = waitForTask(taskUUID, source, target);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     verifyYSQL(target);
     verifyPayload();

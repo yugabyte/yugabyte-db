@@ -32,6 +32,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   protected boolean isForced = false;
   protected DrConfigCreateForm.PitrParams pitrParams;
   protected boolean isForceBootstrap = false;
+  public Set<String> dbs;
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -53,7 +54,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.pitrParams = pitrParams;
   }
 
-  /** It is used in the create method. */
+  /** It is used in the basic/txn create method. */
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
@@ -67,6 +68,19 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
         mainTableIndexTablesMap,
         sourceTableIdTargetTableIdMap,
         null /* pitrParams */);
+  }
+
+  /** It is used in the db scoped create method. */
+  public XClusterConfigTaskParams(
+      XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      Set<String> dbs,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams) {
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    this.xClusterConfig = xClusterConfig;
+    this.bootstrapParams = bootstrapParams;
+    this.dbs = dbs;
+    this.pitrParams = pitrParams;
   }
 
   /** It is used in the edit method. */
@@ -94,6 +108,13 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
     // Todo: add support for accepting pitr params from the user for the transactional xCluster
     //  to make it consistent with the DR config api.
+  }
+
+  public XClusterConfigTaskParams(
+      XClusterConfig xClusterConfig, XClusterConfigEditFormData editFormData) {
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    this.xClusterConfig = xClusterConfig;
+    this.editFormData = editFormData;
   }
 
   /** It is used in the restart method. */

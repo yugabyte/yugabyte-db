@@ -233,6 +233,7 @@ constexpr Oid TIMESTAMPOID = 1114;
 constexpr Oid TIMESTAMPTZOID = 1184;
 constexpr Oid CSTRINGOID = 2275;
 constexpr Oid UUIDOID = 2950;
+constexpr Oid JSONBOID = 3802;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -242,6 +243,7 @@ bool IsValidType(Oid pg_type) {
       case TEXTOID: [[fallthrough]];
       case BPCHAROID: [[fallthrough]];
       case VARCHAROID: [[fallthrough]];
+      case JSONBOID: [[fallthrough]];
       case CSTRINGOID: return true;
     }
     return false;

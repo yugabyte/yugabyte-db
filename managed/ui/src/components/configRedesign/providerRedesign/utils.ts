@@ -49,13 +49,13 @@ export const hasDefaultNTPServers = (providerCode: ProviderCode) =>
 
 // TODO: API should return the YBA host as part of the hostInfo response.
 export const getYBAHost = (hostInfo: HostInfo) => {
-  if (!(typeof hostInfo.gcp === 'string' || hostInfo.gcp instanceof String)) {
+  if (typeof hostInfo?.gcp !== 'string') {
     return YBAHost.GCP;
   }
-  if (!(typeof hostInfo.aws === 'string' || hostInfo.aws instanceof String)) {
+  if (typeof hostInfo?.aws !== 'string') {
     return YBAHost.AWS;
   }
-  if (!(typeof hostInfo.azu === 'string' || hostInfo.azu instanceof String)) {
+  if (typeof hostInfo?.azu !== 'string') {
     return YBAHost.AZU;
   }
   return YBAHost.SELF_HOSTED;
@@ -142,6 +142,16 @@ export const getInUseAzs = (
 ) => {
   const regionToInUseAz = getRegionToInUseAz(providerUuid, linkedUniverses);
   return (regionCode !== undefined && regionToInUseAz.get(regionCode)) || new Set<string>();
+};
+
+export const getInUseImageBundleUuids = (linkedUniverses: UniverseItem[]) => {
+  const inUseImageBundleUuids = new Set<string>();
+  linkedUniverses.forEach((linkedUniverse) =>
+    linkedUniverse.linkedClusters.forEach((linkedCluster) => {
+      inUseImageBundleUuids.add(linkedCluster.userIntent.imageBundleUUID);
+    })
+  );
+  return inUseImageBundleUuids;
 };
 
 export const getLatestAccessKey = (accessKeys: AccessKey[]) =>

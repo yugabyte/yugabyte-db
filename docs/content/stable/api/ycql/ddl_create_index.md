@@ -54,20 +54,20 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 ### Grammar
 
 ```ebnf
-create_index ::= CREATE [ UNIQUE ] [ DEFERRED ] INDEX 
-                 [ IF NOT EXISTS ] index_name ON  table_name ( 
-                 partition_key_columns , [ clustering_key_columns ] )  
-                 [ covering_columns ] [ index_properties ] 
+create_index ::= CREATE [ UNIQUE ] [ DEFERRED ] INDEX
+                 [ IF NOT EXISTS ] index_name ON  table_name (
+                 partition_key_columns , [ clustering_key_columns ] )
+                 [ covering_columns ] [ index_properties ]
                  [ WHERE index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )
 
 clustering_key_columns ::= index_column [ , ... ]
 
-index_properties ::= WITH 
+index_properties ::= WITH
                      { property_name = property_literal
-                       | CLUSTERING ORDER BY ( 
-                         { index_column [ ASC | DESC ] } [ , ... ] ) } 
+                       | CLUSTERING ORDER BY (
+                         { index_column [ ASC | DESC ] } [ , ... ] ) }
                      [ AND ... ]
 
 index_column ::= column_name | jsonb_attribute
@@ -81,8 +81,8 @@ index_predicate ::= where_expression
 
 Where
 
-- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers. 
-- `table_name` may be qualified with a keyspace name. 
+- `index_name`, `table_name`, `property_name`, and `column_name` are identifiers.
+- `table_name` may be qualified with a keyspace name.
 - `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
 - `property_literal` is a literal of either [boolean](../type_bool), [text](../type_text), or [map](../type_collection) data type.
 - `index_column` can be any data type except `MAP`, `SET`, `LIST`, `JSONB`, `USER_DEFINED_TYPE`.
@@ -99,7 +99,11 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 {{< /note >}}
 
-### User enforced consistency
+### User-enforced consistency
+
+{{<warning title="Caution">}}
+Opt for user-enforced consistency only when there is no other solution to your problem. User-enforced consistency requires considerable user effort to keep the index and table in sync.
+{{</warning>}}
 
 Indexes require transactions to have been enabled on the table. For cases where the table was created without enabling transactions, `consistency_level` has to be set to `user_enforced` like,
 
@@ -109,8 +113,10 @@ CREATE INDEX ON orders (warehouse)
       WITH transactions = { 'enabled' : false, 'consistency_level' : 'user_enforced' };
 ```
 
-{{< warning >}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync.
+{{< warning title="Syncing table and index">}}
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync. 
+
+Also, if the index is created after data has been added to the table, the index may **not** be backfilled automatically depending on the setting of the `disable_index_backfill_for_non_txn_tables` flag. If set to `true`, then it is the responsibility of the user to trigger a backfill using the [yb-admin backfill_indexes_for_table](../../../admin/yb-admin/#backfill-indexes-for-table) command, which will trigger the backfill after a small delay of about a minute. This delay is controlled by the `index_backfill_upperbound_for_user_enforced_txn_duration_ms` flag.
 {{< /warning >}}
 
 ### PARTITION KEY
@@ -131,7 +137,7 @@ When using an index without transactions enabled, it is the responsibility of th
 - When setting a TTL on the index using `default_time_to_live`, please ensure that the TTL value is the same as that of the table's TTL. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
 
 {{<warning>}}
-**Caveat** : Row level TTL cannot be set on a table with a secondary indexes during INSERTS/UPDATES. {{<issue 10992>}}
+**Caveat**: Row-level TTL cannot be set on a table with a secondary index during INSERTS/UPDATES. {{<issue 10992>}}
 {{</warning>}}
 
 ### INCLUDED COLUMNS
@@ -156,11 +162,11 @@ After creating a set of indexes with their backfill deferred, you can then trigg
     CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
     CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
     CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
-    
-    
+
+
     // To launch backfill ...
-    CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and             
-                                                        // all deferred indexes idx_1 .. idx_9 
+    CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and
+                                                        // all deferred indexes idx_1 .. idx_9
                                                         // on the same table viz: table_name.
     ```
 

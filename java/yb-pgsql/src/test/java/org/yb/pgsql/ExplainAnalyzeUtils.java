@@ -24,7 +24,11 @@ import com.google.gson.JsonParser;
 public class ExplainAnalyzeUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgExplainAnalyze.class);
   public static final String NODE_AGGREGATE = "Aggregate";
+  public static final String NODE_BITMAP_INDEX_SCAN = "Bitmap Index Scan";
+  public static final String NODE_BITMAP_OR = "BitmapOr";
   public static final String NODE_FUNCTION_SCAN = "Function Scan";
+  public static final String NODE_GATHER = "Gather";
+  public static final String NODE_GATHER_MERGE = "Gather Merge";
   public static final String NODE_HASH = "Hash";
   public static final String NODE_HASH_JOIN = "Hash Join";
   public static final String NODE_INDEX_ONLY_SCAN = "Index Only Scan";
@@ -37,7 +41,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_SEQ_SCAN = "Seq Scan";
   public static final String NODE_SORT = "Sort";
   public static final String NODE_VALUES_SCAN = "Values Scan";
-
+  public static final String NODE_YB_BITMAP_TABLE_SCAN = "YB Bitmap Table Scan";
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
 
   public static final String PLAN = "Plan";
@@ -107,6 +111,13 @@ public class ExplainAnalyzeUtils {
     // Seek and Next Estimation
     PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
     PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
+
+    // Estimated Docdb Result Width
+    PlanCheckerBuilder estimatedDocdbResultWidth(ValueChecker<Long> checker);
+
+    // Parallel workers in Gather and Gather Merge
+    PlanCheckerBuilder workersPlanned(ValueChecker<Long> checker);
+    PlanCheckerBuilder workersLaunched(ValueChecker<Long> checker);
 
     // DocDB Metric
     PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);

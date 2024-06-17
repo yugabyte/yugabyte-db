@@ -8,7 +8,14 @@
  */
 
 import { ScheduledBackupList } from './ScheduledBackupList';
+import { AllowedTasks } from '../../../redesign/helpers/dtos';
 
-export const ScheduledBackup = ({ universeUUID }: { universeUUID: string }) => {
-  return <ScheduledBackupList universeUUID={universeUUID} />;
+export const ScheduledBackup = ({
+  universeUUID,
+  allowedTasks
+}: {
+  universeUUID: string;
+  allowedTasks: AllowedTasks;
+}) => {
+  return <ScheduledBackupList universeUUID={universeUUID} allowedTasks={allowedTasks} />;
 };

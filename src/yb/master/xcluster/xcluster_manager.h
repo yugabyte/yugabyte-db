@@ -58,13 +58,16 @@ class XClusterManager : public XClusterManagerIf,
 
   void Clear();
 
-  Status RunLoaders();
+  Status RunLoaders(const TabletInfos& hidden_tablets);
 
-  void SysCatalogLoaded();
+  void SysCatalogLoaded(const LeaderEpoch& epoch);
+
+  void RunBgTasks(const LeaderEpoch& epoch) override;
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 
-  Status GetXClusterConfigEntryPB(SysXClusterConfigEntryPB* config) const  override;
+  Result<XClusterStatus> GetXClusterStatus() const override;
+  Status PopulateXClusterStatusJson(JsonWriter& jw) const override;
 
   Status GetMasterXClusterConfig(GetMasterXClusterConfigResponsePB* resp);
 
@@ -75,7 +78,7 @@ class XClusterManager : public XClusterManagerIf,
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const;
 
   // Remove deleted xcluster stream IDs from producer stream Id map.
-  Status RemoveStreamFromXClusterProducerConfig(
+  Status RemoveStreamsFromSysCatalog(
       const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams);
 
   Status PauseResumeXClusterProducerStreams(
@@ -132,14 +135,51 @@ class XClusterManager : public XClusterManagerIf,
       const IsCreateXClusterReplicationDoneRequestPB* req,
       IsCreateXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Status AddNamespaceToXClusterReplication(
+      const AddNamespaceToXClusterReplicationRequestPB* req,
+      AddNamespaceToXClusterReplicationResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status IsAlterXClusterReplicationDone(
+      const IsAlterXClusterReplicationDoneRequestPB* req,
+      IsAlterXClusterReplicationDoneResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status RepairOutboundXClusterReplicationGroupAddTable(
+      const RepairOutboundXClusterReplicationGroupAddTableRequestPB* req,
+      RepairOutboundXClusterReplicationGroupAddTableResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status RepairOutboundXClusterReplicationGroupRemoveTable(
+      const RepairOutboundXClusterReplicationGroupRemoveTableRequestPB* req,
+      RepairOutboundXClusterReplicationGroupRemoveTableResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status GetXClusterOutboundReplicationGroups(
+      const GetXClusterOutboundReplicationGroupsRequestPB* req,
+      GetXClusterOutboundReplicationGroupsResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status GetXClusterOutboundReplicationGroupInfo(
+      const GetXClusterOutboundReplicationGroupInfoRequestPB* req,
+      GetXClusterOutboundReplicationGroupInfoResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status GetUniverseReplications(
+      const GetUniverseReplicationsRequestPB* req, GetUniverseReplicationsResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status GetUniverseReplicationInfo(
+      const GetUniverseReplicationInfoRequestPB* req, GetUniverseReplicationInfoResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
+  Status MarkIndexBackfillCompleted(
+      const std::unordered_set<TableId>& index_ids, const LeaderEpoch& epoch) override;
+
+  std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
+      const override;
+
  private:
-  Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
+
+  bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
 };

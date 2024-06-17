@@ -126,7 +126,10 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
       ? formProps?.values?.tserverFlagDetails?.flagvalueobject
       : formProps?.values?.masterFlagDetails?.flagvalueobject;
   const flagValue = formProps?.values?.flagvalue;
-  const versionDifference = compareYBSoftwareVersions(dbVersion, OIDC_ENABLED_DB_VERSION);
+  const versionDifference = compareYBSoftwareVersions({
+    versionA: dbVersion,
+    versionB: OIDC_ENABLED_DB_VERSION
+  });
   const isOIDCSupported = versionDifference >= 0;
 
   if (isNonEmptyString(flagValue) && !GFlagValueConfObject) {

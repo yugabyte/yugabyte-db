@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { useInterval } from 'react-use';
@@ -14,8 +14,7 @@ import { EnableDrPrompt } from './EnableDrPrompt';
 import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigAction,
-  XClusterConfigType
+  XClusterConfigAction
 } from '../constants';
 import { YBButton } from '../../../redesign/components';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -23,8 +22,7 @@ import {
   api,
   drConfigQueryKey,
   metricQueryKey,
-  universeQueryKey,
-  xClusterQueryKey
+  universeQueryKey
 } from '../../../redesign/helpers/api';
 import { getEnabledConfigActions, getXClusterConfigUuids } from '../ReplicationUtils';
 import { getEnabledDrConfigActions, getXClusterConfig } from './utils';
@@ -44,10 +42,8 @@ import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPer
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { EditConfigModal } from './editConfig/EditConfigModal';
-
-import { TableType } from '../../../redesign/helpers/dtos';
-import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
-import { XClusterConfig } from '../dtos';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -148,15 +144,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     ...sourceXClusterConfigUuids,
     ...targetXClusterConfigUuids
   ];
-  // The unsafe cast is needed due to issue with useQueries typing
-  // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
-  const xClusterConfigQueries = useQueries(
-    universeXClusterConfigUUIDs.map((uuid: string) => ({
-      queryKey: xClusterQueryKey.detail(uuid),
-      queryFn: () => fetchXClusterConfig(uuid),
-      enabled: currentUniverseQuery.data?.universeDetails !== undefined
-    }))
-  ) as UseQueryResult<XClusterConfig>[];
 
   const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
     drConfigQuery.data ?? {};
@@ -173,6 +160,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     currentUniverseUuid !== targetUniverseUuid
       ? [currentUniverseQuery.data, participantUniverseQuery.data]
       : [participantUniverseQuery.data, currentUniverseQuery.data];
+
+  // Polling for live metrics and config updates.
   useInterval(() => {
     if (getUniverseStatus(sourceUniverse)?.state === UniverseState.PENDING) {
       queryClient.invalidateQueries(universeQueryKey.detail(sourceUniverse?.universeUUID));
@@ -181,9 +170,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(universeQueryKey.detail(targetUniverse?.universeUUID));
     }
   }, PollingIntervalMs.UNIVERSE_STATE_TRANSITIONS);
-  // Polling for metrics and config updates.
   useInterval(() => {
-    queryClient.invalidateQueries(metricQueryKey.ALL); // TODO: Add a dedicated key for 'latest xCluster metrics'.
+    queryClient.invalidateQueries(metricQueryKey.live());
   }, PollingIntervalMs.XCLUSTER_METRICS);
   useInterval(() => {
     const xClusterConfigStatus = drConfigQuery.data?.status;
@@ -220,9 +208,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     return <YBLoading />;
   }
 
-  const universeHasTxnXCluster = xClusterConfigQueries.some(
-    (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
-  );
+  const allowedTasks = currentUniverseQuery.data?.allowedTasks;
+  const isConfigureActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_DR);
+  // DR config uses a txn xCluster config to implement the replication.
+  // When setting up txn xCluster config, no other xCluster config can exist
+  // on source and target.
+  const isDrCreationDisabled = universeXClusterConfigUUIDs.length > 0 || isConfigureActionFrozen;
   const drConfig = drConfigQuery.data;
   const openCreateConfigModal = () => setIsCreateConfigModalOpen(true);
   const closeCreateConfigModal = () => setIsCreateConfigModalOpen(false);
@@ -234,7 +225,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         </div>
         <EnableDrPrompt
           onConfigureDrButtonClick={openCreateConfigModal}
-          isDisabled={universeHasTxnXCluster}
+          isDisabled={isDrCreationDisabled}
         />
         {isCreateConfigModalOpen && (
           <CreateConfigModal
@@ -517,18 +508,21 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isSwitchoverModalOpen && (
           <InitiateSwitchoverModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             modalProps={{ open: isSwitchoverModalOpen, onClose: closeSwitchoverModal }}
           />
         )}
         {isFailoverModalOpen && (
           <InitiateFailoverModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             modalProps={{ open: isFailoverModalOpen, onClose: closeFailoverModal }}
           />
         )}
         {isDeleteConfigModalOpen && (
           <DeleteConfigModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             currentUniverseName={currentUniverseQuery.data.name}
             modalProps={{ open: isDeleteConfigModalOpen, onClose: closeDeleteConfigModal }}
           />
@@ -536,6 +530,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isEditConfigModalOpen && (
           <EditConfigModal
             drConfig={drConfig}
+            allowedTasks={allowedTasks}
             modalProps={{ open: isEditConfigModalOpen, onClose: closeEditConfigModal }}
           />
         )}
@@ -563,8 +558,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isRestartConfigModalOpen && (
           <RestartConfigModal
             isDrInterface={true}
+            allowedTasks={allowedTasks}
             drConfig={drConfig}
-            configTableType={TableType.PGSQL_TABLE_TYPE}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}
             xClusterConfig={xClusterConfig}
@@ -572,6 +567,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         )}
         {isDbSyncModalOpen && (
           <SyncXClusterConfigModal
+            allowedTasks={allowedTasks}
             xClusterConfig={xClusterConfig}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}

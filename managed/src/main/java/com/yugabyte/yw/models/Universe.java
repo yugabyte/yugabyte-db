@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.ProxyConfig;
 import com.yugabyte.yw.models.helpers.TransactionUtil;
 import io.ebean.DB;
 import io.ebean.ExpressionList;
@@ -96,6 +98,7 @@ public class Universe extends Model {
 
   // Key to indicate if a universe cert is hot reloadable
   public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
+  public static final String USE_USER_LEVEL_NODE_EXPORTER = "use_user_level_node_exporter";
 
   public static Universe getOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
@@ -590,6 +593,26 @@ public class Universe extends Model {
   }
 
   /**
+   * Returns details about a single node by ip address in the universe.
+   *
+   * @param nodeIP Private or Secondary private IP address of the node
+   * @return details about a node, null if it does not exist.
+   */
+  public NodeDetails getNodeByAnyIP(String nodeIP) {
+    if (StringUtils.isBlank(nodeIP)) {
+      return null;
+    }
+    for (NodeDetails node : getNodes()) {
+      if (node.cloudInfo != null
+          && (Objects.equals(nodeIP, node.cloudInfo.private_ip)
+              || Objects.equals(nodeIP, node.cloudInfo.secondary_private_ip))) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Returns the list of masters for this universe.
    *
    * @return a list of master nodes
@@ -760,12 +783,12 @@ public class Universe extends Model {
    * @return a comma separated string of master 'host:port' or, if masters are not queryable, an
    *     empty string.
    */
-  public String getMasterAddresses(boolean mastersQueryable, boolean getSecondary) {
+  public String getMasterAddresses(boolean mastersQueryable, boolean useSecondaryIfEnabled) {
     List<NodeDetails> masters = getMasters();
     if (mastersQueryable && !verifyMastersAreQueryable(masters)) {
       return "";
     }
-    return getHostPortsString(masters, ServerType.MASTER, PortType.RPC, getSecondary);
+    return getHostPortsString(masters, ServerType.MASTER, PortType.RPC, useSecondaryIfEnabled);
   }
 
   /**
@@ -866,25 +889,22 @@ public class Universe extends Model {
     return port;
   }
 
-  private String getHostPortsString(
-      List<NodeDetails> serverNodes, ServerType type, PortType portType) {
+  public String getHostPortsString(
+      Collection<NodeDetails> serverNodes, ServerType type, PortType portType) {
     return getHostPortsString(serverNodes, type, portType, false);
   }
 
   // Helper API to create the based on the server type.
-  private String getHostPortsString(
-      List<NodeDetails> serverNodes, ServerType type, PortType portType, boolean getSecondary) {
+  public String getHostPortsString(
+      Collection<NodeDetails> serverNodes,
+      ServerType type,
+      PortType portType,
+      boolean useSecondaryIfEnabled) {
     StringBuilder servers = new StringBuilder();
     for (NodeDetails node : serverNodes) {
-      // Only get secondary if dual net legacy is false.
-      boolean shouldGetSecondary =
-          this.getConfig().getOrDefault(DUAL_NET_LEGACY, "true").equals("false") && getSecondary;
+      boolean shouldGetSecondary = GFlagsUtil.isUseSecondaryIP(this, node, useSecondaryIfEnabled);
       String nodeIp =
           shouldGetSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
-      // In case the secondary IP is null, just re-assign to primary.
-      if (nodeIp == null || nodeIp.equals("null")) {
-        nodeIp = node.cloudInfo.private_ip;
-      }
       if (nodeIp != null) {
         int port = 0;
         switch (type) {
@@ -1200,6 +1220,21 @@ public class Universe extends Model {
       return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
     }
     return Optional.empty();
+  }
+
+  @JsonIgnore
+  public Map<NodeDetails, ProxyConfig> getNodeProxyConfigMap() {
+    Map<NodeDetails, ProxyConfig> nodeProxyConfigMap = new HashMap<>();
+    getNodes().stream()
+        .forEach(
+            nD ->
+                nodeProxyConfigMap.put(
+                    nD,
+                    getUniverseDetails()
+                        .getClusterByUuid(nD.placementUuid)
+                        .userIntent
+                        .getProxyConfig(nD.getAzUuid())));
+    return nodeProxyConfigMap;
   }
 
   @PostRemove

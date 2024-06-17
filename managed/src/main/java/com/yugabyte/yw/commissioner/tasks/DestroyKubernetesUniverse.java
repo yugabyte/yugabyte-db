@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.UniverseInProgressException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -31,12 +32,14 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -85,7 +88,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       if (params().isForceDelete) {
         universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
+        universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
       }
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
@@ -97,14 +100,32 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
 
-      // Promote auto flags on all universes which were blocked due to the xCluster config.
-      // No need to pass excludeXClusterConfigSet as they are updated with status DeletedUniverse.
-      createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-          lockedXClusterUniversesUuidSet,
-          Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
-          xClusterUniverseService,
-          new HashSet<>() /* excludeXClusterConfigSet */,
-          params().isForceDelete);
+      Set<Universe> xClusterConnectedUniverseSet = new HashSet<>();
+      xClusterConnectedUniverseSet.add(universe);
+      lockedXClusterUniversesUuidSet.forEach(
+          uuid -> {
+            xClusterConnectedUniverseSet.add(Universe.getOrBadRequest(uuid));
+          });
+
+      if (xClusterConnectedUniverseSet.stream()
+          .anyMatch(
+              univ ->
+                  CommonUtils.isReleaseBefore(
+                      Util.YBDB_ROLLBACK_DB_VERSION,
+                      univ.getUniverseDetails()
+                          .getPrimaryCluster()
+                          .userIntent
+                          .ybSoftwareVersion))) {
+
+        // Promote auto flags on all universes which were blocked due to the xCluster config.
+        // No need to pass excludeXClusterConfigSet as they are updated with status DeletedUniverse.
+        createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+            lockedXClusterUniversesUuidSet,
+            Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
+            xClusterUniverseService,
+            new HashSet<>() /* excludeXClusterConfigSet */,
+            params().isForceDelete);
+      }
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =

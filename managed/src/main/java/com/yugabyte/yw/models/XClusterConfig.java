@@ -184,12 +184,16 @@ public class XClusterConfig extends Model {
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
+  @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
+  private Set<XClusterNamespaceConfig> namespaces = new HashSet<>();
+
   @ApiModelProperty(value = "Replication group name in the target universe cluster config")
   private String replicationGroupName;
 
   public enum ConfigType {
     Basic,
-    Txn;
+    Txn,
+    Db;
 
     @Override
     @DbEnumValue
@@ -281,6 +285,13 @@ public class XClusterConfig extends Model {
         .findAny();
   }
 
+  public Optional<XClusterNamespaceConfig> maybeGetNamespaceById(String namespaceId) {
+    // There will be at most one namespaceConfig for a namespaceId within each xCluster config.
+    return this.getNamespaceDetails().stream()
+        .filter(namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(namespaceId))
+        .findAny();
+  }
+
   public Optional<DrConfig> maybeGetDrConfig() {
     return Optional.ofNullable(this.drConfig);
   }
@@ -329,6 +340,10 @@ public class XClusterConfig extends Model {
     return typeAsCommonType;
   }
 
+  public static List<XClusterConfig> getAllXClusterConfigs() {
+    return find.query().findList();
+  }
+
   public XClusterTableConfig getTableById(String tableId) {
     Optional<XClusterTableConfig> tableConfig = maybeGetTableById(tableId);
     if (!tableConfig.isPresent()) {
@@ -367,11 +382,26 @@ public class XClusterConfig extends Model {
         .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
+  @ApiModelProperty(value = "Namespaces participating in this xCluster config")
+  @JsonProperty("namespaceDetails")
+  public Set<XClusterNamespaceConfig> getNamespaceDetails() {
+    return namespaces.stream()
+        .sorted(Comparator.comparing(XClusterNamespaceConfig::getStatus))
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
   @JsonProperty("tables")
   public Set<String> getTableIds() {
     return this.tables.stream()
         .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
         .map(XClusterTableConfig::getTableId)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
+  }
+
+  @JsonProperty("dbs")
+  public Set<String> getDbIds() {
+    return this.namespaces.stream()
+        .map(XClusterNamespaceConfig::getSourceNamespaceId)
         .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
@@ -426,6 +456,12 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void updateNamespaces(Set<String> namespaceIds) {
+    this.getNamespaces().clear();
+    addNamespaces(namespaceIds);
+  }
+
+  @Transactional
   public void addTables(Set<String> tableIds, Set<String> tableIdsNeedBootstrap) {
     if (tableIds == null) {
       throw new IllegalArgumentException("tableIds cannot be null");
@@ -447,6 +483,24 @@ public class XClusterConfig extends Model {
           addTableConfig(tableConfig);
         });
     update();
+  }
+
+  @Transactional
+  public void addNamespaces(Set<String> namespaceIds) {
+    for (String namespaceId : namespaceIds) {
+      XClusterNamespaceConfig namespaceConfig = new XClusterNamespaceConfig(this, namespaceId);
+      addNamespaceConfig(namespaceConfig);
+    }
+    update();
+  }
+
+  private void addNamespaceConfig(XClusterNamespaceConfig namespaceConfig) {
+    if (!this.getNamespaces().add(namespaceConfig)) {
+      log.debug(
+          "Namespace with id {} already exists in xCluster config ({})",
+          namespaceConfig.getSourceNamespaceId(),
+          this.getUuid());
+    }
   }
 
   @Transactional
@@ -551,12 +605,27 @@ public class XClusterConfig extends Model {
     updateReplicationSetupDone(tableIds, true /* replicationSetupDone */);
   }
 
+  /**
+   * Synchronizes the tables in the xCluster config with the provided table and index table IDs.
+   * Adds any missing tables and removes any extra tables.
+   *
+   * @param tableIds The set of table IDs to synchronize.
+   * @param indexTableIds The set of index table IDs to synchronize.
+   */
   @Transactional
-  public void syncTables(Set<String> tableIds) {
-    addTablesIfNotExist(tableIds);
+  public void syncTables(Set<String> tableIds, Set<String> indexTableIds) {
+    addTablesIfNotExist(tableIds, null, false);
+    addTablesIfNotExist(indexTableIds, null, true);
+    tableIds.addAll(indexTableIds);
     removeExtraTables(tableIds);
   }
 
+  /**
+   * Removes any extra tables from the xCluster config that are not in the provided set of table
+   * IDs.
+   *
+   * @param tableIds The set of table IDs to keep in the xCluster config.
+   */
   @Transactional
   public void removeExtraTables(Set<String> tableIds) {
     Set<String> extraTableIds =
@@ -664,6 +733,22 @@ public class XClusterConfig extends Model {
     update();
   }
 
+  @Transactional
+  public void updateStatusForNamespaces(
+      Collection<String> namespaceIds, XClusterNamespaceConfig.Status status) {
+    ensureNamespaceIdsExist(new HashSet<>(namespaceIds));
+    this.getNamespaceDetails().stream()
+        .filter(namespaceConfig -> namespaceIds.contains(namespaceConfig.getSourceNamespaceId()))
+        .forEach(namespaceConfig -> namespaceConfig.setStatus(status));
+    update();
+  }
+
+  @Transactional
+  public void updateStatusForNamespace(String namespaceId, XClusterNamespaceConfig.Status status) {
+    Set<String> namespaceIds = new HashSet<>(Set.of(namespaceId));
+    this.updateStatusForNamespaces(namespaceIds, status);
+  }
+
   @JsonIgnore
   public Set<String> getTableIdsInStatus(
       Collection<String> tableIds, XClusterTableConfig.Status status) {
@@ -680,6 +765,19 @@ public class XClusterConfig extends Model {
                 tableIds.contains(tableConfig.getTableId())
                     && statuses.contains(tableConfig.getStatus()))
         .map(tableConfig -> tableConfig.getTableId())
+        .collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Set<String> getNamespaceIdsInStatus(
+      Collection<String> namespaceIds, Collection<XClusterNamespaceConfig.Status> statuses) {
+    ensureNamespaceIdsExist(new HashSet<>(namespaceIds));
+    return this.getNamespaceDetails().stream()
+        .filter(
+            namespaceConfig ->
+                namespaceIds.contains(namespaceConfig.getSourceNamespaceId())
+                    && statuses.contains(namespaceConfig.getStatus()))
+        .map(namespaceConfig -> namespaceConfig.getSourceNamespaceId())
         .collect(Collectors.toSet());
   }
 
@@ -1005,6 +1103,22 @@ public class XClusterConfig extends Model {
         });
   }
 
+  public void ensureNamespaceIdsExist(Set<String> namespaceIds) {
+    if (namespaceIds.isEmpty()) {
+      return;
+    }
+    Set<String> namespaceIdsInXClusterConfig = getDbIds();
+    namespaceIds.forEach(
+        namespaceId -> {
+          if (!namespaceIdsInXClusterConfig.contains(namespaceId)) {
+            throw new RuntimeException(
+                String.format(
+                    "Could not find tableId (%s) in the xCluster config with uuid (%s)",
+                    namespaceId, this.getUuid()));
+          }
+        });
+  }
+
   public void ensureTableIdsExist(Collection<String> tableIds) {
     if (tableIds.isEmpty()) {
       return;
@@ -1016,6 +1130,19 @@ public class XClusterConfig extends Model {
       throw new RuntimeException(errMsg);
     }
     ensureTableIdsExist(tableIdSet);
+  }
+
+  public void ensureNamespaceIdsExist(Collection<String> namespaceIds) {
+    if (namespaceIds.isEmpty()) {
+      return;
+    }
+    Set<String> namespaceIdSet = new HashSet<>(namespaceIds);
+    // Ensure there is no duplicate in the namespaceIds collection.
+    if (namespaceIds.size() != namespaceIdSet.size()) {
+      String errMsg = String.format("There are duplicate values in namespaceIds: %s", namespaceIds);
+      throw new RuntimeException(errMsg);
+    }
+    ensureNamespaceIdsExist(namespaceIdSet);
   }
 
   public static <T> Set<T> intersectionOf(Set<T> firstSet, Set<T> secondSet) {

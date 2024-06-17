@@ -43,25 +43,51 @@ YugabyteDB treats this as a single-row transaction, which executes much faster. 
 
 ## Minimize conflict errors
 
-The [INSERT](../../../../api/ysql/the-sql-language/statements/dml_insert/) statement has an optional [ON CONFLICT](../../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause) clause that can be helpful to circumvent certain errors and avoid multiple statements.
+Typically, when an application executes an `INSERT` on an existing key, a conflict error is returned to the application. The application can then either ignore the error or issue an update. Updating the row with new data in this case requires an extra round trip between the application and the server. To avoid the extra round trip, use one of the following techniques:
 
-For example, if concurrent transactions are inserting the same row, this could cause a UniqueViolation. Instead of letting the server throw an error and handling it in code, you could just ask the server to ignore it as follows:
+- When inserting a large number of rows, especially into a new table, use the `NOT IN` clause as follows:
+
+  ```sql
+    INSERT INTO demo (id) SELECT id FROM
+    ( SELECT gen_random_uuid() id FROM generate_series(1,100) ) other_table
+    WHERE id NOT IN (SELECT id FROM demo)
+  ```
+
+- Use the optional [ON CONFLICT](../../../../api/ysql/the-sql-language/statements/dml_insert/#on-conflict-clause) clause in the [INSERT](../../../../api/ysql/the-sql-language/statements/dml_insert/) statement to circumvent certain errors and avoid multiple statements.
+
+  For example, if concurrent transactions are inserting the same row, this could cause a UniqueViolation. Instead of letting the server throw an error and handling it in code, you could just ask the server to ignore it as follows:
+
+  ```plpgsql
+  INSERT INTO txndemo VALUES (1,10) ON CONFLICT DO NOTHING;
+  ```
+
+    With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip.
+
+  {{<warning>}}
+The current implementation of on-conflict is row-by-row. So if you are inserting a large number of rows, each row will be validated with an additional read.
+  {{</warning>}}
+
+- Simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
+
+  ```plpgsql
+  INSERT INTO txndemo VALUES (1,10)
+    ON CONFLICT (k)
+    DO UPDATE SET v=10;
+  ```
+
+  Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
+
+## Avoid long waits
+
+In the [READ COMMITTED](../../../../architecture/transactions/read-committed/) isolation level, clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
+
+To avoid getting stuck in a wait loop because of starvation, you should use a reasonable timeout for the statements, similar to the following:
 
 ```plpgsql
-INSERT INTO txndemo VALUES (1,10) ON CONFLICT DO NOTHING;
+SET statement_timeout = '10s';
 ```
 
-With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip between the application and the server.
-
-You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
-
-```plpgsql
-INSERT INTO txndemo VALUES (1,10)
-        ON CONFLICT (k)
-        DO UPDATE SET v=10;
-```
-
-Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
+This ensures that the transaction would not be blocked for more than 10 seconds.
 
 ## Handle idle applications
 

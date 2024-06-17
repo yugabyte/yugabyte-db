@@ -15,6 +15,8 @@
 
 #include <chrono>
 
+#include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
+
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tablet_server.h"
 
@@ -80,9 +82,7 @@ Status TableMutationCountSender::DoSendMutationCounts() {
   }
 
   if (!client_) {
-    auto client = std::make_unique<client::PgAutoAnalyzeServiceClient>();
-    RETURN_NOT_OK(client->Init(&server_));
-    client_.swap(client);
+    client_ = std::make_unique<client::PgAutoAnalyzeServiceClient>(*server_.client_future().get());
   }
 
   stateful_service::IncreaseMutationCountersRequestPB req;

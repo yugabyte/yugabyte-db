@@ -19,6 +19,11 @@ export const getDeploymentStatus = (deploymentStatus: ReleaseState) => {
     return 'active';
   } else if (deploymentStatus === ReleaseState.DISABLED) {
     return 'disabled';
+  } else if (deploymentStatus === ReleaseState.INCOMPLETE) {
+    return 'Incomplete';
   }
   return 'disabled';
 };
+
+export const MAX_RELEASE_TAG_CHAR = 10;
+export const MAX_RELEASE_VERSION_CHAR = 30;

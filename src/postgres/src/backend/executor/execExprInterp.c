@@ -396,6 +396,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		&&CASE_EEOP_AGG_PLAIN_TRANS,
 		&&CASE_EEOP_AGG_ORDERED_TRANS_DATUM,
 		&&CASE_EEOP_AGG_ORDERED_TRANS_TUPLE,
+		&&CASE_EEOP_ROWARRAY_COMPARE,
 		&&CASE_EEOP_LAST
 	};
 
@@ -1787,6 +1788,14 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 		{
 			/* too complex for an inline implementation */
 			ExecEvalAggOrderedTransTuple(state, op, econtext);
+
+			EEO_NEXT();
+		}
+
+		EEO_CASE(EEOP_ROWARRAY_COMPARE)
+		{
+			/* too complex for an inline implementation */
+			YBExecEvalRowArrayComparison(state, op);
 
 			EEO_NEXT();
 		}
@@ -3382,6 +3391,8 @@ ExecEvalConvertRowtype(ExprState *state, ExprEvalStep *op, ExprContext *econtext
  * The operator always yields boolean, and we combine the results across all
  * array elements using OR and AND (for ANY and ALL respectively).  Of course
  * we short-circuit as soon as the result is known.
+ *
+ * YB: If you change this make sure to look at YBExecEvalRowArrayComparison.
  */
 void
 ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
@@ -3526,6 +3537,162 @@ ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op)
 			}
 		}
 	}
+
+	*op->resvalue = result;
+	*op->resnull = resultnull;
+}
+
+/*
+ * YB: Lifted from ExecEvalScalarArrayOp.
+ */
+void
+YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op)
+{
+	FunctionCallInfo *fcinfos = op->d.row_array_compare.fcinfos;
+	PGFunction *fn_addrs = op->d.row_array_compare.fn_addrs;
+	int ncols = op->d.row_array_compare.ncols;
+	ArrayType  *arr;
+	int			nitems;
+	Datum		result;
+	bool		resultnull;
+	int			i;
+	int16		typlen;
+	bool		typbyval;
+	char		typalign;
+	char	   *s;
+	bits8	   *bitmap;
+	int			bitmask;
+
+	/*
+	 * If the array is NULL then we return NULL --- it's not very meaningful
+	 * to do anything else, even if the operator isn't strict.
+	 */
+	if (*op->resnull)
+		return;
+
+	/* Else okay to fetch and detoast the array */
+	arr = DatumGetArrayTypeP(*op->resvalue);
+
+	/*
+	 * If the array is empty, we return either FALSE or TRUE per the useOr
+	 * flag.  This is correct even if the scalar is NULL; since we would
+	 * evaluate the operator zero times, it matters not whether it would want
+	 * to return NULL.
+	 */
+	nitems = ArrayGetNItems(ARR_NDIM(arr), ARR_DIMS(arr));
+	if (nitems <= 0)
+	{
+		*op->resvalue = BoolGetDatum(false);
+		*op->resnull = false;
+		return;
+	}
+
+	/*
+	 * If the scalar is NULL, and the function is strict, return NULL; no
+	 * point in iterating the loop.
+	 */
+	for (int i = 0; i < ncols; i++)
+	{
+		if (fcinfos[i]->argnull[0])
+		{
+			*op->resnull = true;
+			return;
+		}
+	}
+
+	typlen = -1;
+	typbyval = false;
+	typalign = 'd';
+
+	/* Initialize result appropriately depending on useOr */
+	result = BoolGetDatum(false);
+	resultnull = false;
+
+	/* Loop over the array elements */
+	s = (char *) ARR_DATA_PTR(arr);
+	bitmap = ARR_NULLBITMAP(arr);
+	bitmask = 1;
+
+	TupleDesc tupleDesc = NULL;
+
+	for (i = 0; i < nitems; i++)
+	{
+		Datum		elt;
+		Datum		thisresult;
+		HeapTupleHeader	row_header;
+		HeapTupleData row;
+		ItemPointerSetInvalid(&(row.t_self));
+		row.t_tableOid = InvalidOid;
+
+
+		/* Get array element, checking for NULL */
+		if (bitmap && (*bitmap & bitmask) == 0)
+			continue;
+		else
+		{
+			elt = fetch_att(s, typbyval, typlen);
+			s = att_addlength_pointer(s, typlen, s);
+			s = (char *) att_align_nominal(s, typalign);
+			row_header = DatumGetHeapTupleHeader(elt);
+			row.t_len = HeapTupleHeaderGetDatumLength(row_header);
+			row.t_data = row_header;
+		}
+
+		if (tupleDesc == NULL)
+		{
+			Oid tupType = HeapTupleHeaderGetTypeId(row_header);
+			Oid typTypMod = HeapTupleHeaderGetTypMod(row_header);
+
+			/* Build tuple descriptor for row */
+			tupleDesc = lookup_rowtype_tupdesc(tupType, typTypMod);
+		}
+
+		for (int j = 0; j < ncols; j++)
+		{
+			FunctionCallInfo fcinfo = fcinfos[j];
+			PGFunction fn_addr = fn_addrs[j];
+			fcinfo->arg[1] =
+				heap_getattr(&row, j + 1, tupleDesc, &fcinfo->argnull[1]);
+			/* Call comparison function */
+			if (fcinfo->argnull[1])
+			{
+				result = false;
+				break;
+			}
+			else
+			{
+				fcinfo->isnull = false;
+				/*
+				 * As this is a comparison function we check equality
+				 * by checking if the compare result is equal to 0.
+				 */
+				thisresult = fn_addr(fcinfo) == 0;
+			}
+			if (!thisresult)
+				break;
+		}
+
+		if (DatumGetBool(thisresult))
+		{
+			result = BoolGetDatum(true);
+			resultnull = false;
+			break;			/* needn't look at any more elements */
+		}
+
+		/* advance bitmap pointer if any */
+		if (bitmap)
+		{
+			bitmask <<= 1;
+			if (bitmask == 0x100)
+			{
+				bitmap++;
+				bitmask = 1;
+			}
+		}
+	}
+
+	if (tupleDesc != NULL)
+		ReleaseTupleDesc(tupleDesc);
 
 	*op->resvalue = result;
 	*op->resnull = resultnull;

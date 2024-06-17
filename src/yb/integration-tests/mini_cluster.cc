@@ -55,7 +55,6 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -74,6 +73,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_flags.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -97,15 +97,9 @@ DEFINE_NON_RUNTIME_string(mini_cluster_base_dir, "", "Directory for master/ts da
 DEFINE_NON_RUNTIME_bool(mini_cluster_reuse_data, false, "Reuse data of mini cluster");
 DEFINE_test_flag(int32, mini_cluster_registration_wait_time_sec, 45 * yb::kTimeMultiplier,
                  "Time to wait for tservers to register to master.");
-DECLARE_int32(master_svc_num_threads);
+
+DECLARE_string(fs_data_dirs);
 DECLARE_int32(memstore_size_mb);
-DECLARE_int32(master_consensus_svc_num_threads);
-DECLARE_int32(master_remote_bootstrap_svc_num_threads);
-DECLARE_int32(generic_svc_num_threads);
-DECLARE_int32(tablet_server_svc_num_threads);
-DECLARE_int32(ts_admin_svc_num_threads);
-DECLARE_int32(ts_consensus_svc_num_threads);
-DECLARE_int32(ts_remote_bootstrap_svc_num_threads);
 DECLARE_int32(replication_factor);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(use_private_ip);
@@ -203,22 +197,6 @@ Status MiniCluster::StartAsync(
     RETURN_NOT_OK(options_.master_env->CreateDir(fs_root_));
   }
 
-  // TODO: properly handle setting these variables in case of multiple MiniClusters in the same
-  // process.
-
-  // Use conservative number of threads for the mini cluster for unit test env
-  // where several unit tests tend to run in parallel.
-  // To get default number of threads - try to find SERVICE_POOL_OPTIONS macro usage.
-  FLAGS_master_svc_num_threads = 2;
-  FLAGS_master_consensus_svc_num_threads = 2;
-  FLAGS_master_remote_bootstrap_svc_num_threads = 2;
-  FLAGS_generic_svc_num_threads = 2;
-
-  FLAGS_tablet_server_svc_num_threads = 8;
-  FLAGS_ts_admin_svc_num_threads = 2;
-  FLAGS_ts_consensus_svc_num_threads = 8;
-  FLAGS_ts_remote_bootstrap_svc_num_threads = 2;
-
   // Limit number of transaction table tablets to help avoid timeouts.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
       NumTabletsPerTransactionTable(options_);
@@ -258,33 +236,65 @@ Status MiniCluster::StartAsync(
     }
   }
 
-  if (UseYbController()) {
-    // We need 1 yb controller server for each tserver.
-    // YB Controller uses the same IP as corresponding tserver.
-    yb_controllers_.reserve(options_.num_tablet_servers);
-    // All YB Controller servers need to be on the same port.
-    const auto server_port = port_picker_.AllocateFreePort();
-    for (size_t i = 0; i < options_.num_tablet_servers; ++i) {
-      const auto yb_controller_log_dir = JoinPathSegments(GetYbControllerServerFsRoot(i), "logs");
-      const auto yb_controller_tmp_dir = JoinPathSegments(GetYbControllerServerFsRoot(i), "tmp");
-      RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-      RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-      const auto server_address = mini_tablet_servers_[i]->bound_http_addr().address().to_string();
-      scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-          yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
-          GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
-          GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
-          server_port, master_web_ports_[0], tserver_web_ports_[i], server_address,
-          GetYbcToolPath("yb-controller-server"), /*extra_flags*/ {});
+  string ts_data_dirs;
+  for (const shared_ptr<MiniTabletServer>& ts : mini_tablet_servers_) {
+    for (const string& dir : ts->options()->fs_opts.data_paths) {
+      ts_data_dirs += string(ts_data_dirs.empty() ? "" : ",") +  dir;
+    }
+  }
+  // All TSes have the same following g-flags, because this is all-in-one-process MiniCluster.
+  // Use ExternalMiniCluster if you need independent values.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = ts_data_dirs;
 
-      RETURN_NOT_OK_PREPEND(
-          yb_controller->Start(),
-          "Failed to start YB Controller at index " + std::to_string(i + 1));
-      yb_controllers_.push_back(yb_controller);
+  running_ = true;
+  rpc::MessengerBuilder builder("minicluster-messenger");
+  builder.set_num_reactors(1);
+  messenger_ = VERIFY_RESULT(builder.Build());
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+  return Status::OK();
+}
+
+Status MiniCluster::StartYbControllerServers() {
+  for (auto ts : mini_tablet_servers_) {
+    RETURN_NOT_OK(AddYbControllerServer(ts));
+  }
+  return Status::OK();
+}
+
+Status MiniCluster::AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer> ts) {
+  // Return if we already have a Yb Controller for the given ts
+  for (auto ybController : yb_controller_servers_) {
+    if (ybController->GetServerAddress() == ts->bound_http_addr().address().to_string()) {
+      return Status::OK();
     }
   }
 
-  running_ = true;
+  size_t idx = yb_controller_servers_.size() + 1;
+
+  // All yb controller servers need to be on the same port.
+  uint16_t server_port;
+  if (idx == 1) {
+    server_port = port_picker_.AllocateFreePort();
+  } else {
+    server_port = yb_controller_servers_[0]->GetServerPort();
+  }
+
+  const auto yb_controller_log_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "logs");
+  const auto yb_controller_tmp_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "tmp");
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
+  const auto server_address = ts->bound_http_addr().address().to_string();
+  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
+      idx, yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
+      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
+      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
+      server_port, master_web_ports_[0], tserver_web_ports_[idx - 1], server_address,
+      GetYbcToolPath("yb-controller-server"),
+      /*extra_flags*/ {});
+
+  RETURN_NOT_OK_PREPEND(
+      yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
+  yb_controller_servers_.push_back(yb_controller);
   return Status::OK();
 }
 
@@ -319,12 +329,25 @@ Status MiniCluster::StartMasters() {
     VLOG(1) << "Started MiniMaster with UUID " << mini_masters_[i]->permanent_uuid()
             << " at index " << i;
   }
+
   int i = 0;
+  string master_addresses;
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
-    LOG(INFO) << "Waiting to initialize catalog manager on master " << i++;
+    LOG(INFO) << "Waiting to initialize catalog manager on master " << i;
     RETURN_NOT_OK_PREPEND(master->WaitForCatalogManagerInit(),
                           Substitute("Could not initialize catalog manager on master $0", i));
+    master_addresses += string(i++ == 0 ? "" : ",") + master->bound_rpc_addr().ToString();
   }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_master_addrs) = master_addresses;
+
+  // Trigger an election to avoid an unnecessary 3s wait on every minicluster startup.
+  if (!mini_masters_.empty()) {
+    auto consensus = VERIFY_RESULT(RandomElement(mini_masters_)->tablet_peer()->GetConsensus());
+    consensus::LeaderElectionData data { .must_be_committed_opid = OpId() };
+    RETURN_NOT_OK(consensus->StartElection(data));
+  }
+
   started = true;
   return Status::OK();
 }
@@ -355,7 +378,7 @@ Status MiniCluster::RestartSync() {
 
   if (UseYbController()) {
     LOG(INFO) << "Restart YB Controller server(s)...";
-    for (const auto& yb_controller : yb_controllers_) {
+    for (const auto& yb_controller : yb_controller_servers_) {
       CHECK_OK(yb_controller->Restart());
     }
   }
@@ -420,31 +443,8 @@ Status MiniCluster::AddTabletServer() {
   return AddTabletServer(*options);
 }
 
-namespace {
-
-Status ChangeClusterConfig(
-    master::CatalogManagerIf* catalog_manager,
-    std::function<void(SysClusterConfigEntryPB*)> config_changer) {
-  GetMasterClusterConfigResponsePB config_resp;
-  RETURN_NOT_OK(catalog_manager->GetClusterConfig(&config_resp));
-
-  ChangeMasterClusterConfigRequestPB change_req;
-  *change_req.mutable_cluster_config() = std::move(*config_resp.mutable_cluster_config());
-  SysClusterConfigEntryPB* config = change_req.mutable_cluster_config();
-
-  config_changer(config);
-
-  ChangeMasterClusterConfigResponsePB change_resp;
-  return catalog_manager->SetClusterConfig(&change_req, &change_resp);
-}
-
-} // namespace
-
 Status MiniCluster::AddTServerToBlacklist(const MiniTabletServer& ts) {
-  const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
-
-  RETURN_NOT_OK(ChangeClusterConfig(
-      &master->catalog_manager(), [&ts](SysClusterConfigEntryPB* config) {
+  RETURN_NOT_OK(ChangeClusterConfig([&ts](SysClusterConfigEntryPB* config) {
         // Add tserver to blacklist.
         HostPortPB* blacklist_host_pb = config->mutable_server_blacklist()->mutable_hosts()->Add();
         blacklist_host_pb->set_host(ts.bound_rpc_addr().address().to_string());
@@ -459,10 +459,8 @@ Status MiniCluster::AddTServerToBlacklist(const MiniTabletServer& ts) {
 }
 
 Status MiniCluster::AddTServerToLeaderBlacklist(const MiniTabletServer& ts) {
-  const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
-
   RETURN_NOT_OK(
-      ChangeClusterConfig(&master->catalog_manager(), [&ts](SysClusterConfigEntryPB* config) {
+      ChangeClusterConfig([&ts](SysClusterConfigEntryPB* config) {
         // Add tserver to blacklist.
         HostPortPB* blacklist_host_pb = config->mutable_leader_blacklist()->mutable_hosts()->Add();
         blacklist_host_pb->set_host(ts.bound_rpc_addr().address().to_string());
@@ -477,10 +475,8 @@ Status MiniCluster::AddTServerToLeaderBlacklist(const MiniTabletServer& ts) {
 }
 
 Status MiniCluster::ClearBlacklist() {
-  const auto* master = VERIFY_RESULT(GetLeaderMiniMaster());
-
   RETURN_NOT_OK(
-      ChangeClusterConfig(&master->catalog_manager(), [](SysClusterConfigEntryPB* config) {
+      ChangeClusterConfig([](SysClusterConfigEntryPB* config) {
         config->mutable_server_blacklist()->Clear();
         config->mutable_leader_blacklist()->Clear();
       }));
@@ -576,6 +572,8 @@ void MiniCluster::StopSync() {
     master_server->Shutdown();
   }
 
+  messenger_->Shutdown();
+
   running_ = false;
 }
 
@@ -611,10 +609,12 @@ void MiniCluster::Shutdown() {
   }
   mini_masters_.clear();
 
-  for (const auto& yb_controller : yb_controllers_) {
+  for (const auto& yb_controller : yb_controller_servers_) {
     yb_controller->Shutdown();
   }
-  yb_controllers_.clear();
+  yb_controller_servers_.clear();
+
+  messenger_->Shutdown();
 
   running_ = false;
 }
@@ -730,29 +730,23 @@ Status MiniCluster::WaitForAllTabletServers() {
         tablet_server->WaitStarted(), Format("TabletServer $0 failed to start.", tablet_server));
   }
   // Wait till all tablet servers are registered with master.
-  return WaitForTabletServerCount(num_tablet_servers());
+  return ResultToStatus(WaitForTabletServerCount(num_tablet_servers()));
 }
 
-Status MiniCluster::WaitForTabletServerCount(size_t count) {
-  vector<shared_ptr<master::TSDescriptor> > descs;
-  return WaitForTabletServerCount(count, &descs, false);
-}
-
-Status MiniCluster::WaitForTabletServerCount(size_t count,
-                                             vector<shared_ptr<TSDescriptor> >* descs,
-                                             bool live_only) {
+Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForTabletServerCount(
+    size_t count, bool live_only) {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
-      (*leader)->ts_manager().GetAllDescriptors(descs);
-      if (live_only || descs->size() == count) {
+      auto descs = (*leader)->ts_manager().GetAllDescriptors();
+      if (live_only || descs.size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
         size_t match_count = 0;
-        for (const shared_ptr<TSDescriptor>& desc : *descs) {
+        for (const shared_ptr<TSDescriptor>& desc : descs) {
           for (auto mini_tablet_server : mini_tablet_servers_) {
             auto ts = mini_tablet_server->server();
             if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
@@ -768,11 +762,11 @@ Status MiniCluster::WaitForTabletServerCount(size_t count,
         if (match_count == count) {
           LOG(INFO) << count << " TS(s) registered with Master after "
                     << sw.elapsed().wall_seconds() << "s";
-          return Status::OK();
+          return descs;
         }
       }
 
-      YB_LOG_EVERY_N_SECS(INFO, 5) << "Registered: " << AsString(*descs);
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "Registered: " << AsString(descs);
     }
 
     SleepFor(MonoDelta::FromMilliseconds(1));
@@ -826,6 +820,23 @@ void MiniCluster::EnsurePortsAllocated(size_t new_num_masters, size_t new_num_ts
   AllocatePortsForDaemonType("tablet server", new_num_tservers, "web", &tserver_web_ports_);
 }
 
+Status MiniCluster::ChangeClusterConfig(
+    std::function<void(SysClusterConfigEntryPB*)> config_changer) {
+  auto proxy = master::MasterClusterProxy(
+      proxy_cache_.get(), VERIFY_RESULT(DoGetLeaderMasterBoundRpcAddr()));
+  rpc::RpcController rpc;
+  master::GetMasterClusterConfigRequestPB get_req;
+  master::GetMasterClusterConfigResponsePB get_resp;
+  RETURN_NOT_OK(proxy.GetMasterClusterConfig(get_req, &get_resp, &rpc));
+  ChangeMasterClusterConfigRequestPB change_req;
+  change_req.mutable_cluster_config()->Swap(get_resp.mutable_cluster_config());
+  config_changer(change_req.mutable_cluster_config());
+  rpc.Reset();
+  ChangeMasterClusterConfigResponsePB change_resp;
+  return proxy.ChangeMasterClusterConfig(change_req, &change_resp, &rpc);
+}
+
+
 Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
   auto master_leader = VERIFY_RESULT(GetLeaderMiniMaster())->master();
   const auto start_time = MonoTime::Now();
@@ -854,6 +865,11 @@ server::SkewedClockDeltaChanger JumpClock(
   DCHECK(skewed_clock)
       << ": Server physical clock is not a SkewedClock; did you forget to set --time_source?";
   return server::SkewedClockDeltaChanger(delta, skewed_clock);
+}
+
+server::SkewedClockDeltaChanger JumpClock(
+    tserver::MiniTabletServer* server, std::chrono::milliseconds delta) {
+  return JumpClock(server->server(), delta);
 }
 
 std::vector<server::SkewedClockDeltaChanger> SkewClocks(
@@ -1321,11 +1337,11 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     }
     // TEST_CountIntent return non ok status also means shutdown has started.
     auto intents_count_result = participant->TEST_CountIntents();
-    if (intents_count_result.ok() && intents_count_result->first) {
-      result += intents_count_result->first;
+    if (intents_count_result.ok() && intents_count_result->num_intents) {
+      result += intents_count_result->num_intents;
       LOG(INFO) << Format("T $0 P $1: Intents present: $2, transactions: $3", peer->tablet_id(),
-                          peer->permanent_uuid(), intents_count_result->first,
-                          intents_count_result->second);
+                          peer->permanent_uuid(), intents_count_result->num_intents,
+                          intents_count_result->num_transactions);
     }
   }
   return result;

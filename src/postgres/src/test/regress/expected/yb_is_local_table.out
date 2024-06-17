@@ -217,20 +217,20 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a < 2 AND yb_is_local_table(tab
 ---------------------------------------------
  Append
    ->  Seq Scan on multikey1_local
-         Remote Filter: (a < 2)
+         Storage Filter: (a < 2)
          Filter: yb_is_local_table(tableoid)
    ->  Seq Scan on multikey_default_local
-         Remote Filter: (a < 2)
+         Storage Filter: (a < 2)
          Filter: yb_is_local_table(tableoid)
 (7 rows)
 
 -- Query with both partition keys.
 EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE a = 2 AND b < 1 AND yb_is_local_table(tableoid);
                   QUERY PLAN
-----------------------------------------------
+-----------------------------------------------
  Append
    ->  Seq Scan on multikey3_local
-         Remote Filter: ((b < 1) AND (a = 2))
+         Storage Filter: ((b < 1) AND (a = 2))
          Filter: yb_is_local_table(tableoid)
 (4 rows)
 
@@ -240,7 +240,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM multikey WHERE b is null AND yb_is_local_table
 ---------------------------------------------
  Append
    ->  Seq Scan on multikey_default_local
-         Remote Filter: (b IS NULL)
+         Storage Filter: (b IS NULL)
          Filter: yb_is_local_table(tableoid)
 (4 rows)
 
@@ -268,7 +268,7 @@ SELECT t1.a, t2.b FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a < 450 AND yb_
          Sort Key: t1.a
          ->  Append
                ->  Seq Scan on prt1_p2_local t1
-                     Remote Filter: (a < 450)
+                     Storage Filter: (a < 450)
                      Filter: yb_is_local_table(tableoid)
    ->  Sort
          Sort Key: t2.b
@@ -304,9 +304,9 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT *
                Sort Key: prt1_p1.a
                ->  Append
                      ->  Seq Scan on prt1_p1
-                           Remote Filter: (a < 450)
+                           Storage Filter: (a < 450)
                      ->  Seq Scan on prt1_p2_local
-                           Remote Filter: (a < 450)
+                           Storage Filter: (a < 450)
 (16 rows)
 
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE yb_is_local_table(prt2.tableoid)) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;
@@ -355,9 +355,9 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid
                Sort Key: prt2_p2_local.b
                ->  Append
                      ->  Seq Scan on prt2_p2_local
-                           Remote Filter: (b > 250)
+                           Storage Filter: (b > 250)
                      ->  Seq Scan on prt2_p3
-                           Remote Filter: (b > 250)
+                           Storage Filter: (b > 250)
 (16 rows)
 
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE yb_is_local_table(prt1.tableoid)) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b ORDER BY t1.a, t2.b;

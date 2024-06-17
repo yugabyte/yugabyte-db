@@ -1,6 +1,5 @@
 ---
-title: Overview of CDC in YugabyteDB
-headerTitle: Overview
+title: Overview of CDC internals
 linkTitle: Overview
 description: Change Data Capture in YugabyteDB.
 headcontent: Change Data Capture in YugabyteDB
@@ -11,18 +10,6 @@ menu:
     weight: 10
 type: docs
 ---
-
-## What is change data capture?
-
-In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. YugabyteDB CDC captures changes made to data in the database and streams those changes to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB database to downstream consumers based on its Write-Ahead Log (WAL).
-
-YugabyteDB CDC uses Debezium to capture row-level changes resulting from INSERT, UPDATE, and DELETE operations in the upstream database, and publishes them as events to Kafka using Kafka Connect-compatible connectors.
-
-![What is CDC](/images/explore/cdc-overview-what.png)
-
-Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
-
-## How does CDC work?
 
 YugabyteDB automatically splits user tables into multiple shards (also called tablets) using either a hash- or range-based strategy. The primary key for each row in the table uniquely identifies the location of the tablet in the row.
 
@@ -44,11 +31,11 @@ The core primitive of CDC is the _stream_. Streams can be enabled and disabled o
 
 ## Known limitations
 
-* YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
-* CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800).
-* CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.
+* CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
+* Currently we don't support schema evolution for changes that require table rewrites (ex: ALTER TYPE).
+* YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 
 In addition, CDC support for the following features will be added in upcoming releases:
 
@@ -57,10 +44,10 @@ In addition, CDC support for the following features will be added in upcoming re
 * Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 * Support for schema evolution with before image is tracked in issue [15197](https://github.com/yugabyte/yugabyte-db/issues/15197).
 
-## Further reading
+## Learn more
 
 * Refer to [CDC Examples](https://github.com/yugabyte/cdc-examples/tree/main) for CDC usage and pattern examples.
-* Refer to [Tutorials](../cdc-tutorials/) to deploy in different Kafka environments.
+* Refer to [Tutorials](/preview/tutorials/cdc-tutorials/) to deploy in different Kafka environments.
 * Refer to blogs about CDC:
   * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/)
   * [Unlock Azure Storage Options With YugabyteDB CDC](https://www.yugabyte.com/blog/unlocking-azure-storage-options-with-yugabytedb-cdc/)

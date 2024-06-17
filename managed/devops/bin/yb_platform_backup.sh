@@ -77,9 +77,9 @@ set -u # Disallow undefined variables
 # Takes docker container and command as arguments. Executes docker cmd if docker-based or not.
 docker_aware_cmd() {
   if [[ "$DOCKER_BASED" = false ]]; then
-    $2
+    sh -c "$2"
   else
-    docker exec -i "${1}" $2
+    docker exec -i "${1}" sh -c "$2"
   fi
 }
 
@@ -173,7 +173,9 @@ restore_postgres_backup() {
   verbose="$5"
   yba_installer="$6"
   pgrestore_path="$7"
+  skip_dump_check="$8"
   pg_restore="pg_restore"
+  psql="psql"
 
   # Determine pg_restore path in yba-installer cases where postgres is installed in data_dir.
   if [[ "${yba_installer}" = true ]] && \
@@ -183,22 +185,32 @@ restore_postgres_backup() {
     pg_restore=${pgrestore_path}
   fi
 
-  if [[ "${verbose}" = true ]]; then
-    restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -v -d \
-      ${PLATFORM_DB_NAME}"
-  else
-    restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -d \
-      ${PLATFORM_DB_NAME}"
+  if [[ "${pg_restore}" == "${pgrestore_path}" ]]; then
+    psql=$(dirname "${pgrestore_path}")/psql
   fi
 
-  # Run pg_restore.
-  echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
-  if [[ "$migration" = true ]]; then
-    set +e
+  if grep -iq "COPY.*customer" "${backup_path}" || [[ "${skip_dump_check}" = true ]]; then
+    # Drop public schema so it is guaranteed to be a clean restore
+    drop_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PLATFORM_DB_NAME} \
+      -c \"DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA public;\""
+    docker_aware_cmd "postgres" "${drop_cmd}"
+
+    if [[ "${verbose}" = true ]]; then
+      restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists -v \
+        -d ${PLATFORM_DB_NAME}"
+    else
+      restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
+        -d ${PLATFORM_DB_NAME}"
+    fi
+
+    # Run pg_restore.
+    echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
+    docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
+    echo "Done"
+  else
+    echo "${backup_path} potentially might be empty, skipping restore. Use --skip_dump_check to \
+      proceed"
   fi
-  docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
-  set -e
-  echo "Done"
 }
 
 # Creates a DB backup of YB Platform running on YBDB.
@@ -312,6 +324,7 @@ create_backup() {
   ybdb="${15}"
   ysql_dump_path="${16}"
   include_releases_flag="**/releases/**"
+  include_uploaded_releases_flag="**/upload/release_artifacts/**"
 
   mkdir -p "${output_path}"
 
@@ -377,6 +390,7 @@ create_backup() {
 
   if [[ "$exclude_releases" = true ]]; then
     include_releases_flag=""
+    include_uploaded_releases_flag=""
   fi
 
   modify_service yb-platform stop
@@ -405,7 +419,7 @@ create_backup() {
               "**/prometheus/targets/**" "**/data/yb-platform/node-agent/certs/**" \
               "**/data/node-agent/certs/**" "**/provision/**/provision_instance.py" \
               "**/${PLATFORM_DUMP_FNAME}" "**/${VERSION_METADATA_BACKUP}" \
-              "${include_releases_flag}") )
+              "${include_releases_flag}" "${include_uploaded_releases_flag}") )
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
@@ -429,6 +443,7 @@ create_backup() {
 
   gzip -9 < ${tar_name} > ${tgz_name}
   cleanup "${tar_name}"
+  delete_db_backup "${db_backup_path}"
 
   # Delete the version metadata backup if we had created it earlier
   docker_aware_cmd "yugaware" "rm -f ${data_dir}/${VERSION_METADATA_BACKUP}"
@@ -454,6 +469,8 @@ restore_backup() {
   ybdb="${14}"
   ysqlsh_path="${15}"
   ybai_data_dir="${16}"
+  skip_old_files="${17}"
+  skip_dump_check="${18}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   # Perform K8s restore.
@@ -477,16 +494,15 @@ restore_backup() {
     fi
     backup_script="/opt/yugabyte/devops/bin/yb_platform_backup.sh"
 
-    #Passing in the required argument for --disable_version_check if set to true, since
-    #the script is called again within the Kubernetes container.
-    d="--disable_version_check"
-
+    # Skip old files as script was called outside of container so may lack permissions to overwrite
     if [ "$disable_version_check" != true ]; then
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
+        --skip_old_files"
     else
       kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} ${d}"
+        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
+        --disable_version_check --skip_old_files"
     fi
 
     # Delete backup archive from container.
@@ -592,7 +608,8 @@ restore_backup() {
     # Node-agent/ybc foldes can be copied entirely into
     # Copy releases, ybc, certs, keys, over
     # xcerts/keys/licenses can all go directly into data directory
-    BACKUP_DIRS=('*ybc' '*data/certs' '*data/keys' '*data/licenses' '*node-agent')
+    BACKUP_DIRS=('*ybc' '*data/certs' '*data/keys' '*data/licenses' '*node-agent' \
+      '*upload/release_artifacts')
     for d in "${BACKUP_DIRS[@]}"
     do
       set +e
@@ -603,8 +620,7 @@ restore_backup() {
       fi
     done
   else
-    # Skipping old files due to issues with k8s restore without permission to overwrite
-    $tar_cmd "${input_path}" --directory "${destination}" --skip-old-files
+    $tar_cmd "${input_path}" --directory "${destination}" "${skip_old_files}"
   fi
 
   db_backup_path="${untar_dir}"/"${PLATFORM_DUMP_FNAME}"
@@ -615,7 +631,7 @@ restore_backup() {
   else
     # do we need set +e?
     restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
-      "${verbose}" "${yba_installer}" "${pgrestore_path}"
+      "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}"
   fi
 
   # Restore prometheus data.
@@ -697,7 +713,8 @@ print_backup_usage() {
   echo "  -r, --exclude_releases         exclude Yugabyte releases from backup (default: false)"
   echo "  -d, --data_dir=DIRECTORY       data directory (default: /opt/yugabyte)"
   echo "  -v, --verbose                  verbose output of script (default: false)"
-  echo "  -s  --skip_restart             don't restart processes during execution (default: false)"
+  echo "  -s  --skip_restart             [WARNING: DEPRECATED] don't restart processes during execution (default: false)"
+  echo "  --restart                      restart processes during execution (default: false)"
   echo "  -u, --db_username=USERNAME     postgres username (default: postgres)"
   echo "  -h, --db_host=HOST             postgres host (default: localhost)"
   echo "  -P, --db_port=PORT             postgres port (default: 5432)"
@@ -739,6 +756,8 @@ print_restore_usage() {
   echo "  --ysqlsh_path                  path to ysqlsh to restore ybdb (default: false)"
   echo "  --migration                    migration from Replicated or Yugabundle (default: false)"
   echo "  --ybai_data_dir                YBA data dir (default: /opt/yugabyte/data/yb-platform)"
+  echo "  --skip_old_files               skip old files when untarring backup"
+  echo "  --skip_dump_check              skip pg dump empty check before restore (default: false)"
   echo "  -?, --help                     show restore help, then exit"
   echo
 }
@@ -792,6 +811,8 @@ ysqlsh_path=""
 migration=false
 ybai_data_dir=/opt/yugabyte/data/yb-platform
 yba_user=yugabyte
+skip_old_files=""
+skip_dump_check=false
 
 case $command in
   -?|--help)
@@ -803,6 +824,7 @@ case $command in
     exclude_prometheus=false
     exclude_releases=false
     output_path="${HOME}"
+    RESTART_PROCESSES=false
 
     if [[ $# -eq 0 ]]; then
       print_backup_usage
@@ -833,8 +855,11 @@ case $command in
           shift
           ;;
         -s|--skip_restart)
-          RESTART_PROCESSES=false
-          set -x
+          echo "--skip_restart flag is deprecated and default behavior skips restart. use --restart"
+          shift
+          ;;
+        --restart)
+          RESTART_PROCESSES=true
           shift
           ;;
         -u|--db_username)
@@ -1038,6 +1063,14 @@ case $command in
           USE_SYSTEM_PG=true
           shift
           ;;
+        --skip_old_files)
+          skip_old_files="--skip-old-files"
+          shift
+          ;;
+        --skip_dump_check)
+          skip_dump_check=true
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -1065,7 +1098,8 @@ case $command in
 
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
-    "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir"
+    "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir" \
+    "$skip_old_files" "$skip_dump_check"
     exit 0
     ;;
   *)

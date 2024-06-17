@@ -48,6 +48,9 @@
 
 #include "storage/fd.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 /* private date for writing out data */
 typedef struct DecodingOutputState
 {
@@ -128,6 +131,14 @@ logical_read_local_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr,
 static Datum
 pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool binary)
 {
+	if (IsYugaByteEnabled()
+		&& !yb_enable_replication_slot_consumption)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Getting logical slot changes is unavailable"),
+				 errdetail("yb_enable_replication_slot_consumption "
+						   "is false.")));
+
 	Name		name;
 	XLogRecPtr	upto_lsn;
 	int32		upto_nchanges;

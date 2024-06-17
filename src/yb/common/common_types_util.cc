@@ -16,7 +16,8 @@
 #include <array>
 #include <utility>
 
-#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using std::array;
 using std::make_pair;
@@ -48,5 +49,7 @@ YQLDatabase DatabaseTypeByName(const string& db_type_name) {
   }
   return YQLDatabase::YQL_DATABASE_UNKNOWN;
 }
+
+YB_STRONGLY_TYPED_UUID_IMPL(UniverseUuid);
 
 } // namespace yb

@@ -13,6 +13,45 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.7.1 - May 28, 2024
+
+### Bug Fixes
+
+- Fixed a bug where [export data](../reference/data-migration/export-data/) command ([live migration](../migrate/live-migrate/)) from Oracle source fails with a "table already exists" error, when stopped and re-run (resuming CDC phase of export-data).
+- Fixed a known issue in the dockerised version of yb-voyager where commands [get data-migration-report](../reference/data-migration/import-data/#get-data-migration-report) and [end migration](../reference/end-migration/) did not work if you had previously passed ssl-cert/ssl-key/ssl-root-cert in [export data](../reference/data-migration/export-data/) or [import data](../reference/data-migration/import-data/) or [import data to source replica](../reference/data-migration/import-data/#import-data-to-source-replica) commands.
+
+## v1.7 - May 16, 2024
+
+### New features
+
+- [Assess Migration](../migrate/assess-migration/) {{<badge/tp>}} (for PostgreSQL source only): Introduced the Voyager Migration Assessment feature specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL to YugabyteDB. Voyager conducts a thorough analysis of the source database by capturing essential metadata and metrics, and generates a comprehensive assessment report.
+  - The report is created in HTML/JSON formats.
+  - When [export schema](../reference/schema-migration/export-schema/) is run, voyager automatically modifies the CREATE TABLE DDLs to incorporate the recommendations.
+  - Assessment can be done via plain bash/psql scripts for cases where source database connectivity is not available to the client machine running voyager.
+- Support for [live migration](../migrate/live-migrate/) with the option to [fall-back](../migrate/live-fall-back/) for PostgreSQL source databases.
+- Support for [live migration](../migrate/live-migrate/) of partitioned tables and multiple schemas from PostgreSQL source databases.
+- Support for migration of case sensitive table/column names from PostgreSQL databases.
+  - As a result, the table-list flags in [import data](../reference/data-migration/import-data/)/[export data](../reference/data-migration/export-data/) can accept table names in any form (case sensitive/insensitive/quoted/unquoted).
+
+### Enhancements
+
+- Detect and skip (with user confirmation) the unsupported data types before starting live migration from PostgreSQL databases.
+- When migrating partitioned tables in PostgreSQL source databases, voyager can now import data via the root table name, making it possible to change the names or partitioning logic of the leaf tables.
+
+### Bug fixes
+
+- Workaround for a bug in YugabyteDB where batched queries in a transaction were internally retried partially without respecting transaction/atomicity semantics.
+- Fixed a bug in [export data](../reference/data-migration/export-data/) (from PostgreSQL source databases), where voyager was ignoring a partitioned table if only the root table name was specified in the `--table-list` argument.
+- Fixed an issue Voyager was not dropping and recreating invalid indexes in case of restarts of 'post-snapshot-import' flow of import-schema.
+- Fixed a bug in [analyze schema](../reference/schema-migration/analyze-schema/) that reports false-positive unsupported cases for "FETCH CURSOR".
+- Changed the [datatype mapping](../reference/datatype-mapping-oracle/) of `DATE:date` to `DATE:timestamp` in Oracle to avoid time data loss for such columns.
+- Increased maximum retry count of event batch to 50 for import data streaming.
+- Fixed a bug where schema analysis report has an incorrect value for invalid count of objects in summary.
+
+### Known issue
+
+- If you use dockerised version of yb-voyager, commands [get data-migration-report](../reference/data-migration/import-data/#get-data-migration-report) and [end migration](../reference/end-migration/) do not work if you have previously passed ssl-cert/ssl-key/ssl-root-cert in [export data](../reference/data-migration/export-data/) or [import data](../reference/data-migration/import-data/) or [import data to source replica](../reference/data-migration/import-data/#import-data-to-source-replica) commands.
+
 ## v1.6.5 - February 13, 2024
 
 ### New features
@@ -110,6 +149,8 @@ Removed redundant ALTER COLUMN DDLs present in the exported schema for certain c
 * Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) {{<badge/tp>}}.
 
 Note that as the feature in Tech Preview, there are some known limitations. For details, refer to [Live migration limitations](../migrate/live-migrate/#limitations), and [Live migration with fall-forward limitations](../migrate/live-fall-forward/#limitations).
+
+{{< youtube id="TJX7OlgPyUM" title="YugabyteDB Voyager 1.5 Demo" >}}
 
 ### Key enhancements
 

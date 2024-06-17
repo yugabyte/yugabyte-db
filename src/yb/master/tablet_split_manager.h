@@ -15,8 +15,11 @@
 
 #include <unordered_set>
 
-#include "yb/master/cdc_split_driver.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_fwd.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/util/metrics.h"
 
@@ -29,12 +32,14 @@ YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);
 
+using SplitsToScheduleMap = std::unordered_map<TabletId, std::optional<uint64_t>>;
+
 class TabletSplitManager {
  public:
-  TabletSplitManager(TabletSplitCandidateFilterIf* filter,
-                     TabletSplitDriverIf* driver,
-                     CDCSplitDriverIf* cdcsdk_split_driver,
-                     const scoped_refptr<MetricEntity>& metric_entity);
+  TabletSplitManager(
+      CatalogManagerIf& catalog_manager,
+      const scoped_refptr<MetricEntity>& master_metrics,
+      const scoped_refptr<MetricEntity>& cluster_metrics);
 
   Status WaitUntilIdle(CoarseTimePoint deadline = CoarseTimePoint::max());
 
@@ -68,6 +73,19 @@ class TabletSplitManager {
       IgnoreTtlValidation ignore_ttl_validation = IgnoreTtlValidation::kFalse,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse);
 
+  // Disables tablet splitting for a specified amount of time.
+  Status DisableTabletSplitting(
+      const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  // Returns true if there are no outstanding tablets and the tablet split manager is not currently
+  // processing tablet splits.
+  Status IsTabletSplittingComplete(
+      const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  bool IsTabletSplittingComplete(bool wait_for_parent_deletion, CoarseTimePoint deadline);
+
   // Temporarily disable splitting for the specified amount of time.
   void DisableSplittingFor(const MonoDelta& disable_duration, const std::string& feature_name);
   // Re-enable splitting after a call to DisableSplittingFor.
@@ -85,9 +103,10 @@ class TabletSplitManager {
   // Disables splitting for tablets that are too small to split.
   void DisableSplittingForSmallKeyRangeTablet(const TabletId& tablet_id);
 
+  Status PrepareForPitr(const CoarseTimePoint& deadline);
+
  private:
-  void ScheduleSplits(
-      const std::unordered_set<TabletId>& splits_to_schedule, const LeaderEpoch& epoch);
+  void ScheduleSplits(const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch);
 
   void DoSplitting(
       const std::vector<TableInfoPtr>& tables,
@@ -98,17 +117,15 @@ class TabletSplitManager {
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);
   Status ValidatePartitioningVersion(const TableInfo& table);
 
-  TabletSplitCandidateFilterIf* filter_;
-  TabletSplitDriverIf* driver_;
-  CDCSplitDriverIf* cdc_split_driver_;
+  CatalogManagerIf& catalog_manager_;
 
   // This mutex is acquired in each tablet splitting manager run.
   std::shared_timed_mutex is_running_mutex_;
 
   CoarseTimePoint last_run_time_;
 
-  // Metric to monitor how long a tablet split manager run takes.
   scoped_refptr<yb::AtomicGauge<uint64_t>> automatic_split_manager_time_ms_;
+  scoped_refptr<Counter> metric_split_tablet_too_many_tablets_;
 
   template <typename IdType>
   using DisabledSet = std::unordered_map<IdType, CoarseTimePoint>;

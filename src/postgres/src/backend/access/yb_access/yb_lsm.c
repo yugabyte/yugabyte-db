@@ -28,6 +28,7 @@
 #include "access/yb_scan.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
+#include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -50,21 +51,6 @@ typedef struct
 	const uint64_t *backfill_write_time;
 } YBCBuildState;
 
-/*
- * Utility method to bind const to column.
- */
-static void
-bindColumn(YBCPgStatement stmt,
-		   int attr_num,
-		   Oid type_id,
-		   Oid collation_id,
-		   Datum datum,
-		   bool is_null)
-{
-	YBCPgExpr expr = YBCNewConstant(stmt, type_id, collation_id, datum,
-									is_null);
-	HandleYBStatus(YBCPgDmlBindColumn(stmt, attr_num, expr));
-}
 
 /*
  * Utility method to set binds for index write statement.
@@ -98,7 +84,14 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 		Datum		value   = values[attnum - 1];
 		bool		is_null = isnull[attnum - 1];
 
-		bindColumn(stmt, attnum, type_id, collation_id, value, is_null);
+		YbBindDatumToColumn(stmt,
+							attnum,
+							type_id,
+							collation_id,
+							value,
+							is_null,
+							NULL /* null_type_entity */);
+
 
 		/*
 		 * If any of the indexed columns is null, we need to take case of
@@ -116,12 +109,13 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 	 * - to NULL otherwise (setting is_null to true is enough).
 	 */
 	if (unique_index)
-		bindColumn(stmt,
-				   YBUniqueIdxKeySuffixAttributeNumber,
-				   BYTEAOID,
-				   InvalidOid,
-				   ybbasectid,
-				   !has_null_attr /* is_null */);
+		YbBindDatumToColumn(stmt,
+							YBUniqueIdxKeySuffixAttributeNumber,
+							BYTEAOID,
+							InvalidOid,
+							ybbasectid,
+							!has_null_attr /* is_null */,
+							NULL /* null_type_entity */);
 
 	/*
 	 * We may need to set the base ctid column:
@@ -129,12 +123,14 @@ doBindsForIdxWrite(YBCPgStatement stmt,
 	 * - for non-unique indexes always (it is a key column).
 	 */
 	if (ybctid_as_value || !unique_index)
-		bindColumn(stmt,
-				   YBIdxBaseTupleIdAttributeNumber,
-				   BYTEAOID,
-				   InvalidOid,
-				   ybbasectid,
-				   false /* is_null */);
+		YbBindDatumToColumn(stmt,
+							YBIdxBaseTupleIdAttributeNumber,
+							BYTEAOID,
+							InvalidOid,
+							ybbasectid,
+							false /* is_null */,
+							NULL /* null_type_entity */);
+
 }
 
 static void
@@ -280,9 +276,21 @@ ybcinbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 	return NULL;
 }
 
+/*
+ * Post-VACUUM cleanup.
+ *
+ * Result: a palloc'd struct containing statistical info for VACUUM displays.
+ *
+ * YB: this function is based on btvacuumcleanup implementation.
+ * We only support ANALYZE and don't support VACUUM as of 04/05/2024.
+ */
 static IndexBulkDeleteResult *
 ybcinvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 {
+	/* No-op in ANALYZE ONLY mode */
+	if (info->analyze_only)
+		return stats;
+
 	YBC_LOG_WARNING("Unexpected index cleanup via vacuum");
 	return NULL;
 }
@@ -308,6 +316,44 @@ ybcinmightrecheck(Relation heap, Relation index, bool xs_want_itup,
 				  ScanKey keys, int nkeys)
 {
 	return YbPredetermineNeedsRecheck(heap, index, xs_want_itup, keys, nkeys);
+}
+
+static int64
+ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm, bool recheck)
+{
+	size_t		new_tuples = 0;
+	SliceVector ybctids;
+	YbScanDesc	ybscan = (YbScanDesc) scan->opaque;
+	bool 		exceeded_work_mem = false;
+
+	ybscan->exec_params = scan->yb_exec_params;
+	/* exec_params can be NULL in case of systable_getnext, for example. */
+	if (ybscan->exec_params)
+		ybscan->exec_params->work_mem = work_mem;
+
+	if (!ybscan->is_exec_done)
+		pgstat_count_index_scan(scan->indexRelation);
+
+	/* Special case: aggregate pushdown. */
+	if (scan->yb_aggrefs)
+		elog(ERROR, "TODO: Handle aggregate pushdown");
+
+	if (ybscan->quit_scan || ybtbm->work_mem_exceeded)
+		return 0;
+
+	ybtbm->recheck |= recheck;
+
+	HandleYBStatus(YBCPgRetrieveYbctids(ybscan->handle, ybscan->exec_params,
+										ybscan->target_desc->natts, &ybctids, &new_tuples,
+										&exceeded_work_mem));
+	if (!exceeded_work_mem)
+		yb_tbm_add_tuples(ybtbm, ybctids);
+	else
+		yb_tbm_set_work_mem_exceeded(ybtbm);
+
+	YBCBitmapShallowDeleteVector(ybctids);
+
+	return ybtbm->work_mem_exceeded ? 0 : new_tuples;
 }
 
 static void
@@ -384,7 +430,8 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 									 scan->yb_idx_pushdown, scan->yb_aggrefs,
 									 scan->yb_distinct_prefixlen,
 									 scan->yb_exec_params,
-									 false /* is_internal_scan */);
+									 false /* is_internal_scan */,
+									 scan->fetch_ybctids_only);
 	scan->opaque = ybScan;
 	if (scan->parallel_scan)
 	{
@@ -432,7 +479,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	if (!ybscan->is_exec_done)
 		pgstat_count_index_scan(scan->indexRelation);
-    
+
 	/* Special case: aggregate pushdown. */
 	if (scan->yb_aggrefs)
 	{
@@ -550,6 +597,19 @@ ybcinendscan(IndexScanDesc scan)
 	ybc_free_ybscan((YbScanDesc)scan->opaque);
 }
 
+static void
+ybcinbindschema(YBCPgStatement handle,
+				struct IndexInfo *indexInfo,
+				TupleDesc indexTupleDesc,
+				int16 *coloptions)
+{
+	YBCBindCreateIndexColumns(handle,
+							  indexInfo,
+							  indexTupleDesc,
+							  coloptions,
+							  indexInfo->ii_NumIndexKeyAttrs);
+}
+
 /*
  * LSM handler function: return IndexAmRoutine with access method parameters
  * and callbacks.
@@ -589,17 +649,20 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->ambeginscan = ybcinbeginscan;
 	amroutine->amrescan = ybcinrescan;
 	amroutine->amgettuple = ybcingettuple;
-	amroutine->amgetbitmap = NULL; /* TODO: support bitmap scan */
+	amroutine->amgetbitmap = NULL; /* use yb_amgetbitmap below instead */
 	amroutine->amendscan = ybcinendscan;
 	amroutine->ammarkpos = NULL; /* TODO: support mark/restore pos with ordering */
 	amroutine->amrestrpos = NULL;
 	amroutine->amestimateparallelscan = yb_estimate_parallel_size;
 	amroutine->aminitparallelscan = yb_init_partition_key_data;
 	amroutine->amparallelrescan = NULL;
+	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybcininsert;
 	amroutine->yb_amdelete = ybcindelete;
 	amroutine->yb_ambackfill = ybcinbackfill;
 	amroutine->yb_ammightrecheck = ybcinmightrecheck;
+	amroutine->yb_amgetbitmap = ybcgetbitmap;
+	amroutine->yb_ambindschema = ybcinbindschema;
 
 	PG_RETURN_POINTER(amroutine);
 }

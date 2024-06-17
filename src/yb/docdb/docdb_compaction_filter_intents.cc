@@ -74,12 +74,6 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 
   void CompactionFinished() override;
 
-  TransactionIdSet& transactions_to_cleanup() {
-    return transactions_to_cleanup_;
-  }
-
-  void AddToSet(const TransactionId& transaction_id, TransactionIdSet* set);
-
  private:
   Status CleanupTransactions();
 
@@ -90,10 +84,17 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 
   Result<boost::optional<TransactionId>> FilterExternalIntent(const Slice& key);
 
+  Result<std::pair<TransactionId, OpId>> ParsePostApplyTransactionMetadata(
+      const Slice& key, const Slice& existing_value);
+
+  void AddTransactionToCleanup(const TransactionId& transaction_id);
+
+  void SetTransactionApplyOpId(const TransactionId& transaction_id, const OpId& apply_op_id);
+
   tablet::Tablet* const tablet_;
   const MicrosTime compaction_start_time_;
 
-  TransactionIdSet transactions_to_cleanup_;
+  TransactionIdApplyOpIdMap transactions_to_cleanup_;
   int rejected_transactions_ = 0;
   uint64_t num_errors_ = 0;
 
@@ -155,7 +156,14 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
     if (!transaction_id_optional.has_value()) {
       return rocksdb::FilterDecision::kKeep;
     }
-    AddToSet(*transaction_id_optional, &transactions_to_cleanup_);
+    AddTransactionToCleanup(*transaction_id_optional);
+  }
+
+  if (key_type == KeyType::kPostApplyTransactionMetadata) {
+    auto result = ParsePostApplyTransactionMetadata(key, existing_value);
+    MAYBE_LOG_ERROR_AND_RETURN_KEEP(result);
+    const auto& [transaction_id, apply_op_id] = *result;
+    SetTransactionApplyOpId(transaction_id, apply_op_id);
   }
 
   // TODO(dtxn): If/when we add processing of reverse index or intents here - we will need to
@@ -192,6 +200,26 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
       "Could not decode Transaction metadata");
 }
 
+Result<std::pair<TransactionId, OpId>>
+DocDBIntentsCompactionFilter::ParsePostApplyTransactionMetadata(
+    const Slice& key, const Slice& existing_value) {
+  PostApplyTransactionMetadataPB metadata_pb;
+  if (!metadata_pb.ParseFromArray(
+          existing_value.cdata(), narrow_cast<int>(existing_value.size()))) {
+    return STATUS(IllegalState, "Failed to parse post-apply transaction metadata");
+  }
+
+  OpId apply_op_id = metadata_pb.has_apply_op_id() ? OpId::FromPB(metadata_pb.apply_op_id())
+                                                   : OpId::Invalid();
+
+  Slice key_slice = key;
+  TransactionId transaction_id = VERIFY_RESULT_PREPEND(
+      dockv::DecodeTransactionIdFromIntentValue(&key_slice),
+      "Could not decode post-apply transaction metadata");
+
+  return std::make_pair(transaction_id, apply_op_id);
+}
+
 Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterExternalIntent(
     const Slice& key) {
   Slice key_slice = key;
@@ -222,12 +250,19 @@ void DocDBIntentsCompactionFilter::CompactionFinished() {
   }
 }
 
-void DocDBIntentsCompactionFilter::AddToSet(const TransactionId& transaction_id,
-                                            TransactionIdSet* set) {
-  if (set->size() <= FLAGS_aborted_intent_cleanup_max_batch_size) {
-    set->insert(transaction_id);
+void DocDBIntentsCompactionFilter::AddTransactionToCleanup(const TransactionId& transaction_id) {
+  if (transactions_to_cleanup_.size() <= FLAGS_aborted_intent_cleanup_max_batch_size) {
+    transactions_to_cleanup_.emplace(transaction_id, OpId::Invalid());
   } else {
     rejected_transactions_++;
+  }
+}
+
+void DocDBIntentsCompactionFilter::SetTransactionApplyOpId(
+    const TransactionId& transaction_id, const OpId& apply_op_id) {
+  auto itr = transactions_to_cleanup_.find(transaction_id);
+  if (itr != transactions_to_cleanup_.end()) {
+    itr->second = apply_op_id;
   }
 }
 

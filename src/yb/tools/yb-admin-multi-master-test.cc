@@ -155,8 +155,7 @@ TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
   const auto lines2 = StringSplit(output2, '\n');
   ASSERT_EQ(lines2.size(), kNumInitMasters + 1);
 
-  ExternalMaster* shell_master = nullptr;
-  cluster_->StartShellMaster(&shell_master);
+  auto shell_master = ASSERT_RESULT(cluster_->StartShellMaster());
   ASSERT_NE(shell_master, nullptr);
   scoped_refptr<ExternalMaster> shell_master_ref(shell_master);
   const auto shell_addr = shell_master->bound_rpc_addr();

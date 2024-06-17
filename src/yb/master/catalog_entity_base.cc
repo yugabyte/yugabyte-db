@@ -80,13 +80,17 @@ bool CatalogEntityWithTasks::RemoveTask(const server::MonitoredTaskPtr& task) {
 
 // Aborts tasks which have their rpc in progress, rest of them are aborted and also erased
 // from the pending list.
-void CatalogEntityWithTasks::AbortTasks() { AbortTasksAndCloseIfRequested(/* close */ false); }
+void CatalogEntityWithTasks::AbortTasks(
+    const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore) {
+  AbortTasksAndCloseIfRequested(/* close */ false, tasks_to_ignore);
+}
 
 void CatalogEntityWithTasks::AbortTasksAndClose() {
   AbortTasksAndCloseIfRequested(/* close */ true);
 }
 
-void CatalogEntityWithTasks::AbortTasksAndCloseIfRequested(bool close) {
+void CatalogEntityWithTasks::AbortTasksAndCloseIfRequested(
+    bool close, const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore) {
   std::vector<server::MonitoredTaskPtr> abort_tasks;
   {
     std::lock_guard l(mutex_);
@@ -104,6 +108,9 @@ void CatalogEntityWithTasks::AbortTasksAndCloseIfRequested(bool close) {
   // We need to abort these tasks without holding the lock because when a task is destroyed it tries
   // to acquire the same lock to remove itself from pending_tasks_.
   for (const auto& task : abort_tasks) {
+    if (tasks_to_ignore.contains(task->type())) {
+      continue;
+    }
     VLOG_WITH_FUNC(1) << (close ? "Close and abort" : "Abort") << " task " << task.get() << " "
                       << task->description();
     task->AbortAndReturnPrevState(status);

@@ -1,0 +1,39 @@
+title: ClusterStorageSpec
+description: 'Storage volume specification that is used for tserver nodes in this cluster. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec.'
+type: object
+properties:
+  volume_size:
+    description: The size of each volume in each instance. Could be modified in payload for /resize_node API call
+    type: integer
+    format: int32
+  num_volumes:
+    description: Number of volumes to be mounted on this instance at the default path
+    type: integer
+    format: int32
+  mount_points:
+    description: Comma-separated list of mount points for the volumes in each instance. Required for an onprem cluster.
+    type: string
+  storage_class:
+    description: 'Name of the storage class, if this is a kubernetes cluster'
+    type: string
+  storage_type:
+    description: 'Storage type used for this instance, if this is a aws (IO1, GP2, GP3), gcp (Scratch, Persistent) or azu (StandardSSD_LRS, Premium_LRS, UltraSSD_LRS) cluster.'
+    type: string
+    enum:
+      - IO1
+      - GP2
+      - GP3
+      - Scratch
+      - Persistent
+      - StandardSSD_LRS
+      - Premium_LRS
+      - UltraSSD_LRS
+      - Local
+  disk_iops:
+    description: 'Desired IOPS for the volumes mounted on this aws, gcp or azu instance'
+    type: integer
+    format: int32
+  throughput:
+    description: 'Desired throughput for the volumes mounted on this aws, gcp or azu instance'
+    type: integer
+    format: int32

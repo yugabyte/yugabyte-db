@@ -14,5 +14,6 @@
         "developerName": "Yugabyte",
         "developerEmail": "oss-maintainers@yugabyte.com",
         "licenseName": "POLYFORM-FREE-TRIAL-LICENSE-1.0.0",
-        "library": "jersey2"
+        "library": "jersey2",
+        "dateLibrary": "java8"
     }

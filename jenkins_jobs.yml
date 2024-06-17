@@ -13,7 +13,8 @@ jobs:
 
   - os: alma8
     compiler: gcc11
-    build_type: debug
+    build_type: fastdebug
+    test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: false
 
   - os: alma8
@@ -32,12 +33,14 @@ jobs:
     compiler: clang
     build_type: release
     architecture: arm64
+    test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: true
 
   - os: mac12
     compiler: clang
     build_type: release
     architecture: x86_64
+    test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: true
 
   - os: ubuntu22.04

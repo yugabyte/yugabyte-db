@@ -22,9 +22,10 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
 
-#include "yb/client/async_initializer.h"
+#include "yb/server/async_client_initializer.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
@@ -65,6 +66,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
@@ -84,7 +86,7 @@ using namespace std::literals;
 DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
                       "Pg client session expiration time in milliseconds.");
 
-DEFINE_RUNTIME_bool(pg_client_use_shared_memory, false,
+DEFINE_RUNTIME_bool(pg_client_use_shared_memory, yb::kIsDebug,
                     "Use shared memory for executing read and write pg client queries");
 
 DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
@@ -399,14 +401,10 @@ class PgClientServiceImpl::Impl {
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock,
-      TransactionPoolProvider transaction_pool_provider,
-      rpc::Messenger* messenger,
-      const std::optional<XClusterContext>& xcluster_context,
-      PgMutationCounter* pg_node_level_mutation_counter,
-      MetricEntity* metric_entity,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      const std::string& permanent_uuid,
+      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
+      PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, const std::string& permanent_uuid,
       const server::ServerBaseOptions* tablet_server_opts)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
@@ -428,7 +426,8 @@ class PgClientServiceImpl::Impl {
         "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
     cdc_state_client_init_->Start();
-    cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_.get());
+    cdc_state_table_ =
+        std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_->get_client_future());
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
     }
@@ -472,7 +471,10 @@ class PgClientServiceImpl::Impl {
   Status OpenTable(
       const PgOpenTableRequestPB& req, PgOpenTableResponsePB* resp, rpc::RpcContext* context) {
     if (req.invalidate_cache_time_us()) {
-      table_cache_.InvalidateAll(CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
+      const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(req.table_id()));
+      std::unordered_set<uint32_t> db_oids_updated = { db_oid };
+      table_cache_.InvalidateDbTables(db_oids_updated, {} /* db_oids_deleted */,
+          CoarseTimePoint() + req.invalidate_cache_time_us() * 1us);
     }
     if (req.reopen()) {
       table_cache_.Invalidate(req.table_id());
@@ -706,7 +708,7 @@ class PgClientServiceImpl::Impl {
       return is_within_retry ? combined_status : ReplaceSplitTabletsAndGetLocations(req, true);
     }
 
-    std::set<std::string> tserver_uuids;
+    std::unordered_set<std::string> tserver_uuids;
     for (const auto& tablet_location_pb : resp.tablet_locations()) {
       for (const auto& replica : tablet_location_pb.replicas()) {
         if (replica.role() == PeerRole::LEADER) {
@@ -714,21 +716,15 @@ class PgClientServiceImpl::Impl {
         }
       }
     }
-
-    std::vector<RemoteTabletServerPtr> remote_tservers;
-    remote_tservers.reserve(tserver_uuids.size());
-    for(const auto& ts_uuid : tserver_uuids) {
-      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(ts_uuid)));
-    }
-    return remote_tservers;
+    return tablet_server_.GetRemoteTabletServers(tserver_uuids);
   }
 
   Status GetLockStatus(
       const PgGetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
       rpc::RpcContext* context) {
-    std::vector<master::TSInformationPB> live_tservers;
-    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
+    auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
     GetLockStatusRequestPB lock_status_req;
+    lock_status_req.set_max_txn_locks_per_tablet(req.max_txn_locks_per_tablet());
     if (!req.transaction_id().empty()) {
       // TODO(pglocks): Forward the request to tservers hosting the involved tablets of the txn,
       // as opposed to broadcasting the request to all live tservers.
@@ -739,12 +735,6 @@ class PgClientServiceImpl::Impl {
       // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
       // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
       lock_status_req.add_transaction_ids(req.transaction_id());
-      std::vector<RemoteTabletServerPtr> remote_tservers;
-      remote_tservers.reserve(live_tservers.size());
-      for (const auto& live_ts : live_tservers) {
-        const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-        remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
-      }
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
     const auto& min_txn_age_ms = req.min_txn_age_ms();
@@ -763,12 +753,11 @@ class PgClientServiceImpl::Impl {
 
     std::vector<std::future<Result<OldTxnsRespInfo>>> res_futures;
     std::unordered_set<TabletId> status_tablet_ids;
-    for (const auto& live_ts : live_tservers) {
-      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-      auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
+    for (const auto& remote_tserver : remote_tservers) {
       auto txn_status_tablets = VERIFY_RESULT(
             client().GetTransactionStatusTablets(remote_tserver->cloud_info_pb()));
 
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
       auto proxy = remote_tserver->proxy();
       for (const auto& tablet : txn_status_tablets.global_tablets) {
         res_futures.push_back(
@@ -802,8 +791,9 @@ class PgClientServiceImpl::Impl {
 
       std::visit([&](auto&& old_txns_resp) {
         if (old_txns_resp->has_error()) {
-          // Ignore leadership errors as we broadcast the request to all tservers.
-          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER) {
+          // Ignore leadership and NOT_FOUND errors as we broadcast the request to all tservers.
+          if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER ||
+              old_txns_resp->error().code() == TabletServerErrorPB::TABLET_NOT_FOUND) {
             it = res_futures.erase(it);
             return;
           }
@@ -879,8 +869,9 @@ class PgClientServiceImpl::Impl {
     if (include_single_shard_waiters) {
       lock_status_req.set_max_single_shard_waiter_start_time_us(max_single_shard_waiter_start_time);
     }
-    auto remote_tservers = VERIFY_RESULT(ReplaceSplitTabletsAndGetLocations(&lock_status_req));
-    return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
+    auto remote_tservers_with_locks = VERIFY_RESULT(
+        ReplaceSplitTabletsAndGetLocations(&lock_status_req));
+    return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers_with_locks);
   }
 
   // Merges the src PgGetLockStatusResponsePB into dest, while preserving existing entries in dest.
@@ -904,7 +895,8 @@ class PgClientServiceImpl::Impl {
       AtomicFlagSleepMs(&FLAGS_TEST_delay_before_get_locks_status_ms);
     }
 
-    VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString();
+    VLOG(4) << "Request to DoGetLockStatus: " << req->ShortDebugString()
+            << ", with existing response state " << resp->ShortDebugString();
     if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
       return Status::OK();
     }
@@ -914,6 +906,7 @@ class PgClientServiceImpl::Impl {
     std::vector<std::shared_ptr<GetLockStatusResponsePB>> node_responses;
     node_responses.reserve(remote_tservers.size());
     for (const auto& remote_tserver : remote_tservers) {
+      RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
       auto proxy = remote_tserver->proxy();
       auto status_promise = std::make_shared<std::promise<Status>>();
       status_futures.push_back(status_promise->get_future());
@@ -1025,8 +1018,9 @@ class PgClientServiceImpl::Impl {
     // PgGetLockStatusRequestPB has transaction_id field set. This shouldn't be the case once
     // https://github.com/yugabyte/yugabyte-db/issues/16913 is addressed. As part of the fix,
     // remove !req.transaction_ids().empty() in the below check.
-    RSTATUS_DCHECK(seen_transactions.empty() || !req->transaction_ids().empty(), IllegalState,
-           "Host node uuid not set for all involved transactions");
+    RSTATUS_DCHECK(
+        seen_transactions.empty() || !req->transaction_ids().empty(), IllegalState,
+        Format("Host node uuid not set for transactions: $0", yb::ToString(seen_transactions)));
     return Status::OK();
   }
 
@@ -1056,17 +1050,55 @@ class PgClientServiceImpl::Impl {
 
     // Determine latest active time of each stream if there are any.
     std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
+    // stream id -> ((confirmed_flush, restart_lsn), (xmin, record_id_commit_time))
+    std::unordered_map<
+        xrepl::StreamId, std::pair<std::pair<uint64_t, uint64_t>, std::pair<uint32_t, uint64_t>>>
+        stream_to_metadata;
+    // stream id -> last_pub_refresh_time
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_last_pub_refresh_time;
+
     if (!streams.empty()) {
       Status iteration_status;
       auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
-          cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
+          cdc::CDCStateTableEntrySelector()
+              .IncludeActiveTime()
+              .IncludeConfirmedFlushLSN()
+              .IncludeRestartLSN()
+              .IncludeXmin()
+              .IncludeRecordIdCommitTime()
+              .IncludeLastPubRefreshTime(),
+          &iteration_status));
 
+      int cdc_state_table_result_count = 0;
       for (auto entry_result : range_result) {
+        cdc_state_table_result_count++;
         RETURN_NOT_OK(entry_result);
         const auto& entry = *entry_result;
 
+        VLOG_WITH_FUNC(4) << "Received entry from CDC state table for stream_id: "
+                          << entry.key.stream_id << ", tablet_id: " << entry.key.tablet_id
+                          << ", active_time: "
+                          << (entry.active_time.has_value() ? *entry.active_time : 0);
+
         auto stream_id = entry.key.stream_id;
         auto active_time = entry.active_time;
+
+        // The special entry storing the replication slot metadata set during the stream creation.
+        if (entry.key.tablet_id == kCDCSDKSlotEntryTabletId) {
+          DCHECK(!stream_to_metadata.contains(stream_id));
+          DCHECK(entry.confirmed_flush_lsn.has_value());
+          DCHECK(entry.restart_lsn.has_value());
+          DCHECK(entry.xmin.has_value());
+          DCHECK(entry.record_id_commit_time.has_value());
+          DCHECK(entry.last_pub_refresh_time.has_value());
+
+          stream_to_metadata[stream_id] = std::make_pair(
+              std::make_pair(*entry.confirmed_flush_lsn, *entry.restart_lsn),
+              std::make_pair(*entry.xmin, *entry.record_id_commit_time));
+          stream_to_last_pub_refresh_time[stream_id] = *entry.last_pub_refresh_time;
+          continue;
+        }
+
         // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
         // yet by the client. So treat it is as an inactive case.
         if (!active_time) {
@@ -1083,6 +1115,9 @@ class PgClientServiceImpl::Impl {
       SCHECK(
           iteration_status.ok(), InternalError, "Unable to read the CDC state table",
           iteration_status);
+
+      VLOG_WITH_FUNC(4) << "Received a total of " << cdc_state_table_result_count
+                        << " entries from the CDC state table";
     }
 
     auto current_time = GetCurrentTimeMicros();
@@ -1099,22 +1134,125 @@ class PgClientServiceImpl::Impl {
           1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
       replication_slot->set_replication_slot_status(
           (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
+
+      if (stream_to_metadata.contains(*stream_id)) {
+        auto slot_metadata = stream_to_metadata[*stream_id];
+        replication_slot->set_confirmed_flush_lsn(slot_metadata.first.first);
+        replication_slot->set_restart_lsn(slot_metadata.first.second);
+        replication_slot->set_xmin(slot_metadata.second.first);
+        replication_slot->set_record_id_commit_time_ht(slot_metadata.second.second);
+        replication_slot->set_last_pub_refresh_time(stream_to_last_pub_refresh_time[*stream_id]);
+      } else {
+        // TODO(#21780): This should never happen, so make this a DCHECK. We can do that after every
+        // unit test that uses replication slots is updated to consistent snapshot stream.
+        LOG(WARNING) << "The CDC state table metadata entry was not found for stream_id: "
+                     << *stream_id << ", slot_name: " << replication_slot->slot_name();
+      }
     }
     return Status::OK();
   }
 
+  Status GetReplicationSlot(
+      const PgGetReplicationSlotRequestPB& req, PgGetReplicationSlotResponsePB* resp,
+      rpc::RpcContext* context) {
+    std::unordered_map<uint32_t, PgReplicaIdentity> replica_identities;
+    auto stream = VERIFY_RESULT(client().GetCDCStream(
+        ReplicationSlotName(req.replication_slot_name()), &replica_identities));
+    stream.ToPB(resp->mutable_replication_slot_info());
+
+    auto m = resp->mutable_replication_slot_info()->mutable_replica_identity_map();
+    for (const auto& replica_identity : replica_identities) {
+      PgReplicaIdentityType replica_identity_value;
+      switch (replica_identity.second) {
+        case PgReplicaIdentity::DEFAULT:
+          replica_identity_value = PgReplicaIdentityType::DEFAULT;
+          break;
+        case PgReplicaIdentity::FULL:
+          replica_identity_value = PgReplicaIdentityType::FULL;
+          break;
+        case PgReplicaIdentity::NOTHING:
+          replica_identity_value = PgReplicaIdentityType::NOTHING;
+          break;
+        case PgReplicaIdentity::CHANGE:
+          replica_identity_value = PgReplicaIdentityType::CHANGE;
+          break;
+        default:
+          RSTATUS_DCHECK(false, InternalError, "Invalid Replica Identity Type");
+      }
+
+      PgReplicaIdentityPB replica_identity_pb;
+      replica_identity_pb.set_replica_identity(replica_identity_value);
+      m->insert({replica_identity.first, std::move(replica_identity_pb)});
+    }
+
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
+    bool is_slot_active;
+    uint64_t confirmed_flush_lsn = 0;
+    uint64_t restart_lsn = 0;
+    uint32_t xmin = 0;
+    uint64_t record_id_commit_time_ht;
+    uint64_t last_pub_refresh_time = 0;
+    RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
+        stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
+        &record_id_commit_time_ht, &last_pub_refresh_time));
+    resp->mutable_replication_slot_info()->set_replication_slot_status(
+        (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
+
+    RSTATUS_DCHECK(
+        confirmed_flush_lsn != 0 && restart_lsn != 0 && xmin != 0, InternalError,
+        Format(
+            "Unexpected value present in the CDC state table. confirmed_flush_lsn: $0, "
+            "restart_lsn: $1, xmin: $2",
+            confirmed_flush_lsn, restart_lsn, xmin));
+
+    auto slot_info = resp->mutable_replication_slot_info();
+    slot_info->set_confirmed_flush_lsn(confirmed_flush_lsn);
+    slot_info->set_restart_lsn(restart_lsn);
+    slot_info->set_xmin(xmin);
+    slot_info->set_record_id_commit_time_ht(record_id_commit_time_ht);
+    slot_info->set_last_pub_refresh_time(last_pub_refresh_time);
+    return Status::OK();
+  }
+
+  // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
+  // So GetReplicationSlot should be used everywhere.
   Status GetReplicationSlotStatus(
       const PgGetReplicationSlotStatusRequestPB& req, PgGetReplicationSlotStatusResponsePB* resp,
       rpc::RpcContext* context) {
     // Get the stream_id for the replication slot.
-    xrepl::StreamId stream_id = xrepl::StreamId::Nil();
-    RETURN_NOT_OK(
-        client().GetCDCStream(ReplicationSlotName(req.replication_slot_name()), &stream_id));
+    auto stream = VERIFY_RESULT(client().GetCDCStream(
+        ReplicationSlotName(req.replication_slot_name()), /* replica_identities */ nullptr));
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream.stream_id));
 
+    bool is_slot_active;
+    uint64_t confirmed_flush_lsn;
+    uint64_t restart_lsn;
+    uint32_t xmin;
+    uint64_t record_id_commit_time_ht;
+    uint64_t last_pub_refresh_time;
+    RETURN_NOT_OK(GetReplicationSlotInfoFromCDCState(
+        stream_id, &is_slot_active, &confirmed_flush_lsn, &restart_lsn, &xmin,
+        &record_id_commit_time_ht, &last_pub_refresh_time));
+    resp->set_replication_slot_status(
+        (is_slot_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
+    return Status::OK();
+  }
+
+  Status GetReplicationSlotInfoFromCDCState(
+      const xrepl::StreamId& stream_id, bool* active, uint64_t* confirmed_flush_lsn,
+      uint64_t* restart_lsn, uint32_t* xmin, uint64_t* record_id_commit_time_ht,
+      uint64_t* last_pub_refresh_time) {
     // TODO(#19850): Fetch only the entries belonging to the stream_id from the table.
     Status iteration_status;
     auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
-        cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
+        cdc::CDCStateTableEntrySelector()
+            .IncludeActiveTime()
+            .IncludeConfirmedFlushLSN()
+            .IncludeRestartLSN()
+            .IncludeXmin()
+            .IncludeRecordIdCommitTime()
+            .IncludeLastPubRefreshTime(),
+        &iteration_status));
 
     // Find the latest active time for the stream across all tablets.
     uint64_t last_activity_time_micros = 0;
@@ -1123,6 +1261,22 @@ class PgClientServiceImpl::Impl {
       const auto& entry = *entry_result;
 
       if (entry.key.stream_id != stream_id) {
+        continue;
+      }
+
+      // The special entry storing the replication slot metadata set during the stream creation.
+      if (entry.key.tablet_id == kCDCSDKSlotEntryTabletId) {
+        DCHECK(entry.confirmed_flush_lsn.has_value());
+        DCHECK(entry.restart_lsn.has_value());
+        DCHECK(entry.xmin.has_value());
+        DCHECK(entry.record_id_commit_time.has_value());
+        DCHECK(entry.last_pub_refresh_time.has_value());
+
+        *DCHECK_NOTNULL(confirmed_flush_lsn) = *entry.confirmed_flush_lsn;
+        *DCHECK_NOTNULL(restart_lsn) = *entry.restart_lsn;
+        *DCHECK_NOTNULL(xmin) = *entry.xmin;
+        *DCHECK_NOTNULL(record_id_commit_time_ht) = *entry.record_id_commit_time;
+        *DCHECK_NOTNULL(last_pub_refresh_time) = *entry.last_pub_refresh_time;
         continue;
       }
 
@@ -1140,10 +1294,9 @@ class PgClientServiceImpl::Impl {
         iteration_status.ok(), InternalError, "Unable to read the CDC state table",
         iteration_status);
 
-    auto is_stream_active = GetCurrentTimeMicros() - last_activity_time_micros <=
-                            1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
-    resp->set_replication_slot_status(
-        (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
+    *DCHECK_NOTNULL(active) =
+        GetCurrentTimeMicros() - last_activity_time_micros <=
+        1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
     return Status::OK();
   }
 
@@ -1221,96 +1374,108 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  bool ShouldIgnoreCall(
+      const PgActiveSessionHistoryRequestPB& req, const rpc::RpcCallInProgressPB& call) {
+    return (
+        !call.has_wait_state() ||
+        // Ignore log-appenders which are just Idle
+        call.wait_state().wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
+        // Ignore ActiveSessionHistory/Perform calls, if desired.
+        (req.ignore_ash_and_perform_calls() && call.wait_state().has_aux_info() &&
+         call.wait_state().aux_info().has_method() &&
+         (call.wait_state().aux_info().method() == "ActiveSessionHistory" ||
+          call.wait_state().aux_info().method() == "Perform")));
+  }
+
+  void PopulateWaitStates(
+      const PgActiveSessionHistoryRequestPB& req, const yb::rpc::RpcConnectionPB& conn,
+      tserver::WaitStatesPB* resp) {
+    for (const auto& call : conn.calls_in_flight()) {
+      if (ShouldIgnoreCall(req, call)) {
+        VLOG(3) << "Ignoring " << call.wait_state().DebugString();
+        continue;
+      }
+      auto* wait_state = resp->add_wait_states();
+      wait_state->CopyFrom(call.wait_state());
+    }
+  }
+
   void GetRpcsWaitStates(
-      const PgActiveSessionHistoryRequestPB& req, ServerType type, tserver::WaitStatesPB* resp) {
-    auto* messenger = tablet_server_.GetMessenger(type);
+      const PgActiveSessionHistoryRequestPB& req, ash::Component component,
+      tserver::WaitStatesPB* resp) {
+    auto* messenger = tablet_server_.GetMessenger(component);
     if (!messenger) {
-      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(type);
+      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(component);
       return;
     }
 
+    resp->set_component(yb::to_underlying(component));
+
     rpc::DumpRunningRpcsRequestPB dump_req;
     rpc::DumpRunningRpcsResponsePB dump_resp;
-
     dump_req.set_include_traces(false);
     dump_req.set_get_wait_state(true);
     dump_req.set_dump_timed_out(false);
     dump_req.set_get_local_calls(true);
+    dump_req.set_export_wait_state_code_as_string(req.export_wait_state_code_as_string());
 
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
-    size_t ignored_calls = 0;
-    size_t ignored_calls_no_wait_state = 0;
-    for (const auto& conns : dump_resp.inbound_connections()) {
-      for (const auto& call : conns.calls_in_flight()) {
-        if (!call.has_wait_state() ||
-            // Ignore log-appenders which are just Idle
-            call.wait_state().wait_status_code() == yb::to_underlying(ash::WaitStateCode::kIdle) ||
-            // Ignore ActiveSessionHistory calls, if desired.
-            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
-             call.wait_state().aux_info().has_method() &&
-             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
-          ignored_calls++;
-          if (!call.has_wait_state()) {
-            ignored_calls_no_wait_state++;
-          }
-          continue;
-        }
-        resp->add_wait_states()->CopyFrom(call.wait_state());
-      }
+    for (const auto& conn : dump_resp.inbound_connections()) {
+      PopulateWaitStates(req, conn, resp);
     }
+
     if (dump_resp.has_local_calls()) {
-      for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
-        if (!call.has_wait_state() ||
-            (req.ignore_ash_calls() && call.wait_state().has_aux_info() &&
-             call.wait_state().aux_info().has_method() &&
-             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
-          ignored_calls++;
-          if (!call.has_wait_state()) {
-            ignored_calls_no_wait_state++;
-          }
-          continue;
-        }
-        resp->add_wait_states()->CopyFrom(call.wait_state());
-      }
+      PopulateWaitStates(req, dump_resp.local_calls(), resp);
     }
-    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls > 1)
-        << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
-        << " without wait state";
-    VLOG(2) << __PRETTY_FUNCTION__
-            << " wait-states: " << yb::ToString(resp->wait_states());
+
+    VLOG(3) << __PRETTY_FUNCTION__ << " wait-states: " << yb::ToString(resp->wait_states());
   }
 
-  void AddRaftAppenderThreadWaitStates(tserver::WaitStatesPB* resp) {
-    for (auto& wait_state_ptr : ash::RaftLogAppenderWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr) {
-        wait_state_ptr->ToPB(resp->add_wait_states());
+  void AddWaitStatesToResponse(
+      const ash::WaitStateTracker& tracker, bool export_wait_state_names,
+      tserver::WaitStatesPB* resp) {
+    Result<Uuid> local_uuid = Uuid::FromHexStringBigEndian(instance_id_);
+    DCHECK_OK(local_uuid);
+    resp->set_component(yb::to_underlying(ash::Component::kTServer));
+    for (auto& wait_state_ptr : tracker.GetWaitStates()) {
+      if (!wait_state_ptr) {
+        continue;
       }
-    }
-  }
-
-  void AddPriorityThreadPoolWaitStates(tserver::WaitStatesPB* resp) {
-    for (auto& wait_state_ptr : ash::FlushAndCompactionWaitStatesTracker().GetWaitStates()) {
-      if (wait_state_ptr) {
-        wait_state_ptr->ToPB(resp->add_wait_states());
+      WaitStateInfoPB wait_state_pb;
+      wait_state_ptr->ToPB(&wait_state_pb, export_wait_state_names);
+      if (wait_state_pb.wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle)) {
+        continue;
       }
+      if (local_uuid) {
+        local_uuid->ToBytes(wait_state_pb.mutable_metadata()->mutable_yql_endpoint_tserver_uuid());
+      }
+      resp->add_wait_states()->CopyFrom(wait_state_pb);
     }
+    VLOG(2) << "Tracker call sending " << resp->DebugString();
   }
 
   Status ActiveSessionHistory(
       const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
       rpc::RpcContext* context) {
     if (req.fetch_tserver_states()) {
-      GetRpcsWaitStates(req, ServerType::TServer, resp->mutable_tserver_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
+      AddWaitStatesToResponse(
+          ash::SharedMemoryPgPerformTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_tserver_wait_states());
     }
     if (req.fetch_flush_and_compaction_states()) {
-      AddPriorityThreadPoolWaitStates(resp->mutable_flush_and_compaction_wait_states());
+      AddWaitStatesToResponse(
+          ash::FlushAndCompactionWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_flush_and_compaction_wait_states());
     }
     if (req.fetch_raft_log_appender_states()) {
-      AddRaftAppenderThreadWaitStates(resp->mutable_raft_log_appender_wait_states());
+      AddWaitStatesToResponse(
+          ash::RaftLogWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_raft_log_appender_wait_states());
     }
     if (req.fetch_cql_states()) {
-      GetRpcsWaitStates(req, ServerType::CQLServer, resp->mutable_cql_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
     }
     return Status::OK();
   }
@@ -1368,6 +1533,12 @@ class PgClientServiceImpl::Impl {
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
   }
 
+  void InvalidateTableCache(
+      const std::unordered_set<uint32_t>& db_oids_updated,
+      const std::unordered_set<uint32_t>& db_oids_deleted) {
+    table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted, CoarseMonoClock::Now());
+  }
+
   // Return the TabletServer hosting the specified status tablet.
   std::future<Result<RemoteTabletServerPtr>> GetTServerHostingStatusTablet(
       const TabletId& status_tablet_id, CoarseTimePoint deadline) {
@@ -1393,22 +1564,15 @@ class PgClientServiceImpl::Impl {
                   TryAgain, Format("Leader not found for tablet $0", status_tablet_id)));
             }
             const auto& permanent_uuid = remote_tablet->LeaderTServer()->permanent_uuid();
-            callback(client().GetRemoteTabletServer(permanent_uuid));
+            auto remote_ts_or_status = tablet_server_.GetRemoteTabletServers({permanent_uuid});
+            if (!remote_ts_or_status.ok()) {
+              return callback(remote_ts_or_status.status());
+            }
+            callback((*remote_ts_or_status)[0]);
           },
           // Force a client cache refresh so as to not hit NOT_LEADER error.
           client::UseCache::kFalse);
     });
-  }
-
-  Result<std::vector<RemoteTabletServerPtr>> GetAllLiveTservers() {
-    std::vector<RemoteTabletServerPtr> remote_tservers;
-    std::vector<master::TSInformationPB> live_tservers;
-    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
-    for (const auto& live_ts : live_tservers) {
-      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
-      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
-    }
-    return remote_tservers;
   }
 
   Status GetActiveTransactionList(
@@ -1444,7 +1608,7 @@ class PgClientServiceImpl::Impl {
 
     std::vector<RemoteTabletServerPtr> remote_tservers;
     if (req.status_tablet_id().empty()) {
-      remote_tservers = VERIFY_RESULT(GetAllLiveTservers());
+      remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
     } else {
       const auto& remote_ts = VERIFY_RESULT(GetTServerHostingStatusTablet(
           req.status_tablet_id(), context->GetClientDeadline()).get());
@@ -1455,6 +1619,7 @@ class PgClientServiceImpl::Impl {
     std::vector<std::future<Status>> status_future;
     std::vector<tserver::CancelTransactionResponsePB> node_resp(remote_tservers.size());
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
+      RETURN_NOT_OK(remote_tservers[i]->InitProxy(&client()));
       const auto& proxy = remote_tservers[i]->proxy();
       auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(
@@ -1494,6 +1659,21 @@ class PgClientServiceImpl::Impl {
     }
 
     StatusToPB(status, resp->mutable_status());
+    return Status::OK();
+  }
+
+  Status YCQLStatementStats(const PgYCQLStatementStatsRequestPB& req,
+      PgYCQLStatementStatsResponsePB* resp,
+      rpc::RpcContext* context) {
+    RETURN_NOT_OK(tablet_server_.YCQLStatementStats(req, resp));
+    return Status::OK();
+  }
+
+  Status TabletsMetadata(
+      const PgTabletsMetadataRequestPB& req, PgTabletsMetadataResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
+    *resp->mutable_tablets() = {result.begin(), result.end()};
     return Status::OK();
   }
 
@@ -1572,6 +1752,7 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
+    std::vector<uint64_t> expired_sessions;
     std::lock_guard lock(mutex_);
     while (!session_expiration_queue_.empty()) {
       auto& top = session_expiration_queue_.top();
@@ -1586,9 +1767,15 @@ class PgClientServiceImpl::Impl {
         if (current_expiration > now) {
           session_expiration_queue_.push({current_expiration, id});
         } else {
+          expired_sessions.push_back(id);
           sessions_.erase(it);
         }
       }
+    }
+    auto cdc_service = tablet_server_.GetCDCService();
+    // We only want to call this on tablet servers. On master, cdc_service will be null.
+    if (cdc_service) {
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_sessions);
     }
     ScheduleCheckExpiredSessions(now);
   }
@@ -1665,15 +1852,6 @@ class PgClientServiceImpl::Impl {
   };
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
 
-  boost::multi_index_container<
-      SessionInfoPtr,
-      boost::multi_index::indexed_by<
-          boost::multi_index::hashed_unique<
-              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
-          >
-      >
-  > sessions_ GUARDED_BY(mutex_);
-
   using ExpirationEntry = std::pair<CoarseTimePoint, uint64_t>;
 
   struct CompareExpiration {
@@ -1696,7 +1874,7 @@ class PgClientServiceImpl::Impl {
   std::unique_ptr<yb::client::AsyncClientInitializer> cdc_state_client_init_;
   std::shared_ptr<cdc::CDCStateTable> cdc_state_table_;
 
-  const std::optional<XClusterContext> xcluster_context_;
+  const TserverXClusterContextIf* xcluster_context_;
 
   PgMutationCounter* pg_node_level_mutation_counter_;
 
@@ -1708,19 +1886,25 @@ class PgClientServiceImpl::Impl {
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;
+
+  boost::multi_index_container<
+      SessionInfoPtr,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<
+              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
+          >
+      >
+  > sessions_ GUARDED_BY(mutex_);
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
     std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
-    const scoped_refptr<ClockBase>& clock,
-    TransactionPoolProvider transaction_pool_provider,
+    const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    const scoped_refptr<MetricEntity>& entity,
-    rpc::Messenger* messenger,
-    const std::string& permanent_uuid,
-    const server::ServerBaseOptions* tablet_server_opts,
-    const std::optional<XClusterContext>& xcluster_context,
+    const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
+    const std::string& permanent_uuid, const server::ServerBaseOptions* tablet_server_opts,
+    const TserverXClusterContextIf* xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
@@ -1737,6 +1921,12 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
+}
+
+void PgClientServiceImpl::InvalidateTableCache(
+    const std::unordered_set<uint32_t>& db_oids_updated,
+    const std::unordered_set<uint32_t>& db_oids_deleted) {
+  impl_->InvalidateTableCache(db_oids_updated, db_oids_deleted);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() {

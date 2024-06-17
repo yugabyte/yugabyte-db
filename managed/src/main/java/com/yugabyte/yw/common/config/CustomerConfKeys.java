@@ -143,6 +143,17 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> enableSkipBootstrapping =
+      new ConfKeyInfo<>(
+          "yb.ui.xcluster.enable_skip_bootstrapping",
+          ScopeType.CUSTOMER,
+          "Enable the option to skip creating a full copy for xCluster operations",
+          "Enabling this runtime config will expose an option in the create xCluster modal and"
+              + " select tables modal to skip creating a full copy for xCluster replication"
+              + " configs.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",
@@ -163,4 +174,21 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + "\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]",
           ConfDataType.KeyValuesSetMultimapType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> enableIMDSv2 =
+      new ConfKeyInfo<>(
+          "yb.aws.enable_imdsv2_support",
+          ScopeType.CUSTOMER,
+          "Enable IMDSv2",
+          "Enable IMDSv2 support for AWS providers",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableTroubleshooting =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_troubleshooting",
+          ScopeType.CUSTOMER,
+          "Enables Troubleshooting for the Universe",
+          "Enables Troubleshooting for the Universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

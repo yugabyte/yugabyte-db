@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -53,6 +54,8 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,6 +64,7 @@ import java.util.Objects;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import play.libs.Json;
 
@@ -76,6 +80,7 @@ public class UpgradeUniverseHandler {
   private final CertificateHelper certificateHelper;
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterUniverseService xClusterUniverseService;
+  private final TelemetryProviderService telemetryProviderService;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -86,7 +91,8 @@ public class UpgradeUniverseHandler {
       RuntimeConfGetter confGetter,
       CertificateHelper certificateHelper,
       AutoFlagUtil autoFlagUtil,
-      XClusterUniverseService xClusterUniverseService) {
+      XClusterUniverseService xClusterUniverseService,
+      TelemetryProviderService telemetryProviderService) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -95,6 +101,7 @@ public class UpgradeUniverseHandler {
     this.certificateHelper = certificateHelper;
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.telemetryProviderService = telemetryProviderService;
   }
 
   public UUID restartUniverse(
@@ -256,12 +263,17 @@ public class UpgradeUniverseHandler {
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
+      if (userIntent.specificGFlags != null) {
+        requestParams.processGFlagGroupsOnUpgrades(universe);
+      }
+      GFlagsUtil.trimFlags(userIntent.specificGFlags);
       userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      GFlagsUtil.trimFlags(userIntent.specificGFlags);
       requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
       requestParams.tserverGFlags = GFlagsUtil.trimFlags((requestParams.tserverGFlags));
     }
@@ -461,8 +473,49 @@ public class UpgradeUniverseHandler {
 
   public UUID modifyAuditLoggingConfig(
       AuditLogConfigParams requestParams, Customer customer, Universe universe) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    // Verify if the audit log payload is same as existing audit log config.
+    if (requestParams.auditLogConfig != null
+        && requestParams.auditLogConfig.equals(userIntent.auditLogConfig)) {
+      String errorMessage =
+          String.format(
+              "Audit log config is same as existing config on universe '%s'.",
+              universe.getUniverseUUID());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    // Verify if exporter config is set to export active.
+    if (requestParams.auditLogConfig.isExportActive()) {
+      // If exporter config is set to export active, verify if any exporter is configured.
+      if (CollectionUtils.isEmpty(requestParams.auditLogConfig.getUniverseLogsExporterConfig())) {
+        String errorMessage =
+            String.format(
+                "Audit log config is set to export active, but no exporter configured on universe"
+                    + " '%s'.",
+                universe.getUniverseUUID());
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
+      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+      for (UniverseLogsExporterConfig exporterConfig :
+          requestParams.auditLogConfig.getUniverseLogsExporterConfig()) {
+        UUID exporterUUID = exporterConfig.getExporterUuid();
+        if (exporterUUID == null
+            || !telemetryProviderService.checkIfExists(customer.getUuid(), exporterUUID)) {
+          String errorMessage =
+              String.format(
+                  "Exporter config UUID '%s' is invalid for universe '%s'.",
+                  exporterUUID, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+      }
+    }
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
@@ -720,6 +773,18 @@ public class UpgradeUniverseHandler {
       baseTaskName += booleanToStr(clientToNode == null ? nodeToNode : clientToNode);
     }
     return baseTaskName;
+  }
+
+  public UUID updateProxyConfig(
+      ProxyConfigUpdateParams requestParams, Customer customer, Universe universe) {
+    // Verify request params
+    requestParams.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.UpdateProxyConfig,
+        CustomerTask.TaskType.UpdateProxyConfig,
+        requestParams,
+        customer,
+        universe);
   }
 
   private static String booleanToStr(boolean toggle) {

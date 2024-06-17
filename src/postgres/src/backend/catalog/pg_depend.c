@@ -22,15 +22,17 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/extension.h"
-#include "miscadmin.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
 #include "pg_yb_utils.h"
+#include "miscadmin.h"
 
 static bool isObjectPinned(const ObjectAddress *object, Relation rel);
 
@@ -340,6 +342,84 @@ deleteDependencyRecordsFor(Oid classId, Oid objectId,
 	heap_close(depRel, RowExclusiveLock);
 
 	return count;
+}
+
+/*
+ * tablegroupHasDependents -- check if the specified tablegroup has any dependents
+ */
+bool
+tablegroupHasDependents(Oid tablegroupId)
+{
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+	bool		found = false;
+
+	depRel = heap_open(DependRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(YbTablegroupRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(tablegroupId));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 2, key);
+
+	found = HeapTupleIsValid(tup = systable_getnext(scan));
+
+	systable_endscan(scan);
+	heap_close(depRel, RowExclusiveLock);
+
+	return found;
+}
+
+/*
+ * ybIsTablegroupDependent -- check if the specified relation is dependent on
+ * the specified tablegroup.
+ */
+bool
+ybIsTablegroupDependent(Oid relOid, Oid tablegroupId)
+{
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+	bool		found = false;
+
+	depRel = heap_open(DependRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(YbTablegroupRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(tablegroupId));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 2, key);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	{
+		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
+
+		if (depform->objid == relOid)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	systable_endscan(scan);
+	heap_close(depRel, RowExclusiveLock);
+
+	return found;
 }
 
 /*

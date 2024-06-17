@@ -22,11 +22,16 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress publication-related tests on YB code.
  */
 @RunWith(value = YBTestRunner.class)
-public class TestPgRegressPublication extends BasePgSQLTest {
+public class TestPgRegressPublication extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
+    if (isTestRunningWithConnectionManager()) {
+      flagMap.put("allowed_preview_flags_csv",
+        "ysql_yb_enable_replication_commands,enable_ysql_conn_mgr");
+    } else {
+      flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
+    }
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     return flagMap;
   }

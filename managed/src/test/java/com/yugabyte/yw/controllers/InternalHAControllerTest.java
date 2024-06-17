@@ -18,7 +18,7 @@ import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static play.libs.Files.singletonTemporaryFileCreator;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
@@ -141,8 +141,10 @@ public class InternalHAControllerTest extends FakeDBApplication {
   public void testGetHAConfigNoneExist() {
     String clusterKey = createClusterKey();
     Result getResult = doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, clusterKey);
-    assertEquals(BAD_REQUEST, getResult.status());
-    assertEquals(contentAsString(getResult), "Unable to authenticate request");
+    assertEquals(FORBIDDEN, getResult.status());
+    assertEquals(
+        Json.parse(contentAsString(getResult)).get("error").asText(),
+        "Unable to authenticate request");
   }
 
   @Test
@@ -150,8 +152,10 @@ public class InternalHAControllerTest extends FakeDBApplication {
     createHAConfig();
     String incorrectClusterKey = createClusterKey();
     Result getResult = doRequestWithHAToken("GET", GET_CONFIG_ENDPOINT, incorrectClusterKey);
-    assertEquals(BAD_REQUEST, getResult.status());
-    assertEquals(contentAsString(getResult), "Unable to authenticate request");
+    assertEquals(FORBIDDEN, getResult.status());
+    assertEquals(
+        Json.parse(contentAsString(getResult)).get("error").asText(),
+        "Unable to authenticate request");
   }
 
   @Test

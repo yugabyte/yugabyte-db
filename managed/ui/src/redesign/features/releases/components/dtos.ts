@@ -6,8 +6,7 @@ export interface Releases {
   yb_type: string;
   artifacts: ReleaseArtifacts[];
   release_type: ReleaseType | string,
-  release_date: string;
-  in_use: boolean;
+  release_date_msecs: number;
   release_notes: string;
   state: ReleaseState;
   universes: ReleaseUniverses[];
@@ -44,13 +43,15 @@ export enum ReleaseType {
   ALL = 'All',
   STS = 'STS',
   LTS = 'LTS',
-  PREVIEW = 'PREVIEW (DEFAULT)'
+  PREVIEW_DEFAULT = 'PREVIEW (DEFAULT)',
+  PREVIEW = 'PREVIEW'
 }
 
 export enum ReleaseState {
   ACTIVE =  'ACTIVE',
   DISABLED = 'DISABLED',
-  DELETED = 'DELETED'
+  DELETED = 'DELETED',
+  INCOMPLETE = 'INCOMPLETE'
 }
 
 export enum UrlArtifactStatus {
@@ -83,7 +84,7 @@ export interface ReleaseSpecificArtifact {
   platform: ReleasePlatform;
   architecture: ReleasePlatformArchitecture | string;
   signature: string;
-  release_date?: string;
+  release_date_msecs?: number;
   release_type?: string;
   release_notes?:string;
 }
@@ -100,7 +101,7 @@ export interface ReleaseFormFields {
   version?: string,
   architecture?: string | null,
   platform?: string,
-  releaseDate?: string;
+  releaseDate?: number;
   releaseNotes? : string;
   releaseType?: ReleaseType | string;
 }

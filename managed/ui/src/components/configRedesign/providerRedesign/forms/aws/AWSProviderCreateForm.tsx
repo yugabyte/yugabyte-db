@@ -23,6 +23,7 @@ import {
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import { FieldGroup } from '../components/FieldGroup';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   ConfigureRegionModal,
   CloudVendorRegionField
@@ -34,7 +35,8 @@ import {
   ProviderCode,
   VPCSetupType,
   KeyPairManagement,
-  KEY_PAIR_MANAGEMENT_OPTIONS
+  KEY_PAIR_MANAGEMENT_OPTIONS,
+  ProviderOperation
 } from '../../constants';
 import { RegionList } from '../../components/RegionList';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -70,6 +72,7 @@ import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dt
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import {
+  ConfigureSSHDetailsMsg,
   IsOsPatchingEnabled,
   constructImageBundlePayload
 } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
@@ -86,7 +89,6 @@ export interface AWSProviderCreateFormFieldValues {
   accessKeyId: string;
   dbNodePublicInternetAccess: boolean;
   enableHostedZone: boolean;
-  useIMDSv2: boolean;
   hostedZoneId: string;
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
@@ -185,7 +187,6 @@ export const AWSProviderCreateForm = ({
   const defaultValues: Partial<AWSProviderCreateFormFieldValues> = {
     dbNodePublicInternetAccess: true,
     enableHostedZone: false,
-    useIMDSv2: false,
     ntpServers: [] as string[],
     ntpSetupType: NTPSetupType.CLOUD_VENDOR,
     providerCredentialType: AWSProviderCredentialType.ACCESS_KEY,
@@ -204,6 +205,8 @@ export const AWSProviderCreateForm = ({
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
+
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
 
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
     return <YBLoading />;
@@ -419,15 +422,6 @@ export const AWSProviderCreateForm = ({
                   />
                 </FormField>
               )}
-              <FormField>
-                <FieldLabel
-                  infoTitle="Use IMDSv2"
-                  infoContent="This should be turned on if the AMI requires Instance Metadata Service v2"
-                >
-                  Use IMDSv2
-                </FieldLabel>
-                <YBToggleField name="useIMDSv2" control={formMethods.control} />
-              </FormField>
             </FieldGroup>
             <FieldGroup
               heading="Regions"
@@ -471,12 +465,13 @@ export const AWSProviderCreateForm = ({
               </FormField>
               <RegionList
                 providerCode={ProviderCode.AWS}
+                providerOperation={ProviderOperation.CREATE}
                 regions={regions}
                 setRegionSelection={setRegionSelection}
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={isFormDisabled}
+                isDisabled={isFormDisabled}
                 isError={!!formMethods.formState.errors.regions}
               />
               {formMethods.formState.errors.regions?.message ? (
@@ -488,19 +483,21 @@ export const AWSProviderCreateForm = ({
             <LinuxVersionCatalog
               control={formMethods.control}
               providerType={ProviderCode.AWS}
-              viewMode="CREATE"
+              providerOperation={ProviderOperation.CREATE}
+              isDisabled={isFormDisabled}
             />
             <FieldGroup
               heading="SSH Key Pairs"
               infoTitle="SSH Key Pairs"
               infoContent="YBA requires SSH access to DB nodes. For public clouds, YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
             >
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -511,7 +508,7 @@ export const AWSProviderCreateForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={isFormDisabled}
+                  disabled={isFormDisabled || isOsPatchingEnabled}
                   fullWidth
                 />
               </FormField>
@@ -602,14 +599,9 @@ export const AWSProviderCreateForm = ({
               </YBBanner>
             )}
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-                {!!featureFlags.test.enableAWSProviderValidation && (
-                  <Typography variant="body2" color="primary">
-                    Validating provider configuration fields... usually take 5-30s to complete.
-                  </Typography>
-                )}
-              </Box>
+              <SubmitInProgress
+                isValidationEnabled={!!featureFlags.test.enableAWSProviderValidation}
+              />
             )}
           </Box>
           <Box marginTop="16px">
@@ -699,8 +691,7 @@ const constructProviderPayload = async (
             awsAccessKeyID: formValues.accessKeyId,
             awsAccessKeySecret: formValues.secretAccessKey
           }),
-          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId }),
-          useIMDSv2: formValues.useIMDSv2
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
         }
       },
       ntpServers: formValues.ntpServers,

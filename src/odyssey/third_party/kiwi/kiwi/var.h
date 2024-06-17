@@ -8,6 +8,7 @@
  */
 
 #define KIWI_MAX_VAR_SIZE 128
+#define KIWI_MAX_NAME_SIZE 64
 
 typedef struct kiwi_var kiwi_var_t;
 typedef struct kiwi_vars kiwi_vars_t;
@@ -42,25 +43,40 @@ typedef enum {
 } kiwi_var_type_t;
 
 struct kiwi_var {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
-	char *name;
+#endif
+	char name[KIWI_MAX_NAME_SIZE];
 	int name_len;
 	char value[KIWI_MAX_VAR_SIZE];
 	int value_len;
 };
 
 struct kiwi_vars {
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_t *vars;
+	int size;
+#else
 	kiwi_var_t vars[KIWI_VAR_MAX];
+#endif
 };
 
 static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	var->type = KIWI_VAR_UNDEF;
 	var->name = name;
+#else
+	if (name_len == 0)
+		var->name[0] = '\0';
+	else
+		memcpy(var->name, name, name_len);
+#endif
 	var->name_len = name_len;
 	var->value_len = 0;
 }
 
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 static inline int kiwi_var_set(kiwi_var_t *var, kiwi_var_type_t type,
 			       char *value, int value_len)
 {
@@ -77,16 +93,23 @@ static inline void kiwi_var_unset(kiwi_var_t *var)
 	var->type = KIWI_VAR_UNDEF;
 	var->value_len = 0;
 }
+#endif
 
 static inline int kiwi_var_compare(kiwi_var_t *a, kiwi_var_t *b)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	if (a->type != b->type)
 		return 0;
+#else
+	if (a == NULL || b == NULL)
+		return 0;
+#endif
 	if (a->value_len != b->value_len)
 		return 0;
 	return memcmp(a->value, b->value, a->value_len) == 0;
 }
 
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 static inline kiwi_var_t *kiwi_vars_of(kiwi_vars_t *vars, kiwi_var_type_t type)
 {
 	return &vars->vars[type];
@@ -100,9 +123,52 @@ static inline kiwi_var_t *kiwi_vars_get(kiwi_vars_t *vars, kiwi_var_type_t type)
 		return &vars->vars[type];
 	return NULL;
 }
+#else
+
+/* Dynamically allocate a new GUC variable. */
+static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len, char *value,
+	int value_len)
+{
+	vars->size++;
+	if (vars->size == 1)
+		vars->vars = malloc(sizeof(kiwi_var_t));
+	else
+		/* TODO (rbarigidad): Double list size rather than incrementing by 1 */
+		vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
+
+	kiwi_var_t *var = &vars->vars[vars->size - 1];
+	memcpy(var->name, name, name_len);
+	var->name_len = name_len;
+	memcpy(var->value, value, value_len);
+	var->value_len = value_len;
+}
+
+static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
+{
+	if (value_len > (int)sizeof(var->value))
+		return -1;
+
+	memcpy(var->value, value, value_len);
+	var->value_len = value_len;
+	return 0;
+}
+
+static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name)
+{
+	if (vars->size == 0)
+		return NULL;
+
+	for (int i = 0; i < vars->size; i++) {
+		if (strcmp(vars->vars[i].name, name) == 0)
+			return &vars->vars[i];
+	}
+	return NULL;
+}
+#endif
 
 static inline void kiwi_vars_init(kiwi_vars_t *vars)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_init(&vars->vars[KIWI_VAR_CLIENT_ENCODING], "client_encoding",
 		      16);
 	kiwi_var_init(&vars->vars[KIWI_VAR_DATESTYLE], "DateStyle", 10);
@@ -150,8 +216,16 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars)
 	kiwi_var_init(&vars->vars[KIWI_VAR_ODYSSEY_CATCHUP_TIMEOUT],
 		      "odyssey_catchup_timeout",
 		      sizeof("odyssey_catchup_timeout"));
+#else
+	vars->size = 0;
+
+	/* Ensure that role oid is "cached" after session authorization oid. */
+	yb_kiwi_var_push(vars, "session_authorization_oid", 26, "-1", 3);
+	yb_kiwi_var_push(vars, "role_oid", 9, "-1", 3);
+#endif
 }
 
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 static inline int kiwi_vars_set(kiwi_vars_t *vars, kiwi_var_type_t type,
 				char *value, int value_len)
 {
@@ -177,23 +251,12 @@ static inline kiwi_var_type_t kiwi_vars_find(kiwi_vars_t *vars, char *name,
 	}
 	return KIWI_VAR_UNDEF;
 }
-
-static inline int kiwi_vars_override(kiwi_vars_t *vars,
-				     kiwi_vars_t *override_vars)
-{
-	kiwi_var_type_t type = 0;
-	for (; type < KIWI_VAR_MAX; type++) {
-		kiwi_var_t *var = kiwi_vars_of(override_vars, type);
-		if (!var->value_len)
-			continue;
-		kiwi_vars_set(vars, type, var->value, var->value_len);
-	}
-	return 0;
-}
+#endif
 
 static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 				   char *value, int value_len)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
 	type = kiwi_vars_find(vars, name, name_len);
 	if (type == KIWI_VAR_UNDEF)
@@ -203,6 +266,14 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 		return 0;
 	}
 	kiwi_vars_set(vars, type, value, value_len);
+#else
+	/* Act as a "safe" set. (find and update, else push new value) */
+	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
+	if (var != NULL)
+		yb_kiwi_var_set(var, value, value_len);
+	else
+		yb_kiwi_var_push(vars, name, name_len, value, value_len);
+#endif
 	return 0;
 }
 
@@ -210,12 +281,40 @@ static inline int kiwi_vars_update_both(kiwi_vars_t *a, kiwi_vars_t *b,
 					char *name, int name_len, char *value,
 					int value_len)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
 	type = kiwi_vars_find(a, name, name_len);
 	if (type == KIWI_VAR_UNDEF)
 		return -1;
 	kiwi_vars_set(a, type, value, value_len);
 	kiwi_vars_set(b, type, value, value_len);
+#else
+	kiwi_vars_update(a, name, name_len, value, value_len);
+	kiwi_vars_update(b, name, name_len, value, value_len);
+#endif
+	return 0;
+}
+
+static inline int kiwi_vars_override(kiwi_vars_t *vars,
+				     kiwi_vars_t *override_vars)
+{
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_type_t type = 0;
+	for (; type < KIWI_VAR_MAX; type++) {
+		kiwi_var_t *var = kiwi_vars_of(override_vars, type);
+		if (!var->value_len)
+			continue;
+		kiwi_vars_set(vars, type, var->value, var->value_len);
+	}
+#else
+	for (int i = 0; i < override_vars->size; i++) {
+		if (!override_vars->vars[i].value_len)
+			continue;
+
+		kiwi_vars_update(vars, override_vars->vars[i].name,override_vars->vars[i].name_len,
+			override_vars->vars[i].value, override_vars->vars[i].value_len);
+	}
+#endif
 	return 0;
 }
 
@@ -247,6 +346,7 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 						     char *query, int query_len)
 {
 	int pos = 0;
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
 	type = KIWI_VAR_CLIENT_ENCODING;
 	for (; type < KIWI_VAR_MAX; type++) {
@@ -258,6 +358,24 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 			continue;
 		kiwi_var_t *server_var;
 		server_var = kiwi_vars_of(server, type);
+#else
+	kiwi_var_t *var;
+	for (int i = 0; i < client->size; i++) {
+		var = &client->vars[i];
+		/* we do not support odyssey-to-backend compression yet */
+
+		if (strcmp(var->name, "compression") == 0)
+			continue;
+
+		/* do not send default value oid packets to the server */
+		if (((strcmp(var->name, "role_oid") == 0) ||
+			strcmp(var->name, "session_authorization_oid") == 0) &&
+			(strcmp(var->value, "-1") == 0))
+			continue;
+
+		kiwi_var_t *server_var;
+		server_var = yb_kiwi_vars_get(server, var->name);
+#endif
 		if (kiwi_var_compare(var, server_var))
 			continue;
 
@@ -271,12 +389,14 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 		pos += var->name_len - 1;
 		memcpy(query + pos, "=", 1);
 		pos += 1;
+
 		int quote_len;
 		quote_len =
 			kiwi_enquote(var->value, query + pos, query_len - pos);
 		if (quote_len == -1)
 			return -1;
 		pos += quote_len;
+
 		memcpy(query + pos, ";", 1);
 		pos += 1;
 	}

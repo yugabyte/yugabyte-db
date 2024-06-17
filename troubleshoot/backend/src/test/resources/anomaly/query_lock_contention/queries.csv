@@ -1,0 +1,3 @@
+9ad06d1f-0355-4e3c-a42c-d052b38af7bc,1234,100,2024-01-18T18:00:00Z,select * from some_table,yugabyte,2024-01-18T18:00:00Z
+9ad06d1f-0355-4e3c-a42c-d052b38af7bc,1234,101,2024-01-18T18:00:00Z,select * from other_table,yugabyte,2024-01-18T18:00:00Z
+9ad06d1f-0355-4e3c-a42c-d052b38af7bc,1234,102,2024-01-18T18:00:00Z,select * from yet_other_table,postgres,2024-01-18T18:00:00Z

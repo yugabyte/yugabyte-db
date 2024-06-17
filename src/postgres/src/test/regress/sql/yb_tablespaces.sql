@@ -240,7 +240,7 @@ ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_global;
 ALTER INDEX testschema.part_a_idx SET TABLESPACE pg_default;
 \d testschema.part
 ALTER INDEX testschema.part_a_idx SET TABLESPACE regress_tblspace;
-\d testschema.part  
+\d testschema.part
 INSERT INTO testschema.atable VALUES(3);
 INSERT INTO testschema.atable VALUES(1);
 SELECT COUNT(*) FROM testschema.atable;
@@ -292,11 +292,12 @@ DROP ROLE regress_tablespace_user2;
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 CREATE DATABASE colocation_test colocation = true;
 \c colocation_test
--- Should fail to set tablespace on a table in a colocated database
-CREATE TABLE tab_nonkey (a INT) TABLESPACE x;
+-- Should succeed in setting tablespace on a table in a colocated database
+CREATE TABLE tab_key (a INT) TABLESPACE x;
 -- Should succeed in setting tablespace on a table in a colocated database when opted out
 CREATE TABLE tab_nonkey (a INT) WITH (COLOCATION = false) TABLESPACE x;
 -- cleanup
+DROP TABLE tab_key;
 DROP TABLE tab_nonkey;
 \c yugabyte
 DROP DATABASE colocation_test;
@@ -402,6 +403,39 @@ DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLESPACE valid_tablespace;
 DROP TABLESPACE LP;
+
+-- Test ALTER TABLE/INDEX/MATERILIZED VIEW ALL IN TABLESPACE ... SET TABLESPACE ...
+
+CREATE TABLESPACE tsp1 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone1", "min_num_replicas" : 1 }]}');
+CREATE TABLESPACE tsp2 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud2", "region" : "region2", "zone" : "zone2", "min_num_replicas" : 1 }]}');
+CREATE TABLESPACE tsp3 WITH (replica_placement = '{"num_replicas": 1, "placement_blocks": [{ "cloud" : "cloud1", "region" : "region1", "zone" : "zone2", "min_num_replicas" : 1 }]}');
+
+CREATE TABLE table_1(a int PRIMARY KEY, b int, c int) TABLESPACE tsp1;
+CREATE TABLE table_2(a int PRIMARY KEY, b int, c int) TABLESPACE tsp1;
+CREATE INDEX index_1 ON table_1(b) TABLESPACE tsp2;
+CREATE MATERIALIZED VIEW mat_view TABLESPACE tsp1 AS SELECT * FROM table_1;
+
+-- Moving Table will also move the Primary Key indexes as the primary key index is an intrinsic part of its base table itself.
+ALTER TABLE ALL IN TABLESPACE tsp1 SET TABLESPACE tsp2;
+ALTER INDEX ALL IN TABLESPACE tsp2 SET TABLESPACE tsp1;
+ALTER MATERIALIZED VIEW ALL IN TABLESPACE tsp1 SET TABLESPACE tsp3;
+
+-- View all relations present in pg_class in tablespace tsp1, tsp2 and tsp3 and if the relations were moved to the intended tablespaces.
+SELECT c.relname, ts.spcname FROM
+    pg_class c
+    JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+WHERE
+    ts.spcname IN ('tsp1', 'tsp2', 'tsp3')
+ORDER BY
+    c.relname;
+
+DROP MATERIALIZED VIEW mat_view;
+DROP INDEX index_1;
+DROP TABLE table_1;
+DROP TABLE table_2;
+DROP TABLESPACE tsp1;
+DROP TABLESPACE tsp2;
+DROP TABLESPACE tsp3;
 
 /*
 Testing that an index in a tablespace with leader preference on a closer placement is preferred

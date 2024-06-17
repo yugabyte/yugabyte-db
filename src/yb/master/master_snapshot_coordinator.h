@@ -15,21 +15,23 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
+#include "yb/master/master_types.h"
 #include "yb/master/master_types.pb.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/util/status_fwd.h"
-#include "yb/util/opid.h"
 
 namespace yb {
 namespace master {
@@ -63,12 +65,36 @@ struct SnapshotScheduleRestoration {
   // only the 'parent' field of SplitTabletInfo above will be populated and 'children'
   // map of SplitTabletInfo will be empty.
   std::unordered_map<TabletId, SplitTabletInfo> non_system_tablets_to_restore;
+
+  static std::shared_ptr<SnapshotScheduleRestoration> Create(
+      TxnSnapshotRestorationId restoration_id, TxnSnapshotId snapshot_id, HybridTime restore_at,
+      OpId op_id, HybridTime write_time, int64_t leader_term) {
+    return std::make_shared<SnapshotScheduleRestoration>(SnapshotScheduleRestoration{
+        .snapshot_id = std::move(snapshot_id),
+        .restore_at = std::move(restore_at),
+        .restoration_id = std::move(restoration_id),
+        .op_id = std::move(op_id),
+        .write_time = std::move(write_time),
+        .term = leader_term,
+        .db_oid = std::nullopt,
+        .schedules = {},
+        .non_system_obsolete_tablets = {},
+        .non_system_obsolete_tables = {},
+        .non_system_objects_to_restore = {},
+        .existing_system_tables = {},
+        .restoring_system_tables = {},
+        .parent_to_child_tables = {},
+        .non_system_tablets_to_restore = {},
+    });
+  }
 };
 
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
-  explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context, CatalogManager* cm);
+  MasterSnapshotCoordinator(
+      SnapshotCoordinatorContext* context, CatalogManager* cm,
+      TabletSplitManager& tablet_split_manager);
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
@@ -146,12 +172,14 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<SnapshotSchedulesToObjectIdsMap> MakeSnapshotSchedulesToObjectIdsMap(
       SysRowEntryType type);
 
-  Result<SnapshotInfoPB> GetSuitableSnapshot(
+  Result<std::vector<SnapshotScheduleId>> GetSnapshotSchedules(
+      SysRowEntryType type, const std::string& object_id);
+
+  // Returns the id of a completed snapshot suitable for restoring to the given restore time.
+  Result<TxnSnapshotId> GetSuitableSnapshotForRestore(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline);
-  Result<SnapshotInfoPB> WaitForSnapshotToComplete(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline);
-  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info);
+  Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) const;
 
   // Returns true if there are one or more non-deleted
   // snapshot schedules present.
@@ -166,8 +194,24 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   // If snapshot_id is nil then returns true if any snapshot covers the particular tablet
   // whereas if snapshot_id is not nil then returns true if that particular snapshot
   // covers the tablet.
-  bool IsTabletCoveredBySnapshot(
-      const TabletId& tablet_id, const TxnSnapshotId& snapshot_id = TxnSnapshotId(Uuid::Nil()));
+  bool TEST_IsTabletCoveredBySnapshot(
+      const TabletId& tablet_id,
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId(Uuid::Nil())) const;
+
+  Status PopulateDeleteRetainerInfoForTableDrop(
+      const TableInfo& table_info, const TabletInfos& tablets_to_check,
+      const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map,
+      TabletDeleteRetainerInfo& delete_retainer) const;
+  Status PopulateDeleteRetainerInfoForTabletDrop(
+      const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const;
+
+  bool ShouldRetainHiddenTablet(
+      const TabletInfo& tablet_info,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time) const;
+
+  bool ShouldRetainHiddenColocatedTable(
+      const TableInfo& table_info, const TabletInfo& tablet_info,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time) const;
 
  private:
   class Impl;

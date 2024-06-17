@@ -14,14 +14,11 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLE
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -29,7 +26,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -101,39 +97,7 @@ public class ShellProcessHandler {
    * @return shell response
    */
   public ShellResponse run(List<String> command, ShellProcessContext context) {
-
-    List<String> redactedCommand = new ArrayList<>(command);
-
-    // Redacting the sensitive data in the command which is used for logging.
-    if (context.getSensitiveData() != null) {
-      context
-          .getSensitiveData()
-          .forEach(
-              (key, value) -> {
-                redactedCommand.add(key);
-                command.add(key);
-                command.add(value);
-
-                try {
-                  JsonNode valueJson = Json.mapper().readTree(value);
-                  redactedCommand.add(
-                      RedactingService.filterSecretFields(valueJson, RedactionTarget.LOGS)
-                          .toString());
-
-                } catch (JsonProcessingException e) {
-                  redactedCommand.add(RedactingService.redactString(value));
-                }
-              });
-    }
-    // If there are entries with redacted values, update them.
-    if (MapUtils.isNotEmpty(context.getRedactedVals())) {
-      redactedCommand.replaceAll(
-          entry ->
-              context.getRedactedVals().containsKey(entry)
-                  ? context.getRedactedVals().get(entry)
-                  : entry);
-    }
-
+    List<String> redactedCommand = context.redactCommand(command);
     ProcessBuilder pb = new ProcessBuilder(command);
     Map<String, String> envVars = pb.environment();
     Map<String, String> extraEnvVars = context.getExtraEnvVars();
@@ -406,7 +370,7 @@ public class ShellProcessHandler {
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
       line = line.trim();
-      if (line.startsWith("[app]")) {
+      if (line.contains("[app]")) {
         log.info(line);
       }
       count++;

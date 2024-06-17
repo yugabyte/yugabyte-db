@@ -14,7 +14,7 @@ type: indexpage
 
 The sample applications in this section provide advanced examples of connecting Spring, GraphQL, and YCQL Java applications to a YugabyteDB Managed cluster.
 
-To get started building applications for YugabyteDB Managed, refer to [Build an application](../../develop/build-apps/).
+To get started building applications for YugabyteDB Managed, refer to [Build an application](../../tutorials/build-apps/).
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For information on available drivers, refer to [Drivers](../../reference/drivers/).
 

@@ -22,7 +22,7 @@ import java.io.File;
 import java.util.Map;
 
 @RunWith(value = YBTestRunner.class)
-public class TestPgRegressContribPasswordCheck extends BasePgSQLTest {
+public class TestPgRegressContribPasswordCheck extends BasePgRegressTest {
     @Override
     public int getTestMethodTimeoutSec() {
         return 1800;

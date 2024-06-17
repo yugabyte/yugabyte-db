@@ -821,7 +821,7 @@ class AzureCloudAdmin():
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
-                            use_spot_instance, vm_custom, disk_custom, is_edit=False,
+                            use_spot_instance, vm_custom, disk_custom, use_plan, is_edit=False,
                             json_output=True, cloud_instance_types=[]):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
@@ -926,7 +926,7 @@ class AzureCloudAdmin():
                     "maxPrice": spot_price
                 }
             logging.info(f'[app] Using Azure spot instance')
-        if plan is not None:
+        if plan is not None and use_plan:
             vm_parameters["plan"] = plan
 
         if zone is not None:
@@ -988,11 +988,17 @@ class AzureCloudAdmin():
         subnet = self.network().get_default_subnet(vnet)
         return {zone: subnet for zone in zones}
 
-    def parse_vm_info(self, vm):
+    def parse_vm_info(self, capabilities):
         vm_info = {}
-        vm_info["numCores"] = vm.get("numberOfCores")
-        vm_info["memSizeGb"] = float(vm.get("memoryInMB")) / 1000.0
-        vm_info["maxDiskCount"] = vm.get("maxDataDiskCount")
+        for capability in capabilities:
+            name = capability.name
+            value = capability.value
+            if name == "vCPUs":
+                vm_info["numCores"] = int(value or 0)
+            elif name == "MemoryGB":
+                vm_info["memSizeGb"] = float(value or 0)
+            elif name == "MaxDataDiskCount":
+                vm_info["maxDiskCount"] = int(value or 0)
         vm_info['prices'] = {}
         return vm_info
 
@@ -1006,15 +1012,22 @@ class AzureCloudAdmin():
 
         all_vms = {}
         # Base list of VMs to check for.
-        vm_list = [vm.serialize() for vm in
-                   self.compute_client.virtual_machine_sizes.list(location=regions[0])]
+        vm_list = self.compute_client.resource_skus.list(filter="location eq '{}'"
+                                                         .format(regions[0]))
         for vm in vm_list:
-            vm_size = vm.get("name")
+            # We only care about virtual machines
+            if vm.resource_type != "virtualMachines":
+                continue
+            # No capabilities
+            capabilities = vm.capabilities
+            if not capabilities:
+                continue
+            vm_size = vm.name
             # We only care about VMs that support Premium storage. Promo is pricing special.
             if (vm_size.startswith(burstable_prefix) or not regex.match(vm_size)
                     or vm_size.endswith("Promo")):
                 continue
-            vm_info = self.parse_vm_info(vm)
+            vm_info = self.parse_vm_info(capabilities)
             if vm_info["memSizeGb"] < MIN_MEM_SIZE_GB or vm_info["numCores"] < MIN_NUM_CORES:
                 continue
             all_vms[vm_size] = vm_info

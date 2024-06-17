@@ -43,6 +43,7 @@
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
+#include "optimizer/ybcplan.h"
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
 #include "partitioning/partprune.h"
@@ -134,21 +135,19 @@ static SeqScan *create_seqscan_plan(PlannerInfo *root, Path *best_path,
 static SampleScan *create_samplescan_plan(PlannerInfo *root, Path *best_path,
 					   List *tlist, List *scan_clauses);
 static Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
-					  List *tlist, List *scan_clauses, bool indexonly);
+					  List *tlist, List *scan_clauses, bool indexonly,
+					  bool bitmapindex);
 static BitmapHeapScan *create_bitmap_scan_plan(PlannerInfo *root,
 						BitmapHeapPath *best_path,
 						List *tlist, List *scan_clauses);
+static YbBitmapTableScan *create_yb_bitmap_scan_plan(PlannerInfo *root,
+						YbBitmapTablePath *best_path,
+						List *tlist, List *scan_clauses);
 static Plan *create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
-					  List **qual, List **indexqual, List **indexECs);
+					  List **qual, List **indexqual, List **indexpushdownqual,
+					  List **indexECs, List *tlist, List **scan_clauses);
 static void bitmap_subplan_mark_shared(Plan *plan);
 static List *flatten_partitioned_rels(List *partitioned_rels);
-static void extract_pushdown_clauses(List *restrictinfo_list,
-						 IndexOptInfo *indexinfo,
-						 List **local_quals,
-						 List **rel_remote_quals,
-						 List **rel_colrefs,
-						 List **idx_remote_quals,
-						 List **idx_colrefs);
 static TidScan *create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 					List *tlist, List *scan_clauses);
 static SubqueryScan *create_subqueryscan_plan(PlannerInfo *root,
@@ -191,8 +190,7 @@ static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
-				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks);
+				YbPlanInfo yb_plan_info);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 				TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -202,23 +200,39 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 			   List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
-			   ScanDirection indexscandir, double yb_estimated_num_nexts,
-			   double yb_estimated_num_seeks, YbIndexPathInfo yb_path_info);
+			   ScanDirection indexscandir, YbPlanInfo yb_plan_info,
+			   YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
-				   ScanDirection indexscandir, double yb_estimated_num_nexts,
-				   double yb_estimated_num_seeks);
+				   ScanDirection indexscandir, YbPlanInfo yb_plan_info);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
-					  List *indexqualorig);
+					  List *indexqualorig,
+					  List *indextlist);
+static YbBitmapIndexScan *make_yb_bitmap_indexscan(Index scanrelid, Oid indexid,
+					  List *indexqual,
+					  List *indexqualorig,
+					  List *indextlist,
+					  PushdownExprs yb_idx_pushdown,
+					  YbPlanInfo yb_plan_info);
 static BitmapHeapScan *make_bitmap_heapscan(List *qptlist,
 					 List *qpqual,
 					 Plan *lefttree,
 					 List *bitmapqualorig,
 					 Index scanrelid);
+static YbBitmapTableScan *make_yb_bitmap_tablescan(List *qptlist,
+					 List *qpqual,
+					 Plan *lefttree,
+					 Index scanrelid,
+					 PushdownExprs rel_pushdown,
+					 PushdownExprs recheck_pushdown,
+					 List *recheck_local_quals,
+					 PushdownExprs fallback_pushdown,
+					 List *fallback_local_quals,
+					 YbPlanInfo yb_plan_info);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
 			 List *tidquals);
 static SubqueryScan *make_subqueryscan(List *qptlist,
@@ -414,6 +428,7 @@ create_plan_recurse(PlannerInfo *root, Path *best_path, int flags)
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 		case T_BitmapHeapScan:
+		case T_YbBitmapTableScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
@@ -671,7 +686,8 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 												  (IndexPath *) best_path,
 												  tlist,
 												  scan_clauses,
-												  false);
+												  false /* indexonly */,
+												  false /* bitmapindex */);
 			break;
 
 		case T_IndexOnlyScan:
@@ -679,7 +695,8 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 												  (IndexPath *) best_path,
 												  tlist,
 												  scan_clauses,
-												  true);
+												  true /* indexonly */,
+												  false /* bitmapindex */);
 			break;
 
 		case T_BitmapHeapScan:
@@ -687,6 +704,13 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 													(BitmapHeapPath *) best_path,
 													tlist,
 													scan_clauses);
+			break;
+
+		case T_YbBitmapTableScan:
+			plan = (Plan *) create_yb_bitmap_scan_plan(root,
+													   (YbBitmapTablePath *) best_path,
+													   tlist,
+													   scan_clauses);
 			break;
 
 		case T_TidScan:
@@ -900,19 +924,20 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 		RowExpr *leftop = makeNode(RowExpr);
 		RowExpr *rightop = makeNode(RowExpr);
 
-		Oid opresulttype = -1;
-		bool opretset = false;
-		Oid opcolloid = -1;
-		Oid inputcollid = -1;
+		List *inputcollids = NIL;
+		List *opnos = NIL;
+		List *opfamilies = NIL;
 
 		for (int i = 0; i < len; i++)
 		{
 			Expr *b_expr = (Expr *) exprcols[i];
 			OpExpr *opexpr = (OpExpr *) b_expr;
-			opresulttype = opexpr->opresulttype;
-			opretset = opexpr->opretset;
-			opcolloid = opexpr->opcollid;
-			inputcollid = opexpr->inputcollid;
+			inputcollids =
+				lappend_oid(inputcollids, opexpr->inputcollid);
+			opnos = lappend_oid(opnos, opexpr->opno);
+			OpBtreeInterpretation *btreeinterp =
+				linitial(get_op_btree_interpretation(opexpr->opno));
+			opfamilies = lappend_oid(opfamilies, btreeinterp->opfamily_id);
 
 			Expr *left_expr = (Expr *) get_leftop(b_expr);
 			leftop->args = lappend(leftop->args, left_expr);
@@ -934,9 +959,13 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 
 		YbBatchedExpr *right_batched_expr = makeNode(YbBatchedExpr);
 		right_batched_expr->orig_expr = (Expr*) rightop;
-		Expr *zipped = (Expr*) make_opclause(RECORD_EQ_OP, opresulttype, opretset,
-									(Expr*) leftop, (Expr*) right_batched_expr,
-									opcolloid, inputcollid);
+		RowCompareExpr *zipped = makeNode(RowCompareExpr);
+		zipped->largs = leftop->args;
+		zipped->rargs = (Node *) right_batched_expr;
+		zipped->rctype = ROWCOMPARE_EQ;
+		zipped->opfamilies = opfamilies;
+		zipped->opnos = opnos;
+		zipped->inputcollids = inputcollids;
 		zipped_exprs = lappend(zipped_exprs, zipped);
 	}
 
@@ -1022,6 +1051,12 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 	 */
 	if (rel->is_yb_relation)
 		return false;
+
+	/*
+	 * YbBitmapTablePath should only be selected for YB relations, which are
+	 * handled above
+	 */
+	Assert(!IsA(path, YbBitmapTablePath));
 
 	/*
 	 * Also, don't do it to a CustomPath; the premise that we're extracting
@@ -3459,8 +3494,10 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 
 	/* Reduce RestrictInfo list to bare expressions; ignore pseudoconstants */
 	if (best_path->parent->is_yb_relation)
-		extract_pushdown_clauses(scan_clauses, NULL, &local_quals,
-								 &remote_quals, &colrefs, NULL, NULL);
+		extract_pushdown_clauses(scan_clauses, NULL,
+								 false /* is_bitmap_index_scan */,
+								 &local_quals, &remote_quals, &colrefs,
+								 NULL, NULL);
 	else
 		local_quals = extract_actual_clauses(scan_clauses, false);
 
@@ -3475,8 +3512,7 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
 												remote_quals, colrefs,
 												scan_relid,
-												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks);
+												best_path->yb_plan_info);
 	else
 		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
@@ -3534,7 +3570,7 @@ create_samplescan_plan(PlannerInfo *root, Path *best_path,
 static inline bool
 YbIsHashCodeFunc(FuncExpr *func)
 {
-	return func && func->funcid == YB_HASH_CODE_OID;
+	return func->funcid == YB_HASH_CODE_OID;
 }
 
 /*
@@ -3543,7 +3579,7 @@ YbIsHashCodeFunc(FuncExpr *func)
  * After the change attribute numbers will be taken from index which is used
  * for the yb_hash_code pushdown.
  */
-static bool
+static void
 YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 {
 	Assert(YbIsHashCodeFunc(hash_code_func));
@@ -3551,14 +3587,24 @@ YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 	int indexcol = 0;
 	foreach(l, hash_code_func->args)
 	{
-		Node *arg_node = (Node *)lfirst(l);
-		Var *arg_var = (Var *)(IsA(arg_node, Var) ? arg_node : NULL);
-		if (!arg_var ||
-		    indexcol >= index->nkeycolumns ||
-		    index->rel->relid != arg_var->varno ||
-		    index->indexkeys[indexcol] != arg_var->varattno ||
-		    index->opcintype[indexcol] != arg_var->vartype)
-				return false;
+		Var *arg_var = (Var *) lfirst(l);
+		/*
+		 * Sanity check. Planner should have already verified that function
+		 * arguments match the index.
+		 * Should it rather be an assertion?
+		 */
+		if (!IsA(arg_var, Var) ||
+			indexcol >= index->nkeycolumns ||
+			index->rel->relid != arg_var->varno ||
+			index->indexkeys[indexcol] != arg_var->varattno ||
+			index->opcintype[indexcol] != arg_var->vartype)
+				ereport(ERROR,
+						(errmsg("bad call of yb_hash_code"),
+						 errdetail("Function yb_hash_code is chosen as an index condition, "
+								   "but its arguments do not match hash keys of the index"),
+						 errcode(ERRCODE_INTERNAL_ERROR),
+						 hash_code_func->location != -1 ?
+							errposition(hash_code_func->location) : 0));
 		/*
 		 * Note: In spite of the fact that YSQL will use secodary index for handling
 		 * the yb_hash_code pushdown the arg_var->varno field should not be changed
@@ -3567,61 +3613,55 @@ YbFixHashCodeFuncArgs(FuncExpr *hash_code_func, const IndexOptInfo *index)
 		 * function itself not its arguments will not be converted into index
 		 * columns.
 		 */
-		arg_var->varattno = indexcol + 1;
-		++indexcol;
+		arg_var->varattno = ++indexcol;
 	}
-	return true;
 }
 
 static bool
-YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo *index)
+YbFixHashCodeFuncArgsWalker(Node *node, IndexOptInfo* indexinfo)
 {
-	FuncExpr *func = (FuncExpr *)(IsA(node, FuncExpr) ? node : NULL);
-
-	if (YbIsHashCodeFunc(func) && !YbFixHashCodeFuncArgs(func, index))
-		elog(ERROR, "bad call of yb_hash_code");
-
-	return expression_tree_walker(
-		node, &YbFixHashCodeFuncArgsWalker, index);
-}
-
-static bool
-YbHasHashCodeFuncWalker(Node *node, bool *hash_code_func_found)
-{
-	if (*hash_code_func_found)
-		return true;
-
-	FuncExpr *func = (FuncExpr *)(IsA(node, FuncExpr) ? node : NULL);
-
-	if (YbIsHashCodeFunc(func))
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr))
 	{
-		*hash_code_func_found = true;
-		return true;
+		FuncExpr *func = (FuncExpr *) node;
+		if (YbIsHashCodeFunc(func))
+		{
+			YbFixHashCodeFuncArgs(func, indexinfo);
+			return false;
+		}
 	}
-
 	return expression_tree_walker(
-		node, &YbHasHashCodeFuncWalker, hash_code_func_found);
+		node, &YbFixHashCodeFuncArgsWalker, (void *) indexinfo);
+}
+
+static bool
+YbHasHashCodeFuncWalker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, FuncExpr) && YbIsHashCodeFunc((FuncExpr *) node))
+		return true;
+	return expression_tree_walker(node, YbHasHashCodeFuncWalker, context);
 }
 
 /*
  * In case indexquals has at least one yb_hash_code qual function makes
  * a copy of indexquals and alters yb_hash_code function args attrributes.
- * In other cases functions returns NULL.
+ * In other cases functions returns NIL.
  */
 static List*
 YbBuildIndexqualForRecheck(List *indexquals, IndexOptInfo* indexinfo)
 {
-	bool has_hash_code_func = false;
-	expression_tree_walker(
-		(Node *)indexquals, &YbHasHashCodeFuncWalker, &has_hash_code_func);
-	if (has_hash_code_func)
+	if (expression_tree_walker(
+		(Node *) indexquals, YbHasHashCodeFuncWalker, NULL))
 	{
 		List *result = copyObject(indexquals);
 		expression_tree_walker(
-			(Node *)result, &YbFixHashCodeFuncArgsWalker, indexinfo);
+			(Node *) result, YbFixHashCodeFuncArgsWalker, indexinfo);
 		return result;
 	}
-	return NULL;
+	return NIL;
 }
 
 /*
@@ -3639,7 +3679,8 @@ create_indexscan_plan(PlannerInfo *root,
 					  IndexPath *best_path,
 					  List *tlist,
 					  List *scan_clauses,
-					  bool indexonly)
+					  bool indexonly,
+					  bool bitmapindex)
 {
 	Scan	   *scan_plan;
 	List	   *indexquals = best_path->indexquals;
@@ -3742,22 +3783,43 @@ create_indexscan_plan(PlannerInfo *root,
 		 * there is no point to pass in indexinfo to check this.
 		 * Other case when we should skip extracting index clauses is if the
 		 * index is primary.
+		 * However, if we are doing a bitmap index scan on a primary key, we
+		 * should still push down index clauses.
 		 */
-		bool need_idx_remote = !indexonly;
+		bool need_idx_remote;
+		if (bitmapindex)
+			need_idx_remote = true;
 		/*
 		 * For hypothetical index where primary index isn't involved, there is
 		 * no Relation. Hence don't make change to need_idx_remote.
 		 */
-		if (need_idx_remote && !best_path->indexinfo->hypothetical)
+		else if (!indexonly && !best_path->indexinfo->hypothetical)
 		{
 			Relation index;
 			index = RelationIdGetRelation(best_path->indexinfo->indexoid);
-			if (index->rd_index->indisprimary)
-				need_idx_remote = false;
+			need_idx_remote = !index->rd_index->indisprimary;
 			RelationClose(index);
 		}
+		else
+			need_idx_remote = !indexonly;
+
+		/*
+		 * First, include other clauses from the bitmap branch (if any) as index
+		 * pushdowns. See the comment in build_paths_for_OR for more details.
+		 */
+		if (bitmapindex)
+			extract_pushdown_clauses(best_path->yb_bitmap_idx_pushdowns,
+									 best_path->indexinfo,
+									 bitmapindex,
+									 NULL /* local_quals */,
+									 NULL /* rel_remote_quals */,
+									 NULL /* rel_colrefs */,
+									 &idx_remote_quals, &idx_colrefs);
+
+		/* Then, look at all remaining clauses for pushdown-able filters */
 		extract_pushdown_clauses(qpqual,
 								 need_idx_remote ? best_path->indexinfo : NULL,
+								 bitmapindex,
 								 &local_quals, &rel_remote_quals, &rel_colrefs,
 								 &idx_remote_quals, &idx_colrefs);
 	}
@@ -3830,8 +3892,7 @@ create_indexscan_plan(PlannerInfo *root,
 												fixed_indexorderbys,
 												best_path->indexinfo->indextlist,
 												best_path->indexscandir,
-												best_path->yb_estimated_num_nexts,
-												best_path->yb_estimated_num_seeks);
+												best_path->yb_plan_info);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -3857,8 +3918,7 @@ create_indexscan_plan(PlannerInfo *root,
 										 indexorderbyops,
 										 best_path->indexinfo->indextlist,
 										 best_path->indexscandir,
-										 best_path->yb_estimated_num_nexts,
-										 best_path->yb_estimated_num_seeks,
+										 best_path->yb_plan_info,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
@@ -3897,7 +3957,8 @@ create_bitmap_scan_plan(PlannerInfo *root,
 	/* Process the bitmapqual tree into a Plan tree and qual lists */
 	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
 										   &bitmapqualorig, &indexquals,
-										   &indexECs);
+										   NULL /* indexpushdownquals */,
+										   &indexECs, tlist, &scan_clauses);
 
 	if (best_path->path.parallel_aware)
 		bitmap_subplan_mark_shared(bitmapqualplan);
@@ -3986,6 +4047,182 @@ create_bitmap_scan_plan(PlannerInfo *root,
 }
 
 /*
+ * create_yb_bitmap_scan_plan
+ *	  Returns a bitmap scan plan for the base relation scanned by 'best_path'
+ *	  with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static YbBitmapTableScan *
+create_yb_bitmap_scan_plan(PlannerInfo *root,
+						YbBitmapTablePath *best_path,
+						List *tlist,
+						List *scan_clauses)
+{
+	Index		baserelid = best_path->path.parent->relid;
+	Plan	   *bitmapqualplan;
+	List	   *indexqual;
+	List	   *indexquals;
+	List	   *indexpushdownquals;
+	List	   *indexECs;
+	List	   *qpqual;
+	ListCell   *l;
+	YbBitmapTableScan *scan_plan;
+
+	/* it should be a base rel... */
+	Assert(baserelid > 0);
+	Assert(best_path->path.parent->rtekind == RTE_RELATION);
+
+	/* Process the bitmapqual tree into a Plan tree and qual lists */
+	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
+										   &indexqual, &indexquals,
+										   &indexpushdownquals, &indexECs,
+										   tlist, &scan_clauses);
+
+	/*
+	 * The qpqual list must contain all restrictions not automatically handled
+	 * by the index, other than pseudoconstant clauses which will be handled
+	 * by a separate gating plan node.  All the predicates in the indexquals
+	 * will be checked (either by the index itself, or by
+	 * nodeYbBitmapTablescan.c), but if there are any "special" operators
+	 * involved then they must be added to qpqual.  The upshot is that qpqual
+	 * must contain scan_clauses minus whatever appears in indexquals.
+	 *
+	 * This loop is similar to the comparable code in create_indexscan_plan(),
+	 * but with some differences because it has to compare the scan clauses to
+	 * stripped (no RestrictInfos) indexquals.  See comments there for more
+	 * info.
+	 *
+	 * In normal cases simple equal() checks will be enough to spot duplicate
+	 * clauses, so we try that first.  We next see if the scan clause is
+	 * redundant with any top-level indexqual by virtue of being generated
+	 * from the same EC.  After that, try predicate_implied_by().
+	 *
+	 * Unlike create_indexscan_plan(), the predicate_implied_by() test here is
+	 * useful for getting rid of qpquals that are implied by index predicates,
+	 * because the predicate conditions are included in the "indexquals"
+	 * returned by create_bitmap_subplan().  Bitmap scans have to do it that
+	 * way because predicate conditions need to be rechecked if the scan
+	 * becomes lossy, so they have to be included in indexqual.
+	 */
+	qpqual = NIL;
+	foreach(l, scan_clauses)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+		Node	   *clause = (Node *) rinfo->clause;
+
+		if (rinfo->pseudoconstant)
+			continue;			/* we may drop pseudoconstants here */
+		if (list_member(indexquals, clause))
+			continue;			/* simple duplicate */
+		if (list_member(indexpushdownquals, clause))
+			continue;			/* simple duplicate */
+		if (rinfo->parent_ec && list_member_ptr(indexECs, rinfo->parent_ec))
+			continue;			/* derived from same EquivalenceClass */
+		if (!contain_mutable_functions(clause) &&
+			(predicate_implied_by(list_make1(clause), indexquals, false) ||
+			 predicate_implied_by(list_make1(clause), indexpushdownquals, false)))
+			continue;			/* provably implied by indexquals or
+			                     * indexpushdownquals */
+		qpqual = lappend(qpqual, rinfo);
+	}
+
+	/* Sort clauses into best execution order */
+	qpqual = order_qual_clauses(root, qpqual);
+
+	/*
+	 * We have to replace any outer-relation variables with nestloop params in
+	 * the local qual expressions.  (This was already done for xpressions
+	 * attached to plan nodes in the bitmapqualplan tree.)
+	 */
+	if (best_path->path.param_info)
+	{
+		indexquals = (List *)
+			replace_nestloop_params(root, (Node *) indexquals);
+		qpqual = (List *)
+			replace_nestloop_params(root, (Node *) qpqual);
+		scan_clauses = (List *)
+			replace_nestloop_params(root, (Node *) scan_clauses);
+	}
+
+	/* Determine remote and local quals */
+	List	   *local_quals = NIL;
+	List	   *rel_remote_quals = NIL;
+	List	   *rel_colrefs = NIL;
+
+	extract_pushdown_clauses(qpqual, NULL /* index_info */,
+							 false /* bitmapindex */, &local_quals,
+							 &rel_remote_quals, &rel_colrefs,
+							 NULL /* idx_remote_quals */,
+							 NULL /* idx_colrefs */);
+
+	PushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
+
+	/*
+	 * When dealing with special operators, we will at this point have
+	 * duplicate clauses in local_quals and indexquals.  We may as well drop
+	 * 'em from indexquals, since there's no point in making the tests
+	 * twice.
+	 */
+	indexquals = list_difference_ptr(indexquals, local_quals);
+
+	/*
+	 * Sort the index quals into lists of pushable and non-pushable quals, to
+	 * use for rechecking.
+	 */
+	List	   *recheck_remote_quals = NIL;
+	List	   *recheck_colrefs = NIL;
+	List	   *recheck_local_quals = NIL;
+
+	ListCell *lc;
+	foreach(lc, indexquals)
+	{
+		List *colrefs = NIL;
+		Expr *clause = (Expr *) lfirst(lc);
+		if (YbCanPushdownExpr(clause, &colrefs))
+		{
+			recheck_colrefs = list_concat(recheck_colrefs, colrefs);
+			recheck_remote_quals = lappend(recheck_remote_quals, clause);
+		}
+		else
+			recheck_local_quals = lappend(recheck_local_quals, clause);
+	}
+
+	PushdownExprs recheck_pushdown = {recheck_remote_quals, recheck_colrefs};
+
+	/*
+	 * Get all pushable expressions, including those that were already pushed
+	 * down to the indexes. These pushdown expressions will be used if we exceed
+	 * work_mem - we switch to a sequential scan.
+	 */
+	List	   *fallback_remote_quals = NIL;
+	List	   *fallback_colrefs = NIL;
+	List	   *fallback_local_quals = NIL;
+
+	extract_pushdown_clauses(scan_clauses, NULL /* index_info */,
+							 false /* bitmapindex */, &fallback_local_quals,
+							 &fallback_remote_quals, &fallback_colrefs,
+							 NULL /* idx_remote_quals */,
+							 NULL /* idx_colrefs */);
+
+	PushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
+
+	/* Finally ready to build the plan node */
+	scan_plan = make_yb_bitmap_tablescan(tlist,
+										 local_quals,
+										 bitmapqualplan,
+										 baserelid,
+										 rel_pushdown,
+										 recheck_pushdown,
+										 recheck_local_quals,
+										 fallback_pushdown,
+										 fallback_local_quals,
+										 ((Path *) best_path)->yb_plan_info);
+
+	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
+
+	return scan_plan;
+}
+
+/*
  * Given a bitmapqual tree, generate the Plan tree that implements it
  *
  * As byproducts, we also return in *qual and *indexqual the qual lists
@@ -4007,7 +4244,8 @@ create_bitmap_scan_plan(PlannerInfo *root,
  */
 static Plan *
 create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
-					  List **qual, List **indexqual, List **indexECs)
+					  List **qual, List **indexqual, List **indexpushdownquals,
+					  List **indexECs, List *tlist, List **scan_clauses)
 {
 	Plan	   *plan;
 
@@ -4017,6 +4255,7 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		List	   *subplans = NIL;
 		List	   *subquals = NIL;
 		List	   *subindexquals = NIL;
+		List	   *subindexpushdownquals = NIL;
 		List	   *subindexECs = NIL;
 		ListCell   *l;
 
@@ -4032,14 +4271,18 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 			Plan	   *subplan;
 			List	   *subqual;
 			List	   *subindexqual;
+			List	   *subindexpushdownqual;
 			List	   *subindexEC;
 
 			subplan = create_bitmap_subplan(root, (Path *) lfirst(l),
 											&subqual, &subindexqual,
-											&subindexEC);
+											&subindexpushdownqual, &subindexEC,
+											tlist, scan_clauses);
 			subplans = lappend(subplans, subplan);
 			subquals = list_concat_unique(subquals, subqual);
 			subindexquals = list_concat_unique(subindexquals, subindexqual);
+			subindexpushdownquals = list_concat_unique(subindexpushdownquals,
+													   subindexpushdownqual);
 			/* Duplicates in indexECs aren't worth getting rid of */
 			subindexECs = list_concat(subindexECs, subindexEC);
 		}
@@ -4053,6 +4296,8 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		plan->parallel_safe = apath->path.parallel_safe;
 		*qual = subquals;
 		*indexqual = subindexquals;
+		if (indexpushdownquals)
+			*indexpushdownquals = subindexpushdownquals;
 		*indexECs = subindexECs;
 	}
 	else if (IsA(bitmapqual, BitmapOrPath))
@@ -4061,6 +4306,7 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		List	   *subplans = NIL;
 		List	   *subquals = NIL;
 		List	   *subindexquals = NIL;
+		List	   *subindexpushdownquals = NIL;
 		bool		const_true_subqual = false;
 		bool		const_true_subindexqual = false;
 		ListCell   *l;
@@ -4079,11 +4325,13 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 			Plan	   *subplan;
 			List	   *subqual;
 			List	   *subindexqual;
+			List	   *subindexpushdownqual;
 			List	   *subindexEC;
 
 			subplan = create_bitmap_subplan(root, (Path *) lfirst(l),
 											&subqual, &subindexqual,
-											&subindexEC);
+											&subindexpushdownqual, &subindexEC,
+											tlist, scan_clauses);
 			subplans = lappend(subplans, subplan);
 			if (subqual == NIL)
 				const_true_subqual = true;
@@ -4093,8 +4341,12 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 			if (subindexqual == NIL)
 				const_true_subindexqual = true;
 			else if (!const_true_subindexqual)
+			{
 				subindexquals = lappend(subindexquals,
 										make_ands_explicit(subindexqual));
+				subindexpushdownquals = lappend(subindexpushdownquals,
+										   make_ands_explicit(subindexpushdownqual));
+			}
 		}
 
 		/*
@@ -4129,11 +4381,24 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		else
 			*qual = list_make1(make_orclause(subquals));
 		if (const_true_subindexqual)
+		{
 			*indexqual = NIL;
+			if (indexpushdownquals)
+				*indexpushdownquals = NIL;
+		}
 		else if (list_length(subindexquals) <= 1)
+		{
 			*indexqual = subindexquals;
+			if (indexpushdownquals)
+				*indexpushdownquals = subindexpushdownquals;
+		}
 		else
+		{
 			*indexqual = list_make1(make_orclause(subindexquals));
+			if (indexpushdownquals)
+				*indexpushdownquals = list_make1(
+					make_orclause(subindexpushdownquals));
+		}
 		*indexECs = NIL;
 	}
 	else if (IsA(bitmapqual, IndexPath))
@@ -4146,12 +4411,30 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		/* Use the regular indexscan plan build machinery... */
 		iscan = castNode(IndexScan,
 						 create_indexscan_plan(root, ipath,
-											   NIL, NIL, false));
+											   tlist, *scan_clauses,
+											   false /* indexonly */,
+											   true /* bitmapindex */));
+
 		/* then convert to a bitmap indexscan */
-		plan = (Plan *) make_bitmap_indexscan(iscan->scan.scanrelid,
-											  iscan->indexid,
-											  iscan->indexqual,
-											  iscan->indexqualorig);
+		if (ipath->indexinfo->rel->is_yb_relation)
+		{
+			YbPlanInfo bitmap_idx_info = iscan->yb_plan_info;
+			bitmap_idx_info.estimated_docdb_result_width = ipath->ybctid_width;
+
+			plan = (Plan *) make_yb_bitmap_indexscan(iscan->scan.scanrelid,
+													 iscan->indexid,
+													 iscan->indexqual,
+													 iscan->indexqualorig,
+													 iscan->indextlist,
+													 iscan->yb_idx_pushdown,
+													 bitmap_idx_info);
+		}
+		else
+			plan = (Plan *) make_bitmap_indexscan(iscan->scan.scanrelid,
+												  iscan->indexid,
+												  iscan->indexqual,
+												  iscan->indexqualorig,
+												  iscan->indextlist);
 		/* and set its cost/width fields appropriately */
 		plan->startup_cost = 0.0;
 		plan->total_cost = ipath->indextotalcost;
@@ -4162,6 +4445,12 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		plan->parallel_safe = ipath->path.parallel_safe;
 		*qual = get_actual_clauses(ipath->indexclauses);
 		*indexqual = get_actual_clauses(ipath->indexquals);
+
+		if (indexpushdownquals)
+			*indexpushdownquals = ipath->indexinfo->rel->is_yb_relation
+				? ((YbBitmapIndexScan *) plan)->yb_idx_pushdown.quals
+				: NIL;
+
 		foreach(l, ipath->indexinfo->indpred)
 		{
 			Expr	   *pred = (Expr *) lfirst(l);
@@ -5599,6 +5888,38 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 		/* Replace the PlaceHolderVar with a nestloop Param */
 		return (Node *) replace_nestloop_param_placeholdervar(root, phv);
 	}
+
+	/*
+	 * YB: If the expression is a RowCompareExpr that is in the form of
+	 * ROW(...) = YBBatchedExpr(ROW(...)), we need to convert it to
+	 * ROW(...) = ARRAY(ROW(...), ROW(...), ...) where the = operator
+	 * also represents a RowCompareExpr.
+	 */
+	if (IsA(node, RowCompareExpr))
+	{
+		RowCompareExpr *rcexpr = (RowCompareExpr *) node;
+		if(rcexpr->rctype == ROWCOMPARE_EQ)
+		{
+			RowCompareExpr *rcexpr_new = copyObject(rcexpr);
+			ArrayExpr *arrexpr = makeNode(ArrayExpr);
+
+			arrexpr->array_typeid = InvalidOid;
+			arrexpr->element_typeid = RECORDOID;
+			arrexpr->multidims = false;
+			arrexpr->array_collid = InvalidOid;
+			arrexpr->location = -1;
+			arrexpr->elements =
+				(List*) replace_nestloop_params(root, rcexpr->rargs);
+			rcexpr_new->rargs = (Node *) arrexpr;
+			return (Node*) rcexpr_new;
+		}
+	}
+
+	/*
+	 * YB: If the expression is an OpExpr that is in the form of
+	 * col = YBBatchedExpr(outer_val), we need to convert it to
+	 * col IN ARRAY(outer_val1, outer_val2, ...).
+	 */
 	if (IsA(node, OpExpr))
 	{
 		OpExpr *opexpr = (OpExpr*) node;
@@ -5622,16 +5943,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
 			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
 
-			if(IsA(outer_expr, RowExpr))
-			{
-				RowExpr *rowexpr = (RowExpr *) outer_expr;
-				scalar_type = rowexpr->row_typeid;
-			}
-			else
-			{
-				scalar_type = exprType((Node*) outer_expr);
-				collid = exprCollation((Node*) outer_expr);
-			}
+			scalar_type = exprType((Node*) outer_expr);
+			collid = exprCollation((Node*) outer_expr);
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
 			Oid array_type;
@@ -6247,6 +6560,8 @@ bitmap_subplan_mark_shared(Plan *plan)
 	}
 	else if (IsA(plan, BitmapIndexScan))
 		((BitmapIndexScan *) plan)->isshared = true;
+	else if (IsA(plan, YbBitmapIndexScan))
+		((YbBitmapIndexScan *) plan)->isshared = true;
 	else
 		elog(ERROR, "unrecognized node type: %d", nodeTag(plan));
 }
@@ -6270,115 +6585,6 @@ flatten_partitioned_rels(List *partitioned_rels)
 	}
 
 	return newlist;
-}
-
-/*
- * is_index_only_refs
- *		Check if all column references from the list are available from the
- *		index described by the indexinfo.
- */
-static bool
-is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo)
-{
-	ListCell *lc;
-	foreach (lc, colrefs)
-	{
-		bool found = false;
-		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
-		for (int i = 0; i < indexinfo->ncolumns; i++)
-		{
-			if (colref->attno == indexinfo->indexkeys[i])
-			{
-				/*
-				 * If index key can not return, it does not have actual value
-				 * to evaluate the expression.
-				 */
-				if (indexinfo->canreturn[i])
-				{
-					found = true;
-					break;
-				}
-				else
-					return false;
-			}
-		}
-		if (!found)
-			return false;
-	}
-	return true;
-}
-
-/*
- * extract_pushdown_clauses
- *	  Extract actual clauses from RestrictInfo list and distribute them
- * 	  between three groups:
- *	  - local_quals - conditions not eligible for pushdown. They are evaluated
- *	  on the Postgres side on the rows fetched from DocDB;
- *	  - rel_remote_quals - conditions to pushdown with the request to the main
- *	  scanned relation. In the case of sequential scan or index only scan
- *	  the DocDB table or DocDB index respectively is the main (and only)
- *	  scanned relation, so the function returns only two groups;
- *	  - idx_remote_quals - conditions to pushdown with the request to the
- *	  secondary (index) relation. Used with the index scan on a secondary
- *	  index, and caller must provide IndexOptInfo record for the index.
- *	  - rel_colrefs, idx_colrefs are columns referenced by respective
- *	  rel_remote_quals or idx_remote_quals.
- *	  The output parameters local_quals, rel_remote_quals, rel_colrefs must
- *	  point to valid lists. The output parameters idx_remote_quals and
- *	  idx_colrefs may be NULL if the indexinfo is NULL.
- */
-static void
-extract_pushdown_clauses(List *restrictinfo_list,
-						 IndexOptInfo *indexinfo,
-						 List **local_quals,
-						 List **rel_remote_quals,
-						 List **rel_colrefs,
-						 List **idx_remote_quals,
-						 List **idx_colrefs)
-{
-	ListCell *lc;
-	foreach(lc, restrictinfo_list)
-	{
-		RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
-		/* ignore pseudoconstants */
-		if (ri->pseudoconstant)
-			continue;
-
-		if (ri->yb_pushable)
-		{
-			List *colrefs = NIL;
-			bool pushable PG_USED_FOR_ASSERTS_ONLY;
-
-			/*
-			 * Find column references. It has already been determined that
-			 * the expression is pushable.
-			 */
-			pushable = YbCanPushdownExpr(ri->clause, &colrefs);
-			Assert(pushable);
-
-			/*
-			 * If there are both main and secondary (index) relations,
-			 * determine one to pushdown the condition. It is more efficient
-			 * to apply filter earlier, so prefer index, if it has all the
-			 * necessary columns.
-			 */
-			if (indexinfo == NULL ||
-				!is_index_only_refs(colrefs, indexinfo))
-			{
-				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
-				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);
-			}
-			else
-			{
-				*idx_colrefs = list_concat(*idx_colrefs, colrefs);
-				*idx_remote_quals = lappend(*idx_remote_quals, ri->clause);
-			}
-		}
-		else
-		{
-			*local_quals = lappend(*local_quals, ri->clause);
-		}
-	}
 }
 
 /*****************************************************************************
@@ -6418,8 +6624,7 @@ make_yb_seqscan(List *qptlist,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
 				Index scanrelid,
-				double yb_estimated_num_nexts,
-				double yb_estimated_num_seeks)
+				YbPlanInfo yb_plan_info)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6429,8 +6634,7 @@ make_yb_seqscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
-	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
-	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_plan_info = yb_plan_info;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
@@ -6472,8 +6676,7 @@ make_indexscan(List *qptlist,
 			   List *indexorderbyops,
 			   List *indextlist,
 			   ScanDirection indexscandir,
-			   double yb_estimated_num_nexts,
-			   double yb_estimated_num_seeks,
+			   YbPlanInfo yb_plan_info,
 			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -6492,8 +6695,7 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
-	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_plan_info = yb_plan_info;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
@@ -6514,8 +6716,7 @@ make_indexonlyscan(List *qptlist,
 				   List *indexorderby,
 				   List *indextlist,
 				   ScanDirection indexscandir,
-				   double yb_estimated_num_nexts,
-				   double yb_estimated_num_seeks)
+				   YbPlanInfo yb_plan_info)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6532,8 +6733,7 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 	node->yb_pushdown.quals = yb_pushdown_quals;
-	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
-	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
+	node->yb_plan_info = yb_plan_info;
 
 	return node;
 }
@@ -6542,7 +6742,8 @@ static BitmapIndexScan *
 make_bitmap_indexscan(Index scanrelid,
 					  Oid indexid,
 					  List *indexqual,
-					  List *indexqualorig)
+					  List *indexqualorig,
+					  List *indextlist)
 {
 	BitmapIndexScan *node = makeNode(BitmapIndexScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6555,6 +6756,33 @@ make_bitmap_indexscan(Index scanrelid,
 	node->indexid = indexid;
 	node->indexqual = indexqual;
 	node->indexqualorig = indexqualorig;
+
+	return node;
+}
+
+static YbBitmapIndexScan *
+make_yb_bitmap_indexscan(Index scanrelid,
+					  Oid indexid,
+					  List *indexqual,
+					  List *indexqualorig,
+					  List *indextlist,
+					  PushdownExprs yb_idx_pushdown,
+					  YbPlanInfo yb_plan_info)
+{
+	YbBitmapIndexScan *node = makeNode(YbBitmapIndexScan);
+	Plan	   *plan = &node->scan.plan;
+
+	plan->targetlist = NIL;		/* not used */
+	plan->qual = NIL;			/* not used */
+	plan->lefttree = NULL;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+	node->indexid = indexid;
+	node->indexqual = indexqual;
+	node->indexqualorig = indexqualorig;
+	node->indextlist = indextlist;
+	node->yb_idx_pushdown = yb_idx_pushdown;
+	node->yb_plan_info = yb_plan_info;
 
 	return node;
 }
@@ -6575,6 +6803,36 @@ make_bitmap_heapscan(List *qptlist,
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
 	node->bitmapqualorig = bitmapqualorig;
+
+	return node;
+}
+
+static YbBitmapTableScan *
+make_yb_bitmap_tablescan(List *qptlist,
+						 List *qpqual,
+						 Plan *lefttree,
+						 Index scanrelid,
+						 PushdownExprs rel_pushdown,
+						 PushdownExprs recheck_pushdown,
+						 List *recheck_local_quals,
+						 PushdownExprs fallback_pushdown,
+						 List *fallback_local_quals,
+						 YbPlanInfo yb_plan_info)
+{
+	YbBitmapTableScan *node = makeNode(YbBitmapTableScan);
+	Plan	   *plan = &node->scan.plan;
+
+	plan->targetlist = qptlist;
+	plan->qual = qpqual;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+	node->rel_pushdown = rel_pushdown;
+	node->recheck_pushdown = recheck_pushdown;
+	node->recheck_local_quals = recheck_local_quals;
+	node->fallback_pushdown = fallback_pushdown;
+	node->fallback_local_quals = fallback_local_quals;
+	node->yb_plan_info = yb_plan_info;
 
 	return node;
 }

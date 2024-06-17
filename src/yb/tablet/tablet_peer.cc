@@ -127,6 +127,8 @@ DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
+DECLARE_bool(cdc_immediate_transaction_cleanup);
+
 DECLARE_int64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
@@ -215,10 +217,11 @@ Status TabletPeer::InitTabletPeer(
     ThreadPool* raft_pool,
     rpc::ThreadPool* raft_notifications_pool,
     ThreadPool* tablet_prepare_pool,
-    consensus::RetryableRequestsManager* retryable_requests_manager,
+    consensus::RetryableRequests* retryable_requests,
+    std::shared_ptr<TabletBootstrapStateManager> bootstrap_state_manager,
     std::unique_ptr<ConsensusMetadata> consensus_meta,
     consensus::MultiRaftManager* multi_raft_manager,
-    ThreadPool* flush_retryable_requests_pool) {
+    ThreadPool* flush_bootstrap_state_pool) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -307,15 +310,18 @@ Status TabletPeer::InitTabletPeer(
         tablet_->table_type(),
         raft_pool,
         raft_notifications_pool,
-        retryable_requests_manager,
+        retryable_requests,
         multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
     consensus = consensus_;
 
-    auto flush_retryable_requests_pool_token = flush_retryable_requests_pool
-        ? flush_retryable_requests_pool->NewToken(ThreadPool::ExecutionMode::SERIAL) : nullptr;
-    retryable_requests_flusher_ = std::make_shared<RetryableRequestsFlusher>(
-        tablet_id_, consensus_, std::move(flush_retryable_requests_pool_token));
+    bootstrap_state_manager_ = bootstrap_state_manager;
+
+    auto flush_bootstrap_state_pool_token = flush_bootstrap_state_pool
+        ? flush_bootstrap_state_pool->NewToken(ThreadPool::ExecutionMode::SERIAL) : nullptr;
+    bootstrap_state_flusher_ = std::make_shared<TabletBootstrapStateFlusher>(
+        tablet_id_, consensus_, bootstrap_state_manager_,
+        std::move(flush_bootstrap_state_pool_token));
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
     operation_tracker_.SetPostTracker(
@@ -542,9 +548,9 @@ void TabletPeer::CompleteShutdown(
   {
     std::lock_guard lock(lock_);
     strand_.reset();
-    if (retryable_requests_flusher_) {
-      retryable_requests_flusher_->Shutdown();
-      retryable_requests_flusher_.reset();
+    if (bootstrap_state_flusher_) {
+      bootstrap_state_flusher_->Shutdown();
+      bootstrap_state_flusher_.reset();
     }
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
@@ -1231,6 +1237,9 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
       txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+        tablet_->CleanupIntentFiles();
+      }
     }
   }
   return Status::OK();
@@ -1449,9 +1458,9 @@ shared_ptr<consensus::RaftConsensus> TabletPeer::GetRaftConsensusUnsafe() const 
   return consensus_;
 }
 
-std::shared_ptr<RetryableRequestsFlusher> TabletPeer::shared_retryable_requests_flusher() const {
+std::shared_ptr<TabletBootstrapStateFlusher> TabletPeer::shared_bootstrap_state_flusher() const {
   std::lock_guard lock(lock_);
-  return retryable_requests_flusher_;
+  return bootstrap_state_flusher_;
 }
 
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
@@ -1738,76 +1747,83 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
       Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
 }
 
-void TabletPeer::EnableFlushRetryableRequests() {
-  flush_retryable_requests_enabled_.store(true, std::memory_order_relaxed);
+void TabletPeer::EnableFlushBootstrapState() {
+  flush_bootstrap_state_enabled_.store(true, std::memory_order_relaxed);
 }
 
-bool TabletPeer::FlushRetryableRequestsEnabled() const {
+bool TabletPeer::FlushBootstrapStateEnabled() const {
   return GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
-      flush_retryable_requests_enabled_.load(std::memory_order_relaxed);
+      flush_bootstrap_state_enabled_.load(std::memory_order_relaxed);
 }
 
 Result<consensus::RetryableRequests> TabletPeer::GetRetryableRequests() {
   return VERIFY_RESULT(GetRaftConsensus())->GetRetryableRequests();
 }
 
-Status TabletPeer::FlushRetryableRequests() {
-  if (!FlushRetryableRequestsEnabled()) {
+Status TabletPeer::FlushBootstrapState() {
+  if (!FlushBootstrapStateEnabled()) {
     return STATUS(NotSupported, "flush_retryable_requests is not supported");
   }
-  auto retryable_requests_flusher = shared_retryable_requests_flusher();
-  SCHECK_FORMAT(retryable_requests_flusher,
+  auto bootstrap_state_flusher = shared_bootstrap_state_flusher();
+  SCHECK_FORMAT(bootstrap_state_flusher,
                 IllegalState,
-                "Tablet $0 retryable_requests_flusher not initialized",
+                "Tablet $0 bootstrap_state_flusher not initialized",
                 tablet_id_);
-  return retryable_requests_flusher->FlushRetryableRequests();
+  return bootstrap_state_flusher->FlushBootstrapState();
 }
 
-Result<OpId> TabletPeer::CopyRetryableRequestsTo(const std::string& dest_path) {
-  if (!FlushRetryableRequestsEnabled()) {
+Result<OpId> TabletPeer::CopyBootstrapStateTo(const std::string& dest_path) {
+  if (!FlushBootstrapStateEnabled()) {
     return STATUS(NotSupported, "flush_retryable_requests is not supported");
   }
-  auto retryable_requests_flusher = shared_retryable_requests_flusher();
-  SCHECK_FORMAT(retryable_requests_flusher,
+  auto bootstrap_state_flusher = shared_bootstrap_state_flusher();
+  SCHECK_FORMAT(bootstrap_state_flusher,
                 IllegalState,
-                "Tablet $0 retryable_requests_flusher not initialized",
+                "Tablet $0 bootstrap_state_flusher not initialized",
                 tablet_id_);
-  return retryable_requests_flusher->CopyRetryableRequestsTo(dest_path);
+  return bootstrap_state_flusher->CopyBootstrapStateTo(dest_path);
 }
 
-Status TabletPeer::SubmitFlushRetryableRequestsTask() {
-  if (!FlushRetryableRequestsEnabled()) {
+Status TabletPeer::SubmitFlushBootstrapStateTask() {
+  if (!FlushBootstrapStateEnabled()) {
     return STATUS(NotSupported, "flush_retryable_requests is not supported");
   }
-  auto retryable_requests_flusher = shared_retryable_requests_flusher();
-  SCHECK_FORMAT(retryable_requests_flusher,
+  auto bootstrap_state_flusher = shared_bootstrap_state_flusher();
+  SCHECK_FORMAT(bootstrap_state_flusher,
                 IllegalState,
-                "Tablet $0 retryable_requests_flusher not initialized",
+                "Tablet $0 bootstrap_state_flusher not initialized",
                 tablet_id_);
-  return retryable_requests_flusher->SubmitFlushRetryableRequestsTask();
+  return bootstrap_state_flusher->SubmitFlushBootstrapStateTask();
 }
 
-bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
-  if (!FlushRetryableRequestsEnabled()) {
+bool TabletPeer::TEST_HasBootstrapStateOnDisk() {
+  if (!FlushBootstrapStateEnabled()) {
     return false;
   }
-  auto retryable_requests_flusher = shared_retryable_requests_flusher();
-  return retryable_requests_flusher
-      ? retryable_requests_flusher->TEST_HasRetryableRequestsOnDisk()
+  auto bootstrap_state_flusher = shared_bootstrap_state_flusher();
+  return bootstrap_state_flusher
+      ? bootstrap_state_flusher->TEST_HasBootstrapStateOnDisk()
       : false;
 }
 
-RetryableRequestsFlushState TabletPeer::TEST_RetryableRequestsFlusherState() const {
-  if (!FlushRetryableRequestsEnabled()) {
-    return RetryableRequestsFlushState::kFlushIdle;
+TabletBootstrapFlushState TabletPeer::TEST_TabletBootstrapStateFlusherState() const {
+  if (!FlushBootstrapStateEnabled()) {
+    return TabletBootstrapFlushState::kFlushIdle;
   }
-  auto retryable_requests_flusher = shared_retryable_requests_flusher();
-  return retryable_requests_flusher
-      ? retryable_requests_flusher->flush_state()
-      : RetryableRequestsFlushState::kFlushIdle;
+  auto bootstrap_state_flusher = shared_bootstrap_state_flusher();
+  return bootstrap_state_flusher
+      ? bootstrap_state_flusher->flush_state()
+      : TabletBootstrapFlushState::kFlushIdle;
 }
 
 Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
+
+bool TabletPeer::HasSufficientDiskSpaceForWrite() {
+  if (log_) {
+    return log_->HasSufficientDiskSpaceForWrite();
+  }
+  return true;
+}
 
 }  // namespace tablet
 }  // namespace yb

@@ -55,8 +55,6 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | Orafce | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB.<br/>For more information, see the [Orafce](https://github.com/orafce/orafce) documentation. |
 | [PGAudit](../../../secure/audit-logging/audit-logging-ysql/) | Pre-bundled | The PostgreSQL Audit Extension (pgaudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. |
 | [pg_hint_plan](../../query-1-performance/pg-hint-plan/#root) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments.<br/>For more information, see the [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) documentation. |
-| [pgsql-postal](extension-pgsql-postal/) | Requires installation | Parse and normalize street addresses around the world using libpostal. |
 | pg_stat_monitor | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
 | [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
-| [PostGIS](extension-postgis/) | Requires&nbsp;installation | A spatial database extender for PostgreSQL-compatible object-relational databases. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |

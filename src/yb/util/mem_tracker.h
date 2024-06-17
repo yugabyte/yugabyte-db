@@ -58,6 +58,8 @@ class MemTracker;
 class MetricEntity;
 using MemTrackerPtr = std::shared_ptr<MemTracker>;
 
+static const std::string kTCMallocTrackerNamePrefix = "TCMalloc ";
+
 // Garbage collector is used by MemTracker to free memory allocated by caches when reached
 // soft memory limit.
 class GarbageCollector {
@@ -66,9 +68,10 @@ class GarbageCollector {
   virtual void CollectGarbage(size_t required) = 0;
 };
 
-YB_STRONGLY_TYPED_BOOL(MayExist);
 YB_STRONGLY_TYPED_BOOL(AddToParent);
 YB_STRONGLY_TYPED_BOOL(CreateMetrics);
+YB_STRONGLY_TYPED_BOOL(IsRootTracker);
+YB_STRONGLY_TYPED_BOOL(MayExist);
 YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
 using ConsumptionFunctor = std::function<int64_t()>;
@@ -149,7 +152,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
              ConsumptionFunctor consumption_functor,
              std::shared_ptr<MemTracker> parent,
              AddToParent add_to_parent, CreateMetrics create_metrics,
-             const std::string& metric_name = std::string());
+             const std::string& metric_name,
+             IsRootTracker is_root_tracker);
 
   ~MemTracker();
 
@@ -304,6 +308,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Get the memory consumption from the "root" tracker, creating it if necessary.
   static int64_t GetRootTrackerConsumption();
 
+  static uint64_t GetTrackedMemory();
+
+  static uint64_t GetUntrackedMemory();
+
   // Called when the total release memory is larger than mem_tracker_tcmalloc_gc_release_bytes.
   // TcMalloc holds onto released memory and very slowly (if ever) releases it back to
   // the OS. This is problematic since it is memory we are not constantly tracking which
@@ -432,6 +440,10 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // This is needed in some tests to create deterministic GC behavior.
   static void TEST_SetReleasedMemorySinceGC(int64_t bytes);
 
+  bool IsRoot() {
+    return is_root_tracker_;
+  }
+
  private:
   template<class GC>
   using GarbageCollectorsContainer = boost::container::small_vector<GC, 8>;
@@ -514,6 +526,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Concatenated with parents tracker's metric name.
   const std::string metric_name_;
+
+  const bool is_root_tracker_;
 };
 
 // An std::allocator that manipulates a MemTracker during allocation

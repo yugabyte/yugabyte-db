@@ -202,10 +202,10 @@ func main() {
     // Middleware to redirect all non-api calls to index.html, to allow direct navigation to
     // UI pages by URL path. Need to add to this list when creating new paths in the UI.
     e.Use(middleware.Rewrite(map[string]string{
-        "^/alerts*": "/",
-        "^/databases*": "/",
-        "^/debug*": "/",
-        "^/migrations*": "/",
+        "^/alerts*":      "/",
+        "^/databases*":   "/",
+        "^/debug*":       "/",
+        "^/migrations*":  "/",
         "^/performance*": "/",
     }))
 
@@ -257,6 +257,9 @@ func main() {
     // Get Voyager assement info
     e.GET("/api/migration_assesment", c.GetVoyagerAssesmentDetails)
 
+    // Get Voyager assessment report
+    e.GET("/api/migration_assesment_v2", c.GetVoyagerAssessmentReport)
+
     // Get Migrate schema task details
     e.GET("/api/migrate_schema", c.GetMigrateSchemaInfo)
 
@@ -268,6 +271,15 @@ func main() {
 
     // GetClusterConnections - Get the node address for the current node
     e.GET("/api/node_address", c.GetNodeAddress)
+
+    // Get Backup Details
+    e.GET("/api/backup", c.GetBackupDetails)
+
+    // Get Restore Details
+    e.GET("/api/restore", c.GetRestoreDetails)
+
+    // GetPITRConfig - Get the PITR configuration for YugabyteDB cluster
+    e.GET("/api/pitr", c.GetPITRConfigurations)
 
     render_htmls := templates.NewTemplate()
 

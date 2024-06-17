@@ -166,10 +166,36 @@ enum StatefulServiceKind {
   // Test service.
   TEST_ECHO = 0;
   PG_AUTO_ANALYZE = 1;
+  PG_CRON_LEADER = 2;
 }
 
 // CDC SDK Consistent Snapshot Options
 enum CDCSDKSnapshotOption {
   NOEXPORT_SNAPSHOT = 1; // Client does not wish to consume snapshot
   USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
+}
+
+// Available replica identity modes for use in CDC
+enum PgReplicaIdentity {
+  // Entire updated row as new image, only key as old image for DELETE
+  // The name DEFAULT is taken from PG, however it is not the default replica identity mode
+  DEFAULT = 0;
+
+  // Both old and new images of the entire row
+  FULL = 1;
+
+  // No old image for any operation
+  NOTHING = 2;
+
+  // YB specific options
+
+  // Only the changed columns as new image, no old image except DELETE
+  // This is the default replica identity mode in YSQL
+  CHANGE = 3;
+}
+
+enum XClusterReplicationType {
+  XCLUSTER_NON_TRANSACTIONAL = 0;  // YCQL and YSQL. Unidirectional and Bidirectional. Table level.
+  XCLUSTER_YSQL_TRANSACTIONAL = 1; // YSQL, Unidirectional only. Table level.
+  XCLUSTER_YSQL_DB_SCOPED = 2;     // YSQL, Transactional and Unidirectional only. DB level.
 }

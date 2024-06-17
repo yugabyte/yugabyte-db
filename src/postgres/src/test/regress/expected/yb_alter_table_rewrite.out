@@ -1,0 +1,1040 @@
+--
+-- ALTER TABLE with table rewrite tests.
+--
+-- Suppress NOTICE messages during table rewrite operations.
+SET client_min_messages TO WARNING;
+-- Test add column operation with table rewrite.
+CREATE TABLESPACE test_tablespace LOCATION '/invalid';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 1: CREATE TABLESPACE test_tablespace LOCATION '/invalid';
+                                          ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
+CREATE TABLE table_rewrite_test1_fk1(a int PRIMARY KEY);
+INSERT INTO table_rewrite_test1_fk1 VALUES (1), (2), (3), (4);
+CREATE TABLE table_rewrite_test1
+    (a int REFERENCES table_rewrite_test1_fk1(a), b int, c text,
+     d int generated always as identity, drop_me int, e int DEFAULT 10,
+     f int NOT NULL, username text,
+     PRIMARY KEY (a ASC))
+    TABLESPACE test_tablespace;
+ALTER TABLE table_rewrite_test1 DROP COLUMN drop_me;
+INSERT INTO table_rewrite_test1 (a, b, c, e, f, username)
+    VALUES(1, 1, 'text', 10, 1, 'user1'), (2, 2, 'text2', 20, 2, 'user2'),
+    (3, 3, 'text33', 30, 3, 'user3');
+-- create some dependencies on the table.
+-- 1. check constraint.
+ALTER TABLE table_rewrite_test1 ADD CONSTRAINT a_check CHECK(a > 0);
+-- 2. indexes.
+CREATE UNIQUE INDEX test_index ON table_rewrite_test1(b)
+    TABLESPACE test_tablespace;
+CREATE INDEX test_index2 ON table_rewrite_test1((e * 2))
+    TABLESPACE test_tablespace;
+-- 3. foreign key constraint.
+CREATE TABLE table_rewrite_test1_fk2(a int REFERENCES table_rewrite_test1(b));
+-- 4. dependent view.
+CREATE VIEW table_rewrite_test1_view AS SELECT a, b FROM table_rewrite_test1;
+-- 5. column with missing default value.
+ALTER TABLE table_rewrite_test1 ADD COLUMN g int DEFAULT 5;
+-- 6. dependent trigger.
+CREATE FUNCTION dummy() RETURNS TRIGGER
+AS $$
+BEGIN
+    RETURN NULL;
+END;
+$$ LANGUAGE PLPGSQL;
+CREATE TRIGGER dummy_trigger
+    AFTER INSERT
+    ON table_rewrite_test1
+    FOR EACH ROW
+    EXECUTE PROCEDURE dummy();
+-- 6. enable RLS and create policy objects.
+ALTER TABLE table_rewrite_test1 ENABLE ROW LEVEL SECURITY;
+CREATE USER user1;
+CREATE POLICY p ON table_rewrite_test1
+    FOR SELECT TO user1 USING (username = CURRENT_USER);
+GRANT SELECT ON table_rewrite_test1 TO user1;
+-- 7. extended statistics object.
+CREATE STATISTICS s1(dependencies) ON a, b FROM table_rewrite_test1;
+-- perform several table rewrite operations.
+ALTER TABLE table_rewrite_test1 ADD COLUMN h SERIAL, ADD COLUMN i BIGSERIAL;
+ALTER TABLE table_rewrite_test1
+    ADD COLUMN j timestamp DEFAULT clock_timestamp() NOT NULL,
+    DROP CONSTRAINT table_rewrite_test1_pkey;
+ALTER TABLE table_rewrite_test1 ADD PRIMARY KEY(a DESC);
+ALTER TABLE table_rewrite_test1 ALTER c TYPE int USING LENGTH(c);
+-- verify table data.
+SELECT a, b, username, c, d, e, f, g, h, i FROM table_rewrite_test1 ORDER BY a;
+ a | b | username | c | d | e  | f | g | h | i 
+---+---+----------+---+---+----+---+---+---+---
+ 1 | 1 | user1    | 4 | 1 | 10 | 1 | 5 | 1 | 1
+ 2 | 2 | user2    | 5 | 2 | 20 | 2 | 5 | 2 | 2
+ 3 | 3 | user3    | 6 | 3 | 30 | 3 | 5 | 3 | 3
+(3 rows)
+
+-- verify that we preserved dependent objects.
+\d table_rewrite_test1;
+                                       Table "public.table_rewrite_test1"
+  Column  |            Type             | Collation | Nullable |                    Default                     
+----------+-----------------------------+-----------+----------+------------------------------------------------
+ a        | integer                     |           | not null | 
+ b        | integer                     |           |          | 
+ c        | integer                     |           |          | 
+ d        | integer                     |           | not null | generated always as identity
+ e        | integer                     |           |          | 10
+ f        | integer                     |           | not null | 
+ username | text                        |           |          | 
+ g        | integer                     |           |          | 5
+ h        | integer                     |           | not null | nextval('table_rewrite_test1_h_seq'::regclass)
+ i        | bigint                      |           | not null | nextval('table_rewrite_test1_i_seq'::regclass)
+ j        | timestamp without time zone |           | not null | clock_timestamp()
+Indexes:
+    "table_rewrite_test1_pkey" PRIMARY KEY, lsm (a DESC), tablespace "test_tablespace"
+    "test_index" UNIQUE, lsm (b HASH), tablespace "test_tablespace"
+    "test_index2" lsm ((e * 2) HASH), tablespace "test_tablespace"
+Check constraints:
+    "a_check" CHECK (a > 0)
+Foreign-key constraints:
+    "table_rewrite_test1_a_fkey" FOREIGN KEY (a) REFERENCES table_rewrite_test1_fk1(a)
+Referenced by:
+    TABLE "table_rewrite_test1_fk2" CONSTRAINT "table_rewrite_test1_fk2_a_fkey" FOREIGN KEY (a) REFERENCES table_rewrite_test1(b)
+Policies:
+    POLICY "p" FOR SELECT
+      TO user1
+      USING ((username = (CURRENT_USER)::text))
+Statistics objects:
+    "public"."s1" (dependencies) ON a, b FROM table_rewrite_test1
+Triggers:
+    dummy_trigger AFTER INSERT ON table_rewrite_test1 FOR EACH ROW EXECUTE PROCEDURE dummy()
+Tablespace: "test_tablespace"
+
+\d test_index;
+      Index "public.test_index"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ b      | integer | yes  | b
+unique, lsm, for table "public.table_rewrite_test1"
+Tablespace: "test_tablespace"
+
+\d test_index2;
+      Index "public.test_index2"
+ Column |  Type   | Key? | Definition 
+--------+---------+------+------------
+ expr   | integer | yes  | (e * 2)
+lsm, for table "public.table_rewrite_test1"
+Tablespace: "test_tablespace"
+
+SELECT * FROM table_rewrite_test1_view ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+EXPLAIN SELECT a, b, username, c, d, e, f, g, h, i FROM table_rewrite_test1 WHERE b = 3;
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Scan using test_index on table_rewrite_test1  (cost=0.00..4.12 rows=1 width=72)
+   Index Cond: (b = 3)
+(2 rows)
+
+SELECT a, b, username, c, d, e, f, g, h, i FROM table_rewrite_test1 WHERE b = 3;
+ a | b | username | c | d | e  | f | g | h | i 
+---+---+----------+---+---+----+---+---+---+---
+ 3 | 3 | user3    | 6 | 3 | 30 | 3 | 5 | 3 | 3
+(1 row)
+
+EXPLAIN SELECT a, b, username, c, d, e, f, g, h, i FROM table_rewrite_test1 WHERE e * 2 = 20;
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Index Scan using test_index2 on table_rewrite_test1  (cost=0.00..5.25 rows=10 width=72)
+   Index Cond: ((e * 2) = 20)
+(2 rows)
+
+SELECT a, b, username, c, d, e, f, g, h, i FROM table_rewrite_test1 WHERE e * 2 = 20;
+ a | b | username | c | d | e  | f | g | h | i 
+---+---+----------+---+---+----+---+---+---+---
+ 1 | 1 | user1    | 4 | 1 | 10 | 1 | 5 | 1 | 1
+(1 row)
+
+-- verify PK constraint.
+INSERT INTO table_rewrite_test1(a, f) VALUES (3, 4); -- should fail.
+ERROR:  duplicate key value violates unique constraint "table_rewrite_test1_pkey"
+-- verify FK constraint where the altered table references a FK table.
+INSERT INTO table_rewrite_test1(a, f) VALUES (4, 4);
+INSERT INTO table_rewrite_test1(a, f) VALUES (5, 5); -- should fail.
+ERROR:  insert or update on table "table_rewrite_test1" violates foreign key constraint "table_rewrite_test1_a_fkey"
+DETAIL:  Key (a)=(5) is not present in table "table_rewrite_test1_fk1".
+INSERT INTO table_rewrite_test1_fk1 VALUES (5), (6);
+INSERT INTO table_rewrite_test1(a, f) VALUES (5, 5);
+DELETE FROM table_rewrite_test1_fk1 WHERE a = 3; -- should fail.
+ERROR:  update or delete on table "table_rewrite_test1_fk1" violates foreign key constraint "table_rewrite_test1_a_fkey" on table "table_rewrite_test1"
+DETAIL:  Key (a)=(3) is still referenced from table "table_rewrite_test1".
+-- verify FK constraint where another table references the altered table via
+-- an FK constraint..
+INSERT INTO table_rewrite_test1_fk2(a) VALUES (3);
+INSERT INTO table_rewrite_test1_fk2(a) VALUES (6); -- should fail.
+ERROR:  insert or update on table "table_rewrite_test1_fk2" violates foreign key constraint "table_rewrite_test1_fk2_a_fkey"
+DETAIL:  Key (a)=(6) is not present in table "table_rewrite_test1".
+INSERT INTO table_rewrite_test1(a, b, f) VALUES (6, 4, 4);
+INSERT INTO table_rewrite_test1_fk2(a) VALUES (4);
+DELETE FROM table_rewrite_test1 WHERE b = 3; -- should fail.
+ERROR:  update or delete on table "table_rewrite_test1" violates foreign key constraint "table_rewrite_test1_fk2_a_fkey" on table "table_rewrite_test1_fk2"
+DETAIL:  Key (b)=(3) is still referenced from table "table_rewrite_test1_fk2".
+DELETE FROM table_rewrite_test1_fk2;
+DELETE FROM table_rewrite_test1 WHERE b = 3;
+INSERT INTO table_rewrite_test1_fk2 VALUES (3); -- should fail.
+ERROR:  insert or update on table "table_rewrite_test1_fk2" violates foreign key constraint "table_rewrite_test1_fk2_a_fkey"
+DETAIL:  Key (a)=(3) is not present in table "table_rewrite_test1".
+-- verify policies and RLS.
+SET ROLE user1;
+SELECT a, b, username, c, d, e, f, g, h, i FROM table_rewrite_test1 ORDER BY a;
+ a | b | username | c | d | e  | f | g | h | i 
+---+---+----------+---+---+----+---+---+---+---
+ 1 | 1 | user1    | 4 | 1 | 10 | 1 | 5 | 1 | 1
+(1 row)
+
+SET ROLE yugabyte;
+-- verify future ALTER operations on the table succeed.
+ALTER TABLE table_rewrite_test1 ADD COLUMN k int, DROP COLUMN b CASCADE;
+ALTER TABLE table_rewrite_test1 RENAME TO table_rewrite_test1_new;
+-- cleanup.
+DROP TABLE table_rewrite_test1_new CASCADE;
+DROP USER user1;
+-- Test table rewrite operations on a partitioned table.
+CREATE TABLE test_partitioned(a int, PRIMARY KEY (a ASC), b text) PARTITION BY RANGE (a);
+CREATE TABLE test_partitioned_part1 PARTITION OF test_partitioned FOR VALUES FROM (1) TO (6);
+CREATE TABLE test_partitioned_part2 PARTITION OF test_partitioned FOR VALUES FROM (6) TO (11);
+INSERT INTO test_partitioned VALUES(generate_series(1, 10), 'text');
+ALTER TABLE test_partitioned ADD COLUMN c SERIAL, ALTER COLUMN b TYPE int USING length(b);
+ALTER TABLE test_partitioned DROP CONSTRAINT test_partitioned_pkey;
+ALTER TABLE test_partitioned ADD PRIMARY KEY (a ASC);
+SELECT * FROM test_partitioned;
+ a  | b | c  
+----+---+----
+  1 | 4 |  1
+  2 | 4 |  2
+  3 | 4 |  3
+  4 | 4 |  4
+  5 | 4 |  5
+  6 | 4 |  6
+  7 | 4 |  7
+  8 | 4 |  8
+  9 | 4 |  9
+ 10 | 4 | 10
+(10 rows)
+
+-- Test table rewrite on temp tables.
+CREATE TEMP TABLE temp_table_rewrite_test(a int);
+INSERT INTO temp_table_rewrite_test VALUES(1), (2), (3);
+CREATE INDEX ON temp_table_rewrite_test(a);
+ALTER TABLE temp_table_rewrite_test ADD COLUMN c SERIAL;
+SELECT * FROM temp_table_rewrite_test ORDER BY a;
+ a | c 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+-- Test rewrite with colocation.
+CREATE DATABASE mydb WITH colocation = true;
+\c mydb;
+-- Suppress NOTICE messages during table rewrite operations.
+SET client_min_messages TO WARNING;
+CREATE TABLE base (col int, col2 int);
+CREATE INDEX base_idx ON base(col2);
+INSERT INTO base VALUES (1, 3), (2, 2), (3, 1);
+ALTER TABLE base ADD PRIMARY KEY (col HASH); -- should fail.
+ERROR:  cannot colocate hash partitioned index
+ALTER TABLE base
+    ADD PRIMARY KEY (col), ADD COLUMN col3 float DEFAULT random();
+ALTER TABLE base ALTER COLUMN col2 TYPE int2;
+ALTER TABLE base ADD COLUMN col4 SERIAL;
+SELECT col, col2, col4 FROM base;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+SELECT col, col2, col4 FROM base WHERE col2 = 1;
+ col | col2 | col4 
+-----+------+------
+   3 |    1 |    3
+(1 row)
+
+ALTER TABLE base DROP CONSTRAINT base_pkey;
+SELECT col, col2, col4 FROM base ORDER BY col;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+\d+ base;
+                                                     Table "public.base"
+ Column |       Type       | Collation | Nullable |              Default               | Storage | Stats target | Description 
+--------+------------------+-----------+----------+------------------------------------+---------+--------------+-------------
+ col    | integer          |           | not null |                                    | plain   |              | 
+ col2   | smallint         |           |          |                                    | plain   |              | 
+ col3   | double precision |           |          | random()                           | plain   |              | 
+ col4   | integer          |           | not null | nextval('base_col4_seq'::regclass) | plain   |              | 
+Indexes:
+    "base_idx" lsm (col2 ASC), colocation: true
+Colocation: true
+
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base_idx'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated 
+-------------+----------------------+--------------
+           1 |                    0 | t
+(1 row)
+
+CREATE TABLE base2 (col int, col2 int) WITH (COLOCATION=false);
+CREATE INDEX base2_idx ON base2(col2);
+INSERT INTO base2 VALUES (1, 3), (2, 2), (3, 1);
+ALTER TABLE base2
+    ADD PRIMARY KEY (col ASC), ADD COLUMN col3 float DEFAULT random();
+ALTER TABLE base2 ALTER COLUMN col2 TYPE int2;
+ALTER TABLE base2 ADD COLUMN col4 SERIAL;
+SELECT col, col2, col4 FROM base2;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+SELECT col, col2, col4 FROM base2 WHERE col2 = 1;
+ col | col2 | col4 
+-----+------+------
+   3 |    1 |    3
+(1 row)
+
+ALTER TABLE base2 DROP CONSTRAINT base2_pkey;
+SELECT col, col2, col4 FROM base2 ORDER BY col;
+ col | col2 | col4 
+-----+------+------
+   1 |    3 |    1
+   2 |    2 |    2
+   3 |    1 |    3
+(3 rows)
+
+\d+ base2;
+                                                     Table "public.base2"
+ Column |       Type       | Collation | Nullable |               Default               | Storage | Stats target | Description 
+--------+------------------+-----------+----------+-------------------------------------+---------+--------------+-------------
+ col    | integer          |           | not null |                                     | plain   |              | 
+ col2   | smallint         |           |          |                                     | plain   |              | 
+ col3   | double precision |           |          | random()                            | plain   |              | 
+ col4   | integer          |           | not null | nextval('base2_col4_seq'::regclass) | plain   |              | 
+Indexes:
+    "base2_idx" lsm (col2 HASH)
+Options: colocation=false
+
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM
+    yb_table_properties('base2_idx'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated 
+-------------+----------------------+--------------
+           3 |                    1 | f
+(1 row)
+
+\c yugabyte;
+-- Suppress NOTICE messages during table rewrite operations.
+SET client_min_messages TO WARNING;
+-- Test rewrite with tablegroups.
+CREATE TABLEGROUP tg1;
+CREATE TABLE test_tablegroup (id int) TABLEGROUP tg1;
+INSERT INTO test_tablegroup VALUES (1), (2);
+CREATE TABLE test_tablegroup2 (id int, id2 int UNIQUE WITH
+    (colocation_id=100501)) WITH (colocation_id=100500) TABLEGROUP tg1;
+INSERT INTO test_tablegroup2 VALUES (1, 1), (2, 2);
+ALTER TABLE test_tablegroup ADD PRIMARY KEY (id ASC);
+ALTER TABLE test_tablegroup ADD COLUMN c SERIAL;
+ALTER TABLE test_tablegroup2 ADD PRIMARY KEY (id ASC);
+ALTER TABLE test_tablegroup2 ADD COLUMN c SERIAL;
+SELECT * FROM test_tablegroup;
+ id | c 
+----+---
+  1 | 1
+  2 | 2
+(2 rows)
+
+SELECT * FROM test_tablegroup2;
+ id | id2 | c 
+----+-----+---
+  1 |   1 | 1
+  2 |   2 | 2
+(2 rows)
+
+\d test_tablegroup;
+                            Table "public.test_tablegroup"
+ Column |  Type   | Collation | Nullable |                  Default                   
+--------+---------+-----------+----------+--------------------------------------------
+ id     | integer |           | not null | 
+ c      | integer |           | not null | nextval('test_tablegroup_c_seq'::regclass)
+Indexes:
+    "test_tablegroup_pkey" PRIMARY KEY, lsm (id ASC)
+Tablegroup: "tg1"
+
+\d test_tablegroup2;
+                            Table "public.test_tablegroup2"
+ Column |  Type   | Collation | Nullable |                   Default                   
+--------+---------+-----------+----------+---------------------------------------------
+ id     | integer |           | not null | 
+ id2    | integer |           |          | 
+ c      | integer |           | not null | nextval('test_tablegroup2_c_seq'::regclass)
+Indexes:
+    "test_tablegroup2_pkey" PRIMARY KEY, lsm (id ASC)
+    "test_tablegroup2_id2_key" UNIQUE CONSTRAINT, lsm (id2 ASC), tablegroup "tg1"
+Tablegroup: "tg1"
+
+ALTER TABLE test_tablegroup DROP CONSTRAINT test_tablegroup_pkey;
+ALTER TABLE test_tablegroup2 DROP CONSTRAINT test_tablegroup2_pkey;
+SELECT * FROM test_tablegroup ORDER BY id;
+ id | c 
+----+---
+  1 | 1
+  2 | 2
+(2 rows)
+
+SELECT * FROM test_tablegroup2 ORDER BY id;
+ id | id2 | c 
+----+-----+---
+  1 |   1 | 1
+  2 |   2 | 2
+(2 rows)
+
+\d test_tablegroup;
+                            Table "public.test_tablegroup"
+ Column |  Type   | Collation | Nullable |                  Default                   
+--------+---------+-----------+----------+--------------------------------------------
+ id     | integer |           | not null | 
+ c      | integer |           | not null | nextval('test_tablegroup_c_seq'::regclass)
+Tablegroup: "tg1"
+
+\d test_tablegroup2;
+                            Table "public.test_tablegroup2"
+ Column |  Type   | Collation | Nullable |                   Default                   
+--------+---------+-----------+----------+---------------------------------------------
+ id     | integer |           | not null | 
+ id2    | integer |           |          | 
+ c      | integer |           | not null | nextval('test_tablegroup2_c_seq'::regclass)
+Indexes:
+    "test_tablegroup2_id2_key" UNIQUE CONSTRAINT, lsm (id2 ASC), tablegroup "tg1"
+Tablegroup: "tg1"
+
+-- Tests for ALTER TABLE ... ADD COLUMN rewrite operations.
+-- verify split options are preserved.
+CREATE TABLE test_add_column(a int, b int)
+    SPLIT INTO 2 TABLETS;
+CREATE INDEX test_add_column_idx ON test_add_column(b ASC)
+    SPLIT AT VALUES ((5), (10));
+INSERT INTO test_add_column VALUES (1, 1);
+ALTER TABLE test_add_column ADD COLUMN c SERIAL;
+ALTER TABLE test_add_column ADD COLUMN d SERIAL PRIMARY KEY;
+SELECT num_tablets, num_hash_key_columns FROM
+    yb_table_properties('test_add_column'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           2 |                    1
+(1 row)
+
+SELECT yb_get_range_split_clause('test_add_column_idx'::regclass);
+  yb_get_range_split_clause  
+-----------------------------
+ SPLIT AT VALUES ((5), (10))
+(1 row)
+
+INSERT INTO test_add_column(a, d) VALUES (2, 1); -- should fail.
+ERROR:  duplicate key value violates unique constraint "test_add_column_pkey"
+INSERT INTO test_add_column(a, d) VALUES (2, 2);
+SELECT * FROM test_add_column;
+ a | b |  c  | d 
+---+---+-----+---
+ 1 | 1 |   1 | 1
+ 2 |   | 102 | 2
+(2 rows)
+
+-- Tests for ALTER TABLE ADD/DROP PRIMARY KEY.
+-- basic tests.
+CREATE TABLE nopk (id int, v int);
+ALTER TABLE nopk ADD PRIMARY KEY (id);
+ALTER TABLE nopk ADD PRIMARY KEY (id); -- should fail.
+ERROR:  multiple primary keys for table "nopk" are not allowed
+ALTER TABLE nopk DROP CONSTRAINT nopk_pkey;
+INSERT INTO nopk VALUES (1, 1);
+INSERT INTO nopk VALUES (1, 2);
+ALTER TABLE nopk ADD PRIMARY KEY (id); -- should fail.
+ERROR:  duplicate key value violates unique constraint "nopk"
+DELETE FROM nopk WHERE v = 2;
+ALTER TABLE nopk ADD PRIMARY KEY (id);
+ALTER TABLE nopk DROP CONSTRAINT nopk_pkey;
+ALTER TABLE nopk ALTER COLUMN id DROP NOT NULL;
+INSERT INTO nopk VALUES (null);
+ALTER TABLE nopk ADD PRIMARY KEY (id); -- should fail.
+ERROR:  column "id" contains null values
+DROP TABLE nopk;
+-- test complex pks.
+CREATE TABLE complex_pk (v1 int, v2 text, v3 char, v4 boolean);
+INSERT INTO complex_pk VALUES (1, '111', '1', 'true'), (2, '222', '2', 'false');
+ALTER TABLE complex_pk ADD PRIMARY KEY ((v1, v2) HASH, v3 ASC, v4 DESC);
+SELECT * FROM yb_table_properties('complex_pk'::regclass);
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id 
+-------------+----------------------+--------------+----------------+---------------
+           3 |                    2 | f            |                |              
+(1 row)
+
+INSERT INTO complex_pk VALUES (2, '222', '3', 'true');
+INSERT INTO complex_pk VALUES (2, '222', '2', 'false'); -- should fail.
+ERROR:  duplicate key value violates unique constraint "complex_pk_pkey"
+SELECT * FROM complex_pk ORDER BY v1, v2, v3, v4;
+ v1 | v2  | v3 | v4 
+----+-----+----+----
+  1 | 111 | 1  | t
+  2 | 222 | 2  | f
+  2 | 222 | 3  | t
+(3 rows)
+
+ALTER TABLE complex_pk DROP CONSTRAINT complex_pk_pkey;
+INSERT INTO complex_pk VALUES (2, '222', '3', 'true');
+SELECT * FROM complex_pk ORDER BY v1, v2, v3, v4;
+ v1 | v2  | v3 | v4 
+----+-----+----+----
+  1 | 111 | 1  | t
+  2 | 222 | 2  | f
+  2 | 222 | 3  | t
+  2 | 222 | 3  | t
+(4 rows)
+
+-- test range pks.
+CREATE TABLE range_pk (id int);
+INSERT INTO range_pk VALUES (1), (2), (3);
+ALTER TABLE range_pk ADD PRIMARY KEY (id DESC);
+SELECT * FROM range_pk; -- should be in descending order.
+ id 
+----
+  3
+  2
+  1
+(3 rows)
+
+ALTER TABLE range_pk DROP CONSTRAINT range_pk_pkey;
+SELECT * FROM range_pk ORDER BY id;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+-- test include pks.
+CREATE TABLE include_pk (id int, v1 int, v2 int);
+INSERT INTO include_pk VALUES (1, 11, 111), (2, 22, 222);
+ALTER TABLE include_pk ADD PRIMARY KEY (id) INCLUDE (v1, v2);
+INSERT INTO include_pk VALUES (3, 11, 111);
+EXPLAIN SELECT v1 FROM include_pk WHERE id = 2;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Index Scan using include_pk_pkey on include_pk  (cost=0.00..4.11 rows=1 width=4)
+   Index Cond: (id = 2)
+(2 rows)
+
+SELECT v1 FROM include_pk WHERE id = 2;
+ v1 
+----
+ 22
+(1 row)
+
+INSERT INTO include_pk VALUES (3, 99, 999); -- should fail.
+ERROR:  duplicate key value violates unique constraint "include_pk_pkey"
+SELECT * FROM include_pk ORDER BY id;
+ id | v1 | v2  
+----+----+-----
+  1 | 11 | 111
+  2 | 22 | 222
+  3 | 11 | 111
+(3 rows)
+
+EXPLAIN SELECT v1 FROM include_pk WHERE id = 3;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Index Scan using include_pk_pkey on include_pk  (cost=0.00..4.11 rows=1 width=4)
+   Index Cond: (id = 3)
+(2 rows)
+
+SELECT v1 FROM include_pk WHERE id = 3;
+ v1 
+----
+ 11
+(1 row)
+
+ALTER TABLE include_pk DROP CONSTRAINT include_pk_pkey;
+EXPLAIN SELECT v1 FROM include_pk WHERE id = 3;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Seq Scan on include_pk  (cost=0.00..102.50 rows=1000 width=4)
+   Storage Filter: (id = 3)
+(2 rows)
+
+SELECT v1 FROM include_pk WHERE id = 3;
+ v1 
+----
+ 11
+(1 row)
+
+-- test pk with UDT.
+CREATE TYPE typeid AS (i int);
+CREATE TABLE nopk_udt (id typeid, v int);
+ALTER TABLE nopk_udt ADD PRIMARY KEY (id); -- should fail.
+ERROR:  PRIMARY KEY containing column of type 'user_defined_type' not yet supported
+-- test pk USING INDEX.
+CREATE TABLE nopk_usingindex (id int);
+CREATE UNIQUE INDEX nopk_idx ON nopk_usingindex (id ASC);
+ALTER TABLE nopk_usingindex ADD PRIMARY KEY USING INDEX nopk_idx; -- should fail.
+ERROR:  ALTER TABLE / ADD CONSTRAINT PRIMARY KEY USING INDEX is not supported
+-- test adding/dropping pks on partitioned tables.
+CREATE TABLE nopk_whole (id int) PARTITION BY LIST (id);
+CREATE TABLE nopk_part1 PARTITION OF nopk_whole FOR VALUES IN (1, 2, 3);
+CREATE TABLE nopk_part2 PARTITION OF nopk_whole FOR VALUES IN (10, 20, 30, 40)
+    PARTITION BY LIST (id);
+CREATE TABLE nopk_part2_part1 PARTITION OF nopk_part2 FOR VALUES IN (10, 20);
+CREATE TABLE nopk_part2_part2 PARTITION OF nopk_part2 FOR VALUES IN (30, 40);
+ALTER TABLE nopk_whole ADD PRIMARY KEY (id);
+-- verify that we cannot drop inherited PK constraints.
+ALTER TABLE nopk_part1 DROP CONSTRAINT nopk_part1_pkey; -- should fail.
+ERROR:  cannot drop inherited constraint "nopk_part1_pkey" of relation "nopk_part1"
+ALTER TABLE nopk_part2 DROP CONSTRAINT nopk_part2_pkey; -- should fail.
+ERROR:  cannot drop inherited constraint "nopk_part2_pkey" of relation "nopk_part2"
+ALTER TABLE nopk_part2_part1 DROP CONSTRAINT nopk_part2_part1_pkey; -- should fail.
+ERROR:  cannot drop inherited constraint "nopk_part2_part1_pkey" of relation "nopk_part2_part1"
+ALTER TABLE nopk_part2_part2 DROP CONSTRAINT nopk_part2_part2_pkey; -- should fail.
+ERROR:  cannot drop inherited constraint "nopk_part2_part2_pkey" of relation "nopk_part2_part2"
+ALTER TABLE nopk_whole DROP CONSTRAINT nopk_whole_pkey;
+-- verify that we can successfully add and drop PK constraints on partitions.
+ALTER TABLE nopk_part1 ADD PRIMARY KEY (id);
+ALTER TABLE nopk_part1 DROP CONSTRAINT nopk_part1_pkey;
+ALTER TABLE nopk_part2 ADD PRIMARY KEY (id);
+ALTER TABLE nopk_part2 DROP CONSTRAINT nopk_part2_pkey;
+ALTER TABLE nopk_part2_part1 ADD PRIMARY KEY (id);
+ALTER TABLE nopk_part2_part1 DROP CONSTRAINT nopk_part2_part1_pkey;
+ALTER TABLE nopk_part2_part2 ADD PRIMARY KEY (id);
+ALTER TABLE nopk_part2_part2 DROP CONSTRAINT nopk_part2_part2_pkey;
+-- tests for altered table referenced by a partitioned FK table.
+CREATE TABLE test (id int unique);
+CREATE TABLE test_part (id int REFERENCES test(id)) PARTITION BY RANGE(id);
+CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (100);
+INSERT INTO test VALUES (1);
+INSERT INTO test_part VALUES (1);
+ALTER TABLE test ADD PRIMARY KEY (id);
+SELECT * FROM test;
+ id 
+----
+  1
+(1 row)
+
+SELECT * FROM test_part ORDER BY id;
+ id 
+----
+  1
+(1 row)
+
+INSERT INTO test_part VALUES (2); -- should fail.
+ERROR:  insert or update on table "test_part_1" violates foreign key constraint "test_part_id_fkey"
+DETAIL:  Key (id)=(2) is not present in table "test".
+INSERT INTO test_part_1 VALUES (2); -- should fail.
+ERROR:  insert or update on table "test_part_1" violates foreign key constraint "test_part_id_fkey"
+DETAIL:  Key (id)=(2) is not present in table "test".
+DROP TABLE test CASCADE;
+-- tests for split options.
+-- verify split options are preserved when we add/drop a hash key.
+CREATE TABLE nopk (id int, a int, b text, c float, d timestamp, e money)
+    SPLIT INTO 5 TABLETS;
+CREATE INDEX nopk_idx1 ON nopk(id) SPLIT INTO 4 TABLETS;
+CREATE INDEX nopk_idx2 ON nopk(id ASC, a ASC, b ASC, c ASC, d ASC, e ASC)
+    SPLIT AT VALUES
+    ((10, 20, E'test123\"\"''\\\\\\u0068\\u0069', '-Infinity', '1999-01-01',
+    '12.34'),
+    (20, 30, E'test123\"\"''\\\\\\u0068\\u0069z', 'Infinity', '2023-01-01',
+    '56.78'));
+ALTER TABLE nopk ADD PRIMARY KEY (id);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk_idx1'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           4 |                    1
+(1 row)
+
+SELECT yb_get_range_split_clause('nopk_idx2'::regclass);
+                                                                                           yb_get_range_split_clause                                                                                            
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ SPLIT AT VALUES ((10, 20, E'test123""''\\\\\\u0068\\u0069', '-Infinity', 'Fri Jan 01 00:00:00 1999', '$12.34'), (20, 30, E'test123""''\\\\\\u0068\\u0069z', 'Infinity', 'Sun Jan 01 00:00:00 2023', '$56.78'))
+(1 row)
+
+ALTER TABLE nopk DROP CONSTRAINT nopk_pkey;
+-- verify split options are not preserved when we add a range key, and only the number of
+-- tablets is preserved when we drop a range key.
+CREATE TABLE nopk2 (id int) SPLIT INTO 5 TABLETS;
+ALTER TABLE nopk2 ADD PRIMARY KEY (id);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('nopk2'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+CREATE TABLE range_pk_test (id int, primary key(id asc)) SPLIT AT VALUES ((5), (10), (15), (20));
+ALTER TABLE range_pk_test DROP CONSTRAINT range_pk_test_pkey;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('range_pk_test'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+-- rules:
+-- 1. new table rewrite + rule
+-- 2. old table rewrite + rule -- fail
+-- 3. new table rewrite + no more rule
+-- 4. old table rewrite + no more rule
+CREATE TABLE pk_rule_table (id int);
+CREATE RULE pk_rule AS
+    ON INSERT TO pk_rule_table
+    DO INSTEAD DELETE FROM pk_rule_table;
+ALTER TABLE pk_rule_table ADD PRIMARY KEY (id);
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE pk_rule_table DROP CONSTRAINT pk_rule_table_pkey; -- should fail.
+ERROR:  changing primary key of a table with rules is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16981. React with thumbs up to raise its priority
+RESET yb_enable_alter_table_rewrite;
+DROP RULE pk_rule ON pk_rule_table;
+ALTER TABLE pk_rule_table DROP CONSTRAINT pk_rule_table_pkey;
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE pk_rule_table ADD PRIMARY KEY (id);
+RESET yb_enable_alter_table_rewrite;
+-- Tests for ALTER TYPE.
+-- basic tests.
+CREATE TABLE varchar_table(id SERIAL, c1 varchar(10), PRIMARY KEY (id ASC));
+CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
+ALTER TABLE varchar_table ALTER c1 TYPE int; -- should fail.
+ERROR:  column "c1" cannot be cast automatically to type integer
+HINT:  You might need to specify "USING c1::integer".
+ALTER TABLE int4_table ALTER c1 TYPE int8;
+INSERT INTO int4_table(c1) VALUES (2 ^ 40);
+ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
+ERROR:  integer out of range
+INSERT INTO varchar_table(c1) VALUES ('aa');
+ALTER TABLE varchar_table ALTER c1 TYPE varchar(1); -- should fail.
+ERROR:  value too long for type character varying(1)
+INSERT INTO varchar_table(c1) VALUES ('a'), (2), ('aaa');
+ALTER TABLE varchar_table ALTER c1 TYPE text;
+SELECT * from varchar_table;
+ id | c1  
+----+-----
+  1 | aa
+  2 | a
+  3 | 2
+  4 | aaa
+(4 rows)
+
+INSERT INTO varchar_table(c1) VALUES ('a'), ('bb'), ('ccc');
+ALTER TABLE varchar_table ALTER c1 TYPE int USING length(c1);
+SELECT * from varchar_table;
+ id | c1 
+----+----
+  1 |  2
+  2 |  1
+  3 |  1
+  4 |  3
+  5 |  1
+  6 |  2
+  7 |  3
+(7 rows)
+
+ALTER TABLE varchar_table ALTER c1 TYPE double precision USING sqrt(c1);
+SELECT * from varchar_table;
+ id |        c1        
+----+------------------
+  1 |  1.4142135623731
+  2 |                1
+  3 |                1
+  4 | 1.73205080756888
+  5 |                1
+  6 |  1.4142135623731
+  7 | 1.73205080756888
+(7 rows)
+
+ALTER TABLE int4_table ADD COLUMN c2 varchar, ADD COLUMN c3 int, ALTER c1 TYPE varchar;
+INSERT INTO int4_table(c1, c2, c3) VALUES ('a', 'a', 1), ('b', 'b', 2), ('c', 'c', 3);
+SELECT * from int4_table;
+ id |      c1       | c2 | c3 
+----+---------------+----+----
+  1 | 1099511627776 |    |   
+  2 | a             | a  |  1
+  3 | b             | b  |  2
+  4 | c             | c  |  3
+(4 rows)
+
+CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1);
+ALTER TABLE int4_table2 ALTER c1 TYPE varchar; -- should fail.
+ERROR:  cannot alter type of column named in partition key
+CREATE TABLE pk_table(c1 int primary key);
+INSERT INTO pk_table VALUES (1), (2);
+ALTER TABLE pk_table ALTER c1 TYPE varchar;
+SELECT * from pk_table ORDER BY c1 ASC;
+ c1 
+----
+ 1
+ 2
+(2 rows)
+
+INSERT INTO pk_table VALUES (1); -- should fail.
+ERROR:  duplicate key value violates unique constraint "pk_table_pkey"
+ALTER TABLE pk_table ALTER c1 TYPE int USING length(c1);  -- should fail.
+ERROR:  duplicate key value violates unique constraint "pk_table"
+-- test ALTER TYPE on a column that is a part of a view/rule:
+-- 1. column part of view --fail
+-- 2. column not part of view
+-- 3. column part of view via _RETURN rule -- fail
+-- 4. column not part of view via _RETURN rule
+-- 5. rule on other table/view that affects this table
+-- 6. rule on other table/view + rule on this table
+-- 7. rule on other table/view + rule on this table + old rewrite -- fail
+-- 8. rule on other table/view + no more rule on this table
+-- 9. rule on other table/view (this is dropped for #22063) + no more rule on this table + old rewrite
+CREATE TABLE test_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
+CREATE VIEW test_view AS SELECT c2 FROM test_table;
+ALTER TABLE test_table ALTER c2 TYPE int USING length(c2); -- should fail.
+ERROR:  cannot alter type of a column used by a view or rule
+DETAIL:  rule _RETURN on view test_view depends on column "c2"
+ALTER TABLE test_table ALTER c3 TYPE varchar(1);
+CREATE TABLE dummy_table (c3 varchar);
+CREATE RULE "_RETURN" AS
+    ON SELECT TO dummy_table
+    DO INSTEAD
+        SELECT c3 FROM test_table;
+ALTER TABLE test_table ALTER c3 TYPE varchar(1); -- should fail.
+ERROR:  cannot alter type of a column used by a view or rule
+DETAIL:  rule _RETURN on view dummy_table depends on column "c3"
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+CREATE RULE dummy_rule AS
+    ON INSERT TO dummy_table
+    DO INSTEAD DELETE FROM test_table;
+ALTER TABLE test_table ALTER c4 TYPE char;
+CREATE RULE test_rule AS
+    ON INSERT TO test_table
+    DO INSTEAD DELETE FROM dummy_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+SET yb_enable_alter_table_rewrite = OFF;
+ALTER TABLE test_table ALTER c4 TYPE char; -- should fail.
+ERROR:  changing column type of a table with rules is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/16981. React with thumbs up to raise its priority
+RESET yb_enable_alter_table_rewrite;
+DROP RULE test_rule ON test_table;
+ALTER TABLE test_table ALTER c4 TYPE char;
+SET yb_enable_alter_table_rewrite = OFF;
+-- TODO(#22063): DROP VIEW is needed to avoid non-deterministic error.
+DROP VIEW dummy_table;
+ALTER TABLE test_table ALTER c4 TYPE varchar(1);
+RESET yb_enable_alter_table_rewrite;
+DROP TABLE test_table CASCADE;
+-- test ALTER TYPE on a foreign key column.
+CREATE TABLE fk_table (c1 varchar primary key);
+CREATE TABLE test_table (c1 varchar primary key references fk_table(c1));
+CREATE TABLE fk_table2 (c1 varchar references test_table(c1));
+INSERT INTO fk_table VALUES ('a'), ('aa'), ('aaa');
+INSERT INTO test_table VALUES ('a'), ('aa'), ('aaa');
+INSERT INTO fk_table2 VALUES ('a'), ('aa'), ('aaa');
+ALTER TABLE fk_table ALTER c1 TYPE int USING LENGTH(c1); -- should fail.
+ERROR:  foreign key constraint "test_table_c1_fkey" cannot be implemented
+DETAIL:  Key columns "c1" and "c1" are of incompatible types: character varying and integer.
+ALTER TABLE fk_table ALTER c1 TYPE varchar(3);
+\d fk_table;
+                    Table "public.fk_table"
+ Column |         Type         | Collation | Nullable | Default 
+--------+----------------------+-----------+----------+---------
+ c1     | character varying(3) |           | not null | 
+Indexes:
+    "fk_table_pkey" PRIMARY KEY, lsm (c1 HASH)
+Referenced by:
+    TABLE "test_table" CONSTRAINT "test_table_c1_fkey" FOREIGN KEY (c1) REFERENCES fk_table(c1)
+
+\d test_table;
+                  Table "public.test_table"
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ c1     | character varying |           | not null | 
+Indexes:
+    "test_table_pkey" PRIMARY KEY, lsm (c1 HASH)
+Foreign-key constraints:
+    "test_table_c1_fkey" FOREIGN KEY (c1) REFERENCES fk_table(c1)
+Referenced by:
+    TABLE "fk_table2" CONSTRAINT "fk_table2_c1_fkey" FOREIGN KEY (c1) REFERENCES test_table(c1)
+
+\d fk_table2;
+                  Table "public.fk_table2"
+ Column |       Type        | Collation | Nullable | Default 
+--------+-------------------+-----------+----------+---------
+ c1     | character varying |           |          | 
+Foreign-key constraints:
+    "fk_table2_c1_fkey" FOREIGN KEY (c1) REFERENCES test_table(c1)
+
+INSERT INTO fk_table2 VALUES ('aaaa'); -- should fail.
+ERROR:  insert or update on table "fk_table2" violates foreign key constraint "fk_table2_c1_fkey"
+DETAIL:  Key (c1)=(aaaa) is not present in table "test_table".
+INSERT INTO test_table VALUES ('aaaa'); -- should fail.
+ERROR:  insert or update on table "test_table" violates foreign key constraint "test_table_c1_fkey"
+DETAIL:  Key (c1)=(aaaa) is not present in table "fk_table".
+DROP TABLE test_table CASCADE;
+-- test ALTER TYPE where an index with a default tablespace is re-created.
+CREATE TABLESPACE test_tblspc LOCATION '/invalid';
+WARNING:  LOCATION not supported yet and will be ignored
+LINE 1: CREATE TABLESPACE test_tblspc LOCATION '/invalid';
+                                      ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6569. React with thumbs up to raise its priority
+SET default_tablespace = test_tblspc;
+CREATE TABLE test_table (c1 int, c2 int);
+CREATE INDEX test_index ON test_table(c1);
+ALTER TABLE test_table ALTER c1 TYPE int2;
+\d test_index;
+       Index "public.test_index"
+ Column |   Type   | Key? | Definition 
+--------+----------+------+------------
+ c1     | smallint | yes  | c1
+lsm, for table "public.test_table"
+Tablespace: "test_tblspc"
+
+-- test ALTER TYPE on a table with a range key.
+CREATE TABLE range_key_table(col1 int, a int, b int, col2 int, c text, d text,
+    col3 int, e int, PRIMARY KEY((a, b) HASH, c ASC, d DESC) INCLUDE (e));
+INSERT INTO range_key_table(a, b, c, d)
+    VALUES (1, 1, 'a', 'e'), (1, 1, 'aa', 'f'), (1, 1, 'aa', 'g');
+CREATE INDEX ON range_key_table(c ASC);
+ALTER TABLE range_key_table ALTER c TYPE int USING length(c);
+SELECT a, b, c, d FROM range_key_table;
+ a | b | c | d 
+---+---+---+---
+ 1 | 1 | 1 | e
+ 1 | 1 | 2 | g
+ 1 | 1 | 2 | f
+(3 rows)
+
+\d range_key_table;
+          Table "public.range_key_table"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ col1   | integer |           |          | 
+ a      | integer |           | not null | 
+ b      | integer |           | not null | 
+ col2   | integer |           |          | 
+ c      | integer |           | not null | 
+ d      | text    |           | not null | 
+ col3   | integer |           |          | 
+ e      | integer |           |          | 
+Indexes:
+    "range_key_table_pkey" PRIMARY KEY, lsm ((a, b) HASH, c ASC, d DESC) INCLUDE (e), tablespace "test_tblspc"
+    "range_key_table_c_idx" lsm (c ASC), tablespace "test_tblspc"
+Tablespace: "test_tblspc"
+
+-- tests for split options.
+CREATE TABLE test1 (c1 varchar, c2 varchar) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx1 ON test1(c1) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx2 ON test1(c1 HASH, c2 ASC) SPLIT INTO 5 TABLETS;
+CREATE INDEX idx3 ON test1(c2 ASC) INCLUDE(c1)
+    SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
+CREATE INDEX idx4 ON test1(c1 ASC) SPLIT AT VALUES (('h'));
+ALTER TABLE test1 ALTER c1 TYPE int USING length(c1);
+-- verify hash split options on the table are preserved.
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test1'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+-- verify hash split options on the indexes are preserved.
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx1'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx2'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+-- verify range split options on the indexes are only preserved when the altered column is not a
+-- part of the index key.
+SELECT yb_get_range_split_clause('idx3'::regclass);
+              yb_get_range_split_clause               
+------------------------------------------------------
+ SPLIT AT VALUES ((E'test123""''\\\\\\u0068\\u0069'))
+(1 row)
+
+SELECT yb_get_range_split_clause('idx4'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
+CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))
+    SPLIT AT VALUES (('h', 20));
+ALTER TABLE test2 ALTER c1 TYPE int USING length(c1);
+CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))
+    SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
+ALTER TABLE test3 ALTER c1 TYPE int USING length(c1);
+-- verify range split options on the table are only preserved when the altered column is not a
+-- part of the table's key.
+SELECT yb_get_range_split_clause('test2'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
+SELECT yb_get_range_split_clause('test3'::regclass);
+              yb_get_range_split_clause               
+------------------------------------------------------
+ SPLIT AT VALUES ((E'test123""''\\\\\\u0068\\u0069'))
+(1 row)
+
+-- test ALTER TYPE on temp tables.
+CREATE TEMP TABLE test_table (col1 text UNIQUE);
+INSERT INTO test_table VALUES ('1'), ('01');
+ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
+ERROR:  could not create unique index "test_table_col1_key"
+DETAIL:  Key (col1)=(1) is duplicated.
+ALTER TABLE test_table DROP CONSTRAINT test_table_col1_key;
+ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int;
+SELECT * FROM test_table;
+ col1 
+------
+    1
+    1
+(2 rows)
+
+--
+-- Test ALTER TABLE ... ADD COLUMN ... GENERATED ALWAYS AS IDENTITY
+--
+CREATE TABLE test_identity (id int, PRIMARY KEY (id ASC));
+INSERT INTO test_identity VALUES (1), (2), (3);
+ALTER TABLE test_identity ADD COLUMN id2 int GENERATED ALWAYS AS IDENTITY;
+INSERT INTO test_identity VALUES (4, 4); -- should fail
+ERROR:  cannot insert into column "id2"
+DETAIL:  Column "id2" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
+INSERT INTO test_identity OVERRIDING SYSTEM VALUE VALUES (4, 4);
+SELECT * FROM test_identity;
+ id | id2
+----+-----
+  1 |   1
+  2 |   2
+  3 |   3
+  4 |   4
+(4 rows)

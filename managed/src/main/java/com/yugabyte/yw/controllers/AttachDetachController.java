@@ -18,8 +18,8 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
-import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -168,11 +168,14 @@ public class AttachDetachController extends AuthenticatedController {
 
       // Non-local releases will not be populated by importLocalReleases, so we need to add it
       // ourselves.
-      ReleaseMetadata ybReleaseMetadata =
+      ReleaseContainer release =
           releaseManager.getReleaseByVersion(
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-      if (ybReleaseMetadata != null && ybReleaseMetadata.hasLocalRelease()) {
-        ybReleaseMetadata = null;
+      if (release != null && release.hasLocalRelease()) {
+        release = null;
+      }
+      if (release != null) {
+        release.setArtifactMatchingArchitecture(universe.getUniverseDetails().arch);
       }
 
       List<NodeInstance> nodeInstances = NodeInstance.listByUniverse(universe.getUniverseUUID());
@@ -204,7 +207,7 @@ public class AttachDetachController extends AuthenticatedController {
               .schedules(schedules)
               .backups(backups)
               .customerConfigs(customerConfigs)
-              .ybReleaseMetadata(ybReleaseMetadata)
+              .ybReleaseMetadata(release != null ? release.toImportExportRelease() : null)
               .oldPlatformPaths(platformPaths)
               .skipReleases(detachUniverseFormData.skipReleases)
               .build();

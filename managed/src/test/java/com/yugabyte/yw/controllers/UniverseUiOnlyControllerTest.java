@@ -7,7 +7,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.ModelFactory.awsProvider;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
@@ -287,7 +286,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     for (NodeInstance ni : NodeInstance.listByProvider(p.getUuid())) {
       if (k < 5) {
         k++;
-        ni.setInUse(true);
+        ni.setState(NodeInstance.State.USED);
         ni.save();
       } else {
         break;
@@ -1925,7 +1924,19 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsEditRegions() throws IOException {
     testGetAvailableOptions(
-        x -> x.getPrimaryCluster().userIntent.regionList.add(UUID.randomUUID()),
+        x -> {
+          x.getPrimaryCluster().userIntent.regionList =
+              new ArrayList<>(x.getPrimaryCluster().userIntent.regionList);
+          x.getPrimaryCluster().userIntent.regionList.add(UUID.randomUUID());
+        },
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditDefaultRegion() throws IOException {
+    testGetAvailableOptions(
+        x -> x.getPrimaryCluster().placementInfo.cloudList.get(0).defaultRegion = UUID.randomUUID(),
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
   }
@@ -1963,6 +1974,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsNoSRforK8s() throws IOException {
     testGetAvailableOptions(
+        CloudType.kubernetes,
         u -> {
           List<NodeDetails> nodesToAdd = new ArrayList<>();
           u.nodeDetailsSet.forEach(
@@ -1976,7 +1988,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           u.nodeDetailsSet.addAll(nodesToAdd);
           u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
           u.getPrimaryCluster().userIntent.instanceType = "c3.large";
-          u.getPrimaryCluster().userIntent.providerType = CloudType.kubernetes;
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
@@ -2267,8 +2278,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
       UniverseConfigureTaskParams.ClusterOperationType operationType,
       UniverseDefinitionTaskParams.UpdateOptions... expectedOptions)
       throws IOException {
+    testGetAvailableOptions(CloudType.aws, mutator, operationType, expectedOptions);
+  }
+
+  private void testGetAvailableOptions(
+      CloudType providerType,
+      Consumer<UniverseDefinitionTaskParams> mutator,
+      UniverseConfigureTaskParams.ClusterOperationType operationType,
+      UniverseDefinitionTaskParams.UpdateOptions... expectedOptions)
+      throws IOException {
     Universe u = createUniverse(customer.getId());
-    Provider provider = awsProvider(customer);
+    Provider provider = Provider.create(customer.getUuid(), providerType, "Provider");
     Region region = Region.create(provider, "test-region", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");
     // create default universe
@@ -2281,10 +2301,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     userIntent.instanceType = "c5.large";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, true));
-    u = Universe.getOrBadRequest(u.getUniverseUUID());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, true));
     UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
     mutator.accept(udtp);
     udtp.setUniverseUUID(u.getUniverseUUID());

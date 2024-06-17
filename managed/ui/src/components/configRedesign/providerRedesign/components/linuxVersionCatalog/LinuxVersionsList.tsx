@@ -7,10 +7,10 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { Control, useFieldArray, useWatch } from 'react-hook-form';
-import { findIndex } from 'lodash';
+import { find, findIndex, isEmpty, split } from 'lodash';
 import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 
@@ -24,31 +24,44 @@ import {
 import { MoreActionsMenu } from '../../../../customCACerts/MoreActionsMenu';
 import { YBButton } from '../../../../../redesign/components';
 import { AddLinuxVersionModal } from './AddLinuxVersionModal';
-import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUtils';
+import { ImageBundleDefaultTag, ImageBundleYBActiveTag, IsImgBundleInUseEditEnabled } from './LinuxVersionUtils';
 
 import { LinuxVersionDeleteModal } from './DeleteLinuxVersionModal';
+import { YBPopover } from '../../../../../redesign/components/YBPopover/YBPopover';
 import { ArchitectureType, ProviderCode } from '../../constants';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { ValidationErrMsgDelimiter } from '../../forms/utils';
 
 import styles from '../RegionList.module.scss';
 
 import { Delete, Edit, Flag } from '@material-ui/icons';
 import MoreIcon from '../../../../../redesign/assets/ellipsis.svg';
+import ErrorIcon from '../../../../../redesign/assets/error.svg';
 
-interface LinuxVersionEmptyProps {
+interface LinuxVersionListProps {
   control: Control<AWSProviderCreateFormFieldValues>;
   providerType: ProviderCode;
+  viewMode: 'CREATE' | 'EDIT';
+  inUseImageBundleUuids: Set<string>;
 }
 
-export const LinuxVersionsList: FC<LinuxVersionEmptyProps> = ({ control, providerType }) => {
+export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
+  control,
+  providerType,
+  viewMode,
+  inUseImageBundleUuids
+}) => {
   const { replace, update, remove } = useFieldArray({
     control,
     name: 'imageBundles'
   });
 
-  const imageBundles = useWatch({ name: 'imageBundles' });
+  const imageBundles: ImageBundle[] = useWatch({ name: 'imageBundles' });
 
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const isImgBundleInUseEditEnabled = IsImgBundleInUseEditEnabled();
 
   const setImageAsDefault = (img: ImageBundle) => {
     const bundles = imageBundles.map((i: ImageBundle) => {
@@ -99,10 +112,22 @@ export const LinuxVersionsList: FC<LinuxVersionEmptyProps> = ({ control, provide
     (i: ImageBundle) => i.details.arch === ArchitectureType.ARM64
   );
 
+  //if the img bundle with useAsDefault as true is deleted, select the first image as default
+  useEffect(() => {
+    if (X86Images.length > 0 && !find(X86Images, { useAsDefault: true })) {
+      setImageAsDefault(X86Images[0]);
+    }
+    if (AarchImages.length > 0 && !find(AarchImages, { useAsDefault: true })) {
+      setImageAsDefault(AarchImages[0]);
+    }
+  }, [X86Images, AarchImages]);
+
   const [editImageBundleDetails, setEditImageBundleDetails] = useState<ImageBundle | undefined>();
   const [deleteImageBundleDetails, setDeleteImageBundleDetails] = useState<
     ImageBundle | undefined
   >();
+
+  const errors = control?._formState?.errors.imageBundles;
 
   return (
     <>
@@ -116,6 +141,11 @@ export const LinuxVersionsList: FC<LinuxVersionEmptyProps> = ({ control, provide
         onDelete={(img) => {
           setDeleteImageBundleDetails(img);
         }}
+        viewMode={viewMode}
+        inUseImageBundleUuids={inUseImageBundleUuids}
+        showMoreActions={true}
+        errors={errors as any}
+        isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
       />
       <div style={{ marginTop: '24px' }} />
       {providerType === ProviderCode.AWS && (
@@ -129,6 +159,11 @@ export const LinuxVersionsList: FC<LinuxVersionEmptyProps> = ({ control, provide
           onDelete={(img) => {
             setDeleteImageBundleDetails(img);
           }}
+          viewMode={viewMode}
+          inUseImageBundleUuids={inUseImageBundleUuids}
+          showMoreActions={true}
+          errors={errors as any}
+          isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
         />
       )}
 
@@ -187,77 +222,162 @@ const LinuxVersionCardStyles = makeStyles((theme) => ({
     textDecoration: 'underline',
     marginTop: '16px',
     cursor: 'pointer'
+  },
+  actionButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'right',
+    gap: '8px'
   }
 }));
 
-interface LinuxVersionCardProps {
+interface LinuxVersionCardCommonProps {
   setImageAsDefault: (img: ImageBundle) => void;
   images: ImageBundle[];
   archType: string;
   setEditDetails: (img: ImageBundle) => void;
+  viewMode: 'CREATE' | 'EDIT';
   onDelete: (img: ImageBundle) => void;
-  showMoreActions?: boolean;
-  showTitle?: boolean;
-}
 
-export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
-  images,
-  archType,
-  setEditDetails,
-  setImageAsDefault,
-  onDelete,
-  showMoreActions = true,
-  showTitle = true
-}) => {
+  showTitle?: boolean;
+  errors?: any[];
+  isImgBundleInUseEditEnabled: boolean;
+}
+type LinuxVersionCardProps =
+  | (LinuxVersionCardCommonProps & {
+      showMoreActions: false;
+    })
+  | (LinuxVersionCardCommonProps & { inUseImageBundleUuids: Set<string>; showMoreActions: true });
+
+export const LinuxVersionsCard: FC<LinuxVersionCardProps> = (props) => {
+  const {
+    images,
+    archType,
+    setEditDetails,
+    setImageAsDefault,
+    onDelete,
+    showMoreActions,
+    showTitle = true,
+    viewMode,
+    isImgBundleInUseEditEnabled,
+    errors = []
+  } = props;
+  const inUseImageBundleUuids = props.showMoreActions
+    ? props.inUseImageBundleUuids
+    : new Set<string>();
   const classes = LinuxVersionCardStyles();
   const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
 
   const [showRetiredVersions, toggleShowRetiredVersions] = useToggle(false);
-
-  const formatActions = (image: ImageBundle) => {
+  const formatActions = (image: ImageBundle, index: number) => {
     return (
-      <MoreActionsMenu
-        menuOptions={[
-          {
-            text: t('edit'),
-            callback: () => {
-              setEditDetails(image);
+      <div className={classes.actionButtons}>
+        {!isEmpty(errors[index]) ? (
+          <YBPopover
+            hoverMsg={
+              <div>
+                {' '}
+                {split(errors[index]?.message, ValidationErrMsgDelimiter).map((msg) => (
+                  <div>{msg}</div>
+                ))}
+              </div>
+            }
+          >
+            <img src={ErrorIcon} />
+          </YBPopover>
+        ) : null}
+        <MoreActionsMenu
+          menuOptions={[
+            {
+              text: t('edit'),
+              callback: () => {
+                setEditDetails(image);
+              },
+              icon: <Edit />,
+              dataTestId: `LinuxVersionsCard${index}-Edit`,
+              menuItemWrapper(elem) {
+                return (
+                  <RbacValidator
+                    accessRequiredOn={
+                      viewMode === 'CREATE'
+                        ? ApiPermissionMap.CREATE_PROVIDER
+                        : ApiPermissionMap.MODIFY_PROVIDER
+                    }
+                    isControl
+                    overrideStyle={{ display: 'block' }}
+                  >
+                    {elem}
+                  </RbacValidator>
+                );
+              },
+              disabled: !isImgBundleInUseEditEnabled && inUseImageBundleUuids.has(image.uuid)
             },
-            icon: <Edit />
-          },
-          {
-            text: t('setDefault'),
-            callback: () => {
-              setImageAsDefault(image);
+            {
+              text: t('setDefault'),
+              callback: () => {
+                setImageAsDefault(image);
+              },
+              disabled: image.useAsDefault,
+              dataTestId: `LinuxVersionsCard${index}-SetDefault`,
+              menuItemWrapper(elem) {
+                if (!image.useAsDefault) return elem;
+                return (
+                  <RbacValidator
+                    accessRequiredOn={
+                      viewMode === 'CREATE'
+                        ? ApiPermissionMap.CREATE_PROVIDER
+                        : ApiPermissionMap.MODIFY_PROVIDER
+                    }
+                    isControl
+                    overrideStyle={{ display: 'block' }}
+                  >
+                    <Tooltip
+                      title={<Typography variant="subtitle1">{t('alreadyIsDefault')}</Typography>}
+                      placement="top"
+                      arrow
+                    >
+                      <span>{elem}</span>
+                    </Tooltip>
+                  </RbacValidator>
+                );
+              },
+              icon: <Flag />
             },
-            disabled: image.useAsDefault,
-            menuItemWrapper(elem) {
-              if (!image.useAsDefault) return elem;
-              return (
-                <Tooltip
-                  title={<Typography variant="subtitle1">{t('alreadyIsDefault')}</Typography>}
-                  placement="top"
-                  arrow
-                >
-                  <span>{elem}</span>
-                </Tooltip>
-              );
-            },
-            icon: <Flag />
-          },
-          {
-            text: t('delete'),
-            callback: () => {
-              onDelete(image);
-            },
-            icon: <Delete />
-          }
-        ]}
-      >
-        <YBButton variant="secondary" className={classes.moreOptionsBut}>
-          <img alt="More" src={MoreIcon} width="20" />
-        </YBButton>
-      </MoreActionsMenu>
+            {
+              text: t('delete'),
+              callback: () => {
+                onDelete(image);
+              },
+              icon: <Delete />,
+              dataTestId: `LinuxVersionsCard${index}-Delete`,
+              menuItemWrapper(elem) {
+                return (
+                  <RbacValidator
+                    accessRequiredOn={
+                      viewMode === 'CREATE'
+                        ? ApiPermissionMap.CREATE_PROVIDER
+                        : ApiPermissionMap.MODIFY_PROVIDER
+                    }
+                    isControl
+                    overrideStyle={{ display: 'block' }}
+                  >
+                    {elem}
+                  </RbacValidator>
+                );
+              },
+              disabled: inUseImageBundleUuids.has(image.uuid)
+            }
+          ]}
+        >
+          <YBButton
+            variant="secondary"
+            className={classes.moreOptionsBut}
+            data-testid={`LinuxVersionsCard${index}-MoreButton`}
+          >
+            <img alt="More" src={MoreIcon} width="20" />
+          </YBButton>
+        </MoreActionsMenu>
+      </div>
     );
   };
 
@@ -299,7 +419,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
         {showMoreActions && (
           <TableHeaderColumn
             columnClassName={styles.regionActionsColumn}
-            dataFormat={(_, row) => formatActions(row)}
+            dataFormat={(_, row, _extra, index) => formatActions(row, index)}
             dataAlign="right"
           />
         )}

@@ -15,13 +15,9 @@
 
 #include <shared_mutex>
 
-#include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/server/server_base_options.h"
-#include "yb/util/locks.h"
-#include "yb/util/status.h"
-#include "yb/util/flags/auto_flags_util.h"
-#include "yb/util/unique_lock.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -55,11 +51,11 @@ class AutoFlagsManagerBase {
   explicit AutoFlagsManagerBase(
       const std::string& process_name, const scoped_refptr<ClockBase>& clock,
       FsManager* fs_manager);
-  virtual ~AutoFlagsManagerBase();
+  virtual ~AutoFlagsManagerBase() = default;
 
   MonoDelta GetApplyDelay() const;
 
-  Status Init(const std::string& local_hosts);
+  Status Init(rpc::Messenger* server_messenger);
 
   // Returns true if the load was successful, false if the file was not found.
   // Returns true without doing any work if AutoFlags management is disabled.
@@ -67,9 +63,7 @@ class AutoFlagsManagerBase {
 
   // local_hosts is a comma separated list of ip addresses and ports.
   // Returns Status::OK without doing any work if AutoFlags management is disabled.
-  Status LoadFromMasterLeader(
-      const std::string& local_hosts, const server::MasterAddresses& master_addresses)
-      EXCLUDES(mutex_);
+  Status LoadFromMasterLeader(const server::MasterAddresses& master_addresses) EXCLUDES(mutex_);
 
   Status LoadFromConfigUnlocked(
       const AutoFlagsConfigPB new_config, ApplyNonRuntimeAutoFlags apply_non_runtime,
@@ -105,8 +99,7 @@ class AutoFlagsManagerBase {
 
   const std::string process_name_;
 
-  std::unique_ptr<rpc::SecureContext> secure_context_;
-  std::unique_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* server_messenger_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(AutoFlagsManagerBase);
 };

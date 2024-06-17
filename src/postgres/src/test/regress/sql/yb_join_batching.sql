@@ -1,3 +1,5 @@
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
+
 CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
 CREATE INDEX p1_b_idx ON p1 (b ASC);
@@ -226,6 +228,21 @@ explain (costs off) /*+Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a =
 /*+Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
 explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
 /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
+explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss1.b < 10;
+/*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss1.b < 10;
+drop table ss1;
+drop table ss2;
+
+create table ss1(a varchar(16), b int4);
+insert into ss1 values ('abc', 123), ('abc', 124);
+insert into ss1 values ('xyz', 123), ('xyz', 124);
+insert into ss1 values ('ijk', 123), ('xyz', 456);
+create table ss2(a varchar(16), b int8);
+create index ss2_ind on ss2(a asc, b asc);
+insert into ss2 values ('abc', 123), ('abc', 124);
+insert into ss2 values ('xyz', 123), ('xyz', 124);
+/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2)) IndexOnlyScan(ss2 ss2_ind)*/ explain (costs off) select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss2.b <= 100000 order by 1,2;
+/*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2)) IndexOnlyScan(ss2 ss2_ind)*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss2.b <= 100000 order by 1,2;
 drop table ss1;
 drop table ss2;
 
@@ -250,6 +267,43 @@ explain (costs off) /*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from s
 /*+YbBatchedNL(ss1 ss2) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a;
 drop table ss1;
 drop table ss2;
+
+create table intable(a int, b text, primary key(a asc, b asc));
+create table out(c1 int, c2 text);
+create index out_ind on out(c2 asc NULLS FIRST);
+insert into intable values (1, 'abcd');
+insert into out values (1, NULL), (1, 'abcd');
+/*+Leading((out intable)) IndexScan(out out_ind)*/ explain (costs off) select * from out, intable where out.c1 = intable.a and out.c2 = intable.b and intable.a <= 4;
+/*+Leading((out intable)) IndexScan(out out_ind)*/ select * from out, intable where out.c1 = intable.a and out.c2 = intable.b and intable.a <= 4;
+drop table intable;
+drop table out;
+
+create table outtable(a int);
+insert into outtable values (1), (2), (3);
+
+create table intable(a int primary key);
+insert into intable values (2), (3), (4), (6);
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a = 1 or t2.a = 2 order by t1.a;
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where t1.a >= t2.a or t1.a = 1 order by t1.a;
+
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+-- The problematic join filter is pushdownable to the nullable side.
+-- BNL not allowed here.
+explain (costs off) select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a and (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+select * FROM outtable t1 left outer join intable t2 on t1.a = t2.a where (t1.a + 1 > t2.a or t1.a = 1) order by t1.a;
+
+drop table outtable;
+drop table intable;
 
 CREATE TABLE q1(a int);
 CREATE TABLE q2(a int);
@@ -461,6 +515,26 @@ a = int4table.a;
 drop table oidtable;
 drop table int4table;
 
+CREATE TABLE p_inner(a int, b text, PRIMARY KEY(b asc, a asc));
+CREATE TABLE p_outer(a bigint, b text);
+INSERT INTO p_outer VALUES (0, '1');
+INSERT INTO p_inner VALUES (0, '1');
+EXPLAIN (COSTS OFF) SELECT * FROM p_outer, p_inner where p_outer.a = p_inner.a AND p_outer.b = p_inner.b;
+SELECT * FROM p_outer, p_inner where p_outer.a = p_inner.a AND p_outer.b = p_inner.b;
+DROP TABLE p_inner;
+DROP TABLE p_outer;
+
+create table ss1(a int);
+create table ss2(a int);
+create table ss3(a int, b int, primary key(a asc, b asc));
+
+-- Should not result in an illegal BNL on the inner side
+/*+Leading((ss1 (ss2 ss3)))*/ explain (costs off) select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+/*+Leading((ss1 (ss2 ss3)))*/ select * from ss1, ss2, ss3 where ss3.a = ss2.a and ss3.b = ss1.a and ss3.a <> ss2.a;
+drop table ss1;
+drop table ss2;
+drop table ss3;
+
 SELECT '' AS "xxx", *
   FROM J1_TBL AS tx order by 1, 2, 3, 4;
 
@@ -492,6 +566,8 @@ analyze p1;
 analyze p2;
 analyze p3;
 
+set yb_prefer_bnl = off;
+
 -- The following hints try to force an illegal BNL
 /*+YbBatchedNL(p1 p2 p3) YbBatchedNL(p2 p3) Leading((p1 (p2 p3))) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
 p3.a = p1.a + p2.a;
@@ -505,6 +581,8 @@ p3.a = p1.a + p2.a;
 -- This is a legal BNL
 /*+YbBatchedNL(p1 p2 p3) Leading(((p1 p2) p3)) IndexScan(p3)*/explain (costs off) select * from p1, p2, p3 where p1.a + 1 = p2.a and
 p3.a = p1.a + p2.a;
+
+set yb_prefer_bnl = on;
 
 drop table p1;
 drop table p2;
@@ -576,6 +654,70 @@ DROP TABLE x2;
 DROP TABLE x3;
 
 SET yb_bnl_batch_size = 3;
+create table ss1(a varchar(1024), b char(10));
+create table ss2(a varchar(1024));
+create index on ss2 (a asc);
+explain (costs off) select * from ss1 t1, ss2 t2 where t1.a = t2.a and t1.b = t2.a;
+drop table ss1;
+drop table ss2;
+
+CREATE TABLE ss1(a int);
+CREATE TABLE ss2(a int);
+CREATE TABLE ss3(a int, b int, c int, primary key(a asc, b asc));
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading((ss2 (ss1 ss3)))
+*/EXPLAIN (COSTS OFF) SELECT *
+FROM ss1, ss2, ss3
+WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) Leading(((ss1 ss2) ss3))
+*/SELECT *
+FROM ss1, ss2, ss3
+WHERE ss1.a = ss3.a and ss3.c <= (SELECT a FROM ss3 where a < ss2.a + ss1.a limit 1) and ss3.b <= ss2.a;
+
+DROP TABLE ss1;
+DROP TABLE ss2;
+DROP TABLE ss3;
+
+CREATE TABLE other(a int);
+CREATE INDEX ON other(a asc);
+CREATE TABLE ss1(a int);
+CREATE TABLE ss2(a int, b int);
+CREATE INDEX ON ss2(a asc, b asc);
+
+INSERT INTO ss1 VALUES (0), (0);
+INSERT INTO ss2 VALUES (0, 0), (0, 0);
+INSERT INTO other VALUES (1), (1);
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */EXPLAIN (COSTS OFF)
+SELECT *
+FROM (
+    SELECT ss1.a as a, other.a as othera
+    FROM ss1
+    CROSS JOIN other
+) AS cross_join
+LEFT OUTER JOIN ss2 ON ss2.a = (
+    SELECT other.a
+    FROM other, ss1
+    WHERE other.a = ss1.a + cross_join.a limit 1
+);
+
+/*+Set(enable_hashjoin OFF) Set(enable_mergejoin OFF) Set(enable_material OFF) */
+SELECT *
+FROM (
+    SELECT ss1.a as a, other.a as othera
+    FROM ss1
+    CROSS JOIN other
+) AS cross_join
+LEFT OUTER JOIN ss2 ON ss2.a = (
+    SELECT other.a
+    FROM other, ss1
+    WHERE other.a = ss1.a + cross_join.a limit 1
+);
+
+DROP TABLE other;
+DROP TABLE ss1;
+DROP TABLE ss2;
 
 --
 --

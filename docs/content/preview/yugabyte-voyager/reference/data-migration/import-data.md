@@ -28,7 +28,7 @@ The following page describes the usage of the following import commands:
 
 For offline migration, [Import the data](../../../migrate/migrate-steps/#import-data) to the YugabyteDB database.
 
-For [live migration](../../../migrate/live-migrate/#import-data) (with [fall-forward](../../../migrate/live-fall-forward/#import-data) and [fall-back](../../../migrate/live-fall-back/#import-data)), the import data command is an alias of `import data to target` which [imports the data](../../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
+For [live migration](../../../migrate/live-migrate/#import-data-to-target) (with [fall-forward](../../../migrate/live-fall-forward/#import-data-to-target) and [fall-back](../../../migrate/live-fall-back/#import-data-to-target)), the import data command is an alias of `import data to target` which [imports the data](../../../migrate/migrate-steps/#import-data) from the `data` directory to the target database, and starts ingesting the new changes captured by `export data` to the target database.
 
 ### Syntax
 
@@ -53,7 +53,7 @@ The valid *arguments* for import data are described in the following table:
 | --batch-size | Size of batches in the number of rows generated for ingestion during import data. <br>Default: 20000 rows<br>Example: `yb-voyager import data ... --batch-size 20000` |
 | --disable-pb |Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --enable&#8209;upsert | Enable UPSERT mode on target tables while importing data. <br>Default: true<br> Usage for disabling the mode: `yb-voyager import data ... --enable-upsert false`<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --table-list | Comma-separated list of names of source database tables whose data is to be imported. By default, table names in the list are case-insensitive. Enclose names in double quotes ("") to make them case-sensitive.<br>Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration.|
+| --table-list | Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration.|
 | --exclude&#8209;table&#8209;list | Comma-separated list of names of source database tables for which data needs to be excluded during import. Table names follow the same convention as `--table-list`. <br> This argument is unsupported for live migration. |
 | --table-list-file&#8209;path | Path of the file containing the list of names of source database tables (comma separated or line separated) to import.  Table names use the same convention as `--table-list`. |
 | &#8209;&#8209;exclude&#8209;table&#8209;list&#8209;file&#8209;path |  Path of the file containing the list of names of source database tables (comma separated or line separated) to exclude while importing data of those exported tables. Table names follow the same convention as `--table-list`. |
@@ -70,11 +70,11 @@ The valid *arguments* for import data are described in the following table:
 | --target-db-user | Username of the target database. |
 | --target-endpoints | Comma-separated list of node's endpoint to use for parallel import of data <br>Default: Use all the nodes in the cluster. For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag will be ignored if this is used. |
 | --use-public-ip | Use the node public IP addresses to distribute `--parallel-jobs` uniformly on data import. <br>Default: false<br> **Note** that you may need to configure the database with public IP addresses by setting [server-broadcast-addresses](../../../../reference/configuration/yb-tserver/#server-broadcast-addresses).<br>Example: `yb-voyager import data ... --use-public-ip true`<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| [--target-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-key](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
-| [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing the SSL certificate revocation list (CRL).|
+| [--target-ssl-cert](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the certificate which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-key](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the key which is part of the SSL `<cert,key>` pair. |
+| [--target-ssl-crl](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing the SSL certificate revocation list (CRL).|
 | --target-ssl-mode | Specify the SSL mode for the target database as one of `disable`, `allow`, `prefer` (default), `require`, `verify-ca`, or `verify-full`. |
-| [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing SSL certificate authority (CA) certificate(s). |
+| [--target-ssl-root-cert](../../yb-voyager-cli/#yugabytedb-options) | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | -y, --yes | Answer yes to all prompts during the export schema operation. <br>Default: false |
 
 ### Example

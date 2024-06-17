@@ -38,13 +38,13 @@ option java_package = "org.yb.cdc";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_client.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
-import "yb/util/opid.proto";
 
 service CDCService {
   rpc CreateCDCStream (CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
@@ -67,8 +67,13 @@ service CDCService {
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
   rpc CheckReplicationDrain (CheckReplicationDrainRequestPB)
       returns (CheckReplicationDrainResponsePB);
-  rpc InitVirtualWALForCDC(InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
-  rpc GetConsistentChanges(GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc InitVirtualWALForCDC (InitVirtualWALForCDCRequestPB) returns (InitVirtualWALForCDCResponsePB);
+  rpc GetConsistentChanges (GetConsistentChangesRequestPB) returns (GetConsistentChangesResponsePB);
+  rpc DestroyVirtualWALForCDC (DestroyVirtualWALForCDCRequestPB)
+      returns (DestroyVirtualWALForCDCResponsePB);
+  rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
+  rpc UpdatePublicationTableList (UpdatePublicationTableListRequestPB)
+      returns (UpdatePublicationTableListResponsePB);
 }
 
 message CDCErrorPB {
@@ -171,8 +176,48 @@ message GetConsistentChangesRequestPB {
 message GetConsistentChangesResponsePB {
   optional CDCErrorPB error = 1;
   repeated CDCSDKProtoRecordPB cdc_sdk_proto_records = 2;
+
+  // This field tells the walsender whether a refresh of publication's table list is needed
+  optional bool needs_publication_table_list_refresh = 3;
+
+  // This field tells the walsender the time at which the list of tables
+  // in the publication needs to be querried for refresh. This is only relevant if
+  // the above field 'needs_publication_table_list_refresh' is true.
+  optional uint64 publication_refresh_time = 4;
 }
 
+message DestroyVirtualWALForCDCRequestPB {
+  optional uint64 session_id = 1;
+}
+
+message DestroyVirtualWALForCDCResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
+message UpdateAndPersistLSNRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  optional uint64 confirmed_flush_lsn = 3;
+  // The hint given for the possible value of restart_lsn.
+  // The actual value which is persisted might differ from this value
+  // and is returned in the response of this RPC.
+  optional uint64 restart_lsn = 4;
+}
+
+message UpdateAndPersistLSNResponsePB {
+  optional CDCErrorPB error = 1;
+  optional uint64 restart_lsn = 2;
+}
+
+message UpdatePublicationTableListRequestPB {
+  optional uint64 session_id = 1;
+  optional bytes stream_id = 2;
+  repeated string table_id = 3;
+}
+
+message UpdatePublicationTableListResponsePB {
+  optional CDCErrorPB error = 1;
+}
 
 message CreateCDCStreamRequestPB {
   // Table to set up CDC on.
@@ -241,6 +286,13 @@ message CDCCheckpointPB {
   optional OpIdPB op_id = 1;
 }
 
+enum CDCSDKRequestSource {
+  // Debezium connector directly calling CDC Service.
+  DEBEZIUM = 1;
+  // Walsender calling CDC service.
+  WALSENDER = 2;
+}
+
 message GetChangesRequestPB {
   optional bytes stream_id = 1;
   // Tablet to get the changes for.
@@ -274,6 +326,15 @@ message GetChangesRequestPB {
 
   // Used only in xCluster streams.
   optional uint32 auto_flags_config_version = 13;
+
+  optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
+
+  optional int64 raft_config_opid_index = 15;
+
+  // Used only in CDCSDK streams. If the field is set, use its value to
+  // limit the size of GetChanges response. Otherwise consider the value
+  // of the gflag 'cdc_stream_records_threshold_size_bytes'
+  optional uint64 getchanges_resp_max_size_bytes = 16;
 }
 
 message KeyValuePairPB {
@@ -443,6 +504,14 @@ message RowMessage {
   optional uint64 record_time = 14;
   optional uint64 pg_lsn = 15;
   optional uint32 pg_transaction_id = 16;
+
+  // The ID of the table associated with the row. Only populated for DMLs & DDLs
+  // but not for other ops such as BEGIN/COMMIT/SAFEPOINT.
+  optional string table_id = 17;
+
+  // DocKey for the row in a table. Only populated for DMLs in the streaming phase but not
+  // for other ops such as DDL/BEGIN/COMMIT/SAFEPOINT. Not populated in the Snapshot phase.
+  optional bytes primary_key = 18;
 }
 
 message CDCSDKProtoRecordPB {
@@ -483,6 +552,8 @@ message GetChangesResponsePB {
 
   // Only set in xCluster streams when error is AUTO_FLAGS_CONFIG_VERSION_MISMATCH.
   optional uint32 auto_flags_config_version = 12;
+
+  optional yb.tserver.TabletConsensusInfoPB tablet_consensus_info = 13;
 }
 
 message GetCheckpointRequestPB {
@@ -572,6 +643,7 @@ message GetCDCDBStreamInfoResponsePB {
   optional bytes namespace_id = 2;
   repeated TableInfo table_info = 3;
 }
+
 message SetCDCCheckpointRequestPB {
   optional CDCCheckpointPB checkpoint = 1;
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;

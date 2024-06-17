@@ -16,15 +16,16 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_auto_flags_manager.h"
-#include "yb/master/tablet_health_manager.h"
 #include "yb/master/master_cluster.service.h"
+#include "yb/master/master_cluster_handler.h"
 #include "yb/master/master_heartbeat.pb.h"
-#include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_service_base.h"
+#include "yb/master/tablet_health_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/master/xcluster/xcluster_manager.h"
+
 #include "yb/util/service_util.h"
 #include "yb/util/flags.h"
 
@@ -55,9 +56,9 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       return;
     }
 
-    std::vector<std::shared_ptr<TSDescriptor> > descs;
+    std::vector<std::shared_ptr<TSDescriptor>> descs;
     if (!req->primary_only()) {
-      server_->ts_manager()->GetAllDescriptors(&descs);
+      descs = server_->ts_manager()->GetAllDescriptors();
     } else {
       auto uuid_result = server_->catalog_manager_impl()->placement_uuid();
       if (!uuid_result.ok()) {
@@ -344,25 +345,25 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
   void ChangeMasterClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp,
     rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, SetClusterConfig);
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, SetClusterConfig);
   }
 
   void GetMasterClusterConfig(
       const GetMasterClusterConfigRequestPB* req, GetMasterClusterConfigResponsePB* resp,
       rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetClusterConfig);
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, GetClusterConfig);
   }
 
   void GetLeaderBlacklistCompletion(
       const GetLeaderBlacklistPercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLeaderBlacklistCompletionPercent);
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, GetLeaderBlacklistCompletionPercent);
   }
 
   void GetLoadMoveCompletion(
       const GetLoadMovePercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetLoadMoveCompletionPercent);
+    HANDLE_ON_LEADER_WITH_LOCK(MasterClusterHandler, GetLoadMoveCompletionPercent);
   }
 
   MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
@@ -371,11 +372,15 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
-    CatalogManager,
+    MasterClusterHandler,
     (AreLeadersOnPreferredOnly)
+    (SetPreferredZones)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+    CatalogManager,
     (IsLoadBalanced)
     (IsLoadBalancerIdle)
-    (SetPreferredZones)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

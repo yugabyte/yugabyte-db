@@ -26,7 +26,7 @@ var addInstanceTypesCmd = &cobra.Command{
 	Short: "Add an instance type to YugabyteDB Anywhere on-premises provider",
 	Long:  "Add an instance type to YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -38,12 +38,9 @@ var addInstanceTypesCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
-		providerName, err := cmd.Flags().GetString("provider-name")
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -56,8 +53,16 @@ var addInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
-			fmt.Println("No providers found\n")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
+		}
+
+		if r[0].GetCode() != util.OnpremProviderType {
+			errMessage := "Operation only supported for On-premises providers."
+			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
@@ -93,7 +98,7 @@ var addInstanceTypesCmd = &cobra.Command{
 				ProviderUuid:     providerUUID,
 			},
 			InstanceTypeDetails: &ybaclient.InstanceTypeDetails{
-				Tenancy:           tenancy,
+				Tenancy:           util.GetStringPointer(tenancy),
 				VolumeDetailsList: buildVolumeDetails(volume),
 			},
 			MemSizeGB: util.GetFloat64Pointer(memSize),
@@ -112,7 +117,7 @@ var addInstanceTypesCmd = &cobra.Command{
 			Format: instancetypes.NewInstanceTypesFormat(viper.GetString("output")),
 		}
 
-		fmt.Printf("The instance type %s has been added to provider %s (%s)\n",
+		logrus.Infof("The instance type %s has been added to provider %s (%s)\n",
 			formatter.Colorize(instanceTypeName, formatter.GreenColor),
 			providerName,
 			providerUUID)
@@ -151,22 +156,20 @@ func init() {
 
 }
 
-func buildVolumeDetails(volumeStrings []string) (
-	res []ybaclient.VolumeDetails,
-) {
+func buildVolumeDetails(volumeStrings []string) *[]ybaclient.VolumeDetails {
 	if len(volumeStrings) == 0 {
 		logrus.Fatalln(
-			formatter.Colorize("Atleast one volume is required per instance type.",
+			formatter.Colorize("Atleast one volume is required per instance type.\n",
 				formatter.RedColor))
 	}
+	res := make([]ybaclient.VolumeDetails, 0)
 	for _, volumeString := range volumeStrings {
 		volume := map[string]string{}
-		fmt.Println("volume string ", volumeString)
 		for _, volumeInfo := range strings.Split(volumeString, ",") {
 			kvp := strings.Split(volumeInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in volume description.",
+					formatter.Colorize("Incorrect format in volume description.\n",
 						formatter.RedColor))
 			}
 			key := kvp[0]
@@ -186,10 +189,9 @@ func buildVolumeDetails(volumeStrings []string) (
 				}
 			}
 		}
-		fmt.Println("VOlume: ", volume)
 		if _, ok := volume["mount-points"]; !ok {
 			logrus.Fatalln(
-				formatter.Colorize("Mount points not specified in volume.",
+				formatter.Colorize("Mount points not specified in volume.\n",
 					formatter.RedColor))
 		}
 		if _, ok := volume["size"]; !ok {
@@ -209,5 +211,5 @@ func buildVolumeDetails(volumeStrings []string) (
 		}
 		res = append(res, r)
 	}
-	return res
+	return &res
 }

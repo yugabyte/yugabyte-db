@@ -4,6 +4,10 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
@@ -42,6 +46,7 @@ import play.mvc.Result;
 public class ImageBundleController extends AuthenticatedController {
 
   @Inject ImageBundleHandler imageBundleHandler;
+  @Inject RuntimeConfGetter confGetter;
 
   @ApiOperation(
       notes = "WARNING: This is a preview API that could change.",
@@ -61,6 +66,7 @@ public class ImageBundleController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -142,11 +148,12 @@ public class ImageBundleController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result edit(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    checkImageBundleUsageInUniverses(providerUUID, iBUUID);
-
     ImageBundle bundle = parseJsonAndValidate(request, ImageBundle.class);
+    checkImageBundleUsageInUniverses(providerUUID, iBUUID, bundle);
+
     ImageBundle cBundle = imageBundleHandler.edit(provider, iBUUID, bundle);
     auditService()
         .createAuditEntryWithReqBody(
@@ -169,6 +176,7 @@ public class ImageBundleController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result delete(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     checkImageBundleUsageInUniverses(providerUUID, iBUUID);
     imageBundleHandler.delete(providerUUID, iBUUID);
@@ -182,10 +190,24 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   private void checkImageBundleUsageInUniverses(UUID providerUUID, UUID imageBundleUUID) {
+    checkImageBundleUsageInUniverses(providerUUID, imageBundleUUID, null);
+  }
+
+  private void checkImageBundleUsageInUniverses(
+      UUID providerUUID, UUID imageBundleUUID, ImageBundle bundle) {
     ImageBundle iBundle = ImageBundle.getOrBadRequest(providerUUID, imageBundleUUID);
     long universeCount = iBundle.getUniverseCount();
+    boolean allowInUseBundleEdit = confGetter.getGlobalConf(GlobalConfKeys.allowUsedBundleEdit);
 
-    if (universeCount > 0) {
+    if (universeCount > 0 && bundle == null) {
+      throw new PlatformServiceException(
+          FORBIDDEN,
+          String.format(
+              "There %s %d universe%s using this imageBundle, cannot delete",
+              universeCount > 1 ? "are" : "is", universeCount, universeCount > 1 ? "s" : ""));
+    } else if (universeCount > 0
+        && !bundle.allowUpdateDuringUniverseAssociation(iBundle)
+        && !allowInUseBundleEdit) {
       throw new PlatformServiceException(
           FORBIDDEN,
           String.format(

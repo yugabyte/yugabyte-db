@@ -9,21 +9,24 @@
 #
 # https://docs.netlify.com/site-deploys/overview/#deploy-contexts
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
-
+# all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.branch-deploy.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.production.environment]
   HUGO_VERSION = "0.115.4"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
 
 ################ REDIRECTS ################
 #
@@ -73,6 +76,10 @@
   to = "https://docs-archive.yugabyte.com/v2.8/deploy/docker/docker-swarm/"
   force = true
 
+[[redirects]]
+  from = "/preview/admin/docker-compose/"
+  to = "/preview/quick-start/docker/"
+
 ##########################################################
 # Move Hugo Aliases (that redirects using meta refresh tag)
 ##########################################################
@@ -88,6 +95,10 @@
 [[redirects]]
   from = "/architecture/core-functions/write-path/"
   to = "/preview/architecture/core-functions/write-path/"
+
+[[redirects]]
+  from = "/preview/architecture/core-functions/*"
+  to = "/preview/architecture/"
 
 [[redirects]]
   from = "/architecture/transactions/distributed-txns/"
@@ -110,8 +121,8 @@
   to = "/preview/drivers-orms/"
 
 [[redirects]]
-  from = "/explore/fault-tolerance/"
-  to = "/preview/explore/fault-tolerance/"
+  from = "/explore/*"
+  to = "/preview/explore/:splat"
 
 [[redirects]]
   from = "/preview/explore/indexes-constraints/covering-index-ycql/"
@@ -141,6 +152,9 @@
   from = "/preview/explore/indexes-constraints/*"
   to = "/preview/explore/ysql-language-features/indexes-constraints/:splat"
 
+[[redirects]]
+  from = "/stable/explore/indexes-constraints/*"
+  to = "/stable/explore/ysql-language-features/indexes-constraints/:splat"
 
 [[redirects]]
   from = "/preview/explore/json-support/jsonb-ysql/"
@@ -151,8 +165,12 @@
   to = "/preview/explore/ycql-language/jsonb-ycql/"
 
 [[redirects]]
+  from = "/preview/explore/ysql-language-features/going-beyond-sql/*"
+  to = "/preview/explore/going-beyond-sql/:splat"
+
+[[redirects]]
   from = "/explore/tunable-reads/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/admin/cqlsh/"
@@ -308,7 +326,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model"
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/sharding/"
@@ -316,7 +334,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/persistence/"
-  to = "/preview/architecture/docdb/persistence/"
+  to = "/preview/architecture/docdb/data-model/"
 
 [[redirects]]
   from = "/preview/architecture/concepts/replication/"
@@ -329,6 +347,15 @@
 [[redirects]]
   from = "/preview/architecture/concepts/yql/"
   to = "/preview/architecture/query-layer/"
+
+[[redirects]]
+  from = "/preview/architecture/concepts"
+  to = "/preview/architecture/key-concepts"
+
+# from 404 report (referrer: ycombinator)
+[[redirects]]
+  from = "/preview/architecture/concepts/acknowledgements"
+  to = "/preview/architecture/key-concepts"
 
 [[redirects]]
   from = "/preview/architecture/docdb/replication/"
@@ -396,11 +423,11 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/fr-ycql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/indexes-constraints/indexes-1/"
@@ -412,15 +439,15 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/linux/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ycql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ysql/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+  to = "/preview/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/read-replicas/"
@@ -476,7 +503,7 @@
 
 [[redirects]]
   from = "/preview/explore/ysql-language-features/tablespaces/"
-  to = "/preview/explore/ysql-language-features/going-beyond-sql/tablespaces/"
+  to = "/preview/explore/going-beyond-sql/tablespaces/"
 
 [[redirects]]
   from = "/preview/faq/"
@@ -540,7 +567,15 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/release-notes/"
+  to = "/preview/releases/ybdb-releases/"
+
+[[redirects]]
+  from = "/preview/releases/release-notes/*"
+  to = "/preview/releases/ybdb-releases/:splat"
+
+[[redirects]]
+  from = "/preview/releases/ybdb-release/*"
+  to = "/preview/releases/ybdb-releases/:splat"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
@@ -555,12 +590,64 @@
   to = "/preview/secure/authentication/ldap-authentication-ysql/"
 
 [[redirects]]
+  from = "/preview/secure/authentication/enable-authentication/ysql"
+  to = "/preview/secure/authentication/enable-authentication/authentication-ysql"
+
+[[redirects]]
+  from = "/preview/secure/authentication/enable-authentication/ycql"
+  to = "/preview/secure/authentication/enable-authentication/authentication-ycql"
+
+[[redirects]]
   from = "/preview/yugabyte-cloud/cloud-overview/"
   to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
-  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/"
-  to = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/"
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+
+# [[redirects]]
+#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+#   to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
+
+# [[redirects]]
+#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+#   to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
+
+# [[redirects]]
+#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
+#   to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
+
+# [[redirects]]
+#   from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+#   to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
+
+[[redirects]]
+  from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+
+# [[redirects]]
+#   from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
+#   to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+
+[[redirects]]
+   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+   to = "/preview/yugabyte-platform/prepare/server-yba/"
+
+# [[redirects]]
+#    from = "/stable/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+#    to = "/stable/yugabyte-platform/prepare/server-yba/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/overview/"
@@ -576,7 +663,11 @@
 
 [[redirects]]
   from = "/quick-start/run-sample-apps/"
-  to = "/preview/develop/realworld-apps/explore-sample-apps/"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
 
 [[redirects]]
   from = "/quick-start/test-redis/"
@@ -591,7 +682,7 @@
 
 [[redirects]]
   from = "/latest/develop/*"
-  to = "/preview/develop/"
+  to = "/preview/develop/:splat"
   force = true
 
 [[redirects]]
@@ -631,11 +722,22 @@
   to = "/preview/yugabyte-voyager/:splat"
   force = true
 
+[[redirects]]
+  from = "/preview/yugabyte-voyager/reference/data-modeling/"
+  to = "/preview/develop/learn/data-modeling-ysql/"
+  force = true
 # Redirect for Reference connectors
 
 [[redirects]]
   from = "/:version/reference/connectors/*"
   to = "/preview/integrations/apache-kafka/"
+
+# Redirect for troubleshoot
+
+[[redirects]]
+  from = "/:version/troubleshoot/*"
+  to = "/preview/troubleshoot/:splat"
+  force = true
 
 # A few redirects to head off issues with version_menu_pagelinks
 
@@ -655,6 +757,19 @@
 [[redirects]]
   from = "/v2.18/tutorials/*"
   to = "/preview/tutorials/azure/"
+  force = true
+
+[[redirects]]
+  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.16/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.18/explore/indexes-constraints/"
+  force = true
+[[redirects]]
+  from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
+  to = "/v2.14/explore/indexes-constraints/"
   force = true
 
 [[redirects]]
@@ -713,56 +828,60 @@
 # Build an app was in quick-start, now in develop
 
 [[redirects]]
+  from = "/preview/develop/build-apps/*"
+  to = "/preview/tutorials/build-apps/:splat"
+
+[[redirects]]
   from = "/preview/quick-start/build-apps/*"
-  to = "/preview/develop/build-apps/"
+  to = "/preview/tutorials/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
-  to = "/preview/develop/build-apps/"
+  to = "/preview/tutorials/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
-  to = "/preview/develop/build-apps/cloud-add-ip/"
+  to = "/preview/tutorials/build-apps/cloud-add-ip/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
-  to = "/preview/develop/build-apps/c/cloud-ysql-c/"
+  to = "/preview/tutorials/build-apps/c/cloud-ysql-c/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
-  to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
+  to = "/preview/tutorials/build-apps/csharp/cloud-ysql-csharp/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
-  to = "/preview/develop/build-apps/cpp/cloud-ysql-cpp/"
+  to = "/preview/tutorials/build-apps/cpp/cloud-ysql-cpp/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
-  to = "/preview/develop/build-apps/go/cloud-ysql-go/"
+  to = "/preview/tutorials/build-apps/go/cloud-ysql-go/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
-  to = "/preview/develop/build-apps/java/cloud-ysql-jdbc/"
+  to = "/preview/tutorials/build-apps/java/cloud-ysql-jdbc/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
-  to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
+  to = "/preview/tutorials/build-apps/nodejs/cloud-ysql-node/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
-  to = "/preview/develop/build-apps/php/cloud-ysql-php/"
+  to = "/preview/tutorials/build-apps/php/cloud-ysql-php/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
-  to = "/preview/develop/build-apps/python/cloud-ysql-python/"
+  to = "/preview/tutorials/build-apps/python/cloud-ysql-python/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
-  to = "/preview/develop/build-apps/ruby/cloud-ysql-ruby/"
+  to = "/preview/tutorials/build-apps/ruby/cloud-ysql-ruby/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
-  to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
+  to = "/preview/tutorials/build-apps/rust/cloud-ysql-rust/"
   force = true
 
 # Redirect old cloud docs to root of current
@@ -981,6 +1100,13 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
+# CDC tutorials was in explore, now in Tutorials
+
+[[redirects]]
+  from = "/preview/explore/change-data-capture/cdc-tutorials/*"
+  to = "/preview/tutorials/cdc-tutorials/:splat"
+  force = true
+
 
 # Redirect older versions of specific sections
 
@@ -1182,10 +1308,6 @@
    from = "/preview/explore/observability/prometheus-integration/*"
    to = "/preview/explore/observability/prometheus-integration/macos/"
 
-[[redirects]]
-   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/"
-   to = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/default/"
-
 ##########################################################
 # Catch-all for old links to /latest (now called /preview)
 #
@@ -1234,6 +1356,11 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
+            https://api.segment.io/
+            https://cdn.segment.com/
+            https://c.6sc.co/
+            https://ipv6.6sc.co/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1244,6 +1371,7 @@
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/
+            https://netlify-rum.netlify.app
             https://tag.clearbitscripts.com
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
@@ -1255,6 +1383,9 @@
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
+            https://js.driftt.com/
+            https://cdn.segment.com/
+            https://j.6sc.co/
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1288,6 +1419,8 @@
             https://www.google-analytics.com/
             https://www.yugabyte.com
             https://www.gstatic.com
+            https://www.google.com/s2/favicons
+            https://b.6sc.co/
         ;
 
         child-src 'self' 'unsafe-inline'
@@ -1295,12 +1428,17 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
+            https://js.driftt.com/
         ;
 
         frame-ancestors 'self'
             https://*.yugabyte.com/
             https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
             https://yugabyte.thinkific.com/
+        ;
+
+        media-src 'self' 'unsafe-inline'
+        https://js.driftt.com/conductor/assets/
         ;
 '''
     X-Content-Type-Options = "nosniff"

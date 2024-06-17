@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -26,12 +27,15 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
     value = "Telemetry Provider",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
 public class TelemetryProviderController extends AuthenticatedController {
 
   @Inject private TelemetryProviderService telemetryProviderService;
@@ -48,10 +52,11 @@ public class TelemetryProviderController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result getTelemetryProvider(UUID customerUUID, UUID providerUUID) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
         telemetryProviderService.getOrBadRequest(customerUUID, providerUUID);
-    return PlatformResults.withData(provider);
+    return PlatformResults.withData(CommonUtils.maskObject(provider));
   }
 
   @ApiOperation(
@@ -68,8 +73,12 @@ public class TelemetryProviderController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result listTelemetryProviders(UUID customerUUID) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     Customer.getOrBadRequest(customerUUID);
-    List<TelemetryProvider> providers = telemetryProviderService.list(customerUUID);
+    List<TelemetryProvider> providers =
+        telemetryProviderService.list(customerUUID).stream()
+            .map(tp -> CommonUtils.maskObject(tp))
+            .collect(Collectors.toList());
     return PlatformResults.withData(providers);
   }
 
@@ -92,11 +101,17 @@ public class TelemetryProviderController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result createTelemetryProvider(UUID customerUUID, Http.Request request) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider = parseJson(request, TelemetryProvider.class);
     if (provider.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create provider with uuid set");
     }
+    // Validate the telemetry provider config.
+    log.info("Validating telemetry provider config for provider: '{}'.", provider.getName());
+    telemetryProviderService.validateTelemetryProvider(provider);
+
+    // Save TP config to DB after validation.
     provider.setCustomerUUID(customerUUID);
     provider = telemetryProviderService.save(provider);
     auditService()
@@ -121,7 +136,29 @@ public class TelemetryProviderController extends AuthenticatedController {
   })
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Check if telemetry provider exists.
+    boolean doesTelemetryProviderExist =
+        telemetryProviderService.checkIfExists(customer.getUuid(), providerUUID);
+    if (!doesTelemetryProviderExist) {
+      String errorMessage =
+          String.format("Telemetry Provider '%s' does not exist.", providerUUID.toString());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    // Check if telemetry provider is in use.
+    boolean isProviderInUse = telemetryProviderService.isProviderInUse(customer, providerUUID);
+    if (isProviderInUse) {
+      String errorMessage =
+          String.format(
+              "Cannot delete Telemetry Provider '%s', as it is in use.", providerUUID.toString());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
     telemetryProviderService.delete(providerUUID);
     auditService()
         .createAuditEntryWithReqBody(

@@ -4,6 +4,8 @@ headerTitle: Partition data by time
 linkTitle: Partition data by time
 description: Partition data for efficient data management
 headcontent: Partition data for efficient data management
+aliases:
+   - /preview/common-patterns/timeseries/partitioning-by-time/
 menu:
   preview:
     identifier: timeseries-partition-by-time
@@ -116,7 +118,7 @@ EXPLAIN ANALYZE SELECT * FROM part_demo WHERE ts > '2023-07-01' AND ts < '2023-0
  Append (actual time=2.288..2.310 rows=25 loops=1)
    ->  Seq Scan on public.part_7_23 (actual time=2.285..2.301 rows=25 loops=1)
          Output: part_7_23.ts, part_7_23.car, part_7_23.speed
-         Remote Filter: ((part_7_23.ts > '2023-07-01 00:00:00'::timestamp without time zone)
+         Storage Filter: ((part_7_23.ts > '2023-07-01 00:00:00'::timestamp without time zone)
                 AND (part_7_23.ts < '2023-08-01 00:00:00'::timestamp without time zone))
  Planning Time: 0.309 ms
  Execution Time: 2.411 ms

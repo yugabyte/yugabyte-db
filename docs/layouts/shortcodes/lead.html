@@ -1,0 +1,18 @@
+{{- $leadIcon := "fa-light fa-magnifying-glass-arrow-right" -}}
+{{- if .Params.icon -}}
+{{- $leadIcon = .Params.icon -}}
+{{- end -}}
+
+<div class="admonition lead">
+  {{- if .Params.link -}}
+  <a href="{{ .Params.link }}" title="{{ .Params.title }}" class="clickable"></a>
+  {{- end -}}
+
+  {{- if (in $leadIcon "/") -}}
+  <img class="icon" src="{{ $leadIcon }}">
+  {{- else -}}
+  <i class="{{- $leadIcon -}}"></i>
+  {{- end -}}
+  <p class="admonition-title">{{ .Get "title" }}</p>
+  {{ .Inner | .Page.RenderString }}
+</div>

@@ -93,9 +93,11 @@ Cloud providers offer a variety of instance types across the regions where they 
 
 ### Fault tolerance
 
-YugabyteDB achieves resilience by replicating data across fault domains using the [RAFT consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
+YugabyteDB achieves resiliency by replicating data across fault domains using the [Raft consensus protocol](../../../architecture/docdb-replication/replication/). The fault domain can be at the level of individual nodes, availability zones, or entire regions.
 
-The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the RAFT protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
+The _fault tolerance_ determines how resilient the cluster is to domain (that is, node, zone, or region) outages, whether planned or unplanned. Fault tolerance is achieved by adding redundancy, in the form of additional nodes, across the fault domain. Due to the way the Raft protocol works, providing a fault tolerance of `ft` requires replicating data across `2ft + 1` domains. For example, to survive the outage of 2 nodes, a cluster needs 2 * 2 + 1 nodes. While the 2 nodes are offline, the remaining 3 nodes can continue to serve reads and writes without interruption.
+
+With a fault tolerant cluster, planned outages such as maintenance and upgrades are performed using a rolling restart, meaning your workloads are not interrupted.
 
 YugabyteDB Managed provides the following configurations for fault tolerance.
 
@@ -113,7 +115,7 @@ You can't change the cluster fault tolerance after the cluster is created.
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For application development and testing, you can set fault tolerance to **None** to create a single-node cluster.
+For application development and testing, you can set fault tolerance to **None** to create a single-node cluster. A cluster with fault tolerance of None (including your Sandbox) is subject to downtime during maintenance and outages.
 
 #### Region
 
@@ -161,12 +163,12 @@ Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 ### YugabyteDB version
 
-By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
+By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#release-versioning-convention-for-stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
 - Innovation - Updated more frequently, providing quicker access to new features.
 - Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Managed.
 
-If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview releases are also used for Sandbox clusters.)
+If you need a feature from the [preview release series](../../../releases/versioning/#release-versioning-convention-for-preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 
@@ -180,7 +182,7 @@ There is currently no migration path from a preview release to a stable release.
 
 Use a staging cluster for the following tasks:
 
-- Verifying that your application is compatible with [database updates](#database-updates).
+- Verifying that your application is compatible with [database updates](#database-upgrades).
 - Ensuring that your application correctly handles a rolling restart of the database without errors.
 - Testing new features. Use your staging (also known as development, testing, pre-production, or canary) environment to try out new database features while your production systems are still running a previous version.
 - Testing scaling operations and disaster recovery. Find out how your environment responds to a scaling operation, outages, or the loss of a node.
@@ -247,8 +249,10 @@ The following **AWS regions** are available:
 - Seoul (ap-northeast-2)
 - Osaka (ap-northeast-3)
 - Mumbai (ap-south-1)
+- Hyderabad (ap-south-2)
 - Singapore (ap-southeast-1)
 - Sydney (ap-southeast-2)
+- Jakarta (ap-southeast-3)
 - Central (ca-central-1)
 - Frankfurt (eu-central-1)
 - Stockholm (eu-north-1)
@@ -286,6 +290,7 @@ The following **Azure regions** are available:
 - Norway (norwayeast)
 - Johannesburg (southafricanorth)
 - Texas (southcentralus)
+- Singapore (southeastasia)
 - Zurich (switzerlandnorth)
 - Dubai (uaenorth)
 - London (uksouth)

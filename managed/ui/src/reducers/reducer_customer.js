@@ -21,6 +21,9 @@ import {
   FETCH_SOFTWARE_VERSIONS_FAILURE,
   FETCH_SOFTWARE_VERSIONS_SUCCESS,
   FETCH_SOFTWARE_VERSIONS,
+  FETCH_DB_VERSIONS,
+  FETCH_DB_VERSIONS_SUCCESS,
+  FETCH_DB_VERSIONS_FAILURE,
   FETCH_TLS_CERTS,
   FETCH_TLS_CERTS_RESPONSE,
   FETCH_OIDC_TOKEN,
@@ -48,6 +51,8 @@ import {
   FETCH_RUNTIME_CONFIGS_RESPONSE,
   FETCH_RUNTIME_CONFIGS_KEY_INFO,
   FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
+  FETCH_CUSTOMER_RUNTIME_CONFIGS,
+  FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE,
   FETCH_PROVIDER_RUNTIME_CONFIGS,
   FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE,
   SET_RUNTIME_CONFIG,
@@ -110,7 +115,7 @@ import {
   UPDATE_USER_PROFILE_SUCCESS,
   UPDATE_USER_PROFILE_FAILURE
 } from '../actions/customers';
-import { sortVersion } from '../components/releases';
+import { compareYBSoftwareVersions, isVersionStable } from '../utils/universeUtilsTyped';
 
 import { isDefinedNotNull } from '../utils/ObjectUtils';
 import {
@@ -133,6 +138,7 @@ const INITIAL_STATE = {
   loading: false,
   softwareVersions: [],
   softwareVersionswithMetaData: [],
+  dbVersionsWithMetadata: [],
   alerts: {
     alertsList: [],
     updated: null
@@ -169,7 +175,8 @@ const INITIAL_STATE = {
   createAlertConfig: getInitialState({}),
   updateAlertDestination: getInitialState({}),
   updateAlertConfig: getInitialState({}),
-  providerRuntimeConfigs: getInitialState([])
+  providerRuntimeConfigs: getInitialState([]),
+  customerRuntimeConfigs: getInitialState([])
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -223,16 +230,84 @@ export default function (state = INITIAL_STATE, action) {
       return { ...state, error: null };
     case RESET_CUSTOMER:
       return { ...state, currentCustomer: getInitialState({}), authToken: getInitialState({}) };
+    // Remove - 2024.2
     case FETCH_SOFTWARE_VERSIONS:
       return { ...state, softwareVersions: [], softwareVersionswithMetaData: [] };
-    case FETCH_SOFTWARE_VERSIONS_SUCCESS:
+    // Remove - 2024.2
+    case FETCH_SOFTWARE_VERSIONS_SUCCESS: {
+      const sortedStableDbVersions = action.payload.data
+        .filter((release) => isVersionStable(release))
+        .sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA,
+            options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          })
+        );
+      const sortedPreviewDbVersions = action.payload.data
+        .filter((release) => !isVersionStable(release))
+        .sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA,
+            options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          })
+        );
+      const sortedVersions = sortedStableDbVersions.concat(sortedPreviewDbVersions);
       return {
         ...state,
-        softwareVersions: action.payload.data.sort(sortVersion),
+        softwareVersions: sortedVersions,
         softwareVersionswithMetaData: action.payload.releasesWithMetadata
       };
+    }
+    // Remove 2024.2
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return { ...state };
+
+    case FETCH_DB_VERSIONS:
+      return { ...state, softwareVersions: [], dbVersionsWithMetadata: [] };
+    case FETCH_DB_VERSIONS_SUCCESS: {
+      const sortedStableDbVersions = action.payload.data
+        .filter((release) => isVersionStable(release))
+        .sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA,
+            options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          })
+        );
+
+      const sortedPreviewDbVersions = action.payload.data
+        .filter((release) => !isVersionStable(release))
+        .sort((versionA, versionB) =>
+          compareYBSoftwareVersions({
+            versionA: versionB,
+            versionB: versionA,
+            options: {
+              suppressFormatError: true,
+              requireOrdering: true
+            }
+          })
+        );
+      const sortedVersions = sortedStableDbVersions.concat(sortedPreviewDbVersions);
+      return {
+        ...state,
+        softwareVersions: sortedVersions,
+        dbVersionsWithMetadata: action.payload.releasesWithMetadata
+      };
+    }
+    case FETCH_DB_VERSIONS_FAILURE:
+      return { ...state };
+
     case FETCH_TLS_CERTS:
       return setLoadingState(state, 'userCertificates', []);
     case FETCH_TLS_CERTS_RESPONSE:
@@ -417,6 +492,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'providerRuntimeConfigs', []);
     case FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE:
       return setPromiseResponse(state, 'providerRuntimeConfigs', action);
+    case FETCH_CUSTOMER_RUNTIME_CONFIGS:
+      return setLoadingState(state, 'customerRuntimeConfigs', []);
+    case FETCH_CUSTOMER_RUNTIME_CONFIGS_RESPONSE:
+      return setPromiseResponse(state, 'customerRuntimeConfigs', action);
     case RESET_RUNTIME_CONFIGS:
       return setLoadingState(state, 'runtimeConfigs', []);
     case SET_RUNTIME_CONFIG:

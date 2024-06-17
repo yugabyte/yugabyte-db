@@ -3,8 +3,10 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.models.Customer;
@@ -32,10 +34,15 @@ import org.yb.master.CatalogEntityInfo;
 @Slf4j
 public class XClusterConfigSync extends XClusterConfigTaskBase {
 
+  private final XClusterSyncScheduler xClusterSyncScheduler;
+
   @Inject
   protected XClusterConfigSync(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      XClusterSyncScheduler xClusterSyncScheduler) {
     super(baseTaskDependencies, xClusterUniverseService);
+    this.xClusterSyncScheduler = xClusterSyncScheduler;
   }
 
   @Override
@@ -112,7 +119,9 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
               replicationGroupName,
               sourceUniverse.getUniverseUUID(),
               targetUniverse.getUniverseUUID(),
-              config.getConsumerRegistry().getTransactional() ? ConfigType.Txn : ConfigType.Basic,
+              config.getConsumerRegistry().getDEPRECATEDTransactional()
+                  ? ConfigType.Txn
+                  : ConfigType.Basic,
               true /* imported */);
       log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());
     } else {
@@ -169,7 +178,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
                     xClusterConfigName,
                     sourceUniverseUUID,
                     targetUniverseUUID,
-                    config.getConsumerRegistry().getTransactional()
+                    config.getConsumerRegistry().getDEPRECATEDTransactional()
                         ? ConfigType.Txn
                         : ConfigType.Basic);
             log.info("Creating new XClusterConfig({})", xClusterConfig.getUuid());
@@ -200,11 +209,17 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
         tableMap.values().stream()
             .map(CdcConsumer.StreamEntryPB::getProducerTableId)
             .collect(Collectors.toSet());
-
     xClusterConfig.setStatus(XClusterConfigStatusType.Running);
     xClusterConfig.setPaused(replicationGroupEntry.getDisableStream());
-    xClusterConfig.syncTables(xClusterConfigTables);
-
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    // Filter out index tables from the list of tables so that we can store them separately.
+    Set<String> indexXClusterConfigTables =
+        getTableInfoList(ybService, sourceUniverse, xClusterConfigTables).stream()
+            .filter(tableInfo -> TableInfoUtil.isIndexTable(tableInfo))
+            .map(tableInfo -> getTableId(tableInfo))
+            .collect(Collectors.toSet());
+    xClusterConfigTables.removeAll(indexXClusterConfigTables);
+    xClusterConfig.syncTables(xClusterConfigTables, indexXClusterConfigTables);
     syncXClusterConfigWithReplicationGroup(config, xClusterConfig, xClusterConfigTables);
   }
 }

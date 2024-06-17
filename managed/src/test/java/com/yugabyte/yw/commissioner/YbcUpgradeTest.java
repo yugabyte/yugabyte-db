@@ -82,6 +82,8 @@ public class YbcUpgradeTest extends FakeDBApplication {
             true);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcNodeBatchSize))).thenReturn(1);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybcUniverseBatchSize))).thenReturn(1);
+    when(mockConfGetter.getGlobalConf(GlobalConfKeys.maxYbcUpgradePollResultTries)).thenReturn(2);
+    when(mockConfGetter.getGlobalConf(GlobalConfKeys.ybcUpgradePollResultSleepMs)).thenReturn(10L);
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ybcAllowScheduledUpgrade)))
         .thenReturn(true);
@@ -90,9 +92,6 @@ public class YbcUpgradeTest extends FakeDBApplication {
     ShellResponse dummyShellUploadResponse = ShellResponse.create(0, "");
     lenient()
         .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
-        .thenReturn(dummyShellUploadResponse);
-    lenient()
-        .when(mockNodeUniverseManager.uploadFileToNode(any(), any(), any(), any(), any(), any()))
         .thenReturn(dummyShellUploadResponse);
     lenient().when(mockYbcManager.getYbcPackageTmpLocation(any(), any(), any())).thenReturn("/tmp");
     mockYbcClient = mock(YbcClient.class);

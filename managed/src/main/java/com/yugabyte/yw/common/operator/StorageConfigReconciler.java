@@ -71,6 +71,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     object.remove("aws_SECRET_ACCESS_KEY");
     object.remove("backup_LOCATION");
     object.remove("gcs_CREDENTIALS_JSON");
+    object.remove("azure_STORAGE_SAS_TOKEN");
 
     return dataJson;
   }
@@ -106,10 +107,10 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
         return;
       }
     }
-    log.info("Adding a storage config {} ", sc);
     String cuuid;
     String value = sc.getSpec().getConfig_type().getValue();
     String name = value.split("_")[1];
+    log.info("Adding a storage config {} ", name);
     try {
       cuuid = getCustomerUUID();
     } catch (Exception e) {

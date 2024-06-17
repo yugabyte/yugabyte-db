@@ -11,12 +11,19 @@ import {
   NetworkAccessField,
   SystemDField
 } from '../../fields';
-import { CloudType, ClusterModes, ClusterType } from '../../../utils/dto';
+import {
+  CloudType,
+  ClusterModes,
+  ClusterType,
+  RunTimeConfigEntry,
+  UniverseFormConfigurationProps
+} from '../../../utils/dto';
 import { PROVIDER_FIELD } from '../../../utils/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
-export const AdvancedConfiguration: FC = () => {
+export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
   const classes = useSectionStyles();
   const { t } = useTranslation();
 
@@ -27,6 +34,12 @@ export const AdvancedConfiguration: FC = () => {
   const isCreateMode = mode === ClusterModes.CREATE; //Form is in create mode
   const isCreatePrimary = isCreateMode && isPrimary; //Editing Primary Cluster
   const isCreateRR = !newUniverse && isCreateMode && !isPrimary; //Adding Async Cluster to an existing Universe
+
+  // Value of runtime config key
+  const isReleasesEnabled =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.RELEASES_REDESIGN_UI_FEATURE_FLAG
+    )?.value === 'true';
 
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -41,7 +54,7 @@ export const AdvancedConfiguration: FC = () => {
     >
       <Typography variant="h4">{t('universeForm.advancedConfig.title')}</Typography>
       <Box display="flex" width="100%" mt={4}>
-        <DBVersionField disabled={!isCreatePrimary} />
+        <DBVersionField disabled={!isCreatePrimary} isReleasesEnabled={isReleasesEnabled} />
       </Box>
       {provider.code !== CloudType.kubernetes && (
         <Box display="flex" width="100%" mt={2}>

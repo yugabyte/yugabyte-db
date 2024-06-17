@@ -43,8 +43,9 @@ TEST_F(PggateTestUpdate, TestUpdate) {
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tabname,
                                        kDefaultDatabaseOid, tab_oid,
                                        false /* is_shared_table */,
+                                       false /* is_sys_catalog_table */,
                                        true /* if_not_exist */,
-                                       false /* add_primary_key */,
+                                       PG_YBROWID_MODE_NONE,
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
@@ -52,6 +53,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
+                                       false /* is_truncate */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                                DataType::INT64, true, true));

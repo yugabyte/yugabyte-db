@@ -34,6 +34,7 @@ class ScopedWaitingTxnRegistration {
  public:
   virtual Status Register(
     const TransactionId& waiting,
+    int64_t request_id,
     std::shared_ptr<ConflictDataManager> blockers,
     const TabletId& status_tablet) = 0;
   virtual Status RegisterSingleShardWaiter(
@@ -81,9 +82,8 @@ class WaitQueue {
   Status WaitOn(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
-      IntentProviderFunc intent_provider,
-      WaitDoneCallback callback);
+      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
+      CoarseTimePoint deadline, IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
   // should be called as the first step in conflict resolution when processing a new request to
@@ -95,9 +95,8 @@ class WaitQueue {
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
-      IntentProviderFunc intent_provider,
-      WaitDoneCallback callback);
+      int64_t txn_start_us, uint64_t req_start_us, int64_t request_id, CoarseTimePoint deadline,
+      IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
   void Poll(HybridTime now);
 
@@ -131,7 +130,8 @@ class WaitQueue {
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                        uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
-                       TransactionLockInfoManager* lock_info_manager) const;
+                       TransactionLockInfoManager* lock_info_manager,
+                       uint32_t max_txn_locks) const;
 
  private:
   class Impl;

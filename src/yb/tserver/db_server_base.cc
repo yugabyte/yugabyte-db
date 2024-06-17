@@ -13,10 +13,11 @@
 
 #include "yb/tserver/db_server_base.h"
 
-#include "yb/client/async_initializer.h"
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
+#include "yb/server/async_client_initializer.h"
 #include "yb/server/clock.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
@@ -122,6 +123,13 @@ tserver::TServerSharedData& DbServerBase::shared_object() {
 
 int DbServerBase::GetSharedMemoryFd() {
   return shared_object_->GetFd();
+}
+
+void DbServerBase::WriteMainMetaCacheAsJson(JsonWriter* writer) {
+  writer->String("MainMetaCache");
+  auto local_client_future = client_future();
+  auto local_client = local_client_future.get();
+  local_client->AddMetaCacheInfo(writer);
 }
 
 }  // namespace tserver

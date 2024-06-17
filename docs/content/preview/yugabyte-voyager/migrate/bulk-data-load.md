@@ -18,6 +18,41 @@ The following page describes the steps to import data in CSV or TEXT format from
 
 * Before you perform a bulk load, in your target YugabyteDB database, create the schema of the tables into which the data in the flat files will be imported.
 
+## Prepare the target database
+
+Prepare your target YugabyteDB database cluster by creating a user.
+
+### Create a user
+
+Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/dcl_create_role/#syntax) role.
+
+* For a local YugabyteDB cluster or YugabyteDB Anywhere, create a user and role with the superuser privileges using the following command:
+
+     ```sql
+     CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
+     ```
+
+* For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+
+     ```sql
+     CREATE USER ybvoyager PASSWORD 'password';
+     GRANT yb_superuser TO ybvoyager;
+     ```
+
+If you want yb-voyager to connect to the target YugabyteDB database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity).
+
+{{< warning title="Deleting the ybvoyager user" >}}
+
+After migration, all the migrated objects (tables, views, and so on) are owned by the `ybvoyager` user. You should transfer the ownership of the objects to some other user (for example, `yugabyte`) and then delete the `ybvoyager` user. Example steps to delete the user are:
+
+```sql
+REASSIGN OWNED BY ybvoyager TO yugabyte;
+DROP OWNED BY ybvoyager;
+DROP USER ybvoyager;
+```
+
+{{< /warning >}}
+
 ## Import data files from the local disk
 
 If your data files are in CSV or TEXT format and are present on the local disk, and you have already created a schema in your target YugabyteDB database, you can use the following `yb-voyager import data file` command with required arguments to load the data into the target table directly from the flat file(s).

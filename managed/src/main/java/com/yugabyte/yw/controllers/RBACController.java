@@ -5,6 +5,8 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -77,17 +79,20 @@ public class RBACController extends AuthenticatedController {
   private final RoleUtil roleUtil;
   private final RoleBindingUtil roleBindingUtil;
   private final Provider<Router> routerProvider;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public RBACController(
       PermissionUtil permissionUtil,
       RoleUtil roleUtil,
       RoleBindingUtil roleBindingUtil,
-      Provider<Router> routerProvider) {
+      Provider<Router> routerProvider,
+      RuntimeConfGetter confGetter) {
     this.permissionUtil = permissionUtil;
     this.roleUtil = roleUtil;
     this.roleBindingUtil = roleBindingUtil;
     this.routerProvider = routerProvider;
+    this.confGetter = confGetter;
   }
 
   /**
@@ -510,6 +515,12 @@ public class RBACController extends AuthenticatedController {
     // Validate that the user does not have LDAP specified role.
     if (UserType.ldap.equals(user.getUserType()) && user.isLdapSpecifiedRole()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for LDAP user.");
+    }
+
+    // Validate that the user does not have OIDC specified role.
+    if (UserType.oidc.equals(user.getUserType())
+        && confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Cannot set role bindings for OIDC user.");
     }
 
     // Parse request body.

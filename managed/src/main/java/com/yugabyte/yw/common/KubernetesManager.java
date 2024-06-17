@@ -8,11 +8,17 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Node;
@@ -24,16 +30,19 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
+import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -445,10 +454,25 @@ public abstract class KubernetesManager {
           }
         }
       }
+      String helmErrorMessage = null;
+      String[] lines = response.getMessage().split("\\r?\\n");
+      for (String line : lines) {
+        if (line.contains("INSTALLATION FAILED") || line.contains("UPGRADE FAILED")) {
+          helmErrorMessage += line;
+          helmErrorMessage += "\n";
+          break;
+        }
+      }
+
       if (pods.isEmpty()) {
         message = "No pods even scheduled. Previous step(s) incomplete";
       } else {
         message = "Pods are ready. Services still not running";
+      }
+      // Add helm error message to the exception message if it was found.
+      if (StringUtils.isNotBlank(helmErrorMessage)) {
+        helmErrorMessage = "HELM ERROR: " + helmErrorMessage;
+        message += "\n" + helmErrorMessage;
       }
       throw new RuntimeException(message);
     }
@@ -482,10 +506,9 @@ public abstract class KubernetesManager {
     String helmPackagePath = null;
 
     // Get helm package filename from release metadata.
-    ReleaseManager.ReleaseMetadata releaseMetadata =
-        releaseManager.getReleaseByVersion(ybSoftwareVersion);
-    if (releaseMetadata != null) {
-      helmPackagePath = releaseMetadata.chartPath;
+    ReleaseContainer release = releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (release != null) {
+      helmPackagePath = release.getHelmChart();
     }
 
     if (helmPackagePath == null || helmPackagePath.isEmpty()) {
@@ -581,6 +604,82 @@ public abstract class KubernetesManager {
     return true;
   }
 
+  public String getKubernetesServiceIPPort(ServerType type, Universe universe) {
+    List<String> allIPs = new ArrayList<>();
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
+    // If no service is exposed, fail early.
+    if (primary.userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
+      return null;
+    }
+    Provider provider = Provider.get(UUID.fromString(primary.userIntent.provider));
+
+    if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      return null;
+    } else {
+      PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
+
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+      Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
+
+      for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+        UUID azUUID = entry.getKey();
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+
+        Map<String, String> config = entry.getValue();
+
+        String namespace =
+            KubernetesUtil.getKubernetesNamespace(
+                isMultiAz,
+                universeDetails.nodePrefix,
+                azName,
+                config,
+                universeDetails.useNewHelmNamingStyle,
+                false);
+
+        String helmReleaseName =
+            KubernetesUtil.getHelmReleaseName(
+                isMultiAz,
+                universeDetails.nodePrefix,
+                universe.getName(),
+                azName,
+                false,
+                universeDetails.useNewHelmNamingStyle);
+
+        String ip =
+            getPreferredServiceIP(
+                config,
+                helmReleaseName,
+                namespace,
+                type == ServerType.MASTER,
+                universeDetails.useNewHelmNamingStyle);
+        if (ip == null) {
+          return null;
+        }
+
+        int rpcPort;
+        switch (type) {
+          case MASTER:
+            rpcPort = universeDetails.communicationPorts.masterRpcPort;
+            break;
+          case YSQLSERVER:
+            rpcPort = universeDetails.communicationPorts.ysqlServerRpcPort;
+            break;
+          case YQLSERVER:
+            rpcPort = universeDetails.communicationPorts.yqlServerRpcPort;
+            break;
+          case REDISSERVER:
+            rpcPort = universeDetails.communicationPorts.redisServerRpcPort;
+            break;
+          default:
+            throw new IllegalArgumentException("Unexpected type " + type);
+        }
+        allIPs.add(String.format("%s:%d", ip, rpcPort));
+      }
+      return String.join(",", allIPs);
+    }
+  }
+
   /* kubernetes interface */
 
   public abstract void createNamespace(Map<String, String> config, String universePrefix);
@@ -606,6 +705,8 @@ public abstract class KubernetesManager {
             .collect(Collectors.toSet());
     return namespaceNames.contains(namespace);
   }
+
+  public abstract boolean dbNamespaceExists(Map<String, String> config, String namespace);
 
   public abstract PodStatus getPodStatus(
       Map<String, String> config, String namespace, String podName);
@@ -742,7 +843,9 @@ public abstract class KubernetesManager {
       Map<String, String> config, RoleData roleData, String outputFormat);
 
   public abstract String getStorageClass(
-      Map<String, String> config, String storageClassName, String namespace, String outputFormat);
+      Map<String, String> config, String storageClassName, String outputFormat);
+
+  public abstract StorageClass getStorageClass(Map<String, String> config, String storageClassName);
 
   public abstract String getKubeconfigUser(Map<String, String> config);
 
@@ -755,4 +858,7 @@ public abstract class KubernetesManager {
       String appName,
       boolean newNamingStyle,
       int replicaCount);
+
+  public abstract boolean resourceExists(
+      Map<String, String> config, String resourceType, String resourceName, String namespace);
 }

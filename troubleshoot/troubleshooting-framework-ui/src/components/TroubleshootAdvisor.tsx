@@ -1,48 +1,59 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
-import { YBErrorIndicator } from '@yugabytedb/ui-components';
+import { Box, makeStyles } from '@material-ui/core';
+import clsx from 'clsx';
+import { YBErrorIndicator, isNonEmptyArray } from '@yugabytedb/ui-components';
 import { PrimaryDashboardData } from './PrimaryDashboardData';
 import { TroubleshootAPI, QUERY_KEY } from '../api';
-import { Anomaly, AppName, Universe } from '../helpers/dtos';
+import { Anomaly, AppName } from '../helpers/dtos';
 
-import LoadingIcon from '../assets/loading.svg';
+import { ReactComponent as LoadingIcon } from '../assets/loading.svg';
+import { useHelperStyles } from './styles';
 
 interface TroubleshootAdvisorProps {
   universeUuid: string;
-  // TODO: any should be replaced with YBM Node Response
-  universeData: Universe | any;
   appName: AppName;
-  baseUrl?: string;
   timezone?: string;
+  hostUrl?: string;
+  onSelectedIssue?: (troubleshootUuid: string) => void;
 }
 
-const useStyles = makeStyles((theme: Theme) => ({
-  icon: {
-    width: theme.spacing(3),
-    height: theme.spacing(3),
-    minWidth: theme.spacing(3),
-    minHeight: theme.spacing(3)
-  },
+const useStyles = makeStyles((theme) => ({
   inProgressIcon: {
-    color: theme.palette.success[700]
+    color: '#1A44A5'
+  },
+  icon: {
+    height: '40px',
+    width: '40px'
+  },
+  loadingBox: {
+    position: 'fixed',
+    left: '50%',
+    top: '50%',
+    width: '100%',
+    height: '100%'
   }
 }));
 
 export const TroubleshootAdvisor = ({
   universeUuid,
-  universeData,
   appName,
-  baseUrl,
-  timezone
+  timezone,
+  hostUrl,
+  onSelectedIssue
 }: TroubleshootAdvisorProps) => {
+  const helperClasses = useHelperStyles();
   const classes = useStyles();
-  const [anomalyList, setAnomalyList] = useState<Anomaly[] | null>(null);
 
-  const { isLoading, isError, isIdle } = useQuery(
+  const [anomalyList, setAnomalyList] = useState<Anomaly[] | null>(null);
+  const [startDateTime, setDateStartTime] = useState<Date | null>(null);
+  const [endDateTime, setDateEndTime] = useState<Date | null>(null);
+
+  const { isLoading, isError, isIdle, refetch: anomaliesRefetch } = useQuery(
     [QUERY_KEY.fetchAnamolies, universeUuid],
-    () => TroubleshootAPI.fetchAnamolies(universeUuid),
+    () => TroubleshootAPI.fetchAnamolies(universeUuid, startDateTime, endDateTime, hostUrl),
     {
+      enabled: anomalyList === null,
       onSuccess: (data: Anomaly[]) => {
         setAnomalyList(data);
       },
@@ -52,24 +63,47 @@ export const TroubleshootAdvisor = ({
     }
   );
 
-  // TODO: Display Error and Loading indicator based on API response
-  // if (isLoading) {
-  //   return <YBErrorIndicator customErrorMessage={'Failed to fetch anomalies list'} />;
-  // }
-  // if (isError || (isIdle && anomalyData === undefined)) {
-  //   return <LoadingIcon />;
-  // }
+  const onFilterByDate = async (startDate: any, endDate: any) => {
+    setDateEndTime(endDate);
+    setDateStartTime(startDate);
+    // TODO: Pass startDate and endDate to anomlay API once backend is ready
+    await anomaliesRefetch();
+  };
 
+  if (isLoading) {
+    return (
+      <Box className={classes.loadingBox}>
+        <LoadingIcon className={clsx(classes.icon, classes.inProgressIcon)} />
+      </Box>
+    );
+  }
+  if (isError || (isIdle && anomalyList === null)) {
+    return (
+      <Box className={helperClasses.recommendation}>
+        <YBErrorIndicator
+          customErrorMessage={'Failed to fetch anomalies list, please try again.'}
+        />
+      </Box>
+    );
+  }
   return (
     <Box sx={{ width: '100%' }}>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Box m={2}>
-          <PrimaryDashboardData
-            anomalyData={anomalyList}
-            appName={appName}
-            baseUrl={baseUrl}
-            timezone={timezone}
-          />
+          {isNonEmptyArray(anomalyList) ? (
+            <PrimaryDashboardData
+              anomalyData={anomalyList}
+              appName={appName}
+              timezone={timezone}
+              universeUuid={universeUuid}
+              onFilterByDate={onFilterByDate}
+              onSelectedIssue={onSelectedIssue}
+            />
+          ) : (
+            <Box className={helperClasses.recommendation}>
+              <span>{'There are no issues with the current universe'}</span>
+            </Box>
+          )}
         </Box>
       </Box>
     </Box>

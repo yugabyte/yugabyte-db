@@ -6,30 +6,25 @@ description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/default/
+
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
-    identifier: install-software-4-installer
-    weight: 77
+    identifier: install-software-1-installer
+    weight: 10
 rightNav:
   hideH4: true
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere (YBA) software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
-
-Note: For higher availability, one or more additional YBA instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../installer/" class="nav-link active">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
+      <i class="fa-solid fa-building"></i>On-premises and public clouds</a>
   </li>
 
   <li>
@@ -37,14 +32,9 @@ Note: For higher availability, one or more additional YBA instances can be separ
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
 </ul>
 
-Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
+Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate if the workspace is ready to run YBA.
 
 You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
 
@@ -52,30 +42,21 @@ You can also use YBA Installer to migrate an existing YBA software installed via
 
 -> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
 
--> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated). {{<badge/ea>}}
+-> To migrate an installation from Replicated, refer to [Migrate from Replicated](../../migrate-replicated/).
 
 -> For troubleshooting, refer to [Install and upgrade issues](../../../troubleshoot/install-upgrade-issues/installer/).
 
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
-## Prerequisites
+## Before you begin
 
-- Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
-- For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
-
-  If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
-
-  ```sh
-  /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
-  ```
-
-  Additionally, add the commands from the [sudo_whitelist](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/sudo_whitelist.txt) to the sudoers file.
+Make sure your machine satisfies the [minimum prerequisites](../../../prepare/server-yba/).
 
 ## Quick start
 
 To install YugabyteDB Anywhere using YBA Installer, do the following:
 
-1. Obtain your license from Yugabyte Support.
+1. Obtain your license from {{% support-platform %}}.
 1. Download and extract the YBA Installer by entering the following commands:
 
     ```sh
@@ -90,7 +71,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     $ sudo ./yba-ctl preflight
     ```
 
-1. If there are no issues, using sudo, install the software, providing your license.
+1. If there are no issues (aside from the lack of a license), using sudo, install the software, providing your license.
 
     ```sh
     $ sudo ./yba-ctl install -l /path/to/license
@@ -168,7 +149,7 @@ You can also provide a license when running the `install` command. Refer to [Ins
 
 ### Run preflight checks
 
-Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../prerequisites/installer/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
+Start by running the preflight checks to ensure that the expected ports are available, the hardware meets the [minimum requirements](../../../prepare/server-nodes-hardware/), and so forth. The preflight check generates a report you can use to fix any issues before continuing with the installation.
 
 ```sh
 $ sudo ./yba-ctl preflight
@@ -223,87 +204,6 @@ INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 ```
 
 The `install` command runs all [preflight checks](#run-preflight-checks) first, and then proceeds to do a full install, and then waits for YBA to start. After the install succeeds, you can immediately start using YBA.
-
-## Migrate from Replicated
-
-{{< note >}}
-
-Migrating from Replicated using YBA Installer is [Early Access](/preview/releases/versioning/#feature-availability).
-
-{{</note >}}
-
-{{< warning title="Replicated end of life" >}}
-
-YugabyteDB Anywhere will end support for Replicated installation at the end of 2024.
-
-{{< /warning >}}
-
-If your YBA installation uses Replicated, you can use YBA Installer to migrate from Replicated.
-
-Review the [prerequisites](#prerequisites). YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
-
-If you have high availability configured, you need to migrate your instances in a specific order. See [Migration and high availability](#migration-and-high-availability).
-
-### Migrate a YBA installation
-
-To migrate your installation from Replicated, do the following:
-
-1. If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
-
-1. If you haven't already, [download and extract YBA Installer](#download-yba-installer).
-
-1. Optionally, configure the migration as follows:
-
-    ```sh
-    $ sudo ./yba-ctl replicated-migrate config
-    ```
-
-    This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further. For a list of options, refer to [Configuration options](#configuration-options).
-
-1. Start the migration, passing in your license file:
-
-    ```sh
-    $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
-    ```
-
-    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start.
-
-1. Validate YBA is up and running with the correct data, including Prometheus.
-
-    At this point, if you find problems, you can revert to your Replicated installation using the `replicated-migrate rollback` command. Note that any changes made with the new YBA (either using the UI or the API) will not be reflected after the rollback.
-
-    In particular, do not configure HA until running the `finish` command (next step) on all instances.
-
-1. If the new YBA installation is correct, finish the migration as follows:
-
-    ```sh
-    $ sudo ./yba-ctl replicated-migrate finish
-    ```
-
-    This uninstalls Replicated and makes the new YBA instance permanent.
-
-### Migration and high availability
-
-If you have YBA [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby YBA instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
-
-If Replicated is using HTTPS, migrate as follows:
-
-1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
-1. Migrate and finish the standby instances.
-
-Failovers are only possible after you finish the migration on both the primary and standby.
-
-If Replicated is using HTTP, you need to remove the standbys and delete the HA configuration before migrating. Migrate as follows:
-
-1. [Remove the standby instances](../../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
-1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
-1. If your instances are v2.18.5 or earlier, or 2.20.0, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
-1. Migrate and finish the standby instances.
-1. [Configure HA on the updated instances](../../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
-
-Failovers are possible again after the completion of this step.
 
 ## Manage a YBA installation
 
@@ -514,6 +414,7 @@ Http and Https proxy settings are described in the following table.
 | `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus. |
 | `maxSamples` | Maximum number of samples that a single query can load into memory. |
 | `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive. |
+| `retentionTime` | How long Prometheus retains the database metrics. |
 
 ### Configure PostgreSQL
 

@@ -5,7 +5,6 @@
 package universe
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -22,11 +21,8 @@ var listUniverseCmd = &cobra.Command{
 	Short: "List YugabyteDB Anywhere universes",
 	Long:  "List YugabyteDB Anywhere universes",
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		universeListRequest := authAPI.ListUniverses()
 		// filter by name and/or by universe code
 		universeName, _ := cmd.Flags().GetString("name")
@@ -45,7 +41,11 @@ var listUniverseCmd = &cobra.Command{
 			Format: universe.NewUniverseFormat(viper.GetString("output")),
 		}
 		if len(r) < 1 {
-			fmt.Println("No universes found")
+			if util.IsOutputType("table") {
+				logrus.Infoln("No universes found\n")
+			} else {
+				logrus.Infoln("{}\n")
+			}
 			return
 		}
 		universe.Write(universeCtx, r)

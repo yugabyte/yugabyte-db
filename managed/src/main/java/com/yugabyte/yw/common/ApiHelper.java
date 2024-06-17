@@ -2,11 +2,14 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.time.Duration;
@@ -67,6 +70,13 @@ public class ApiHelper {
   public JsonNode postRequest(String url, JsonNode data, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers);
     CompletionStage<String> jsonPromise = request.post(data).thenApply(WSResponse::getBody);
+    return handleJSONPromise(jsonPromise);
+  }
+
+  public JsonNode postRequestEncodedData(
+      String url, String encodedData, Map<String, String> headers) {
+    WSRequest request = requestWithHeaders(url, headers);
+    CompletionStage<String> jsonPromise = request.post(encodedData).thenApply(WSResponse::getBody);
     return handleJSONPromise(jsonPromise);
   }
 
@@ -141,6 +151,27 @@ public class ApiHelper {
     return handleJSONPromise(jsonPromise);
   }
 
+  public JsonNode deleteRequest(String url) {
+    return deleteRequest(url, new HashMap<>());
+  }
+
+  public JsonNode deleteRequest(String url, Map<String, String> headers) {
+    return deleteRequest(url, headers, new HashMap<>());
+  }
+
+  public JsonNode deleteRequest(
+      String url, Map<String, String> headers, Map<String, String> params) {
+    WSRequest request = requestWithHeaders(url, headers);
+    request.setFollowRedirects(true);
+    if (!params.isEmpty()) {
+      for (Map.Entry<String, String> entry : params.entrySet()) {
+        request.setQueryParameter(entry.getKey(), entry.getValue());
+      }
+    }
+    CompletionStage<String> jsonPromise = request.delete().thenApply(WSResponse::getBody);
+    return handleJSONPromise(jsonPromise);
+  }
+
   private JsonNode handleJSONPromise(CompletionStage<String> jsonPromise) {
     try {
       String jsonString = jsonPromise.toCompletableFuture().get();
@@ -201,11 +232,25 @@ public class ApiHelper {
     headers.forEach(request::addHeader);
     CompletionStage<String> post =
         request.post(Source.from(partsList)).thenApply(WSResponse::getBody);
-    return handleJSONPromise(post);
+    try {
+      return handleJSONPromise(post);
+    } catch (RuntimeException e) {
+      return new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage()).getContentJson();
+    }
   }
 
   public CompletionStage<WSResponse> getSimpleRequest(String url, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers).setFollowRedirects(true);
     return request.get();
+  }
+
+  public void closeClient() {
+    if (this.wsClient != null) {
+      try {
+        this.wsClient.close();
+      } catch (IOException e) {
+        log.warn("Exception while closing wsClient. Ignored.", e);
+      }
+    }
   }
 }

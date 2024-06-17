@@ -52,49 +52,68 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
 
   private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
 
-  private YBClient mockClient;
-
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckUpgrade,
-          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.UpdateUniverseState,
           TaskType.KubernetesCommandExecutor,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.CheckFollowerLag,
           TaskType.ModifyBlackList,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.ModifyBlackList,
-          TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.ModifyBlackList,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
           TaskType.ModifyBlackList,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitStartingFromTime,
+          TaskType.ModifyBlackList,
+          TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
           TaskType.StoreAutoFlagConfigVersion,
           TaskType.PromoteAutoFlags,
@@ -106,6 +125,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    setFollowerLagMock();
+    setUnderReplicatedTabletsMock();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.softwareKubernetesUpgrade =
         new SoftwareKubernetesUpgrade(
@@ -125,15 +146,6 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW)),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
@@ -145,6 +157,9 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
                 "commandType",
@@ -153,6 +168,23 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
                 YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "commandType",
+                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
+                "ybSoftwareVersion",
+                YB_SOFTWARE_VERSION_NEW)),
+        Json.toJson(
+            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -173,15 +205,6 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(
-            ImmutableMap.of(
-                "commandType",
-                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
-                "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW)),
-        Json.toJson(
-            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -194,6 +217,25 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
                 YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(
+            ImmutableMap.of(
+                "commandType",
+                KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
+                "ybSoftwareVersion",
+                YB_SOFTWARE_VERSION_NEW)),
+        Json.toJson(
+            ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -393,6 +435,8 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
 
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.SoftwareUpgrade,

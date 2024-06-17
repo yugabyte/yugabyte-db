@@ -121,24 +121,28 @@ public class CreateBackup extends UniverseTaskBase {
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
 
-        if (ybcBackup
-            && universe.isYbcEnabled()
-            && !universe
-                .getUniverseDetails()
-                .getYbcSoftwareVersion()
-                .equals(ybcManager.getStableYbcVersion())) {
+        if (isFirstTry()) {
+          if (ybcBackup
+              && universe.isYbcEnabled()
+              && !universe
+                  .getUniverseDetails()
+                  .getYbcSoftwareVersion()
+                  .equals(ybcManager.getStableYbcVersion())) {
 
-          if (universe
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
-            createUpgradeYbcTaskOnK8s(params().getUniverseUUID(), ybcManager.getStableYbcVersion())
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
-          } else {
-            createUpgradeYbcTask(params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
-                .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            if (universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(Common.CloudType.kubernetes)) {
+              createUpgradeYbcTaskOnK8s(
+                      params().getUniverseUUID(), ybcManager.getStableYbcVersion())
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            } else {
+              createUpgradeYbcTask(
+                      params().getUniverseUUID(), ybcManager.getStableYbcVersion(), true)
+                  .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+            }
           }
         }
 

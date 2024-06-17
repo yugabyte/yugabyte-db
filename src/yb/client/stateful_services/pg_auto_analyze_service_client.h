@@ -17,14 +17,10 @@
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.pb.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.proxy.h"
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
-class PgAutoAnalyzeServiceClient : public StatefulServiceClientBase {
- public:
-  PgAutoAnalyzeServiceClient();
+// PgAutoAnalyzeServiceClient(client::YBClient & yb_client);
+DEFINE_STATEFUL_SERVICE_CLIENT(PgAutoAnalyze, PG_AUTO_ANALYZE,
+    IncreaseMutationCounters);
 
-  STATEFUL_SERVICE_RPCS(PgAutoAnalyze, (IncreaseMutationCounters));
-};
-}  // namespace client
-}  // namespace yb
+}  // namespace yb::client

@@ -79,8 +79,27 @@ Workaround: If you want to configure the new settings to non-default values, man
 
 ## High availability on Replicated installation with HTTP no longer works after migration
 
-If you have a Replicated installation that uses HTTP and you [migrate to YBA Installer](../../../install-yugabyte-platform/install-software/installer/#migrate-from-replicated), your [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) setup will no longer work after the migration. This is because YBA Installer always uses HTTPS. YBA Installer will attempt to block the migration if it detects a Replicated installation with HA enabled that uses HTTP.
+If you have a Replicated installation that uses HTTP and you [migrate to YBA Installer](../../../install-yugabyte-platform/migrate-replicated/), your [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) setup will no longer work after the migration. This is because YBA Installer always uses HTTPS. YBA Installer will attempt to block the migration if it detects a Replicated installation with HA enabled that uses HTTP.
 
 Affected releases: All
 
-Workaround: Refer to [Migration and high availability](../../../install-yugabyte-platform/install-software/installer/#migration-and-high-availability).
+Workaround: Refer to [Migration and high availability](../../../install-yugabyte-platform/migrate-replicated/#migration-and-high-availability).
+
+## Running low on free disk space
+
+If you are running out of disk space on your YugabyteDB Anywhere node, check the size of the Prometheus directory (default location is `/opt/yugabyte/data/prometheus`) using the following command:
+
+```sh
+du -h -s /opt/yugabyte/data/prometheus/storage
+```
+
+If the Prometheus directory is taking up a lot of space, you can reduce its size by changing the retention time and the scrape interval for database metrics.
+
+Affected releases: All
+
+Workaround: Reduce the Prometheus directory size by changing the metrics retention time and scrape interval [configuration options](../../../install-yugabyte-platform/install-software/installer/#prometheus-configuration-options).
+
+Perform the following steps:
+
+1. Reduce the `retentionTime` and increase the `scrapeInterval` configuration options in the `/opt/yba-ctl/yba-ctl.yml` file.
+1. Run `yba-ctl reconfigure` to [reconfigure](../../../install-yugabyte-platform/install-software/installer/#reconfigure) your YugabyteDB Anywhere instance with the new settings.

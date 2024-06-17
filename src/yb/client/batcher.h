@@ -41,6 +41,7 @@
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
+#include "yb/common/opid.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 
@@ -50,7 +51,6 @@
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
-#include "yb/util/opid.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
@@ -71,7 +71,7 @@ struct InFlightOpsGroup {
 
 struct InFlightOpsTransactionMetadata {
   TransactionMetadata transaction;
-  boost::optional<SubTransactionMetadata> subtransaction;
+  boost::optional<SubTransactionMetadataPB> subtransaction_pb;
 };
 
 struct InFlightOpsGroupsWithMetadata {
@@ -98,8 +98,9 @@ class TxnBatcherIf {
 
   // Notifies transaction that specified ops were flushed with some status.
   virtual void Flushed(
-      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
-      const Status& status) = 0;
+      const internal::InFlightOps& ops,
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb,
+      const ReadHybridTime& used_read_time, const Status& status) = 0;
 
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
@@ -283,6 +284,15 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // InitFromFailedBatcher is called on the retry batcher to initialize the retry batcher before
   // executing ::FlushAsync.
   void InitFromFailedBatcher(const BatcherPtr& failed_batcher, const CollectedErrors& errors);
+
+  void SetSubTransactionMetadataPB(
+      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+    ops_info_.metadata.subtransaction_pb = subtransaction_pb;
+  }
+
+  const boost::optional<SubTransactionMetadataPB>& GetSubTransactionMetadataPB() const {
+    return ops_info_.metadata.subtransaction_pb;
+  }
 
  private:
   friend class RefCountedThreadSafe<Batcher>;

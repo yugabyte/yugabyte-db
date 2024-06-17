@@ -11,7 +11,9 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
 import java.util.Collections;
@@ -25,7 +27,9 @@ import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
+import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 @Slf4j
 public class EditXClusterConfig extends CreateXClusterConfig {
@@ -46,10 +50,12 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     XClusterConfigEditFormData editFormData = taskParams().getEditFormData();
 
     // Lock the source universe.
-    lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+    lockAndFreezeUniverseForUpdate(
+        sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
     try {
       // Lock the target universe.
-      lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
       try {
 
         // Check Auto flags on source and target universes while resuming xCluster.
@@ -118,9 +124,37 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 taskParams().getTableIdsToRemove(),
                 XClusterTableConfig.Status.Updating);
 
+            Set<String> databaseNamesToBeDropped = new HashSet<>();
+            List<TableInfo> tableInfoList =
+                getTableInfoList(ybService, sourceUniverse, xClusterConfig.getTableIds());
+            Map<String, List<TableInfo>> namespaceTableMap =
+                XClusterConfigTaskBase.groupByNamespaceName(tableInfoList);
+            for (Map.Entry<String, List<TableInfo>> entry : namespaceTableMap.entrySet()) {
+              boolean deleteAllTables = true;
+              for (TableInfo tableInfo : entry.getValue()) {
+                if (!taskParams()
+                    .getTableIdsToRemove()
+                    .contains(tableInfo.getId().toStringUtf8())) {
+                  deleteAllTables = false;
+                  break;
+                }
+              }
+              if (deleteAllTables) {
+                databaseNamesToBeDropped.add(entry.getKey());
+              }
+            }
             createRemoveTableFromXClusterConfigSubtasks(
-                xClusterConfig, taskParams().getTableIdsToRemove(), false /* keepEntry */);
+                xClusterConfig,
+                taskParams().getTableIdsToRemove(),
+                false /* keepEntry */,
+                databaseNamesToBeDropped);
           }
+        } else if (editFormData.databases != null) { // Used for DB scoped replication only.
+          if (!xClusterConfig.getType().equals(ConfigType.Db)) {
+            throw new IllegalArgumentException(
+                "The databases must be provided only for DB scoped replication");
+          }
+          addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, editFormData.databases);
         } else {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
@@ -153,6 +187,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
         xClusterConfig.updateStatusForTables(
             tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+      }
+      if (editFormData.databases != null) {
+        // Set databases in updating status to failed.
+        Set<String> dbIds = editFormData.databases;
+        Set<String> namespacesInPendingStatus =
+            xClusterConfig.getNamespaceIdsInStatus(
+                dbIds, X_CLUSTER_NAMESPACE_CONFIG_PENDING_STATUS_LIST);
+        xClusterConfig.updateStatusForNamespaces(
+            namespacesInPendingStatus, XClusterNamespaceConfig.Status.Failed);
       }
       // Set backup and restore status to failed and alter load balanced.
       boolean isLoadBalancerAltered = false;
@@ -193,6 +236,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           xClusterConfig,
           tableIdsNotNeedBootstrap,
           requestedTableInfoList,
+          null,
           true /* isReplicationConfigCreated */,
           taskParams().getPitrParams());
 
@@ -209,13 +253,31 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
     // Add the subtasks to set up replication for tables that need bootstrapping if any.
     if (!dbToTablesInfoMapNeedBootstrap.isEmpty()) {
-      // YSQL tables replication with bootstrapping can only be set up with DB granularity. The
-      // following subtasks remove tables in replication, so the replication can be set up again
-      // for all the tables in the DB including the new tables.
       Set<String> tableIdsDeleteReplication = new HashSet<>();
       dbToTablesInfoMapNeedBootstrap.forEach(
           (namespaceName, tablesInfo) -> {
             Set<String> tableIdsNeedBootstrap = getTableIds(tablesInfo);
+            if (taskParams().getBootstrapParams().allowBootstrap && !tablesInfo.isEmpty()) {
+              if (tablesInfo.get(0).getTableType() == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
+                List<TableInfo> sourceTablesInfo =
+                    getTableInfoListByNamespaceName(
+                        ybService,
+                        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()),
+                        CommonTypes.TableType.PGSQL_TABLE_TYPE,
+                        namespaceName);
+                tableIdsNeedBootstrap.addAll(getTableIds(sourceTablesInfo));
+                tableIdsNeedBootstrap.addAll(getTableIds(tablesInfo));
+              } else {
+                groupByNamespaceName(requestedTableInfoList).get(namespaceName).stream()
+                    .map(tableInfo -> getTableId(tableInfo))
+                    .forEach(tableIdsNeedBootstrap::add);
+              }
+            }
+            // YSQL tables replication with bootstrapping can only be set up with DB granularity.
+            // The
+            // following subtasks remove tables in replication, so the replication can be set up
+            // again
+            // for all the tables in the DB including the new tables.
             Set<String> tableIdsNeedBootstrapInReplication =
                 xClusterConfig.getTableIdsWithReplicationSetup(
                     tableIdsNeedBootstrap, true /* done */);
@@ -297,7 +359,39 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             dbToTablesInfoMapNeedBootstrap,
             true /* isReplicationConfigCreated */,
             taskParams().getPitrParams());
+
+        // After all the other subtasks are done, set the DR states to show replication is
+        // happening.
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+                  xClusterConfig,
+                  State.Replicating,
+                  SourceUniverseState.ReplicatingData,
+                  TargetUniverseState.ReceivingData,
+                  null /* keyspacePending */)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        }
       }
+    }
+  }
+
+  protected void addSubtasksToAddDatabasesToXClusterConfig(
+      XClusterConfig xClusterConfig, Set<String> databases) {
+
+    for (String dbId : databases) {
+      xClusterConfig.updateStatusForNamespace(dbId, XClusterNamespaceConfig.Status.Updating);
+      createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, dbId);
+      createAddNamespaceToXClusterReplicationTask(xClusterConfig, dbId);
+    }
+
+    if (xClusterConfig.isUsedForDr()) {
+      createSetDrStatesTask(
+              xClusterConfig,
+              State.Replicating,
+              SourceUniverseState.ReplicatingData,
+              TargetUniverseState.ReceivingData,
+              null /* keyspacePending */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
   }
 }

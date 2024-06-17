@@ -15,6 +15,8 @@ package org.yb.client;
 
 import java.util.Random;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -24,6 +26,8 @@ import org.yb.master.MasterTypes.MasterErrorPB.Code;
 
 @InterfaceAudience.Public
 public abstract class AbstractModifyMasterClusterConfig {
+  private static final Logger LOG = LoggerFactory.getLogger(
+      AbstractModifyMasterClusterConfig.class);
   private YBClient ybClient = null;
 
   public AbstractModifyMasterClusterConfig(YBClient client) {
@@ -46,17 +50,31 @@ public abstract class AbstractModifyMasterClusterConfig {
 
     for (int i = 0; i < 3; i++){
       CatalogEntityInfo.SysClusterConfigEntryPB newConfig = modifyConfig(getConfig());
-      ChangeMasterClusterConfigResponse changeResp = ybClient.changeMasterClusterConfig(newConfig);
-
-      if (!changeResp.hasError()) {
-        return getConfig();
+      String configMismatchError = "";
+      try {
+        ChangeMasterClusterConfigResponse changeResp =
+            ybClient.changeMasterClusterConfig(newConfig);
+        // Generally, ybClient will raise an exception instead of returning the changeResp with
+        // and error. But, to ensure there are no cases where changeResp has an error, we will also
+        // validate it for retry possibility.
+        if (!changeResp.hasError()) {
+          return getConfig();
+        }
+        // Retry on 'config version mismatch' with an increasing backoff between retries.
+        // All other errors should exit immediately.
+        if (changeResp.errorCode() != Code.CONFIG_VERSION_MISMATCH){
+          throw new RuntimeException("ChangeConfig hit error: " + changeResp.errorMessage());
+        }
+        configMismatchError = changeResp.errorMessage();
+      } catch (MasterErrorException e) {
+        // Rethrow the exception if it is not a CONFIG_VERSION_MISMATCH error.
+        if (e.error == null || e.error.getCode() != Code.CONFIG_VERSION_MISMATCH) {
+          throw e;
+        }
+        configMismatchError = e.getMessage();
       }
-
-      // Retry on 'config version mismatch' with an increasing backoff between retries.
-      // All other errors should exit immediately.
-      if (changeResp.errorCode() != Code.CONFIG_VERSION_MISMATCH){
-        throw new RuntimeException("ChangeConfig hit error: " + changeResp.errorMessage());
-      }
+      LOG.warn("Got CONFIG_VERSION_MISMATCH error, retrying after {} ms: {}",
+          sleepTimeMs, configMismatchError);
       Thread.sleep(sleepTimeMs);
       sleepTimeMs = sleepTimeMs * 2;
     }

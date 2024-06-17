@@ -1,5 +1,6 @@
 import { useQuery } from 'react-query';
 import moment from 'moment';
+import i18n from 'i18next';
 
 import { getAlertConfigurations } from '../../actions/universe';
 import { fetchReplicationLag, isBootstrapRequired } from '../../actions/xClusterReplication';
@@ -12,7 +13,8 @@ import {
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigType,
   XClusterTableEligibility,
-  AlertName
+  XClusterTableStatus,
+  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -21,21 +23,29 @@ import {
   universeQueryKey
 } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
-import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/helpers/constants';
+import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 import { getTableUuid } from '../../utils/tableUtils';
+import { compareYBSoftwareVersions, getPrimaryCluster } from '../../utils/universeUtilsTyped';
 
 import {
   Metrics,
   MetricTimeRange,
   StandardMetricTimeRangeOption,
-  XClusterTable,
-  XClusterTableCandidate
+  XClusterReplicationTable,
+  MainTableReplicationCandidate,
+  IndexTableReplicationCandidate,
+  XClusterTableType,
+  XClusterTable
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
-import { IAlertConfiguration as AlertConfiguration } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import {
+  AlertTemplate,
+  AlertThresholdCondition,
+  IAlertConfiguration as AlertConfiguration
+} from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 import { DrConfigState } from './disasterRecovery/dtos';
 
 import './ReplicationUtils.scss';
@@ -47,26 +57,24 @@ export const MaxAcceptableLag = ({
   currentUniverseUUID: string | undefined;
 }) => {
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: currentUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
-  if (maxAcceptableLagQuery.isLoading || maxAcceptableLagQuery.isIdle) {
+  if (replicationLagAlertConfigQuery.isLoading || replicationLagAlertConfigQuery.isIdle) {
     return <i className="fa fa-spinner fa-spin yb-spinner"></i>;
   }
-  if (maxAcceptableLagQuery.isError || maxAcceptableLagQuery.data.length === 0) {
+  if (replicationLagAlertConfigQuery.isError || replicationLagAlertConfigQuery.data.length === 0) {
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = Math.min(
-    ...maxAcceptableLagQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+    replicationLagAlertConfigQuery.data
   );
-  return <span>{formatLagMetric(maxAcceptableLag)}</span>;
+  return <span>{maxAcceptableLag ? formatLagMetric(maxAcceptableLag) : '-'}</span>;
 };
 
 // TODO: Rename, refactor and pull into separate file
@@ -83,23 +91,23 @@ export const CurrentReplicationLag = ({
     api.fetchUniverse(sourceUniverseUuid)
   );
 
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     replicationUuid: xClusterConfigUuid
   };
   const universeLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+  const replicationLagAlertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -108,8 +116,8 @@ export const CurrentReplicationLag = ({
     sourceUniverseQuery.isIdle ||
     universeLagQuery.isLoading ||
     universeLagQuery.isIdle ||
-    maxAcceptableLagQuery.isLoading ||
-    maxAcceptableLagQuery.isIdle
+    replicationLagAlertConfigQuery.isLoading ||
+    replicationLagAlertConfigQuery.isIdle
   ) {
     return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
@@ -118,20 +126,18 @@ export const CurrentReplicationLag = ({
     BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfigStatus) ||
     sourceUniverseQuery.isError ||
     universeLagQuery.isError ||
-    maxAcceptableLagQuery.isError
+    replicationLagAlertConfigQuery.isError
   ) {
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = Math.min(
-    ...maxAcceptableLagQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+    replicationLagAlertConfigQuery.data
   );
-
   const maxNodeLag = getLatestMaxNodeLag(universeLagQuery.data);
   const formattedLag = formatLagMetric(maxNodeLag);
-  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
+  const isReplicationUnhealthy =
+    maxNodeLag === undefined || (maxAcceptableLag && maxNodeLag > maxAcceptableLag);
 
   if (maxNodeLag === undefined) {
     return <span className="replication-lag-value warning">{formattedLag}</span>;
@@ -165,24 +171,24 @@ export const CurrentTableReplicationLag = ({
   sourceUniverseUUID: string | undefined;
   xClusterConfigStatus: XClusterConfigStatus;
 }) => {
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix,
     streamId,
     tableId
   };
   const tableLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: queryEnabled
     }
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: sourceUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(
+  const replicationLagAlertConfigQuery = useQuery(
     alertConfigQueryKey.list(alertConfigFilter),
     () => getAlertConfigurations(alertConfigFilter),
     {
@@ -193,8 +199,8 @@ export const CurrentTableReplicationLag = ({
   if (
     tableLagQuery.isLoading ||
     tableLagQuery.isIdle ||
-    maxAcceptableLagQuery.isLoading ||
-    maxAcceptableLagQuery.isIdle
+    replicationLagAlertConfigQuery.isLoading ||
+    replicationLagAlertConfigQuery.isIdle
   ) {
     return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
@@ -202,20 +208,18 @@ export const CurrentTableReplicationLag = ({
   if (
     BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfigStatus) ||
     tableLagQuery.isError ||
-    maxAcceptableLagQuery.isError
+    replicationLagAlertConfigQuery.isError
   ) {
     return <span>-</span>;
   }
 
-  const maxAcceptableLag = Math.min(
-    ...maxAcceptableLagQuery.data.map(
-      (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-    )
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
+    replicationLagAlertConfigQuery.data
   );
-
   const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
   const formattedLag = formatLagMetric(maxNodeLag);
-  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
+  const isReplicationUnhealthy =
+    maxNodeLag === undefined || (maxAcceptableLag && maxNodeLag > maxAcceptableLag);
 
   if (maxNodeLag === undefined) {
     return <span className="replication-lag-value warning">{formattedLag}</span>;
@@ -380,7 +384,6 @@ export const getEnabledConfigActions = (
     case XClusterConfigStatus.RUNNING:
       return [
         replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
-        XClusterConfigAction.ADD_TABLE,
         XClusterConfigAction.MANAGE_TABLE,
         XClusterConfigAction.DB_SYNC,
         XClusterConfigAction.DELETE,
@@ -448,15 +451,38 @@ export const getStrictestReplicationLagAlertConfig = (
   alertConfigs: AlertConfiguration[] | undefined
 ): AlertConfiguration | undefined =>
   alertConfigs?.reduce(
-    (strictestReplicationLagAlertConfig: any, currentReplicationLagAlertConfig: any) =>
-      strictestReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold &&
-      (!currentReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold ||
-        strictestReplicationLagAlertConfig.thresholds.SEVERE.threshold <=
-          currentReplicationLagAlertConfig.thresholds.SEVERE.threshold)
+    (
+      strictestReplicationLagAlertConfig: AlertConfiguration | undefined,
+      currentReplicationLagAlertConfig
+    ) => {
+      const isUpperLimitThreshold =
+        currentReplicationLagAlertConfig.thresholds.SEVERE?.condition ===
+        AlertThresholdCondition.GREATER_THAN;
+      const isReplicationLagAlert =
+        currentReplicationLagAlertConfig.template === AlertTemplate.REPLICATION_LAG;
+      const strictestThreshold = strictestReplicationLagAlertConfig?.thresholds.SEVERE?.threshold;
+      const currentThreshold = currentReplicationLagAlertConfig.thresholds.SEVERE?.threshold;
+
+      return strictestThreshold &&
+        (!currentThreshold ||
+          !isUpperLimitThreshold ||
+          !isReplicationLagAlert ||
+          strictestThreshold <= currentThreshold)
         ? strictestReplicationLagAlertConfig
-        : currentReplicationLagAlertConfig,
-    {}
+        : isUpperLimitThreshold && isReplicationLagAlert
+        ? currentReplicationLagAlertConfig
+        : undefined;
+    },
+    undefined
   );
+
+/**
+ * Returns undefined when `alertConfigs` is undefined or empty array.
+ */
+export const getStrictestReplicationLagAlertThreshold = (
+  alertConfigs: AlertConfiguration[] | undefined
+): number | undefined =>
+  getStrictestReplicationLagAlertConfig(alertConfigs)?.thresholds?.SEVERE?.threshold;
 
 export const tableSort = <RowType,>(
   a: RowType,
@@ -477,16 +503,25 @@ export const tableSort = <RowType,>(
 };
 
 /**
- * Return the `tableType` of any table in an xCluster config.
+ * Return the table type (YSQL or YCQL) of an xCluster config.
  */
-export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
+export const getXClusterConfigTableType = (
+  xClusterConfig: XClusterConfig,
+  sourceUniverseTables: YBTable[] | undefined
+): XClusterTableType | null => {
+  // We allow undefined sourceUniverseTables because we are still able to return a value as long as
+  // the xCluster config has updated its internal table type field.
+
   switch (xClusterConfig.tableType) {
     case 'YSQL':
       return TableType.PGSQL_TABLE_TYPE;
     case 'YCQL':
       return TableType.YQL_TABLE_TYPE;
     case 'UNKNOWN':
-      return undefined;
+      return (
+        (sourceUniverseTables?.find((table) => xClusterConfig.tables.includes(getTableUuid(table)))
+          ?.tableType as XClusterTableType) ?? null
+      );
   }
 };
 
@@ -494,23 +529,53 @@ export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
  * Returns whether the provided table can be added/removed from the xCluster config.
  */
 export const isTableToggleable = (
-  table: XClusterTableCandidate,
+  table: MainTableReplicationCandidate | IndexTableReplicationCandidate,
   xClusterConfigAction: XClusterConfigAction
 ) =>
   table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED ||
   (xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE &&
     table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
+export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig) =>
+  xClusterConfig.type === XClusterConfigType.TXN || xClusterConfig.tableType !== 'YSQL';
+
+export const getIsTransactionalAtomicityEnabled = (
+  sourceUniverse: Universe,
+  targetUniverse?: Universe
+) => {
+  const ybSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
+    .ybSoftwareVersion;
+  const participatingUniverses = targetUniverse
+    ? [sourceUniverse, targetUniverse]
+    : [sourceUniverse];
+  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig(participatingUniverses);
+  return (
+    !!ybSoftwareVersion &&
+    compareYBSoftwareVersions({
+      versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+      versionB: ybSoftwareVersion,
+      options: {
+        suppressFormatError: true
+      }
+    }) < 0 &&
+    !participantsHaveLinkedXClusterConfig
+  );
+};
+
 /**
- * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
+ * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
+ * - XClusterReplicationTable: may contain dropped tables
+ * - XClusterTable: doest not contain dropped tables
  */
-export const augmentTablesWithXClusterDetails = (
-  ybTable: YBTable[],
+export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends boolean>(
+  sourceUniverseTables: YBTable[],
   xClusterConfigTables: XClusterTableDetails[],
-  metricTraces?: MetricTrace[]
-): XClusterTable[] => {
-  const ybTableMap = new Map<string, YBTable>(
-    ybTable.map((table) => {
+  maxAcceptableLag: number | undefined,
+  metricTraces: MetricTrace[] | undefined,
+  options?: { includeDroppedTables: TIncludeDroppedTables }
+): TIncludeDroppedTables extends true ? XClusterReplicationTable[] : XClusterTable[] => {
+  const tableIdToSourceUniverseTableDetails = new Map<string, YBTable>(
+    sourceUniverseTables.map((table) => {
       const { tableUUID, ...tableDetails } = table;
       const adaptedTableUUID = formatUuidForXCluster(getTableUuid(table));
       return [adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID }];
@@ -524,20 +589,45 @@ export const augmentTablesWithXClusterDetails = (
       parseFloatIfDefined(trace.y[trace.y.length - 1])
     ])
   );
-  const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
-    const ybTableDetails = ybTableMap.get(table.tableId);
-    const replicationLag = tableIdToReplicationLag.get(table.tableId);
-    if (ybTableDetails) {
-      const { tableId, ...xClusterTableDetails } = table;
-      tables.push({ ...ybTableDetails, ...xClusterTableDetails, replicationLag });
-    } else {
-      console.error(
-        `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
-      );
+
+  const tableStatusTranslationPrefix = 'clusterDetail.xCluster.config.tableStatus';
+  // Augment tables in the current xCluster config with additional table details for the YBA UI.
+  const tables = xClusterConfigTables.reduce((tables: XClusterReplicationTable[], table) => {
+    const { tableId, ...xClusterTableDetails } = table;
+    const sourceUniverseTableDetails = tableIdToSourceUniverseTableDetails.get(tableId);
+    const replicationLag = tableIdToReplicationLag.get(tableId);
+    if (sourceUniverseTableDetails) {
+      const tableStatus =
+        xClusterTableDetails.status === XClusterTableStatus.RUNNING &&
+        maxAcceptableLag &&
+        replicationLag &&
+        replicationLag > maxAcceptableLag
+          ? XClusterTableStatus.WARNING
+          : xClusterTableDetails.status;
+      tables.push({
+        ...sourceUniverseTableDetails,
+        ...xClusterTableDetails,
+        status: tableStatus,
+        statusLabel: i18n.t(`${tableStatusTranslationPrefix}.${tableStatus}`),
+        replicationLag
+      });
+    } else if (options?.includeDroppedTables) {
+      // The current tableId is deleted on the source universe.
+      const tableStatus = XClusterTableStatus.DROPPED;
+      tables.push({
+        ...xClusterTableDetails,
+        tableUUID: tableId,
+        status: tableStatus,
+        statusLabel: i18n.t(`${tableStatusTranslationPrefix}.${tableStatus}`),
+        replicationLag
+      });
     }
     return tables;
   }, []);
-  return tables;
+
+  return tables as TIncludeDroppedTables extends true
+    ? XClusterReplicationTable[]
+    : XClusterTable[];
 };
 
 /**
@@ -549,9 +639,7 @@ export const getTablesForBootstrapping = async (
   sourceUniverseUuid: string,
   targetUniverseUuid: string | null,
   sourceUniverseTables: YBTable[],
-  tableUuidsInConfig: string[],
-  xClusterConfigType: XClusterConfigType,
-  isUsedForDr: boolean
+  xClusterConfigType: XClusterConfigType
 ) => {
   // Check if bootstrap is required, for each selected table
   let bootstrapTest: { [tableUUID: string]: boolean } = {};
@@ -562,28 +650,14 @@ export const getTablesForBootstrapping = async (
     selectedTableUuids.map(formatUuidForXCluster),
     xClusterConfigType
   );
-  if (isUsedForDr) {
-    // For DR, we always need to collect backup storage config for bootstrapping when the
-    // user adds a new table to the config. The need_bootstrap endpoint will not return true for this
-    // case. Thus, we need to set the test to true for these tables.
-    const tableUuidsInConfigSet = new Set(tableUuidsInConfig);
-    selectedTableUuids.forEach((tableUuid) => {
-      if (!tableUuidsInConfigSet.has(tableUuid)) {
-        bootstrapTest[tableUuid] = true;
-      }
-    });
-  }
 
   const bootstrapRequiredTableUUIDs = new Set<string>();
   if (bootstrapTest) {
     const ysqlKeyspaceToTableUUIDs = new Map<string, Set<string>>();
     const ysqlTableUUIDToKeyspace = new Map<string, string>();
     sourceUniverseTables.forEach((table) => {
-      if (
-        table.tableType !== TableType.PGSQL_TABLE_TYPE ||
-        table.relationType === YBTableRelationType.INDEX_TABLE_RELATION
-      ) {
-        // Ignore all index tables and non-YSQL tables.
+      if (table.tableType !== TableType.PGSQL_TABLE_TYPE) {
+        // Ignore non-YSQL tables.
         return;
       }
       // If a single YSQL table requires bootstrapping, then we must submit all table UUIDs

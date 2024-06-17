@@ -3,11 +3,12 @@ title: Edit configuration flags
 headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use YugabyteDB Anywhere to edit configuration flags.
+headcontent: Customize the database server configuration
 menu:
   stable_yugabyte-platform:
     identifier: edit-config-flags
-    parent: manage-deployments
-    weight: 50
+    parent: edit-universe
+    weight: 10
 type: docs
 ---
 
@@ -31,12 +32,6 @@ Depending on the flag, the universe may need to be restarted to apply the change
 - Immediately using a rolling restart.
 - Immediately using a concurrent restart.
 - Immediately apply any changes that do not require a restart and wait until the next time the universe is restarted to apply the remaining changes.
-
-If any configuration flag value contains commas or single quotation marks, enclose that configuration flag/value pair in double quotation marks. For example, for the flag ysql_pg_conf_csv, the value could be formatted as the following:
-
-```sh
-"log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '","log_connections='on'","log_disconnections='on'"
-```
 
 ### Add flags
 

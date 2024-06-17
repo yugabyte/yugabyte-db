@@ -66,8 +66,10 @@
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
+#include "yb/util/monotime.h"
 
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -93,6 +95,7 @@ DECLARE_string(metric_node_name);
 METRIC_DECLARE_counter(rows_inserted);
 METRIC_DECLARE_counter(rows_updated);
 METRIC_DECLARE_counter(rows_deleted);
+METRIC_DECLARE_gauge_uint64(untracked_memory);
 
 namespace yb {
 namespace tserver {
@@ -198,7 +201,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // Try setting a flag which isn't runtime-modifiable
   {
     RpcController controller;
-    req.set_flag("tablet_do_dup_key_checks");
+    req.set_flag("tablet_do_compaction_cleanup_for_intents");
     req.set_value("true");
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
@@ -208,7 +211,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // Try again, but with the force flag.
   {
     RpcController controller;
-    req.set_flag("tablet_do_dup_key_checks");
+    req.set_flag("tablet_do_compaction_cleanup_for_intents");
     req.set_value("true");
     req.set_force(true);
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
@@ -856,7 +859,8 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
       YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), boost::none /* index_info */,
-      0 /* schema_version */, partition_schema, "" /* pg_table_id */);
+      0 /* schema_version */, partition_schema, "" /* pg_table_id */,
+      tablet::SkipTableTombstoneCheck::kFalse);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 
@@ -968,6 +972,21 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
   CHECK_OK(env_->CreateDir(GetWebserverDir()));
   TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
+
+#if YB_TCMALLOC_ENABLED
+TEST_F(TabletServerTest, TestUntrackedMemory) {
+  auto server_metric_entity = mini_server_->server()->metric_entity();
+  ASSERT_TRUE(server_metric_entity->TEST_ContainMetricName("untracked_memory"));
+
+  const size_t kBufferSize = 10_MB;
+  std::unique_ptr<char[]> alloc(new char[kBufferSize]);
+  // Clang in release mode can optimize out the above allocation unless
+  // we do something with the pointer... so we just log it.
+  VLOG(8) << static_cast<void*>(alloc.get());
+  ASSERT_LE(kBufferSize, server_metric_entity->FindOrNull<FunctionGauge<uint64_t>>(
+      METRIC_untracked_memory)->value());
+}
+#endif
 
 } // namespace tserver
 } // namespace yb

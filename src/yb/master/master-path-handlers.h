@@ -127,6 +127,9 @@ class MasterPathHandlers {
     uint32_t user_tablet_followers = 0;
     uint32_t system_tablet_leaders = 0;
     uint32_t system_tablet_followers = 0;
+    // Hidden tablets are not broken down by leader vs. follower or user vs. system. They just count
+    // the number of tablets peers which are hidden.
+    uint32_t hidden_tablet_peers = 0;
 
     void operator+=(const TabletCounts& other);
   };
@@ -144,12 +147,34 @@ class MasterPathHandlers {
 
     void operator+=(const ZoneTabletCounts& other);
 
-    typedef std::map<std::string, ZoneTabletCounts> ZoneTree;
-    typedef std::map<std::string, ZoneTree> RegionTree;
-    typedef std::map<std::string, RegionTree> CloudTree;
+    using ZoneTree = std::map<std::string, ZoneTabletCounts>;
+    using RegionTree = std::map<std::string, ZoneTree>;
+    using CloudTree = std::map<std::string, RegionTree>;
   };
+
+  struct PlacementClusterTabletCounts {
+    TabletCounts counts;
+    uint32_t live_node_count = 0;
+    uint32_t blacklisted_node_count = 0;
+    uint32_t dead_node_count = 0;
+    uint32_t active_tablet_peer_count = 0;
+    // Tablet replica limits are computed from flag values. If these flag values are unset the
+    // universe will have no limit. This is represented with std::nullopt.
+    std::optional<uint64_t> tablet_replica_limit = 0;
+  };
+
+  struct UniverseTabletCounts {
+    // Keys are placement_uuids.
+    std::unordered_map<std::string, PlacementClusterTabletCounts> per_placement_cluster_counts;
+  };
+
   // Map of tserver UUID -> TabletCounts
-  typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
+  using TabletCountMap = std::unordered_map<std::string, TabletCounts>;
+
+  UniverseTabletCounts CalculateUniverseTabletCounts(
+      const TabletCountMap& tablet_count_map,
+      const std::vector<std::shared_ptr<TSDescriptor>>& descs, const BlacklistSet& blacklist_set,
+      int hide_dead_node_threshold_mins);
 
   struct ReplicaInfo {
     PeerRole role;
@@ -162,13 +187,13 @@ class MasterPathHandlers {
   };
 
   // Map of table id -> tablet list for a tserver.
-  typedef std::unordered_map<std::string, std::vector<ReplicaInfo>> PerTServerTableTree;
+  using PerTServerTableTree = std::unordered_map<std::string, std::vector<ReplicaInfo>>;
 
   // Map of tserver UUID -> its table tree.
-  typedef std::unordered_map<std::string, PerTServerTableTree> TServerTree;
+  using TServerTree = std::unordered_map<std::string, PerTServerTableTree>;
 
   // Map of zone -> its tserver tree.
-  typedef std::unordered_map<std::string, TServerTree> ZoneToTServer;
+  using ZoneToTServer = std::unordered_map<std::string, TServerTree>;
 
   const std::string table_type_[kNumTypes] = {"User", "Index", "Parent", "System"};
 
@@ -182,6 +207,12 @@ class MasterPathHandlers {
                       std::stringstream* output,
                       const int hide_dead_node_threshold_override,
                       TServersViewType viewType);
+
+  void DisplayUniverseSummary(
+      const TabletCountMap& tablet_map, const std::vector<std::shared_ptr<TSDescriptor>>& all_descs,
+      const std::string& live_id,
+      int hide_dead_node_threshold_mins,
+      std::stringstream* output);
 
   // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
   static void DisplayTabletZonesTable(
@@ -261,8 +292,7 @@ class MasterPathHandlers {
                           Webserver::WebResponse* resp);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
-  void HandleGetXClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
-  void HandleGetXClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetXClusterJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void GetXClusterJSON(std::stringstream& output, bool pretty);
   void HandleXCluster(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -274,13 +304,16 @@ class MasterPathHandlers {
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
   void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleLoadBalancer(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetMetaCacheJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleStatefulServices(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleStatefulServicesJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
 
   // Calculate tserver tree for ALL tables if max_table_count == -1.
   // Otherwise, do not perform calculation if number of tables is less than max_table_count.
-  Status CalculateTServerTree(TServerTree* tserver_tree, int max_table_count);
+  Result<TServerTree> CalculateTServerTree(int max_table_count);
   void RenderLoadBalancerViewPanel(
       const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
       const std::vector<TableInfoPtr>& tables, std::stringstream* output);
@@ -313,11 +346,6 @@ class MasterPathHandlers {
       const ServerRegistrationPB& reg, const std::string& link_text) const;
 
   std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
-
-  Status GetXClusterConfigs(
-      SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config,
-      GetReplicationStatusResponsePB* xcluster_status,
-      std::vector<SysUniverseReplicationEntryPB>* replication_infos);
 
   Master* master_;
 

@@ -37,9 +37,9 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
+import "yb/common/opid.proto";
 import "yb/dockv/dockv.proto";
 import "yb/tablet/tablet_types.proto";
-import "yb/util/opid.proto";
 
 // ============================================================================
 //  Tablet Metadata
@@ -77,6 +77,10 @@ message TableInfoPB {
 
   // CDC WAL retention time in secs of the table.
   optional uint32 wal_retention_secs = 12;
+
+  // Whether we can skip table tombstone check for this table
+  // (only applies to colocated tables).
+  optional bool skip_table_tombstone_check = 15;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on

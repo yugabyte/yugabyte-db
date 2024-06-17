@@ -27,12 +27,21 @@
 
 #include "postgres.h"
 #include "storage/proc.h"
+#include "utils/guc.h"
 #include "utils/timestamp.h"
 
+#define YbAshIsClientAddrSet() \
+	(YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra && !IsBootstrapProcessingMode())
+
 /* GUC variables */
+extern bool yb_ash_enable_infra;
+extern bool yb_enable_ash;
 extern int yb_ash_circular_buffer_size;
 extern int yb_ash_sampling_interval_ms;
 extern int yb_ash_sample_size;
+
+typedef bool (*YbAshTrackNestedQueries)(void);
+extern YbAshTrackNestedQueries yb_ash_track_nested_queries;
 
 extern Size YbAshShmemSize(void);
 extern void YbAshShmemInit(void);
@@ -40,11 +49,20 @@ extern void YbAshShmemInit(void);
 extern void YbAshRegister(void);
 extern void YbAshMain(Datum main_arg);
 
-extern void YbAshInstallHooks(void);
+extern void YbAshInit(void);
 extern void YbAshSetSessionId(uint64 session_id);
+extern void YbAshSetDatabaseId(Oid database_id);
+extern bool YbAshShouldIgnoreWaitEvent(uint32 wait_event_info);
 
 extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
 							 TimestampTz sample_time,
 							 int *samples_stored);
+
+extern bool yb_enable_ash_check_hook(bool *newval,
+									 void **extra,
+									 GucSource source);
+
+extern void YbAshSetMetadata(void);
+extern void YbAshUnsetMetadata(void);
 
 #endif							/* YB_ASH_H */

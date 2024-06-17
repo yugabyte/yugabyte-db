@@ -1,0 +1,17 @@
+title: ClusterNetworkingSpec
+description: Networking specification that is used for nodes in this cluster. Part of ClusterSpec.
+type: object
+properties:
+  enable_exposing_service:
+    description: Whether to create a load balancer service for this cluster. Defaults to NONE.
+    type: string
+    default: NONE
+    enum:
+      - NONE
+      - EXPOSED
+      - UNEXPOSED
+  enable_lb:
+    description: Create target groups if enabled. Used by YBM.
+    type: boolean
+    example: false
+    x-yba-api-visibility: internal

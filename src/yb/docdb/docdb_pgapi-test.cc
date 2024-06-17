@@ -24,6 +24,10 @@ class YbGateTest : public testing::Test {
   static void SetUpTestSuite() {
     google::InitGoogleLogging("");
   }
+
+  void TearDown() override {
+    ASSERT_EQ(YBCPgGetThreadLocalJumpBuffer(), nullptr);
+  }
 };
 
 TEST_F(YbGateTest, ElogLog) {

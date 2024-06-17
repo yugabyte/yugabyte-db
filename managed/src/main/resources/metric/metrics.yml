@@ -154,7 +154,7 @@ cpu_usage:
   range: true
   operator: "* 100"
   filters:
-    mode: "user|system"
+    mode: "user|system|total"
   group_by: "mode"
   panel_group: "Node Metrics"
   layout:
@@ -165,6 +165,7 @@ cpu_usage:
       alias:
         "user": "User"
         "system": "System"
+        "total": "Total"
       ticksuffix: "&nbsp;%"
 
 disk_iops:
@@ -2000,7 +2001,7 @@ ysql_sql_advanced_latency:
   group_by: "service_method"
   panel_group: "YSQL Ops & Latency"
   layout:
-    title: "YSQL Op Latency (Avg)"
+    title: "YSQL Advanced Op Latency (Avg)"
     xaxis:
       type: "date"
     yaxis:
@@ -2415,13 +2416,11 @@ async_replication_sent_lag:
 
 consumer_safe_time_lag:
   metric: "consumer_safe_time_lag"
-  operator: "/ 1000"
   function: "max_over_time|max"
   range: true
 
 consumer_safe_time_skew:
   metric: "consumer_safe_time_skew"
-  operator: "/ 1000"
   function: "max_over_time|max"
   range: true
 
@@ -2760,6 +2759,38 @@ master_leaderless_and_underreplicated_tablets:
       alias:
         "yb_node_leaderless_tablet_count": "Leaderless Tablets"
         "yb_node_underreplicated_tablet_count": "Underreplicated Tablets"
+
+master_max_follower_lag:
+  metric: "follower_lag_ms"
+  filters:
+    export_type: "master_export"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Master"
+  group_by: "saved_name"
+  layout:
+    title: "Max Follower Lag (ms)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "follower_lag_ms": "Max Follower Lag (ms)"
+
+tserver_max_follower_lag:
+  metric: "follower_lag_ms"
+  filters:
+    export_type: "tserver_export"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Tablet Server"
+  group_by: "saved_name"
+  layout:
+    title: "Max Follower Lag (ms)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "follower_lag_ms": "Max Follower Lag (ms)"
 
 master_threads_running:
   metric: "threads_running"

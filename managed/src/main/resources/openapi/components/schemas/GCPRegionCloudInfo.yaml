@@ -1,0 +1,7 @@
+title: GCPRegionCloudInfo
+description: Region in GCP provider. Part of RegionCloudInfo.
+type: object
+properties:
+  instance_template:
+    description: The instance template to be used for nodes created in this region.
+    type: string

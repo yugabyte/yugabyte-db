@@ -713,7 +713,7 @@ CREATE TABLE base (t int);
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM base;
 CREATE UNIQUE INDEX ON mv(t);
 :display_catalog_version;
- current_version | last_breaking_version 
+ current_version | last_breaking_version
 -----------------+-----------------------
               45 |                    39
 (1 row)
@@ -721,7 +721,7 @@ CREATE UNIQUE INDEX ON mv(t);
 -- nonconcurrent refreshes should bump catalog version.
 REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
- current_version | last_breaking_version 
+ current_version | last_breaking_version
 -----------------+-----------------------
               46 |                    39
 (1 row)
@@ -729,7 +729,47 @@ REFRESH MATERIALIZED VIEW mv;
 -- concurrent refreshes should not bump catalog version.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
- current_version | last_breaking_version 
+ current_version | last_breaking_version
 -----------------+-----------------------
               46 |                    39
+(1 row)
+
+-- Verify ANALYZE increments catalog version and is not a breaking change.
+CREATE TABLE analyze_table (t int);
+CREATE TABLE analyze_table2 (t int);
+INSERT INTO analyze_table select generate_series(1,100);
+INSERT INTO analyze_table2 select generate_series(1,100);
+ANALYZE analyze_table, analyze_table2;
+:display_catalog_version;
+ current_version | last_breaking_version
+-----------------+-----------------------
+              47 |                    39
+(1 row)
+
+SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
+    relname     | reltuples
+----------------+-----------
+ analyze_table  |       100
+ analyze_table2 |       100
+(2 rows)
+
+SELECT min(t), max(t) FROM analyze_table;
+ min | max
+-----+-----
+   1 | 100
+(1 row)
+
+SELECT min(t), max(t) FROM analyze_table2;
+ min | max
+-----+-----
+   1 | 100
+(1 row)
+
+-- Without specifying tables, ANALYZE update statistics for all tables.
+-- Verify catalog version only bumps once.
+ANALYZE;
+:display_catalog_version;
+ current_version | last_breaking_version
+-----------------+-----------------------
+              48 |                    39
 (1 row)

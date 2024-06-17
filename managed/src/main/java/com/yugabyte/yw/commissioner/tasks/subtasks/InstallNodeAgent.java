@@ -35,12 +35,8 @@ public class InstallNodeAgent extends AbstractTaskBase {
 
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
-  private final ShellProcessContext shellContext =
-      ShellProcessContext.builder()
-          .logCmdOutput(true)
-          .defaultSshPort(true)
-          .customUser(true)
-          .build();
+  private ShellProcessContext shellContext =
+      ShellProcessContext.builder().logCmdOutput(true).build();
 
   @Inject
   protected InstallNodeAgent(
@@ -58,6 +54,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     public UUID customerUuid;
     public boolean reinstall;
     public boolean airgap;
+    public String sshUser;
   }
 
   @Override
@@ -104,6 +101,9 @@ public class InstallNodeAgent extends AbstractTaskBase {
       }
       nodeAgentManager.purge(nodeAgent);
     }
+    if (taskParams().sshUser != null) {
+      shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
+    }
     String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
     Path stagingDir = Paths.get(customTmpDirectory, "node-agent-" + System.currentTimeMillis());
     Path nodeAgentSourcePath = stagingDir.resolve(NodeAgent.NODE_AGENT_DIR);
@@ -134,15 +134,13 @@ public class InstallNodeAgent extends AbstractTaskBase {
                   f.getTargetPath(),
                   nodeAgent.getUuid());
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
-              nodeUniverseManager
-                  .uploadFileToNode(
-                      node,
-                      universe,
-                      f.getSourcePath().toString(),
-                      f.getTargetPath().toString(),
-                      filePerm,
-                      shellContext)
-                  .processErrors();
+              nodeUniverseManager.uploadFileToNode(
+                  node,
+                  universe,
+                  f.getSourcePath().toString(),
+                  f.getTargetPath().toString(),
+                  filePerm,
+                  shellContext);
             });
     Path nodeAgentHomePath = Paths.get(nodeAgent.getHome());
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();

@@ -22,6 +22,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
@@ -43,6 +44,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
@@ -60,6 +62,7 @@ DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(update_metrics_interval_ms);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -202,10 +205,8 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
     TEST_SetThreadPrefixScoped prefix_se(cluster_prefix);
 
     // First create the new cluster.
-    MiniClusterOptions opts;
-    opts.num_tablet_servers = 3;
-    opts.cluster_id = cluster_id;
-    std::unique_ptr<MiniCluster> cluster = std::make_unique<MiniCluster>(opts);
+    std::unique_ptr<MiniCluster> cluster =
+        std::make_unique<MiniCluster>(GetClusterOptions(cluster_id));
     RETURN_NOT_OK(cluster->Start());
     RETURN_NOT_OK(cluster->WaitForTabletServerCount(3));
     auto cluster_client = VERIFY_RESULT(cluster->CreateClient());
@@ -217,6 +218,13 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
         cluster_client.get(),
         table);
     return cluster;
+  }
+
+  MiniClusterOptions GetClusterOptions(const string& cluster_id) {
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 3;
+    opts.cluster_id = cluster_id;
+    return opts;
   }
 
   Status GetChangesWithRetries(
@@ -248,10 +256,11 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   docdb::DisableYcqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   constexpr auto kNumRows = kDefaultNumRows;
-  // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
-  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy, table_->id()));
+  // Create a xCluster stream for this tablet.
+  auto stream_id = ASSERT_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+      table_->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
   // Ensure that the cdc_state table is ready before inserting rows and splitting.
   ASSERT_OK(WaitForCdcStateTableToBeReady());
 
@@ -339,6 +348,68 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   ASSERT_TRUE(status.IsNotFound() || status.IsTabletSplit());
 }
 
+class CdcTabletSplitThreeMastersITest : public CdcTabletSplitITest {
+ protected:
+  MiniClusterOptions GetClusterOptions(const string& cluster_id) {
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 3;
+    opts.num_masters = 3;
+    opts.cluster_id = cluster_id;
+    return opts;
+  }
+};
+
+// Tests multiple CleanupSplitTablets trying to delete xRepl tablets at the same time. Ensures that
+// the parent tablets are only hidden and not deleted even with multiple calls.
+TEST_F(CdcTabletSplitThreeMastersITest, TestRaceAfterHidingAndRetainingTablet) {
+  const auto AddToMapsDelay = 10s;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+
+  // Block any tablets from getting deleted until after the master stepdown.
+  yb::SyncPoint::GetInstance()->LoadDependency(
+      {{"CdcTabletSplitThreeMastersITest::TestRaceAfterHidingAndRetainingTablet::StepdownMaster",
+        "CatalogManager::DeleteOrHideTabletsAndSendRequests::Start"}});
+
+  // Add a delay before adding the retained_by_* maps.
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps",
+      [AddToMapsDelay](void* _) { SleepFor(AddToMapsDelay); });
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  // Create a cdc stream for this tablet.
+  ASSERT_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+      table_->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
+  // Ensure that the cdc_state table is ready before inserting rows and splitting.
+  ASSERT_OK(WaitForCdcStateTableToBeReady());
+
+  // Write some rows to the tablet.
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+  const auto source_tablet_id = ASSERT_RESULT(SplitTabletAndValidate(
+      split_hash_code, kDefaultNumRows, /* parent_tablet_protected_from_deletion */ true));
+
+  // Since we have the DeleteOrHideTabletsAndSendRequests::Start syncpoint, the parent tablet will
+  // not be hidden yet. The tserver should be repeatedly sending DeleteNotServingTablet requests.
+
+  // Perform a master failover by restarting the master.
+  ASSERT_OK(cluster_->StepDownMasterLeader());
+  TEST_SYNC_POINT(
+      "CdcTabletSplitThreeMastersITest::TestRaceAfterHidingAndRetainingTablet::StepdownMaster");
+
+  // Give some time for other delete threads to come in.
+  SleepFor(AddToMapsDelay * 2);
+
+  // Should still have 3 tablets in total.
+  ASSERT_EQ(ListTabletIdsForTable(cluster_.get(), table_->id()).size(), 3);
+  // But parent tablet should be hidden.
+  ASSERT_EQ(ListActiveTabletIdsForTable(cluster_.get(), table_->id()).size(), 2);
+
+  // Disable processing to allow for smooth shutdown.
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 60;
+}
+
 // For testing xCluster setups. Since most test utility functions expect there to be only one
 // cluster, they implicitly use cluster_ / client_ / table_ everywhere. For this test, we default
 // those to point to the producer cluster, but allow calls to SwitchToProducer/Consumer, to swap
@@ -419,9 +490,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   }
 
   auto GetConsumerMap() {
-    master::SysClusterConfigEntryPB cluster_info;
     auto& cm = EXPECT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    EXPECT_OK(cm.GetClusterConfig(&cluster_info));
+    auto cluster_info = EXPECT_RESULT(cm.GetClusterConfig());
     auto producer_map = cluster_info.mutable_consumer_registry()->mutable_producer_map();
     auto it = producer_map->find(kProducerClusterId);
     EXPECT_NE(it, producer_map->end());
@@ -562,7 +632,8 @@ TEST_P(xClusterTabletMapTest, MoreConsumerTablets) {
   RunSetUp(3, 8);
 }
 
-TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
+TEST_F(XClusterTabletSplitITest,
+  YB_DISABLE_TEST_ON_MACOS(SplittingWithXClusterReplicationOnConsumer)) {
   // Perform a split on the consumer side and ensure replication still works.
 
   // To begin with, cluster_ will be our producer.
@@ -585,7 +656,8 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnConsumer) {
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
 }
 
-TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
+TEST_F(XClusterTabletSplitITest,
+  YB_DISABLE_TEST_ON_MACOS(SplittingWithXClusterReplicationOnProducer)) {
   // Perform a split on the producer side and ensure replication still works.
 
   // Default cluster_ will be our producer.
@@ -665,7 +737,7 @@ TEST_F(XClusterTabletSplitITest, MultipleSplitsInSequence) {
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
 }
 
-TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
+TEST_F(XClusterTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(SplittingOnProducerAndConsumer)) {
   // Test splits on both producer and consumer while writes to the producer are happening.
 
   // Default cluster_ will be our producer.
@@ -1049,7 +1121,7 @@ class XClusterAutomaticTabletSplitITest : public XClusterTabletSplitITest {
 
 // This test is very flaky in TSAN as we spend a long time waiting for children tablets to be
 // ready, and will often then time out.
-TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
+TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(AutomaticTabletSplitting)) {
   constexpr auto num_active_tablets = 6;
 
   // Setup a new thread for continuous writing to producer.
@@ -1200,7 +1272,8 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
-  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy, table_->id()));
+  auto stream_id = ASSERT_RESULT(client::XClusterClient(*client_).CreateXClusterStream(
+      table_->id(), /*active=*/true, cdc::StreamModeTransactional::kFalse));
   // Ensure that the cdc_state table is ready before inserting rows and splitting.
   ASSERT_OK(WaitForCdcStateTableToBeReady());
 
@@ -1211,7 +1284,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   ASSERT_RESULT(SplitTabletAndCheckForNotSupported());
 }
 
-TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
+TEST_F(NotSupportedTabletSplitITest, YB_DISABLE_TEST_ON_MACOS(SplittingWithBootstrappedStream)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) = false;
   // Default cluster_ will be our producer.
@@ -1237,11 +1310,9 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer)
   auto consumer_cluster =
       ASSERT_RESULT(CreateNewUniverseAndTable("consumer", "C", &consumer_cluster_table));
 
-  ASSERT_OK(tools::RunAdminToolCommand(consumer_cluster->GetMasterAddresses(),
-                                       "setup_universe_replication",
-                                       "",  // Producer cluster id (default is set to "").
-                                       cluster_->GetMasterAddresses(),
-                                       table_->id()));
+  ASSERT_OK(tools::RunAdminToolCommand(
+      consumer_cluster->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
+      cluster_->GetMasterAddresses(), table_->id()));
 
   // Try splitting this tablet, and restart the server to ensure split still fails after a restart.
   const auto split_hash_code =
@@ -1249,7 +1320,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer)
 
   // Now delete replication and verify that the tablet can now be split.
   ASSERT_OK(tools::RunAdminToolCommand(
-      consumer_cluster->GetMasterAddresses(), "delete_universe_replication", ""));
+      consumer_cluster->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
   // Deleting cdc streams is async so wait for that to complete.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return SplitTabletAndValidate(split_hash_code, kDefaultNumRows).ok();

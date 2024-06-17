@@ -30,13 +30,10 @@ SUBDIRS = \
 		pageinspect	\
 		passwordcheck	\
 		pg_buffercache	\
-		pg_cron  \
 		pg_freespacemap \
 		pg_prewarm	\
 		pg_standby	\
 		pg_stat_statements	\
-		pgaudit 	\
-		pg_stat_monitor  \
 		pg_trgm		\
 		pgcrypto	\
 		pgrowlocks	\
@@ -51,9 +48,8 @@ SUBDIRS = \
 		tsm_system_rows \
 		tsm_system_time \
 		unaccent	\
-		vacuumlo    \
-		yb_pg_metrics \
-		yb_test_extension
+		vacuumlo	\
+		wal2json
 
 ifeq ($(with_openssl),yes)
 SUBDIRS += sslinfo

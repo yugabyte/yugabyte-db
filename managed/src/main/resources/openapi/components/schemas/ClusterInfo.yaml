@@ -1,0 +1,15 @@
+title: ClusterInfo
+description: Universe Cluster Info. Part of the Response payload UniverseInfo that describes system generated properties of a Cluster.
+type: object
+properties:
+  uuid:
+    description: cluster uuid
+    type: string
+    format: uuid
+    example: 19ebde21-d537-47dc-8fab-3edc243c6f68
+  spot_price:
+    description: TBD
+    type: number
+    format: double
+    example: 12.3
+    x-yba-api-visibility: internal

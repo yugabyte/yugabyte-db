@@ -105,12 +105,71 @@ struct TableYbctidHasher {
   size_t operator()(const TableYbctid& value) const;
 };
 
+using OidSet = std::unordered_set<PgOid>;
+using TableYbctidSet = std::unordered_set<TableYbctid, TableYbctidHasher, TableYbctidComparator>;
+using TableYbctidVector = std::vector<TableYbctid>;
+
+class TableYbctidVectorProvider {
+ public:
+  class Accessor {
+   public:
+    ~Accessor() { container_.clear(); }
+    TableYbctidVector* operator->() { return &container_; }
+    TableYbctidVector& operator*() { return container_; }
+    operator TableYbctidVector&() { return container_; }
+
+   private:
+    explicit Accessor(TableYbctidVector* container) : container_(*container) {}
+
+    friend class TableYbctidVectorProvider;
+
+    TableYbctidVector& container_;
+
+    DISALLOW_COPY_AND_ASSIGN(Accessor);
+  };
+
+  [[nodiscard]] Accessor Get() { return Accessor(&container_); }
+
+ private:
+  TableYbctidVector container_;
+};
+
+class ExplicitRowLockBuffer {
+ public:
+  struct Info {
+    int rowmark;
+    int pg_wait_policy;
+    int docdb_wait_policy;
+    PgOid database_id;
+
+    friend bool operator==(const Info&, const Info&) = default;
+  };
+
+  using YbctidReader = LWFunction<Status(TableYbctidVector*, const Info&, const OidSet&)>;
+
+  explicit ExplicitRowLockBuffer(TableYbctidVectorProvider* ybctid_container_provider);
+  Status Add(
+      Info&& info, const LightweightTableYbctid& key, bool is_region_local,
+      const YbctidReader& reader);
+  Status Flush(const YbctidReader& reader);
+  void Clear();
+  bool IsEmpty() const;
+
+ private:
+  Status DoFlush(const YbctidReader& reader);
+
+  TableYbctidVectorProvider& ybctid_container_provider_;
+  TableYbctidSet intents_;
+  OidSet region_local_tables_;
+  std::optional<Info> info_;
+};
+
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
 class PgSession : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
-  typedef scoped_refptr<PgSession> ScopedRefPtr;
+  using ScopedRefPtr = scoped_refptr<PgSession>;
 
   // Constructors.
   PgSession(
@@ -316,8 +375,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  using YbctidReader =
-      LWFunction<Status(std::vector<TableYbctid>*, const std::unordered_set<PgOid>&)>;
+  using YbctidReader = LWFunction<Status(TableYbctidVector*, const OidSet&)>;
   Result<bool> ForeignKeyReferenceExists(
       const LightweightTableYbctid& key, const YbctidReader& reader);
   void AddForeignKeyReferenceIntent(const LightweightTableYbctid& key, bool is_region_local);
@@ -325,6 +383,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Deletes the row referenced by ybctid from FK reference cache.
   void DeleteForeignKeyReference(const LightweightTableYbctid& key);
+
+  ExplicitRowLockBuffer& explicit_row_lock_buffer() { return explicit_row_lock_buffer_; }
 
   Result<int> TabletServerCount(bool primary_only = false);
 
@@ -355,25 +415,26 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
-  uint64_t GetReadTimeSerialNo();
-
-  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
-
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
   Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
-  Result<yb::tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+  Result<yb::tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
       const ReplicationSlotName& slot_name);
 
   [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
 
+  Result<yb::tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
+  Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
+
+  const std::string LogPrefix() const;
 
   class RunHelper;
 
@@ -403,6 +464,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   };
 
   PgClient& pg_client_;
+  TableYbctidVectorProvider aux_ybctid_container_provider_;
 
   // Connected database.
   std::string connected_database_;
@@ -418,10 +480,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
-  using TableYbctidSet = std::unordered_set<TableYbctid, TableYbctidHasher, TableYbctidComparator>;
   TableYbctidSet fk_reference_cache_;
   TableYbctidSet fk_reference_intent_;
-  std::unordered_set<PgOid> fk_intent_region_local_tables_;
+  OidSet fk_intent_region_local_tables_;
+
+  ExplicitRowLockBuffer explicit_row_lock_buffer_;
 
   PgDocMetrics metrics_;
 

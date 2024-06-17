@@ -145,6 +145,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	DefElem    *dencoding = NULL;
 	DefElem    *dcollate = NULL;
 	DefElem    *dcolocated = NULL;
+	DefElem	   *dclonetime = NULL;
 	DefElem    *dctype = NULL;
 	DefElem    *distemplate = NULL;
 	DefElem    *dallowconnections = NULL;
@@ -163,6 +164,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	int			dbconnlimit = -1;
 	int			notherbackends;
 	int			npreparedxacts;
+	int64		dbclonetime = 0;
 	createdb_failure_params fparms;
 
 	/*
@@ -278,6 +280,15 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 						 parser_errposition(pstate, defel->location)));
 			dcolocated = defel;
 		}
+		else if (strcmp(defel->defname, "clone_time") == 0)
+		{
+			if (dclonetime)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options"),
+						 parser_errposition(pstate, defel->location)));
+			dclonetime = defel;
+		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -337,7 +348,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		dbcolocated = defGetBoolean(dcolocated);
 	else
 		dbcolocated = YBColocateDatabaseByDefault();
-
+	if (dclonetime && dclonetime->arg)
+		dbclonetime = defGetInt64(dclonetime);
 	/* obtain OID of proposed owner */
 	if (dbowner)
 		datdba = get_role_oid(dbowner, false);
@@ -386,16 +398,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 								 "/issues"),
 						 parser_errposition(pstate, option->location)));
 		}
-
-		if (strcmp(dbtemplate, "template0") != 0 &&
-			strcmp(dbtemplate, "template1") != 0)
-			ereport(YBUnsupportedFeatureSignalLevel(),
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Value other than default, template0 or template1 "
-							"for template option is not yet supported"),
-					 errhint("Please report the issue on "
-							 "https://github.com/YugaByte/yugabyte-db/issues"),
-					 parser_errposition(pstate, dtemplate->location)));
 
 		if (dbistemplate)
 			ereport(YBUnsupportedFeatureSignalLevel(),
@@ -590,21 +592,22 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 				(errcode(ERRCODE_DUPLICATE_DATABASE),
 				 errmsg("database \"%s\" already exists", dbname)));
 
-	/*
-	 * The source DB can't have any active backends, except this one
-	 * (exception is to allow CREATE DB while connected to template1).
-	 * Otherwise we might copy inconsistent data.
-	 *
-	 * This should be last among the basic error checks, because it involves
-	 * potential waiting; we may as well throw an error first if we're gonna
-	 * throw one.
-	 */
-	if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("source database \"%s\" is being accessed by other users",
-						dbtemplate),
-				 errdetail_busy_db(notherbackends, npreparedxacts)));
+	if (!IsYugaByteEnabled())
+		/*
+		* The source DB can't have any active backends, except this one
+		* (exception is to allow CREATE DB while connected to template1).
+		* Otherwise we might copy inconsistent data.
+		*
+		* This should be last among the basic error checks, because it involves
+		* potential waiting; we may as well throw an error first if we're gonna
+		* throw one.
+		*/
+		if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts))
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					errmsg("source database \"%s\" is being accessed by other users",
+							dbtemplate),
+					errdetail_busy_db(notherbackends, npreparedxacts)));
 
 	/*
 	 * Select an OID for the new database, checking that it doesn't have a
@@ -628,13 +631,29 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		do
 		{
 			dboid = GetNewOid(pg_database_rel);
-		} while (check_db_file_conflict(dboid));
+		} while (check_db_file_conflict(dboid) || YbIsNormalDbOidReserved(dboid));
 
 		retry_on_oid_collision = false;
 		if (IsYugaByteEnabled())
-			YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated,
-							  &retry_on_oid_collision);
+			YBCCreateDatabase(dboid, dbname, src_dboid, dbtemplate, InvalidOid, dbcolocated,
+							  &retry_on_oid_collision, dbclonetime);
 	} while (retry_on_oid_collision);
+
+	/*
+	 * CREATE DATABASE using templates other than template0 and template1 will 
+	 * always go through the DB clone workflow.
+	 * A database created using the clone workflow already has an entry in
+	 * pg_database as it is created by executing ysql_dump script.
+	 * Thus, close pg_database relation and return the dboid in case of clone.
+	 */
+	if (strcmp(dbtemplate, "template0") != 0 &&
+		strcmp(dbtemplate, "template1") != 0)
+	{
+		heap_close(pg_database_rel, RowExclusiveLock);
+		// TODO(yamen): return the correct target dboid from the clone namespace.
+		// It is fine to return InvalidOid temporarely as it isn't used anywhere.
+		return InvalidOid;
+	}
 
 	/*
 	 * Insert a new tuple into pg_database.  This establishes our ownership of
@@ -928,6 +947,10 @@ dropdb(const char *dbname, bool missing_ok, bool force)
 				nslots_active;
 	int			nsubscriptions;
 
+	uint32_t 	yb_num_logical_conn;
+	uint32_t 	yb_num_physical_conn_from_ysqlconnmgr;
+	int		 	yb_net_client_connections;
+
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
 	 * need this to ensure that no new backend starts up in the target
@@ -1036,36 +1059,48 @@ removing_database_from_system:
 	 * database lock, no new ones can start after this.)
 	 *
 	 * As in CREATE DATABASE, check this after other error conditions.
-	 *
-	 * number of actual client connections =
-	 *		number of clients connected on ysql port
-	 * 			+ number of clients connected on ysql connection manager port
-	 * 			- number of server connections b/w ysql connection manager and ysql.
 	 */
-	uint32_t 	yb_num_logical_conn,
-				yb_num_physical_conn_from_ysqlconnmgr,
-				yb_net_client_connections;
-
-	yb_net_client_connections =
+	if (IsYugaByteEnabled())
+	{
 		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
 
-	/*
-	 * Ignore the number of logical or physical connections to the database
-	 * if pg_backend is unable to read the shared memory segment for
-	 * Ysql Connection Manager stats.
-	 */
-	if (IsYugaByteEnabled() &&
-		YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
-									   &yb_num_physical_conn_from_ysqlconnmgr))
-		yb_net_client_connections +=
-			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+		/*
+		 * number of actual client connections =
+		 *		number of clients connected on ysql port
+		 * 			+ number of clients connected on ysql connection manager port
+		 * 			- number of server connections b/w ysql connection manager and ysql.
+		 */
+		yb_net_client_connections = notherbackends;
 
-	if (yb_net_client_connections)
-		ereport(ERROR,
+		/*
+		 * Ignore the number of logical or physical connections to the database
+		 * if pg_backend is unable to read the shared memory segment for
+		 * Ysql Connection Manager stats.
+		 */
+		if (YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
+									   &yb_num_physical_conn_from_ysqlconnmgr))
+			yb_net_client_connections +=
+				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+		/*
+		 * yb_net_client_connections can be negative if there are broken physical connections
+		 * in ysql connection manager pool.
+		 */
+		if (yb_net_client_connections > 0 || npreparedxacts > 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("database \"%s\" is being accessed by other users",
+							dbname),
+					 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
+	}
+	else
+	{
+		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+			ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("database \"%s\" is being accessed by other users",
 						dbname),
 				 errdetail_busy_db(notherbackends, npreparedxacts)));
+	}
 
 	/*
 	 * Remove the database's tuple from pg_database.
@@ -1168,6 +1203,11 @@ RenameDatabase(const char *oldname, const char *newname)
 	int			npreparedxacts;
 	ObjectAddress address;
 
+	uint32_t 	yb_num_logical_conn;
+	uint32_t	yb_num_physical_conn_from_ysqlconnmgr;
+	int			yb_net_client_connections;
+
+
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
 	 * need this for the same reasons as DROP DATABASE.
@@ -1217,12 +1257,48 @@ RenameDatabase(const char *oldname, const char *newname)
 	 *
 	 * As in CREATE DATABASE, check this after other error conditions.
 	 */
-	if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
-		ereport(ERROR,
+	if (IsYugaByteEnabled())
+	{
+		CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts);
+
+		/*
+		 * number of actual client connections =
+		 *		number of clients connected on ysql port
+		 * 			+ number of clients connected on ysql connection manager port
+		 * 			- number of server connections b/w ysql connection manager and ysql.
+		 */
+		yb_net_client_connections = notherbackends;
+
+		/*
+		 * Ignore the number of logical or physical connections to the database
+		 * if pg_backend is unable to read the shared memory segment for
+		 * Ysql Connection Manager stats.
+		 */
+		if (YbGetNumYsqlConnMgrConnections(oldname, NULL, &yb_num_logical_conn,
+									   &yb_num_physical_conn_from_ysqlconnmgr))
+			yb_net_client_connections +=
+				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+		/*
+		 * yb_net_client_connections can be negative if there are broken physical connections
+		 * in ysql connection manager pool.
+		 */
+		if (yb_net_client_connections > 0 || npreparedxacts > 0)
+			ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("database \"%s\" is being accessed by other users",
+						oldname),
+				 errdetail_busy_db(yb_net_client_connections, npreparedxacts)));
+	}
+	else
+	{
+		if (CountOtherDBBackends(db_id, &notherbackends, &npreparedxacts))
+			ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("database \"%s\" is being accessed by other users",
 						oldname),
 				 errdetail_busy_db(notherbackends, npreparedxacts)));
+	}
 
 	/* rename */
 	newtup = SearchSysCacheCopy1(DATABASEOID, ObjectIdGetDatum(db_id));

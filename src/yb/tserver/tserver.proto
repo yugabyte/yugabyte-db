@@ -42,10 +42,16 @@ import "yb/common/ql_protocol.proto";
 import "yb/common/pgsql_protocol.proto";
 import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/consensus/metadata.proto";
 import "yb/docdb/docdb.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet.proto";
 import "yb/tserver/tserver_types.proto";
+
+message TabletConsensusInfoPB {
+  optional bytes tablet_id = 1;
+  optional consensus.ConsensusStatePB consensus_state = 2;
+}
 
 // A batched set of insert/mutate requests.
 message WriteRequestPB {
@@ -91,6 +97,8 @@ message WriteRequestPB {
   optional uint64 start_time_micros = 22;
 
   optional AshMetadataPB ash_metadata = 23;
+
+  optional int64 raft_config_opid_index = 24;
 }
 
 message WriteResponsePB {
@@ -134,6 +142,8 @@ message WriteResponsePB {
   optional ReadHybridTimePB used_read_time = 13;
 
   optional fixed64 local_limit_ht = 14;
+
+  optional TabletConsensusInfoPB tablet_consensus_info = 15;
 }
 
 // A list tablets request
@@ -230,6 +240,8 @@ message ReadRequestPB {
   optional uint64 start_time_micros = 16;
 
   optional AshMetadataPB ash_metadata = 17;
+
+  optional int64 raft_config_opid_index = 18;
 }
 
 message ReadResponsePB {
@@ -254,6 +266,8 @@ message ReadResponsePB {
   optional ReadHybridTimePB used_read_time = 9;
 
   optional fixed64 local_limit_ht = 10;
+
+  optional TabletConsensusInfoPB tablet_consensus_info = 11;
 }
 
 message GetTabletKeyRangesRequestPB {
@@ -368,4 +382,15 @@ message CheckTserverTabletHealthResponsePB {
   }
   optional TabletServerErrorPB error = 1;
   repeated TabletHealthPB tablet_healths = 2;
+}
+
+message ClearAllMetaCachesOnServerRequestPB {}
+
+message ClearAllMetaCachesOnServerResponsePB {}
+
+message ClearUniverseUuidRequestPB {
+}
+
+message ClearUniverseUuidResponsePB {
+  optional TabletServerErrorPB error = 1;
 }

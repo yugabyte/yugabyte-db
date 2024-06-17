@@ -6,7 +6,7 @@ description: How to Develop Azure Functions with YugabyteDB
 image: /images/tutorials/azure/icons/Function-App-Icon.svg
 headcontent: Use YugabyteDB as the backend for Azure Functions
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-azure-functions
     parent: tutorials-azure
     weight: 20

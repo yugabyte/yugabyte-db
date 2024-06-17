@@ -68,7 +68,7 @@ To configure a YugabyteDB cluster to use SCRAM-SHA-256 authentication for databa
     To change the default MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
 
     ```sh
-    --ysql_pg_conf_csv="password_encryption=scram-sha-256"
+    --ysql_pg_conf_csv=password_encryption=scram-sha-256
     ```
 
     or in the `yb-tserver.conf`, add the following line:

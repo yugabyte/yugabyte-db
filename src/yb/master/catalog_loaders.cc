@@ -38,8 +38,8 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/master_util.h"
+#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
-#include "yb/master/ysql_transaction_ddl.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
@@ -51,8 +51,6 @@ DEFINE_UNKNOWN_bool(master_ignore_deleted_on_load, true,
 
 DEFINE_test_flag(uint64, slow_cluster_config_load_secs, 0,
                  "When set, it pauses load of cluster config during sys catalog load.");
-
-DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 namespace master {
@@ -143,27 +141,38 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   table_lock.Commit();
   catalog_manager_->HandleNewTableId(table->id());
 
-  // Tables created as part of a Transaction should check transaction status and be deleted
-  // if the transaction is aborted.
-  if (metadata.has_transaction()) {
+  // Tables created/altered as part of a transaction should check transaction status to figure out
+  // their final state. Tables that have already been deleted can be safely skipped.
+  if (!table->is_deleted() && metadata.has_transaction()) {
     TransactionMetadata txn = VERIFY_RESULT(TransactionMetadata::FromPB(metadata.transaction()));
     if (metadata.ysql_ddl_txn_verifier_state_size() > 0) {
-      state_->AddPostLoadTask(
-        std::bind(&CatalogManager::ScheduleYsqlTxnVerification,
-                  catalog_manager_, table, txn, state_->epoch),
-        "Verify DDL transaction for table " + table->ToString());
+      // This table is undergoing DDL changes. Update the transaction->tables mapping with this
+      // table being loaded. Post-load, we can verify whether the transaction is a success or
+      // failure and perform any required cleanup. However for now, add this to in-memory mapping
+      // right away so that so that catalog manager is aware of this transaction and can correctly
+      // handle any IsYsqlDdlTransactionInProgress requests coming from YSQL.
+      const bool new_transaction =
+        catalog_manager_->CreateOrUpdateDdlTxnVerificationState(table, txn);
+      // A single DDL transaction may affect multiple tables. We need to create only one
+      // verification task for a DDL transaction, so schedule a post-load task only if this is
+      // a new transaction.
+      if (new_transaction) {
+        state_->AddPostLoadTask(
+          std::bind(&CatalogManager::ScheduleVerifyTransaction,
+                    catalog_manager_, table, txn, state_->epoch),
+          "Verify DDL transaction for table " + table->ToString());
+      }
     } else {
       // This is a table/index for which YSQL transaction verification is not supported yet.
       // For these, we only support rolling back creating the table. If the transaction has
       // completed, merely check for the presence of this entity in the PG catalog.
       LOG(INFO) << "Enqueuing table for Transaction Verification: " << table->ToString();
-      std::function<Status(bool)> when_done =
-        std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1, state_->epoch);
       state_->AddPostLoadTask(
-          std::bind(&YsqlTransactionDdl::VerifyTransaction,
-                    catalog_manager_->ysql_transaction_.get(),
-                    txn, table, false /* has_ysql_ddl_txn_state */, when_done),
+          std::bind(&CatalogManager::ScheduleVerifyTablePgLayer,
+                    catalog_manager_,
+                    txn, table, state_->epoch),
           "VerifyTransaction");
+
     }
   }
 
@@ -462,16 +471,10 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
         LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
         TransactionMetadata txn =
             VERIFY_RESULT(TransactionMetadata::FromPB(metadata.transaction()));
-        std::function<Status(bool)> when_done = std::bind(
-            &CatalogManager::VerifyNamespacePgLayer, catalog_manager_, ns, _1, state_->epoch);
         state_->AddPostLoadTask(
             std::bind(
-                &YsqlTransactionDdl::VerifyTransaction,
-                catalog_manager_->ysql_transaction_.get(),
-                txn,
-                nullptr /* table */,
-                false /* has_ysql_ddl_state */,
-                when_done),
+                &CatalogManager::ScheduleVerifyNamespacePgLayer,
+                catalog_manager_, txn, ns, state_->epoch),
             "VerifyTransaction");
       }
       break;

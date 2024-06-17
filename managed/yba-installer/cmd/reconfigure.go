@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -63,7 +64,9 @@ var reconfigureCmd = &cobra.Command{
 		os.Chdir(common.GetBinaryDir())
 
 		// Set any necessary config values due to changes
-		common.FixConfigValues()
+		if err := common.FixConfigValues(); err != nil {
+			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
+		}
 
 		for _, name := range serviceOrder {
 			log.Info("Regenerating config for service " + name)
@@ -77,6 +80,10 @@ var reconfigureCmd = &cobra.Command{
 			}
 			log.Info("Starting service " + name)
 			services[name].Start()
+		}
+
+		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
+			log.Fatal(err.Error())
 		}
 
 		for _, name := range serviceOrder {

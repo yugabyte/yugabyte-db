@@ -3646,10 +3646,6 @@ IsInTransactionBlock(bool isTopLevel)
 	if (!isTopLevel)
 		return true;
 
-	if (CurrentTransactionState->blockState != TBLOCK_DEFAULT &&
-		CurrentTransactionState->blockState != TBLOCK_STARTED)
-		return true;
-
 	return false;
 }
 
@@ -3829,6 +3825,10 @@ BeginTransactionBlock(void)
 				 BlockStateAsString(s->blockState));
 			break;
 	}
+
+	/* YB: Notify pggate that we are within a txn block. */
+	if (IsYugaByteEnabled())
+		HandleYBStatus(YBCPgSetInTxnBlock(true));
 }
 
 /*
@@ -4157,6 +4157,10 @@ BeginImplicitTransactionBlock(void)
 	 */
 	if (s->blockState == TBLOCK_STARTED)
 		s->blockState = TBLOCK_IMPLICIT_INPROGRESS;
+
+	/* YB: Notify pggate that we are within an (implicit) txn block. */
+	if (IsYugaByteEnabled())
+		HandleYBStatus(YBCPgSetInTxnBlock(true));
 }
 
 /*
@@ -5090,7 +5094,7 @@ CommitSubTransaction(void)
 
 	/* Conserve sticky object count before popping transaction state. */
 	s->parent->ybUncommittedStickyObjectCount = s->ybUncommittedStickyObjectCount;
-	
+
 	PopTransaction();
 }
 
@@ -5323,6 +5327,7 @@ PushTransaction(void)
 	s->prevXactReadOnly = XactReadOnly;
 	s->parallelModeLevel = 0;
 	s->ybDataSentForCurrQuery = p->ybDataSentForCurrQuery;
+	s->ybDataSent = p->ybDataSent;
 
 	CurrentTransactionState = s;
 	YBUpdateActiveSubTransaction(CurrentTransactionState);
@@ -5353,6 +5358,11 @@ PopTransaction(void)
 
 	if (s->parent == NULL)
 		elog(FATAL, "PopTransaction with no parent");
+
+	/* Propagate the data sent information to the parent. */
+	s->parent->ybDataSent = s->parent->ybDataSent || s->ybDataSent;
+	s->parent->ybDataSentForCurrQuery = s->parent->ybDataSentForCurrQuery ||
+										s->ybDataSentForCurrQuery;
 
 	CurrentTransactionState = s->parent;
 	YBUpdateActiveSubTransaction(CurrentTransactionState);

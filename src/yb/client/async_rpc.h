@@ -147,6 +147,12 @@ class AsyncRpcBase : public AsyncRpc {
   const Resp& resp() const { return resp_; }
   Resp& resp() { return resp_; }
 
+  bool RefreshMetaCacheWithResponse() override;
+
+  void SetRequestRaftConfigOpidIndex(int64_t opid_index) override;
+
+  virtual std::string GetRpcName() = 0;
+
  protected:
   // Returns `true` if caller should continue processing response, `false` otherwise.
   bool CommonResponseCheck(const Status& status);
@@ -174,6 +180,8 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
 
   virtual ~WriteRpc();
 
+  std::string GetRpcName() override { return "Write"; }
+
  private:
   Status SwapResponses() override;
   void CallRemoteMethod() override;
@@ -186,6 +194,8 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   explicit ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level);
 
   virtual ~ReadRpc();
+
+  std::string GetRpcName() override { return "Read"; }
 
  private:
   Status SwapResponses() override;

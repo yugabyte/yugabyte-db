@@ -44,6 +44,8 @@ const (
 	StateHeader = "State"
 	// ProviderHeader
 	ProviderHeader = "Provider"
+	// StorageConfigurationHeader
+	StorageConfigurationHeader = "StorageConfiguration"
 	// CodeHeader
 	CodeHeader = "Code"
 	// UUIDHeader
@@ -57,6 +59,8 @@ const (
 	RedColor = "red"
 	// BlueColor for colored output
 	BlueColor = "blue"
+	// YellowColor for colored output
+	YellowColor = "yellow"
 )
 
 // Format is the format string rendered using the Context
@@ -180,7 +184,7 @@ func (c *Context) Write(sub SubContext, f SubFormat) error {
 // Colorize the message accoring the colors var
 func Colorize(message string, colors string) string {
 	//If Colors is disable return the message as it is.
-	if viper.GetBool("no-color") {
+	if viper.GetBool("disable-color") {
 		color.NoColor = true
 	}
 	switch colors {
@@ -190,6 +194,8 @@ func Colorize(message string, colors string) string {
 		return color.RedString(message)
 	case BlueColor:
 		return color.BlueString(message)
+	case YellowColor:
+		return color.YellowString(message)
 	default:
 		return message
 	}

@@ -560,7 +560,7 @@ Default: `0`
 
 Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
-Default: `1`
+Default: `0`
 
 ##### --outstanding_tablet_split_limit_per_tserver
 
@@ -733,6 +733,12 @@ Default: `0` (Use the same default number of tablets as for regular tables.)
 WAL retention time, in seconds, to be used for tables for which a CDC stream was created. Used in both xCluster and CDCSDK.
 
 Default: `14400` (4 hours)
+
+##### --enable_truncate_cdcsdk_table
+
+By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
+
+Default: `false`
 
 ## Metric export flags
 

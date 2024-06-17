@@ -1052,23 +1052,11 @@ Stop retaining logs if the space available for the logs falls below this limit, 
 
 Default: `102400`
 
-##### --enable_truncate_cdcsdk_table
-
-By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
-
-Default: `false`
-
 ##### --cdc_intent_retention_ms
 
 The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
 
 Default: `14400000` (4 hours)
-
-##### --enable_update_local_peer_min_index
-
-Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
-
-Default: `false`
 
 ##### --cdcsdk_table_processing_limit_per_run
 
@@ -1145,6 +1133,8 @@ Default: `true`
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
 
+### Modify configuration parameters
+
 You can modify these parameters in the following ways:
 
 - Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
@@ -1183,6 +1173,8 @@ You can modify these parameters in the following ways:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
+### YSQL configuration parameters
+
 The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with the following exceptions and additions.
 
 ##### log_line_prefix
@@ -1215,6 +1207,18 @@ You can remove the limit (set the size to unlimited) using `temp_file_limit=-1`.
 Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes), and `nGB` (in gigabytes) (where 'n' is an integer).
 
 Default: `1GB`
+
+##### yb_bnl_batch_size
+
+Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+Default: 1024
+
+##### yb_enable_batchednl
+
+Enable or disable the query planner's use of Batched Nested Loop Join.
+
+Default: true
 
 ## Admin UI
 

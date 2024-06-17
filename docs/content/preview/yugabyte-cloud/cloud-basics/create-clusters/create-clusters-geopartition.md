@@ -31,7 +31,7 @@ SELECT * FROM pg_tablespace;
 
 Note that data pinned to a single region via tablespaces is not replicated to other regions, and remains subject to the fault tolerance of the cluster (Node- or Availability Zone-level).
 
-For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
+For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/going-beyond-sql/tablespaces/).
 
 ## Features
 
@@ -39,6 +39,7 @@ Partition-by-region clusters include the following features:
 
 - Multi node clusters with availability zone- or node-level fault tolerance.
 - No limit on cluster size - choose any cluster size based on your use case.
+- Size each region to its load - add extra horsepower in high-traffic regions, and provision lower-traffic regions with fewer nodes.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
 - Automated and on-demand backups.
@@ -91,15 +92,16 @@ Fault tolerance is applied to all regions in the cluster, including those added 
 
 **Regions** - For each region, choose the following:
 
-- the [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
-- the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For multi-region GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
-- the number of nodes to deploy in the regions; each region has the same number of nodes.
+- [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
+- VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For multi-region GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+- number of nodes to deploy in the region.
+- number of virtual CPUs per node.
+- disk size per node.
+- disk input output (I/O) operations per second (IOPS) per node (AWS only).
 
 To add additional regions to the cluster, click **Add Region**.
 
-**Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
-
-Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
@@ -137,5 +139,5 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 - [Connect to your cluster](../../../cloud-connect/)
 - [Add database users](../../../cloud-secure-clusters/add-users/)
-- [Build an application](../../../../develop/build-apps/)
+- [Build an application](../../../../tutorials/build-apps/)
 - [Scale clusters](../../../cloud-clusters/configure-clusters/#partition-by-region-cluster)

@@ -45,8 +45,13 @@ public class LdapUnivSyncFormData {
   private String ldapBindPassword;
 
   @ApiModelProperty(
-      value = "LDAP search filter to get the user entries",
-      example = "(objectclass=person)")
+      value =
+          "LDAP search filter to get the user entries. This filter can also be used to search for"
+              + " the users based on their group memberships.",
+      example =
+          "(objectclass=person),"
+              + " (&(objectclass=person)(|(groupName=CN=group1,CN=Groups,DC=example,DC=com)"
+              + "(groupName=CN=group2,CN=Groups,DC=example,DC=com)))")
   private String ldapSearchFilter;
 
   @ApiModelProperty(value = "Dn of the search starting point.", example = "dc=example,dc=org")
@@ -56,14 +61,14 @@ public class LdapUnivSyncFormData {
   private String ldapGroupMemberOfAttribute = "memberOf";
 
   @ApiModelProperty(
-      value = "LDAP field to get the user information",
+      value = "Dn/Attribute field to get the user's name from",
       required = true,
-      example = "cn")
+      example = "cn, sAMAccountName")
   @Constraints.Required()
   private String ldapUserfield;
 
   @ApiModelProperty(
-      value = "LDAP field to get the group information",
+      value = "Group dn field to get the group's name from",
       required = true,
       example = "cn")
   @Constraints.Required()

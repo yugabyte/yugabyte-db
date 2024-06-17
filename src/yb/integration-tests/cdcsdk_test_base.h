@@ -20,6 +20,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/postgres-minicluster.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -46,7 +47,9 @@ DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_string(allowed_preview_flags_csv);
-DECLARE_bool(ysql_ddl_rollback_enabled);
+DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
+DECLARE_bool(ysql_enable_pack_full_row_update);
+DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace yb {
 using client::YBClient;
@@ -63,6 +66,7 @@ constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kEnumTypeName = "coupon_discount_type";
 static const std::string kReplicationSlotName = "test_replication_slot";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
@@ -125,6 +129,7 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
@@ -154,9 +159,11 @@ class CDCSDKTestBase : public YBTest {
 
   Status InitPostgres(PostgresMiniCluster* cluster);
 
+  Status InitPostgres(PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
-      bool cdc_populate_safepoint_record = false);
+      bool cdc_populate_safepoint_record = false, bool set_pgsql_proxy_bind_address = false);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpWithOneTablet(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
@@ -177,18 +184,20 @@ class CDCSDKTestBase : public YBTest {
   Status AddColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& add_column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status DropColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& column_name,
-      const std::string& enum_suffix = "", const std::string& schema_name = "public");
+      pgwrapper::PGConn *conn, const std::string& enum_suffix = "",
+      const std::string& schema_name = "public");
 
   Status RenameColumn(
       PostgresMiniCluster* cluster, const std::string& namespace_name,
       const std::string& table_name, const std::string& old_column_name,
-      const std::string& new_column_name, const std::string& enum_suffix = "",
-      const std::string& schema_name = "public");
+      const std::string& new_column_name, pgwrapper::PGConn *conn,
+      const std::string& enum_suffix = "", const std::string& schema_name = "public");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 
@@ -215,13 +224,20 @@ class CDCSDKTestBase : public YBTest {
       const std::string& replication_slot_name, CDCRecordType record_type = CDCRecordType::CHANGE);
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT);
+      const std::string& replication_slot_name,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      bool verify_snapshot_name = false);
+  Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      bool verify_snapshot_name = false);
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
 
   Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
+
+  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
 
   Result<master::ListCDCStreamsResponsePB> ListDBStreams();
 

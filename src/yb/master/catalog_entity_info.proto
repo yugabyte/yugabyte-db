@@ -138,7 +138,7 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Replication information for this tablet.
+  // Replication information for this table.
   optional ReplicationInfoPB replication_info = 5;
 
   // Debug state for the table.
@@ -283,6 +283,10 @@ message SysTabletsEntryPB {
   // tables hosted on this tablet is computed at load time by finding all child tables of the
   // parent table of this tablet.
   optional bool hosted_tables_mapped_by_parent_id = 18;
+
+  // Whether this tablet was created by DB cloning. If true, we should not try to send
+  // CreateTablet requests for this tablet (it should be created by tservers applying the clone op).
+  optional bool created_by_clone = 19 [ default = false ];
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -334,6 +338,8 @@ message SysNamespaceEntryPB {
   optional TransactionMetadataPB transaction = 6;
 
   optional State state = 5 [ default = UNKNOWN ];
+
+  optional uint32 clone_request_seq_no = 7;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -415,6 +421,7 @@ message SysSecurityConfigEntryPB {
   // Roles configuration version. Every time a role gets created/deleted, or a permission gets
   // added/removed, we increase the version.
   optional uint64 roles_version = 1;
+  optional bool cassandra_user_created = 2 [default = false];
 }
 
 // Metadata about the YSQL catalog (current only version).
@@ -522,6 +529,12 @@ message SysCDCStreamEntryPB {
   optional string cdcsdk_ysql_replication_slot_name = 6;
   optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
   optional uint64 stream_creation_time = 8;
+
+  // This map stores the replica identity for each table in the stream at the time of stream
+  // creation. The key for this map is table_id and the value is replica identity for that table.
+  map<string, PgReplicaIdentity> replica_identity_map = 9;
+
+  optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
 }
 
 
@@ -563,10 +576,52 @@ message SysSnapshotEntryPB {
 
   optional fixed64 previous_snapshot_hybrid_time = 7;
 
-  // Number of hours the snapshot needs to be kept around
-  // before it is deleted. Set to -1 to retain indefinitely until
-  // an explicit delete_snapshot.
+  // This field specifies the TTL of this snapshot.
+  // 1. Not set: the snapshot has no explicit TTL, will be retained until a DeleteSnapshot, and
+  //             does not block object cleanup. This is used to handle a few special cases:
+  //   a. Snapshots which are part of a snapshot schedule do not have this field set. This is
+  //      because their TTL is controlled by the snapshot schedule's retention.
+  //   b. Snapshots created before D28005 (when this field was introduced).
+  // 2. < 0: the snapshot will not be automatically cleaned up until a `DeleteSnapshot`, and might
+  //         block object cleanup until then.
+  // 3. > 0: the snapshot will automatically be cleaned up when
+  //         now() > snapshot_hybrid_time + retention_duration_hours.
+  // 4. 0: explicitly forbidden.
   optional int32 retention_duration_hours = 8;
+
+  // Whether this is an imported snapshot (part of a restore). Default is false to maintain
+  // historical behavior when deciding whether to block object cleanup.
+  optional bool imported = 9 [default = false];
+}
+
+message SysCloneStatePB {
+  // State for clone operation.
+  // CLONE_SCHEMA_STARTED: Initial state.
+  // CLONE_SCHEMA_STARTED --> CREATING: Once DB objects have been created by ysql_dump (YSQL) or
+  //     ImportSnapshot (YCQL). Clone tablet RPCs are scheduled for all tablets.
+  // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
+  // state. Restore snapshot is issued.
+  // RESTORING --> RESTORED: Restore snapshot completed.
+  enum State {
+    CLONE_SCHEMA_STARTED = 1;
+    CREATING = 2;
+    RESTORING = 3;
+    RESTORED = 4;
+    ABORTED = 5;
+  }
+
+  optional State aggregate_state = 1;
+
+  // Needed to load the clone state into the CloneStateManager's map.
+  optional string source_namespace_id = 2;
+  optional uint32 clone_request_seq_no = 3;
+
+  // Used for debugging.
+  optional string target_namespace_name = 4;
+  optional fixed64 restore_time = 5;
+
+  // A reason for why the clone was aborted.
+  optional string abort_message = 6;
 }
 
 message SchemaVersionMappingPB {
@@ -792,7 +847,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
   // Namespace Id -> NamespaceInfoPB
   map<string, NamespaceInfoPB> namespace_infos = 1;
 
-  message TargetUniverseInfo {
+  message TargetUniverseInfoPB {
     required bytes universe_uuid = 1;
 
     enum State {
@@ -805,7 +860,7 @@ message SysXClusterOutboundReplicationGroupEntryPB {
     optional AppStatusPB error_status = 3; // Set when status is FAILED
   }
 
-  optional TargetUniverseInfo target_universe_info = 2;
+  optional TargetUniverseInfoPB target_universe_info = 2;
 
   enum State {
     READY = 0;

@@ -16,12 +16,14 @@
 #include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
-
 #include "yb/common/schema.h"
+
+#include "yb/common/snapshot.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_client.fwd.h"
@@ -76,7 +78,8 @@ class CatalogManagerIf {
 
   virtual void NotifyTabletDeleteFinished(
       const TabletServerId& tserver_uuid, const TabletId& tablet_id,
-      const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
+      const TableInfoPtr& table, const LeaderEpoch& epoch,
+      server::MonitoredTaskState task_state) = 0;
 
   virtual std::string GenerateId() = 0;
 
@@ -126,14 +129,8 @@ class CatalogManagerIf {
       uint64_t* fingerprint) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
-  virtual bool catalog_version_table_in_perdb_mode() const = 0;
 
-  virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
-  virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
-
-
-  virtual Status SetClusterConfig(
-    const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) = 0;
+  virtual Result<SysClusterConfigEntryPB> GetClusterConfig() = 0;
 
   virtual Status ListTables(
       const ListTablesRequestPB* req, ListTablesResponsePB* resp) = 0;
@@ -200,8 +197,28 @@ class CatalogManagerIf {
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
+  virtual TSDescriptorVector GetAllLiveNotBlacklistedTServers() const = 0;
+
+  virtual Status DoImportSnapshotMeta(
+      const SnapshotInfoPB& snapshot_pb,
+      const LeaderEpoch& epoch,
+      const std::optional<std::string>& clone_target_namespace_name,
+      NamespaceMap* namespace_map,
+      UDTypeMap* type_map,
+      ExternalTableSnapshotDataMap* tables_data,
+      CoarseTimePoint deadline) = 0;
+
+  virtual Status DoCreateSnapshot(
+      const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline,
+      const LeaderEpoch& epoch) = 0;
+
   virtual Status ListSnapshotRestorations(
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
+
+  virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+  GenerateSnapshotInfoFromScheduleForClone(
+      const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
+      CoarseTimePoint deadline) = 0;
 
   virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
 
@@ -235,7 +252,7 @@ class CatalogManagerIf {
 
   virtual Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) = 0;
 
-  virtual bool AreTablesDeleting() = 0;
+  virtual bool AreTablesDeletingOrHiding() = 0;
 
   virtual Status GetCurrentConfig(consensus::ConsensusStatePB *cpb) const = 0;
 
@@ -259,9 +276,6 @@ class CatalogManagerIf {
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
 
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
-
-  virtual Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
-                                   AreLeadersOnPreferredOnlyResponsePB* resp) = 0;
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(
@@ -288,6 +302,8 @@ class CatalogManagerIf {
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
 
+  virtual CloneStateManager* clone_state_manager() = 0;
+
   virtual XClusterManagerIf* GetXClusterManager() = 0;
 
   virtual XClusterManager* GetXClusterManagerImpl() = 0;
@@ -298,7 +314,7 @@ class CatalogManagerIf {
 
   virtual intptr_t tablet_locations_version() const = 0;
 
-  virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
+  virtual MasterSnapshotCoordinator& snapshot_coordinator() = 0;
 
   virtual Status UpdateLastFullCompactionRequestTime(
       const TableId& table_id, const LeaderEpoch& epoch) = 0;
@@ -316,10 +332,30 @@ class CatalogManagerIf {
       const yb::HybridTime& proposed_snapshot_time,
       const bool require_history_cutoff) = 0;
 
+  virtual Status PopulateCDCStateTableOnNewTableCreation(
+      const scoped_refptr<TableInfo>& table,
+      const TabletId& tablet_id,
+      const OpId& safe_opid) = 0;
+
   virtual Status WaitForSnapshotSafeOpIdToBePopulated(
       const xrepl::StreamId& stream_id,
       const std::vector<TableId>& table_ids,
       CoarseTimePoint deadline) = 0;
+
+  virtual Status XReplValidateSplitCandidateTable(const TableId& table_id) const = 0;
+
+  virtual Status UpdateXClusterConsumerOnTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
+
+  virtual Status UpdateCDCProducerOnTabletSplit(
+      const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
+  virtual Status ShouldSplitValidCandidate(
+      const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;
+  virtual Status CanAddPartitionsToTable(
+      size_t desired_partitions, const PlacementInfoPB& placement_info) = 0;
+
+  virtual Status CanSupportAdditionalTablet(
+      const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

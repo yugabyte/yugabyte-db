@@ -189,8 +189,11 @@ public class Restore extends Model {
     if (matcher.find()) {
       restore.setSourceUniverseUUID(UUID.fromString(matcher.group(0)));
     }
-    boolean isSourceUniversePresent =
-        BackupUtil.checkIfUniverseExists(restore.getSourceUniverseUUID());
+    boolean isSourceUniversePresent = false;
+    if (restore.getSourceUniverseUUID() != null) {
+      isSourceUniversePresent = BackupUtil.checkIfUniverseExists(restore.getSourceUniverseUUID());
+    }
+
     restore.setSourceUniverseName(
         isSourceUniversePresent
             ? Universe.getOrBadRequest(restore.getSourceUniverseUUID()).getName()
@@ -317,6 +320,9 @@ public class Restore extends Model {
     }
     if (!CollectionUtils.isEmpty(filter.getStorageConfigUUIDList())) {
       appendInClause(query, "storage_config_uuid", filter.getStorageConfigUUIDList());
+    }
+    if (!CollectionUtils.isEmpty(filter.getRestoreUUIDList())) {
+      appendInClause(query, "restore_uuid", filter.getRestoreUUIDList());
     }
     if (!CollectionUtils.isEmpty(filter.getUniverseNameList())) {
       String universeName =

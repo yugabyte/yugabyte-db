@@ -35,6 +35,7 @@ using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
 struct Comparator;
 class SetPreferredZonesRequestPB;
 
+static std::once_flag sequences_data_table_filter_once_flag_;
 static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
 
 class CatalogManagerUtil {
@@ -142,9 +143,10 @@ class CatalogManagerUtil {
   }
 
   static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
-    if (sequences_data_table_filter_.empty()) {
+    std::call_once(sequences_data_table_filter_once_flag_, []() {
       *sequences_data_table_filter_.Add()->mutable_table_id() = kPgSequencesDataTableId;
-    }
+    });
+
     return sequences_data_table_filter_;
   }
 
@@ -177,11 +179,6 @@ class CatalogManagerUtil {
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
       const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
       tablet::TableInfoPB* pb);
-
-  static bool RetainTablet(
-      const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
-      const ScheduleMinRestoreTime& schedule_to_min_restore_time,
-      HybridTime hide_hybrid_time, const TabletId& tablet_id);
 
  private:
   CatalogManagerUtil();
@@ -250,6 +247,8 @@ inline bool IsTable(const SysTablesEntryPB& pb) {
 // PlacementInfoPB does not set the number of tablet replicas to create for the placement, default
 // to the replication_factor flag.
 int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
+
+const BlacklistPB& GetBlacklist(const SysClusterConfigEntryPB& pb, bool blacklist_leader);
 
 } // namespace master
 } // namespace yb

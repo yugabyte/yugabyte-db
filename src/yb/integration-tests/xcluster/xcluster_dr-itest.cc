@@ -85,11 +85,18 @@ class XClusterDRTest : public XClusterYsqlTestBase {
     return super::DropYsqlTable(cluster, namespace_name, "" /* schema_name */, kTableName);
   }
 
-  void WriteBatchOnSource() {
-    WriteWorkload(
+  Status WriteBatchOnSource() {
+    RETURN_NOT_OK(WriteWorkload(
         (*source_table_)->name(), written_rows_count_, written_rows_count_ + kNumRecordsPerBatch,
-        source_cluster_);
+        source_cluster_));
     written_rows_count_ += kNumRecordsPerBatch;
+    return Status::OK();
+  }
+
+  Status WriteBatchOnTarget() {
+    return WriteWorkload(
+        (*target_table_)->name(), written_rows_count_, written_rows_count_ + kNumRecordsPerBatch,
+        target_cluster_);
   }
 
   Status ValidateBatchCountOnTarget(int expected_num_batches) {
@@ -132,12 +139,6 @@ class XClusterDRTest : public XClusterYsqlTestBase {
         source_cluster_->mini_cluster_.get(), target_cluster_->mini_cluster_.get(), target_client_,
         kReplicationGroupId, source_tables_for_bootstrap_, bootstrap_ids,
         {LeaderOnly::kTrue, Transactional::kTrue}));
-
-    master::GetUniverseReplicationResponsePB resp;
-    RETURN_NOT_OK(VerifyUniverseReplication(
-        target_cluster_->mini_cluster_.get(), target_client_, kReplicationGroupId, &resp));
-
-    RETURN_NOT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY, target_cluster_));
 
     auto namespace_id = VERIFY_RESULT(GetNamespaceId(target_client_));
     return WaitForValidSafeTimeOnAllTServers(namespace_id, target_cluster_);
@@ -225,14 +226,14 @@ class XClusterDRTest : public XClusterYsqlTestBase {
 };
 
 TEST_F(XClusterDRTest, SetupWithBackupRestore) {
-  WriteBatchOnSource();
+  ASSERT_OK(WriteBatchOnSource());
 
   auto bootstrap_ids =
       ASSERT_RESULT(BootstrapCluster(source_tables_for_bootstrap_, source_cluster_));
   auto producer_snapshot_id =
       ASSERT_RESULT(producer_snapshot_util_.CreateSnapshot(producer_table_->id()));
 
-  WriteBatchOnSource();
+  ASSERT_OK(WriteBatchOnSource());
 
   ASSERT_OK(RestoreSnapshotOnTarget(producer_snapshot_id));
 
@@ -246,43 +247,81 @@ TEST_F(XClusterDRTest, SetupWithBackupRestore) {
 }
 
 TEST_F(XClusterDRTest, Failover) {
-  // 1. Setup replication with bootstrap and restore.
   auto [bootstrap_ids, producer_snapshot_id] = ASSERT_RESULT(BootstrapAndSnapshotSourceCluster());
 
   ASSERT_OK(RestoreSnapshotOnTarget(producer_snapshot_id));
   ASSERT_OK(SetupReplication(bootstrap_ids));
 
-  // 2. Validate replication.
-  WriteBatchOnSource();
+  // Validate replication.
+  ASSERT_OK(WriteBatchOnSource());
   ASSERT_OK(WaitForTargetRowsToMatchSource());
 
-  // 3. Disable replication.
-  ASSERT_OK(ToggleUniverseReplication(
-      target_cluster_->mini_cluster_.get(), target_client_, kReplicationGroupId,
-      false /* is_enabled */));
+  // TODO: Make the test work while shutting down the source cluster.
+  // source_cluster_->mini_cluster_->Shutdown();
 
-  // 4. Swap the source and target clusters.
+  // Delete the replication.
+  ASSERT_OK(DeleteUniverseReplication(
+      kReplicationGroupId, target_client_, target_cluster_->mini_cluster_.get()));
+
   SetReplicationDirection(ReplicationDirection::ConsumerToProducer);
 
-  // 5. Bootstrap the new source cluster and set to ACTIVE,
-  auto [consumer_bootstrap_ids, consumer_snapshot_id] =
-      ASSERT_RESULT(BootstrapAndSnapshotSourceCluster());
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      (*source_table_)->name().namespace_id(), /*is_read_only=*/false, source_cluster_));
 
-  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE, source_cluster_));
-  ASSERT_OK(WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE, source_cluster_));
+  // Bootstrap the new source cluster.
+  auto [new_bootstrap_ids, new_snapshot_id] = ASSERT_RESULT(BootstrapAndSnapshotSourceCluster());
 
-  // 6. Write some more data on new source.
-  WriteBatchOnSource();
+  // Write some more data on new source.
+  ASSERT_OK(WriteBatchOnSource());
 
-  // 7. Recreate the target(old source) with the snapshot.
-  ASSERT_OK(RestoreSnapshotOnTarget(consumer_snapshot_id));
+  // Recreate the target(old source) with the snapshot.
+  ASSERT_OK(RestoreSnapshotOnTarget(new_snapshot_id));
 
-  // 8. Verify only the first batch that was in the snapshot is visible.
+  // Verify only the first batch that was in the snapshot is visible.
   ASSERT_OK(ValidateBatchCountOnTarget(1));
 
-  // 9. Setup replication and verify all rows are visible.
-  ASSERT_OK(SetupReplication(consumer_bootstrap_ids));
+  // Setup replication and verify all rows are visible.
+  ASSERT_OK(SetupReplication(new_bootstrap_ids));
   ASSERT_OK(WaitForTargetRowsToMatchSource());
+}
+
+TEST_F(XClusterDRTest, Switchover) {
+  auto [bootstrap_ids, producer_snapshot_id] = ASSERT_RESULT(BootstrapAndSnapshotSourceCluster());
+
+  ASSERT_OK(RestoreSnapshotOnTarget(producer_snapshot_id));
+  ASSERT_OK(SetupReplication(bootstrap_ids));
+
+  ASSERT_OK(WriteBatchOnSource());
+  ASSERT_OK(WaitForTargetRowsToMatchSource());
+
+  // Swap the source and target clusters.
+  SetReplicationDirection(ReplicationDirection::ConsumerToProducer);
+
+  // Bootstrap the new source cluster.
+  auto new_bootstrap_ids =
+      ASSERT_RESULT(BootstrapCluster(source_tables_for_bootstrap_, source_cluster_));
+
+  ASSERT_OK(
+      WaitForValidSafeTimeOnAllTServers((*source_table_)->name().namespace_id(), source_cluster_));
+
+  // Setup replication to new target.
+  ASSERT_OK(SetupReplication(new_bootstrap_ids));
+
+  // Writes should fail on both clusters since we now have replication on both directions.
+  ASSERT_NOK_STR_CONTAINS(WriteBatchOnSource(), "Data modification is forbidden");
+  ASSERT_NOK_STR_CONTAINS(WriteBatchOnTarget(), "Data modification is forbidden");
+
+  // Delete the old replication.
+  ASSERT_OK(DeleteUniverseReplication(
+      kReplicationGroupId, source_client_, source_cluster_->mini_cluster_.get()));
+
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      (*source_table_)->name().namespace_id(), /*is_read_only=*/false, source_cluster_));
+
+  ASSERT_OK(WriteBatchOnSource());
+  ASSERT_OK(WaitForTargetRowsToMatchSource());
+
+  ASSERT_NOK_STR_CONTAINS(WriteBatchOnTarget(), "Data modification is forbidden");
 }
 
 }  // namespace yb

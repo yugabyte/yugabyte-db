@@ -1336,5 +1336,8 @@ spec:
     plural: ybuniverses
     singular: ybuniverse
     shortNames:
-    - ybuniverse
+      - ybuniverse
+    categories:
+      - all
+      - yugabyte
   scope: Namespaced

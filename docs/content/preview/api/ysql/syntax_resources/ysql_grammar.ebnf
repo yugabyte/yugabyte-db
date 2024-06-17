@@ -202,8 +202,8 @@ alter_sequence_options = [ 'AS' seq_data_type ]  \
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
 
-(* 'ALTER' 'SERVER' *) 
-alter_server = 'ALTER' 'SERVER' server_name 
+(* 'ALTER' 'SERVER' *)
+alter_server = 'ALTER' 'SERVER' server_name
                [ 'VERSION' server_version ] \
                [ 'OPTIONS' '(' alter_fdw_options ')' ]
                [ 'OWNER' 'TO' new_owner ] ;
@@ -234,7 +234,8 @@ alter_table_action =
 alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
                          ( 'CHECK' '(' expression ')' |
                            'UNIQUE' '(' column_names ')' index_parameters |
-                           'FOREIGN' 'KEY' '(' column_names ')' references_clause ) \
+                           'FOREIGN' 'KEY' '(' column_names ')' references_clause |
+                           'PRIMARY' 'KEY' '(' key_columns ')' ) \
                          [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
 alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
@@ -243,6 +244,7 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              'CHECK' '(' expression ')' |
                              'DEFAULT' expression |
                              'UNIQUE' index_parameters |
+                             'PRIMARY' 'KEY' |
                              references_clause )
                           [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
@@ -521,7 +523,7 @@ link_symbol = text_literal ;
 
 sql_stmt_list = sql_stmt ';' { sql_stmt ';' } ;
 
-alterable_fn_and_proc_attribute =  ( 
+alterable_fn_and_proc_attribute =  (
                       'SET' run_time_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
                       | 'RESET' run_time_parameter
                       | 'RESET' 'ALL'
@@ -554,7 +556,7 @@ create_foreign_table = 'CREATE' 'FOREIGN' 'TABLE' ['IF' 'NOT' 'EXISTS'] table_na
                        'SERVER' server_name
                        [ 'OPTIONS' '(' fdw_options ')' ] ;
 
-foreign_table_elem = ( column_name data_type 
+foreign_table_elem = ( column_name data_type
               [ 'OPTIONS' '(' fdw_options ')' ]
               [ 'COLLATE' collation ]
               [ column_constraint { column_constraint } ] ) | table_constraint ;
@@ -680,9 +682,10 @@ create_sequence = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'SEQUENCE' [ 'IF' 'NOT' 'EXI
 
 sequence_name = qualified_name ;
 
-sequence_options = [ 'INCREMENT' [ 'BY' ] int_literal ] \
-                     [ 'MINVALUE' int_literal | 'NO' 'MINVALUE' ]
-                     [ 'MAXVALUE' int_literal | 'NO' 'MAXVALUE' ]
+sequence_options = [ 'AS' seq_data_type ]  \
+                     [ 'INCREMENT' [ 'BY' ] int_literal ] \
+                     [ 'MINVALUE' int_literal | 'NO' 'MINVALUE' ] \
+                     [ 'MAXVALUE' int_literal | 'NO' 'MAXVALUE' ] \
                      [ 'START' [ 'WITH' ] int_literal ] \
                      [ 'CACHE' positive_int_literal ]
                      [ [ 'NO' ] 'CYCLE' ] ;
@@ -1070,7 +1073,7 @@ import_foreign_schema = 'IMPORT' 'FOREIGN' 'SCHEMA' remote_schema \
                         [ ( 'LIMIT' 'TO' | 'EXCEPT' ) '(' table_name {, table_name} ')' ] \
                         'FROM' 'SERVER' server_name 'INTO' local_schema \
                         [ 'OPTIONS' '(' fdw_options ')' ] ;
-                        
+
 remote_schema = text_literal ;
 
 local_schema = text_literal ;
@@ -1521,7 +1524,7 @@ plpgsql_executable_stmt = ( plpgsql_basic_stmt | plpgsql_compound_stmt ) ;
 
 (* 'Basic statement' *)
 plpgsql_basic_stmt = (
-    'NULL'                               | 
+    'NULL'                               |
     plpgsql_assert_stmt                  |
     plpgsql_assignment_stmt              |
     plpgsql_close_cursor_stmt            |
@@ -1555,7 +1558,7 @@ plpgsql_get_diagnostics_stmt = 'GET' [ 'CURRENT' ] 'DIAGNOSTICS' plpgsql_diagnos
 
 plpgsql_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_diagnostics_item_name ;
 
-plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' | 
+plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' |
                                   'ROW_COUNT'  |
                                   'RESULT_OID' ) ;
 
@@ -1564,7 +1567,7 @@ plpgsql_get_stacked_diagnostics_stmt = 'GET' 'STACKED' 'DIAGNOSTICS' plpgsql_sta
 
 plpgsql_stacked_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_stacked_diagnostics_item_name ;
 
-plpgsql_stacked_diagnostics_item_name = ( 'RETURNED_SQLSTATE'    | 
+plpgsql_stacked_diagnostics_item_name = ( 'RETURNED_SQLSTATE'    |
                                   'MESSAGE_TEXT'         |
                                   'PG_EXCEPTION_DETAIL'  |
                                   'PG_EXCEPTION_HINT'    |

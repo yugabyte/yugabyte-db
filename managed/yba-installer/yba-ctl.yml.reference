@@ -24,6 +24,11 @@ server_key_path: ""
 # Cannot be modified after installation.
 service_username: "yugabyte"
 
+# If the YBA install should be a root install or a non-root Install.
+# Currently, if true all yba-ctl commands should be run with root access.
+# If false, all yba-ctl commands should be run without root access, AND as the user specified
+# by service_username.
+as_root: true
 
 # Config parameters for YB-Platform:
 # =======================================
@@ -39,6 +44,9 @@ platform:
    # expose the same as application config/runtime config.
    # Example: ["X-Content-Type-Options: nosniff", "Keep-Alive: timeout=5, max=1000"]
    custom_headers: []
+
+   # Specifies the list of algorithms that will be disabled for TLS handshake
+   tlsDisabledAlgorithms: ["DHE keySize < 2048"]
 
    # OAuth related settings
    # useOauth: The boolean that determine if OIDC SSO needs to be
@@ -195,3 +203,15 @@ prometheus:
     enableAuth: false         # enable authentication for prometheus
     authUsername: prometheus  # username to authenticate to prometheus (if enableAuth)
     authPassword: ""          # password to authenticate to prometheus (if enableAuth)
+    oomScoreAdjust: 500       # OOMScoreAdjust value for the prometheus systemd service
+    allowedTLSCiphers: [
+      "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+      "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+      "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+      "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+      "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+      "TLS_RSA_WITH_AES_128_CBC_SHA",
+      "TLS_RSA_WITH_AES_128_GCM_SHA256",
+      "TLS_RSA_WITH_AES_256_CBC_SHA",
+      "TLS_RSA_WITH_AES_256_GCM_SHA384"
+   ] # Supported Ciphers for TLS handshake

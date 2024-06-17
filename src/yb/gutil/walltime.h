@@ -177,4 +177,6 @@ class CycleClock {
   CycleClock();
 };
 
+uint64_t FastClockNanos();
+
 #include "yb/gutil/cycleclock-inl.h"  // inline method bodies

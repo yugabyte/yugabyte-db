@@ -77,100 +77,141 @@ ERROR:  -1 is outside the valid range for parameter "yb_fetch_size_limit" (0 .. 
 -- Check enable_seqscan, enable_indexscan, enable_indexonlyscan for YB scans.
 CREATE TABLE test_scan (i int, j int);
 CREATE INDEX NONCONCURRENTLY ON test_scan (j);
--- Don't add (costs off) to EXPLAIN to be able to see when disable_cost=1.0e10
--- is added.
+-- We want to know when disable_cost is added, but we don't want to depend on
+-- the exact cost value.
+CREATE OR REPLACE FUNCTION get_plan_details(stmt text) RETURNS TABLE (
+    scan_type text,
+    disabled boolean
+) AS
+$_$
+DECLARE
+    ret text;
+    first_line text;
+BEGIN
+    EXECUTE format('EXPLAIN (FORMAT text) %s', stmt) INTO ret;
+    first_line := split_part(ret, E'\n', 1); -- Extract the first line
+    -- return (first two words of the line, is_disabled)
+    RETURN QUERY
+      SELECT trim(split_part(first_line, ' ', 1) || ' ' || split_part(first_line, ' ', 2)) AS scan_type,
+      first_line SIMILAR TO '%cost=1[0-9]{10}%' AS disabled;
+END;
+$_$
+LANGUAGE plpgsql;
+set yb_enable_bitmapscan = on;
 set enable_seqscan = on;
 set enable_indexscan = on;
 set enable_indexonlyscan = on;
-EXPLAIN SELECT * FROM test_scan;
-                          QUERY PLAN
---------------------------------------------------------------
- Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=8)
+set enable_bitmapscan = on;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | f
 (1 row)
 
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
- Index Scan using test_scan_j_idx on test_scan  (cost=0.00..5.22 rows=10 width=8)
-   Index Cond: (j = 1)
-(2 rows)
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+ scan_type  | disabled
+------------+----------
+ Index Scan | f
+(1 row)
 
-EXPLAIN SELECT j FROM test_scan;
-                          QUERY PLAN
---------------------------------------------------------------
- Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=4)
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | f
 (1 row)
 
 set enable_seqscan = on;
 set enable_indexscan = off;
-EXPLAIN SELECT * FROM test_scan;
-                          QUERY PLAN
---------------------------------------------------------------
- Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=8)
+set enable_bitmapscan = off;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | f
 (1 row)
 
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-                          QUERY PLAN
---------------------------------------------------------------
- Seq Scan on test_scan  (cost=0.00..102.50 rows=1000 width=8)
-   Remote Filter: (j = 1)
-(2 rows)
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | f
+(1 row)
 
-EXPLAIN SELECT j FROM test_scan;
-                          QUERY PLAN
---------------------------------------------------------------
- Seq Scan on test_scan  (cost=0.00..100.00 rows=1000 width=4)
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | f
 (1 row)
 
 set enable_seqscan = off;
 set enable_indexscan = off;
-EXPLAIN SELECT * FROM test_scan;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=8)
+set enable_bitmapscan = off;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | t
 (1 row)
 
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-                                              QUERY PLAN
-------------------------------------------------------------------------------------------------------
- Index Scan using test_scan_j_idx on test_scan  (cost=10000000000.00..10000000005.23 rows=10 width=8)
-   Index Cond: (j = 1)
-(2 rows)
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+ scan_type  | disabled
+------------+----------
+ Index Scan | t
+(1 row)
 
-EXPLAIN SELECT j FROM test_scan;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=4)
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | t
 (1 row)
 
 set enable_seqscan = off;
 set enable_indexscan = on;
-EXPLAIN SELECT * FROM test_scan;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=8)
+set enable_bitmapscan = off;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | t
 (1 row)
 
-EXPLAIN SELECT * FROM test_scan WHERE j = 1;
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
- Index Scan using test_scan_j_idx on test_scan  (cost=0.00..5.22 rows=10 width=8)
-   Index Cond: (j = 1)
-(2 rows)
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+ scan_type  | disabled
+------------+----------
+ Index Scan | f
+(1 row)
 
-EXPLAIN SELECT j FROM test_scan;
-                                        QUERY PLAN
--------------------------------------------------------------------------------------------
- Index Only Scan using test_scan_j_idx on test_scan  (cost=0.00..114.00 rows=1000 width=4)
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
+ scan_type  | disabled
+------------+----------
+ Index Only | f
+(1 row)
+
+set enable_seqscan = off;
+set enable_indexscan = off;
+set enable_bitmapscan = on;
+SELECT * FROM get_plan_details('SELECT * FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | t
+(1 row)
+
+SELECT * FROM get_plan_details('SELECT * FROM test_scan WHERE j = 1;');
+ scan_type | disabled
+-----------+----------
+ YB Bitmap | f
+(1 row)
+
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ YB Bitmap | f
 (1 row)
 
 set enable_indexonlyscan = off;
-EXPLAIN SELECT j FROM test_scan;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
- Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=4)
+SELECT * FROM get_plan_details('SELECT j FROM test_scan;');
+ scan_type | disabled
+-----------+----------
+ Seq Scan  | t
 (1 row)
 
+DROP FUNCTION get_plan_details;
 -- Show transaction priority. As it is not possible to have a deterministic
 -- yb_transaction_priority, we set yb_transaction_priority_lower_bound and
 -- yb_transaction_priority_upper_bound to be the same, which forces
@@ -324,3 +365,4 @@ ERROR:  unrecognized configuration parameter "foo"
 RESET plpgsql.extra_foo_warnings;
 WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
 DETAIL:  "plpgsql" is a reserved prefix.
+RESET yb_enable_bitmapscan;

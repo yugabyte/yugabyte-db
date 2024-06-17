@@ -16,6 +16,7 @@ import {
   YAxis
 } from 'recharts';
 import { ToggleButton } from '@material-ui/lab';
+import i18next from 'i18next';
 
 import {
   alertConfigQueryKey,
@@ -25,7 +26,6 @@ import {
 } from '../../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
-  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
@@ -35,7 +35,8 @@ import {
 import {
   adaptMetricDataForRecharts,
   formatUuidFromXCluster,
-  getMetricTimeRange
+  getMetricTimeRange,
+  getStrictestReplicationLagAlertThreshold
 } from '../../ReplicationUtils';
 import { CustomDatePicker } from '../../../metrics/CustomDatePicker/CustomDatePicker';
 import { formatDatetime, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
@@ -55,6 +56,10 @@ import {
   MetricTrace
 } from '../../../../redesign/helpers/dtos';
 import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
+import {
+  AlertTemplate,
+  IAlertConfiguration as AlertConfiguration
+} from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 interface ConfigReplicationLagGraphProps {
   xClusterConfig: XClusterConfig;
@@ -137,19 +142,14 @@ export const XClusterMetrics = ({
   );
 
   const alertConfigFilter = {
-    name: AlertName.REPLICATION_LAG,
+    template: AlertTemplate.REPLICATION_LAG,
     targetUuid: xClusterConfig.sourceUniverseUUID
   };
-  const alertConfigQuery = useQuery<any[]>(alertConfigQueryKey.list(alertConfigFilter), () =>
-    getAlertConfigurations(alertConfigFilter)
+  const alertConfigQuery = useQuery<AlertConfiguration[]>(
+    alertConfigQueryKey.list(alertConfigFilter),
+    () => getAlertConfigurations(alertConfigFilter)
   );
-  const maxAcceptableLag = alertConfigQuery.data?.length
-    ? Math.min(
-        ...alertConfigQuery.data.map(
-          (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
-        )
-      )
-    : undefined;
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
   const isCustomTimeRange = selectedTimeRangeOption.type === TimeRangeType.CUSTOM;
   const metricTimeRange = isCustomTimeRange
     ? { startMoment: customStartMoment, endMoment: customEndMoment }
@@ -164,7 +164,7 @@ export const XClusterMetrics = ({
     splitMode: replicationLagMetricsSplitMode,
     splitCount: replicationLagMetricsSplitCount
   };
-  const replciationLagMetricRequestParams: MetricsQueryParams = {
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     xClusterConfigUuid: xClusterConfig.uuid,
@@ -173,13 +173,13 @@ export const XClusterMetrics = ({
   };
   const configReplicationLagMetricQuery = useQuery(
     isFixedTimeRange
-      ? metricQueryKey.detail(replciationLagMetricRequestParams)
+      ? metricQueryKey.detail(replicationLagMetricRequestParams)
       : metricQueryKey.live(
-          replciationLagMetricRequestParams,
+          replicationLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
         ),
-    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data,
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
@@ -358,52 +358,6 @@ export const XClusterMetrics = ({
   const handleToggleShowAlertThresholdReferenceLine = () =>
     setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
 
-  const getUniqueTraceName = (
-    metricSettings: MetricSettings,
-    trace: MetricTrace,
-    namespaceUuidToNamespace: { [namespaceUuid: string]: string | undefined }
-  ): string => {
-    const traceName = t(trace.name, { keyPrefix: 'prometheusMetricTrace' });
-    if (
-      metricSettings.splitMode !== SplitMode.NONE &&
-      !(
-        trace.instanceName ||
-        trace.namespaceId ||
-        trace.namespaceName ||
-        trace.tableId ||
-        trace.tableName
-      )
-    ) {
-      // If the we're showing top/bottom k and there is a trace with no extra metadata, then
-      // we assume this is the average trace.
-      return `${traceName} (Average)`;
-    }
-    switch (metricSettings.splitType) {
-      case undefined:
-      case SplitType.NONE:
-        return traceName;
-      case SplitType.NODE:
-        return `${traceName} (${trace.instanceName})`;
-      case SplitType.NAMESPACE: {
-        const namespaceName =
-          trace.namespaceName ??
-          namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '')];
-        return namespaceName ? `${traceName} (${namespaceName})` : traceName;
-      }
-      case SplitType.TABLE: {
-        const namespaceName =
-          trace.namespaceName ??
-          namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '<unknown>')];
-        const tableIdentifier = trace.tableName
-          ? `${namespaceName}/${trace.tableName}`
-          : namespaceName;
-        return `${traceName} (${tableIdentifier})`;
-      }
-      default:
-        return assertUnreachableCase(metricSettings.splitType);
-    }
-  };
-
   const namespaceUuidToNamespace = targetUniverseNamespaceQuery.data
     ? Object.fromEntries(
         targetUniverseNamespaceQuery.data.map((namespace) => [
@@ -413,22 +367,45 @@ export const XClusterMetrics = ({
       )
     : {};
   const traceStrokes = Object.values(theme.palette.chart.stroke);
-  const configReplicationLagMetrics = configReplicationLagMetricQuery.data ?? {
-    metricData: [],
-    layout: undefined,
-    metricTraces: []
+  const configReplicationLagMetrics = {
+    ...(configReplicationLagMetricQuery.data ?? {
+      metricData: [],
+      layout: undefined,
+      metricTraces: []
+    }),
+    metricTraces: getFilteredMetricTraces(
+      MetricName.ASYNC_REPLICATION_SENT_LAG,
+      replicationLagMetricSettings,
+      configReplicationLagMetricQuery.data?.metricTraces ?? [],
+      namespaceUuidToNamespace
+    )
   };
-  const consumerSafeTimeLagMetrics = consumerSafeTimeLagMetricsQuery.data ?? {
-    metricData: [],
-    layout: undefined,
-    metricTraces: []
+  const consumerSafeTimeLagMetrics = {
+    ...(consumerSafeTimeLagMetricsQuery.data ?? {
+      metricData: [],
+      layout: undefined,
+      metricTraces: []
+    }),
+    metricTraces: getFilteredMetricTraces(
+      MetricName.CONSUMER_SAFE_TIME_LAG,
+      consumerSafeTimeLagMetricSettings,
+      consumerSafeTimeLagMetricsQuery.data?.metricTraces ?? [],
+      namespaceUuidToNamespace
+    )
   };
-  const consumerSafeTimeSkewMetrics = consumerSafeTimeSkewMetricsQuery.data ?? {
-    metricData: [],
-    layout: undefined,
-    metricTraces: []
+  const consumerSafeTimeSkewMetrics = {
+    ...(consumerSafeTimeSkewMetricsQuery.data ?? {
+      metricData: [],
+      layout: undefined,
+      metricTraces: []
+    }),
+    metricTraces: getFilteredMetricTraces(
+      MetricName.CONSUMER_SAFE_TIME_SKEW,
+      consumerSafeTimeSkewMetricSettings,
+      consumerSafeTimeSkewMetricsQuery.data?.metricTraces ?? [],
+      namespaceUuidToNamespace
+    )
   };
-
   return (
     <div>
       <Box display="flex">
@@ -722,3 +699,76 @@ const getUniqueTraceId = (trace: MetricTrace): string =>
   `${trace.name}.${trace.instanceName}.${trace.namespaceId ?? trace.namespaceName}.${
     trace.tableId ?? trace.tableName
   }`;
+
+const getUniqueTraceName = (
+  metricSettings: MetricSettings,
+  trace: MetricTrace,
+  namespaceUuidToNamespace: { [namespaceUuid: string]: string | undefined }
+): string => {
+  const traceName = i18next.t(`prometheusMetricTrace.${trace.name}`);
+
+  if (
+    metricSettings.splitMode !== SplitMode.NONE &&
+    !(
+      trace.instanceName ||
+      trace.namespaceId ||
+      trace.namespaceName ||
+      trace.tableId ||
+      trace.tableName
+    )
+  ) {
+    // If the we're showing top/bottom k and there is a trace with no extra metadata, then
+    // we assume this is the average trace.
+    return `${traceName} (Average)`;
+  }
+  switch (metricSettings.splitType) {
+    case undefined:
+    case SplitType.NONE:
+      return traceName;
+    case SplitType.NODE:
+      return `${traceName} (${trace.instanceName})`;
+    case SplitType.NAMESPACE: {
+      const namespaceName =
+        trace.namespaceName ??
+        namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '')];
+      return namespaceName ? `${traceName} (${namespaceName})` : traceName;
+    }
+    case SplitType.TABLE: {
+      const namespaceName =
+        trace.namespaceName ??
+        namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '<unknown>')];
+      const tableIdentifier = trace.tableName
+        ? `${namespaceName}/${trace.tableName}`
+        : namespaceName;
+      return `${traceName} (${tableIdentifier})`;
+    }
+    default:
+      return assertUnreachableCase(metricSettings.splitType);
+  }
+};
+
+const getFilteredMetricTraces = (
+  metric: MetricName,
+  metricSettings: MetricSettings,
+  metricTraces: MetricTrace[],
+  namespaceUuidToNamespace: { [namespaceUuid: string]: string | undefined }
+): MetricTrace[] => {
+  /*
+   * Consumer safe time lag and consumer safe time skew may contain metric traces associated
+   * with namespaces which are already dropped from the target universe.
+   * If the time range is large and we have many dropped namespaces, then the legend for the metric
+   * graph will become busy.
+   */
+  if (
+    metricSettings.splitType === SplitType.NAMESPACE &&
+    ([
+      MetricName.CONSUMER_SAFE_TIME_LAG,
+      MetricName.CONSUMER_SAFE_TIME_SKEW
+    ] as MetricName[]).includes(metric)
+  ) {
+    return metricTraces.filter(
+      (trace) => namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '')]
+    );
+  }
+  return metricTraces;
+};

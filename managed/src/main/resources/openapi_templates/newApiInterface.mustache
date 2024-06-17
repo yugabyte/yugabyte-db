@@ -1,24 +1,34 @@
 package {{package}};
 
-import static play.mvc.Results.ok;
-
 {{#imports}}import {{import}};
 {{/imports}}
+
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
+import com.yugabyte.yw.models.Audit;
+import api.v2.models.UniverseEditGFlags;
 import api.v2.utils.ApiControllerUtils;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import play.mvc.Controller;
+import play.mvc.Http;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.HashMap;
+import play.mvc.Result;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import openapitools.OpenAPIUtils;
+import static play.mvc.Results.ok;
+import play.libs.Files.TemporaryFile;
 {{#supportAsync}}
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletableFuture;
 {{/supportAsync}}
+
 {{#useBeanValidation}}
 import javax.validation.constraints.*;
 {{/useBeanValidation}}
-import openapitools.OpenAPIUtils;
-import play.mvc.Http;
-import play.mvc.Result;
 
 {{#operations}}
 @SuppressWarnings("RedundantThrows")
@@ -27,12 +37,13 @@ public abstract class {{classname}}ControllerImpInterface extends ApiControllerU
   {{#useBeanValidation}}
   @Inject private Config configuration;
   {{/useBeanValidation}}
+  @Inject GFlagsAuditHandler gFlagsAuditHandler;
 
 {{#operation}}
   public {{#supportAsync}}CompletionStage<{{/supportAsync}}Result{{#supportAsync}}>{{/supportAsync}} {{operationId}}Http(
       Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})
       {{#handleExceptions}}throws Exception{{/handleExceptions}} {
-    {{>responseToResult}}  }
+{{>responseToResult}}  }
 
   public abstract {{^returnType}}void{{/returnType}}{{#returnType}}{{#supportAsync}}CompletionStage<{{/supportAsync}}{{>returnTypesNoVoid}}{{#supportAsync}}>{{/supportAsync}}{{/returnType}} {{operationId}}(
       Http.Request request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{>pathParams}}{{>queryParams}}{{>bodyParams}}{{>formParams}}{{>headerParams}}{{^-last}}, {{/-last}}{{/allParams}})

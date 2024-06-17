@@ -584,10 +584,13 @@ TEST_F(CreateTableITest, TestLiveTabletPeersMetric) {
   // For each tserver verify the metric value ts_live_tablet_peers is equal to the number of tablets
   // we requested for the table.
   for (const auto& tserver : cluster_->tserver_daemons()) {
-    ASSERT_EQ(
-        ASSERT_RESULT(tserver->GetMetric<uint32>(
-            "server", "yb.tabletserver", "ts_live_tablet_peers", "value")),
-        kNumTablets);
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto metric_value = VERIFY_RESULT(tserver->GetMetric<uint32>(
+              "server", "yb.tabletserver", "ts_live_tablet_peers", "value"));
+          return metric_value == kNumTablets;
+        },
+        10s * kTimeMultiplier, "Wait for ts_live_tablet_peers to become equal to kNumTablets"));
   }
 }
 

@@ -26,7 +26,7 @@ The following steps describe how to deploy YugabyteDB Anywhere (YBA) and Yugabyt
 
 1. Install YBA software using [YBA Installer](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/).
 
-1. Create an [on-premises provider](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-the-on-premises-provider).
+1. Create an [on-premises provider](../../yugabyte-platform/configure-yugabyte-platform/on-premises/).
 
 1. Create additional [AHV VMs](https://portal.nutanix.com/page/documents/details?targetId=Prism-Central-Guide-vpc_2023_4:mul-vm-create-acropolis-pc-t.html) to act as on-premises database nodes.
 

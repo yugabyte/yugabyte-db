@@ -83,6 +83,8 @@ extern List *GetPublicationRelations(Oid pubid);
 extern List *GetAllTablesPublications(void);
 extern List *GetAllTablesPublicationRelations(void);
 
+extern List *YBGetPublicationsByNames(List *pubnames, bool missing_ok);
+
 extern bool is_publishable_relation(Relation rel);
 extern ObjectAddress publication_add_relation(Oid pubid, Relation targetrel,
 						 bool if_not_exists);
@@ -91,6 +93,8 @@ extern Oid	get_publication_oid(const char *pubname, bool missing_ok);
 extern char *get_publication_name(Oid pubid);
 
 extern Datum pg_get_publication_tables(PG_FUNCTION_ARGS);
+
+extern List *yb_pg_get_publications_tables(List *publications);
 
 extern bool yb_is_publishable_relation(Relation rel);
 extern void yb_log_unsupported_publication_relations();

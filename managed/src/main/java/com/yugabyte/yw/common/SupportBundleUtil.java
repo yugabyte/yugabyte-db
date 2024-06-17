@@ -585,36 +585,37 @@ public class SupportBundleUtil {
             "Untaring %s to dir %s.", inputFile.getAbsolutePath(), outputDir.getAbsolutePath()));
 
     final List<File> untaredFiles = new LinkedList<File>();
-    final InputStream is = new FileInputStream(inputFile);
-    final TarArchiveInputStream debInputStream =
-        (TarArchiveInputStream) new ArchiveStreamFactory().createArchiveInputStream("tar", is);
-    TarArchiveEntry entry = null;
-    while ((entry = (TarArchiveEntry) debInputStream.getNextEntry()) != null) {
-      final File outputFile = new File(outputDir, entry.getName());
-      if (entry.isDirectory()) {
-        log.info(
-            String.format(
-                "Attempting to write output directory %s.", outputFile.getAbsolutePath()));
-        if (!outputFile.exists()) {
+    try (InputStream is = new FileInputStream(inputFile);
+        TarArchiveInputStream debInputStream =
+            (TarArchiveInputStream)
+                new ArchiveStreamFactory().createArchiveInputStream("tar", is)) {
+      TarArchiveEntry entry = null;
+      while ((entry = (TarArchiveEntry) debInputStream.getNextEntry()) != null) {
+        final File outputFile = new File(outputDir, entry.getName());
+        if (entry.isDirectory()) {
           log.info(
               String.format(
-                  "Attempting to create output directory %s.", outputFile.getAbsolutePath()));
-          if (!outputFile.mkdirs()) {
-            throw new IllegalStateException(
-                String.format("Couldn't create directory %s.", outputFile.getAbsolutePath()));
+                  "Attempting to write output directory %s.", outputFile.getAbsolutePath()));
+          if (!outputFile.exists()) {
+            log.info(
+                String.format(
+                    "Attempting to create output directory %s.", outputFile.getAbsolutePath()));
+            if (!outputFile.mkdirs()) {
+              throw new IllegalStateException(
+                  String.format("Couldn't create directory %s.", outputFile.getAbsolutePath()));
+            }
+          }
+        } else {
+          // Don't log the output file here because platform logs get polluted.
+          File parent = outputFile.getParentFile();
+          if (!parent.exists()) parent.mkdirs();
+          try (OutputStream outputFileStream = new FileOutputStream(outputFile)) {
+            IOUtils.copy(debInputStream, outputFileStream);
           }
         }
-      } else {
-        // Don't log the output file here because platform logs get polluted.
-        File parent = outputFile.getParentFile();
-        if (!parent.exists()) parent.mkdirs();
-        final OutputStream outputFileStream = new FileOutputStream(outputFile);
-        IOUtils.copy(debInputStream, outputFileStream);
-        outputFileStream.close();
+        untaredFiles.add(outputFile);
       }
-      untaredFiles.add(outputFile);
     }
-    debInputStream.close();
 
     return untaredFiles;
   }
@@ -641,15 +642,11 @@ public class SupportBundleUtil {
     final File outputFile =
         new File(outputDir, inputFile.getName().substring(0, inputFile.getName().length() - 3));
 
-    final GZIPInputStream in = new GZIPInputStream(new FileInputStream(inputFile));
-    final FileOutputStream out = new FileOutputStream(outputFile);
-
-    IOUtils.copy(in, out);
-
-    in.close();
-    out.close();
-
-    return outputFile;
+    try (GZIPInputStream in = new GZIPInputStream(new FileInputStream(inputFile));
+        FileOutputStream out = new FileOutputStream(outputFile)) {
+      IOUtils.copy(in, out);
+      return outputFile;
+    }
   }
 
   public void batchWiseDownload(
@@ -661,7 +658,8 @@ public class SupportBundleUtil {
       Path nodeTargetFile,
       String nodeHomeDir,
       List<String> sourceNodeFiles,
-      String componentName) {
+      String componentName,
+      boolean skipUntar) {
     // Run command for large number of files in batches.
     List<List<String>> batchesNodeFiles = ListUtils.partition(sourceNodeFiles, 1000);
     int batchIndex = 0;
@@ -673,13 +671,15 @@ public class SupportBundleUtil {
               customer, universe, node, nodeHomeDir, batchNodeFiles, nodeTargetFile);
       try {
         if (Files.exists(targetFile)) {
-          File unZippedFile =
-              unGzip(
-                  new File(targetFile.toAbsolutePath().toString()),
-                  new File(bundlePath.toAbsolutePath().toString()));
-          Files.delete(targetFile);
-          unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
-          unZippedFile.delete();
+          if (!skipUntar) {
+            File unZippedFile =
+                unGzip(
+                    new File(targetFile.toAbsolutePath().toString()),
+                    new File(bundlePath.toAbsolutePath().toString()));
+            Files.delete(targetFile);
+            unTar(unZippedFile, new File(bundlePath.toAbsolutePath().toString()));
+            unZippedFile.delete();
+          }
         } else {
           log.debug(
               "No files exist at the source path '{}' for universe '{}' for component '{}'.",
@@ -707,7 +707,8 @@ public class SupportBundleUtil {
       NodeDetails node,
       String nodeHomeDir,
       List<String> sourceNodeFiles,
-      String componentName)
+      String componentName,
+      boolean skipUntar)
       throws Exception {
     if (node == null) {
       String errMsg =
@@ -739,7 +740,8 @@ public class SupportBundleUtil {
         nodeTargetFile,
         nodeHomeDir,
         sourceNodeFiles,
-        componentName);
+        componentName,
+        skipUntar);
   }
 
   public void ignoreExceptions(Runnable r) {
@@ -838,5 +840,6 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
     ignoreExceptions(() -> getUsersMetadata(customer, destDir));
     ignoreExceptions(() -> getTaskMetadata(customer, destDir));
+    ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
   }
 }

@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -67,7 +68,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = numNodes;
     userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.ybSoftwareVersion = "2.8.1.0-b1";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
     userIntent.regionList = ImmutableList.of(region.getUuid());
@@ -134,12 +135,12 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
-          .thenReturn(HostAndPort.fromParts("1.1.1.1", 1234));
+          .thenReturn(HostAndPort.fromParts("10.0.0.1", 1234));
       setMockLiveTabletServers();
     } catch (Exception e) {
       fail();
     }
-
+    setDumpEntitiesMock(defaultUniverse, "", false);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     mockWaits(mockClient, 3);
     UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
@@ -331,7 +332,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = taskParams.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -344,7 +345,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NODE_TASK_EXPECTED_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getTaskParams).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -407,8 +408,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
-    TaskInfo taskInfo = submitTask(taskParams, "host-n9");
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, "host-n9"));
   }
 
   @Test

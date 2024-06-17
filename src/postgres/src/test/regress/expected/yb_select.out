@@ -567,9 +567,9 @@ EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name
 explain (costs off)
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
         QUERY PLAN
---------------------------
+---------------------------
  Seq Scan on nr2
-   Remote Filter: (i = 1)
+   Storage Filter: (i = 1)
 (2 rows)
 
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
@@ -609,7 +609,7 @@ select
 from a
 order by a.a;
                                    QUERY PLAN
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
  Sort
    Output: a.a, ((SubPlan 1))
    Sort Key: a.a
@@ -642,7 +642,7 @@ order by a.a;
                                                Sort Key: b.b
                                                ->  Seq Scan on public.b
                                                      Output: b.b
-                                                     Remote Filter: (b.a = a.a)
+                                                     Storage Filter: (b.a = a.a)
 (33 rows)
 
 select
@@ -692,13 +692,13 @@ from a
 where a in (1, 2)
 order by a.a;
                                    QUERY PLAN
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
  Sort
    Output: a.a, ((SubPlan 1))
    Sort Key: a.a
    ->  Seq Scan on public.a
          Output: a.a, (SubPlan 1)
-         Remote Filter: (a.a = ANY ('{1,2}'::integer[]))
+         Storage Filter: (a.a = ANY ('{1,2}'::integer[]))
          SubPlan 1
            ->  Aggregate
                  Output: sum(c.c)
@@ -726,7 +726,7 @@ order by a.a;
                                                Sort Key: b.b
                                                ->  Seq Scan on public.b
                                                      Output: b.b
-                                                     Remote Filter: (b.a = a.a)
+                                                     Storage Filter: (b.a = a.a)
 (34 rows)
 
 select

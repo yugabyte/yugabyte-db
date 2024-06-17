@@ -168,16 +168,7 @@ class ListTableGrid extends Component {
     const disableManualBackup = currentUniverse?.universeConfig?.takeBackups === 'true';
     const formatActionButtons = function (item, row, disabled) {
       if (!row.isIndexTable) {
-        const actions = [
-          <TableAction
-            key={`${row.tableName}-backup-btn`}
-            currentRow={row}
-            actionType="create-backup"
-            disabled={actions_disabled || !disableManualBackup}
-            btnClass={'btn-orange'}
-            universeUUID={currentUniverse.universeUUID}
-          />
-        ];
+        const actions = [];
         if (getTableIcon(row.tableType) === 'YCQL') {
           actions.push([
             <TableAction
@@ -189,6 +180,7 @@ class ListTableGrid extends Component {
             />
           ]);
         }
+        if(actions.length === 0) return null;
         return (
           <ButtonGroup>
             <DropdownButton
@@ -342,7 +334,7 @@ class ListTableGrid extends Component {
         >
           WAL Size
         </TableHeaderColumn>
-        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
+        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && sortedListItems.filter(t => t.tableType === 'YQL_TABLE_TYPE').length > 0 && (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}

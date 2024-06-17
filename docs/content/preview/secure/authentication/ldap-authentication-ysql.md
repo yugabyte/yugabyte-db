@@ -121,7 +121,7 @@ To create a secret:
 
     Replace namespace with the namespace running YugabyteDB. Replace `path-to-yaml-file` with the full path to the YAML file you created in the preceding step.
 
-1. To use the secret for LDAP in a universe in YugabyteDB Anywhere, [create the provider](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides) and add the following override configuration:
+1. To use the secret for LDAP in a universe in YugabyteDB Anywhere, [create the provider](../../../yugabyte-platform/configure-yugabyte-platform/kubernetes/#overrides) and add the following override configuration:
 
     ```yml
     tserver:

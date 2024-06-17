@@ -2,6 +2,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
 import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSafetimeResp;
 import com.yugabyte.yw.forms.DrConfigSafetimeResp.NamespaceSafetime;
+import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.DrConfigSetTablesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
@@ -47,6 +49,7 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.XClusterTableConfig.Status;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -94,6 +97,7 @@ public class DrConfigController extends AuthenticatedController {
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
+  private final XClusterSyncScheduler xClusterSyncScheduler;
 
   @Inject
   public DrConfigController(
@@ -104,7 +108,8 @@ public class DrConfigController extends AuthenticatedController {
       YBClientService ybService,
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
-      AutoFlagUtil autoFlagUtil) {
+      AutoFlagUtil autoFlagUtil,
+      XClusterSyncScheduler xClusterSyncScheduler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -113,6 +118,7 @@ public class DrConfigController extends AuthenticatedController {
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
+    this.xClusterSyncScheduler = xClusterSyncScheduler;
   }
 
   /**
@@ -156,62 +162,98 @@ public class DrConfigController extends AuthenticatedController {
       autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, targetUniverse);
     }
 
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
-
-    Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
-    Map<String, List<String>> mainTableIndexTablesMap =
-        XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, sourceUniverse, tableIds);
-
-    XClusterConfigController.xClusterCreatePreChecks(
-        requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
-    Map<String, String> sourceTableIdTargetTableIdMap =
-        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
-            requestedTableInfoList, targetTableInfoList);
-
-    BootstrapParams bootstrapParams =
-        getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
-    XClusterConfigController.xClusterBootstrappingPreChecks(
-        requestedTableInfoList,
-        sourceTableInfoList,
-        targetUniverse,
-        sourceTableIdTargetTableIdMap,
-        ybService,
-        bootstrapParams,
-        null /* currentReplicationGroupName */);
-
-    // Todo: Ensure the PITR parameters have the right RPOs.
-
-    if (createForm.dryRun) {
-      return YBPSuccess.withMessage("The pre-checks are successful");
+    boolean isDbScoped =
+        confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) || createForm.dbScoped;
+    if (!confGetter.getGlobalConf(GlobalConfKeys.dbScopedXClusterEnabled) && createForm.dbScoped) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
+              + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
     }
 
-    // Create xCluster config object.
-    DrConfig drConfig =
-        DrConfig.create(
-            createForm.name,
-            createForm.sourceUniverseUUID,
-            createForm.targetUniverseUUID,
-            tableIds,
-            bootstrapParams);
-    drConfig
-        .getActiveXClusterConfig()
-        .updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
+    DrConfig drConfig;
+    DrConfigTaskParams taskParams;
+    if (isDbScoped) {
+      if (createForm.dryRun) {
+        return YBPSuccess.withMessage("The pre-checks are successful");
+      }
 
-    // Submit task to set up xCluster config.
-    DrConfigTaskParams taskParams =
-        new DrConfigTaskParams(
-            drConfig,
-            bootstrapParams,
-            requestedTableInfoList,
-            mainTableIndexTablesMap,
-            sourceTableIdTargetTableIdMap,
-            createForm.pitrParams);
+      drConfig =
+          DrConfig.create(
+              createForm.name,
+              createForm.sourceUniverseUUID,
+              createForm.targetUniverseUUID,
+              createForm.bootstrapParams.backupRequestParams,
+              createForm.dbs);
+
+      taskParams =
+          new DrConfigTaskParams(
+              drConfig,
+              getBootstrapParamsFromRestartBootstrapParams(
+                  createForm.bootstrapParams, new HashSet<>()),
+              createForm.dbs,
+              createForm.pitrParams);
+    } else {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+          getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
+
+      Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
+      Map<String, List<String>> mainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybService, sourceUniverse, tableIds);
+
+      XClusterConfigController.xClusterCreatePreChecks(
+          requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
+
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+          XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+      Map<String, String> sourceTableIdTargetTableIdMap =
+          XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+              requestedTableInfoList, targetTableInfoList);
+
+      BootstrapParams bootstrapParams =
+          getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
+      XClusterConfigController.xClusterBootstrappingPreChecks(
+          requestedTableInfoList,
+          sourceTableInfoList,
+          targetUniverse,
+          sourceUniverse,
+          sourceTableIdTargetTableIdMap,
+          ybService,
+          bootstrapParams,
+          null /* currentReplicationGroupName */);
+
+      if (createForm.dryRun) {
+        return YBPSuccess.withMessage("The pre-checks are successful");
+      }
+
+      // Todo: Ensure the PITR parameters have the right RPOs.
+
+      // Create xCluster config object.
+      drConfig =
+          DrConfig.create(
+              createForm.name,
+              createForm.sourceUniverseUUID,
+              createForm.targetUniverseUUID,
+              tableIds,
+              createForm.bootstrapParams.backupRequestParams);
+      drConfig
+          .getActiveXClusterConfig()
+          .updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
+
+      // Submit task to set up xCluster config.
+      taskParams =
+          new DrConfigTaskParams(
+              drConfig,
+              bootstrapParams,
+              requestedTableInfoList,
+              mainTableIndexTablesMap,
+              sourceTableIdTargetTableIdMap,
+              createForm.pitrParams);
+    }
+
     UUID taskUUID = commissioner.submit(TaskType.CreateDrConfig, taskParams);
     CustomerTask.create(
         customer,
@@ -330,6 +372,7 @@ public class DrConfigController extends AuthenticatedController {
             targetUniverse,
             setTablesForm.tables,
             bootstrapParams,
+            setTablesForm.autoIncludeIndexTables,
             false /* dryRun */);
 
     UUID taskUUID = commissioner.submit(TaskType.SetTablesDrConfig, taskParams);
@@ -522,6 +565,7 @@ public class DrConfigController extends AuthenticatedController {
         requestedTableInfoList,
         sourceTableInfoList,
         newTargetUniverse,
+        sourceUniverse,
         sourceTableIdNewTargetTableIdMap,
         ybService,
         bootstrapParams,
@@ -885,7 +929,11 @@ public class DrConfigController extends AuthenticatedController {
       XClusterConfigTaskBase.setReplicationStatus(this.xClusterUniverseService, xClusterConfig);
     }
 
-    DrConfigGetResp resp = new DrConfigGetResp(drConfig, drConfig.getActiveXClusterConfig());
+    XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterSyncScheduler.syncXClusterConfig(activeXClusterConfig);
+    activeXClusterConfig.refresh();
+
+    DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);
     return PlatformResults.withData(resp);
   }
 
@@ -1039,6 +1087,80 @@ public class DrConfigController extends AuthenticatedController {
     return PlatformResults.withData(safetimeResp);
   }
 
+  /**
+   * API that adds/removes databases to a disaster recovery configuration.
+   *
+   * @return An instance of YBPTask including the dr config uuid
+   */
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      nickname = "setDatabasesDrConfig",
+      value = "Set databases in disaster recovery config",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "disaster_recovery_set_databases_form_data",
+          value = "Disaster Recovery Set Databases Form Data",
+          dataType = "com.yugabyte.yw.forms.DrConfigSetDatabasesForm",
+          paramType = "body",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Result setDatabases(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
+    log.info("Received set databases drConfig request");
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    disallowActionOnErrorState(drConfig);
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+    DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
+    Set<String> existingDatabaseIds = xClusterConfig.getDbIds();
+    Set<String> newDatabaseIds = setDatabasesForm.databases;
+    Set<String> databaseIdsToAdd = new HashSet<>(newDatabaseIds);
+    databaseIdsToAdd.removeAll(existingDatabaseIds);
+    if (databaseIdsToAdd.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "The list of new databases to add is empty.");
+    }
+    xClusterConfig.addNamespaces(databaseIdsToAdd);
+
+    XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
+
+    XClusterConfigTaskParams taskParams =
+        XClusterConfigController.getSetDatabasesTaskParams(xClusterConfig, databaseIdsToAdd);
+
+    UUID taskUUID = commissioner.submit(TaskType.SetDatabasesDrConfig, taskParams);
+    CustomerTask.create(
+        customer,
+        sourceUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        CustomerTask.TaskType.Edit,
+        drConfig.getName());
+    log.info("Submitted set databases DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.DrConfig,
+            drConfig.getUuid().toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(setDatabasesForm),
+            taskUUID);
+    return new YBPTask(taskUUID, drConfig.getUuid()).asResult();
+  }
+
   private DrConfigCreateForm parseCreateForm(UUID customerUUID, Http.Request request) {
     log.debug("Request body to create an DR config is {}", request.body().asJson());
     DrConfigCreateForm formData =
@@ -1088,6 +1210,15 @@ public class DrConfigController extends AuthenticatedController {
       validateBackupRequestParamsForBootstrapping(
           formData.bootstrapParams.backupRequestParams, customerUUID);
     }
+    return formData;
+  }
+
+  private DrConfigSetDatabasesForm parseSetDatabasesForm(UUID customerUUID, Http.Request request) {
+    log.debug("Request body to set database a DR config is {}", request.body().asJson());
+    DrConfigSetDatabasesForm formData =
+        formFactory.getFormDataOrBadRequest(
+            request.body().asJson(), DrConfigSetDatabasesForm.class);
+    formData.databases = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.databases);
     return formData;
   }
 
@@ -1172,20 +1303,18 @@ public class DrConfigController extends AuthenticatedController {
                     XClusterConfigTaskBase.isXClusterSupported(tableInfo)
                         && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
             .collect(Collectors.toList());
-    Set<String> foundDBIds =
+    Set<String> foundDbIds =
         requestedTableInfoList.stream()
-            .map(tableInfo -> tableInfo.getNamespace().getName())
+            .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
             .collect(Collectors.toSet());
     // Ensure all DB names are found.
-    if (foundDBIds.size() != dbIds.size()) {
+    if (foundDbIds.size() != dbIds.size()) {
       Set<String> missingDbIds =
-          dbIds.stream()
-              .filter(tableId -> !foundDBIds.contains(tableId))
-              .collect(Collectors.toSet());
+          dbIds.stream().filter(dbId -> !foundDbIds.contains(dbId)).collect(Collectors.toSet());
       throw new IllegalArgumentException(
           String.format(
               "Some of the DB ids were not found: was %d, found %d, missing dbs: %s",
-              dbIds.size(), foundDBIds.size(), missingDbIds));
+              dbIds.size(), foundDbIds.size(), missingDbIds));
     }
     return requestedTableInfoList;
   }
@@ -1199,6 +1328,7 @@ public class DrConfigController extends AuthenticatedController {
     BootstrapParams bootstrapParams = new BootstrapParams();
     bootstrapParams.tables = tableIds;
     bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
+    bootstrapParams.allowBootstrap = true;
     return bootstrapParams;
   }
 
@@ -1284,7 +1414,7 @@ public class DrConfigController extends AuthenticatedController {
       String promQuery =
           String.format(
               "%s{export_type=\"master_export\",universe_uuid=\"%s\","
-                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s / 1000",
+                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s",
               XClusterConfigTaskBase.TXN_XCLUSTER_SAFETIME_LAG_NAME,
               targetUniverse.getUniverseUUID().toString(),
               targetUniverse.getMasterLeaderHostText(),

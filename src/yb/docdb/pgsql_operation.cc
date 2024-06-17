@@ -118,8 +118,7 @@ DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
                             "Whether to use packed row V2 when row packing is enabled.");
 
-DEFINE_NON_RUNTIME_bool(
-    ysql_skip_row_lock_for_update, false,
+DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
     "take finer column-level locks instead of locking the whole row. This may cause issues with "
     "data integrity for operations with implicit dependencies between columns.");
@@ -801,6 +800,15 @@ class PgsqlWriteOperation::RowPackContext {
 };
 
 //--------------------------------------------------------------------------------------------------
+
+PgsqlWriteOperation::PgsqlWriteOperation(
+    std::reference_wrapper<const PgsqlWriteRequestPB> request, DocReadContextPtr doc_read_context,
+    const TransactionOperationContext& txn_op_context, rpc::Sidecars* sidecars)
+    : DocOperationBase(request),
+      doc_read_context_(std::move(doc_read_context)),
+      txn_op_context_(txn_op_context),
+      sidecars_(sidecars),
+      ysql_skip_row_lock_for_update_(FLAGS_ysql_skip_row_lock_for_update) {}
 
 Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
@@ -1546,7 +1554,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
   const auto is_update = request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE;
   switch (mode) {
     case GetDocPathsMode::kLock: {
-      if (PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update) && is_update &&
+      if (PREDICT_FALSE(ysql_skip_row_lock_for_update_) && is_update &&
           !NewValuesHaveExpression(request_)) {
         DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
         paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
@@ -1572,7 +1580,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
       return Status::OK();
     }
     case GetDocPathsMode::kStrongReadIntents: {
-      if (!is_update || PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update)) {
+      if (!is_update || PREDICT_FALSE(ysql_skip_row_lock_for_update_)) {
         return Status::OK();
       }
       break;
@@ -1639,10 +1647,19 @@ Result<size_t> PgsqlReadOperation::Execute(
     restart_read_ht->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
   }
 
-  response_.mutable_metrics()->set_scanned_table_rows(scanned_table_rows_);
-  if (scanned_index_rows_ > 0) {
-    response_.mutable_metrics()->set_scanned_index_rows(scanned_index_rows_);
+  // Versions of pggate < 2.17.1 are not capable of processing response protos that contain RPC
+  // sidecars holding data other than the rows returned by DocDB. During an upgrade, it is possible
+  // that a pggate of version < 2.17.1 may receive a response from a tserver containing the metrics
+  // sidecar, causing a crash. To prevent this, send the scanned row count only if the incoming
+  // request object contains the metrics capture field. This serves to validate that the requesting
+  // pggate has indeed upgraded to a version that is capable of unpacking the metric sidecar.
+  if (request_.has_metrics_capture()) {
+    response_.mutable_metrics()->set_scanned_table_rows(scanned_table_rows_);
+    if (scanned_index_rows_ > 0) {
+      response_.mutable_metrics()->set_scanned_index_rows(scanned_index_rows_);
+    }
   }
+
   return fetched_rows;
 }
 
@@ -1919,9 +1936,10 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
   std::optional<FilteringIterator> iter;
-  size_t row_count = 0;
+  size_t found_rows = 0;
   size_t fetched_rows = 0;
   size_t filtered_rows = 0;
+  size_t not_found_rows = 0;
   for (const auto& batch_argument : batch_args) {
     if (!iter) {
       // It can be the case like when there is a tablet split that we still want
@@ -1941,6 +1959,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     switch (VERIFY_RESULT(
         iter->FetchTuple(batch_argument.ybctid().value().binary_value(), &row))) {
       case FetchResult::NotFound:
+        ++not_found_rows;
         // rebuild iterator on next iteration
         iter = std::nullopt;
         break;
@@ -1948,7 +1967,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
         ++filtered_rows;
         break;
       case FetchResult::Found:
-        ++row_count;
+        ++found_rows;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
@@ -1961,7 +1980,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     }
 
     if (result_buffer->size() >= response_size_limit) {
-      VLOG(1) << "Stopped iterator after " << row_count << " rows fetched (out of "
+      VLOG(1) << "Stopped iterator after " << found_rows << " rows fetched (out of "
               << request_.batch_arguments_size() << " matches). Response buffer size: "
               << result_buffer->size() << ", response size limit: " << response_size_limit;
       break;
@@ -1969,19 +1988,19 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   }
 
   // Output aggregate values accumulated while looping over rows
-  if (request_.is_aggregate() && row_count > 0) {
+  if (request_.is_aggregate() && found_rows > 0) {
     RETURN_NOT_OK(PopulateAggregate(result_buffer));
     ++fetched_rows;
   }
 
   // Set status for this batch.
   if (result_buffer->size() >= response_size_limit)
-    response_.set_batch_arg_count(row_count);
+    response_.set_batch_arg_count(found_rows + filtered_rows + not_found_rows);
   else
     // Mark all rows were processed even in case some of the ybctids were not found.
     response_.set_batch_arg_count(request_.batch_arguments_size());
 
-  scanned_table_rows_ += filtered_rows + row_count;
+  scanned_table_rows_ += filtered_rows + found_rows;
   return fetched_rows;
 }
 

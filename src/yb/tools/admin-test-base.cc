@@ -20,8 +20,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 
-namespace yb {
-namespace tools {
+namespace yb::tools {
 
 namespace {
 
@@ -46,22 +45,13 @@ std::string AdminTestBase::GetMasterAddresses() const {
 }
 
 Result<std::string> AdminTestBase::CallAdminVec(const std::vector<std::string>& args) {
-  std::string result;
+  std::string output, error;
   LOG(INFO) << "Execute: " << AsString(args);
-  auto status = Subprocess::Call(args, &result, StdFdTypes{StdFdType::kOut, StdFdType::kErr});
+  auto status = Subprocess::Call(args, &output, &error);
   if (!status.ok()) {
-    return status.CloneAndAppend(result);
+    return status.CloneAndAppend(error);
   }
-  return result;
-}
-
-Result<rapidjson::Document> AdminTestBase::ParseJson(const std::string& raw) {
-  rapidjson::Document result;
-  if (result.Parse(raw.c_str(), raw.length()).HasParseError()) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Failed to parse json output $0: $1", result.GetParseError(), raw);
-  }
-  return result;
+  return output;
 }
 
 Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {
@@ -81,21 +71,4 @@ Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {
   return result;
 }
 
-Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* name) {
-  auto it = value.FindMember(name);
-  if (it == value.MemberEnd()) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
-Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
-  auto it = value->FindMember(name);
-  if (it.operator==(value->MemberEnd())) {
-    return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
-  }
-  return it->value;
-}
-
-}  // namespace tools
-}  // namespace yb
+}  // namespace yb::tools

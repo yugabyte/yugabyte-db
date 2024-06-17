@@ -46,7 +46,7 @@ export interface Anomaly {
   startTime: Date | string;
   endTime?: Date | string;
   mainGraphs: GraphMetadata[];
-  supportingGraphs: GraphMetadata[];
+  // supportingGraphs: GraphMetadata[];
   defaultSettings: GraphSettings;
   // commonGraphFilters: Map<string, Set<string>>;
   rcaGuidelines: RCAGuideline[];
@@ -62,6 +62,7 @@ export enum AnomalyCategory {
 
 export enum AnomalyType {
   SQL_QUERY_LATENCY_INCREASE = 'SQL_QUERY_LATENCY_INCREASE',
+  HOT_NODE_READS_WRITES = 'HOT_NODE_READS_WRITES',
   HOT_NODE_CPU = 'HOT_NODE_CPU',
   HOT_NODE_QUERIES = 'HOT_NODE_QUERIES',
   HOT_NODE_DATA = 'HOT_NODE_DATA',
@@ -82,7 +83,12 @@ export interface TableInfo {
 export interface RCAGuideline {
   possibleCause: string;
   possibleCauseDescription: string;
-  troubleshootingRecommendations: string[];
+  troubleshootingRecommendations: TroubleshootingRecommendations[];
+}
+
+export interface TroubleshootingRecommendations {
+  recommendation: string;
+  supportingGraphs: GraphMetadata[];
 }
 
 export interface GraphMetadata {
@@ -92,17 +98,31 @@ export interface GraphMetadata {
 }
 
 export interface GraphQuery {
-  start?: Date | string;
-  end?: Date | string;
-  name?: string;
-  filters?: GraphFilters;
-  settings?: GraphSettings;
+  start: Date | string;
+  end: Date | string;
+  name: string;
+  filters: GraphFilters;
+  settings: GraphSettings;
+  groupBy?: GraphLabel[];
+}
+
+export enum GraphLabel {
+  WAIT_EVENT_COMPONENT = 'waitEventComponent',
+  WAIT_EVENT_CLASS = 'waitEventClass',
+  WAIT_EVENT_TYPE = 'waitEventType',
+  WAIT_EVENT = 'waitEvent',
+  CLIENT_NODE_IP = 'clientNodeIp',
+  QUERY_ID = 'queryId'
 }
 
 export interface GraphFilters {
   universeUuid: string[];
   queryId?: string[];
   dbId?: string[];
+  instanceName?: string[];
+  clusterUuid?: string[];
+  regionCode?: string[];
+  azCode?: string[];
 }
 
 export interface GraphSettings {
@@ -150,4 +170,27 @@ export enum AppName {
   YBA = 'YBA',
   YBM = 'YBM',
   YBD = 'YBD'
+}
+
+export enum GraphType {
+  MAIN = 'MAIN',
+  SUPPORTING = 'SUPPORTING'
+}
+
+export interface MetadataFields {
+	id: string;
+	name?: string;
+	customerId: string;
+	apiToken: string;
+	platformUrl: string;
+	metricsUrl: string;
+	metricsScrapePeriodSec: number;
+	dataMountPoints: string[];
+	otherMountPoints: string[];
+	lastSyncError?: string | null;
+}
+
+export interface UpdateMetadataFormFields {
+	apiToken: string;
+	metricsScrapePeriodSec: number;
 }

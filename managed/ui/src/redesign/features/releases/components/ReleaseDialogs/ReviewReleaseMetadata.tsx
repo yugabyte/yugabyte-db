@@ -3,13 +3,25 @@ import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { AlertVariant, YBAlert, YBButtonGroup, YBInput, YBLabel } from '../../../../components';
 import { ReleasePlatform, ReleasePlatformArchitecture } from '../dtos';
+import { ybFormatDate, YBTimeFormats } from '../../../../helpers/DateUtils';
+import { isEmptyString } from '../../../../../utils/ObjectUtils';
+
+const ArchitectureLabel: any = {
+  x86_64: 'x86',
+  aarch64: 'ARM'
+} as const;
+
+const ReleaseTypeLabel: any = {
+  STS: 'Standard-term support (STS)',
+  LTS: 'Long-term support (LTS)'
+} as const;
 
 const useStyles = makeStyles((theme) => ({
   root: {
     padding: `${theme.spacing(3)}px ${theme.spacing(4.5)}px`
   },
   marginTop: {
-    marginTop: theme.spacing(2)
+    marginTop: theme.spacing(0.5)
   },
   marginLeft: {
     marginLeft: theme.spacing(2)
@@ -28,10 +40,15 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     flexDirection: 'row'
   },
+  flexColumn: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
   smallerMetadata: {
     fontWeight: 400,
     fontFamily: 'Inter',
-    fontSize: '11.5px'
+    fontSize: '11.5px',
+    color: theme.palette.ybacolors.textDarkGray
   },
   largerMetaData: {
     fontWeight: 400,
@@ -43,21 +60,11 @@ const useStyles = makeStyles((theme) => ({
     width: 'fit-content'
   },
   smallInputTextBox: {
-    width: '50px'
+    width: '300px',
+    marginTop: theme.spacing(1)
   },
   largeInputTextBox: {
     width: '384px'
-  },
-  overrideMuiButtonGroup: {
-    '& .MuiButton-containedSecondary': {
-      backgroundColor: 'rgba(43, 89, 195, 0.1)',
-      color: theme.palette.primary[600],
-      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
-    },
-    '& .MuiButton-outlinedSecondary': {
-      backgroundColor: 'white',
-      border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
-    }
   },
   warningBox: {
     height: '40px',
@@ -66,9 +73,17 @@ const useStyles = makeStyles((theme) => ({
     border: '1px',
     borderRadius: '8px',
     backgroundColor: theme.palette.warning[100]
+  },
+  helperVersionMessage: {
+    marginTop: theme.spacing(1),
+    color: '#818182',
+    fontFamily: 'Inter',
+    fontSize: '12px',
+    fontWeight: 400
   }
 }));
 
+const VERSION_FORMAT = 'Format: 2.22.0.0 or 2024.1.0.0';
 interface ReleasePlatformButtonProps {
   label: string;
   value: ReleasePlatform;
@@ -84,14 +99,8 @@ interface ReviewReleaseMetadataProps {
   urlMetadata?: any;
   deploymentType: ReleasePlatform | null;
   architecture: ReleasePlatformArchitecture | null;
-  releaseBasePart: string;
-  releaseFirstPart: string;
-  releaseSecondPart: string;
-  releaseThirdPart: string;
-  handleReleaseBasePart: (event: any) => void;
-  handleReleaseSecondPart: (event: any) => void;
-  handleReleaseThirdPart: (event: any) => void;
-  handleReleaseFirstPart: (event: any) => void;
+  releaseVersion: string;
+  handleReleaseVersionPart: (event: any) => void;
   handlePlatformSelect: (value: ReleasePlatformButtonProps) => void;
   handleArchitectureSelect: (value: ReleaseArchitectureButtonProps) => void;
 }
@@ -101,14 +110,8 @@ export const ReviewReleaseMetadata = ({
   urlMetadata,
   deploymentType,
   architecture,
-  releaseBasePart,
-  releaseFirstPart,
-  releaseSecondPart,
-  releaseThirdPart,
-  handleReleaseBasePart,
-  handleReleaseSecondPart,
-  handleReleaseThirdPart,
-  handleReleaseFirstPart,
+  releaseVersion,
+  handleReleaseVersionPart,
   handlePlatformSelect,
   handleArchitectureSelect
 }: ReviewReleaseMetadataProps) => {
@@ -151,7 +154,7 @@ export const ReviewReleaseMetadata = ({
 
   return (
     <Box>
-      <Box mt={3}>
+      <Box mt={5}>
         <Typography variant={'body1'}>
           {t('releases.reviewReleaseMetadataSection.viewReleaseDetails')}
         </Typography>
@@ -174,7 +177,7 @@ export const ReviewReleaseMetadata = ({
                 {t('releases.reviewReleaseMetadataSection.deploymentType')}
               </YBLabel>
               <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                {urlMetadata?.platform}
+                {urlMetadata?.platform === 'LINUX' ? 'VM' : urlMetadata?.platform}
               </YBLabel>
             </Box>
             <Box className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}>
@@ -182,7 +185,7 @@ export const ReviewReleaseMetadata = ({
                 {t('releases.reviewReleaseMetadataSection.architecture')}
               </YBLabel>
               <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                {urlMetadata?.architecture}
+                {ArchitectureLabel[urlMetadata?.architecture]}
               </YBLabel>
             </Box>
             <Box className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}>
@@ -190,7 +193,7 @@ export const ReviewReleaseMetadata = ({
                 {t('releases.reviewReleaseMetadataSection.releaseSupport')}
               </YBLabel>
               <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                {urlMetadata?.releaseType}
+                {ReleaseTypeLabel[urlMetadata?.releaseType] ?? t('releases.type.PREVIEW')}
               </YBLabel>
             </Box>
             <Box className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}>
@@ -198,7 +201,9 @@ export const ReviewReleaseMetadata = ({
                 {t('releases.reviewReleaseMetadataSection.releaseDate')}
               </YBLabel>
               <YBLabel className={(helperClasses.largerMetaData, helperClasses.labelWidth)}>
-                {urlMetadata?.releaseDate}
+                {urlMetadata?.releaseDate
+                  ? ybFormatDate(urlMetadata?.releaseDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+                  : '-'}
               </YBLabel>
             </Box>
           </Box>
@@ -217,29 +222,14 @@ export const ReviewReleaseMetadata = ({
             <Box className={clsx(helperClasses.reviewReleaseMetadataRow, helperClasses.marginTop)}>
               <YBLabel className={helperClasses.largerMetaData}>{t('releases.version')}</YBLabel>
               <YBLabel className={helperClasses.labelWidth}>
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseBasePart}
-                  onChange={handleReleaseBasePart}
-                />
-                {t('common.dot')}
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseFirstPart}
-                  onChange={handleReleaseFirstPart}
-                />
-                {t('common.dot')}
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseSecondPart}
-                  onChange={handleReleaseSecondPart}
-                />
-                {t('common.dot')}
-                <YBInput
-                  className={helperClasses.smallInputTextBox}
-                  value={releaseThirdPart}
-                  onChange={handleReleaseThirdPart}
-                />
+                <Box className={helperClasses.flexColumn}>
+                  <YBInput
+                    className={helperClasses.smallInputTextBox}
+                    value={releaseVersion}
+                    onChange={handleReleaseVersionPart}
+                  />
+                  <span className={helperClasses.helperVersionMessage}>{VERSION_FORMAT}</span>
+                </Box>
               </YBLabel>
             </Box>
 
@@ -249,7 +239,6 @@ export const ReviewReleaseMetadata = ({
               </YBLabel>
               <YBButtonGroup
                 dataTestId={'ReviewReleaseMetadata-DeploymentTypeButtonGroup'}
-                btnGroupClassName={helperClasses.overrideMuiButtonGroup}
                 variant={'contained'}
                 color={'secondary'}
                 values={platformList}
@@ -273,7 +262,6 @@ export const ReviewReleaseMetadata = ({
                 </YBLabel>
                 <YBButtonGroup
                   dataTestId={'ReviewReleaseMetadata-ArchitectureButtonGroup'}
-                  btnGroupClassName={helperClasses.overrideMuiButtonGroup}
                   variant={'contained'}
                   color={'secondary'}
                   values={supportedArchList}

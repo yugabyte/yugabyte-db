@@ -20,6 +20,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -29,9 +30,12 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.proxy.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -52,6 +56,7 @@ DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
 namespace yb {
 
+using master::GetMasterClusterConfigResponsePB;
 namespace integration_tests {
 
 class MasterHeartbeatITest : public YBTableTestBase {
@@ -64,25 +69,58 @@ class MasterHeartbeatITest : public YBTableTestBase {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
+master::TSToMasterCommonPB MakeTSToMasterCommonPB(
+    master::TSDescriptor* ts, std::optional<int64_t> seqno) {
+  master::TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(ts->permanent_uuid());
+  common.mutable_ts_instance()->set_instance_seqno(seqno ? *seqno : ts->latest_seqno());
+  return common;
+}
+
+master::TabletReportPB MakeTabletReportPBWithNewLeader(
+    master::TSDescriptor* ts, master::TabletInfo* tablet, bool incremental,
+    int32_t report_sequence_number) {
+  master::TabletReportPB report;
+  report.set_is_incremental(incremental);
+  report.set_sequence_number(report_sequence_number);
+  auto* tablet_report = report.add_updated_tablets();
+  tablet_report->set_tablet_id(tablet->id());
+  auto* consensus = tablet_report->mutable_committed_consensus_state();
+  *consensus = tablet->LockForRead()->pb.committed_consensus_state();
+  consensus->set_leader_uuid(ts->permanent_uuid());
+  consensus->set_current_term(consensus->current_term() + 1);
+  auto* new_peer = consensus->mutable_config()->add_peers();
+  new_peer->set_permanent_uuid(ts->permanent_uuid());
+  new_peer->set_member_type(consensus::PeerMemberType::VOTER);
+  auto ts_info = ts->GetTSInformationPB();
+  *new_peer->mutable_last_known_private_addr() =
+      ts_info->registration().common().private_rpc_addresses();
+  *new_peer->mutable_last_known_broadcast_addr() =
+      ts_info->registration().common().broadcast_addresses();
+  *new_peer->mutable_cloud_info() = ts_info->registration().common().cloud_info();
+  tablet_report->set_state(tablet::RaftGroupStatePB::RUNNING);
+  tablet_report->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
+  return report;
+}
+
 TEST_F(MasterHeartbeatITest, PreventHeartbeatWrongCluster) {
   // First ensure that if a tserver heartbeats to a different cluster, heartbeats fail and
   // eventually, master marks servers as dead. Mock a different cluster by setting the flag
   // TEST_master_universe_uuid.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
-  master::TSDescriptorVector ts_descs;
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
 
   // When the flag is unset, ensure that master leader can register tservers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = "";
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
 
   // Ensure that state for universe_uuid is persisted across restarts.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   for (int i = 0; i < 3; i++) {
     ASSERT_OK(mini_cluster_->mini_tablet_server(i)->Restart());
   }
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
 }
 
 
@@ -146,6 +184,233 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
     return true;
   }, FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
 }
+
+// This test verifies the master doesn't corrupt its tablet metadata when receiving out-of-order
+// heartbeats from a tserver. When a tserver is RBS'ing a tablet replica it doesn't send the
+// consensus metadata for the tablet in its reports, so the master cannot rely on the consensus
+// metadata to disregard stale reports.
+TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
+  // Disable load balancer so the tserver we add doesn't get any tablet replicas.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
+  // Now stop all tservers so real heartbeats don't interfere with our fake ones.
+  ShutdownAllTServers(mini_cluster_.get());
+  auto table = table_name();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = table_info->GetTablets()[0];
+  std::set<std::string> tservers_hosting_tablet;
+  for (const auto& [ts, replica] : *tablet->GetReplicaLocations()) {
+    tservers_hosting_tablet.insert(ts);
+  }
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  auto extra_ts_id_it = std::find_if(
+      ts_descs.cbegin(), ts_descs.cend(),
+      [&tservers_hosting_tablet](const master::TSDescriptorPtr& ts) {
+        return !tservers_hosting_tablet.contains(ts->permanent_uuid());
+      });
+  ASSERT_TRUE(extra_ts_id_it != ts_descs.cend());
+  auto ts = *extra_ts_id_it;
+  // send fake heartbeats to show this tserver bootstrapping the tablet and becoming leader, but out
+  // of order.
+  master::MasterHeartbeatProxy master_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
+  master::TSHeartbeatRequestPB req;
+  *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno());
+  req.set_universe_uuid(cluster_config.universe_uuid());
+  const auto original_latest_report_sequence_number = ts->latest_report_sequence_number();
+  *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
+      ts.get(), tablet.get(), true, original_latest_report_sequence_number + 2);
+  req.set_num_live_tablets(1);
+  master::TSHeartbeatResponsePB resp;
+  auto rpc = rpc::RpcController();
+  auto status = master_proxy.TSHeartbeat(req, &resp, &rpc);
+  ASSERT_OK(status);
+  ASSERT_FALSE(resp.has_error());
+  // now let's sanity check the new ts is considered the leader by the master.
+  auto replica_locations = tablet->GetReplicaLocations();
+  auto ts_replica_it = std::find_if(
+      replica_locations->cbegin(), replica_locations->cend(),
+      [ts](const std::pair<TabletServerId, master::TabletReplica>& entry) {
+        return entry.first == ts->permanent_uuid();
+      });
+  ASSERT_NE(ts_replica_it, replica_locations->cend());
+  ASSERT_EQ(ts_replica_it->second.role, PeerRole::LEADER);
+  ASSERT_EQ(ts->num_live_replicas(), 1);
+
+  {
+    // Now we send another heartbeat, but in this one the new TS was bootstrapping the tablet.
+    master::TSHeartbeatRequestPB second_req;
+    second_req.set_universe_uuid(cluster_config.universe_uuid());
+    *second_req.mutable_common() = req.common();
+    second_req.set_num_live_tablets(0);
+    auto* bootstrapping_report = second_req.mutable_tablet_report();
+    bootstrapping_report->set_is_incremental(true);
+    bootstrapping_report->set_sequence_number(original_latest_report_sequence_number + 1);
+    auto* rbs_tablet = bootstrapping_report->add_updated_tablets();
+    rbs_tablet->set_tablet_id(tablet->id());
+    rbs_tablet->set_state(tablet::RaftGroupStatePB::BOOTSTRAPPING);
+    rbs_tablet->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_COPYING);
+    master::TSHeartbeatResponsePB resp;
+    auto rpc = rpc::RpcController();
+    auto status = master_proxy.TSHeartbeat(second_req, &resp, &rpc);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Stale tablet report");
+    // Verify the new TS is still considered tablet leader by the master.
+    auto replica_locations = tablet->GetReplicaLocations();
+    auto ts_replica_it = std::find_if(
+        replica_locations->cbegin(), replica_locations->cend(),
+        [ts](const std::pair<TabletServerId, master::TabletReplica>& entry) {
+          return entry.first == ts->permanent_uuid();
+        });
+    ASSERT_NE(ts_replica_it, replica_locations->cend());
+    ASSERT_EQ(ts_replica_it->second.role, PeerRole::LEADER);
+    // Sanity check we didn't overwrite the TSDescriptor state with the data from the stale
+    // heartbeat.
+    ASSERT_EQ(ts->num_live_replicas(), 1);
+  }
+}
+
+// This test verifies the master resets the tracked report sequence number when re-registering a
+// tablet server.
+TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  CreateTable();
+  ASSERT_OK(mini_cluster_->AddTabletServer());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(4));
+  // Stop all tservers so real heartbeats don't interfere with our fake ones.
+  ShutdownAllTServers(mini_cluster_.get());
+  auto table = table_name();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablet = table_info->GetTablets()[0];
+  std::set<std::string> tss_hosting_tablet;
+  for (const auto& [ts, replica] : *tablet->GetReplicaLocations()) {
+    tss_hosting_tablet.insert(ts);
+  }
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  auto extra_ts_it = std::find_if(
+      ts_descs.cbegin(), ts_descs.cend(), [&tss_hosting_tablet](const master::TSDescriptorPtr& ts) {
+        return !tss_hosting_tablet.contains(ts->permanent_uuid());
+      });
+  ASSERT_TRUE(extra_ts_it != ts_descs.cend());
+  auto ts = *extra_ts_it;
+  master::MasterHeartbeatProxy master_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
+  master::TSHeartbeatRequestPB req;
+  ASSERT_GT(ts->latest_report_sequence_number(), 0);
+  // Use a later sequence number to simulate the tserver restarting.
+  *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno() + 10);
+  req.set_universe_uuid(cluster_config.universe_uuid());
+  *req.mutable_registration() = ts->GetTSInformationPB()->registration();
+  *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
+      ts.get(), tablet.get(), /* incremental */ false, /* report_sequence_number */ 0);
+  master::TSHeartbeatResponsePB resp;
+  auto rpc = rpc::RpcController();
+  auto status = master_proxy.TSHeartbeat(req, &resp, &rpc);
+  ASSERT_OK(status);
+  ASSERT_FALSE(resp.has_error());
+  // Sanity check the new ts is considered the leader by the master.
+  auto replica_locations = tablet->GetReplicaLocations();
+  auto ts_replica_it = std::find_if(
+      replica_locations->cbegin(), replica_locations->cend(),
+      [ts](const std::pair<TabletServerId, master::TabletReplica>& entry) {
+        return entry.first == ts->permanent_uuid();
+      });
+  ASSERT_NE(ts_replica_it, replica_locations->cend());
+  ASSERT_EQ(ts_replica_it->second.role, PeerRole::LEADER);
+  ASSERT_EQ(ts->latest_report_sequence_number(), 0);
+}
+
+class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {
+ public:
+  void SetUp() override {
+    // Start the cluster without the universe_uuid generation FLAG to test upgrade.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = false;
+    YBTableTestBase::SetUp();
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
+  }
+
+  Result<master::SysClusterConfigEntryPB> GetClusterConfig() {
+    const auto* master = VERIFY_RESULT(mini_cluster_->GetLeaderMiniMaster());
+    return master->catalog_manager().GetClusterConfig();
+  }
+
+  Status ClearUniverseUuid() {
+    for (auto& ts : mini_cluster_->mini_tablet_servers()) {
+      RETURN_NOT_OK(ts->server()->ClearUniverseUuid());
+    }
+    return Status::OK();
+  }
+
+ protected:
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+};
+
+TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
+  auto cluster_config = ASSERT_RESULT(GetClusterConfig());
+  auto cluster_config_version = cluster_config.version();
+  LOG(INFO) << "Cluster Config version : " << cluster_config_version;
+
+  // Attempt to clear universe uuid. Should fail when it is not set.
+  ASSERT_NOK(ClearUniverseUuid());
+
+  // Enable the flag and wait for heartbeat to propagate the universe_uuid.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = true;
+
+  // Wait for ClusterConfig version to increase.
+  ASSERT_OK(LoggedWaitFor([&]() {
+    auto config_result = GetClusterConfig();
+    if (!config_result.ok()) {
+      return false;
+    }
+    auto& config = *config_result;
+
+    if (!config.has_universe_uuid()) {
+      return false;
+    }
+    cluster_config = std::move(config);
+
+    return true;
+  }, 60s, "Waiting for new universe uuid to be generated"));
+
+  ASSERT_GE(cluster_config.version(), cluster_config_version);
+  LOG(INFO) << "Updated cluster config version:" << cluster_config.version();
+  LOG(INFO) << "Universe UUID:" << cluster_config.universe_uuid();
+
+  // Wait for propagation of universe_uuid.
+  ASSERT_OK(LoggedWaitFor([&]() {
+    for (auto& ts : mini_cluster_->mini_tablet_servers()) {
+      auto uuid_str = ts->server()->fs_manager()->GetUniverseUuidFromTserverInstanceMetadata();
+      if (!uuid_str.ok() || uuid_str.get() != cluster_config.universe_uuid()) {
+        return false;
+      }
+    }
+
+    return true;
+  }, 60s, "Waiting for tservers to pick up new universe uuid"));
+
+  // Verify servers are heartbeating correctly.
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
+
+  // Artificially generate a fake universe uuid and propagate that by clearing the universe_uuid.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
+
+  // Heartbeats should first fail due to universe_uuid mismatch.
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
+
+  // Once t-server instance metadata is cleared, heartbeats should succeed again.
+  ASSERT_OK(ClearUniverseUuid());
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
+}
+
 
 class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
  public:

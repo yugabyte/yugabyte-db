@@ -12,41 +12,24 @@
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
 
-#include <algorithm>
-#include <utility>
 #include <string>
-#include <chrono>
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
-#include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction.h"
-#include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/ql_value.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -72,6 +55,7 @@
 using std::string;
 
 DECLARE_bool(ysql_enable_pack_full_row_update);
+DECLARE_string(pgsql_proxy_bind_address);
 
 namespace yb {
 using client::YBClient;
@@ -131,11 +115,35 @@ Status CDCSDKTestBase::InitPostgres(PostgresMiniCluster* cluster) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
       cluster->mini_cluster_->AllocateFreePort();
 
-  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
-            << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-  cluster->pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(
-      pg_process_conf, nullptr /* tserver */);
+  cluster->pg_supervisor_ =
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+
+  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  return Status::OK();
+}
+
+Status CDCSDKTestBase::InitPostgres(
+    PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port) {
+  auto pg_ts = cluster->mini_cluster_->mini_tablet_server(pg_ts_idx);
+  pgwrapper::PgProcessConf pg_process_conf =
+      VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
+          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+          pg_ts->server()->GetSharedMemoryFd()));
+  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+  pg_process_conf.force_disable_log_file = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+      cluster->mini_cluster_->AllocateFreePort();
+
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+  cluster->pg_supervisor_ =
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
   RETURN_NOT_OK(cluster->pg_supervisor_->Start());
 
   cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
@@ -145,7 +153,7 @@ Status CDCSDKTestBase::InitPostgres(PostgresMiniCluster* cluster) {
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
     uint32_t replication_factor, uint32_t num_masters, bool colocated,
-    bool cdc_populate_safepoint_record) {
+    bool cdc_populate_safepoint_record, bool set_pgsql_proxy_bind_address) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
@@ -165,11 +173,27 @@ Status CDCSDKTestBase::SetUpWithParams(
 
   test_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
 
+  size_t pg_ts_idx = 0;
+  uint16_t pg_port = 0;
+  if (set_pgsql_proxy_bind_address) {
+    // Randomly select the tserver index that will serve the postgres proxy.
+    pg_ts_idx = RandomUniformInt<size_t>(0, opts.num_tablet_servers - 1);
+    const std::string pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
+    // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
+    // tserver will store this address when it starts.
+    pg_port = test_cluster_.mini_cluster_->AllocateFreePort();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
+  }
+
   RETURN_NOT_OK(test_cluster()->StartSync());
   RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
-  RETURN_NOT_OK(InitPostgres(&test_cluster_));
+  if (set_pgsql_proxy_bind_address) {
+    RETURN_NOT_OK(InitPostgres(&test_cluster_, pg_ts_idx, pg_port));
+  } else {
+    RETURN_NOT_OK(InitPostgres(&test_cluster_));
+  }
   RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
   cdc_proxy_ = GetCdcProxy();
@@ -224,6 +248,7 @@ Result<YBTableName> CDCSDKTestBase::GetTable(
       YBTableName yb_table;
       yb_table.set_table_id(table.id());
       yb_table.set_namespace_id(table.namespace_().id());
+      yb_table.set_table_name(table.name());
       return yb_table;
     }
   }
@@ -243,8 +268,8 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
       RETURN_NOT_OK(conn.ExecuteFormat("create schema $0;", schema_name));
     }
     RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE TYPE $0.coupon_discount_type$1 AS ENUM ('FIXED$2','PERCENTAGE$3');", schema_name,
-        enum_suffix, enum_suffix, enum_suffix));
+        "CREATE TYPE $0.$1$2 AS ENUM ('FIXED$3','PERCENTAGE$4');", schema_name,
+        kEnumTypeName, enum_suffix, enum_suffix, enum_suffix));
   }
 
   std::string table_oid_string = "";
@@ -297,10 +322,9 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
 
 Status CDCSDKTestBase::AddColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
-    const std::string& add_column_name, const std::string& enum_suffix,
+    const std::string& add_column_name, pgwrapper::PGConn *conn, const std::string& enum_suffix,
     const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 ADD COLUMN $2 int", schema_name, table_name + enum_suffix,
       add_column_name));
   return Status::OK();
@@ -308,20 +332,19 @@ Status CDCSDKTestBase::AddColumn(
 
 Status CDCSDKTestBase::DropColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
-    const std::string& column_name, const std::string& enum_suffix,
+    const std::string& column_name, pgwrapper::PGConn *conn, const std::string& enum_suffix,
     const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 DROP COLUMN $2", schema_name, table_name + enum_suffix, column_name));
+
   return Status::OK();
 }
 
 Status CDCSDKTestBase::RenameColumn(
     PostgresMiniCluster* cluster, const std::string& namespace_name, const std::string& table_name,
     const std::string& old_column_name, const std::string& new_column_name,
-    const std::string& enum_suffix, const std::string& schema_name) {
-  auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
-  RETURN_NOT_OK(conn.ExecuteFormat(
+    pgwrapper::PGConn *conn, const std::string& enum_suffix, const std::string& schema_name) {
+  RETURN_NOT_OK(conn->ExecuteFormat(
       "ALTER TABLE $0.$1 RENAME COLUMN $2 TO $3", schema_name, table_name + enum_suffix,
       old_column_name, new_column_name));
   return Status::OK();
@@ -417,7 +440,7 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
     CDCRecordType record_type) {
   auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   RETURN_NOT_OK(conn.FetchFormat(
-      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'pgoutput', false)",
       replication_slot_name));
 
   // Fetch the stream_id of the replication slot.
@@ -428,7 +451,8 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 }
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
-    CDCSDKSnapshotOption snapshot_option) {
+    const std::string& slot_name,
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
   auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
 
   std::string snapshot_action;
@@ -441,18 +465,37 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       break;
   }
 
-  auto slot_name = GenerateRandomReplicationSlotName();
-  RETURN_NOT_OK(repl_conn.FetchFormat(
-      "CREATE_REPLICATION_SLOT $0 LOGICAL yboutput $1", slot_name, snapshot_action));
-
-  // TODO(#20816): Sleep for 1 second - temporary till sync implementation of CreateCDCStream.
-  SleepFor(MonoDelta::FromSeconds(1));
+  auto result = VERIFY_RESULT(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput $1", slot_name, snapshot_action));
+  auto snapshot_name =
+      VERIFY_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
+  LOG(INFO) << "Snapshot Name: " << (snapshot_name.has_value() ? *snapshot_name : "NULL");
 
   // Fetch the stream_id of the replication slot.
   auto stream_id = VERIFY_RESULT(repl_conn.FetchRow<std::string>(Format(
       "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
       slot_name)));
-  return xrepl::StreamId::FromString(stream_id);
+  auto xrepl_stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream_id));
+
+  if (verify_snapshot_name)  {
+    auto resp = VERIFY_RESULT(GetCDCStream(xrepl_stream_id));
+    auto cstime = resp.stream().cdcsdk_consistent_snapshot_time();
+    if (snapshot_option == NOEXPORT_SNAPSHOT) {
+      SCHECK_EQ(snapshot_name.has_value(), false, InternalError, "Snapshot name is not NULL");
+    } else {
+      SCHECK_EQ(*snapshot_name, std::to_string(cstime), InternalError,
+          "Snapshot Name is not matching the consistent snapshot time");
+    }
+  }
+
+  return xrepl_stream_id;
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
+  auto slot_name = GenerateRandomReplicationSlotName();
+  return CreateConsistentSnapshotStreamWithReplicationSlot(
+      slot_name, snapshot_option, verify_snapshot_name);
 }
 
 // This creates a Consistent Snapshot stream on the database kNamespaceName by default.
@@ -484,6 +527,23 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamBasedOnCheckpointType(
     CDCCheckpointType checkpoint_type) {
   return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateDBStreamWithReplicationSlot()
                                                         : CreateDBStream(IMPLICIT);
+}
+
+Result<master::GetCDCStreamResponsePB> CDCSDKTestBase::GetCDCStream(
+    const xrepl::StreamId& db_stream_id) {
+  master::GetCDCStreamRequestPB get_req;
+  master::GetCDCStreamResponsePB get_resp;
+  get_req.set_stream_id(db_stream_id.ToString());
+
+  rpc::RpcController get_rpc;
+  get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  master::MasterReplicationProxy master_proxy_(
+      &test_client()->proxy_cache(),
+      VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+
+  RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
+  return get_resp;
 }
 
 Result<master::ListCDCStreamsResponsePB> CDCSDKTestBase::ListDBStreams() {

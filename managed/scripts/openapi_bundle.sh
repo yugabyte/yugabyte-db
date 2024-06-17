@@ -20,8 +20,11 @@ echo "Running bundle on openapi spec ..."
 tmp_out_file=tmp/openapi_bundle.yaml
 rm -f $tmp_out_file
 # using redocly version 1.0.2 since 1.1.0 onwards requires node version >=14.19.0
-# but jenkins runs node v12.22.12
-$NPM_BIN/npx @redocly/cli@1.0.2 bundle openapi_split.yaml --output $tmp_out_file
+# but jenkins runs node v12.22.12.
+# Faced an issue with a newly released openapi-sampler@1.5.0 on node v12.22.12.
+# So picking the older version openapi-sampler@1.4.0 explicitly.
+$NPM_BIN/npx -p openapi-sampler@1.4.0 -p @redocly/cli@1.0.2 \
+  redocly bundle openapi_split.yaml --output $tmp_out_file
 cmp -s $tmp_out_file ../openapi.yaml
 if [ $? -ne 0 ]; then
   cp $tmp_out_file ../openapi.yaml
@@ -31,6 +34,6 @@ rm -rf tmp
 popd
 
 # Call python script which takes the above generated openapi.yaml file
-# and extracts specific APIs for Public
+# and extracts specific APIs for Public and processes other x-yba-api extensions.
 ../devops/bin/run_in_virtualenv.sh pip install PyYAML==6.0.1
-../devops/bin/run_in_virtualenv.sh python3 ./openapi_generate_public.py
+../devops/bin/run_in_virtualenv.sh python3 ./openapi_process_vendor_ext.py

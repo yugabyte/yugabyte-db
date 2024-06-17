@@ -203,6 +203,8 @@ class FsManager {
 
   Status SetUniverseUuidOnTserverInstanceMetadata(const UniverseUuid& universe_uuid);
 
+  Status ClearUniverseUuidOnTserverInstanceMetadata();
+
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
 
@@ -211,7 +213,6 @@ class FsManager {
 
   // Return the directory where the certs are stored.
   std::string GetDefaultRootDir() const;
-  static std::string GetCertsDir(const std::string& root_dir);
 
   std::vector<std::string> GetConsensusMetadataDirs() const;
   // Return the directory where the consensus metadata is stored.

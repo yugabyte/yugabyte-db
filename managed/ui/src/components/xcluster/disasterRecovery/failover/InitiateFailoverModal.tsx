@@ -4,25 +4,29 @@ import { Box, makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { useSelector } from 'react-redux';
 
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBInput, YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { getNamespaceIdSafetimeEpochUsMap } from '../utils';
+import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
 import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
-
+import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
+import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
-import { useSelector } from 'react-redux';
+
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 
 interface InitiateFailoverrModalProps {
   drConfig: DrConfig;
   modalProps: YBModalProps;
+  allowedTasks: AllowedTasks;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -74,7 +78,11 @@ const useStyles = makeStyles((theme) => ({
 const MODAL_NAME = 'InitiateFailoverModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.failover.initiateModal';
 
-export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailoverrModalProps) => {
+export const InitiateFailoverModal = ({
+  drConfig,
+  modalProps,
+  allowedTasks
+}: InitiateFailoverrModalProps) => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [confirmationText, setConfirmationText] = useState<string>('');
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
@@ -246,8 +254,11 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
     setConfirmationText('');
   };
 
+  const isFailoverActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.FAILOVER_DR);
   const targetUniverseName = targetUniverseQuery.data.name;
-  const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
+  const isFormDisabled =
+    isSubmitting || confirmationText !== targetUniverseName || isFailoverActionFrozen;
+
   return (
     <YBModal
       title={modalTitle}

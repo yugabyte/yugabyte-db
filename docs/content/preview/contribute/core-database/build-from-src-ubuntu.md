@@ -15,28 +15,28 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
+    <a href="../build-from-src-almalinux/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       AlmaLinux
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
+    <a href="../build-from-src-macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
+    <a href="../build-from-src-centos/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link active">
+    <a href="../build-from-src-ubuntu/" class="nav-link active">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
@@ -50,9 +50,88 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
-The following instructions are for Ubuntu 20.04, 22.04, and 23.04.
+The following instructions are for Ubuntu 20.04 and 22.04.
 
-## Install necessary packages
+## TLDR
+
+{{% readfile "includes/tldr.md" %}}
+
+```sh
+# Modify to your preference:
+shellrc=~/.bashrc
+
+source <(cat /etc/os-release | grep '^VERSION_ID=')
+case "$VERSION_ID" in
+  20.04)
+    gcc_version=10
+    ;;
+  22.04)
+    gcc_version=11
+    ;;
+  *)
+    echo "Unknown version $VERSION_ID"
+    exit 1
+esac
+
+sudo apt update
+DEBIAN_FRONTEND=noninteractive sudo apt upgrade -y
+packages=(
+  autoconf
+  build-essential
+  ccache
+  curl
+  file
+  g++-"$gcc_version"
+  gcc-"$gcc_version"
+  gettext
+  git
+  golang-1.20
+  libffi-dev
+  locales
+  maven
+  ninja-build
+  npm
+  patchelf
+  pkg-config
+  python3
+  python3-dev
+  python3-venv
+  rsync
+)
+# Avoid tzdata package configuration prompt.
+if [ ! -e /etc/localtime ]; then
+  sudo ln -s /usr/share/zoneinfo/Etc/UTC /etc/localtime
+fi
+DEBIAN_FRONTEND=noninteractive sudo apt install -y "${packages[@]}"
+sudo locale-gen en_US.UTF-8
+sudo mkdir /opt/yb-build
+
+# If you'd like to use an unprivileged user for development, manually
+# run/modify instructions from here onwards (change $USER, make sure shell
+# variables are set appropriately when switching users).
+sudo chown "$USER" /opt/yb-build
+mkdir ~/tools
+curl -L "https://github.com/Kitware/CMake/releases/download/v3.25.2/cmake-3.25.2-linux-x86_64.tar.gz" | tar xzC ~/tools
+source <(echo 'export PATH="$HOME/tools/cmake-3.25.2-linux-x86_64/bin:$PATH"' \
+         | tee -a "$shellrc")
+source <(echo 'export PATH="/usr/lib/go-1.20/bin:$PATH"' \
+         | tee -a "$shellrc")
+source <(echo 'export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"' \
+         | tee -a "$shellrc")
+
+git clone https://github.com/yugabyte/yugabyte-db
+cd yugabyte-db
+case "$VERSION_ID" in
+  20.04)
+    ./yb_release --build_args=--clang16
+    ;;
+  22.04)
+    ./yb_release --build_args=--clang17
+    ;;
+esac
+```
+
+## Detailed instructions
 
 Update and install basic development packages as follows:
 
@@ -113,12 +192,10 @@ sudo apt install -y maven
 {{% readfile "includes/yugabyted-ui.md" %}}
 
 ```sh
-sudo apt install -y npm golang-1.18
+sudo apt install -y npm golang-1.20
 # Also add the following line to your .bashrc or equivalent.
-export PATH="/usr/lib/go-1.18/bin:$PATH"
+export PATH="/usr/lib/go-1.20/bin:$PATH"
 ```
-
-For Ubuntu 23.04, install `golang-1.20` instead since 1.18 is not available.
 
 ### Ninja (optional)
 
@@ -149,15 +226,6 @@ sudo apt install -y gcc-13 g++-13
 ## Build the code
 
 {{% readfile "includes/build-the-code.md" %}}
-
-{{< note title="Note" >}}
-
-For Ubuntu 23.04, in order to use [downloaded third-party](#opt-yb-build), there are some additional restrictions:
-
-- build type: `debug`, `fastdebug`, or `release`
-- compiler: `--clang17` or `--gcc13`
-
-{{< /note >}}
 
 ### Build release package (optional)
 

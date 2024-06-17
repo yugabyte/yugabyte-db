@@ -1,0 +1,8 @@
+title: EncryptionAtRestInfo
+description: Encryption At Rest specification for the Universe. Part of UniverseInfo.
+type: object
+readOnly: true
+properties:
+  encryption_at_rest_status:
+    description: Whether a Universe is currently encrypted at rest
+    type: boolean

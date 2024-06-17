@@ -13,6 +13,7 @@
 
 #include "yb/tserver/tablet_memory_manager.h"
 
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 
@@ -47,19 +48,19 @@ DEFINE_UNKNOWN_bool(log_cache_gc_evict_only_over_allocated, true,
             "allocated over limit for log cache. Otherwise it will try to evict requested number "
             "of bytes.");
 DEFINE_UNKNOWN_int64(global_memstore_size_percentage, 10,
-             "Percentage of total available memory to use for the global memstore. "
+             "Percentage of process' hard memory limit to use for the global memstore. "
              "Default is 10. See also memstore_size_mb and "
              "global_memstore_size_mb_max.");
 DEFINE_UNKNOWN_int64(global_memstore_size_mb_max, 2048,
-             "Global memstore size is determined as a percentage of the available "
-             "memory. However, this flag limits it in absolute size. Value of 0 "
+             "Global memstore size is determined as a percentage of the process' hard "
+             "memory limit. However, this flag limits it in absolute size. Value of 0 "
              "means no limit on the value obtained by the percentage. Default is 2048.");
 
 // NOTE: The default here is for tools and tests; the actual defaults
 // for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_int32(tablet_overhead_size_percentage, 0,
-    "Percentage of total available memory to use for tablet-related overheads. A value of 0 means "
-    "no limit. Must be between 0 and 100 inclusive. Exception: "
+    "Percentage of process' hard memory limit to use for tablet-related overheads. A value of 0 "
+    "means no limit. Must be between 0 and 100 inclusive. Exception: "
     BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE) " specifies to instead use a "
     "recommended value determined in part by the amount of RAM available.");
 
@@ -328,17 +329,25 @@ void TabletMemoryManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t b
     }
   }
 
-
   LOG(INFO) << "Evicted from log cache: " << HumanReadableNumBytes::ToString(total_evicted)
             << ", required: " << HumanReadableNumBytes::ToString(bytes_to_evict);
 }
 
 void TabletMemoryManager::FlushTabletIfLimitExceeded() {
-  int iteration = 0;
+  if (!memory_monitor_->Exceeded() && !FLAGS_TEST_pretend_memory_exceeded_enforce_flush) {
+    return;
+  }
+  LOG(INFO) << Format(
+      "Memstore global limit of $0 bytes reached (RocksDB reports write buffers using $1 bytes, "
+      "over by $2 bytes)",
+      memory_monitor_->limit(), memory_monitor_->memory_usage(),
+      memory_monitor_->memory_usage() - memory_monitor_->limit());
+  bool first_iteration = true;
   while (memory_monitor_->Exceeded() ||
-         (iteration++ == 0 && FLAGS_TEST_pretend_memory_exceeded_enforce_flush)) {
-    YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
-                                           "tablet to flush", memory_monitor_->limit());
+         (first_iteration && FLAGS_TEST_pretend_memory_exceeded_enforce_flush)) {
+    YB_LOG_EVERY_N_SECS(INFO, 5) << Format(
+        "RocksDB write buffers using too many bytes: $0, looking for tablet to flush",
+        memory_monitor_->memory_usage());
     auto flush_tick = rocksdb::FlushTick();
     tablet::TabletPeerPtr peer_to_flush = TabletToFlush();
     if (peer_to_flush) {
@@ -347,20 +356,26 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
       // we will schedule a second flush, which will unnecessarily stall writes for a short time.
       // This will not happen often, but should be fixed.
       if (tablet_to_flush) {
-        LOG(INFO)
-            << LogPrefix(peer_to_flush)
-            << "Flushing tablet with oldest memstore write at "
-            << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
+        LOG(INFO) << LogPrefix(peer_to_flush) << "Flushing tablet " << tablet_to_flush->tablet_id()
+                  << ", which has oldest memstore write time of "
+                  << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
         WARN_NOT_OK(
             tablet_to_flush->Flush(
                 tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick),
             Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
+        WARN_NOT_OK(
+            peer_to_flush->log()->AsyncAllocateSegmentAndRollover(),
+            Format("Roll log failed on $0", peer_to_flush->tablet_id()));
         for (auto listener : TEST_listeners) {
           listener->StartedFlush(peer_to_flush->tablet_id());
         }
       }
     }
+    first_iteration = false;
   }
+  LOG(INFO) << Format(
+      "RocksDB reported write buffers size of $0 bytes now under Memstore global limit",
+      memory_monitor_->memory_usage());
 }
 
 // Return the tablet with the oldest write in memstore, or nullptr if all tablet memstores are

@@ -71,6 +71,16 @@ public class ImageBundleHandler {
 
   public ImageBundle edit(Provider provider, UUID iBUUID, ImageBundle bundle) {
     log.info("Editing image bundle {} for provider {}.", bundle.getName(), provider.getUuid());
+    ImageBundle oBundle = ImageBundle.getOrBadRequest(iBUUID);
+    Architecture arch = oBundle.getDetails().getArch();
+    if (oBundle.getUseAsDefault() && !bundle.getUseAsDefault()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "One of the image bundle should be default for the provider %s"
+                  + "for a given architecture %s",
+              provider.getUuid(), arch.toString()));
+    }
     return providerEditRestrictionManager.tryEditProvider(
         provider.getUuid(), () -> doEdit(provider, iBUUID, bundle));
   }
@@ -89,14 +99,7 @@ public class ImageBundleHandler {
     }
     ImageBundle oBundle = ImageBundle.getOrBadRequest(iBUUID);
     Architecture arch = oBundle.getDetails().getArch();
-    if (oBundle.getUseAsDefault() && !bundle.getUseAsDefault()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "One of the image bundle should be default for the provider %s"
-                  + "for a given architecture %s",
-              provider.getUuid(), arch.toString()));
-    } else if (!oBundle.getUseAsDefault() && bundle.getUseAsDefault()) {
+    if (!oBundle.getUseAsDefault() && bundle.getUseAsDefault()) {
       // Change the default image bundle for the provider.
       List<ImageBundle> prevDefaultImageBundles =
           ImageBundle.getDefaultForProvider(provider.getUuid());
@@ -111,6 +114,7 @@ public class ImageBundleHandler {
       }
       oBundle.setUseAsDefault(bundle.getUseAsDefault());
     }
+    oBundle.setName(bundle.getName());
     oBundle.setDetails(bundle.getDetails());
     oBundle.save();
     return oBundle;

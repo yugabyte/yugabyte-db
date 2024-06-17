@@ -38,6 +38,7 @@ import { testFeatureFlagsLocalStorageKey } from './reducers/feature';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
+import { SlotDetail } from './redesign/features/universe/universe-tabs/replication-slots/components/SlotDetail';
 import { SecondaryDashboard } from './pages/SecondaryDashboard';
 import {
   clearRbacCreds,
@@ -133,7 +134,7 @@ axios.interceptors.response.use(
     //rbac is not loaded yet or it is enabled
     if (getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
 
-    const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
+    const isAllowedUrl = /.+\/(login|register|reset_password)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page
@@ -255,6 +256,7 @@ export default (store) => {
             path="/universes/:uuid/troubleshoot/:troubleshootUUID"
             component={SecondaryDashboard}
           />
+          <Route path="/universes/:uuid/replication-slots/:streamID" component={SlotDetail} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           {/* <Route path="/universes/:uuid/edit" component={UniverseDetail}> */}

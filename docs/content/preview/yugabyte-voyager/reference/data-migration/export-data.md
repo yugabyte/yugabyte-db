@@ -26,7 +26,7 @@ The following page describes the following export commands:
 
 For offline migration, export data [dumps](../../../migrate/migrate-steps/#export-data) data of the source database in the `export-dir/data` directory on the machine where yb-voyager is running.
 
-For [live migration](../../../migrate/live-migrate/#export-data) (with [fall-forward](../../../migrate/live-fall-forward/#export-data) and [fall-back](../../../migrate/live-fall-back/#export-data)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
+For [live migration](../../../migrate/live-migrate/#export-data-from-source) (with [fall-forward](../../../migrate/live-fall-forward/#export-data-from-source) and [fall-back](../../../migrate/live-fall-back/#export-data-from-source)), the export data command is an alias of `export data from source` which [dumps](../../../migrate/live-migrate/#export-data-from-source) the snapshot in the `data` directory and starts capturing the new changes made to the source database.
 
 ### Syntax
 
@@ -57,7 +57,7 @@ The valid *arguments* for export data are described in the following table:
 | &#8209;&#8209;oracle&#8209;cdb&#8209;tns&#8209;alias | Name of TNS Alias you wish to use to connect to Oracle Container Database in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-db-sid | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
 | --oracle-home | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
-| [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--oracle-tns-alias](../../yb-voyager-cli/#oracle-options) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --parallel-jobs | Number of parallel jobs to extract data from source database. <br>Default: 4; exports 4 tables at a time by default. If you use [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored. |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
@@ -73,7 +73,7 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) | Path to a file containing SSL certificate authority (CA) certificate(s). |
 | --start-clean | Starts a fresh data export after clearing all data from the `data` directory. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --table-list | Comma-separated list of the tables to export data. By default, table names in the list are case-insensitive. Enclose names in double quotes ("") to make them case-sensitive.<br>Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
+| --table-list | Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
 | --exclude-table-list | Comma-separated list of the tables to exclude during export. Table names follow the same convention as `--table-list`. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
 | &#8209;&#8209;exclude&#8209;table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
@@ -189,7 +189,7 @@ The valid *arguments* for export data from target are described in the following
 | -e, &#8209;&#8209;export&#8209;dir | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for synchronize. |
 | --send&#8209;diagnostics | Enable or disable sending [diagnostics](../../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
-| --table-list | Comma-separated list of the tables to export data. By default, table names in the list are case-insensitive. Enclose names in double quotes ("") to make them case-sensitive.<br>Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
+| --table-list | Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
 | --exclude-table-list | Comma-separated list of the tables to exclude during export. Table names follow the same convention as `--table-list`. |
 | --table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to export. Table names use the same convention as `--table-list`. |
 | &#8209;&#8209;exclude&#8209;table&#8209;list&#8209;file&#8209;path | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |

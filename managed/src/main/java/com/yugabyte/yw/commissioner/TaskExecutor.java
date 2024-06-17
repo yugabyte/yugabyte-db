@@ -12,7 +12,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -23,21 +25,24 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
+import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskError;
+import com.yugabyte.yw.models.helpers.TaskDetails.TaskErrorCode;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Summary;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +63,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.inject.Inject;
@@ -65,6 +72,7 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+import play.libs.Json;
 
 /**
  * TaskExecutor is the executor service for tasks and their subtasks. It is very similar to the
@@ -131,6 +139,8 @@ public class TaskExecutor {
   // Max size of the callstack for task creator thread.
   private static final int MAX_TASK_CREATOR_CALLSTACK_SIZE = 15;
 
+  private static final String TASK_EXECUTION_SKIPPED_LABEL = "skipped";
+
   // Default wait timeout for subtasks to complete since the abort call.
   private final Duration defaultAbortTaskTimeout = Duration.ofSeconds(30);
 
@@ -171,7 +181,8 @@ public class TaskExecutor {
           "Duration of task execution",
           KnownAlertLabels.TASK_TYPE.labelName(),
           KnownAlertLabels.RESULT.labelName(),
-          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(),
+          TASK_EXECUTION_SKIPPED_LABEL);
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
     return Summary.build(name, description)
@@ -193,12 +204,17 @@ public class TaskExecutor {
 
   // This writes the execution time metric.
   private static void writeTaskStateMetric(
-      Map<String, String> taskLabels, Instant startTime, Instant endTime, State state) {
+      Map<String, String> taskLabels,
+      Instant startTime,
+      Instant endTime,
+      State state,
+      boolean isTaskSkipped) {
     COMMISSIONER_TASK_EXECUTION_SEC
         .labels(
             taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
             state.name(),
-            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()),
+            String.valueOf(isTaskSkipped))
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -288,6 +304,12 @@ public class TaskExecutor {
     }
   }
 
+  private void checkHAFollowerState() {
+    if (HighAvailabilityConfig.isFollower()) {
+      throw new IllegalStateException("Can not submit task on HA follower");
+    }
+  }
+
   /**
    * Instantiates the task for the task class.
    *
@@ -344,6 +366,7 @@ public class TaskExecutor {
    */
   public UUID submit(RunnableTask runnableTask, ExecutorService taskExecutorService) {
     checkTaskExecutorState();
+    checkHAFollowerState();
     checkNotNull(runnableTask, "Task runnable must not be null");
     checkNotNull(taskExecutorService, "Task executor service must not be null");
     UUID taskUUID = runnableTask.getTaskUUID();
@@ -484,16 +507,16 @@ public class TaskExecutor {
     // Create a new task info object.
     TaskInfo taskInfo = null;
     if (taskUUID != null) {
-      taskInfo = TaskInfo.get(taskUUID);
+      taskInfo = TaskInfo.maybeGet(taskUUID).orElse(null);
     }
     if (taskInfo == null) {
       taskInfo = new TaskInfo(taskType, null);
     } else {
       taskInfo.setTaskState(State.Created);
     }
-    // Set the task details.
-    taskInfo.setDetails(
-        RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
+    // Set the task params.
+    taskInfo.setTaskParams(
+        RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
     return taskInfo;
@@ -533,11 +556,13 @@ public class TaskExecutor {
    * the task.
    */
   public class SubTaskGroup {
-    private final Set<RunnableSubTask> subTasks =
-        Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Set<RunnableSubTask> subTasks = ConcurrentHashMap.newKeySet();
     private final String name;
     private final boolean ignoreErrors;
     private final AtomicInteger numTasksCompleted;
+    // This predicate is invoked right before every subtask in this group.
+    private final AtomicReference<Predicate<ITask>> shouldRunPredicateRef;
+    private final AtomicReference<BiFunction<ITask, Throwable, Throwable>> afterRunHandlerRef;
 
     // Parent task runnable to which this group belongs.
     private volatile RunnableTask runnableTask;
@@ -553,13 +578,15 @@ public class TaskExecutor {
       this.subTaskGroupType = subTaskGroupType;
       this.ignoreErrors = ignoreErrors;
       this.numTasksCompleted = new AtomicInteger();
+      this.shouldRunPredicateRef = new AtomicReference<>();
+      this.afterRunHandlerRef = new AtomicReference<>();
     }
 
     /**
      * Adds a subtask to this SubTaskGroup. It adds the subtask in memory and is not run yet. When
      * the this SubTaskGroup is added to the RunnableTask, the subtasks are persisted.
      *
-     * @param subTask the subtask.
+     * @param subTask subTask the subtask.
      */
     public void addSubTask(ITask subTask) {
       checkNotNull(subTask, "Subtask must be non-null");
@@ -567,13 +594,13 @@ public class TaskExecutor {
       log.info("Adding task #{}: {}", subTaskCount, subTask.getName());
       if (log.isDebugEnabled()) {
         JsonNode redactedTask =
-            RedactingService.filterSecretFields(subTask.getTaskDetails(), RedactionTarget.LOGS);
+            RedactingService.filterSecretFields(subTask.getTaskParams(), RedactionTarget.LOGS);
         log.debug(
             "Details for task #{}: {} details= {}", subTaskCount, subTask.getName(), redactedTask);
       }
       TaskInfo taskInfo = createTaskInfo(subTask, null);
       taskInfo.setSubTaskGroupType(subTaskGroupType);
-      subTasks.add(new RunnableSubTask(subTask, taskInfo));
+      subTasks.add(new RunnableSubTask(this, subTask, taskInfo));
     }
 
     /**
@@ -710,16 +737,18 @@ public class TaskExecutor {
      * Sets the SubTaskGroupType for this SubTaskGroup.
      *
      * @param subTaskGroupType the SubTaskGroupType.
+     * @return the SubTaskGroup instance.
      */
-    public void setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {
+    public SubTaskGroup setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {
       if (subTaskGroupType == null) {
-        return;
+        return this;
       }
       log.info("Setting subtask({}) group type to {}", name, subTaskGroupType);
       this.subTaskGroupType = subTaskGroupType;
       for (RunnableSubTask runnable : subTasks) {
         runnable.setSubTaskGroupType(subTaskGroupType);
       }
+      return this;
     }
 
     public int getSubTaskCount() {
@@ -728,6 +757,38 @@ public class TaskExecutor {
 
     public int getTasksCompletedCount() {
       return numTasksCompleted.get();
+    }
+
+    public Set<UUID> getSubTaskUuids() {
+      return subTasks.stream()
+          .map(RunnableSubTask::getTaskUUID)
+          .collect(ImmutableSet.toImmutableSet());
+    }
+
+    /**
+     * This allows subtasks to be skipped based on additional conditions after they are already
+     * added. The subtasks appear in the list of subtasks but are not run.
+     */
+    public SubTaskGroup setShouldRunPredicate(Predicate<ITask> predicate) {
+      Preconditions.checkNotNull(predicate, "ShouldRun predicate cannot be null");
+      shouldRunPredicateRef.set(predicate);
+      return this;
+    }
+
+    /**
+     * Set a custom handler to be invoked for a task after the task is executed successfully or
+     * unsuccessfully. For failed execution, the function is called with the exception. The handler
+     * can choose to ignore it by returning null. The default behavior is to fail the task on
+     * exception.
+     *
+     * @param handler the handler function returning the exception to be thrown on failure. If it is
+     *     null, the error is ignored and the task is marked success.
+     * @return the current subtask group.
+     */
+    public SubTaskGroup setAfterRunHandler(BiFunction<ITask, Throwable, Throwable> handler) {
+      Preconditions.checkNotNull(handler, "After-run handler cannot be null");
+      afterRunHandlerRef.set(handler);
+      return this;
     }
 
     private String title() {
@@ -752,6 +813,14 @@ public class TaskExecutor {
 
     public JsonNode get(String key) {
       return data.get(key);
+    }
+
+    public <T> T get(String key, Class<T> clazz) {
+      JsonNode node = get(key);
+      if (node == null || node.isNull()) {
+        return null;
+      }
+      return Json.fromJson(node, clazz);
     }
 
     public Set<String> keys() {
@@ -795,7 +864,7 @@ public class TaskExecutor {
       this.taskScheduledTime = Instant.now();
 
       Duration duration = Duration.ZERO;
-      JsonNode jsonNode = taskInfo.getDetails();
+      JsonNode jsonNode = taskInfo.getTaskParams();
       if (jsonNode != null && !jsonNode.isNull()) {
         JsonNode timeLimitJsonNode = jsonNode.get("timeLimitMins");
         if (timeLimitJsonNode != null && !timeLimitJsonNode.isNull()) {
@@ -837,6 +906,7 @@ public class TaskExecutor {
     public void run() {
       Throwable t = null;
       taskStartTime = Instant.now();
+      boolean isTaskSkipped = false;
       Map<String, String> taskLabels = this.getTaskMetricLabels();
 
       try {
@@ -851,28 +921,26 @@ public class TaskExecutor {
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
         }
-
-        setTaskState(TaskInfo.State.Running);
-        log.debug("Invoking run() of task {}", task.getName());
-        task.setTaskUUID(getTaskUUID());
-        task.run();
-        setTaskState(TaskInfo.State.Success);
-      } catch (CancellationException e) {
-        t = e;
-        updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
-        onCancelled();
-        throw e;
-      } catch (Exception e) {
-        if (ExceptionUtils.hasCause(e, CancellationException.class)) {
-          t = new CancellationException(e.getMessage());
-          updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
-          onCancelled();
+        if (shouldRun(getTask())) {
+          setTaskState(TaskInfo.State.Running);
+          log.debug("Invoking run() of task {}", task.getName());
+          task.setTaskUUID(getTaskUUID());
+          task.run();
         } else {
-          t = e;
-          updateTaskDetailsOnError(TaskInfo.State.Failure, e);
+          isTaskSkipped = true;
+          log.info("Skipping task {} beause it is set to not run", getTaskInfo());
         }
-        Throwables.propagate(t);
+      } catch (Exception e) {
+        t = e;
       } finally {
+        t = handleAfterRun(getTask(), t);
+        if (t == null) {
+          setTaskState(TaskInfo.State.Success);
+        } else if (ExceptionUtils.hasCause(t, CancellationException.class)) {
+          updateTaskDetailsOnError(TaskInfo.State.Aborted, t);
+        } else {
+          updateTaskDetailsOnError(TaskInfo.State.Failure, t);
+        }
         taskCompletionTime = Instant.now();
         if (log.isDebugEnabled()) {
           log.debug(
@@ -880,9 +948,13 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(taskLabels, taskStartTime, taskCompletionTime, getTaskState());
+        writeTaskStateMetric(
+            taskLabels, taskStartTime, taskCompletionTime, getTaskState(), isTaskSkipped);
         task.terminate();
         publishAfterTask(t);
+      }
+      if (t != null) {
+        Throwables.propagate(t);
       }
     }
 
@@ -905,9 +977,9 @@ public class TaskExecutor {
 
     // This is invoked from tasks to save the updated task details generally in transaction with
     // other DB updates.
-    public synchronized void setTaskDetails(JsonNode taskDetails) {
+    public synchronized void setTaskParams(JsonNode taskParams) {
       taskInfo.refresh();
-      taskInfo.setDetails(taskDetails);
+      taskInfo.setTaskParams(taskParams);
       taskInfo.update();
     }
 
@@ -918,6 +990,14 @@ public class TaskExecutor {
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
     protected abstract UUID getUserTaskUUID();
+
+    protected abstract boolean shouldRun(ITask task);
+
+    /**
+     * Invoked after a run of a task to either report or suppress error. If the throwable is not
+     * returned, the error is suppressed.
+     */
+    protected abstract Throwable handleAfterRun(ITask task, Throwable t);
 
     Duration getTimeLimit() {
       return timeLimit;
@@ -964,12 +1044,17 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
-      ObjectNode taskDetails = taskInfo.getDetails().deepCopy();
+      TaskError taskError = new TaskError();
       // Method maskConfig does not modify the input as it makes a deep-copy.
-      String maskedTaskDetails = CommonUtils.maskConfig(taskDetails).toString();
-      String errorString;
+      String maskedTaskParams =
+          CommonUtils.maskConfig((ObjectNode) taskInfo.getTaskParams()).toString();
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
-        errorString = "Platform shutdown";
+        taskError.setCode(TaskErrorCode.PLATFORM_SHUTDOWN);
+        taskError.setMessage("Platform shutdown");
+      } else if (t instanceof TaskExecutionException) {
+        TaskExecutionException e = (TaskExecutionException) t;
+        taskError.setCode(e.getCode());
+        taskError.setMessage(e.getMessage());
       } else {
         Throwable cause = t;
         // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
@@ -977,26 +1062,25 @@ public class TaskExecutor {
         while (StringUtils.isEmpty(cause.getMessage()) && cause.getCause() != null) {
           cause = cause.getCause();
         }
-        errorString =
+        String errorString =
             String.format(
                 "Failed to execute task %s, hit error:\n\n %s.",
-                StringUtils.abbreviate(maskedTaskDetails, 500),
+                StringUtils.abbreviate(maskedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
+        taskError.setMessage(errorString);
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
           taskInfo.getTaskUUID(),
-          maskedTaskDetails,
+          maskedTaskParams,
           t);
 
       if (log.isDebugEnabled()) {
         log.debug("Task creator callstack:\n{}", String.join("\n", creatorCallstack));
       }
-
-      taskDetails.put("errorString", errorString);
       taskInfo.setTaskState(state);
-      taskInfo.setDetails(taskDetails);
+      taskInfo.setTaskError(taskError);
       taskInfo.update();
     }
 
@@ -1011,15 +1095,6 @@ public class TaskExecutor {
       TaskExecutionListener taskExecutionListener = getTaskExecutionListener();
       if (taskExecutionListener != null) {
         taskExecutionListener.afterTask(taskInfo, t);
-      }
-    }
-
-    void onCancelled() {
-      try {
-        task.onCancelled(taskInfo);
-      } catch (Exception e) {
-        // Do not propagate the exception as the task is already cancelled.
-        log.warn("Error occurred in onCancelled", e);
       }
     }
   }
@@ -1144,6 +1219,11 @@ public class TaskExecutor {
      */
     public void addSubTaskGroup(SubTaskGroup subTaskGroup) {
       log.info("Adding SubTaskGroup #{}: {}", subTaskGroups.size(), subTaskGroup.name);
+      if (subTaskGroup.getSubTaskCount() == 0) {
+        // Allowing to add this just messes up the positions.
+        log.info("Ignoring subtask SubTaskGroup {} as it is empty", subTaskGroup.name);
+        return;
+      }
       subTaskGroup.setRunnableTaskContext(this, subTaskPosition);
       subTaskGroups.add(subTaskGroup);
       subTaskPosition++;
@@ -1236,14 +1316,26 @@ public class TaskExecutor {
         waiterLatch.countDown();
       }
     }
+
+    @Override
+    protected boolean shouldRun(ITask task) {
+      return true;
+    }
+
+    @Override
+    protected Throwable handleAfterRun(ITask task, Throwable t) {
+      return t;
+    }
   }
 
   /** Runnable task for subtasks in a task. */
   public class RunnableSubTask extends AbstractRunnableTask {
+    private final SubTaskGroup subTaskGroup;
     private RunnableTask parentRunnableTask;
 
-    RunnableSubTask(ITask task, TaskInfo taskInfo) {
+    RunnableSubTask(SubTaskGroup subTaskGroup, ITask task, TaskInfo taskInfo) {
       super(task, taskInfo);
+      this.subTaskGroup = subTaskGroup;
     }
 
     private void executeWith(ExecutorService executorService) {
@@ -1288,8 +1380,12 @@ public class TaskExecutor {
     @Override
     protected Map<String, String> getTaskMetricLabels() {
       return ImmutableMap.of(
-          KnownAlertLabels.PARENT_TASK_TYPE.labelName(), parentRunnableTask.getTaskType().name(),
-          KnownAlertLabels.TASK_TYPE.labelName(), getTaskInfo().getTaskType().name());
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(),
+          parentRunnableTask.getTaskType().name(),
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          getTaskInfo().getTaskType().name(),
+          TASK_EXECUTION_SKIPPED_LABEL,
+          String.valueOf(false));
     }
 
     @Override
@@ -1320,6 +1416,21 @@ public class TaskExecutor {
       getTaskInfo().setParentUuid(parentRunnableTask.getTaskUUID());
       getTaskInfo().setPosition(position);
       getTaskInfo().save();
+    }
+
+    @Override
+    protected boolean shouldRun(ITask task) {
+      Predicate<ITask> predicate = subTaskGroup.shouldRunPredicateRef.get();
+      return predicate == null ? true : predicate.test(task);
+    }
+
+    @Override
+    protected Throwable handleAfterRun(ITask task, Throwable t) {
+      if (t != null && ExceptionUtils.hasCause(t, CancellationException.class)) {
+        return new CancellationException(t.getMessage());
+      }
+      BiFunction<ITask, Throwable, Throwable> consumer = subTaskGroup.afterRunHandlerRef.get();
+      return consumer == null ? t : consumer.apply(task, t);
     }
   }
 }

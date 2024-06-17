@@ -50,9 +50,8 @@ class EncryptionManager;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
-class CDCConsumerSplitDriverIf;
+class CloneStateManager;
 class XClusterRpcTasks;
-class CDCSplitDriverIf;
 class ClusterConfigInfo;
 class ClusterLoadBalancer;
 class FlushManager;
@@ -68,6 +67,7 @@ class MasterDdlProxy;
 class MasterEncryptionProxy;
 class MasterHeartbeatProxy;
 class MasterReplicationProxy;
+class MasterSnapshotCoordinator;
 class MasterTestProxy;
 class NamespaceInfo;
 class PermissionsManager;
@@ -92,6 +92,7 @@ class YsqlBackendsManager;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
+class MasterClusterHandler;
 
 struct XClusterConsumerStreamInfo;
 struct PgTableReadData;
@@ -101,6 +102,12 @@ struct TabletReplicaDriveInfo;
 
 class AsyncTabletSnapshotOp;
 using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
+
+class CloneStateInfo;
+using CloneStateInfoPtr = scoped_refptr<CloneStateInfo>;
+
+class NamespaceInfo;
+using NamespaceInfoPtr = scoped_refptr<NamespaceInfo>;
 
 class TableInfo;
 using TableInfoPtr = scoped_refptr<TableInfo>;

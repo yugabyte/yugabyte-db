@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB universes use a set of [default ports](../../../reference/configuration/default-ports) to manage access to services.
+YugabyteDB Anywhere and the universes it manages use a set of [default ports](../../prepare/networking/) to manage access to services.
 
 When deploying a universe, YugabyteDB Anywhere allows you to customize these ports.
 
@@ -26,8 +26,3 @@ Replace the default values with the values identifying the port that each proces
 After deployment, you can modify the YCQL API and admin UI endpoint ports. To change ports, navigate to your universe, click **Actions**, choose **Edit YCQL Configuration**, and select the **Override YCQL Default Ports** option.
 
 If you change the YCQL API endpoint on an active universe, be sure to update your applications as appropriate.
-
-## Learn more
-
-- [Default ports reference](../../../reference/configuration/default-ports) provides details on YugabyteDB default ports.
-- [Configure the on-premises provider](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-the-on-premises-provider) describes how to configure a node exporter port.

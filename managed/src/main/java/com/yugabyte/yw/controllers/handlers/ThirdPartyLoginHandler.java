@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.profile.OidcProfile;
@@ -107,13 +108,17 @@ public class ThirdPartyLoginHandler {
     }
     UUID custUUID = Customer.find.query().findOne().getUuid();
     Set<UUID> rolesSet = getRolesFromGroupMemberships(request, custUUID);
-    Users.Role userRole = confGetter.getGlobalConf(GlobalConfKeys.oidcDefaultRole);
+    Users.Role userRole = null;
 
     // calculate final system role to be assigned to user
     for (UUID roleUUID : rolesSet) {
       Role role = Role.find.byId(roleUUID);
       Users.Role systemRole = Users.Role.valueOf(role.getName());
       userRole = Users.Role.union(systemRole, userRole);
+    }
+
+    if (userRole == null) {
+      userRole = confGetter.getGlobalConf(GlobalConfKeys.oidcDefaultRole);
     }
 
     // update role if existing user or create new user
@@ -156,6 +161,10 @@ public class ThirdPartyLoginHandler {
                 profile.getAccessToken().toAuthorizationHeader());
       } else {
         groups = idToken.getJWTClaimsSet().getStringListClaim("groups");
+      }
+      // return if groups claim not found in token
+      if (groups == null) {
+        return roles;
       }
       log.info("List of user's groups = {}", groups.toString());
 
@@ -219,10 +228,21 @@ public class ThirdPartyLoginHandler {
     CommonProfile profile = this.getProfile(request);
     String emailAttr = confGetter.getGlobalConf(GlobalConfKeys.oidcEmailAttribute);
     String email;
-    if (emailAttr.equals("")) {
-      email = profile.getEmail();
-    } else {
+    if (emailAttr != null && StringUtils.isNotBlank(emailAttr)) {
       email = (String) profile.getAttribute(emailAttr);
+      if (email == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Unable to fetch email. Please check the email attribute specified.");
+      }
+    } else {
+      email = profile.getEmail();
+      // If email is null then the token doesn't have the 'email' claim.
+      // Need to specify the email attribute in the OIDC config.
+      if (email == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Unable to fetch email. Please specify the email attribute in the OIDC config.");
+      }
     }
     return email.toLowerCase();
   }
@@ -243,5 +263,12 @@ public class ThirdPartyLoginHandler {
             () ->
                 new PlatformServiceException(
                     Status.INTERNAL_SERVER_ERROR, "Unable to get profile"));
+  }
+
+  public ProfileManager<CommonProfile> getProfileManager(Request request) {
+    final PlayWebContext context = new PlayWebContext(request, sessionStore);
+    final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
+
+    return profileManager;
   }
 }

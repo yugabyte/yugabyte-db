@@ -8,8 +8,11 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -34,6 +37,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
@@ -47,8 +51,11 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.ShellKubernetesManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
@@ -106,6 +113,7 @@ import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
 import org.slf4j.LoggerFactory;
+import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -162,6 +170,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected YbcManager mockYbcManager;
   protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
   protected OperatorStatusUpdater mockOperatorStatusUpdater;
+  protected CloudUtilFactory mockCloudUtilFactory;
+  protected ReleasesUtils mockReleasesUtils;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -178,6 +188,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
+  protected ReleaseManager.ReleaseMetadata releaseMetadata;
+  protected ReleaseContainer releaseContainer;
 
   @Before
   public void setUp() {
@@ -198,6 +210,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
+    mockCloudUtilFactory = mock(CloudUtilFactory.class);
+    mockReleasesUtils = mock(ReleasesUtils.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -226,6 +240,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
     when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
+    when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
+    releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
+    releaseContainer =
+        new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
+    lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
   }
 
   @Override
@@ -345,7 +364,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
-    return waitForTask(taskUUID, 100);
+    return waitForTask(taskUUID, 200);
   }
 
   public static TaskInfo waitForTask(UUID taskUUID, long sleepDuration)
@@ -362,7 +381,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
-          if (taskInfo.getDetails() != null) {
+          if (taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
         }
@@ -388,17 +407,20 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public static String getBriefTaskInfo(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder();
     sb.append(taskInfo.getTaskType());
-    if (taskInfo.getDetails().has("nodeName")) {
+    if (taskInfo.getTaskParams() != null && taskInfo.getTaskParams().has("nodeName")) {
       sb.append("(");
-      sb.append(taskInfo.getDetails().get("nodeName").textValue());
-      if (taskInfo.getDetails().has("serverType")) {
-        sb.append(" ").append(taskInfo.getDetails().get("serverType").textValue());
+      sb.append(taskInfo.getTaskParams().get("nodeName").textValue());
+      if (taskInfo.getTaskParams().has("serverType")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("serverType").textValue());
       }
-      if (taskInfo.getDetails().has("process")) {
-        sb.append(" ").append(taskInfo.getDetails().get("process").textValue());
+      if (taskInfo.getTaskParams().has("state")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("state").textValue());
       }
-      if (taskInfo.getDetails().has("command")) {
-        sb.append(" ").append(taskInfo.getDetails().get("command").textValue());
+      if (taskInfo.getTaskParams().has("process")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("process").textValue());
+      }
+      if (taskInfo.getTaskParams().has("command")) {
+        sb.append(" ").append(taskInfo.getTaskParams().get("command").textValue());
       }
       sb.append(")");
     }
@@ -421,7 +443,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
         return false;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -430,6 +452,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public void waitForTaskPaused(UUID taskUuid) throws InterruptedException {
+    waitForTaskPaused(taskUuid, commissioner);
+  }
+
+  public static void waitForTaskPaused(UUID taskUuid, Commissioner commissioner)
+      throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
       if (!commissioner.isTaskRunning(taskUuid)) {
@@ -438,7 +465,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (commissioner.isTaskPaused(taskUuid)) {
         return;
       }
-      Thread.sleep(100);
+      Thread.sleep(10);
       numRetries++;
     }
     throw new RuntimeException(
@@ -451,12 +478,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     MDC.put(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY, String.valueOf(abortPosition));
   }
 
-  private void setPausePosition(int pausePosition) {
+  public static void setPausePosition(int pausePosition) {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     MDC.put(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY, String.valueOf(pausePosition));
   }
 
-  private void clearAbortOrPausePositions() {
+  public static void clearAbortOrPausePositions() {
     MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
   }
@@ -469,7 +496,26 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       TaskType taskType,
       ITaskParams taskParams) {
     verifyTaskRetries(
-        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true);
+        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true, 1);
+  }
+
+  public void verifyTaskRetries(
+      Customer customer,
+      CustomerTask.TaskType customerTaskType,
+      TargetType targetType,
+      UUID targetUuid,
+      TaskType taskType,
+      ITaskParams taskParams,
+      boolean checkStrictOrdering) {
+    verifyTaskRetries(
+        customer,
+        customerTaskType,
+        targetType,
+        targetUuid,
+        taskType,
+        taskParams,
+        checkStrictOrdering,
+        1);
   }
 
   /** This method returns all the subtasks of a task. */
@@ -515,7 +561,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       UUID targetUuid,
       TaskType taskType,
       ITaskParams taskParams,
-      boolean checkStrictOrdering) {
+      boolean checkStrictOrdering,
+      int abortStep) {
     try {
 
       // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
@@ -634,15 +681,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 String.format(
                     "Mismatched order detected in subtasks (pending %d/%d) on retry %d. Expected:"
                         + " %s, found: %s",
-                    retryCount,
                     pendingSubTaskCount,
                     expectedSubTaskTypes.size(),
+                    retryCount,
                     expectedTailTaskTypes,
                     tailTaskTypes));
           }
           totalSubTaskCount = retryTaskTypes.size();
         }
-        pendingSubTaskCount--;
+        pendingSubTaskCount -= abortStep;
       }
     } catch (RuntimeException e) {
       throw e;
@@ -650,6 +697,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       throw new RuntimeException(e);
     } finally {
       clearAbortOrPausePositions();
+    }
+  }
+
+  protected void setCheckNodesAreSafeToTakeDown(YBClient mockClient) {
+    try {
+      when(mockClient.areNodesSafeToTakeDown(any(), any(), anyLong()))
+          .thenReturn(new AreNodesSafeToTakeDownResponse(null));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
@@ -671,7 +727,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   public void setUnderReplicatedTabletsMock() {
     ObjectNode underReplicatedTabletsJson = Json.newObject();
     underReplicatedTabletsJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
+    lenient()
+        .when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
         .thenReturn(underReplicatedTabletsJson);
   }
 
@@ -739,5 +796,50 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     Optional<String>[] resp = response.toArray(new Optional[0]);
     when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
         .thenReturn(Optional.of(oldVersion), resp);
+  }
+
+  protected void mockLocaleCheckResponse(NodeUniverseManager mockNodeUniverseManager) {
+    List<String> command = new ArrayList<>();
+    command.add("locale");
+    command.add("-a");
+    command.add("|");
+    command.add("grep");
+    command.add("-E");
+    command.add("-q");
+    command.add("\"en_US.utf8|en_US.UTF-8\"");
+    command.add("&&");
+    command.add("echo");
+    command.add("\"Locale is present\"");
+    command.add("||");
+    command.add("echo");
+    command.add("\"Locale is not present\"");
+    ShellResponse shellResponse2 = new ShellResponse();
+    shellResponse2.message = "Command output:\\nLocale is present";
+    shellResponse2.code = 0;
+    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+        .thenReturn(shellResponse2);
+  }
+
+  protected void mockClockSyncResponse(NodeUniverseManager nodeUniverseManager) {
+    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+        .thenReturn(
+            ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "/usr/bin/chronyc"))
+        .thenReturn(
+            ShellResponse.create(
+                ShellResponse.ERROR_CODE_SUCCESS,
+                ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                    + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                    + "    Stratum         : 3\n"
+                    + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                    + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                    + "    Last offset     : +0.000019514 seconds\n"
+                    + "    RMS offset      : 0.000011283 seconds\n"
+                    + "    Frequency       : 99.154 ppm slow\n"
+                    + "    Residual freq   : +0.009 ppm\n"
+                    + "    Skew            : 0.106 ppm\n"
+                    + "    Root delay      : 0.000162946 seconds\n"
+                    + "    Root dispersion : 0.000101734 seconds\n"
+                    + "    Update interval : 32.3 seconds\n"
+                    + "    Leap status     : Normal"));
   }
 }

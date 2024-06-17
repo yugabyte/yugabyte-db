@@ -92,3 +92,7 @@ extern bool YbGetNumYsqlConnMgrConnections(const char *db_name,
 										   const char *user_name,
 										   uint32_t *num_logical_conn,
 										   uint32_t *num_physical_conn);
+
+extern void yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extra);
+
+extern void YbSendParameterStatusForConnectionManager(const char *name, const char *value);

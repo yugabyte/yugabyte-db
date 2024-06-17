@@ -25,7 +25,6 @@
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/cdc_types.h"
-#include "yb/cdc/cdc_util.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -65,6 +64,7 @@ namespace tserver {
 class AutoFlagsVersionHandler;
 class XClusterPoller;
 class TabletServer;
+class TserverXClusterContextIf;
 
 struct XClusterClient {
   std::unique_ptr<rpc::Messenger> messenger;
@@ -78,9 +78,11 @@ struct XClusterClient {
 class XClusterConsumer : public XClusterConsumerIf {
  public:
   XClusterConsumer(
-      std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-      const std::string& ts_uuid, std::unique_ptr<XClusterClient> local_client,
-      ConnectToPostgresFunc connect_to_pg_func, GetNamespaceInfoFunc get_namespace_info_func);
+      std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
+      client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
+      GetNamespaceInfoFunc get_namespace_info_func,
+      const TserverXClusterContextIf& xcluster_context,
+      const scoped_refptr<MetricEntity>& server_metric_entity);
 
   ~XClusterConsumer();
   Status Init();
@@ -108,14 +110,14 @@ class XClusterConsumer : public XClusterConsumerIf {
     return TEST_num_successful_write_rpcs_.load(std::memory_order_acquire);
   }
 
+  std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const override;
+
   Status ReloadCertificates() override;
 
   Status PublishXClusterSafeTime();
 
   SchemaVersion GetMinXClusterSchemaVersion(
       const TableId& table_id, const ColocationId& colocation_id) override;
-
-  cdc::XClusterRole TEST_GetXClusterRole() const override { return consumer_role_; }
 
   void PopulateMasterHeartbeatRequest(
       master::TSHeartbeatRequestPB* req, bool needs_full_tablet_report) override;
@@ -125,6 +127,23 @@ class XClusterConsumer : public XClusterConsumerIf {
   Status ReportNewAutoFlagConfigVersion(
       const xcluster::ReplicationGroupId& replication_group_id, uint32_t new_version) const;
 
+  void ClearAllClientMetaCaches() const override;
+
+  void IncrementApplyFailureCount() { metric_apply_failure_count_->Increment(); }
+
+  void IncrementPollFailureCount() { metric_poll_failure_count_->Increment(); }
+
+  scoped_refptr<Counter> TEST_metric_replication_error_count() const override {
+    return metric_replication_error_count_;
+  }
+
+  scoped_refptr<Counter> TEST_metric_apply_failure_count() const override {
+    return metric_apply_failure_count_;
+  }
+
+  scoped_refptr<Counter> TEST_metric_poll_failure_count() const override {
+    return metric_poll_failure_count_;
+  }
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread() EXCLUDES(shutdown_mutex_);
@@ -213,7 +232,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::unique_ptr<rpc::Rpcs> rpcs_;
 
   std::string log_prefix_;
-  std::shared_ptr<XClusterClient> local_client_;
+  client::YBClient& local_client_;
 
   // map: {replication_group_id : ...}.
   std::unordered_map<xcluster::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
@@ -224,7 +243,6 @@ class XClusterConsumer : public XClusterConsumerIf {
       GUARDED_BY(master_data_mutex_);
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
-  std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;
 
   // This is the cached cluster config version on which the pollers
   // were notified of any changes
@@ -248,6 +266,14 @@ class XClusterConsumer : public XClusterConsumerIf {
   ConnectToPostgresFunc connect_to_pg_func_;
 
   GetNamespaceInfoFunc get_namespace_info_func_;
+
+  const TserverXClusterContextIf& xcluster_context_;
+
+  scoped_refptr<Counter> metric_apply_failure_count_;
+
+  scoped_refptr<Counter> metric_poll_failure_count_;
+
+  scoped_refptr<Counter> metric_replication_error_count_;
 };
 
 } // namespace tserver

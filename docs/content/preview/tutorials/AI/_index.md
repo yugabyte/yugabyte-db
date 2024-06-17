@@ -6,70 +6,49 @@ description: How to Develop Applications with AI and YugabyteDB
 image:
 headcontent: Add a scalable and highly-available database to your AI projects
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-ai
     parent: tutorials
+    weight: 35
 type: indexpage
 ---
 
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ai-langchain-openai">
-      <div class="head">
-        <img class="icon" src="/images/tutorials/ai/icons/langchain-icon.svg" aria-hidden="true" />
-        <div class="title">LangChain and OpenAI</div>
-      </div>
-      <div class="body">
-        Build scalable applications with LLM integrations using LangChain and OpenAI.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ai-llamaindex-openai">
-      <div class="head">
-        <img class="icon" src="/images/tutorials/ai/icons/llamaindex-icon.svg" aria-hidden="true" />
-        <div class="title">LlamaIndex and OpenAI</div>
-      </div>
-      <div class="body">
-        Build a scalable RAG (Retrieval-Augmented Generation) app using LlamaIndex and OpenAI.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ai-localai">
-      <div class="head">
-        <img class="icon" src="/images/tutorials/ai/icons/localai-icon.svg" aria-hidden="true" />
-        <div class="title">LocalAI</div>
-      </div>
-      <div class="body">
-        Build an LLM application, hosted locally or on-prem using LocalAI and YugabyteDB.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="../azure/azure-openai/">
-      <div class="head">
-        <img class="icon" src="/images/tutorials/azure/icons/OpenAI-Icon.svg" aria-hidden="true" />
-        <div class="title">Azure OpenAI</div>
-      </div>
-      <div class="body">
-        Build a scalable generative AI application using YugabyteDB as the database backend.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="../google/google-vertex-ai/">
-      <div class="head">
-        <img
-          class="icon"
-          src="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg"
-          aria-hidden="true"
-        />
-        <div class="title">Google Vertex AI</div>
-      </div>
-      <div class="body">
-        Deploy generative AI applications using Google Vertex AI and YugabyteDB.
-      </div>
-    </a>
-  </div>
-</div>
+{{<index/block>}}
+
+{{<index/item
+    title="LangChain and OpenAI"
+    body="Build scalable applications with LLM integrations using LangChain and OpenAI."
+    href="ai-langchain-openai/"
+    icon="/images/tutorials/ai/icons/langchain-icon.svg">}}
+
+{{<index/item
+    title="LlamaIndex and OpenAI"
+    body="Build a scalable RAG (Retrieval-Augmented Generation) app using LlamaIndex and OpenAI."
+    href="ai-llamaindex-openai/"
+    icon="/images/tutorials/ai/icons/llamaindex-icon.svg">}}
+
+{{<index/item
+    title="LocalAI"
+    body="Build an LLM application, hosted locally or on-prem using LocalAI and YugabyteDB."
+    href="ai-localai/"
+    icon="/images/tutorials/ai/icons/localai-icon.svg">}}
+
+{{<index/item
+    title="Ollama"
+    body="Build an application with a locally-hosted embedding model using Ollama and YugabyteDB."
+    href="ai-ollama/"
+    icon="/images/tutorials/ai/icons/ollama-icon.svg">}}
+
+{{<index/item
+    title="Azure OpenAI"
+    body="Build a scalable generative AI application using YugabyteDB as the database backend."
+    href="../azure/azure-openai/"
+    icon="/images/tutorials/azure/icons/OpenAI-Icon.svg">}}
+
+{{<index/item
+    title="Google Vertex AI"
+    body="Deploy generative AI applications using Google Vertex AI and YugabyteDB."
+    href="../google/google-vertex-ai/"
+    icon="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg">}}
+
+{{</index/block>}}

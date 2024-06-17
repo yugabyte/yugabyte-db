@@ -10,6 +10,7 @@
 import { FC } from 'react';
 import moment from 'moment-timezone';
 import { useSelector } from 'react-redux';
+import { isInteger } from 'lodash';
 
 export const YBTimeFormats = {
   YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY HH:mm:ss [UTC]ZZ',
@@ -18,7 +19,11 @@ export const YBTimeFormats = {
   YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ',
   YB_TIME_ONLY_TIMESTAMP: 'HH:mm:ss'
 } as const;
+
 export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];
+
+export const YB_INPUT_TIMESTAMP_FORMAT = 'ddd MMM DD HH:mm:ss z YYYY';
+
 /**
  * Converts date to RFC3339 format("yyyy-MM-dd'T'HH:mm:ss'Z'")
  * @param d Date
@@ -57,7 +62,8 @@ export const formatDatetime = (
   timeFormat: YBTimeFormats = YBTimeFormats.YB_DEFAULT_TIMESTAMP,
   timezone?: string
 ): string => {
-  return timezone ? moment(date).tz(timezone).format(timeFormat) : moment(date).format(timeFormat);
+  const momentObj = getMomentObject(date);
+  return timezone ? momentObj.tz(timezone).format(timeFormat) : momentObj.format(timeFormat);
 };
 
 type FormatDateProps = {
@@ -72,13 +78,23 @@ export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
   return <>{formatDatetime(date, timeFormat, currentUserTimezone)}</>;
 };
 
-export const ybFormatDate = (
-  date: Date | string | number,
-  timeFormat = YBTimeFormats.YB_DEFAULT_TIMESTAMP
-) => {
-  return <YBFormatDate date={date} timeFormat={timeFormat} />;
+export const ybFormatDate = (date: Date | string | number, timeFormat?: YBTimeFormats) => {
+  const defaultFormat = timeFormat ?? YBTimeFormats.YB_DEFAULT_TIMESTAMP;
+  return <YBFormatDate date={date} timeFormat={defaultFormat} />;
 };
 
 export const dateStrToMoment = (str: string) => {
-  return moment(str);
+  return getMomentObject(str);
+};
+
+export const getDiffHours = (startDateTime: any, endDateTime: any) => {
+  const diffHours = (endDateTime - startDateTime) / 3600000;
+  return diffHours;
+};
+
+const getMomentObject = (date: moment.MomentInput) => {
+  //charts use linux epoch as timestamps
+  return !isInteger(date) && moment(date, YB_INPUT_TIMESTAMP_FORMAT).isValid()
+    ? moment(date, YB_INPUT_TIMESTAMP_FORMAT)
+    : moment(date);
 };

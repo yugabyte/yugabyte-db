@@ -78,11 +78,11 @@ type PayloadReport struct {
 }
 
 type SchemaAnalyzeReport struct {
-    DbName          string                               `json:"dbName"`
-    SchemaName      string                               `json:"schemaName"`
-    DbVersion       string                               `json:"dbVersion"`
-    Notes           string                               `json:"notes"`
-    DatabaseObjects []models.SqlObjectsDetails           `json:"databaseObjects"`
+    DbName          string                     `json:"dbName"`
+    SchemaName      string                     `json:"schemaName"`
+    DbVersion       string                     `json:"dbVersion"`
+    Notes           string                     `json:"notes"`
+    DatabaseObjects []models.SqlObjectsDetails `json:"databaseObjects"`
 }
 
 type AllVoygaerMigrations struct {
@@ -167,7 +167,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
     rows, err := conn.Query(context.Background(), RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL)
     if err != nil {
         log.Errorf(fmt.Sprintf("[%s] Error while executing query: [%s]",
-                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+            LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
         log.Errorf(err.Error())
         voyagerMigrationsResponse.Error = err
         future <- voyagerMigrationsResponse
@@ -230,7 +230,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
 
             rowStruct.Status = "In Progress"
             if allVoygaerMigration.migrationPhase == 4 &&
-            allVoygaerMigration.invocationSeq >= 2 {
+                allVoygaerMigration.invocationSeq >= 2 {
                 rowStruct.Status = "Complete"
                 rowStruct.MigrationPhase = 5
             }
@@ -271,7 +271,7 @@ func getVoyagerDataMigrationMetricsFuture(log logger.Logger, conn *pgxpool.Pool,
     rows, err := conn.Query(context.Background(), RETRIEVE_DATA_MIGRATION_METRICS, migrationUuid)
     if err != nil {
         log.Errorf(fmt.Sprintf("[%s] Error while running query: "+
-                "RETRIEVE_DATA_MIGRATION_METRICS", LOGGER_FILE_NAME))
+            "RETRIEVE_DATA_MIGRATION_METRICS", LOGGER_FILE_NAME))
         log.Errorf(err.Error())
         voyagerDataMigrationMetricsResponse.Error = err
         future <- voyagerDataMigrationMetricsResponse
@@ -521,12 +521,12 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
 
     // Fetching schmea and complexity details
     voyagerDetailsrows, err := conn.Query(context.Background(),
-            RETRIEVE_VOYGAGER_MIGRATION_DETAILS, migrationUuid, 0, 2)
-        if err != nil {
-            c.logger.Errorf(fmt.Sprintf("[%s] Error while querying for assesment details",
-                LOGGER_FILE_NAME))
-                c.logger.Errorf(err.Error())
-        }
+        RETRIEVE_VOYGAGER_MIGRATION_DETAILS, migrationUuid, 0, 2)
+    if err != nil {
+        c.logger.Errorf(fmt.Sprintf("[%s] Error while querying for assesment details",
+            LOGGER_FILE_NAME))
+        c.logger.Errorf(err.Error())
+    }
 
     for voyagerDetailsrows.Next() {
         rowStruct := models.VoyagerMigrationDetails{}
@@ -537,7 +537,7 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
         if err != nil {
             c.logger.Errorf(fmt.Sprintf("[%s] Error while scanning for assesment details",
                 LOGGER_FILE_NAME))
-                c.logger.Errorf(err.Error())
+            c.logger.Errorf(err.Error())
         }
         assesmentComplexity.Schema = rowStruct.SchemaName
         assesmentComplexity.Complexity = complexity.String
@@ -548,4 +548,81 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
     migrationAssesmentInfo.AssesmentStatus = true
 
     return ctx.JSON(http.StatusOK, migrationAssesmentInfo)
+}
+
+func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
+
+    voyagerAssessmentReportResponse := models.MigrationAssessmentReport{
+        Summary:                models.AssessmentReportSummary{},
+        SourceEnvironment:      models.SourceEnvironmentInfo{},
+        SourceDatabase:         models.SourceDatabaseInfo{},
+        TargetRecommendations:  models.TargetClusterRecommendationDetails{},
+        RecommendedRefactoring: models.RecommendedRefactoringGraph{},
+        UnsupportedDataTypes:   []models.UnsupportedSqlInfo{},
+        UnsupportedFunctions:   []models.UnsupportedSqlInfo{},
+        UnsupportedFeatures:    []models.UnsupportedSqlInfo{},
+    }
+
+    voyagerAssessmentReportResponse.Summary.EstimatedMigrationTime = "2 hrs 30 mins"
+    voyagerAssessmentReportResponse.Summary.MigrationComplexity = "Easy"
+    voyagerAssessmentReportResponse.Summary.Summary = "Recommended instance type with" +
+        "2 vCPU and 8 GiB memory could fit 1769 object(s) with 104.0740 GB size and throughput " +
+        "requirement of 52 reads/sec and 0 writes/sec as colocated. Rest 63 object(s) with " +
+        "479.0547 GB size and throughput requirement of 0 reads/sec and 0 writes/sec  need to " +
+        "be migrated as range partitioned tables"
+
+    voyagerAssessmentReportResponse.SourceEnvironment.TotalVcpu = "240"
+    voyagerAssessmentReportResponse.SourceEnvironment.TotalMemory = "480 GB"
+    voyagerAssessmentReportResponse.SourceEnvironment.TotalDiskSize = "960 GB"
+    voyagerAssessmentReportResponse.SourceEnvironment.NoOfConnections = "16"
+
+    voyagerAssessmentReportResponse.SourceDatabase.TableSize = 240
+    voyagerAssessmentReportResponse.SourceDatabase.TableRowCount = 120392668
+    voyagerAssessmentReportResponse.SourceDatabase.TotalTableSize = 270
+    voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize = 30
+
+    voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary = "Recommended " +
+        "instance type with" +
+        "2 vCPU and 8 GiB memory could fit 1769 object(s) with 104.0740 GB size and throughput " +
+        "requirement of 52 reads/sec and 0 writes/sec as colocated. Rest 63 object(s) with " +
+        "479.0547 GB size and throughput requirement of 0 reads/sec and 0 writes/sec  need to " +
+        "be migrated as range partitioned tables"
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetClusterRecommendation.NumNodes = 3
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetClusterRecommendation.VcpuPerNode = 2
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetClusterRecommendation.MemoryPerNode = 8
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetClusterRecommendation.InsertsPerNode = 6
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetClusterRecommendation.ConnectionsPerNode = 5
+
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetSchemaRecommendation.NoOfColocatedTables = 150
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetSchemaRecommendation.NoOfShardedTables = 40
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetSchemaRecommendation.TotalSizeColocatedTables = 104
+    voyagerAssessmentReportResponse.TargetRecommendations.
+        TargetSchemaRecommendation.TotalSizeShardedTables = 479
+
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Automatic = 22
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Manual = 9
+    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Automatic = 25
+    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Manual = 3
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Automatic = 72
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Manual = 5
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Automatic = 23
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Manual = 5
+    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Automatic = 27
+    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Manual = 3
+
+    unsupportedDataType1 := models.UnsupportedSqlInfo{}
+    unsupportedDataType1.Count = 5
+    unsupportedDataType1.UnsupportedType = "JSONB"
+    voyagerAssessmentReportResponse.UnsupportedDataTypes =
+        []models.UnsupportedSqlInfo{unsupportedDataType1}
+
+    return ctx.JSON(http.StatusOK, voyagerAssessmentReportResponse)
 }

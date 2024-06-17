@@ -31,6 +31,7 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -46,6 +47,9 @@
 
 using namespace std::literals;
 
+DECLARE_bool(ysql_yb_ash_enable_infra);
+DECLARE_bool(ysql_yb_enable_ash);
+
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(cql_prepare_child_threshold_ms);
@@ -58,6 +62,8 @@ DECLARE_int64(transaction_abort_check_interval_ms);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_bool(transactions_poll_check_aborted);
 
+DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
+DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
@@ -65,10 +71,10 @@ DECLARE_bool(TEST_writequery_stuck_from_callback_leak);
 
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
-DECLARE_bool(TEST_yb_enable_ash);
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_int32(num_concurrent_backfills_allowed);
+DECLARE_int32(TEST_slowdown_backfill_by_ms);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_bool(TEST_export_wait_state_names);
@@ -97,11 +103,16 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_slow_query_threshold_ms) = kTimeMultiplier * 10000;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_enable_ash) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ash_enable_infra) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ash) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_export_wait_state_names) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ash_fetch_wait_states_for_raft_log) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction) =
+        true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_collect_end_to_end_traces) = true;
     pgwrapper::PgMiniTestBase::SetUp();
 
+    ASSERT_OK(EnsureClientCreated());
     ASSERT_OK(StartCQLServer());
     cql_driver_ = std::make_unique<CppCassandraDriver>(
         std::vector<std::string>{cql_host_}, cql_port_, UsePartitionAwareRouting::kTrue);
@@ -155,11 +166,14 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
 
   void DoAshCalls(std::atomic<bool>& stop);
   void RunTestsAndFetchAshMethodCounts();
+  virtual void PrintRowsFromASH();
+  virtual void VerifyRowsFromASH();
   virtual bool IsDone() EXCLUDES(mutex_) = 0;
   virtual void VerifyCountsUnlocked() REQUIRES(mutex_);
   virtual void PrintCountsUnlocked() REQUIRES(mutex_);
   void UpdateCounts(const tserver::PgActiveSessionHistoryResponsePB& resp) EXCLUDES(mutex_);
   size_t GetMethodCount(const std::string& method) EXCLUDES(mutex_);
+  virtual void VerifyResponse(const tserver::PgActiveSessionHistoryResponsePB& resp) {}
 
   void CreateCqlTables();
   void DoCqlWritesUntilStopped(std::atomic<bool>& stop);
@@ -181,6 +195,34 @@ class WaitStateTestCheckMethodCounts : public WaitStateITest {
   bool enable_sql_ = true;
   bool enable_cql_ = true;
 };
+
+void WaitStateTestCheckMethodCounts::VerifyRowsFromASH() {
+  if (NumTabletServers() != 1) {
+    return;
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+  // Verify that we get the correct uuid for top_level_node_id.
+  // Some rpc's like those received from the master may not have the ash_metadata set, thus
+  // resulting in a nil/zero uuid for top_level_node_id. Expect to see that all the received
+  // non-zero uuids correspond to the node we are connecting ysql/ycql queries to.
+  const std::string query = yb::Format(
+      "select distinct(top_level_node_id) from yb_active_session_history where top_level_node_id "
+      "!= '00000000-0000-0000-0000-000000000000';");
+  // Convert to Uuid and back to string to get the right formatting with dashes as expected.
+  auto n0_uuid_with_dashes =
+      Uuid::FromHexStringBigEndian(cluster_->mini_tablet_server(0)->server()->permanent_uuid())
+          .ToString();
+  LOG(INFO) << "Running: " << query;
+  auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+  LOG(INFO) << " Got :\n" << rows;
+  // Some of the tests only check for the wait-state to have been reached.
+  // We may not have collected many samples in the circular buffer, so it is ok for the query to
+  // return nothing.
+  if (!rows.empty()) {
+    ASSERT_EQ(rows, n0_uuid_with_dashes);
+  }
+}
 
 void WaitStateTestCheckMethodCounts::CreateCqlTables() {
   std::atomic_bool is_done{false};
@@ -293,7 +335,7 @@ void WaitStateTestCheckMethodCounts::UpdateCounts(
       VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
       const auto& method =
           (entry.has_aux_info() && entry.aux_info().has_method() ? entry.aux_info().method() : "");
-      const auto& wait_state_code = entry.wait_status_code_as_string();
+      const auto& wait_state_code = entry.wait_state_code_as_string();
       ++method_counts_[method];
       ++wait_state_code_counts_[wait_state_code];
       ++wait_state_code_counts_by_method_[method][wait_state_code];
@@ -301,10 +343,10 @@ void WaitStateTestCheckMethodCounts::UpdateCounts(
       if (method.empty()) {
         LOG(ERROR) << "Found entry without AuxInfo/method." << entry.DebugString();
         // If an RPC does not have the aux/method information, it shouldn't have progressed much.
-        if (entry.has_wait_status_code_as_string()) {
+        if (entry.has_wait_state_code_as_string()) {
           EXPECT_TRUE(
-              entry.wait_status_code_as_string() == "kOnCpu_Passive" ||
-              entry.wait_status_code_as_string() == "kOnCpu_Active");
+              entry.wait_state_code_as_string() == "kOnCpu_Passive" ||
+              entry.wait_state_code_as_string() == "kOnCpu_Active");
         }
       }
     }
@@ -328,6 +370,7 @@ void WaitStateTestCheckMethodCounts::DoAshCalls(std::atomic<bool>& stop) {
     controller.Reset();
     ++num_ash_calls_done_;
     VLOG(1) << "Call " << num_ash_calls_done_.load() << " got " << yb::ToString(resp);
+    VerifyResponse(resp);
     UpdateCounts(resp);
     SleepFor(10ms);
   }
@@ -353,6 +396,48 @@ void WaitStateTestCheckMethodCounts::RunTestsAndFetchAshMethodCounts() {
     PrintCountsUnlocked();
     VerifyCountsUnlocked();
   }
+  PrintRowsFromASH();
+  VerifyRowsFromASH();
+}
+
+void WaitStateTestCheckMethodCounts::PrintRowsFromASH() {
+  auto conn = ASSERT_RESULT(Connect());
+  std::vector<std::string> queries;
+  queries.push_back("SELECT count(*) FROM yb_active_session_history;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, "
+      "CASE WHEN wait_event_aux = '' THEN 'Null' ELSE 'NonNull' END as null_or_not, count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, null_or_not;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, "
+      "CASE WHEN rpc_request_id = 0 THEN 'Zero' ELSE 'NonZero' END as zero_or_not, count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, zero_or_not;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, top_level_node_id "
+      ", count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, top_level_node_id;");
+  queries.push_back(
+      "SELECT wait_event_component, wait_event_class, wait_event, wait_event_aux, "
+      "top_level_node_id , count(*) "
+      "FROM yb_active_session_history "
+      "GROUP BY wait_event_component, wait_event_class, wait_event, wait_event_aux, "
+      "top_level_node_id;");
+  queries.push_back(
+      "select distinct(top_level_node_id), wait_event_component from yb_active_session_history;");
+  queries.push_back(
+      "select wait_event_component, client_node_ip, wait_event_aux, count(*) from "
+      "yb_active_session_history group by wait_event_component, wait_event_aux, client_node_ip;");
+  queries.push_back(
+      "select wait_event_component, client_node_ip, count(*) from yb_active_session_history group "
+      "by wait_event_component, client_node_ip;");
+  for (const auto& query : queries) {
+    LOG(INFO) << "\n\nRunning: " << query;
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(query, ",", "\n"));
+    LOG(INFO) << "Got :\n" << rows;
+  }
 }
 
 void WaitStateTestCheckMethodCounts::PrintCountsUnlocked() {
@@ -377,6 +462,9 @@ void WaitStateTestCheckMethodCounts::VerifyCountsUnlocked() {
   // It is acceptable that some calls may not have populated their aux_info yet.
   // This probability should be very low.
   ASSERT_LE(method_counts_[""], 2 * num_ash_calls * kProbNoMethod);
+
+  // We ignore ASH calls from showing up during the pull.
+  ASSERT_EQ(wait_state_code_counts_["kDumpRunningRpc_WaitOnReactor"], 0);
 }
 
 bool WaitStateTestCheckMethodCounts::IsDone() {
@@ -393,6 +481,10 @@ class AshTestPg : public WaitStateTestCheckMethodCounts {
   }
 
  protected:
+  void SetUp() override {
+    WaitStateTestCheckMethodCounts::SetUp();
+  }
+
   void VerifyCountsUnlocked() override REQUIRES(mutex_) {
     WaitStateTestCheckMethodCounts::VerifyCountsUnlocked();
 
@@ -421,6 +513,13 @@ class AshTestCql : public WaitStateTestCheckMethodCounts {
   void VerifyCountsUnlocked() REQUIRES(mutex_) override {
     WaitStateTestCheckMethodCounts::VerifyCountsUnlocked();
     ASSERT_GE(method_counts_["CQLProcessCall"], 1);
+  }
+
+  void VerifyResponse(const tserver::PgActiveSessionHistoryResponsePB& resp) override {
+    for (const auto& wait_state_pb : resp.cql_wait_states().wait_states()) {
+      LOG_IF(ERROR, wait_state_pb.metadata().rpc_request_id() == 0)
+          << "wait_state_pb is " << wait_state_pb.DebugString();
+    }
   }
 
   bool IsDone() override EXCLUDES(mutex_) {
@@ -481,7 +580,9 @@ void AshTestWithCompactions::DoCompactionsAndFlushes(std::atomic<bool>& stop) {
       LOG(INFO) << "Compactions done " << num_compactions_done_;
     } else {
       LOG(INFO) << __func__ << "Running flush";
-      ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+      ASSERT_OK(cluster_->FlushTablets(
+          tablet::FlushMode::kSync,
+          tablet::FlushFlags::kAllDbs | tablet::FlushFlags::kNoScopedOperation));
     }
     SleepFor(waitTime);
   }
@@ -506,7 +607,11 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
         UsePriorityQueueForCompaction();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
         UsePriorityQueueForFlush();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_concurrent_backfills_allowed) = 1;
+    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_concurrent_backfills_allowed) = 1;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 20;
+      enable_sql_ = false;
+    }
     if (code_to_look_for_ == ash::WaitStateCode::kRetryableRequests_SaveToDisk) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
     }
@@ -520,6 +625,9 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
       enable_cql_ = false;
     }
+
+    const auto code_class = ash::Class(to_underlying(code_to_look_for_) >> YB_ASH_CLASS_POSITION);
+    do_compactions_ = (code_class == ash::Class::kRocksDB);
 
     WaitStateITest::SetUp();
   }
@@ -598,6 +706,9 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
         code_to_look_for_ == ash::WaitStateCode::kLockedBatchEntry_Lock) {
       return 10;
     }
+    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot) {
+      return 0;
+    }
     return 1;
   }
 
@@ -611,13 +722,23 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
 };
 
 void AshTestVerifyOccurrenceBase::CreateIndexesUntilStopped(std::atomic<bool>& stop) {
-  auto conn = ASSERT_RESULT(Connect());
-  for (int i = 0; !stop; i++) {
-    LOG(INFO) << "Creating a index idx_" << i;
-    WARN_NOT_OK(
-        conn.Execute(yb::Format("CREATE INDEX idx_$0 on t (value)", i)), "Create index failed");
+  auto session = ASSERT_RESULT(CqlSessionWithRetries(stop, __PRETTY_FUNCTION__));
+  constexpr auto kNamespace = "test";
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+  for (int i = 1; !stop; i++) {
+    const client::YBTableName idx_name(YQL_DATABASE_CQL, kNamespace, yb::Format("cql_idx_$0", i));
+    LOG(INFO) << "Creating a CQL index " << idx_name.ToString();
+    EXPECT_OK(
+        session.ExecuteQuery(yb::Format("CREATE INDEX $0 ON t (value)", idx_name.table_name())));
+
+    auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, idx_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+    LOG_IF(ERROR, perm != IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)
+        << "Got " << yb::ToString(perm);
+
     LOG(INFO) << "Created index " << i;
     ++num_indexes_created_;
+    SleepFor(10ms);
   }
 }
 
@@ -635,8 +756,6 @@ std::string WaitStateCodeToString(const testing::TestParamInfo<ash::WaitStateCod
 }
 
 void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder) {
-  do_compactions_ = true;
-  AshTestWithCompactions::LaunchWorkers(thread_holder);
   switch (code_to_look_for_) {
     case ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
     case ash::WaitStateCode::kCreatingNewTablet:
@@ -653,6 +772,7 @@ void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder)
     default: {
     }
   }
+  AshTestWithCompactions::LaunchWorkers(thread_holder);
 }
 
 class AshTestVerifyOccurrence : public AshTestVerifyOccurrenceBase,
@@ -670,8 +790,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRetryableRequests_SaveToDisk,
       ash::WaitStateCode::kMVCC_WaitForSafeTime,
       ash::WaitStateCode::kLockedBatchEntry_Lock,
-      // TODO(#20820) : Enable once #20820 is fixed
-      // ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
+      ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
       ash::WaitStateCode::kCreatingNewTablet,
       ash::WaitStateCode::kSaveRaftGroupMetadataToDisk,
       ash::WaitStateCode::kDumpRunningRpc_WaitOnReactor,
@@ -692,11 +811,11 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kRocksDB_CloseFile,
       ash::WaitStateCode::kRocksDB_RateLimiter,
       ash::WaitStateCode::kRocksDB_NewIterator,
-      ash::WaitStateCode::kCQL_Parse,
-      ash::WaitStateCode::kCQL_Analyze,
-      ash::WaitStateCode::kCQL_Execute,
-      ash::WaitStateCode::kYBC_WaitingOnDocdb,
-      ash::WaitStateCode::kYBC_LookingUpTablet
+      ash::WaitStateCode::kYCQL_Parse,
+      ash::WaitStateCode::kYCQL_Analyze,
+      ash::WaitStateCode::kYCQL_Execute,
+      ash::WaitStateCode::kYBClient_WaitingOnDocDB,
+      ash::WaitStateCode::kYBClient_LookingUpTablet
       ), WaitStateCodeToString);
 
 TEST_P(AshTestVerifyOccurrence, YB_DISABLE_TEST_IN_TSAN(VerifyWaitStateEntered)) {

@@ -154,7 +154,7 @@ public class ProviderEditRestrictionManager {
             UUID taskId = UUID.fromString(probableTaskIdStr);
             if (!taskId.equals(currentTaskId)) {
               throw new PlatformServiceException(
-                  Http.Status.SERVICE_UNAVAILABLE,
+                  Http.Status.CONFLICT,
                   "Provider "
                       + providerUUID
                       + " resources are currently in use by task "
@@ -210,8 +210,7 @@ public class ProviderEditRestrictionManager {
     }
     if (!taskUUIDs.isEmpty()) {
       throw new PlatformServiceException(
-          Http.Status.SERVICE_UNAVAILABLE,
-          "Provider " + providerUUID + " resources are currently in use");
+          Http.Status.CONFLICT, "Provider " + providerUUID + " resources are currently in use");
     }
   }
 
@@ -225,7 +224,7 @@ public class ProviderEditRestrictionManager {
     UUID editTaskUUID = editTaskIdByProvider.get(providerUUID);
     if (editTaskUUID != null) {
       throw new PlatformServiceException(
-          Http.Status.SERVICE_UNAVAILABLE,
+          Http.Status.CONFLICT,
           "Provider " + providerUUID + " is currently edited by task " + editTaskUUID);
     }
   }
@@ -253,7 +252,7 @@ public class ProviderEditRestrictionManager {
     }
     if (!locked) {
       throw new PlatformServiceException(
-          Http.Status.SERVICE_UNAVAILABLE, "Unable to lock provider " + providerUUID);
+          Http.Status.CONFLICT, "Unable to lock provider " + providerUUID);
     }
     try {
       log.debug("Locked {} provider", providerUUID);
@@ -278,7 +277,7 @@ public class ProviderEditRestrictionManager {
   }
 
   protected boolean isEnabled() {
-    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.editProviderNewEnabled);
+    return true;
   }
 
   public boolean isAllowAutoTasksBeforeEdit() {

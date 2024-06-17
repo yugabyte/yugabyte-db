@@ -10,10 +10,13 @@
 
 package com.yugabyte.troubleshoot.ts.models;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.ebean.Model;
 import io.ebean.annotation.DbJsonB;
 import jakarta.validation.constraints.NotNull;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -34,6 +37,15 @@ public class UniverseDetails extends Model implements ModelWithId<UUID> {
   @NotNull @Id private UUID universeUUID;
   @NotNull private String name;
   @NotNull @DbJsonB private UniverseDefinition universeDetails;
+  private Boolean lastSyncStatus;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+  private Instant lastSyncTimestamp;
+
+  @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
+  private Instant lastSuccessfulSyncTimestamp;
+
+  private String lastSyncError;
 
   @Override
   public UUID getId() {
@@ -54,6 +66,7 @@ public class UniverseDetails extends Model implements ModelWithId<UUID> {
       private UUID uuid;
       private String clusterType;
       private UserIntent userIntent;
+      private PlacementInfo placementInfo;
     }
 
     @Data
@@ -67,9 +80,16 @@ public class UniverseDetails extends Model implements ModelWithId<UUID> {
       private String nodeName;
       private UUID nodeUuid;
       private UUID placementUuid;
+
+      @JsonProperty(value = "isMaster")
       private boolean isMaster;
+
+      @JsonProperty(value = "isTserver")
       private boolean isTserver;
+
+      @JsonProperty(value = "isYsqlServer")
       private boolean isYsqlServer;
+
       private CloudSpecificInfo cloudInfo;
 
       @JsonIgnore

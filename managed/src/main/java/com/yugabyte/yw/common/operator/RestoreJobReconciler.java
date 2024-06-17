@@ -20,7 +20,9 @@ import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
 import java.util.*;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, Runnable {
@@ -66,15 +68,6 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     return null;
   }
 
-  public UUID getUniverseUUIDFromName(Long customerId, String universeName) {
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, universeName);
-    UUID universeUUID;
-    if (universe.isPresent()) {
-      return universe.get().getUniverseUUID();
-    }
-    return null;
-  }
-
   private void updateStatus(RestoreJob restoreJob, String taskUUID, String message) {
     RestoreJobStatus status = restoreJob.getStatus();
     if (status == null) {
@@ -95,7 +88,15 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
 
     log.info("CRSPECJSON {}", crJsonNode);
 
-    UUID universeUUID = getUniverseUUIDFromName(cust.getId(), restoreJob.getSpec().getUniverse());
+    Universe universe =
+        operatorUtils.getUniverseFromNameAndNamespace(
+            cust.getId(),
+            restoreJob.getSpec().getUniverse(),
+            restoreJob.getMetadata().getNamespace());
+    if (universe == null) {
+      throw new Exception("No universe found with name " + restoreJob.getSpec().getUniverse());
+    }
+    UUID universeUUID = universe.getUniverseUUID();
     log.info("Universe UUID {}", universeUUID);
     UUID backupUUID = getBackupUUIDFromName(restoreJob.getSpec().getBackup());
     log.info("backup UUID {}", backupUUID);
@@ -105,13 +106,23 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
     restoreBackupParams.customerUUID = cust.getUuid();
     restoreBackupParams.setUniverseUUID(universeUUID);
     restoreBackupParams.storageConfigUUID = backup.getStorageConfigUUID();
-    restoreBackupParams.backupStorageInfoList = new ArrayList<BackupStorageInfo>();
-    BackupStorageInfo storageInfo = new BackupStorageInfo();
-    storageInfo.storageLocation = backup.getBackupInfo().backupList.get(0).storageLocation;
-    storageInfo.keyspace = restoreJob.getSpec().getKeyspace();
-    storageInfo.backupType = backup.getBackupInfo().backupType;
 
-    restoreBackupParams.backupStorageInfoList.add(storageInfo);
+    List<BackupStorageInfo> bSIList =
+        backup.getBackupInfo().backupList.stream()
+            .map(
+                bTP -> {
+                  BackupStorageInfo bSI = new BackupStorageInfo();
+                  bSI.keyspace = restoreJob.getSpec().getKeyspace();
+                  bSI.storageLocation = bTP.storageLocation;
+                  bSI.backupType = backup.getBackupInfo().backupType;
+                  return bSI;
+                })
+            .collect(Collectors.toList());
+    if (CollectionUtils.isNotEmpty(bSIList)) {
+      restoreBackupParams.backupStorageInfoList = bSIList;
+    } else {
+      throw new Exception("Nothing to restore!");
+    }
 
     return restoreBackupParams;
   }

@@ -34,12 +34,14 @@
 
 #include <string>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
@@ -516,9 +518,9 @@ TableType TableInfo::GetTableType() const {
   return LockForRead()->pb.table_type();
 }
 
-bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const {
+bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& pb_txn_id, bool txn_success) const {
   auto l = LockForRead();
-  if (l->pb_transaction_id() != txn_id_pb) {
+  if (l->pb_transaction_id() != pb_txn_id) {
     return false;
   }
   // The table can be dropped in 2 cases due to a DDL:
@@ -960,6 +962,40 @@ bool TableInfo::IsColocatedUserTable() const {
   return colocated() && !IsColocationParentTable();
 }
 
+bool TableInfo::IsSequencesSystemTable() const {
+  if (GetTableType() == PGSQL_TABLE_TYPE && !IsColocationParentTable()) {
+    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
+    if (!IsPgsqlId(namespace_id()) || !IsPgsqlId(id())) {
+      LOG(WARNING) << "Not PGSQL IDs " << namespace_id() << ", " << id();
+      return false;
+    }
+    Result<uint32_t> database_oid = GetPgsqlDatabaseOid(namespace_id());
+    if (!database_oid.ok()) {
+      LOG(WARNING) << "Invalid Namespace ID " << namespace_id();
+      return false;
+    }
+    Result<uint32_t> table_oid = GetPgsqlTableOid(id());
+    if (!table_oid.ok()) {
+      LOG(WARNING) << "Invalid Table ID " << id();
+      return false;
+    }
+    if (*database_oid == kPgSequencesDataDatabaseOid && *table_oid == kPgSequencesDataTableOid) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLQueueTableName;
+}
+
+bool TableInfo::IsXClusterDDLReplicationReplicatedDDLsTable() const {
+  return GetTableType() == PGSQL_TABLE_TYPE && pgschema_name() == xcluster::kDDLQueuePgSchemaName &&
+         name() == xcluster::kDDLReplicatedTableName;
+}
+
 TablespaceId TableInfo::TablespaceIdForTableCreation() const {
   SharedLock<decltype(lock_)> l(lock_);
   return tablespace_id_for_table_creation_;
@@ -989,6 +1025,36 @@ bool TableInfo::AttachedYCQLIndexDeletionInProgress(const TableId& index_table_i
              IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING;
 }
 
+void TableInfo::AddDdlTxnWaitingForSchemaVersion(int schema_version, const TransactionId& txn) {
+  std::lock_guard l(lock_);
+  auto res = ddl_txns_waiting_for_schema_version_.emplace(schema_version, txn);
+  // There should never have existed an entry for this schema version already as only one
+  // DDL transaction is allowed on an entity at a given time.
+  LOG_IF(DFATAL, !res.second) << "Found existing entry for schema version " << schema_version
+                             << " for table " << table_id_ << " with txn " << txn
+                             << " previous transaction " << res.first->second;
+}
+
+std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int schema_version) {
+  std::lock_guard l(lock_);
+  std::vector<TransactionId> txns;
+  auto upper_bound_iter = ddl_txns_waiting_for_schema_version_.upper_bound(schema_version);
+  // Ideally we will perform this erase operation at the end of every alter table operation, and
+  // thus we should be able to return only one schema version. However, alter table is an async
+  // operation. It is possible in the case of YSQL DDL Transaction verification that while an
+  // alter operation for a rollback operation is about to start (i.e. table in ALTERING state), a
+  // new alter operation can start on the same table (this is by design and poses no correctness
+  // issues). It may be possible that the TServers respond back with the latest schema version.
+  // To handle this case, we return the transactions waiting on all schema versions less than the
+  // requested schema version as well.
+  for (auto it = ddl_txns_waiting_for_schema_version_.begin(); it != upper_bound_iter; ++it) {
+    txns.push_back(it->second);
+  }
+  ddl_txns_waiting_for_schema_version_.erase(
+      ddl_txns_waiting_for_schema_version_.begin(), upper_bound_iter);
+  return txns;
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
                     << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
@@ -1009,8 +1075,19 @@ const std::string& PersistentTableInfo::indexed_table_id() const {
 
 Result<bool> PersistentTableInfo::is_being_modified_by_ddl_transaction(
   const TransactionId& txn) const {
-  return has_ysql_ddl_txn_verifier_state() &&
-    txn == VERIFY_RESULT(FullyDecodeTransactionId(pb_transaction_id()));
+
+  return txn == VERIFY_RESULT(GetCurrentDdlTransactionId());
+}
+
+Result<TransactionId> PersistentTableInfo::GetCurrentDdlTransactionId() const {
+  TransactionId txn = TransactionId::Nil();
+  if (has_ysql_ddl_txn_verifier_state()) {
+    auto& pb_txn_id = pb_transaction_id();
+    RSTATUS_DCHECK(!pb_txn_id.empty(), InternalError,
+        "Table $0 has ysql_ddl_txn_verifier_state but no transaction", name());
+    txn = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
+  }
+  return txn;
 }
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
@@ -1092,6 +1169,14 @@ string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
 }
 
+uint32_t NamespaceInfo::FetchAndIncrementCloneSeqNo() {
+  auto lock = LockForWrite();
+  uint32_t new_clone_request_seq_no = lock->pb.clone_request_seq_no() + 1;
+  lock.mutable_data()->pb.set_clone_request_seq_no(new_clone_request_seq_no);
+  lock.Commit();
+  return new_clone_request_seq_no;
+}
+
 // ================================================================================================
 // UDTypeInfo
 // ================================================================================================
@@ -1165,6 +1250,18 @@ const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
+bool CDCStreamInfo::IsXClusterStream() const { return !IsCDCSDKStream(); }
+
+bool CDCStreamInfo::IsCDCSDKStream() const {
+  auto l = LockForRead();
+  return l->pb.has_namespace_id() && !l->pb.namespace_id().empty();
+}
+
+HybridTime CDCStreamInfo::GetConsistentSnapshotHybridTime() const {
+  auto l = LockForRead();
+  return HybridTime(l->pb.cdcsdk_stream_metadata().snapshot_time());
+}
+
 const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
   auto l = LockForRead();
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
@@ -1174,6 +1271,12 @@ bool CDCStreamInfo::IsConsistentSnapshotStream() const {
   auto l = LockForRead();
   return l->pb.has_cdcsdk_stream_metadata() &&
          l->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option();
+}
+
+const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity>
+CDCStreamInfo::GetReplicaIdentityMap() const {
+  auto l = LockForRead();
+  return l->pb.replica_identity_map();
 }
 
 std::string CDCStreamInfo::ToString() const {
@@ -1212,6 +1315,12 @@ Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCrea
 }
 
 // ================================================================================================
+// PersistentUniverseReplicationInfo
+// ================================================================================================
+
+bool PersistentUniverseReplicationInfo::IsDbScoped() const { return yb::master::IsDbScoped(pb); }
+
+// ================================================================================================
 // UniverseReplicationInfo
 // ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
@@ -1230,6 +1339,8 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
   SharedLock<decltype(lock_)> l(lock_);
   return setup_universe_replication_error_;
 }
+
+bool UniverseReplicationInfo::IsDbScoped() const { return LockForRead()->IsDbScoped(); }
 
 // ================================================================================================
 // PersistentUniverseReplicationBootstrapInfo

@@ -3469,10 +3469,6 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 
 						switch (constraint->contype)
 						{
-							case CONSTR_IDENTITY:
-								ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-											errmsg("This ALTER TABLE command is not yet supported.")));
-								break;
 							case CONSTR_PRIMARY:
 								/*
 								 * Adding a primary key column may fail due to a constraint
@@ -3480,7 +3476,7 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 								 * in the case of failure, we aren't left with orphaned DocDB
 								 * columns.
 								 */
-								if (!ddl_rollback_enabled)
+								if (!YbDdlRollbackEnabled())
 									ereport(ERROR,
 											(errcode(
 												ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -3488,15 +3484,17 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 												   " not yet supported.")));
 								break;
 							case CONSTR_UNIQUE:
-								// TODO(alex): Since we can't transactionally rollback adding column
-								//             on DocDB side yet, only support the simplest form
-								//             of this for now - the one that can't fail because of
-								//             some constraint violation.
-								//             While FKs ignore NULL values, they may still error
-								//             out if referenced column has no unique constraint
-								//             so we disallow them too.
-								if (def->is_not_null || def->raw_default
-								    || cxt.ckconstraints || cxt.fkconstraints)
+								/*
+								 * Adding a column with a unique constraint may fail due to a
+								 * constraint violation. Only permit this operation fully if
+								 * DDL atomicity is enabled. If DDL atomicity is not enabled,
+								 * only support the simplest form of this - the ones that can't fail
+								 * because of some constraint violation (note: while FKs ignore NULL
+								 * values, they may still error out if referenced column has no
+								 * unique constraint so we disallow them too).
+								 */
+								if (!YbDdlRollbackEnabled() && (def->is_not_null || def->raw_default
+								    || cxt.ckconstraints || cxt.fkconstraints))
 									ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 												errmsg("This ALTER TABLE command is not yet supported.")));
 								break;

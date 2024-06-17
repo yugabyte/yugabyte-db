@@ -20,11 +20,13 @@ import {
   KubernetesProvider,
   KubernetesProviderLabel,
   KubernetesProviderType,
-  ProviderCode
+  ProviderCode,
+  ProviderOperation
 } from '../../constants';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { FieldGroup } from '../components/FieldGroup';
 import { FieldLabel } from '../components/FieldLabel';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
 import { K8sCertIssuerType, RegionOperation } from '../configureRegion/constants';
@@ -49,7 +51,9 @@ import {
   generateLowerCaseAlphanumericId,
   getIsFieldDisabled,
   getIsFormDisabled,
-  readFileAsText
+  readFileAsText,
+  handleFormSubmitServerError,
+  UseProviderValidationEnabled
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import {
@@ -70,7 +74,7 @@ import {
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { adaptSuggestedKubernetesConfig } from './utils';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
-
+import { CloudType } from '../../../../../redesign/helpers/dtos';
 import {
   K8sAvailabilityZone,
   K8sAvailabilityZoneMutation,
@@ -86,6 +90,7 @@ import {
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
+import { K8S_FORM_MAPPERS } from './constants';
 
 interface K8sProviderEditFormProps {
   editProvider: EditProvider;
@@ -134,6 +139,7 @@ export const K8sProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<K8sRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const { t } = useTranslation();
 
@@ -161,7 +167,10 @@ export const K8sProviderEditForm = ({
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
-
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.kubernetes);
   if (customerRuntimeConfigQuery.isError) {
     return (
       <YBErrorIndicator
@@ -173,22 +182,51 @@ export const K8sProviderEditForm = ({
     (enableSuggestedConfigFeature &&
       (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)) ||
     customerRuntimeConfigQuery.isLoading ||
-    customerRuntimeConfigQuery.isIdle
+    customerRuntimeConfigQuery.isIdle ||
+    isProviderValidationLoading
   ) {
     return <YBLoading />;
   }
 
-  const onFormSubmit: SubmitHandler<K8sProviderEditFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: K8sProviderEditFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     try {
+      setValidationErrorExist(false);
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
-        await editProvider(providerPayload);
+        await editProvider(providerPayload, {
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                K8S_FORM_MAPPERS
+              );
+              setValidationErrorExist(true);
+            }
+          }
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
     } catch (error: any) {
       toast.error(error.message ?? error);
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<K8sProviderEditFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<K8sProviderEditFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const suggestedKubernetesConfig = suggestedKubernetesConfigQuery.data;
@@ -280,7 +318,10 @@ export const K8sProviderEditForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="K8sProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="K8sProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           {currentProviderVersion < providerConfig.version && (
             <VersionWarningBanner onReset={onFormReset} />
           )}
@@ -468,6 +509,7 @@ export const K8sProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.KUBERNETES}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -475,13 +517,14 @@ export const K8sProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.KUBERNETES,
                   'regions',
                   isFormDisabled,
                   isProviderInUse
                 )}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
                 linkedUniverses={linkedUniverses}
                 isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />
@@ -492,9 +535,7 @@ export const K8sProviderEditForm = ({
               )}
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-              </Box>
+              <SubmitInProgress isValidationEnabled={isValidationEnabled} />
             )}
           </Box>
           <Box marginTop="16px">
@@ -504,13 +545,28 @@ export const K8sProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText="Apply Changes"
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}
                 data-testid={`${FORM_NAME}-SubmitButton`}
               />
             </RbacValidator>
+            {isValidationEnabled && isValidationErrorExist && (
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+                isControl
+                overrideStyle={{ float: 'right' }}
+              >
+                <YBButton
+                  btnText="Ignore and save provider configuration anyway"
+                  btnClass="btn btn-default float-right mr-10"
+                  onClick={skipValidationAndSubmit}
+                  disabled={isFormDisabled || formMethods.formState.isValidating}
+                  data-testid={`${FORM_NAME}-IgnoreAndSave`}
+                />
+              </RbacValidator>
+            )}
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
@@ -654,15 +710,13 @@ const constructProviderPayload = async (
               azFormValues.editKubeConfigContent;
 
             return {
-              ...(existingZone && {
-                active: existingZone.active,
-                uuid: existingZone.uuid
-              }),
+              ...existingZone,
               code: azFormValues.code,
               name: azFormValues.code,
               details: {
                 cloudInfo: {
                   [ProviderCode.KUBERNETES]: {
+                    ...existingZone?.details?.cloudInfo?.kubernetes,
                     ...(shouldReadKubeConfigOnForm
                       ? {
                           ...(azFormValues.kubeConfigContent && {
@@ -705,10 +759,7 @@ const constructProviderPayload = async (
         );
 
         const newRegion: K8sRegionMutation = {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid
-          }),
+          ...existingRegion,
           code: regionFormValues.regionData.value.code,
           name: regionFormValues.regionData.label,
           zones: [

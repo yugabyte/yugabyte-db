@@ -158,6 +158,8 @@ public class Metrics {
    * A YSQL Stat.
    */
    public static class YSQLStat extends Metric {
+     public final long userid;
+     public final long dbid;
      public final String query;
 
      public final long calls;
@@ -167,6 +169,12 @@ public class Metrics {
      public final double mean_time;
      public final double stddev_time;
      public final long rows;
+     public final long local_blks_hit;
+     public final long local_blks_read;
+     public final long local_blks_dirtied;
+     public final long local_blks_written;
+     public final long temp_blks_read;
+     public final long temp_blks_written;
      public final JsonArray yb_latency_histogram;
 
      /**
@@ -178,6 +186,8 @@ public class Metrics {
      YSQLStat(JsonObject metric) {
       super(metric, "query");
 
+      userid = metric.get("userid").getAsLong();
+      dbid = metric.get("dbid").getAsLong();
       query = metric.get("query").getAsString();
 
       calls = metric.get("calls").getAsLong();
@@ -187,6 +197,12 @@ public class Metrics {
       mean_time = metric.get("mean_time").getAsDouble();
       stddev_time = metric.get("stddev_time").getAsDouble();
       rows = metric.get("rows").getAsLong();
+      local_blks_hit = metric.get("local_blks_hit").getAsLong();
+      local_blks_read = metric.get("local_blks_read").getAsLong();
+      local_blks_dirtied = metric.get("local_blks_dirtied").getAsLong();
+      local_blks_written = metric.get("local_blks_written").getAsLong();
+      temp_blks_read = metric.get("temp_blks_read").getAsLong();
+      temp_blks_written = metric.get("temp_blks_written").getAsLong();
       yb_latency_histogram = metric.get("yb_latency_histogram").getAsJsonArray();
      }
    }

@@ -69,7 +69,7 @@ This function is primarily helpful while implementing [Row-level geo-partitionin
     CREATE TABLESPACE us_east2_tablespace WITH (replica_placement=' {"num_replicas":1,"placement_blocks":[     {"cloud":"aws","region":"us-east-2","zone":"us-east-2c","min_num_replicas":1}]}');
     ```
 
-     For more information on how to set up a cluster with [yugabyted](../../../../../reference/configuration/yugabyted/) or [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) with corresponding tablespaces, see [tablespaces](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces).
+     For more information on how to set up a cluster with [yugabyted](../../../../../reference/configuration/yugabyted/) or [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) with corresponding tablespaces, see [tablespaces](../../../../../explore/going-beyond-sql/tablespaces/).
 
 1. Using the tablespaces, you can create a geo-partitioned table as follows. This is a partitioned table with 3 partitions, where each partition is pinned to a different location.
 

@@ -45,10 +45,10 @@ INSERT INTO feature_pk_split
 --
 -- Full scan.
 --
-EXPLAIN SELECT * FROM feature_pk_split;
-                              QUERY PLAN
------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..100.00 rows=1000 width=262)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split;
+          QUERY PLAN
+------------------------------
+ Seq Scan on feature_pk_split
 (1 row)
 
 SELECT * FROM feature_pk_split;
@@ -78,11 +78,11 @@ SELECT * FROM feature_pk_split;
 -- Full scan with conditional operators.
 --
 -- Operator `=`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
-                              QUERY PLAN
------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_text = 'partition 3'::text)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
+                     QUERY PLAN
+----------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: (col_text = 'partition 3'::text)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
@@ -94,11 +94,11 @@ SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
 (3 rows)
 
 -- Operator `IN`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
-                                 QUERY PLAN
------------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_text = ANY ('{"partition 2","partition 5"}'::text[]))
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: (col_text = ANY ('{"partition 2","partition 5"}'::text[]))
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
@@ -113,11 +113,11 @@ SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
 (6 rows)
 
 -- Operator `<=`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 10;
-                              QUERY PLAN
------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '10'::double precision)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 10;
+                        QUERY PLAN
+----------------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: (col_double <= '10'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 10;
@@ -136,11 +136,11 @@ SELECT * FROM feature_pk_split WHERE col_double <= 10;
 (10 rows)
 
 -- Operator `AND`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
-                                           QUERY PLAN
--------------------------------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..105.00 rows=1000 width=262)
-   Remote Filter: ((col_text >= 'partition 3'::text) AND (col_double <= '10'::double precision))
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: ((col_text >= 'partition 3'::text) AND (col_double <= '10'::double precision))
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
@@ -155,11 +155,11 @@ SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <=
 --
 -- Full scan with aggregate functions.
 --
-EXPLAIN SELECT COUNT(*) FROM feature_pk_split;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Finalize Aggregate  (cost=102.50..102.51 rows=1 width=8)
-   ->  Seq Scan on feature_pk_split  (cost=0.00..100.00 rows=1000 width=0)
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split;
+             QUERY PLAN
+------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on feature_pk_split
          Partial Aggregate: true
 (3 rows)
 
@@ -169,13 +169,13 @@ SELECT COUNT(*) FROM feature_pk_split;
     18
 (1 row)
 
-EXPLAIN SELECT MAX(col_integer) FROM feature_pk_split;
-                                                       QUERY PLAN
-------------------------------------------------------------------------------------------------------------------------
- Result  (cost=0.16..0.17 rows=1 width=4)
+EXPLAIN (COSTS OFF) SELECT MAX(col_integer) FROM feature_pk_split;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Result
    InitPlan 1 (returns $0)
-     ->  Limit  (cost=0.00..0.16 rows=1 width=4)
-           ->  Index Scan Backward using feature_pk_split_pkey on feature_pk_split  (cost=0.00..16.00 rows=100 width=4)
+     ->  Limit
+           ->  Index Scan Backward using feature_pk_split_pkey on feature_pk_split
                  Index Cond: (col_integer IS NOT NULL)
 (5 rows)
 
@@ -185,11 +185,11 @@ SELECT MAX(col_integer) FROM feature_pk_split;
  100000
 (1 row)
 
-EXPLAIN SELECT MIN(col_varchar) FROM feature_pk_split;
-                                 QUERY PLAN
------------------------------------------------------------------------------
- Aggregate  (cost=102.50..102.51 rows=1 width=32)
-   ->  Seq Scan on feature_pk_split  (cost=0.00..100.00 rows=1000 width=218)
+EXPLAIN (COSTS OFF) SELECT MIN(col_varchar) FROM feature_pk_split;
+             QUERY PLAN
+------------------------------------
+ Aggregate
+   ->  Seq Scan on feature_pk_split
 (2 rows)
 
 SELECT MIN(col_varchar) FROM feature_pk_split;
@@ -198,11 +198,11 @@ SELECT MIN(col_varchar) FROM feature_pk_split;
  -
 (1 row)
 
-EXPLAIN SELECT AVG(col_double) FROM feature_pk_split;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Aggregate  (cost=102.50..102.51 rows=1 width=8)
-   ->  Seq Scan on feature_pk_split  (cost=0.00..100.00 rows=1000 width=8)
+EXPLAIN (COSTS OFF) SELECT AVG(col_double) FROM feature_pk_split;
+             QUERY PLAN
+------------------------------------
+ Aggregate
+   ->  Seq Scan on feature_pk_split
 (2 rows)
 
 SELECT AVG(col_double) FROM feature_pk_split;
@@ -215,10 +215,10 @@ SELECT AVG(col_double) FROM feature_pk_split;
 -- Primary key scan.
 -- This work needs to be optimized.
 --
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
-                                           QUERY PLAN
-------------------------------------------------------------------------------------------------
- Index Scan using feature_pk_split_pkey on feature_pk_split  (cost=0.00..4.12 rows=1 width=262)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using feature_pk_split_pkey on feature_pk_split
    Index Cond: ((col_integer = 50) AND ((col_varchar)::text = 'a'::text))
 (2 rows)
 
@@ -228,13 +228,13 @@ SELECT * FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
           50 | a           | partition 3 |          8
 (1 row)
 
-EXPLAIN SELECT * FROM feature_pk_split
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n'
 	ORDER BY col_integer, col_varchar;
                                                                   QUERY PLAN
 ----------------------------------------------------------------------------------------------------------------------------------------------
- Index Scan using feature_pk_split_pkey on feature_pk_split  (cost=0.00..4.12 rows=1 width=262)
+ Index Scan using feature_pk_split_pkey on feature_pk_split
    Index Cond: ((col_integer >= 500) AND (col_integer <= 5000) AND ((col_varchar)::text >= 'a'::text) AND ((col_varchar)::text <= 'n'::text))
 (2 rows)
 
@@ -249,11 +249,11 @@ SELECT * FROM feature_pk_split
         5000 | m           | partition 5 |         14
 (3 rows)
 
-EXPLAIN SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
-                                             QUERY PLAN
-----------------------------------------------------------------------------------------------------
- Finalize Aggregate  (cost=4.12..4.13 rows=1 width=8)
-   ->  Index Scan using feature_pk_split_pkey on feature_pk_split  (cost=0.00..4.12 rows=1 width=0)
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using feature_pk_split_pkey on feature_pk_split
          Index Cond: ((col_integer = 50) AND ((col_varchar)::text = 'a'::text))
          Partial Aggregate: true
 (4 rows)
@@ -264,13 +264,13 @@ SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = '
      1
 (1 row)
 
-EXPLAIN SELECT COUNT(*) FROM feature_pk_split
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n';
                                                                      QUERY PLAN
 ----------------------------------------------------------------------------------------------------------------------------------------------------
- Finalize Aggregate  (cost=4.12..4.13 rows=1 width=8)
-   ->  Index Scan using feature_pk_split_pkey on feature_pk_split  (cost=0.00..4.12 rows=1 width=0)
+ Finalize Aggregate
+   ->  Index Scan using feature_pk_split_pkey on feature_pk_split
          Index Cond: ((col_integer >= 500) AND (col_integer <= 5000) AND ((col_varchar)::text >= 'a'::text) AND ((col_varchar)::text <= 'n'::text))
          Partial Aggregate: true
 (4 rows)
@@ -288,10 +288,10 @@ SELECT COUNT(*) FROM feature_pk_split
 -- This work needs to be optimized.
 --
 -- Scan one tablet.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double < 2;
-                                     QUERY PLAN
--------------------------------------------------------------------------------------
- Index Scan using idx_small on feature_pk_split  (cost=0.00..4.98 rows=10 width=262)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double < 2;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan using idx_small on feature_pk_split
    Index Cond: (col_double < '2'::double precision)
 (2 rows)
 
@@ -302,10 +302,10 @@ SELECT * FROM feature_pk_split WHERE col_double < 2;
 (1 row)
 
 -- Scan two tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 5;
-                                     QUERY PLAN
--------------------------------------------------------------------------------------
- Index Scan using idx_small on feature_pk_split  (cost=0.00..4.98 rows=10 width=262)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 5;
+                     QUERY PLAN
+-----------------------------------------------------
+ Index Scan using idx_small on feature_pk_split
    Index Cond: (col_double <= '5'::double precision)
 (2 rows)
 
@@ -320,10 +320,10 @@ SELECT * FROM feature_pk_split WHERE col_double <= 5;
 (5 rows)
 
 -- Scan three tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 8;
-                                     QUERY PLAN
--------------------------------------------------------------------------------------
- Index Scan using idx_small on feature_pk_split  (cost=0.00..4.98 rows=10 width=262)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 8;
+                     QUERY PLAN
+-----------------------------------------------------
+ Index Scan using idx_small on feature_pk_split
    Index Cond: (col_double <= '8'::double precision)
 (2 rows)
 
@@ -341,11 +341,11 @@ SELECT * FROM feature_pk_split WHERE col_double <= 8;
 (8 rows)
 
 -- Scan four tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 11;
-                              QUERY PLAN
------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '11'::double precision)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 11;
+                        QUERY PLAN
+----------------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: (col_double <= '11'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 11;
@@ -365,11 +365,11 @@ SELECT * FROM feature_pk_split WHERE col_double <= 11;
 (11 rows)
 
 -- Scan five tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 14;
-                              QUERY PLAN
------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '14'::double precision)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 14;
+                        QUERY PLAN
+----------------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: (col_double <= '14'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 14;
@@ -392,11 +392,11 @@ SELECT * FROM feature_pk_split WHERE col_double <= 14;
 (14 rows)
 
 -- Scan six tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 17;
-                              QUERY PLAN
------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '17'::double precision)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 17;
+                        QUERY PLAN
+----------------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: (col_double <= '17'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 17;
@@ -422,11 +422,11 @@ SELECT * FROM feature_pk_split WHERE col_double <= 17;
 (17 rows)
 
 -- Scan all tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 100;
-                              QUERY PLAN
------------------------------------------------------------------------
- Seq Scan on feature_pk_split  (cost=0.00..102.50 rows=1000 width=262)
-   Remote Filter: (col_double <= '100'::double precision)
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 100;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Seq Scan on feature_pk_split
+   Storage Filter: (col_double <= '100'::double precision)
 (2 rows)
 
 SELECT * FROM feature_pk_split WHERE col_double <= 100;
@@ -453,10 +453,10 @@ SELECT * FROM feature_pk_split WHERE col_double <= 100;
 (18 rows)
 
 -- Index only scan.
-EXPLAIN SELECT col_double FROM feature_pk_split WHERE col_double <= 8;
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
- Index Only Scan using idx_small on feature_pk_split  (cost=0.00..4.90 rows=10 width=8)
+EXPLAIN (COSTS OFF) SELECT col_double FROM feature_pk_split WHERE col_double <= 8;
+                     QUERY PLAN
+-----------------------------------------------------
+ Index Only Scan using idx_small on feature_pk_split
    Index Cond: (col_double <= '8'::double precision)
 (2 rows)
 

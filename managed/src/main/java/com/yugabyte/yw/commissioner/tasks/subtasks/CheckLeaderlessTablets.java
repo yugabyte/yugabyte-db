@@ -72,11 +72,21 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
                 }
               });
       if (!result) {
+        String runtimeConfigInfo =
+            "To proceed with the operation anyway (not recommended),"
+                + " disable the runtime config "
+                + UniverseConfKeys.leaderlessTabletsCheckEnabled.getKey()
+                + " and retry this operation.";
         if (tablets.get() != null) {
-          throw new RuntimeException("There are leaderless tablets: " + tablets.get());
+          throw new RuntimeException(
+              "Aborting operation because the db seems to be unhealthy."
+                  + " There are leaderless tablets. "
+                  + runtimeConfigInfo
+                  + " List of leaderless tablets: "
+                  + tablets.get());
         } else {
           throw new RuntimeException(
-              "Failed to check leaderless tablets: got " + errorCnt.get() + " errors");
+              "Failed to perform safety check for leaderless tablets. " + runtimeConfigInfo);
         }
       }
     } catch (Exception e) {
@@ -106,7 +116,7 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
     }
     List<String> result = new ArrayList<>();
     for (JsonNode leaderlessTabletInfo : leaderlessTablets) {
-      result.add(leaderlessTabletInfo.get("table_uuid").asText());
+      result.add(leaderlessTabletInfo.get("tablet_uuid").asText());
     }
     return result;
   }

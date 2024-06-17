@@ -205,6 +205,12 @@ package_for_platform() {
     pushd "$project_dir/resources"
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh
+    cp -rf ynp "${script_dir}"/ynp
+    cp -rf node-agent-provision.sh "${script_dir}"/node-agent-provision.sh
+    cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
+    pushd "$project_dir"
+    cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/
+    popd
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
     popd

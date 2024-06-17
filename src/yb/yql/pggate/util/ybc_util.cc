@@ -187,6 +187,18 @@ YBPgErrorCode FetchErrorCode(YBCStatus s) {
   return result;
 }
 
+// Used for ASH to extract the name for a given enum, after
+// removing the leading "k"-prefix.
+template <class Enum>
+const char* NoPrefixName(Enum value) {
+  const char* name = ToCString(value);
+  if (!name) {
+    DCHECK(false);
+    return nullptr;
+  }
+  return name + 1;
+}
+
 } // anonymous namespace
 
 extern "C" {
@@ -309,6 +321,14 @@ bool YBCIsTxnDeadlockError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kDeadlock);
 }
 
+bool YBCIsTxnAbortedError(uint16_t txn_errcode) {
+  return txn_errcode == to_underlying(TransactionErrorCode::kAborted);
+}
+
+const char* YBCTxnErrCodeToString(uint16_t txn_errcode) {
+  return YBCPAllocStdString(ToString(TransactionErrorCode(txn_errcode)));
+}
+
 uint16_t YBCGetTxnConflictErrorCode() {
   return to_underlying(TransactionErrorCode::kConflict);
 }
@@ -411,27 +431,59 @@ void YBCGenerateAshRootRequestId(unsigned char *root_request_id) {
   std::memcpy(root_request_id + sizeof(uint64_t), &b, sizeof(uint64_t));
 }
 
-#define RETURN_WITH_DCHECK(enum) \
-  do { \
-    DCHECK_NOTNULL(ToCString(enum)); \
-    return strdup(ToCString(enum) + 1); /* remove the 'k' prefix */ \
-  } while (0)
-
+// This is our version of pgstat_get_wait_event
 const char* YBCGetWaitEventName(uint32_t wait_event_info) {
-  RETURN_WITH_DCHECK(static_cast<ash::WaitStateCode>(wait_event_info));
+  constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  uint32_t wait_event = wait_event_info & kWaitEventMask;
+  return NoPrefixName(static_cast<ash::WaitStateCode>(wait_event));
 }
 
+// 32 bit representation of the wait event.
+// <4-bit Component> <4-bit Class> <8-bit Reserved> <16-bit Event>
+// The classes of the wait events defined by us can give more idea about where in the code
+// the wait event can show up, or what those events are supposed to be doing.
+// For example, it can be RocksDB, Consensus, TabletWait.
+//
+// But for the wait events defined by PG, wait event type is encoded in place of the 'class' bits,
+// so we have a generic class (YSQLQuery) for all these wait events.
+//
+// Check wait_state.h for more information about how the wait events are encoded.
 const char* YBCGetWaitEventClass(uint32_t wait_event_info) {
-  /* The highest 8 bits are needed to get the wait event class */
-  uint8_t class_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_CLASS_POSITION);
-  RETURN_WITH_DCHECK(static_cast<ash::Class>(class_id));
+  // The next 4 bits after the highest 4 bits are needed to get the wait event class
+  constexpr uint8_t kAshClassMask = (1 << YB_ASH_CLASS_BITS) - 1;
+  uint8_t class_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_CLASS_POSITION) & kAshClassMask;
+  uint8_t comp_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_COMPONENT_POSITION);
+
+  // Zero wait_event_info is used by PG while it's processing the query and not waiting on anything.
+  // If it's non-zero, then we check if the component is YSQL and that the class is not something
+  // we defined in ash::Class
+  const bool is_wait_event_defined_by_pg = wait_event_info == 0 ||
+      (static_cast<ash::Component>(comp_id) == ash::Component::kYSQL &&
+       static_cast<ash::Class>(class_id) != ash::Class::kTServerWait);
+
+  if (is_wait_event_defined_by_pg)
+    return "YSQLQuery";
+
+  return NoPrefixName(static_cast<ash::Class>(class_id));
 }
 
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info) {
-  /* The highest 4 bits are needed to get the wait event component */
-  uint8_t comp_id = narrow_cast<uint8_t>(wait_event_info >>
-      (YB_ASH_CLASS_POSITION + YB_ASH_CLASS_BITS));
-  RETURN_WITH_DCHECK(static_cast<ash::Component>(comp_id));
+  // The highest 4 bits are needed to get the wait event component
+  uint8_t comp_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_COMPONENT_POSITION);
+  return NoPrefixName(static_cast<ash::Component>(comp_id));
+}
+
+// This is our version of pgstat_get_wait_event_type
+const char* YBCGetWaitEventType(uint32_t wait_event_info) {
+  // This is only called for ASH wait events, so we remove the component bits as
+  // ash::WaitStateCode doesn't contain them.
+  constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  uint32_t wait_event = wait_event_info & kWaitEventMask;
+  return NoPrefixName(GetWaitStateType(static_cast<ash::WaitStateCode>(wait_event)));
+}
+
+uint8_t YBCGetQueryIdForCatalogRequests() {
+  return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForCatalogRequests);
 }
 
 } // extern "C"

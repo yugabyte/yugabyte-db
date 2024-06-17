@@ -152,7 +152,7 @@ public class CheckFollowerLag extends ServerSubTaskBase {
     log.debug("{} pre-check for node {} passed successfully.", getName(), currentNode.nodeName);
   }
 
-  public boolean followerLagWithinThreshold(
+  public static boolean followerLagWithinThreshold(
       Map<String, Long> tabletFollowerLagMap, long threshold) {
 
     Pair<String, Long> maxFollowerLagFound = maxFollowerLag(tabletFollowerLagMap);
@@ -170,7 +170,7 @@ public class CheckFollowerLag extends ServerSubTaskBase {
   /*
    * Returns the largest follower lag in ms along with the tablet id associated to it.
    */
-  private Pair<String, Long> maxFollowerLag(Map<String, Long> tabletFollowerLagMap) {
+  private static Pair<String, Long> maxFollowerLag(Map<String, Long> tabletFollowerLagMap) {
     Long maxFollowerLagMs = 0L;
     String maxFollowerLagTablet = "";
     for (Map.Entry<String, Long> entry : tabletFollowerLagMap.entrySet()) {

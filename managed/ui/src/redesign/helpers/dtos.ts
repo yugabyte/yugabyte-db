@@ -23,7 +23,7 @@ export interface HostInfo {
         project: string;
       }
     | string;
-  azu: |{}| string;
+  azu: {} | string;
 }
 
 export interface SuggestedKubernetesConfig {
@@ -257,6 +257,12 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  universePaused: boolean;
+}
+
+export interface AllowedTasks {
+  restricted: boolean;
+  taskIds: string[];
 }
 
 export type UniverseConfigure = DeepPartial<UniverseDetails>;
@@ -271,6 +277,7 @@ export interface Universe {
   universeDetails: UniverseDetails;
   universeUUID: string;
   version: number;
+  allowedTasks: AllowedTasks;
 }
 
 export const TableType = {
@@ -289,11 +296,16 @@ export interface YBTable {
   pgSchemaName: string;
   relationType: YBTableRelationType;
   sizeBytes: number;
-  tableID: string;
+  tableID: string; // UUID without `-`
   tableName: string;
   tableType: TableType;
-  tableUUID: string;
+  tableUUID: string; // UUID with `-`
   walSizeBytes: number;
+
+  // mainTableUUID is provided for index tables when the
+  // query param `xClusterSupportedOnly` is true
+  mainTableUUID?: string;
+  indexTableIDs?: string[];
 }
 
 export interface UniverseNamespace {
@@ -417,27 +429,6 @@ export interface PitrConfig {
   uuid: string;
 }
 
-export interface HAPlatformInstance {
-  uuid: string;
-  config_uuid: string;
-  address: string;
-  is_leader: boolean;
-  is_local: boolean;
-  last_backup: string | null;
-}
-
-export interface HAConfig {
-  uuid: string;
-  cluster_key: string;
-  last_failover: number;
-  instances: HAPlatformInstance[];
-}
-
-export interface HAReplicationSchedule {
-  frequency_milliseconds: number;
-  is_running: boolean;
-}
-
 export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
@@ -502,6 +493,15 @@ export interface MetricsQueryParams {
   tableId?: string;
   tableName?: string;
   xClusterConfigUuid?: string;
+}
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/models/NodeInstance.java
+ */
+export enum OnPremNodeState {
+  DECOMMISSIONED = 'DECOMMISSIONED',
+  USED = 'USED',
+  FREE = 'FREE'
 }
 
 // ---------------------------------------------------------------------------

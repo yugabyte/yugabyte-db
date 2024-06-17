@@ -22,7 +22,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressAggregates extends BasePgSQLTest {
+public class TestPgRegressAggregates extends BasePgRegressTest {
 
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
       "yb_default_copy_from_rows_per_transaction=0";

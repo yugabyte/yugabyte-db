@@ -134,6 +134,8 @@ During transaction processing, failures can happen due to the strong [ACID](../.
 
 {{<tip>}}
 For more details on how to handle failures and retry, see [Transaction retries](../transactions-retries-ysql/).
+
+For an example application and try it out yourself, see [Designing a Retry Mechanism for Resilient Spring Boot Applications](https://www.yugabyte.com/blog/retry-mechansim-spring-boot-app/).
 {{</tip>}}
 
 ## Tuning for high performance

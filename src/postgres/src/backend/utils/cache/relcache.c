@@ -1427,7 +1427,14 @@ YbCleanupTupleCache(YbTupleCache *cache)
 	if (!cache->rel)
 		return;
 
+	if (cache->data)
+	{
+		hash_destroy(cache->data);
+		cache->data = NULL;
+	}
+
 	heap_close(cache->rel, AccessShareLock);
+	cache->rel = NULL;
 }
 
 typedef struct YbUpdateRelationCacheState {
@@ -1562,7 +1569,21 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 
 		/* if it's an index, initialize index-related information */
 		if (OidIsValid(relation->rd_rel->relam))
+		{
+			/*
+			 * We don't preload indexes on user-defined AM's for now. Doing so
+			 * results in an issue where we try to load the user-defined AM.
+			 * This AM's handler might not be loaded as pg_proc might not be
+			 * loaded.
+			 */
+			if (relation->rd_rel->relam >= FirstNormalObjectId)
+			{
+				--num_tuples;
+				continue;
+			}
+
 			RelationInitIndexAccessInfo(relation);
+		}
 
 		/* extract reloptions if any */
 		RelationParseRelOptions(relation, pg_class_tuple);
@@ -1883,6 +1904,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	/* Set up constraint/default info */
 	if (constr->has_not_null || ndef > 0 || attrmiss || relation->rd_rel->relchecks)
 	{
+		if (relation->rd_att->constr)
+			pfree(relation->rd_att->constr);
 		relation->rd_att->constr = constr;
 
 		if (ndef > 0)            /* DEFAULTs */
@@ -4258,6 +4281,8 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_partcheck);
 	if (relation->rd_fdwroutine)
 		pfree(relation->rd_fdwroutine);
+	if (relation->yb_table_properties)
+		pfree(relation->yb_table_properties);
 	pfree(relation);
 }
 
@@ -5246,7 +5271,49 @@ RelationBuildLocalRelation(const char *relname,
 		(relkind == RELKIND_RELATION ||
 		 relkind == RELKIND_MATVIEW ||
 		 relkind == RELKIND_PARTITIONED_TABLE))
-		rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	{
+		/*
+		 * YB NOTE: The default replica identity in case of user defined tables
+		 * is set to 'CHANGE'. The flag ysql_yb_default_replica_identity can be
+		 * used to change the default replica identity at the time of table
+		 * creation for user defined tables. In all other cases the default
+		 * behaviour of PG is used, i.e. 'DEFAULT' for relations in
+		 * information_schema and 'NOTHING' for tables in pg_catalog and for
+		 * non-table objects
+		 */
+		if (IsYugaByteEnabled() && relid >= FirstNormalObjectId)
+		{
+			const char* replica_identity_name = yb_default_replica_identity;
+			char replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+			if (strcmp(replica_identity_name, "FULL") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_FULL;
+			}
+			else if (strcmp(replica_identity_name, "DEFAULT") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_DEFAULT;
+			}
+			else if (strcmp(replica_identity_name, "NOTHING") == 0)
+			{
+				replica_identity = REPLICA_IDENTITY_NOTHING;
+			}
+			else if (strcmp(replica_identity_name, "CHANGE") == 0)
+			{
+				replica_identity = YB_REPLICA_IDENTITY_CHANGE;
+			}
+			else
+			{
+				/* 
+				 * This should never happen since we check the guc value in 
+				 * check_default_replica_identity.
+				 */
+				Assert(false);	
+			}
+			rel->rd_rel->relreplident = replica_identity;
+		}
+		else
+			rel->rd_rel->relreplident = REPLICA_IDENTITY_DEFAULT;
+	}
 	else
 		rel->rd_rel->relreplident = REPLICA_IDENTITY_NOTHING;
 
@@ -5372,16 +5439,36 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 
 	if (IsYBRelation(relation))
 	{
-		/* Currently, this function is only used during reindex in YB. */
-		Assert(relation->rd_rel->relkind == RELKIND_INDEX);
 		/*
-		 * Drop the old DocDB table associated with this index.
-		 * Note: The drop isn't finalized until after the txn commits/aborts.
+		 * Currently, this function is only used during reindex/truncate in YB.
 		 */
-		YBCDropIndex(relation);
-		/* Create a new DocDB table for the index. */
-		YbIndexSetNewRelfileNode(relation, newrelfilenode,
-								 yb_copy_split_options);
+		Assert(relation->rd_rel->relkind == RELKIND_INDEX ||
+			   relation->rd_rel->relkind == RELKIND_RELATION);
+
+		if (relation->rd_rel->relkind == RELKIND_INDEX &&
+			!relation->rd_index->indisprimary)
+			/*
+			 * Note: caller is responsible for dropping the old DocDB table
+			 * associated with the index, if required.
+			 * Create a new DocDB table for the secondary index.
+			 * This is not required for primary indexes, as they are
+			 * an implicit part of the base table.
+			 */
+			YbIndexSetNewRelfileNode(relation, newrelfilenode,
+									 yb_copy_split_options);
+		else if (relation->rd_rel->relkind == RELKIND_RELATION)
+		{
+			/*
+			 * Drop the old DocDB table associated with this relation.
+			 * Note: The drop isn't finalized until after the txn
+			 * commits/aborts.
+			 */
+			YBCDropTable(relation);
+			/* Create a new DocDB table for the relation. */
+			YbRelationSetNewRelfileNode(relation, newrelfilenode,
+										yb_copy_split_options,
+										true /* is_truncate */);
+		}
 	}
 	else
 	{
@@ -5613,7 +5700,7 @@ RelationCacheInitializePhase3(void)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true) && 
+		needNewCacheFile = !load_relcache_init_file(true) &&
 			!YbNeedAdditionalCatalogTables() &&
 			*YBCGetGFlags()->ysql_use_relcache_file;
 	}
@@ -5655,7 +5742,7 @@ RelationCacheInitializePhase3(void)
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
 		bool preload_rel_cache =
-			needNewCacheFile || 
+			needNewCacheFile ||
 			YBCIsInitDbModeEnvVarSet() ||
 			YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file;
@@ -7540,7 +7627,7 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		(YbNeedAdditionalCatalogTables() || 
+		(YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file))
 		return false;
 
@@ -7854,6 +7941,9 @@ load_relcache_init_file(bool shared)
 		rel->rd_newRelfilenodeSubid = InvalidSubTransactionId;
 		rel->rd_amcache = NULL;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
+
+		/* YB properties will be loaded lazily */
+		rel->yb_table_properties = NULL;
 
 		/*
 		 * Recompute lock and physical addressing info.  This is needed in

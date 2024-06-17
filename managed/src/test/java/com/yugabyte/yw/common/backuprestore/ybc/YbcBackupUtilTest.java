@@ -377,7 +377,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
     when(mockAWSUtil.getCloudLocationInfo(nullable(String.class), any(), nullable(String.class)))
         .thenCallRealMethod();
-    CloudStoreConfig csConfig = ybcBackupUtil.createBackupConfig(storageConfig, commonDir);
+    CloudStoreConfig csConfig =
+        ybcBackupUtil.createBackupConfig(storageConfig, commonDir, defaultUniverse);
     Map<String, String> s3DefaultCredsMap =
         new HashMap<String, String>() {
           {

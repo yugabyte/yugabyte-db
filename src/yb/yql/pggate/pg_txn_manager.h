@@ -61,8 +61,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
-  Status CommitTransaction();
-  Status AbortTransaction();
+  Status CommitPlainTransaction();
+  Status AbortPlainTransaction();
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
@@ -73,6 +73,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status ExitSeparateDdlTxnModeWithAbort();
   Status ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_silent_altering);
   void SetDdlHasSyscatalogChanges();
+  Status SetInTxnBlock(bool in_txn_blk);
+  Status SetReadOnlyStmt(bool read_only_stmt);
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
@@ -86,9 +88,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
   uint64_t GetReadTimeSerialNo() { return read_time_serial_no_; }
-  void ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
-    read_time_serial_no_ = read_time_serial_no;
-  }
+  uint64_t GetTxnSerialNo() { return txn_serial_no_; }
+  SubTransactionId GetActiveSubTransactionId() { return active_sub_transaction_id_; }
+  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
 
  private:
   struct DdlCommitInfo {
@@ -108,7 +110,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::string TxnStateDebugStr() const;
 
-  Status FinishTransaction(Commit commit);
+  Status FinishPlainTransaction(Commit commit);
 
   void IncTxnSerialNo();
 
@@ -123,10 +125,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   uint64_t txn_serial_no_ = 0;
   uint64_t read_time_serial_no_ = 0;
-  SubTransactionId active_sub_transaction_id_ = 0;
+  SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  bool in_txn_blk_ = false;
+  bool read_only_stmt_ = false;
 
   // Postgres transaction characteristics.
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;

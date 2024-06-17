@@ -77,6 +77,8 @@ class YBTableCreator {
 
   YBTableCreator& old_rewrite_table_id(const std::string& old_rewrite_table_id);
 
+  YBTableCreator& is_truncate(bool is_truncate);
+
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
   YBTableCreator& schema(const YBSchema* schema);
@@ -135,6 +137,9 @@ class YBTableCreator {
 
   // For index table: sets whether to do online schema migration when creating index.
   YBTableCreator& skip_index_backfill(const bool skip_index_backfill);
+
+  // For vector index table: adds vector index-specific options.
+  YBTableCreator& add_vector_options(const PgVectorIdxOptionsPB& vec_options);
 
   // For index table: indicates whether this index has mangled column name.
   // - Older index supports only ColumnRef, and its name is identical with colum name.
@@ -229,6 +234,9 @@ class YBTableCreator {
 
   // Used during table rewrite - the TableId of the old DocDB table that is being rewritten.
   TableId old_rewrite_table_id_;
+
+  // Set to true when the table is being re-written as part of a TRUNCATE operation.
+  boost::optional<bool> is_truncate_;
 
   const TransactionMetadata* txn_ = nullptr;
 

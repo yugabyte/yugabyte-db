@@ -169,6 +169,16 @@ typedef bool (*amgettuple_function) (IndexScanDesc scan,
 typedef int64 (*amgetbitmap_function) (IndexScanDesc scan,
 									   TIDBitmap *tbm);
 
+/* YB: fetch all valid tuples */
+typedef int64 (*yb_amgetbitmap_function) (IndexScanDesc scan,
+										  YbTIDBitmap *ybtbm,
+										  bool recheck);
+
+typedef void (*yb_ambindschema_function) (YBCPgStatement handle,
+										  struct IndexInfo *indexInfo,
+										  TupleDesc indexTupleDesc,
+										  int16 *coloptions);
+
 /* end index scan */
 typedef void (*amendscan_function) (IndexScanDesc scan);
 
@@ -265,11 +275,23 @@ typedef struct IndexAmRoutine
 	aminitparallelscan_function aminitparallelscan; /* can be NULL */
 	amparallelrescan_function amparallelrescan; /* can be NULL */
 
-	/* interface functions to support Yugabyte indexes */
+	 /* YB properties */
+	 /* Whether this AM is for YB relations. */
+	 bool		yb_amisforybrelation;
+
+	/* YB functions */
 	yb_aminsert_function yb_aminsert;
 	yb_amdelete_function yb_amdelete;
 	yb_ambackfill_function yb_ambackfill;
 	yb_ammightrecheck_function yb_ammightrecheck;
+	yb_amgetbitmap_function yb_amgetbitmap;
+
+	/*
+	 * Allows YB AM's to specify how they want to lay out their
+	 * DocDB schema and also gives them a chance to pass along any
+	 * additional metadata to the index creation statement.
+	 */
+	yb_ambindschema_function yb_ambindschema;
 
 } IndexAmRoutine;
 

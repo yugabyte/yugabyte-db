@@ -27,12 +27,14 @@ import {
   KEY_PAIR_MANAGEMENT_OPTIONS,
   NTPSetupType,
   ProviderCode,
+  ProviderOperation,
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
+import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
   findExistingRegion,
   findExistingZone,
@@ -51,20 +53,21 @@ import {
   generateLowerCaseAlphanumericId,
   getIsFieldDisabled,
   getIsFormDisabled,
-  readFileAsText
+  readFileAsText,
+  handleFormSubmitServerError,
+  UseProviderValidationEnabled
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
-import { ACCEPTABLE_CHARS } from '../../../../config/constants';
+import { ACCEPTABLE_CHARS, RG_REGEX, UUID_REGEX } from '../../../../config/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
-
 import {
   AZUAvailabilityZone,
   AZUAvailabilityZoneMutation,
@@ -78,12 +81,17 @@ import {
   hasNecessaryPerm,
   RbacValidator
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
+import {
+  ConfigureSSHDetailsMsg,
+  IsOsPatchingEnabled,
+  constructImageBundlePayload
+} from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { getYBAHost } from '../../utils';
 import { hostInfoQueryKey } from '../../../../../redesign/helpers/api';
+import { AZURE_FORM_MAPPERS } from './constants';
 
 interface AZUProviderEditFormProps {
   editProvider: EditProvider;
@@ -129,7 +137,12 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  azuClientId: string().required('Azure Client ID is required.'),
+  azuClientId: string()
+    .required('Azure Client ID is required.')
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    ),
   azuClientSecret: mixed().test({
     test: (value, context) => {
       if (
@@ -143,9 +156,24 @@ const VALIDATION_SCHEMA = object().shape({
     },
     message: 'Azure Client Secret is required.'
   }),
-  azuRG: string().required('Azure Resource Group is required.'),
-  azuSubscriptionId: string().required('Azure Subscription ID is required.'),
-  azuTenantId: string().required('Azure Tenant ID is required.'),
+  azuRG: string()
+    .required('Azure Resource Group is required.')
+    .matches(
+      RG_REGEX,
+      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
+    ),
+  azuSubscriptionId: string()
+    .required('Azure Subscription ID is required.')
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    ),
+  azuTenantId: string()
+    .required('Azure Tenant ID is required.')
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    ),
   sshKeypairManagement: mixed().when('editSSHKeypair', {
     is: true,
     then: mixed().oneOf(
@@ -172,7 +200,17 @@ const VALIDATION_SCHEMA = object().shape({
       )
     )
   }),
-  regions: array().min(1, 'Provider configurations must contain at least one region.')
+  regions: array().min(1, 'Provider configurations must contain at least one region.'),
+  azuNetworkRG: string()
+    .matches(
+      RG_REGEX,
+      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
+    ),
+  azuNetworkSubscriptionId: string()
+    .matches(
+      UUID_REGEX,
+      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+    )
 });
 
 const FORM_NAME = 'AZUProviderEditForm';
@@ -186,6 +224,7 @@ export const AZUProviderEditForm = ({
   const [isDeleteRegionModalOpen, setIsDeleteRegionModalOpen] = useState<boolean>(false);
   const [regionSelection, setRegionSelection] = useState<CloudVendorRegionField>();
   const [regionOperation, setRegionOperation] = useState<RegionOperation>(RegionOperation.ADD);
+  const [isValidationErrorExist, setValidationErrorExist] = useState(false);
 
   const { t } = useTranslation();
   const defaultValues = constructDefaultFormValues(providerConfig);
@@ -199,7 +238,14 @@ export const AZUProviderEditForm = ({
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
+  const {
+    isLoading: isProviderValidationLoading,
+    isValidationEnabled
+  } = UseProviderValidationEnabled(CloudType.azu);
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+  const sshConfigureMsg = ConfigureSSHDetailsMsg();
 
   if (hostInfoQuery.isError) {
     return (
@@ -215,7 +261,11 @@ export const AZUProviderEditForm = ({
       />
     );
   }
-  if (hostInfoQuery.isLoading || customerRuntimeConfigQuery.isLoading) {
+  if (
+    hostInfoQuery.isLoading ||
+    customerRuntimeConfigQuery.isLoading ||
+    isProviderValidationLoading
+  ) {
     return <YBLoading />;
   }
 
@@ -241,7 +291,11 @@ export const AZUProviderEditForm = ({
   const onFormReset = () => {
     formMethods.reset(defaultValues);
   };
-  const onFormSubmit: SubmitHandler<AZUProviderEditFormFieldValues> = async (formValues) => {
+  const onFormSubmit = async (
+    formValues: AZUProviderEditFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -251,15 +305,39 @@ export const AZUProviderEditForm = ({
     }
 
     try {
+      setValidationErrorExist(false);
       const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
-        await editProvider(providerPayload);
+        await editProvider(providerPayload, {
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
+          mutateOptions: {
+            onError: (err) => {
+              handleFormSubmitServerError(
+                (err as any)?.response?.data,
+                formMethods,
+                AZURE_FORM_MAPPERS
+              );
+              setValidationErrorExist(true);
+            }
+          }
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
     } catch (error: any) {
       toast.error(error.message ?? error);
     }
+  };
+
+  const onFormValidateAndSubmit: SubmitHandler<AZUProviderEditFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
+  const onFormForceSubmit: SubmitHandler<AZUProviderEditFormFieldValues> = async (formValues) =>
+    await onFormSubmit(formValues, isValidationEnabled, true);
+
+  const skipValidationAndSubmit = () => {
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const regions = formMethods.watch('regions', defaultValues.regions);
@@ -302,6 +380,7 @@ export const AZUProviderEditForm = ({
       config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
+
   const isProviderInUse = linkedUniverses.length > 0;
   const isFormDisabled =
     (!isEditInUseProviderEnabled && isProviderInUse) ||
@@ -310,7 +389,10 @@ export const AZUProviderEditForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name="azuProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name="azuProviderForm"
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           {currentProviderVersion < providerConfig.version && (
             <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
@@ -518,6 +600,7 @@ export const AZUProviderEditForm = ({
             >
               <RegionList
                 providerCode={ProviderCode.AZU}
+                providerOperation={ProviderOperation.EDIT}
                 providerUuid={providerConfig.uuid}
                 regions={regions}
                 existingRegions={existingRegions}
@@ -525,13 +608,14 @@ export const AZUProviderEditForm = ({
                 showAddRegionFormModal={showAddRegionFormModal}
                 showEditRegionFormModal={showEditRegionFormModal}
                 showDeleteRegionModal={showDeleteRegionModal}
-                disabled={getIsFieldDisabled(
+                isDisabled={getIsFieldDisabled(
                   ProviderCode.AZU,
                   'regions',
                   isFormDisabled,
                   isProviderInUse
                 )}
                 isError={!!formMethods.formState.errors.regions}
+                errors={formMethods.formState.errors.regions as any}
                 linkedUniverses={linkedUniverses}
                 isEditInUseProviderEnabled={isEditInUseProviderEnabled}
               />
@@ -543,22 +627,32 @@ export const AZUProviderEditForm = ({
             </FieldGroup>
             <LinuxVersionCatalog
               control={formMethods.control as any}
-              providerType={CloudType.azu}
-              viewMode="EDIT"
+              providerType={ProviderCode.AZU}
+              providerOperation={ProviderOperation.EDIT}
               providerStatus={providerConfig.usabilityState}
+              linkedUniverses={linkedUniverses}
+              isDisabled={getIsFieldDisabled(
+                ProviderCode.AZU,
+                'imageBundles',
+                isFormDisabled,
+                isProviderInUse
+              )}
             />
             <FieldGroup heading="SSH Key Pairs">
+              {sshConfigureMsg}
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="sshUser"
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AZU,
-                    'sshUser',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AZU,
+                      'sshUser',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -569,12 +663,14 @@ export const AZUProviderEditForm = ({
                   name="sshPort"
                   type="number"
                   inputProps={{ min: 1, max: 65535 }}
-                  disabled={getIsFieldDisabled(
-                    ProviderCode.AZU,
-                    'sshPort',
-                    isFormDisabled,
-                    isProviderInUse
-                  )}
+                  disabled={
+                    getIsFieldDisabled(
+                      ProviderCode.AZU,
+                      'sshPort',
+                      isFormDisabled,
+                      isProviderInUse
+                    ) || isOsPatchingEnabled
+                  }
                   fullWidth
                 />
               </FormField>
@@ -686,9 +782,7 @@ export const AZUProviderEditForm = ({
               </FormField>
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-              <Box display="flex" gridGap="5px" marginLeft="auto">
-                <CircularProgress size={16} color="primary" thickness={5} />
-              </Box>
+              <SubmitInProgress isValidationEnabled={isValidationEnabled} />
             )}
           </Box>
           <Box marginTop="16px">
@@ -698,13 +792,28 @@ export const AZUProviderEditForm = ({
               overrideStyle={{ float: 'right' }}
             >
               <YBButton
-                btnText="Apply Changes"
+                btnText={isValidationEnabled ? 'Validate and Apply Changes' : 'Apply Changes'}
                 btnClass="btn btn-default save-btn"
                 btnType="submit"
                 disabled={isFormDisabled || formMethods.formState.isValidating}
                 data-testid={`${FORM_NAME}-SubmitButton`}
               />
             </RbacValidator>
+            {isValidationEnabled && isValidationErrorExist && (
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.MODIFY_PROVIDER}
+                isControl
+                overrideStyle={{ float: 'right' }}
+              >
+                <YBButton
+                  btnText="Ignore and save provider configuration anyway"
+                  btnClass="btn btn-default float-right mr-10"
+                  onClick={skipValidationAndSubmit}
+                  disabled={isFormDisabled || formMethods.formState.isValidating}
+                  data-testid={`${FORM_NAME}-IgnoreAndSave`}
+                />
+              </RbacValidator>
+            )}
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
@@ -855,12 +964,10 @@ const constructProviderPayload = async (
           regionFormValues.code
         );
         return {
-          ...(existingRegion && {
-            active: existingRegion.active,
-            uuid: existingRegion.uuid
-          }),
+          ...existingRegion,
           code: regionFormValues.code,
           details: {
+            ...existingRegion?.details,
             cloudInfo: {
               [ProviderCode.AZU]: {
                 ...(regionFormValues.securityGroupId && {
@@ -882,10 +989,7 @@ const constructProviderPayload = async (
                 azFormValues.code
               );
               return {
-                ...(existingZone && {
-                  active: existingZone.active,
-                  uuid: existingZone.uuid
-                }),
+                ...existingZone,
                 code: azFormValues.code,
                 name: azFormValues.code,
                 subnet: azFormValues.subnet

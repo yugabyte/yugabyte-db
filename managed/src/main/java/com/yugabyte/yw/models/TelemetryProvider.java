@@ -17,6 +17,7 @@ import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -54,7 +55,7 @@ public class TelemetryProvider extends Model {
   @Valid
   @DbJson
   @ApiModelProperty(value = "Extra Tags", accessMode = READ_WRITE)
-  private Map<String, String> tags;
+  private Map<String, String> tags = new HashMap<>();
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(

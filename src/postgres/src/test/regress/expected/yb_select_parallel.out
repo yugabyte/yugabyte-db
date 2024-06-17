@@ -21,23 +21,21 @@ create table part_pa_test_p2 partition of part_pa_test for values from (0) to (m
 explain (costs off)
 	select (select max((select pa1.b from part_pa_test pa1 where pa1.a = pa2.a)))
 	from part_pa_test pa2;
-                     QUERY PLAN
------------------------------------------------------
+                   QUERY PLAN
+-------------------------------------------------
  Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Append
-               ->  Seq Scan on part_pa_test_p1 pa2
-               ->  Seq Scan on part_pa_test_p2 pa2_1
+   ->  Append
+         ->  Seq Scan on part_pa_test_p1 pa2
+         ->  Seq Scan on part_pa_test_p2 pa2_1
    SubPlan 2
      ->  Result
    SubPlan 1
      ->  Append
            ->  Seq Scan on part_pa_test_p1 pa1
-                 Remote Filter: (a = pa2.a)
+                 Storage Filter: (a = pa2.a)
            ->  Seq Scan on part_pa_test_p2 pa1_1
-                 Remote Filter: (a = pa2.a)
-(14 rows)
+                 Storage Filter: (a = pa2.a)
+(12 rows)
 
 drop table part_pa_test;
 -- test with leader participation disabled
@@ -45,10 +43,10 @@ set parallel_leader_participation = off;
 explain (costs off)
   select count(*) from tenk1 where stringu1 = 'GRAAAA';
                      QUERY PLAN
-----------------------------------------------------
+-----------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
-         Remote Filter: (stringu1 = 'GRAAAA'::name)
+         Storage Filter: (stringu1 = 'GRAAAA'::name)
          Partial Aggregate: true
 (4 rows)
 
@@ -64,10 +62,10 @@ set max_parallel_workers = 0;
 explain (costs off)
   select count(*) from tenk1 where stringu1 = 'GRAAAA';
                      QUERY PLAN
-----------------------------------------------------
+-----------------------------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
-         Remote Filter: (stringu1 = 'GRAAAA'::name)
+         Storage Filter: (stringu1 = 'GRAAAA'::name)
          Partial Aggregate: true
 (4 rows)
 
@@ -84,13 +82,13 @@ explain (verbose, costs off)
 select sp_parallel_restricted(unique1) from tenk1
   where stringu1 = 'GRAAAA' order by 1;
                         QUERY PLAN
-----------------------------------------------------------
+-----------------------------------------------------------
  Sort
    Output: (sp_parallel_restricted(unique1))
    Sort Key: (sp_parallel_restricted(tenk1.unique1))
    ->  Seq Scan on public.tenk1
          Output: sp_parallel_restricted(unique1)
-         Remote Filter: (tenk1.stringu1 = 'GRAAAA'::name)
+         Storage Filter: (tenk1.stringu1 = 'GRAAAA'::name)
 (6 rows)
 
 -- test parallel plan when group by expression is in target list.
@@ -125,21 +123,21 @@ explain (costs off)
 explain (costs off)
 	select  sum(sp_parallel_restricted(unique1)) from tenk1
 	group by(sp_parallel_restricted(unique1));
-                     QUERY PLAN
-----------------------------------------------------
+                  QUERY PLAN
+----------------------------------------------
  HashAggregate
    Group Key: sp_parallel_restricted(unique1)
-   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Seq Scan on tenk1
 (3 rows)
 
 -- test prepared statement
 prepare tenk1_count(integer) As select  count((unique1)) from tenk1 where hundred > $1;
 explain (costs off) execute tenk1_count(1);
               QUERY PLAN
---------------------------------------
+---------------------------------------
  Finalize Aggregate
    ->  Seq Scan on tenk1
-         Remote Filter: (hundred > 1)
+         Storage Filter: (hundred > 1)
          Partial Aggregate: true
 (4 rows)
 
@@ -154,14 +152,14 @@ deallocate tenk1_count;
 explain (costs off)
 	select count(*) from tenk1 where (two, four) not in
 	(select hundred, thousand from tenk2 where thousand > 100);
-                   QUERY PLAN
--------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Aggregate
    ->  Seq Scan on tenk1
          Filter: (NOT (hashed SubPlan 1))
          SubPlan 1
            ->  Seq Scan on tenk2
-                 Remote Filter: (thousand > 100)
+                 Storage Filter: (thousand > 100)
 (6 rows)
 
 select count(*) from tenk1 where (two, four) not in
@@ -198,7 +196,7 @@ explain (costs off)
            ->  Seq Scan on tenk2
                  Partial Aggregate: true
    ->  Seq Scan on tenk1
-         Remote Filter: (unique1 = $1)
+         Storage Filter: (unique1 = $1)
          Partial Aggregate: true
 (8 rows)
 
@@ -372,7 +370,7 @@ $$ language plpgsql PARALLEL SAFE;
 explain (costs off, verbose)
     select ten, sp_simple_func(ten) from tenk1 where ten < 100 order by ten;
                    QUERY PLAN
-------------------------------------------------
+-------------------------------------------------
  Result
    Output: ten, sp_simple_func(ten)
    ->  Sort
@@ -380,7 +378,7 @@ explain (costs off, verbose)
          Sort Key: tenk1.ten
          ->  Seq Scan on public.tenk1
                Output: ten
-               Remote Filter: (tenk1.ten < 100)
+               Storage Filter: (tenk1.ten < 100)
 (8 rows)
 
 drop function sp_simple_func(integer);
@@ -524,10 +522,10 @@ reset enable_hashagg;
 -- check parallelized int8 aggregate (bug #14897)
 explain (costs off)
 select avg(unique1::int8) from tenk1;
-                     QUERY PLAN
-----------------------------------------------------
+       QUERY PLAN
+-------------------------
  Aggregate
-   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Seq Scan on tenk1
 (2 rows)
 
 select avg(unique1::int8) from tenk1;
@@ -665,7 +663,7 @@ explain (costs off, verbose)
                Output: b.unique1, (row_number() OVER (?))
                ->  WindowAgg
                      Output: b.unique1, row_number() OVER (?)
-                     ->  Index Only Scan using tenk1_unique1 on public.tenk1 b
+                     ->  Seq Scan on public.tenk1 b
                            Output: b.unique1
 (12 rows)
 
@@ -674,14 +672,14 @@ explain (costs off)
   select * from tenk1 a where two in
     (select two from tenk1 b where stringu1 like '%AAAA' limit 3);
                            QUERY PLAN
-----------------------------------------------------------------
+-----------------------------------------------------------------
  Nested Loop Semi Join
    Join Filter: (a.two = b.two)
    ->  Seq Scan on tenk1 a
    ->  Materialize
          ->  Limit
                ->  Seq Scan on tenk1 b
-                     Remote Filter: (stringu1 ~~ '%AAAA'::text)
+                     Storage Filter: (stringu1 ~~ '%AAAA'::text)
 (7 rows)
 
 -- to increase the parallel query test coverage
@@ -715,16 +713,14 @@ EXPLAIN (COSTS OFF)
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1
 UNION ALL
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1;
-                        QUERY PLAN
------------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Append
-         ->  Seq Scan on tenk1
-               Remote Filter: (fivethous = (tenthous + 1))
-         ->  Seq Scan on tenk1 tenk1_1
-               Remote Filter: (fivethous = (tenthous + 1))
-(7 rows)
+                      QUERY PLAN
+------------------------------------------------------
+ Append
+   ->  Seq Scan on tenk1
+         Storage Filter: (fivethous = (tenthous + 1))
+   ->  Seq Scan on tenk1 tenk1_1
+         Storage Filter: (fivethous = (tenthous + 1))
+(5 rows)
 
 ROLLBACK TO SAVEPOINT settings;
 -- can't use multiple subqueries under a single Gather node due to initPlans
@@ -736,22 +732,22 @@ SELECT unique1 FROM tenk1 WHERE fivethous =
 	(SELECT unique2 FROM tenk1 WHERE fivethous = 1 LIMIT 1)
 ORDER BY 1;
                          QUERY PLAN
-------------------------------------------------------------
+-------------------------------------------------------------
  Sort
    Sort Key: tenk1.unique1
    ->  Append
          ->  Seq Scan on tenk1
-               Remote Filter: (fivethous = $0)
+               Storage Filter: (fivethous = $0)
                InitPlan 1 (returns $0)
                  ->  Limit
                        ->  Seq Scan on tenk1 tenk1_2
-                             Remote Filter: (fivethous = 1)
+                             Storage Filter: (fivethous = 1)
          ->  Seq Scan on tenk1 tenk1_1
-               Remote Filter: (fivethous = $1)
+               Storage Filter: (fivethous = $1)
                InitPlan 2 (returns $1)
                  ->  Limit
                        ->  Seq Scan on tenk1 tenk1_3
-                             Remote Filter: (fivethous = 1)
+                             Storage Filter: (fivethous = 1)
 (15 rows)
 
 -- test passing expanded-value representations to workers
@@ -769,7 +765,7 @@ EXPLAIN (COSTS OFF) EXECUTE pstmt('1', make_some_array(1,2));
              QUERY PLAN
 -------------------------------------
  Seq Scan on fooarr
-   Remote Filter: (f1 = '1'::text)
+   Storage Filter: (f1 = '1'::text)
    Filter: (f2 = '{1,2}'::integer[])
 (3 rows)
 
@@ -789,7 +785,7 @@ SELECT 1 FROM tenk1_vw_sec WHERE EXISTS (SELECT 1 WHERE unique1 = 0);
 ---------------------------------------------------------
  Subquery Scan on tenk1_vw_sec
    Filter: (alternatives: SubPlan 1 or hashed SubPlan 2)
-   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Seq Scan on tenk1
    SubPlan 1
      ->  Result
            One-Time Filter: (tenk1_vw_sec.unique1 = 0)
@@ -798,3 +794,44 @@ SELECT 1 FROM tenk1_vw_sec WHERE EXISTS (SELECT 1 WHERE unique1 = 0);
 (8 rows)
 
 rollback;
+-- GHI 21320
+CREATE TABLE c (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT c_pkey PRIMARY KEY(pk ASC));
+CREATE TABLE d (pk integer NOT NULL, col_varchar_key character varying(1), col_varchar_nokey character varying(1), CONSTRAINT d_pkey PRIMARY KEY(pk ASC));
+CREATE TABLE dummy (i integer);
+COPY c (pk, col_varchar_key, col_varchar_nokey) FROM stdin;
+COPY d (pk, col_varchar_key, col_varchar_nokey) FROM stdin;
+COPY dummy (i) FROM stdin;
+/*+ Set(enable_hashjoin off) Set(enable_mergejoin off) Set(enable_material off) */
+EXPLAIN (analyze, timing off, summary off, costs off) SELECT
+FROM
+    D AS table2
+    JOIN C AS table3 ON (
+        table3.col_varchar_nokey = table2.col_varchar_key
+    )
+WHERE
+    table2.col_varchar_nokey <> ANY (
+        SELECT
+            'j'
+        FROM
+            DUMMY
+            UNION
+            ALL
+        SELECT
+            'r'
+        FROM
+            DUMMY
+    );
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Nested Loop (actual rows=59 loops=1)
+   Join Filter: ((table2.col_varchar_key)::text = (table3.col_varchar_nokey)::text)
+   Rows Removed by Join Filter: 1721
+   ->  Nested Loop Semi Join (actual rows=89 loops=1)
+         Join Filter: ((table2.col_varchar_nokey)::text <> ('j'::text))
+         Rows Removed by Join Filter: 23
+         ->  Seq Scan on d table2 (actual rows=100 loops=1)
+         ->  Append (actual rows=1 loops=100)
+               ->  Seq Scan on dummy (actual rows=1 loops=100)
+               ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=12)
+   ->  Seq Scan on c table3 (actual rows=20 loops=89)
+(11 rows)

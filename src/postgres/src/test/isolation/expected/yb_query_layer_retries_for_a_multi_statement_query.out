@@ -1,0 +1,99 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin s1_update s2_implicit_txn_a s1_commit s2_select_test s2_select_test2
+step s1_begin: BEGIN;
+step s1_update: UPDATE test SET v=0 where k=1;
+step s2_implicit_txn_a: INSERT INTO test2 (v) values (1); UPDATE test SET v=v+1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_implicit_txn_a: <... completed>
+error in steps s1_commit s2_implicit_txn_a: ERROR:  could not serialize access due to concurrent update (query layer retries aren't supported for multi-statement queries issued via the simple query protocol, upvote github issue #21833 if you want this)
+step s2_select_test: SELECT * FROM test;
+k              v
+
+1              0
+step s2_select_test2: SELECT * FROM test2;
+k              v
+
+
+starting permutation: s1_begin s1_update s2_implicit_txn_b s1_commit s2_select_test s2_select_test2
+step s1_begin: BEGIN;
+step s1_update: UPDATE test SET v=0 where k=1;
+step s2_implicit_txn_b: UPDATE test SET v=v+1; INSERT INTO test2 (v) values (1); <waiting ...>
+step s1_commit: COMMIT;
+step s2_implicit_txn_b: <... completed>
+error in steps s1_commit s2_implicit_txn_b: ERROR:  could not serialize access due to concurrent update (query layer retries aren't supported for multi-statement queries issued via the simple query protocol, upvote github issue #21833 if you want this)
+step s2_select_test: SELECT * FROM test;
+k              v
+
+1              0
+step s2_select_test2: SELECT * FROM test2;
+k              v
+
+
+starting permutation: s1_begin s1_update s2_explicit_txn_block_a s1_commit s2_select_test s2_commit s2_select_test s2_select_test2
+step s1_begin: BEGIN;
+step s1_update: UPDATE test SET v=0 where k=1;
+step s2_explicit_txn_block_a: BEGIN; INSERT INTO test2 (v) values (1); UPDATE test SET v=v+1; COMMIT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_explicit_txn_block_a: <... completed>
+error in steps s1_commit s2_explicit_txn_block_a: ERROR:  could not serialize access due to concurrent update (query layer retries aren't supported for multi-statement queries issued via the simple query protocol, upvote github issue #21833 if you want this)
+step s2_select_test: SELECT * FROM test;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+step s2_commit: COMMIT;
+step s2_select_test: SELECT * FROM test;
+k              v
+
+1              0
+step s2_select_test2: SELECT * FROM test2;
+k              v
+
+
+starting permutation: s1_begin s1_update s2_explicit_txn_block_b s1_commit s2_select_test s2_commit s2_select_test s2_select_test2
+step s1_begin: BEGIN;
+step s1_update: UPDATE test SET v=0 where k=1;
+step s2_explicit_txn_block_b: BEGIN; UPDATE test SET v=v+1; INSERT INTO test2 (v) values (1); COMMIT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_explicit_txn_block_b: <... completed>
+error in steps s1_commit s2_explicit_txn_block_b: ERROR:  could not serialize access due to concurrent update (query layer retries aren't supported for multi-statement queries issued via the simple query protocol, upvote github issue #21833 if you want this)
+step s2_select_test: SELECT * FROM test;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+step s2_commit: COMMIT;
+step s2_select_test: SELECT * FROM test;
+k              v
+
+1              0
+step s2_select_test2: SELECT * FROM test2;
+k              v
+
+
+starting permutation: s1_begin s1_update s2_statement_after_commit_a s1_commit s2_select_test s2_select_test2
+step s1_begin: BEGIN;
+step s1_update: UPDATE test SET v=0 where k=1;
+step s2_statement_after_commit_a: BEGIN; INSERT INTO test2 (v) values (1); COMMIT; UPDATE test SET v=v+1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_statement_after_commit_a: <... completed>
+error in steps s1_commit s2_statement_after_commit_a: ERROR:  could not serialize access due to concurrent update (query layer retries aren't supported for multi-statement queries issued via the simple query protocol, upvote github issue #21833 if you want this)
+step s2_select_test: SELECT * FROM test;
+k              v
+
+1              0
+step s2_select_test2: SELECT * FROM test2;
+k              v
+
+1              1
+
+starting permutation: s1_begin s1_update s2_statement_after_commit_b s1_commit s2_select_test s2_select_test2
+step s1_begin: BEGIN;
+step s1_update: UPDATE test SET v=0 where k=1;
+step s2_statement_after_commit_b: BEGIN; INSERT INTO test2 (v) values (1); COMMIT; INSERT INTO test2 (v) values (2); UPDATE test SET v=v+1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_statement_after_commit_b: <... completed>
+error in steps s1_commit s2_statement_after_commit_b: ERROR:  could not serialize access due to concurrent update (query layer retries aren't supported for multi-statement queries issued via the simple query protocol, upvote github issue #21833 if you want this)
+step s2_select_test: SELECT * FROM test;
+k              v
+
+1              0
+step s2_select_test2: SELECT * FROM test2;
+k              v
+
+1              1

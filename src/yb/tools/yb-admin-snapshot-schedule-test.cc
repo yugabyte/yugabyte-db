@@ -21,13 +21,17 @@
 #include <utility>
 #include <vector>
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/json_util.h"
 
+#include "yb/common/snapshot.h"
 #include "yb/gutil/logging-inl.h"
 
 #include "yb/gutil/strings/split.h"
@@ -51,7 +55,9 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
@@ -67,6 +73,11 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(num_tablet_servers);
 DECLARE_int32(num_replicas);
 
+using yb::common::GetMember;
+using yb::common::GetMemberAsStr;
+using yb::common::GetMemberAsArray;
+using yb::common::PrettyWriteRapidJsonToString;
+
 namespace yb::tools {
 
 namespace {
@@ -75,16 +86,16 @@ const std::string kClusterName = "yugacluster";
 const std::string kTablegroupName = "ysql_tg";
 
 constexpr auto kInterval = 6s;
-constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(12min, 20min, 12min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
 const std::string old_sys_catalog_snapshot_name = "initial_sys_catalog_snapshot_2.0.9.0";
 
-Result<double> MinuteStringToSeconds(const std::string& min_str) {
-      std::vector<Slice> args;
-      RETURN_NOT_OK(yb::util::SplitArgs(min_str, &args));
-      return MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0]))).ToSeconds();
+Result<double> MinuteStringToSeconds(const std::string_view& min_str) {
+  std::vector<Slice> args;
+  RETURN_NOT_OK(yb::util::SplitArgs(min_str, &args));
+  return MonoDelta::FromMinutes(VERIFY_RESULT(CheckedStold(args[0]))).ToSeconds();
 }
 
 Result<size_t> GetTabletCount(TestAdminClient* client) {
@@ -114,7 +125,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         return result.status();
       }
 
-      auto schedules = VERIFY_RESULT(Get(&*result, "schedules")).get().GetArray();
+      auto schedules = VERIFY_RESULT(GetMemberAsArray(*result, "schedules"));
       if (schedules.Empty()) {
         return STATUS(NotFound, "Snapshot schedule not found");
       }
@@ -128,7 +139,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   Result<rapidjson::Document> ListSnapshots() {
     auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshots", "JSON"));
     rapidjson::Document result;
-    result.CopyFrom(VERIFY_RESULT(Get(&out, "snapshots")).get(), result.GetAllocator());
+    result.CopyFrom(
+        VERIFY_RESULT(GetMember(out, "snapshots")).get(), result.GetAllocator());
     return result;
   }
 
@@ -138,7 +150,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     RETURN_NOT_OK(WaitFor([this, id, num_snapshots, &result]() -> Result<bool> {
       // If there's a master leader failover then we should wait for the next cycle.
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
-      auto snapshots = VERIFY_RESULT(Get(&schedule, "snapshots")).get().GetArray();
+      auto snapshots = VERIFY_RESULT(GetMemberAsArray(schedule, "snapshots"));
       if (snapshots.Size() < num_snapshots) {
         return false;
       }
@@ -147,7 +159,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     }, duration, "Wait schedule snapshot"));
 
     // Wait for the present time to become at-least the time chosen by the first snapshot.
-    auto snapshot_time_string = VERIFY_RESULT(Get(&result, "snapshot_time")).get().GetString();
+    std::string snapshot_time_string{VERIFY_RESULT(GetMemberAsStr(result, "snapshot_time"))};
     HybridTime snapshot_ht = VERIFY_RESULT(HybridTime::ParseHybridTime(snapshot_time_string));
 
     RETURN_NOT_OK(WaitFor([&snapshot_ht]() -> Result<bool> {
@@ -160,16 +172,16 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   Status WaitNewSnapshot(const std::string& id = {}) {
     LOG(INFO) << "WaitNewSnapshot, schedule id: " << id;
-    std::string last_snapshot_id;
+    std::string_view last_snapshot_id;
     return WaitFor([this, &id, &last_snapshot_id]() -> Result<bool> {
       // If there's a master leader failover then we should wait for the next cycle.
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
-      auto snapshots = VERIFY_RESULT(Get(&schedule, "snapshots")).get().GetArray();
+      auto snapshots = VERIFY_RESULT(GetMemberAsArray(schedule, "snapshots"));
       if (snapshots.Empty()) {
         return false;
       }
       auto snapshot_id = VERIFY_RESULT(
-          Get(&snapshots[snapshots.Size() - 1], "id")).get().GetString();
+          GetMemberAsStr(snapshots[snapshots.Size() - 1], "id"));
       LOG(INFO) << "WaitNewSnapshot, last snapshot id: " << snapshot_id;
       if (last_snapshot_id.empty()) {
         last_snapshot_id = snapshot_id;
@@ -184,7 +196,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     auto out = VERIFY_RESULT(CallJsonAdmin(
         "restore_snapshot_schedule", schedule_id, restore_at.ToFormattedString(),
         "--timeout_ms", std::to_string(600000 * kTimeMultiplier)));
-    std::string restoration_id = VERIFY_RESULT(Get(out, "restoration_id")).get().GetString();
+    std::string restoration_id{VERIFY_RESULT(GetMemberAsStr(out, "restoration_id"))};
     LOG(INFO) << "Restoration id: " << restoration_id;
     return restoration_id;
   }
@@ -206,12 +218,12 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         }
         return out_result.status();
       }
-      LOG(INFO) << "Restorations: " << common::PrettyWriteRapidJsonToString(*out_result);
-      const auto& restorations = VERIFY_RESULT(Get(*out_result, "restorations")).get().GetArray();
+      LOG(INFO) << "Restorations: " << PrettyWriteRapidJsonToString(*out_result);
+      const auto restorations = VERIFY_RESULT(GetMemberAsArray(*out_result, "restorations"));
       SCHECK_EQ(restorations.Size(), 1U, IllegalState, "Wrong restorations number");
-      auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
+      auto id = VERIFY_RESULT(GetMemberAsStr(restorations[0], "id"));
       SCHECK_EQ(id, restoration_id, IllegalState, "Wrong restoration id");
-      std::string state_str = VERIFY_RESULT(Get(restorations[0], "state")).get().GetString();
+      std::string state_str{VERIFY_RESULT(GetMemberAsStr(restorations[0], "state"))};
       master::SysSnapshotEntryPB::State state;
       if (!master::SysSnapshotEntryPB_State_Parse(state_str, &state)) {
         return STATUS_FORMAT(IllegalState, "Failed to parse restoration state: $0", state_str);
@@ -228,14 +240,36 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   Result<std::vector<std::string>> GetAllRestorationIds() {
-    std::vector<std::string> res;
     auto out = VERIFY_RESULT(CallJsonAdmin("list_snapshot_restorations"));
-    LOG(INFO) << "Restorations: " << common::PrettyWriteRapidJsonToString(out);
-    const auto& restorations = VERIFY_RESULT(Get(out, "restorations")).get().GetArray();
-    auto id = VERIFY_RESULT(Get(restorations[0], "id")).get().GetString();
-    res.push_back(id);
-
+    LOG(INFO) << "Restorations: " << PrettyWriteRapidJsonToString(out);
+    const auto restorations = VERIFY_RESULT(GetMemberAsArray(out, "restorations"));
+    std::vector<std::string> res;
+    res.reserve(restorations.Size());
+    res.emplace_back(VERIFY_RESULT(GetMemberAsStr(restorations[0], "id")));
     return res;
+  }
+
+  Status CloneAndWait(
+      const std::string& source_namespace, const std::string& target_namespace_name,
+      const MonoDelta& timeout, auto... other_clone_args) {
+    auto out = VERIFY_RESULT(CallJsonAdmin(
+        "clone_namespace", source_namespace, target_namespace_name,
+        other_clone_args...));
+    std::string source_namespace_id{VERIFY_RESULT(GetMemberAsStr(out, "source_namespace_id"))};
+    std::string seq_no{VERIFY_RESULT(GetMemberAsStr(out, "seq_no"))};
+
+    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+      auto out = VERIFY_RESULT(
+          CallJsonAdmin("list_clones", source_namespace_id, seq_no));
+      const auto entries = out.GetArray();
+      SCHECK_EQ(entries.Size(), 1, IllegalState, "Wrong number of entries. Expected 1");
+      master::SysCloneStatePB::State state;
+      master::SysCloneStatePB::State_Parse(
+          std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
+      return state == master::SysCloneStatePB::ABORTED ||
+             state == master::SysCloneStatePB::RESTORED;
+    }, timeout, "Wait for clone to complete"));
+    return Status::OK();
   }
 
   Status PrepareCommon() {
@@ -358,7 +392,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         "create_snapshot_schedule", interval.ToMinutes(), retention.ToMinutes(),
         std::forward<Args>(args)...));
 
-    std::string schedule_id = VERIFY_RESULT(Get(out, "schedule_id")).get().GetString();
+    std::string schedule_id{VERIFY_RESULT(GetMemberAsStr(out, "schedule_id"))};
     LOG(INFO) << "Schedule id: " << schedule_id;
     return schedule_id;
   }
@@ -366,7 +400,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   Status DeleteSnapshotSchedule(const std::string& schedule_id) {
     auto out = VERIFY_RESULT(CallJsonAdmin("delete_snapshot_schedule", schedule_id));
 
-    SCHECK_EQ(VERIFY_RESULT(Get(out, "schedule_id")).get().GetString(), schedule_id, IllegalState,
+    SCHECK_EQ(VERIFY_RESULT(GetMemberAsStr(out, "schedule_id")), schedule_id, IllegalState,
               "Deleted wrong schedule");
     return Status::OK();
   }
@@ -390,13 +424,12 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     }
     RETURN_NOT_OK(result);
     master::SnapshotScheduleOptionsPB options;
-    const rapidjson::Value& schedule = VERIFY_RESULT(Get(*result, "schedule"));
-    const rapidjson::Value& json_options = VERIFY_RESULT(Get(schedule, "options"));
-    const rapidjson::Value& json_interval = VERIFY_RESULT(Get(json_options, "interval"));
-    options.set_interval_sec(VERIFY_RESULT(MinuteStringToSeconds(json_interval.GetString())));
-    const rapidjson::Value& json_retention = VERIFY_RESULT(Get(json_options, "retention"));
-    options.set_retention_duration_sec(
-        VERIFY_RESULT(MinuteStringToSeconds(json_retention.GetString())));
+    const auto& schedule = VERIFY_RESULT_REF(GetMember(*result, "schedule"));
+    const auto& json_options = VERIFY_RESULT_REF(GetMember(schedule, "options"));
+    const auto json_interval = VERIFY_RESULT(GetMemberAsStr(json_options, "interval"));
+    options.set_interval_sec(VERIFY_RESULT(MinuteStringToSeconds(json_interval)));
+    const auto json_retention = VERIFY_RESULT(GetMemberAsStr(json_options, "retention"));
+    options.set_retention_duration_sec(VERIFY_RESULT(MinuteStringToSeconds(json_retention)));
     return options;
   }
 
@@ -406,9 +439,8 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
     return WaitFor(
         [this, &schedule_id, lower, upper]() -> Result<bool> {
           auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
-          const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
-          snapshots.IsArray();
-          return lower <= snapshots.GetArray().Size() && snapshots.GetArray().Size() <= upper;
+          const auto snapshots = VERIFY_RESULT(GetMemberAsArray(schedule, "snapshots"));
+          return lower <= snapshots.Size() && snapshots.Size() <= upper;
         },
         wait_time * kTimeMultiplier, description);
   }
@@ -418,14 +450,13 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
       const std::string& description) {
     // Get current count.
     auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
-    const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
-    auto current_count = snapshots.GetArray().Size();
+    const auto snapshots = VERIFY_RESULT(GetMemberAsArray(schedule, "snapshots"));
+    auto current_count = snapshots.Size();
     return WaitFor(
         [this, &schedule_id, delta, current_count]() -> Result<bool> {
           auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
-          const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
-          snapshots.IsArray();
-          return current_count + delta <= snapshots.GetArray().Size();
+          const auto snapshots = VERIFY_RESULT(GetMemberAsArray(schedule, "snapshots"));
+          return current_count + delta <= snapshots.Size();
         },
         wait_time * kTimeMultiplier, description);
   }
@@ -434,13 +465,13 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   Result<master::SnapshotScheduleOptionsPB> GetSnapshotScheduleOptions(
       const std::string& schedule_id) {
     auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
-    const rapidjson::Value& json_options = VERIFY_RESULT(Get(schedule, "options"));
+    const auto& json_options = VERIFY_RESULT_REF(GetMember(schedule, "options"));
 
     master::SnapshotScheduleOptionsPB options;
-    const rapidjson::Value& interval = VERIFY_RESULT(Get(json_options, "interval"));
-    options.set_interval_sec(VERIFY_RESULT(MinuteStringToSeconds(interval.GetString())));
-    const rapidjson::Value& retention = VERIFY_RESULT(Get(json_options, "retention"));
-    options.set_retention_duration_sec(VERIFY_RESULT(MinuteStringToSeconds(retention.GetString())));
+    const auto interval = VERIFY_RESULT(GetMemberAsStr(json_options, "interval"));
+    options.set_interval_sec(VERIFY_RESULT(MinuteStringToSeconds(interval)));
+    const auto retention = VERIFY_RESULT(GetMemberAsStr(json_options, "retention"));
+    options.set_retention_duration_sec(VERIFY_RESULT(MinuteStringToSeconds(retention)));
     return options;
   }
 
@@ -592,32 +623,28 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   Timestamp last_snapshot_time;
   ASSERT_OK(WaitFor([this, schedule_id, &last_snapshot_time]() -> Result<bool> {
     auto schedule = VERIFY_RESULT(GetSnapshotSchedule());
-    auto received_schedule_id = VERIFY_RESULT(Get(schedule, "id")).get().GetString();
+    auto received_schedule_id = VERIFY_RESULT(GetMemberAsStr(schedule, "id"));
     SCHECK_EQ(schedule_id, received_schedule_id, IllegalState, "Wrong schedule id");
     // Check schedule options.
-    auto& options = VERIFY_RESULT(Get(schedule, "options")).get();
-    std::string filter = VERIFY_RESULT(
-        Get(options, "filter")).get().GetString();
+    auto& options = VERIFY_RESULT_REF(GetMember(schedule, "options"));
+    const auto filter = VERIFY_RESULT(GetMemberAsStr(options, "filter"));
     SCHECK_EQ(filter, Format("ycql.$0", kTableName.namespace_name()),
               IllegalState, "Wrong filter");
-    std::string interval = VERIFY_RESULT(
-        Get(options, "interval")).get().GetString();
+    const auto interval = VERIFY_RESULT(GetMemberAsStr(options, "interval"));
     SCHECK_EQ(interval, "0 min", IllegalState, "Wrong interval");
-    std::string retention = VERIFY_RESULT(
-        Get(options, "retention")).get().GetString();
+    const auto retention = VERIFY_RESULT(GetMemberAsStr(options, "retention"));
     SCHECK_EQ(retention, "10 min", IllegalState, "Wrong retention");
     // Check actual snapshots.
-    const auto& snapshots = VERIFY_RESULT(Get(schedule, "snapshots")).get().GetArray();
+    const auto snapshots = VERIFY_RESULT(GetMemberAsArray(schedule, "snapshots"));
     if (snapshots.Size() < 2) {
       return false;
     }
     std::string last_snapshot_time_str;
     for (const auto& snapshot : snapshots) {
-      std::string snapshot_time = VERIFY_RESULT(
-          Get(snapshot, "snapshot_time")).get().GetString();
+      const auto snapshot_time = VERIFY_RESULT(GetMemberAsStr(snapshot, "snapshot_time"));
       if (!last_snapshot_time_str.empty()) {
-        std::string previous_snapshot_time = VERIFY_RESULT(
-            Get(snapshot, "previous_snapshot_time")).get().GetString();
+        const auto previous_snapshot_time = VERIFY_RESULT(
+            GetMemberAsStr(snapshot, "previous_snapshot_time"));
         SCHECK_EQ(previous_snapshot_time, last_snapshot_time_str, IllegalState,
                   "Wrong previous_snapshot_hybrid_time");
       }
@@ -678,8 +705,8 @@ TEST_F(YbAdminSnapshotScheduleTest, Delete) {
       return schedule.status();
     }
 
-    auto& options = VERIFY_RESULT(Get(*schedule, "options")).get();
-    auto delete_time = VERIFY_RESULT(Get(options, "delete_time")).get().GetString();
+    const auto& options = VERIFY_RESULT_REF(GetMember(*schedule, "options"));
+    auto delete_time = VERIFY_RESULT(GetMemberAsStr(options, "delete_time"));
     LOG(INFO) << "Delete time: " << delete_time;
     return false;
   }, 10s * kTimeMultiplier, "Snapshot schedule cleaned up"));
@@ -831,6 +858,75 @@ TEST_F(YbAdminSnapshotScheduleTest, EditIntervalLargerThanRetention) {
   auto result = EditSnapshotSchedule(schedule_id, {}, 1min);
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.status().ToString(), "Interval must be strictly less than retention");
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, CloneYcql) {
+  ASSERT_RESULT(PrepareCql());
+  const auto kSourceNamespace = "ycql." + client::kTableName.namespace_name();
+  auto session = client_->NewSession(60s);
+  constexpr int rows_per_iter = 5;
+
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  auto write_rows = [&](int* offset, int num_rows) -> Status {
+    int end_row = *offset + num_rows;
+    for (; *offset < end_row; ++(*offset)) {
+      RETURN_NOT_OK(client::kv_table_test::WriteRow(&table_, session, *offset, -(*offset)));
+    }
+    return Status::OK();
+  };
+
+  LOG(INFO) << "Write first set of rows";
+  int cur_row = 1;
+  ASSERT_OK(write_rows(&cur_row, rows_per_iter));
+  // Create a window to restore in (we can only restore with 1s granularity).
+  SleepFor(3s);
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  SleepFor(3s);
+  LOG(INFO) << "Write second set of rows";
+  ASSERT_OK(write_rows(&cur_row, rows_per_iter));
+
+  auto source_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
+  ASSERT_EQ(source_rows.size(), 2 * rows_per_iter);
+
+  auto open_target_table = [&](const std::string& target_namespace_name)
+      -> Result<client::TableHandle> {
+    client::YBTableName target_table_name(
+        YQL_DATABASE_CQL, target_namespace_name, table_.name().table_name());
+    client::TableHandle target_table;
+
+    RETURN_NOT_OK(target_table.Open(target_table_name, client_.get()));
+    return target_table;
+  };
+
+  // Absolute timestamp format. Should have the first set of rows.
+  auto target_namespace_name = "absolute_time_namespace";
+  ASSERT_OK(cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "enable_db_clone"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_db_clone", "true"));
+  ASSERT_OK(CloneAndWait(
+      kSourceNamespace, target_namespace_name, 30s /* timeout */,
+      restore_time.ToFormattedString()));
+  auto target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
+  auto target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
+  ASSERT_EQ(target_rows.size(), rows_per_iter);
+
+  // Minus interval format. Should have the first set of rows.
+  auto secs = (ASSERT_RESULT(WallClock()->Now()).time_point - restore_time.ToInt64()) / 1000000;
+  target_namespace_name = "minus_interval_namespace";
+  ASSERT_OK(CloneAndWait(
+      kSourceNamespace, target_namespace_name, 30s /* timeout */, "minus", Format("$0s", secs)));
+  target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
+  target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
+  ASSERT_EQ(target_rows.size(), rows_per_iter);
+
+  // No timestamp format (clone as of now). Should have both sets of rows.
+  target_namespace_name = "no_timestamp_namespace";
+  ASSERT_OK(CloneAndWait(kSourceNamespace, target_namespace_name, 30s /* timeout */));
+  target_table = ASSERT_RESULT(open_target_table(target_namespace_name));
+  target_rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&target_table, session));
+  ASSERT_EQ(target_rows.size(), 2 * rows_per_iter);
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalZero) {
@@ -2029,6 +2125,56 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableSetOwner) {
   ASSERT_OK(conn.Execute("ALTER TABLE test_table RENAME key TO key_new3"));
 }
 
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlTestTruncate) {
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ExecBeforeRestoreTS = [&conn](const std::string& prefix, const std::string& option) {
+    const auto table_name = prefix + "_table";
+    const auto table_idx_name = prefix + "_index";
+    LOG(INFO) << "Create a table, an index and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) $1",
+        table_name, option));
+    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (value)", table_idx_name, table_name));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'before')", table_name));
+  };
+
+  ExecAfterRestoreTS = [&conn](const std::string& prefix, const std::string& option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Perform a truncate operation on the table";
+
+    ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", table_name));
+    // Verify table data.
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(Format(
+        "SELECT * FROM $0", table_name))));
+    ASSERT_TRUE(rows.empty());
+    // Verify that we can insert data into the table.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'after')", table_name));
+  };
+
+  CheckAfterPITR = [this, &conn](const std::string& prefix, const std::string& option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Select data from the table after restore";
+    const auto query = Format("SELECT value FROM $0", table_name);
+    // There might be a transient period when we get stale data before
+    // the new catalog version gets propagated to all tservers via heartbeats.
+    ASSERT_OK(WaitForSelectQueryToMatchExpectation(query, "before", &conn));
+
+    // Verify table data.
+    auto row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string>(
+        Format("SELECT * FROM $0", table_name))));
+    ASSERT_EQ(row, (decltype(row){1, "before"}));
+    // Verify index.
+    row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string>(Format(
+        "SELECT * FROM $0 WHERE value='before'", table_name))));
+    ASSERT_EQ(row, (decltype(row){1, "before"}));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
+}
+
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -2048,12 +2194,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlAlterTableWithRewrite) {
 
     LOG(INFO) << "Perform some table rewrite operations on the table";
     ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_name));
-    // Set the ddl_rollback_enabled GUC var so that we can perform an
+    // Set the yb_ddl_rollback_enabled GUC var so that we can perform an
     // ADD COLUMN ... PRIMARY KEY operation.
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = ON"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = ON"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ADD COLUMN newcol INT PRIMARY KEY DEFAULT 2", table_name));
-    ASSERT_OK(conn.ExecuteFormat("SET ddl_rollback_enabled = OFF"));
+    ASSERT_OK(conn.ExecuteFormat("SET yb_ddl_rollback_enabled = OFF"));
     ASSERT_OK(conn.ExecuteFormat(
         "ALTER TABLE $0 ALTER COLUMN value TYPE int USING length(value)", table_name));
     // Verify that we can't insert duplicate values into the pkey column (newcol).
@@ -2795,24 +2941,6 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestPerDbCatalogVersion,
   ASSERT_TRUE(map_before_restore.empty());
   ASSERT_TRUE(found_demo3);
   ASSERT_TRUE(found_my_ns);
-}
-
-TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestTruncateDisallowedWithPitr,
-          YbAdminSnapshotScheduleTestWithYsql) {
-  auto schedule_id = ASSERT_RESULT(PreparePg());
-
-  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  LOG(INFO) << "Create table 'test_table'";
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 1)"));
-
-  auto s = conn.Execute("TRUNCATE TABLE test_table");
-  ASSERT_NOK(s);
-  ASSERT_STR_CONTAINS(s.ToString(), "Cannot truncate table test_table which has schedule");
-
-  LOG(INFO) << "Enable flag to allow truncate and validate that truncate succeeds";
-  ASSERT_OK(cluster_->SetFlagOnMasters("enable_truncate_on_pitr_table", "true"));
-  ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
 }
 
 TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreDroppedTablegroup,
@@ -3813,12 +3941,12 @@ TEST_F(YbAdminSnapshotScheduleTest, DeleteIndexOnRestore) {
   }
 
   auto snapshots = ASSERT_RESULT(ListSnapshots());
-  LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
-  std::string id = ASSERT_RESULT(Get(snapshots[0], "id")).get().GetString();
+  LOG(INFO) << "Snapshots:\n" << PrettyWriteRapidJsonToString(snapshots);
+  const auto id = ASSERT_RESULT(GetMemberAsStr(snapshots[0], "id"));
   ASSERT_OK(WaitFor([this, &id]() -> Result<bool> {
     auto snapshots = VERIFY_RESULT(ListSnapshots());
-    LOG(INFO) << "Snapshots:\n" << common::PrettyWriteRapidJsonToString(snapshots);
-    auto current_id = VERIFY_RESULT(Get(snapshots[0], "id")).get().GetString();
+    LOG(INFO) << "Snapshots:\n" << PrettyWriteRapidJsonToString(snapshots);
+    const auto current_id = VERIFY_RESULT(GetMemberAsStr(snapshots[0], "id"));
     return current_id != id;
   }, kInterval * 3, "Wait first snapshot to be deleted"));
 }

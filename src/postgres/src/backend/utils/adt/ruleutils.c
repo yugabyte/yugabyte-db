@@ -334,12 +334,14 @@ static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
 					   bool useNonconcurrently,
-					   bool includeYbMetadata);
+					   bool includeYbMetadata,
+					   bool is_yb_alter_table);
 static char *pg_get_statisticsobj_worker(Oid statextid, bool missing_ok);
 static char *pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 						 bool attrsOnly, bool missing_ok);
 static char *pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
-							int prettyFlags, bool missing_ok);
+							int prettyFlags, bool missing_ok,
+							bool is_yb_alter_table);
 static text *pg_get_expr_worker(text *expr, Oid relid, const char *relname,
 				   int prettyFlags);
 static int print_function_arguments(StringInfo buf, HeapTuple proctup,
@@ -483,6 +485,8 @@ static void add_cast_to(StringInfo buf, Oid typid);
 static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
+static int yb_decompile_pk_column_index_array(Datum column_index_array,
+	Oid relId, Oid indexId, StringInfo buf);
 
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
@@ -1155,7 +1159,8 @@ pg_get_indexdef(PG_FUNCTION_ARGS)
 								 false, false,
 								 false, false,
 								 prettyFlags, true,
-								 false, yb_format_funcs_include_yb_metadata);
+								 false, yb_format_funcs_include_yb_metadata,
+								 false /* is_yb_alter_table */);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1178,7 +1183,8 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 								 colno != 0, false,
 								 false, false,
 								 prettyFlags, true,
-								 false, yb_format_funcs_include_yb_metadata);
+								 false, yb_format_funcs_include_yb_metadata,
+								 false /* is_yb_alter_table */);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1201,7 +1207,8 @@ pg_get_indexdef_string(Oid indexrelid)
 								  true, true,
 								  0, false,
 								  IsYugaByteEnabled() /* useNonconcurrently */,
-								  yb_format_funcs_include_yb_metadata);
+								  yb_format_funcs_include_yb_metadata,
+								  IsYugaByteEnabled() /* is_yb_alter_table */);
 }
 
 /* Internal version that just reports the key-column definitions */
@@ -1216,7 +1223,7 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 								  true, true,
 								  false, false,
 								  prettyFlags, false,
-								  false, false);
+								  false, false, false /* is_yb_alter_table */);
 }
 
 /*
@@ -1234,7 +1241,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
 					   bool useNonconcurrently,
-					   bool includeYbMetadata)
+					   bool includeYbMetadata,
+					   bool is_yb_alter_table)
 {
 	/* might want a separate isConstraint parameter later */
 	bool		isConstraint = (excludeOps != NULL);
@@ -1506,15 +1514,27 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		 */
 		if (showTblSpc)
 		{
-			Oid			tblspc;
+			if (IsYBRelation(indexrel) && is_yb_alter_table)
+			{
+				YbGetTableProperties(indexrel);
+				/*
+				 * If this is a YB index that is colocated and being
+				 * re-created as part of an alter table operation, do not
+				 * include the tablespace clause, as it is not permitted.
+				 */
+				if (!indexrel->yb_table_properties->is_colocated)
+				{
+					Oid			tblspc;
 
-			tblspc = indexrel->rd_rel->reltablespace;
-			if (!OidIsValid(tblspc))
-				tblspc = MyDatabaseTableSpace;
-			if (isConstraint)
-				appendStringInfoString(&buf, " USING INDEX");
-			appendStringInfo(&buf, " TABLESPACE %s",
-							 quote_identifier(get_tablespace_name(tblspc)));
+					tblspc = indexrel->rd_rel->reltablespace;
+					if (!OidIsValid(tblspc))
+						tblspc = MyDatabaseTableSpace;
+					if (isConstraint)
+						appendStringInfoString(&buf, " USING INDEX");
+					appendStringInfo(&buf, " TABLESPACE %s", quote_identifier(
+						get_tablespace_name(tblspc)));
+				}
+			}
 		}
 
 		/*
@@ -1960,7 +1980,8 @@ pg_get_constraintdef(PG_FUNCTION_ARGS)
 
 	prettyFlags = PRETTYFLAG_INDENT;
 
-	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true);
+	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true,
+		false /* is_yb_alter_table */);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1978,7 +1999,8 @@ pg_get_constraintdef_ext(PG_FUNCTION_ARGS)
 
 	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
-	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true);
+	res = pg_get_constraintdef_worker(constraintId, false, prettyFlags, true,
+		false /* is_yb_alter_table */);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1992,7 +2014,8 @@ pg_get_constraintdef_ext(PG_FUNCTION_ARGS)
 char *
 pg_get_constraintdef_command(Oid constraintId)
 {
-	return pg_get_constraintdef_worker(constraintId, true, 0, false);
+	return pg_get_constraintdef_worker(constraintId, true, 0, false,
+		IsYugaByteEnabled() /* is_yb_alter_table */);
 }
 
 /*
@@ -2000,7 +2023,8 @@ pg_get_constraintdef_command(Oid constraintId)
  */
 static char *
 pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
-							int prettyFlags, bool missing_ok)
+							int prettyFlags, bool missing_ok,
+							bool is_yb_alter_table)
 {
 	HeapTuple	tup;
 	Form_pg_constraint conForm;
@@ -2203,11 +2227,25 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 					elog(ERROR, "null conkey for constraint %u",
 						 constraintId);
 
-				keyatts = decompile_column_index_array(val, conForm->conrelid, &buf);
+				if (is_yb_alter_table)
+					indexId = get_constraint_index(constraintId);
+				/*
+				 * YB note: If we are retrieving the primary key definition
+				 * for a YB relation to recreate it as a part of an alter table
+				 * operation, make sure to specify "HASH"/"ASC"/"DESC" options
+				 * for the columns.
+				 */
+				if (is_yb_alter_table && IsYBRelationById(indexId)
+					&& conForm->contype == CONSTRAINT_PRIMARY)
+					keyatts = yb_decompile_pk_column_index_array(val,
+						conForm->conrelid, indexId, &buf);
+				else
+					keyatts = decompile_column_index_array(val, conForm->conrelid, &buf);
 
 				appendStringInfoChar(&buf, ')');
 
-				indexId = get_constraint_index(constraintId);
+				if (!is_yb_alter_table)
+					indexId = get_constraint_index(constraintId);
 
 				/* Build including column list (from pg_index.indkeys) */
 				indtup = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(indexId));
@@ -2258,12 +2296,21 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
 						YbAppendIndexReloptions(&buf, indexId, YbGetTableProperties(indexrel));
 
-					Oid			tblspc;
+					/*
+					 * If this is a YB primary key that is being re-created as
+					 * part of an alter table operation, do not add the
+					 * TABLESPACE clause, as it is not permitted.
+					 */
+					if (!(is_yb_alter_table && IsYBRelation(indexrel) &&
+						  conForm->contype == CONSTRAINT_PRIMARY))
+					{
+						Oid			tblspc;
 
-					tblspc = indexrel->rd_rel->reltablespace;
-					if (OidIsValid(tblspc))
-						appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
-										 quote_identifier(get_tablespace_name(tblspc)));
+						tblspc = indexrel->rd_rel->reltablespace;
+						if (OidIsValid(tblspc))
+							appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
+											quote_identifier(get_tablespace_name(tblspc)));
+					}
 
 					index_close(indexrel, AccessShareLock);
 				}
@@ -2371,7 +2418,8 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 															  prettyFlags,
 															  false,
 															  false,
-															  false));
+															  false,
+															  false /* is_yb_alter_table */));
 				break;
 			}
 		default:
@@ -4774,6 +4822,8 @@ set_deparse_planstate(deparse_namespace *dpns, PlanState *ps)
 		dpns->index_tlist = ((IndexOnlyScan *) ps->plan)->indextlist;
 	else if (IsA(ps->plan, IndexScan))
 		dpns->index_tlist = ((IndexScan *) ps->plan)->indextlist;
+	else if (IsA(ps->plan, YbBitmapIndexScan))
+		dpns->index_tlist = ((YbBitmapIndexScan *) ps->plan)->indextlist;
 	else if (IsA(ps->plan, ForeignScan))
 		dpns->index_tlist = ((ForeignScan *) ps->plan)->fdw_scan_tlist;
 	else if (IsA(ps->plan, CustomScan))
@@ -7410,7 +7460,7 @@ find_param_referent(Param *param, deparse_context *context,
 			 * we've crawled up out of a subplan, this couldn't possibly be
 			 * the right match.
 			 */
-			if ((IsA(ps, NestLoopState) || 
+			if ((IsA(ps, NestLoopState) ||
 				 IsA(ps, YbBatchedNestLoopState)) &&
 				child_ps == innerPlanState(ps) &&
 				in_same_plan_level)
@@ -8595,20 +8645,40 @@ get_rule_expr(Node *node, deparse_context *context,
 				 * since the construct was parsed, but there seems no way to
 				 * be perfect.
 				 */
-				appendStringInfo(buf, ") %s ROW(",
+				Oid rhs_type;
+				if (IsA(rcexpr->rargs, List))
+					rhs_type = exprType(linitial(castNode(List, rcexpr->rargs)));
+				else
+				{
+					List *elems = castNode(ArrayExpr, rcexpr->rargs)->elements;
+					RowExpr *row = (RowExpr *) linitial(elems);
+					rhs_type = exprType(linitial(row->args));
+				}
+
+				appendStringInfo(buf, ") %s ",
 								 generate_operator_name(linitial_oid(rcexpr->opnos),
 														exprType(linitial(rcexpr->largs)),
-														exprType(linitial(rcexpr->rargs))));
-				sep = "";
-				foreach(arg, rcexpr->rargs)
+														rhs_type));
+				if (IsA(rcexpr->rargs, List))
 				{
-					Node	   *e = (Node *) lfirst(arg);
+					sep = "";
+					appendStringInfo(buf, "ROW(");
+					foreach(arg, castNode(List, rcexpr->rargs))
+					{
+						Node	   *e = (Node *) lfirst(arg);
 
-					appendStringInfoString(buf, sep);
-					get_rule_expr(e, context, true);
-					sep = ", ";
+						appendStringInfoString(buf, sep);
+						get_rule_expr(e, context, true);
+						sep = ", ";
+					}
+					appendStringInfoString(buf, "))");
 				}
-				appendStringInfoString(buf, "))");
+				else
+				{
+					appendStringInfo(buf, "ANY (");
+					get_rule_expr(rcexpr->rargs, context, true);
+					appendStringInfo(buf, "))");
+				}
 			}
 			break;
 
@@ -9883,7 +9953,8 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 			get_rule_expr((Node *) rcexpr->largs, context, true);
 			opname = generate_operator_name(linitial_oid(rcexpr->opnos),
 											exprType(linitial(rcexpr->largs)),
-											exprType(linitial(rcexpr->rargs)));
+											exprType(linitial(
+													castNode(List, rcexpr->rargs))));
 			appendStringInfoChar(buf, ')');
 		}
 		else
@@ -11528,7 +11599,7 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 		 */
 		Assert(HeapTupleIsValid(pg_rewrite_tuple));
 
-		Form_pg_rewrite rewrite_form = 
+		Form_pg_rewrite rewrite_form =
 			(Form_pg_rewrite) GETSTRUCT(pg_rewrite_tuple);
 		view_oid = rewrite_form->ev_class;
 
@@ -11567,4 +11638,56 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 	systable_endscan(pg_depend_scan);
 	heap_close(pg_rewrite, RowExclusiveLock);
 	heap_close(pg_depend, RowExclusiveLock);
+}
+
+/*
+ * This function is copied from the code in dumpTableSchema() pg_dump.c for
+ * adding primary keys and decompile_pk_column_index_array.
+ */
+static int
+yb_decompile_pk_column_index_array(Datum column_index_array, Oid relId,
+								   Oid indexId, StringInfo buf)
+{
+	Datum	   *keys;
+	int			nKeys;
+	int			j;
+	Relation indexrel = relation_open(indexId, NoLock);
+
+	/* Extract data from array of int16 */
+	deconstruct_array(DatumGetArrayTypeP(column_index_array),
+					  INT2OID, 2, true, 's',
+					  &keys, NULL, &nKeys);
+
+	bool doing_hash = false;
+	for (j = 0; j < nKeys; j++)
+	{
+		char	   *colName;
+		int indoption = indexrel->rd_indoption[j];
+		colName = get_attname(relId, DatumGetInt16(keys[j]), false);
+
+		if (doing_hash && !(indoption & INDOPTION_HASH))
+		{
+			appendStringInfoString(buf, ") HASH");
+			doing_hash = false;
+		}
+
+		if (j > 0)
+			appendStringInfoString(buf, ", ");
+
+		if (!doing_hash && (indoption & INDOPTION_HASH))
+		{
+			appendStringInfoString(buf, "(");
+			doing_hash = true;
+		}
+
+		appendStringInfoString(buf, quote_identifier(colName));
+		if (indoption & INDOPTION_DESC)
+			appendStringInfoString(buf, " DESC");
+		else if (!doing_hash)
+			appendStringInfoString(buf, " ASC");
+	}
+	if (doing_hash)
+		appendStringInfoString(buf, ") HASH");
+	relation_close(indexrel, NoLock);
+	return nKeys;
 }

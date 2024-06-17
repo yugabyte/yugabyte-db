@@ -63,6 +63,7 @@ message TabletStatusPB {
   optional bool parent_data_compacted = 18; // See KvStoreInfoPB.
   // A list of all tables that are colocated on this tablet.
   repeated bytes colocated_table_ids = 19;
+  optional string pgschema_name = 20;
 }
 
 // Used to present the maintenance manager's internal state.

@@ -13,7 +13,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.List;
 import javax.inject.Inject;
-import org.apache.commons.lang3.tuple.Pair;
 
 @Abortable
 @Retryable
@@ -42,12 +41,18 @@ public class SystemdUpgrade extends UpgradeTaskBase {
   @Override
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
-    taskParams().verifyParams(getUniverse(), isFirstTry);
+    taskParams().verifyParams(getUniverse(), getNodeState(), isFirstTry);
   }
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
+    super.createPrecheckTasks(universe);
     addBasicPrecheckTasks();
+  }
+
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return fetchNodes(taskParams().upgradeOption);
   }
 
   @Override
@@ -55,10 +60,10 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     runUpgrade(
         () -> {
           // Fetch node lists
-          Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+          MastersAndTservers nodes = getNodesToBeRestarted();
 
           if (taskParams().isYbcInstalled()) {
-            createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "stop")
+            createServerControlTasks(nodes.tserversList, ServerType.CONTROLLER, "stop")
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
           // Rolling Upgrade Systemd

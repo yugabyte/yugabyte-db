@@ -35,7 +35,7 @@ struct ConnectionStats {
   uint64_t query_rate;
   uint64_t transaction_rate;
   uint64_t avg_wait_time_ns;
-  uint64_t last_updated_time;
+  uint64_t last_updated_timestamp;
   char database_name[DB_NAME_MAX_LEN];
   char user_name[USER_NAME_MAX_LEN];
 };

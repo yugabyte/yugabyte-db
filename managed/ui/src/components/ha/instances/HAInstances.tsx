@@ -2,6 +2,7 @@ import _ from 'lodash';
 import { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import moment from 'moment-timezone';
 
 import { YBButton } from '../../common/forms/fields';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
@@ -10,12 +11,13 @@ import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
 import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
-import { timeFormatter } from '../../../utils/TableFormatters';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
+import { formatDuration } from '../../../utils/Formatters';
 
-import { HAPlatformInstance } from '../../../redesign/helpers/dtos';
+import { HaInstanceState, HaPlatformInstance } from '../dtos';
 
 import './HAInstances.scss';
+import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
 
 interface HAInstancesProps {
   // Dispatch
@@ -25,19 +27,19 @@ interface HAInstancesProps {
   runtimeConfigs: any;
 }
 
-const renderAddress = (cell: any, row: HAPlatformInstance): ReactElement => (
+const renderAddress = (cell: any, row: HaPlatformInstance): ReactElement => (
   <a href={row.address} target="_blank" rel="noopener noreferrer">
     {row.address}
     {row.is_local && <span className="badge badge-orange">Current</span>}
   </a>
 );
 
-const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement => (
+const renderInstanceType = (cell: HaPlatformInstance['is_leader']): ReactElement => (
   <BadgeInstanceType isActive={cell} />
 );
 
-const renderLastBackup = (cell: HAPlatformInstance['last_backup']): ReactElement | string =>
-  cell ? timeFormatter(cell) : 'n/a';
+const renderBackupLag = (cell: HaPlatformInstance['last_backup']): ReactElement | string =>
+  cell ? formatDuration(moment.duration(moment().diff(moment(cell))).asMilliseconds()) : 'n/a';
 
 export const HAInstances: FC<HAInstancesProps> = ({
   fetchRuntimeConfigs,
@@ -61,7 +63,7 @@ export const HAInstances: FC<HAInstancesProps> = ({
 
   const currentInstance = config?.instances.find((item) => item.is_local);
 
-  const renderActions = (cell: any, row: HAPlatformInstance): ReactElement => {
+  const renderActions = (cell: any, row: HaPlatformInstance): ReactElement => {
     if (currentInstance?.is_leader) {
       return (
         <YBButton
@@ -158,30 +160,40 @@ export const HAInstances: FC<HAInstancesProps> = ({
                 dataField="address"
                 dataFormat={renderAddress}
                 dataSort
-                width="40%"
+                width="30%"
               >
                 Address
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="instance_state"
+                dataFormat={(_: HaInstanceState, haInstance: HaPlatformInstance) => (
+                  <HAInstanceStatelabel haInstance={haInstance} />
+                )}
+                dataSort
+                width="17.5%"
+              >
+                Instance State
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="is_leader"
                 dataFormat={renderInstanceType}
                 dataSort
-                width="20%"
+                width="17.5%"
               >
                 Type
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="last_backup"
-                dataFormat={renderLastBackup}
+                dataFormat={renderBackupLag}
                 dataSort
-                width="20%"
+                width="17.5%"
               >
-                Last Backup Time
+                Time since last backup
               </TableHeaderColumn>
               <TableHeaderColumn
                 columnClassName="yb-actions-cell"
                 dataFormat={renderActions}
-                width="20%"
+                width="17.5%"
               >
                 Action
               </TableHeaderColumn>

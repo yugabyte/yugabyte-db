@@ -111,6 +111,7 @@ message DumpRunningRpcsRequestPB {
   optional bool dump_timed_out = 2;
   optional bool get_wait_state = 3;
   optional bool get_local_calls = 4;
+  optional bool export_wait_state_code_as_string = 5;
 }
 
 message DumpRunningRpcsResponsePB {

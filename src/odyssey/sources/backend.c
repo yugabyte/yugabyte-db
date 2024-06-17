@@ -78,9 +78,26 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 			 "DETAIL: %s", error.detail);
 	}
 
+	/* catch and store error to be forwarded later if we are in deploy phase */
+	if (od_server_in_deploy(server)) {
+		od_client_t* client = (od_client_t*) (server->client);
+		client->deploy_err = (kiwi_fe_error_t *) malloc(sizeof(kiwi_fe_error_t));
+		kiwi_fe_read_error(data, size, client->deploy_err);
+	}
+
 	if (error.hint) {
 		od_error(&instance->logger, context, server->client, server,
 			 "HINT: %s", error.hint);
+
+		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
+		{
+			/* Reset the route and close the client */
+			((od_route_t*)server->route)->yb_database_entry->status = YB_DB_DROPPED;
+
+			if (server->client != NULL &&
+				((od_client_t *)server->client)->type == OD_POOL_CLIENT_EXTERNAL)
+				od_frontend_fatal(server->client, KIWI_CONNECTION_DOES_NOT_EXIST, error.hint);
+		}
 	}
 }
 
@@ -122,10 +139,14 @@ static inline int od_backend_startup(od_server_t *server,
 {
 	od_instance_t *instance = server->global->instance;
 	od_route_t *route = server->route;
+	char db_name[64];
+	strcpy(db_name, (char *)route->yb_database_entry->name);
+	const int db_name_len = route->yb_database_entry->name_len;
+
 	kiwi_fe_arg_t argv[] = { { "user", 5 },
 				 { route->id.user, route->id.user_len },
 				 { "database", 9 },
-				 { route->id.database, route->id.database_len },
+				 { db_name, db_name_len + 1},
 				 { "yb_use_tserver_key_auth", 24 },
 				 { "1", 2 },
 				 { "yb_is_client_ysqlconnmgr", 25 },
@@ -196,6 +217,8 @@ static inline int od_backend_startup(od_server_t *server,
 				return -1;
 			}
 			break;
+		/* fallthrough */
+		case YB_ROLE_OID_PARAMETER_STATUS:
 		case KIWI_BE_PARAMETER_STATUS: {
 			char *name;
 			uint32_t name_len;
@@ -248,6 +271,13 @@ static inline int od_backend_startup(od_server_t *server,
 					 machine_msg_size(msg));
 			server->error_connect = msg;
 			return -1;
+		case YB_OID_DETAILS:
+			rc = yb_handle_oid_pkt_server(instance, server, msg, db_name);
+			if (rc == -1)
+				return -1;
+			if (yb_is_route_invalid(route))
+				return -1;
+			break;
 		default:
 			machine_msg_free(msg);
 			od_debug(&instance->logger, "startup", NULL, server,
@@ -668,6 +698,10 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 
+	/* ignore caching of role-dependent parameters, only store oid */
+	if (strcmp("role", name) == 0 || strcmp("session_authorization", name) == 0)
+		return 0;
+
 	/* update server only or client and server parameter */
 	od_debug(&instance->logger, context, client, server, "%.*s = %.*s",
 		 name_len, name, value_len, value);
@@ -678,6 +712,10 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	} else {
 		kiwi_vars_update_both(&client->vars, &server->vars, name,
 				      name_len, value, value_len);
+
+		/* reset role whenever session_authorization is changed by the user */
+		if (strcmp(name, "session_authorization_oid") == 0)
+			kiwi_vars_update_both(&client->vars, &server->vars, "role_oid", 9, "-1", 3);
 	}
 
 	return 0;
@@ -704,7 +742,7 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 		od_debug(&instance->logger, context, server->client, server,
 			 "%s", kiwi_be_type_to_string(type));
 
-		if (type == KIWI_BE_PARAMETER_STATUS) {
+		if (type == KIWI_BE_PARAMETER_STATUS || type == YB_ROLE_OID_PARAMETER_STATUS) {
 			/* update server parameter */
 			int rc;
 			rc = od_backend_update_parameter(server, context,

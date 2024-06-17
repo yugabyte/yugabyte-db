@@ -28,6 +28,7 @@ public class BackupFilter {
   Set<UUID> storageConfigUUIDList;
   Set<UUID> scheduleUUIDList;
   Set<UUID> universeUUIDList;
+  Set<UUID> backupUUIDList;
   UUID customerUUID;
   boolean onlyShowDeletedUniverses;
   boolean onlyShowDeletedConfigs;

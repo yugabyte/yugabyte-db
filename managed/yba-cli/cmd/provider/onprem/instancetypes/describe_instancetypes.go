@@ -24,7 +24,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 	Short:   "Describe instance type of a YugabyteDB Anywhere on-premises provider",
 	Long:    "Describe instance types of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		providerNameFlag, err := cmd.Flags().GetString("provider-name")
+		providerNameFlag, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -46,14 +46,11 @@ var describeInstanceTypesCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
 		providerListRequest := authAPI.GetListOfProviders()
 
-		providerName, err := cmd.Flags().GetString("provider-name")
+		providerName, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -68,8 +65,16 @@ var describeInstanceTypesCmd = &cobra.Command{
 		}
 
 		if len(r) < 1 {
-			fmt.Println("No providers found")
-			return
+			logrus.Fatalf(
+				formatter.Colorize(
+					fmt.Sprintf("No providers with name: %s found\n", providerName),
+					formatter.RedColor,
+				))
+		}
+
+		if r[0].GetCode() != util.OnpremProviderType {
+			errMessage := "Operation only supported for On-premises providers."
+			logrus.Fatalf(formatter.Colorize(errMessage+"\n", formatter.RedColor))
 		}
 
 		providerUUID := r[0].GetUuid()
@@ -78,7 +83,9 @@ var describeInstanceTypesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		rDescribe, response, err := authAPI.InstanceTypeDetail(providerUUID, instanceTypeName).Execute()
+		rDescribe, response, err := authAPI.InstanceTypeDetail(
+			providerUUID,
+			instanceTypeName).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Describe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
@@ -88,7 +95,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 		instanceTypeList = append(instanceTypeList, rDescribe)
 
 		if rDescribe.GetActive() {
-			if len(instanceTypeList) > 0 && viper.GetString("output") == "table" {
+			if len(instanceTypeList) > 0 && util.IsOutputType("table") {
 				fullInstanceTypesContext := *instancetypes.NewFullInstanceTypesContext()
 				fullInstanceTypesContext.Output = os.Stdout
 				fullInstanceTypesContext.Format = instancetypes.NewFullInstanceTypesFormat(
@@ -104,7 +111,7 @@ var describeInstanceTypesCmd = &cobra.Command{
 			}
 			instancetypes.Write(instanceTypesCtx, instanceTypeList)
 		} else {
-			fmt.Printf("Instance Type %s is not active in provider %s (%s)\n",
+			logrus.Infof("Instance Type %s is not active in provider %s (%s)\n",
 				formatter.Colorize(instanceTypeName, formatter.GreenColor), providerName, providerUUID)
 		}
 

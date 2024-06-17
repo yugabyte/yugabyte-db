@@ -16,6 +16,9 @@ const defaultMigratorValue = -1
 const promConfigMV = 2
 const postgresUserMV = 3
 const ymlTypeFixMV = 4
+const promOomConfgMV = 5
+const promTLSCipherSuites = 6
+const asRoot = 7
 
 func handleMigration(state *State) error {
 	for state._internalFields.SchemaVersion < schemaVersion {
@@ -70,8 +73,8 @@ func migratePostgresUser(state *State) error {
 		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
 		if err := common.SetYamlValue(common.InputFile(), "postgres.install.username",
 			viper.GetString("postgres.install.username")); err != nil {
-				return fmt.Errorf("Error migrating postgres user: %s", err.Error())
-			}
+			return fmt.Errorf("Error migrating postgres user: %s", err.Error())
+		}
 	}
 	common.InitViper()
 	return nil
@@ -79,27 +82,27 @@ func migratePostgresUser(state *State) error {
 
 func migrateYmlTypes(state *State) error {
 	log.Info("Entering migrateYmlTypes")
-	typeMap := map[string]string {
-		"platform.port": 													"int",
-		"platform.hsts_enabled": 									"bool",
-		"platform.useOauth": 											"bool",
-		"platform.restartSeconds": 								"int",
-		"platform.proxy.enable": 									"bool",
-		"platform.proxy.java_http_proxy_port": 		"int",
-		"platform.proxy.java_https_proxy_port": 	"int",
-		"postgres.install.enabled": 							"bool",
-		"postgres.install.port": 									"int",
-		"postgres.install.ldap_enabled": 					"bool",
-		"postgres.install.ldap_port": 						"int",
-		"postgres.install.secure_ldap": 					"bool",
-		"postgres.useExisting.enabled": 					"bool",
-		"postgres.useExisting.port": 							"int",
-		"prometheus.port": 												"int",
-		"prometheus.restartSeconds": 							"int",
-		"prometheus.maxConcurrency": 							"int",
-		"prometheus.maxSamples": 									"int",
-		"prometheus.enableHttps": 								"bool",
-		"prometheus.enableAuth": 									"bool",
+	typeMap := map[string]string{
+		"platform.port":                        "int",
+		"platform.hsts_enabled":                "bool",
+		"platform.useOauth":                    "bool",
+		"platform.restartSeconds":              "int",
+		"platform.proxy.enable":                "bool",
+		"platform.proxy.java_http_proxy_port":  "int",
+		"platform.proxy.java_https_proxy_port": "int",
+		"postgres.install.enabled":             "bool",
+		"postgres.install.port":                "int",
+		"postgres.install.ldap_enabled":        "bool",
+		"postgres.install.ldap_port":           "int",
+		"postgres.install.secure_ldap":         "bool",
+		"postgres.useExisting.enabled":         "bool",
+		"postgres.useExisting.port":            "int",
+		"prometheus.port":                      "int",
+		"prometheus.restartSeconds":            "int",
+		"prometheus.maxConcurrency":            "int",
+		"prometheus.maxSamples":                "int",
+		"prometheus.enableHttps":               "bool",
+		"prometheus.enableAuth":                "bool",
 	}
 
 	for key, typeStr := range typeMap {
@@ -126,7 +129,7 @@ func migrateYmlTypes(state *State) error {
 				log.Warn(fmt.Sprintf("Could not convert %s: %s to bool.", key, value))
 				return err
 			}
-			err  = common.SetYamlValue(common.InputFile(), key, b)
+			err = common.SetYamlValue(common.InputFile(), key, b)
 			if err != nil {
 				log.Warn("Error setting yaml value " + key + value)
 				return err
@@ -137,12 +140,58 @@ func migrateYmlTypes(state *State) error {
 	return nil
 }
 
+func migratePrometheusOOMConfig(state *State) error {
+
+	if !viper.IsSet("prometheus.oomScoreAdjust") {
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		err := common.SetYamlValue(common.InputFile(), "prometheus.oomScoreAdjust",
+			viper.GetString("prometheus.oomScoreAdjust"))
+		if err != nil {
+			return fmt.Errorf("Error migrating prometheus OOM config: %s", err.Error())
+		}
+	}
+
+	common.InitViper()
+	return nil
+}
+
+func migratePrometheusTLSCipherSuites(state *State) error {
+	log.Info("Entering migrating tls cipher suites")
+	if !viper.IsSet("prometheus.allowedTLSCiphers") {
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		err := common.SetYamlValue(common.InputFile(), "prometheus.allowedTLSCiphers",
+			viper.GetStringSlice("prometheus.allowedTLSCiphers"))
+		if err != nil {
+			return fmt.Errorf("Error migrating prometheus tls cipher suite config: %s", err.Error())
+		}
+	}
+
+	common.InitViper()
+	return nil
+}
+
+func migrateAsRootConfig(state *State) error {
+	if !viper.IsSet("as_root") {
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		err := common.SetYamlValue(common.InputFile(), "as_root", viper.GetBool("as_root"))
+		if err != nil {
+			return fmt.Errorf("Error migrating as_root config: %s", err.Error())
+		}
+	}
+
+	common.InitViper()
+	return nil
+}
+
 // TODO: Also need to remember to update schemaVersion when adding migration! (automate testing?)
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
-	promConfigMV: migratePrometheus,
-	postgresUserMV: migratePostgresUser,
-	ymlTypeFixMV: migrateYmlTypes,
+	promConfigMV:         migratePrometheus,
+	postgresUserMV:       migratePostgresUser,
+	ymlTypeFixMV:         migrateYmlTypes,
+	promOomConfgMV:       migratePrometheusOOMConfig,
+	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
+	asRoot:               migrateAsRootConfig,
 }
 
 func getMigrationHandler(toSchema int) migrator {

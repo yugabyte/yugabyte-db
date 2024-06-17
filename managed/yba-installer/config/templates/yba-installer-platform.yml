@@ -84,10 +84,10 @@ services:
         swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
         {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
         metrics.protocol = https
-        metrics.url = "https://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        metrics.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "prometheus.port" }}/api/v1"
         {{ else }}
         metrics.protocol = http
-        metrics.url = "http://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        metrics.url = "http://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "prometheus.port" }}/api/v1"
         {{ end }}
         {{ if eq (yamlPath "prometheus.enableAuth") "true" }}
         metrics.auth = true
@@ -112,6 +112,11 @@ services:
               hsts_enabled = true
             {{ end }}
             custom_headers = {{ yamlPathSlice "platform.custom_headers" }}
+          }
+          java {
+            tls {
+              disabled_algorithms = {{ yamlPathSlice "platform.tlsDisabledAlgorithms" }}
+            }
           }
         }
         # If SSO needs to be enabled on the platform.
@@ -169,8 +174,14 @@ services:
         cors {
           pathPrefixes = ["/"]
           allowedOrigins =  [
-            "https://{{ yamlPath "host" }}",
-            "{{ yamlPath "platform.support_origin_url"}}"
+            {{- range $index, $hostname := splitInput (yamlPath "host") }}
+            {{ if $index }},{{ end -}}
+            "{{ $hostname }}"
+            {{- end }},
+            {{- range $index, $hostname := splitInput (yamlPath "platform.support_origin_url") }}
+            {{ if $index }},{{ end -}}
+            "{{ $hostname }}"
+            {{- end }}
           ]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
@@ -193,8 +204,10 @@ services:
       After=network-online.target
 
       [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
       User={{ yamlPath "service_username" }}
       Group={{ yamlPath "service_username" }}
+      {{ end}}
       Type=simple
 
       Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
@@ -229,8 +242,13 @@ services:
       Restart=always
       RestartSec={{ yamlPath "platform.restartSeconds"}}
 
+      {{ if eq (yamlPath "as_root") "true" }}
       # allow platform to bind to port 443
       AmbientCapabilities=CAP_NET_BIND_SERVICE
+      {{ end }}
+
+      # Sigterm causes exit status 143 for java
+      SuccessExitStatus=143
 
       [Install]
       WantedBy=multi-user.target

@@ -63,8 +63,6 @@ DEFINE_RUNTIME_int32(rpc_slow_query_threshold_ms, 10000,
     "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
 
-DECLARE_bool(TEST_yb_enable_ash);
-
 namespace yb {
 namespace rpc {
 
@@ -93,6 +91,15 @@ class WaitStateInfoWithInboundCall : public ash::WaitStateInfo {
     }
   }
 
+  std::string DumpTraceToString() override {
+    std::shared_ptr<const InboundCall> sptr;
+    {
+      std::lock_guard guard(mutex_);
+      sptr = holder_.lock();
+    }
+    return (sptr && sptr->trace() ? sptr->trace()->DumpToString(true) : "n/a");
+  }
+
  private:
   simple_spinlock mutex_;
   std::weak_ptr<const InboundCall> holder_ GUARDED_BY(mutex_);
@@ -107,10 +114,7 @@ int64_t NextInstanceId() {
 
 InboundCall::InboundCall(
     ConnectionPtr conn, RpcMetrics* rpc_metrics, CallProcessedListener* call_processed_listener)
-    : wait_state_(
-          GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)
-              ? std::make_shared<WaitStateInfoWithInboundCall>()
-              : nullptr),
+    : wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<WaitStateInfoWithInboundCall>()),
       trace_holder_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
       trace_(trace_holder_.get()),
       instance_id_(NextInstanceId()),
@@ -143,6 +147,7 @@ void InboundCall::InitializeWaitState() {
 }
 
 void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& /*conn*/) {
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
   SET_WAIT_STATUS_TO(wait_state_, Rpc_Done);
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
@@ -264,6 +269,7 @@ void InboundCall::QueueResponse(bool is_success) {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
   TRACE_FUNC();
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_);
   SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
 }
 

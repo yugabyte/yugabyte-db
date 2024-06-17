@@ -29,11 +29,11 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
             + " %%n=%n | %%i=%i | %%e=%e | %%c=%c | %%l=%l | %%s=%s | %%v=%v | %%x=%x | %%C=%C |"
             + " %%R=%R | %%Z=%Z | %%U=%U | %%N=%N | %%H=%H : ";
     AuditLogRegexGenerator.LogRegexResult result =
-        auditLogRegexGenerator.generateAuditLogRegex(logPrefix);
+        auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ false);
     assertThat(
         result.getRegex(),
         equalTo(
-            "^([%][a][=](?P<application_name>[^ ]+)[ ][|][ ][%][u][=](?P<user_name>[^ ]+)[ ][|]["
+            "[%][a][=](?P<application_name>[^ ]+)[ ][|][ ][%][u][=](?P<user_name>[^ ]+)[ ][|]["
                 + " ][%][d][=](?P<database_name>[^ ]+)[ ][|][ ][%][r][=](?P<remote_host_port>[^"
                 + " ]+)[ ][|][ ][%][h][=](?P<remote_host>[^ ]+)[ ][|]["
                 + " ][%][p][=](?P<process_id>\\d+)[ ][|]["
@@ -52,7 +52,7 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
                 + " ][%][H][=](?P<current_hostname>[^ ]+)[ ][:][ ](?P<log_level>\\w+):  AUDIT:"
                 + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),"
                 + "(?P<substatement_id>\\d+),(?P<class>\\w+),(?P<command>[^,]+),"
-                + "(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$"));
+                + "(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\\n|\\r|\\s)*)"));
     assertThat(
         result.getTokens(),
         contains(
@@ -84,15 +84,15 @@ public class AuditLogRegexGeneratorTest extends FakeDBApplication {
   public void testPrefixWithNotSeparatedTags() {
     String logPrefix = "%t | %u%d : ";
     AuditLogRegexGenerator.LogRegexResult result =
-        auditLogRegexGenerator.generateAuditLogRegex(logPrefix);
+        auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ false);
     assertThat(
         result.getRegex(),
         equalTo(
-            "^((?P<timestamp_without_ms>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"
+            "(?P<timestamp_without_ms>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"
                 + " \\w{3})[ ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\\w+):  AUDIT:"
                 + " (?P<audit_type>\\w+),(?P<statement_id>\\d+),(?P<substatement_id>\\d+),"
                 + "(?P<class>\\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),"
-                + "(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$"));
+                + "(?P<object_name>[^,]*),(?P<statement>(.|\\n|\\r|\\s)*)"));
     assertThat(
         result.getTokens(), contains(AuditLogRegexGenerator.LogPrefixTokens.TIMESTAMP_WITHOUT_MS));
   }

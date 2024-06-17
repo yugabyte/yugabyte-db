@@ -123,4 +123,4 @@ ysqlsh: FATAL:  too many connections for database "test_connection"
 
 ## Learn more
 
-- [YSQL Connection Manager](../../../explore/connection-manager/connection-mgr-ysql/)
+- [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/)

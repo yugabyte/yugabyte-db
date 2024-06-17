@@ -75,6 +75,10 @@ public class PitrConfig extends Model {
   @Column(nullable = false)
   private String dbName;
 
+  @ApiModelProperty(value = "Created for DR", accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private boolean createdForDr = false;
+
   @ApiModelProperty(value = "Interval between snasphots in seconds", accessMode = READ_WRITE)
   @Column(nullable = false)
   private long scheduleInterval = 86400L;
@@ -109,6 +113,7 @@ public class PitrConfig extends Model {
     pitrConfig.setDbName(params.keyspaceName);
     pitrConfig.setScheduleInterval(params.intervalInSeconds);
     pitrConfig.setRetentionPeriod(params.retentionPeriodInSeconds);
+    pitrConfig.setCreatedForDr(params.createdForDr);
     Date currentDate = new Date();
     pitrConfig.setCreateTime(currentDate);
     pitrConfig.setUpdateTime(currentDate);

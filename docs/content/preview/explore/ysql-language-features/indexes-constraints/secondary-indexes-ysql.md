@@ -17,6 +17,10 @@ type: docs
 
 Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 
+{{<note>}}
+In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed. Indexes are not colocated with the base table.
+{{</note>}}
+
 ## Create indexes
 
 You can create indexes in YSQL using the `CREATE INDEX` statement using the following syntax:
@@ -183,7 +187,7 @@ EXPLAIN SELECT * FROM employees WHERE last_name='Davolio' AND first_name='Nancy'
                                             QUERY PLAN
 ---------------------------------------------------------------------------------------------------
  Seq Scan on employees  (cost=0.00..105.00 rows=1000 width=1240)
-   Remote Filter: (((last_name)::text = 'Davolio'::text) AND ((first_name)::text = 'Nancy'::text))
+   Storage Filter: (((last_name)::text = 'Davolio'::text) AND ((first_name)::text = 'Nancy'::text))
 (2 rows)
 ```
 

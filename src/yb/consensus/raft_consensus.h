@@ -42,6 +42,7 @@
 #include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -56,7 +57,6 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/opid.h"
 #include "yb/util/random.h"
 
 DECLARE_int32(leader_lease_duration_ms);
@@ -121,7 +121,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TableType table_type,
     ThreadPool* raft_pool,
     rpc::ThreadPool* raft_notifications_pool,
-    RetryableRequestsManager* retryable_requests_manager,
+    RetryableRequests* retryable_requests,
     MultiRaftManager* multi_raft_manager);
 
   // Creates RaftConsensus.
@@ -141,7 +141,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequestsManager* retryable_requests_manager);
+    RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus();
 
@@ -207,6 +207,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   ConsensusStatePB ConsensusStateUnlocked(
       ConsensusConfigType type,
       LeaderLeaseStatus* leader_lease_status) const override;
+
+  // Returns a copy of ConsensusState from the committed consensus state cache.
+  // This method is thread safe.
+  ConsensusStatePB GetConsensusStateFromCache() const;
 
   RaftConfigPB CommittedConfig() const override;
   RaftConfigPB CommittedConfigUnlocked() const;
@@ -300,13 +304,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       ConsensusRound* round, const StdStatusCallback& client_cb, const Status& status);
 
   Result<RetryableRequests> GetRetryableRequests() const;
-  Status FlushRetryableRequests();
-  Status CopyRetryableRequestsTo(const std::string& dest_path);
+  Result<std::unique_ptr<RetryableRequests>> TakeSnapshotOfRetryableRequests();
   OpId GetLastFlushedOpIdInRetryableRequests();
+  Status SetLastFlushedOpIdInRetryableRequests(const OpId& op_id);
 
   int64_t follower_lag_ms() const;
 
-  bool TEST_HasRetryableRequestsOnDisk() const;
   int TEST_RetryableRequestTimeoutSecs() const;
 
  protected:

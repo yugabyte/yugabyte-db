@@ -280,11 +280,16 @@ EXPLAIN ANALYZE SELECT name FROM movies WHERE tsv @@ to_tsquery('godfather');
 Notice that it now does an index scan and takes much less time.
 
 {{<warning>}}
-In the current implementation of `ybgin`, only single query term lookups are allowed. In other cases, you will get the error message, `DETAIL:  ybgin index method cannot use more than one required scan entry: got 2`.
+In the current implementation of _ybgin_, only single query term lookups are allowed. In other cases, you will get the error message, **DETAIL:  ybgin index method cannot use more than one required scan entry: got 2**.
 {{</warning>}}
+
+{{<note>}}
+When using GIN index with JSON data, you could index just a subdocument instead of the whole document using [jsonb_path_ops](../../../../explore/ysql-language-features/indexes-constraints/gin#using-opclass-jsonb_path_ops) for performance reasons.
+{{</note>}}
 
 ## Learn more
 
 - [Understand GIN indexes](../../../../explore/ysql-language-features/indexes-constraints/gin/)
 - [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
 - [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)
+- [GIN index on various sizes of JSON](https://dev.to/yugabyte/storing-json-as-text-json-or-jsonb-datatypes-in-yugabytedb-3764)

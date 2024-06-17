@@ -18,7 +18,7 @@ The [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) Postgre
 To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
---ysql_pg_conf_csv="shared_preload_libraries=auto_explain"
+--ysql_pg_conf_csv=shared_preload_libraries=auto_explain
 ```
 
 Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
@@ -63,7 +63,7 @@ LOG:  duration: 316.556 ms  plan:
         Aggregate  (cost=216.39..216.40 rows=1 width=8) (actual time=316.489..316.489 rows=1 loops=1)
           ->  Nested Loop  (cost=0.00..213.89 rows=1000 width=0) (actual time=10.828..316.200 rows=110 loops=1)
                 ->  Seq Scan on pg_index  (cost=0.00..100.00 rows=1000 width=4) (actual time=7.465..8.068 rows=110 loops=1)
-                      Remote Filter: indisunique
+                      Storage Filter: indisunique
                 ->  Index Scan using pg_class_oid_index on pg_class  (cost=0.00..0.11 rows=1 width=4) (actual time=2.673..2.673 rows=1 loops=110)
                       Index Cond: (oid = pg_index.indrelid)
 ```

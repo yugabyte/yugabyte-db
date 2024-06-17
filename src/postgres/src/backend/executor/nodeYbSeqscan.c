@@ -109,7 +109,8 @@ YbSeqNext(YbSeqScanState *node)
 										 node->aggrefs,
 										 0 /* distinct_prefixlen */,
 										 &estate->yb_exec_params,
-										 false /* is_internal_scan */);
+										 false /* is_internal_scan */,
+										 false /* fetch_ybctids_only */);
 		ybScan->pscan = node->pscan;
 		scandesc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
 		scandesc->rs_rd = node->ss.ss_currentRelation;

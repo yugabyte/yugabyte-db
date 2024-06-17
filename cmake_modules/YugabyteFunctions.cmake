@@ -944,7 +944,7 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
     return()
   endif()
 
-  set(dynamic_exe_name "${original_exe_name}${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
+  set(dynamic_exe_name "${original_exe_name}")
   message("Adding LTO target: ${output_exe_name} "
           "(LTO equivalent of ${dynamic_exe_name})")
   set(output_executable_path "${EXECUTABLE_OUTPUT_PATH}/${output_exe_name}")

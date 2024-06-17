@@ -13,13 +13,22 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB ships with a variety of tools to interact with, manage and configure your cluster. Each tool has been designed for a specific purpose. The following illustration shows which tools operate on which parts of the cluster.
+YugabyteDB ships with a variety of tools to interact with, manage, and configure your cluster. Each tool has been designed for a specific purpose. The following illustration shows which tools operate on which parts of the cluster.
 
 ![Tools and their purpose](/images/admin/tools_functionalities.png)
 
 {{<note title="Note">}}
-For information about configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
+For information about [yugabyted](../reference/configuration/yugabyted/) and configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
 {{</note>}}
+
+{{<tip title="Specifying values that have a hypen">}}
+For all the command line tools, when passing in an argument with a value that starts with a hyphen (for example, `-1`), add a double hyphen (`--`) at the end of other arguments followed by the argument name and value. This tells the binary to treat those arguments as positional. For example, to specify `set_flag ysql_select_parallelism -1`, you need to do the following:
+
+```bash
+yb-ts-cli [other arguments] -- set_flag ysql_select_parallelism -1
+```
+
+{{</tip>}}
 
 ## Tools
 
@@ -66,11 +75,5 @@ For information about configuring [YB-Master](../reference/configuration/yb-mast
     body="Perform advanced operations on tablet servers."
     href="yb-ts-cli/"
     icon="fa-solid fa-toolbox">}}
-
-  {{<index/item
-    title="yb-docker-ctl"
-    body="Create and manage Docker-based local clusters."
-    href="yb-docker-ctl/"
-    icon="fa-brands fa-docker">}}
 
 {{</index/block>}}

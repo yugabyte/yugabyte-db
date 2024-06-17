@@ -6,10 +6,11 @@ import {
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   XClusterTableEligibility,
+  XClusterTableStatus,
   XCLUSTER_SUPPORTED_TABLE_TYPES
 } from './constants';
 
-import { Metric, MetricTrace, TableType, YBTable } from '../../redesign/helpers/dtos';
+import { MetricTrace, YBTable } from '../../redesign/helpers/dtos';
 import { XClusterTableDetails } from './dtos';
 
 /**
@@ -18,7 +19,20 @@ import { XClusterTableDetails } from './dtos';
 export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 
 export type XClusterTable = YBTable &
-  Omit<XClusterTableDetails, 'tableId'> & { replicationLag?: number };
+  Omit<XClusterTableDetails, 'tableId'> & {
+    replicationLag?: number;
+    statusLabel: string; // Stores the user facing string in the object for sorting/searching usage.
+  };
+/**
+ * A table which is in the replcation config but dropped from the database.
+ */
+export type XClusterDroppedTable = Omit<XClusterTableDetails, 'tableId'> & {
+  tableUUID: string;
+  status: typeof XClusterTableStatus.DROPPED;
+  statusLabel: string; // Stores the user facing string in the object for sorting/searching usage.
+  replicationLag?: number;
+};
+export type XClusterReplicationTable = XClusterTable | XClusterDroppedTable;
 
 //------------------------------------------------------------------------------------
 // Table Selection Types
@@ -34,15 +48,26 @@ export type EligibilityDetails =
       status: typeof XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG;
       xClusterConfigName: string;
     }
-  | { status: typeof XClusterTableEligibility.INELIGIBLE_IN_USE; xClusterConfigName: string }
-  | { status: typeof XClusterTableEligibility.INELIGIBLE_NO_MATCH };
+  | { status: typeof XClusterTableEligibility.INELIGIBLE_IN_USE; xClusterConfigName: string };
 
 /**
- * YBTable with an EligibilityDetail field
+ * YBTable with an EligibilityDetail field.
  */
-export interface XClusterTableCandidate extends YBTable {
+export interface IndexTableReplicationCandidate extends YBTable {
   eligibilityDetails: EligibilityDetails;
 }
+
+/**
+ * YBTable with an EligibilityDetail field and an array of index tables.
+ */
+export interface MainTableReplicationCandidate extends YBTable {
+  eligibilityDetails: EligibilityDetails;
+  indexTables?: IndexTableReplicationCandidate[];
+}
+
+export type TableReplicationCandidate =
+  | MainTableReplicationCandidate
+  | IndexTableReplicationCandidate;
 
 /**
  * Holds list of tables for a keyspace and provides extra metadata.
@@ -55,7 +80,7 @@ export interface NamespaceItem {
     eligibleInCurrentConfig: number;
   };
   sizeBytes: number;
-  tables: XClusterTableCandidate[];
+  tables: MainTableReplicationCandidate[];
 }
 
 /**

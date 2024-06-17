@@ -15,28 +15,28 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link active">
+    <a href="../build-from-src-almalinux/" class="nav-link active">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       AlmaLinux
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-macos.md" >}}" class="nav-link">
+    <a href="../build-from-src-macos/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
+    <a href="../build-from-src-centos/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       CentOS
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-ubuntu.md" >}}" class="nav-link">
+    <a href="../build-from-src-ubuntu/" class="nav-link">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Ubuntu
     </a>
@@ -50,7 +50,52 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 {{< /note >}}
 
-## Install necessary packages
+## TLDR
+
+{{% readfile "includes/tldr.md" %}}
+
+```sh
+# Modify to your preference:
+shellrc=~/.bashrc
+
+sudo dnf update -y
+sudo dnf groupinstall -y 'Development Tools'
+sudo dnf -y install epel-release
+packages=(
+  ccache
+  cmake3
+  gcc-toolset-11
+  gcc-toolset-11-libatomic-devel
+  golang
+  java-1.8.0-openjdk
+  libatomic
+  maven
+  npm
+  patchelf
+  python39
+  rsync
+)
+sudo dnf -y install "${packages[@]}"
+sudo alternatives --set python3 /usr/bin/python3.9
+latest_zip_url=$(curl -Ls "https://api.github.com/repos/ninja-build/ninja/releases/latest" \
+                 | grep browser_download_url | grep ninja-linux.zip | cut -d \" -f 4)
+curl -Ls "$latest_zip_url" | zcat | sudo tee /usr/local/bin/ninja >/dev/null
+sudo chmod +x /usr/local/bin/ninja
+sudo mkdir /opt/yb-build
+
+# If you'd like to use an unprivileged user for development, manually
+# run/modify instructions from here onwards (change $USER, make sure shell
+# variables are set appropriately when switching users).
+sudo chown "$USER" /opt/yb-build
+source <(echo 'export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"' \
+         | tee -a "$shellrc")
+
+git clone https://github.com/yugabyte/yugabyte-db
+cd yugabyte-db
+./yb_release
+```
+
+## Detailed instructions
 
 Update and install basic development packages as follows:
 
@@ -148,6 +193,12 @@ sudo dnf install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
 Perform the following steps to build a release package:
 
 1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Install patchelf:
+
+   ```sh
+   sudo dnf install -y patchelf
+   ```
+
 1. Run the `yb_release` script using the following command:
 
    ```sh

@@ -44,14 +44,13 @@ const (
 	InstallSymlink string = "active"
 )
 
-// Directory names for config and cron files.
+// Directory names for config files
 const (
 	ConfigDir = "templates" // directory name service config templates are (relative to yba-ctl)
-	CronDir   = "cron"      // directory name non-root cron scripts are (relative to yba-ctl)
 )
 
 // SystemdDir service file directory.
-const SystemdDir string = "/etc/systemd/system"
+var SystemdDir string = "/etc/systemd/system"
 
 // Version of yba-ctl
 var Version = ""
@@ -219,18 +218,6 @@ func GetTemplatesDir() string {
 
 	// if we are being run from the .tar.gz before install
 	return GetFileMatchingGlobOrFatal(filepath.Join(GetBinaryDir(), tarTemplateDirGlob))
-}
-
-func GetCronDir() string {
-	// if we are being run from the installed dir, cron
-	// is in the same dir as the binary
-	installedPath := filepath.Join(GetInstallerSoftwareDir(), CronDir)
-	if _, err := os.Stat(installedPath); err == nil {
-		return installedPath
-	}
-
-	// if we are being run from the .tar.gz before install
-	return GetFileMatchingGlobOrFatal(filepath.Join(GetBinaryDir(), tarCronDirGlob))
 }
 
 func GetYBAInstallerDataDir() string {

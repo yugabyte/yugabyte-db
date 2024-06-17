@@ -6,10 +6,7 @@ const $ = window.jQuery;
  * Create Cookie.
  */
 function setCookie(name, value, monthToLive) {
-  let cookie = `${name}=${encodeURIComponent(value)}`;
-
-  cookie += `; max-age=${(monthToLive * 30 * (24 * 60 * 60))}`;
-  cookie += '; path=/';
+  let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
   if (location.hostname !== 'localhost') {
     cookie += '; secure=true';
   }
@@ -268,6 +265,9 @@ $(document).ready(() => {
     $(document).on('click', '.docs-menu', (event) => {
       $(event.currentTarget).toggleClass('menu-open');
       $('.left-sidebar-wrap').toggleClass('open');
+      if ($('.td-sidebar').hasClass('stick-bar')) {
+        document.querySelector('.side-nav-collapse-toggle-2').click();
+      }
     });
 
     $(document).on('click', '.td-sidebar li.submenu a[role="button"], .td-sidebar li.submenu i', (event) => {
@@ -353,16 +353,29 @@ $(document).ready(() => {
    */
   (() => {
     $('.td-content .nav-tabs-yb .nav-link').each((index, element) => {
-      const tabId = element.id;
+      let tabId = element.id;
       if (tabId) {
+        const regex = /(?<name>.*)-[0-9]+-tab/;
+        const found = tabId.match(regex);
+        if (found && found.groups) {
+          tabId = `${found.groups.name}-tab`;
+        }
+
         $(element).addClass(tabId);
       }
     });
 
     $(document).on('click', '.td-content .nav-tabs-yb .nav-link', (event) => {
       if (event.target && event.originalEvent && event.originalEvent.isTrusted) {
-        const tabId = event.target.getAttribute('id');
+        let tabId = event.target.getAttribute('id');
+
         if (tabId) {
+          const regex = /(?<name>.*)-[0-9]+-tab/;
+          const found = tabId.match(regex);
+          if (found && found.groups) {
+            tabId = `${found.groups.name}-tab`;
+          }
+
           $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).trigger('click');
         }
       }

@@ -25,6 +25,10 @@ CatalogManager* MasterServiceBase::handler(CatalogManager*) {
   return server_->catalog_manager_impl();
 }
 
+TabletSplitManager* MasterServiceBase::handler(TabletSplitManager*) {
+  return &server_->tablet_split_manager();
+}
+
 FlushManager* MasterServiceBase::handler(FlushManager*) {
   return server_->flush_manager();
 }
@@ -55,6 +59,14 @@ TabletHealthManager* MasterServiceBase::handler(TabletHealthManager*) {
 
 MasterAutoFlagsManager* MasterServiceBase::handler(MasterAutoFlagsManager*) {
   return server_->GetAutoFlagsManagerImpl();
+}
+
+CloneStateManager* MasterServiceBase::handler(CloneStateManager*) {
+  return server_->clone_state_manager();
+}
+
+MasterClusterHandler* MasterServiceBase::handler(MasterClusterHandler*) {
+  return server_->master_cluster_handler();
 }
 
 Status HandleLockAndCallFunction(

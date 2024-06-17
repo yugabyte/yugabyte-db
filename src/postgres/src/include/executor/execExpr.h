@@ -245,6 +245,9 @@ typedef enum ExprEvalOp
 	EEOP_AGG_ORDERED_TRANS_DATUM,
 	EEOP_AGG_ORDERED_TRANS_TUPLE,
 
+	/* bytecodes added by YB */
+	EEOP_ROWARRAY_COMPARE,
+
 	/* non-existent operation, used e.g. to check array lengths */
 	EEOP_LAST
 } ExprEvalOp;
@@ -650,6 +653,13 @@ typedef struct ExprEvalStep
 			int			transno;
 			int			setoff;
 		}			agg_trans;
+
+		struct
+		{
+			FunctionCallInfo *fcinfos;
+			PGFunction		 *fn_addrs;
+			int			ncols;
+		}			row_array_compare;
 	}			d;
 } ExprEvalStep;
 
@@ -738,6 +748,7 @@ extern void ExecEvalArrayRefAssign(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConvertRowtype(ExprState *state, ExprEvalStep *op,
 					   ExprContext *econtext);
 extern void ExecEvalScalarArrayOp(ExprState *state, ExprEvalStep *op);
+extern void YBExecEvalRowArrayComparison(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintNotNull(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalConstraintCheck(ExprState *state, ExprEvalStep *op);
 extern void ExecEvalXmlExpr(ExprState *state, ExprEvalStep *op);

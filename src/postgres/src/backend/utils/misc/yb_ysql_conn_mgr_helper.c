@@ -41,6 +41,7 @@
 #include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
+#include "storage/procarray.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
 
@@ -52,7 +53,11 @@
 #define SHMEM_MAX_STRING_LEN NAMEDATALEN
 
 /* Max number of session parameters that can be stored in shared memory */
-#define DEFAULT_SHMEM_ARR_LEN 10
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
+#define DEFAULT_SHMEM_ARR_LEN 2
+#else
+#define DEFAULT_SHMEM_ARR_LEN 0
+#endif
 
 /*
  * 0666 sets the access permissions of the memory segment (rwx).
@@ -209,6 +214,7 @@ YbAddToChangedSessionParametersList(const char *session_parameter_name)
 	yb_changed_session_parameters = temp_list;
 }
 
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 static int
 change_array_len_in_shmem(const key_t shmem_id, const uint32_t new_array_size)
 {
@@ -440,6 +446,7 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 		}
 	}
 }
+#endif
 
 /*
  *						YbUpdateSharedMemory
@@ -450,6 +457,7 @@ update_session_parameters(struct shmem_session_parameter *shmem_parameter_list,
 void
 YbUpdateSharedMemory()
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	if (yb_logical_client_shmem_key == -1)
 	{
 		/* yb_changed_session_parameters can only be present if
@@ -480,6 +488,7 @@ YbUpdateSharedMemory()
 		shmem_header.session_parameter_array_len);
 
 	detach_shmem(shmem_id, shmem_ptr);
+#endif
 }
 
 int
@@ -529,6 +538,7 @@ yb_shmem_get(const Oid user, const char *user_name, bool is_superuser,
 void
 SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 {
+#ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	yb_logical_client_shmem_key = client_shmem_key;
 
 	char *shared_memory_ptr;
@@ -572,6 +582,7 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 
 	/* Detach the shared memory */
 	detach_shmem(client_shmem_key, shared_memory_ptr);
+#endif
 }
 
 void
@@ -625,6 +636,7 @@ YbHandleSetSessionParam(int yb_client_id)
  * Checks done in this function:
  *  		1. Does the role exist.
  * 			2. Is the role permitted to login.
+ * 			3. Check whether connection limit is exceeded for the role
  */
 static int8_t
 SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
@@ -632,6 +644,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 {
 	HeapTuple	roleTup;
 	Form_pg_authid rform;
+	int yb_net_client_connections = 0;
 	char	   *rname;
 
 	/* TODO(janand) GH #19951 Do we need support for initializing via OID */
@@ -669,11 +682,59 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	}
 
 	/*
-	 * TODO(janand) GH #18886 Add support for "too many connections for role"
-	 * error.
-	 */
+	* yb_num_logical_conn: Stores count for all client connections made to conn mgr.
+	* yb_num_physical_conn_from_ysqlconnmgr: Stores physical connection count created from
+	* conn mgr to yb/database.
+	* CountUserBackends: Function returns total number of backend connections made by given
+	* user(roleid). It will be sum of physical connections from connection manager and direct
+	* connections to yb/database. 
+	*/
+
+	uint32_t yb_num_logical_conn = 0,
+				 yb_num_physical_conn_from_ysqlconnmgr = 0;
+
+		yb_net_client_connections = CountUserBackends(*roleid);
+
+		if (IsYugaByteEnabled() &&
+		YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
+									   &yb_num_physical_conn_from_ysqlconnmgr)) {
+			yb_net_client_connections +=
+			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+		
+		}
+	
+	if (rform->rolconnlimit >= 0 &&
+			!rform->rolsuper &&
+			yb_net_client_connections + 1 > rform->rolconnlimit)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+				 errmsg("too many connections for role \"%s\"", rname)));
+		ReleaseSysCache(roleTup);
+		return -1;
+	}
+
 	ReleaseSysCache(roleTup);
 	return 0;
+}
+
+static inline void
+send_oid_info(const char oid_type, const int oid)
+{
+	/* Note:: oid can be 0 here: it is handled by odyssey */
+	Assert(YbIsClientYsqlConnMgr());
+
+	StringInfoData buf;
+	CHECK_FOR_INTERRUPTS();
+
+	pq_beginmessage(&buf, 'O');
+	pq_sendint8(&buf, oid_type);
+	pq_sendint32(&buf, oid);
+	pq_endmessage(&buf);
+
+	pq_flush();
+	CHECK_FOR_INTERRUPTS();
 }
 
 void
@@ -690,6 +751,9 @@ YbCreateClientId(void)
 		return;
 
 	database = get_database_oid(MyProcPort->database_name, true);
+
+	/* Send back the database oid */
+	send_oid_info('d', database);
 	if (database == InvalidOid)
 	{
 		YbSendFatalForLogicalConnectionPacket();
@@ -748,6 +812,15 @@ yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 						"if the authentication method was yb-tserver-key")));
 
 	return true;
+}
+
+void
+yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
+{
+	yb_is_client_ysqlconnmgr = newval;
+
+	if (yb_is_client_ysqlconnmgr == true)
+		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 }
 
 /*
@@ -821,4 +894,28 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 
 	shmdt(shmp);
 	return true;
+}
+
+/* 
+ * Create a provision to send a ParameterStatus packet back to Connection Manager to
+ * change the cached value of a certain GUC variable, outside of the usual
+ * ReportGucOption function. This can be useful for some implicit changes to
+ * GUC variable values that do not normally send a ParameterStatus packet
+ * back to Connection Manager.
+ */
+void
+YbSendParameterStatusForConnectionManager(const char *name, const char *value)
+{
+	Assert(YbIsClientYsqlConnMgr());
+
+	CHECK_FOR_INTERRUPTS();
+	StringInfoData msgbuf;
+
+	pq_beginmessage(&msgbuf, 'S');
+	pq_sendstring(&msgbuf, name);
+	pq_sendstring(&msgbuf, value);
+	pq_endmessage(&msgbuf);
+
+	pq_flush();
+	CHECK_FOR_INTERRUPTS();
 }

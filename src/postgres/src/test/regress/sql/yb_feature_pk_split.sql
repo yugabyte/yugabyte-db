@@ -50,41 +50,41 @@ INSERT INTO feature_pk_split
 --
 -- Full scan.
 --
-EXPLAIN SELECT * FROM feature_pk_split;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split;
 SELECT * FROM feature_pk_split;
 --
 -- Full scan with conditional operators.
 --
 -- Operator `=`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
 SELECT * FROM feature_pk_split WHERE col_text = 'partition 3';
 -- Operator `IN`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
 SELECT * FROM feature_pk_split WHERE col_text IN ('partition 2', 'partition 5');
 -- Operator `<=`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 10;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 10;
 SELECT * FROM feature_pk_split WHERE col_double <= 10;
 -- Operator `AND`
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
 SELECT * FROM feature_pk_split WHERE col_text >= 'partition 3' AND col_double <= 10;
 --
 -- Full scan with aggregate functions.
 --
-EXPLAIN SELECT COUNT(*) FROM feature_pk_split;
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split;
 SELECT COUNT(*) FROM feature_pk_split;
-EXPLAIN SELECT MAX(col_integer) FROM feature_pk_split;
+EXPLAIN (COSTS OFF) SELECT MAX(col_integer) FROM feature_pk_split;
 SELECT MAX(col_integer) FROM feature_pk_split;
-EXPLAIN SELECT MIN(col_varchar) FROM feature_pk_split;
+EXPLAIN (COSTS OFF) SELECT MIN(col_varchar) FROM feature_pk_split;
 SELECT MIN(col_varchar) FROM feature_pk_split;
-EXPLAIN SELECT AVG(col_double) FROM feature_pk_split;
+EXPLAIN (COSTS OFF) SELECT AVG(col_double) FROM feature_pk_split;
 SELECT AVG(col_double) FROM feature_pk_split;
 --
 -- Primary key scan.
 -- This work needs to be optimized.
 --
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
 SELECT * FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
-EXPLAIN SELECT * FROM feature_pk_split
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n'
 	ORDER BY col_integer, col_varchar;
@@ -92,9 +92,9 @@ SELECT * FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n'
 	ORDER BY col_integer, col_varchar;
-EXPLAIN SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
 SELECT COUNT(*) FROM feature_pk_split WHERE col_integer = 50 AND col_varchar = 'a';
-EXPLAIN SELECT COUNT(*) FROM feature_pk_split
+EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n';
 SELECT COUNT(*) FROM feature_pk_split
@@ -105,28 +105,28 @@ SELECT COUNT(*) FROM feature_pk_split
 -- This work needs to be optimized.
 --
 -- Scan one tablet.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double < 2;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double < 2;
 SELECT * FROM feature_pk_split WHERE col_double < 2;
 -- Scan two tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 5;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 5;
 SELECT * FROM feature_pk_split WHERE col_double <= 5;
 -- Scan three tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 8;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 8;
 SELECT * FROM feature_pk_split WHERE col_double <= 8;
 -- Scan four tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 11;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 11;
 SELECT * FROM feature_pk_split WHERE col_double <= 11;
 -- Scan five tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 14;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 14;
 SELECT * FROM feature_pk_split WHERE col_double <= 14;
 -- Scan six tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 17;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 17;
 SELECT * FROM feature_pk_split WHERE col_double <= 17;
 -- Scan all tablets.
-EXPLAIN SELECT * FROM feature_pk_split WHERE col_double <= 100;
+EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split WHERE col_double <= 100;
 SELECT * FROM feature_pk_split WHERE col_double <= 100;
 -- Index only scan.
-EXPLAIN SELECT col_double FROM feature_pk_split WHERE col_double <= 8;
+EXPLAIN (COSTS OFF) SELECT col_double FROM feature_pk_split WHERE col_double <= 8;
 SELECT col_double FROM feature_pk_split WHERE col_double <= 8;
 --
 -- Table that has min & max split values.

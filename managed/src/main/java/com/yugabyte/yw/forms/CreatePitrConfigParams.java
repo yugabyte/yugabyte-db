@@ -35,4 +35,6 @@ public class CreatePitrConfigParams extends UniverseTaskParams {
   public long intervalInSeconds = 86400L;
 
   @JsonIgnore public XClusterConfig xClusterConfig;
+
+  @JsonIgnore public boolean createdForDr = false;
 }

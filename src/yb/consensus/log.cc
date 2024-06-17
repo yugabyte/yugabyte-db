@@ -46,6 +46,7 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -80,7 +81,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/opid.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
@@ -167,8 +167,7 @@ TAG_FLAG(log_inject_latency, unsafe);
 TAG_FLAG(log_inject_latency_ms_mean, unsafe);
 TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
 
-DEFINE_UNKNOWN_int32(log_inject_append_latency_ms_max, 0,
-             "The maximum latency to inject before the log append operation.");
+DEPRECATE_FLAG(int32, log_inject_append_latency_ms_max, "02_2024");
 
 DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
             "If true, we consider all operations to be safe and will not wait"
@@ -216,6 +215,26 @@ DEFINE_RUNTIME_int64(reuse_unclosed_segment_threshold_bytes, INT64_MAX,
             "Log will reuse this last segment as writable active_segment at tablet bootstrap. "
             "Otherwise, Log will create a new segment.");
 
+DEFINE_RUNTIME_int32(min_segment_size_bytes_to_rollover_at_flush, 0,
+                    "Only rotate wals at least of this size (in bytes) at tablet flush."
+                    "-1 to disable WAL rollover at flush. 0 to always rollover WAL at flush.");
+
+// Default 3GB. Assuming 300MBps disk throughput rate.
+DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 3 * 1024,
+    "Reject writes if less than this much disk space is available on the WAL directory. "
+    "'reject_writes_when_disk_full' must be enabled. Set this flag to a value larger than "
+    "'disk throughput rate' * 10");
+
+DEFINE_RUNTIME_uint32(reject_writes_min_disk_space_check_interval_sec, 60,
+    "Interval in seconds to check for disk space availability. The check will default to a 10s "
+    "if the disk space is less than 'reject_writes_min_disk_space_aggressive_check_mb'");
+
+// Default 18GB. Assuming 300MBps disk throughput rate.
+DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_aggressive_check_mb, 18 * 1024,
+    "Once the available disk space falls below this value we will check the disk space every 10s "
+    "instead of 'reject_writes_min_disk_space_check_interval_sec'. Set this flag to a value larger "
+    "than 'disk throughput rate' * 'reject_writes_min_disk_space_check_interval_sec'");
+
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
   if (value >= 1) {
@@ -241,8 +260,13 @@ using strings::Substitute;
 
 namespace {
 
+bool IsRolloverMarkerType(LogEntryTypePB type) {
+  return type == LogEntryTypePB::SYNC_ROLLOVER_MARKER ||
+         type == LogEntryTypePB::ASYNC_ROLLOVER_AT_FLUSH_MARKER;
+}
+
 bool IsMarkerType(LogEntryTypePB type) {
-  return type == LogEntryTypePB::ROLLOVER_MARKER ||
+  return IsRolloverMarkerType(type) ||
          type == LogEntryTypePB::FLUSH_MARKER;
 }
 
@@ -305,6 +329,8 @@ class Log::LogEntryBatch {
   bool IsMarker() const;
 
   bool IsSingleEntryOfType(LogEntryTypePB type) const;
+
+  bool IsRolloverMarker() const;
 
   size_t count() const { return count_; }
 
@@ -406,10 +432,6 @@ class Log::Appender {
     return task_stream_->ToString();
   }
 
-  const yb::ash::WaitStateInfoPtr& wait_state() const {
-    return wait_state_;
-  }
-
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -437,12 +459,13 @@ Log::Appender::Appender(Log* log, ThreadPool* append_thread_pool)
           std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
           FLAGS_taskstream_queue_max_size,
           MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))),
-      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled()) {
+      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   if (wait_state_) {
+    wait_state_->set_root_request_id(yb::Uuid::Generate());
     wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
     wait_state_->UpdateAuxInfo({.tablet_id = log_->tablet_id(), .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(wait_state_, Idle);
-    yb::ash::RaftLogAppenderWaitStatesTracker().Track(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Track(wait_state_);
   }
   DCHECK(log_min_segments_to_retain_validator_registered);
 }
@@ -460,6 +483,7 @@ Status Log::Appender::Init() {
 // fsync will eventually be called. [if there is a background thread executing DoSync in parallel,
 // it might OR might not flush the new dirty data in the current iteration due to race condition]
 void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
+  ADOPT_WAIT_STATE(wait_state_);
   // A callback function to TaskStream is expected to process the accumulated batch of entries.
   if (entry_batch == nullptr) {
     // Here, we do sync and call callbacks.
@@ -557,7 +581,7 @@ void Log::Appender::Shutdown() {
     task_stream_.reset();
   }
   if (wait_state_) {
-    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Untrack(wait_state_);
   }
 }
 
@@ -653,10 +677,21 @@ Log::Log(
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
       create_new_segment_at_start_(create_new_segment),
       new_segment_allocation_callback_(callback),
-      pre_log_rollover_callback_(pre_log_rollover_callback) {
+      pre_log_rollover_callback_(pre_log_rollover_callback),
+      background_synchronizer_wait_state_(
+          ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   set_wal_retention_secs(options_.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
+  }
+  if (background_synchronizer_wait_state_) {
+    background_synchronizer_wait_state_->set_root_request_id(yb::Uuid::Generate());
+    background_synchronizer_wait_state_->set_query_id(
+        yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogBackgroundSync));
+    background_synchronizer_wait_state_->UpdateAuxInfo(
+        {.tablet_id = tablet_id_, .method = "RaftWAL"});
+    SET_WAIT_STATUS_TO(background_synchronizer_wait_state_, Idle);
+    yb::ash::RaftLogWaitStatesTracker().Track(background_synchronizer_wait_state_);
   }
 }
 
@@ -786,12 +821,15 @@ Status Log::RollOver() {
   return Status::OK();
 }
 
-std::unique_ptr<Log::LogEntryBatch> Log::Reserve(
+Result<std::unique_ptr<Log::LogEntryBatch>> Log::Reserve(
     LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch) {
   TRACE_EVENT0("log", "Log::Reserve");
   {
     PerCpuRwSharedLock read_lock(state_lock_);
-    CHECK_EQ(kLogWriting, log_state_);
+    if (log_state_ != kLogWriting) {
+      return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
+          log_state_, kLogWriting);
+    }
   }
 
   // In DEBUG builds, verify that all of the entries in the batch match the specified type.  In
@@ -816,7 +854,7 @@ std::unique_ptr<Log::LogEntryBatch> Log::Reserve(
 Status Log::TEST_ReserveAndAppend(
     std::shared_ptr<LWLogEntryBatchPB> batch, const ReplicateMsgs& replicates,
     const StatusCallback& callback) {
-  auto entry = Reserve(REPLICATE, std::move(batch));
+  auto entry = VERIFY_RESULT(Reserve(REPLICATE, std::move(batch)));
   entry->SetReplicates(replicates);
   return AsyncAppend(std::move(entry), callback);
 }
@@ -825,7 +863,10 @@ Status Log::AsyncAppend(
     std::unique_ptr<LogEntryBatch> entry_batch, const StatusCallback& callback) {
   {
     PerCpuRwSharedLock read_lock(state_lock_);
-    CHECK_EQ(kLogWriting, log_state_);
+    if (log_state_ != kLogWriting) {
+      return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
+          log_state_, kLogWriting);
+    }
   }
 
   entry_batch->set_callback(callback);
@@ -859,7 +900,7 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
     batch->set_mono_time(batch_mono_time.ToUInt64());
   }
 
-  auto reserved_entry_batch = Reserve(LogEntryTypePB::REPLICATE, std::move(batch));
+  auto reserved_entry_batch = VERIFY_RESULT(Reserve(LogEntryTypePB::REPLICATE, std::move(batch)));
 
   // If we're able to reserve, set the vector of replicate shared pointers in the LogEntryBatch.
   // This will make sure there's a reference for each replicate while we're appending.
@@ -869,7 +910,6 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
 }
 
 Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
-  ADOPT_WAIT_STATE(appender_->wait_state());
   SCOPED_WAIT_STATUS(WAL_Append);
   if (!skip_wal_write) {
     RETURN_NOT_OK(entry_batch->Serialize());
@@ -877,14 +917,35 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->IsMarker())
         << "Cannot call DoAppend() with no data";
 
-    if (entry_batch->IsSingleEntryOfType(ROLLOVER_MARKER)) {
-      VLOG_WITH_PREFIX_AND_FUNC(1) << "Got ROLLOVER_MARKER";
-      if (active_segment_ && footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0) {
-        // Active segment is not empty - rollover.
+    if (entry_batch->IsRolloverMarker()) {
+      VLOG_WITH_PREFIX_AND_FUNC(1) << "Got marker " << LogEntryTypePB_Name(entry_batch->type_);
+      const auto has_entries =
+          active_segment_ && footer_builder_.IsInitialized() && footer_builder_.num_entries() > 0;
+      if (!has_entries) {
+        // Do nothing.
+      } else if (entry_batch->IsSingleEntryOfType(SYNC_ROLLOVER_MARKER)) {
         if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
           RETURN_NOT_OK(AsyncAllocateSegment());
         }
         return RollOver();
+      } else if (entry_batch->IsSingleEntryOfType(ASYNC_ROLLOVER_AT_FLUSH_MARKER)) {
+        if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
+          const auto min_size_to_rollover =
+              GetAtomicFlag(&FLAGS_min_segment_size_bytes_to_rollover_at_flush);
+          if (min_size_to_rollover < 0 || active_segment_->Size() < min_size_to_rollover) {
+            VLOG_WITH_PREFIX(1) << Format("Skipping async wal rotation at flush. "
+                                          "segment_size: $0 min_size_to_rollover: $1",
+                                          active_segment_->Size(), min_size_to_rollover);
+            return Status::OK();
+          }
+          next_max_segment_size_ = std::max<uint64_t>(
+              options_.initial_segment_size_bytes, cur_max_segment_size_ / 2);
+          RETURN_NOT_OK(AsyncAllocateSegment());
+        }
+        if (!options_.async_preallocate_segments) {
+          return RollOver();
+        }
+        return Status::OK();
       }
     }
 
@@ -973,10 +1034,16 @@ void Log::UpdateFooterForBatch(LogEntryBatch* batch) {
 
 Status Log::AllocateSegmentAndRollOver() {
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Start";
-  auto reserved_entry_batch = ReserveMarker(ROLLOVER_MARKER);
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(SYNC_ROLLOVER_MARKER));
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(std::move(reserved_entry_batch), s.AsStatusCallback()));
   return s.Wait();
+}
+
+Status Log::AsyncAllocateSegmentAndRollover() {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "Start";
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(ASYNC_ROLLOVER_AT_FLUSH_MARKER));
+  return AsyncAppend(std::move(reserved_entry_batch), {});
 }
 
 Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& recover_segment) {
@@ -1117,7 +1184,6 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
 Status Log::DoSync() {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
-  ADOPT_WAIT_STATE(appender_->wait_state());
   SCOPED_WAIT_STATUS(WAL_Sync);
   std::lock_guard lock(active_segment_mutex_);
   if (active_segment_->IsClosed()) {
@@ -1146,6 +1212,7 @@ Status Log::DoSync() {
 // have to use active_segment_sequence_number_ instead of fsync_task_in_queue_, in ::Sync(), to
 // determine if there is a pending fsync task corresponding to the current active segment.
 void Log::DoSyncAndResetTaskInQueue() {
+  ADOPT_WAIT_STATE(background_synchronizer_wait_state_);
   auto status = DoSync();
   if (!status.ok()) {
     // ensure that fsync gets called on the subsequent call to Log::Sync() function
@@ -1376,7 +1443,7 @@ Status Log::Append(
   return s;
 }
 
-std::unique_ptr<Log::LogEntryBatch> Log::ReserveMarker(LogEntryTypePB type) {
+Result<std::unique_ptr<Log::LogEntryBatch>> Log::ReserveMarker(LogEntryTypePB type) {
   auto entry_batch = rpc::MakeSharedMessage<LWLogEntryBatchPB>();
   entry_batch->add_entry()->set_type(type);
   return Reserve(type, std::move(entry_batch));
@@ -1384,7 +1451,7 @@ std::unique_ptr<Log::LogEntryBatch> Log::ReserveMarker(LogEntryTypePB type) {
 
 Status Log::WaitUntilAllFlushed() {
   // In order to make sure we empty the queue we need to use the async API.
-  auto reserved_entry_batch = ReserveMarker(FLUSH_MARKER);
+  auto reserved_entry_batch = VERIFY_RESULT(ReserveMarker(FLUSH_MARKER));
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(std::move(reserved_entry_batch), s.AsStatusCallback()));
   return s.Wait();
@@ -1590,6 +1657,9 @@ Status Log::Close() {
       RETURN_NOT_OK(CloseCurrentSegment());
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       log_state_ = kLogClosed;
+      if (background_synchronizer_wait_state_) {
+        yb::ash::RaftLogWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
+      }
       VLOG_WITH_PREFIX(1) << "Log closed";
 
       // Release FDs held by these objects.
@@ -1809,7 +1879,7 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_i
 }
 
 uint64_t Log::NextSegmentDesiredSize() {
-  return std::min(cur_max_segment_size_ * 2, max_segment_size_);
+  return next_max_segment_size_.value_or(std::min(cur_max_segment_size_ * 2, max_segment_size_));
 }
 
 WritableFileOptions Log::GetNewSegmentWritableFileOptions() {
@@ -1885,7 +1955,6 @@ Status Log::SwitchToAllocatedSegment() {
   // Calling Sync() here is important because it ensures the file has a complete WAL header
   // on disk before renaming the file.
   {
-    ADOPT_WAIT_STATE(appender_->wait_state());
     SCOPED_WAIT_STATUS(WAL_Sync);
     RETURN_NOT_OK(new_segment->Sync());
   }
@@ -1923,6 +1992,7 @@ Status Log::SwitchToAllocatedSegment() {
   }
 
   cur_max_segment_size_ = NextSegmentDesiredSize();
+  next_max_segment_size_.reset();
 
   allocation_state_.store(
       SegmentAllocationState::kAllocationNotStarted, std::memory_order_release);
@@ -2017,6 +2087,10 @@ bool Log::LogEntryBatch::IsSingleEntryOfType(LogEntryTypePB type) const {
   return count() == 1 && entry_batch_pb_->entry().front().type() == type;
 }
 
+bool Log::LogEntryBatch::IsRolloverMarker() const {
+  return count() == 1 && IsRolloverMarkerType(entry_batch_pb_->entry().front().type());
+}
+
 Status Log::LogEntryBatch::Serialize() {
   DCHECK_EQ(state_, kEntryReady);
   buffer_.clear();
@@ -2038,6 +2112,72 @@ Status Log::LogEntryBatch::Serialize() {
 void Log::LogEntryBatch::MarkReady() {
   DCHECK_EQ(state_, kEntryReserved);
   state_ = kEntryReady;
+}
+
+bool Log::HasSufficientDiskSpaceForWrite() {
+  const auto now = CoarseMonoClock::Now();
+  const auto last_disk_space_check_time =
+      last_disk_space_check_time_.load(std::memory_order_acquire);
+
+  auto check_interval_sec = disk_space_frequent_check_interval_sec_.load(std::memory_order_acquire);
+  if (check_interval_sec == 0) {
+    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
+  }
+
+  if (IsInitialized(last_disk_space_check_time) &&
+      (now - last_disk_space_check_time < check_interval_sec * 1s)) {
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+
+  std::unique_lock l(disk_space_mutex_, std::defer_lock);
+  if (!l.try_lock_for(std::chrono::milliseconds(0))) {
+    // Someone else is already checking disk space. Just use the cached value.
+
+    if (!IsInitialized(last_disk_space_check_time)) {
+      // Always wait for the initial value to be valid.
+      SharedLock shared_l(disk_space_mutex_);
+    }
+
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+
+  std::string path;
+  {
+    std::lock_guard lock(active_segment_mutex_);
+    path = active_segment_->path();
+  }
+
+  bool has_space = true;
+  // Lets assume we need to check frequently. If we have enough space, we will adjust this value.
+  check_interval_sec =
+      std::min(static_cast<uint32>(10), FLAGS_reject_writes_min_disk_space_check_interval_sec);
+
+  auto free_space_result = get_env()->GetFreeSpaceBytes(path);
+  if (!free_space_result.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300) << "Unable to get free space: " << free_space_result;
+
+    // Fallback to the last known value.
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+  const auto free_space_mb = *free_space_result / 1024 / 1024;
+
+  if (free_space_mb < FLAGS_reject_writes_min_disk_space_mb) {
+    YB_LOG_EVERY_N_SECS(ERROR, 600) << "Not enough disk space available on " << path
+                                    << ". Free space: " << *free_space_result << " bytes";
+    has_space = false;
+  } else if (free_space_mb < FLAGS_reject_writes_min_disk_space_aggressive_check_mb) {
+    YB_LOG_EVERY_N_SECS(WARNING, 600)
+        << "Low disk space on " << path << ". Free space: " << *free_space_result << " bytes";
+  } else {
+    // We have enough space so no need to check frequently.
+    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
+  }
+
+  disk_space_frequent_check_interval_sec_.store(check_interval_sec, std::memory_order_release);
+  has_free_disk_space_.store(has_space, std::memory_order_release);
+  last_disk_space_check_time_.store(now, std::memory_order_release);
+
+  return has_space;
 }
 
 }  // namespace log

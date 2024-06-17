@@ -1,13 +1,13 @@
 !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
 exporters:
-  awscloudwatchlogs/AWS: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSCloudWatchExporter
+  awscloudwatchlogs/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSCloudWatchExporter
     endpoint: endpoint
     log_group_name: logGroup
     log_stream_name: logStream
     region: us-west2
     retry_on_failure: {enabled: true, initial_interval: 1m, max_interval: 1800m}
     sending_queue: {enabled: false, storage: file_storage/queue}
-  googlecloud/GCP: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$GCPCloudMonitoringExporter
+  googlecloud/11111111-1111-1111-1111-111111111111: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$GCPCloudMonitoringExporter
     log: {default_log_name: YugabyteDB}
     project: project
     sending_queue: {enabled: true, storage: file_storage/queue}
@@ -17,28 +17,30 @@ extensions:
       rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
     directory: /mnt/d0/otel-collector/queue
 processors:
-  attributes/AWS: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+  attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
+    - {action: upsert, key: host, value: test-node}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: otherValue}
-    - {action: upsert, key: host.name, value: test-node}
-  attributes/GCP: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+  attributes/11111111-1111-1111-1111-111111111111: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
+    - {action: upsert, key: host, value: test-node}
     - {action: upsert, key: tag, value: value1}
     - {action: upsert, key: additionalTag, value: yetAnotherValue}
-    - {action: upsert, key: host.name, value: test-node}
 receivers:
   filelog/ysql: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
     attributes: {audit_log_type: ysql}
     exclude: [/home/yugabyte/tserver/logs/*.gz]
     include: [/home/yugabyte/tserver/logs/postgresql-*.log]
+    multiline: {line_start_pattern: '([A-Z]\d{4})|((?P<timestamp_without_ms>\d{4}-\d{2}-\d{2}
+        \d{2}:\d{2}:\d{2} \w{3})[ ][|][ ]([^ ]+)[ ][:][ ])'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body not matches "^.*\\w+:  AUDIT:.*$"', type: filter}
+      expr: 'body not matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"', type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop
-      regex: '^((?P<timestamp_without_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w{3})[
-        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$'
+      regex: '(?P<timestamp_without_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w{3})[
+        ][|][ ]([^ ]+)[ ][:][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
       timestamp: {layout: '%Y-%m-%d %H:%M:%S %Z', parse_from: attributes.timestamp_without_ms}
       type: regex_parser
     start_at: beginning
@@ -47,13 +49,14 @@ receivers:
     attributes: {audit_log_type: ycql}
     exclude: [/home/yugabyte/tserver/logs/*.gz]
     include: [/home/yugabyte/tserver/logs/yb-tserver.*.WARNING.*]
+    multiline: {line_start_pattern: '([A-Z]\d{4})'}
     operators:
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
-      expr: 'body not matches "^.*AUDIT: user:.*$"', type: filter}
+      expr: 'body not matches "^.*AUDIT: user:(.|\\n|\\r|\\s)*$"', type: filter}
     - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
       on_error: drop
-      regex: '^((?P<log_level>\w)(?P<log_time>\d{2}\d{2} \d{2}:\d{2}:\d{2}[.]\d{6})
-        (?P<thread_id>\d+) (?P<file_name>[^:]+):(?P<file_line>\d+)[]] AUDIT: user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\d+)[|]source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\d+)[|]timestamp:(?P<timestamp>\d+)[|]type:(?P<type>[^|]+)[|]category:(?P<category>[^|]+)[|]ks:(?P<keyspace>[^|]+)[|]scope:(?P<scope>[^|]+)[|]operation:(?P<statement>.*))|(.*)$'
+      regex: '(?P<log_level>\w)(?P<log_time>\d{2}\d{2} \d{2}:\d{2}:\d{2}[.]\d{6})\s*(?P<thread_id>\d+)
+        (?P<file_name>[^:]+):(?P<file_line>\d+)[]] AUDIT: user:(?P<user_name>[^|]+)[|]host:(?P<local_host>[^:]+):(?P<local_port>\d+)[|]source:(?P<remote_host>[^|]+)[|]port:(?P<remote_port>\d+)[|]timestamp:(?P<timestamp>\d+)[|]type:(?P<type>[^|]+)[|]category:(?P<category>[^|]+)([|]ks:(?P<keyspace>[^|]+))?([|]scope:(?P<scope>[^|]+))?[|]operation:(?P<statement>(.|\n|\r|\s)*)'
       timestamp: {layout: ms, layout_type: epoch, parse_from: attributes.timestamp}
       type: regex_parser
     start_at: beginning
@@ -61,14 +64,15 @@ receivers:
 service:
   extensions: [file_storage/queue]
   pipelines:
-    logs/GCP:
-      exporters: [googlecloud/GCP]
-      processors: [attributes/GCP]
+    logs/00000000-0000-0000-0000-000000000000:
+      exporters: [awscloudwatchlogs/00000000-0000-0000-0000-000000000000]
+      processors: [attributes/00000000-0000-0000-0000-000000000000]
       receivers: [filelog/ysql, filelog/ycql]
-    logs/AWS:
-      exporters: [awscloudwatchlogs/AWS]
-      processors: [attributes/AWS]
+    logs/11111111-1111-1111-1111-111111111111:
+      exporters: [googlecloud/11111111-1111-1111-1111-111111111111]
+      processors: [attributes/11111111-1111-1111-1111-111111111111]
       receivers: [filelog/ysql, filelog/ycql]
   telemetry:
     logs:
       output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
+    metrics: {address: '0.0.0.0:8889'}

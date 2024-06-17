@@ -258,7 +258,7 @@ SELECT c FROM pagg_tab GROUP BY c ORDER BY 1;
 EXPLAIN (COSTS OFF)
 SELECT a FROM pagg_tab WHERE a < 3 GROUP BY a ORDER BY 1;
                     QUERY PLAN
---------------------------------------------------
+---------------------------------------------------
  Group
    Group Key: pagg_tab_p1.a
    ->  Merge Append
@@ -268,19 +268,19 @@ SELECT a FROM pagg_tab WHERE a < 3 GROUP BY a ORDER BY 1;
                ->  Sort
                      Sort Key: pagg_tab_p1.a
                      ->  Seq Scan on pagg_tab_p1
-                           Remote Filter: (a < 3)
+                           Storage Filter: (a < 3)
          ->  Group
                Group Key: pagg_tab_p2.a
                ->  Sort
                      Sort Key: pagg_tab_p2.a
                      ->  Seq Scan on pagg_tab_p2
-                           Remote Filter: (a < 3)
+                           Storage Filter: (a < 3)
          ->  Group
                Group Key: pagg_tab_p3.a
                ->  Sort
                      Sort Key: pagg_tab_p3.a
                      ->  Seq Scan on pagg_tab_p3
-                           Remote Filter: (a < 3)
+                           Storage Filter: (a < 3)
 (22 rows)
 
 SELECT a FROM pagg_tab WHERE a < 3 GROUP BY a ORDER BY 1;
@@ -522,7 +522,7 @@ SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a LEFT JOI
                      Hash Cond: (pagg_tab1_p1.x = y)
                      Filter: ((pagg_tab1_p1.x > 5) OR (y < 20))
                      ->  Seq Scan on pagg_tab1_p1
-                           Remote Filter: (x < 20)
+                           Storage Filter: (x < 20)
                      ->  Hash
                            ->  Result
                                  One-Time Filter: false
@@ -532,10 +532,10 @@ SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a LEFT JOI
                      Hash Cond: (pagg_tab1_p2.x = pagg_tab2_p2.y)
                      Filter: ((pagg_tab1_p2.x > 5) OR (pagg_tab2_p2.y < 20))
                      ->  Seq Scan on pagg_tab1_p2
-                           Remote Filter: (x < 20)
+                           Storage Filter: (x < 20)
                      ->  Hash
                            ->  Seq Scan on pagg_tab2_p2
-                                 Remote Filter: (y > 10)
+                                 Storage Filter: (y > 10)
 (23 rows)
 
 SELECT a.x, b.y, count(*) FROM (SELECT * FROM pagg_tab1 WHERE x < 20) a LEFT JOIN (SELECT * FROM pagg_tab2 WHERE y > 10) b ON a.x = b.y WHERE a.x > 5 or b.y < 20  GROUP BY a.x, b.y ORDER BY 1, 2;

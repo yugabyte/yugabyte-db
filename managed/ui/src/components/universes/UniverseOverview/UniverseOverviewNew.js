@@ -474,7 +474,6 @@ export default class UniverseOverviewNew extends Component {
 
   getPrimaryClusterWidget = (currentUniverse, isRollBackFeatureEnabled) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
-    
     if (isNullOrEmpty(currentUniverse)) return;
 
     const clusterWidgetSize = isDedicatedNodes ? 4 : this.hasReadReplica(currentUniverse) ? 3 : 4;
@@ -844,7 +843,6 @@ export default class UniverseOverviewNew extends Component {
       currentCustomer,
       runtimeConfigs
     } = this.props;
-
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
@@ -889,11 +887,14 @@ export default class UniverseOverviewNew extends Component {
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
           <Col lg={4} md={6} sm={8} xs={12}>
-            <DBVersionWidget
-              higherVersionCount={updateAvailable}
-              isRollBackFeatureEnabled={isRollBackFeatureEnabled}
-              failedTaskDetails={failedTask}
-            />
+            {getPromiseState(currentUniverse).isSuccess() && (
+              <DBVersionWidget
+                higherVersionCount={updateAvailable}
+                isRollBackFeatureEnabled={isRollBackFeatureEnabled}
+                failedTaskDetails={failedTask}
+                isReleasesEnabled={this.props.isReleasesEnabled}
+              />
+            )}
           </Col>
         </Row>
         <Row>

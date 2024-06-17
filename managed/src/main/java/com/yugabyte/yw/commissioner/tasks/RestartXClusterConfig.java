@@ -34,10 +34,12 @@ public class RestartXClusterConfig extends EditXClusterConfig {
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     try {
       // Lock the source universe.
-      lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
+      lockAndFreezeUniverseForUpdate(
+          sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
         // Lock the target universe.
-        lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
+        lockAndFreezeUniverseForUpdate(
+            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
         createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
@@ -74,7 +76,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               xClusterConfig,
               true /* keepEntry */,
               taskParams().isForced(),
-              false) /* deletePitrConfigs */;
+              false /* deletePitrConfigs */);
 
           if (xClusterConfig.isUsedForDr()) {
             createSetDrStatesTask(
@@ -99,6 +101,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               taskParams().getTableInfoList(),
               taskParams().getMainTableIndexTablesMap(),
               taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+              null,
               taskParams().getPitrParams(),
               taskParams().isForceBootstrap());
         } else {

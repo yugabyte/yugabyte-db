@@ -234,6 +234,7 @@ void Batcher::FlushAsync(
   // expected by transaction.
   if (transaction && !is_within_transaction_retry) {
     transaction->batcher_if().ExpectOperations(operations_count);
+    SetSubTransactionMetadataPB(transaction->GetSubTransactionMetadataPB());
   }
 
   ops_queue_.reserve(ops_.size());
@@ -260,7 +261,8 @@ void Batcher::FlushAsync(
     }
   }
 
-  SET_WAIT_STATUS(YBC_WaitingOnDocdb);
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
   for (auto& op : ops_queue_) {
     VLOG_WITH_PREFIX(4) << "Looking up tablet for " << op.ToString()
                         << " partition key: " << Slice(op.partition_key).ToDebugHexString();
@@ -316,7 +318,7 @@ void Batcher::LookupTabletFor(InFlightOp* op) {
   auto shared_this = shared_from_this();
   TracePtr trace(Trace::CurrentTrace());
   ash::WaitStateInfoPtr wait_state{ash::WaitStateInfo::CurrentWaitState()};
-  SET_WAIT_STATUS(YBC_LookingUpTablet);
+  SET_WAIT_STATUS(YBClient_LookingUpTablet);
   client_->data_->meta_cache_->LookupTabletByKey(
       op->yb_op->mutable_table(), op->partition_key, deadline_,
       [shared_this, op, trace, wait_state](const auto& lookup_result) {
@@ -419,7 +421,7 @@ void Batcher::AllLookupsDone() {
   // 1. The batcher is in the "resolving tablets" state (i.e. FlushAsync was called).
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
-  SET_WAIT_STATUS(YBC_WaitingOnDocdb);
+  SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
   SCOPED_WAIT_STATUS(OnCpu_Active);
 
   if (state_ != BatcherState::kResolvingTablets) {
@@ -685,7 +687,8 @@ void Batcher::Flushed(
       // See comments for YBTransaction::Impl::running_requests_ and
       // YBSession::AddErrorsAndRunCallback.
       // https://github.com/yugabyte/yugabyte-db/issues/7984.
-      transaction->batcher_if().Flushed(ops, flush_extra_result.used_read_time, status);
+      transaction->batcher_if().Flushed(
+          ops, ops_info_.metadata.subtransaction_pb, flush_extra_result.used_read_time, status);
     }
   }
   if (status.ok() && read_point_) {
@@ -788,6 +791,7 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
     }
     Add(op);
   }
+  SetSubTransactionMetadataPB(failed_batcher->GetSubTransactionMetadataPB());
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

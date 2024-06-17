@@ -1,140 +1,88 @@
-import { Field, FormikProps } from 'formik';
-import { useSelector } from 'react-redux';
-import { components } from 'react-select';
-import { groupBy } from 'lodash';
+import { makeStyles, Typography } from '@material-ui/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 
-import { YBFormSelect } from '../../common/forms/fields';
+import { YBTooltip } from '../../../redesign/components';
+import InfoIcon from '../../../redesign/assets/info-message.svg';
+import { ReactSelectStorageConfigField } from '../sharedComponents/ReactSelectStorageConfig';
 import { CreateXClusterConfigFormValues } from './CreateConfigModal';
-import {
-  Badge_Types as BackupConfigBadgeType,
-  StatusBadge as BackupStatusBadge
-} from '../../common/badge/StatusBadge';
-import { formatUuidForXCluster } from '../ReplicationUtils';
-import { getTableUuid } from '../../../utils/tableUtils';
-
-import { YBTable } from '../../../redesign/helpers/dtos';
-import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
-
-import styles from './ConfigureBootstrapStep.module.scss';
 
 interface ConfigureBootstrapStepProps {
-  formik: React.MutableRefObject<FormikProps<CreateXClusterConfigFormValues>>;
-  bootstrapRequiredTableUUIDs: string[];
-  sourceTables: YBTable[];
+  isFormDisabled: boolean;
 }
 
-export const ConfigureBootstrapStep = ({
-  formik,
-  bootstrapRequiredTableUUIDs,
-  sourceTables
-}: ConfigureBootstrapStepProps) => {
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
-  );
-  const { values, setFieldValue } = formik.current;
-
-  if (storageConfigs.length === 1 && values.storageConfig === undefined) {
-    const { configUUID, configName, name, data } = storageConfigs[0];
-    setFieldValue('storageConfig', {
-      value: configUUID,
-      label: configName,
-      name: name,
-      regions: data?.REGION_LOCATIONS
-    });
-  }
-
-  const storageConfigsOptions = storageConfigs.map((storageConfig) => {
-    return {
-      value: storageConfig.configUUID,
-      label: storageConfig.configName,
-      name: storageConfig.name,
-      regions: storageConfig.data?.REGION_LOCATIONS
-    };
-  });
-
-  const groupedStorageConfigOptions = Object.entries(
-    groupBy(storageConfigsOptions, (configOption) => configOption.name)
-  ).map(([label, options]) => ({ label, options }));
-
-  const bootstrapRequiredTableUUIDsLookup = new Set(bootstrapRequiredTableUUIDs);
-  const keyspaces = sourceTables.reduce((keyspaces, table) => {
-    if (bootstrapRequiredTableUUIDsLookup.has(formatUuidForXCluster(getTableUuid(table)))) {
-      keyspaces.add(table.keySpace);
+const useStyles = makeStyles((theme) => ({
+  stepContainer: {
+    '& ol': {
+      paddingLeft: theme.spacing(2),
+      listStylePosition: 'outside',
+      '& li::marker': {
+        fontWeight: 'bold'
+      }
     }
-    return keyspaces;
-  }, new Set());
+  },
+  instruction: {
+    marginBottom: theme.spacing(4)
+  },
+  formSectionDescription: {
+    marginBottom: theme.spacing(3)
+  },
+  fieldLabel: {
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'center',
+
+    marginBottom: theme.spacing(1)
+  },
+  infoIcon: {
+    '&:hover': {
+      cursor: 'pointer'
+    }
+  }
+}));
+
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.createConfigModal.step.configureBootstrap';
+
+export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapStepProps) => {
+  const { control } = useFormContext<CreateXClusterConfigFormValues>();
+  const classes = useStyles();
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   return (
-    <>
-      <div className={styles.formInstruction}>3. Configure Full Copy</div>
-      <p>
-        Creating an initial full copy
-        <b> brings your target universe to the same checkpoint as your source universe </b>
-        before turning on async replication. It ensures data consistency between the source and
-        target universe.
-      </p>
-      <p>
-        {`${bootstrapRequiredTableUUIDs.length} out of ${values.tableUUIDs.length} table(s) in
-          ${keyspaces.size} `}
-        database(s) selected for replication
-        <b> contain data and need an initial full copy</b> to enable replication.
-      </p>
-      <div className={styles.formFieldContainer}>
-        <Field
-          name="storageConfig"
-          component={YBFormSelect}
-          label="Select the storage config you want to use for your backup"
-          options={groupedStorageConfigOptions}
-          components={{
-            // eslint-disable-next-line react/display-name
-            SingleValue: ({ data }: { data: any }) => (
-              <>
-                <span className={styles.backupConfigLabelName}>{data.label}</span>
-                <BackupStatusBadge
-                  statusType={BackupConfigBadgeType.DELETED}
-                  customLabel={data.name}
-                />
-              </>
-            ),
-            // eslint-disable-next-line react/display-name
-            Option: (props: any) => {
-              return (
-                <components.Option {...props}>
-                  <div className={styles.backupConfigOptionLabel}>{props.data.label}</div>
-                  <div className={styles.backupConfigOptionMeta}>
-                    <span>{`${props.data.name}${props.data.regions?.length > 0 ? ',' : ''}`}</span>
-                    {props.data.regions?.length > 0 && <span>Multi-region support</span>}
-                  </div>
-                </components.Option>
-              );
-            }
-          }}
-          styles={{
-            singleValue: (props: any) => {
-              return { ...props, display: 'flex' };
-            }
-          }}
-        />
-      </div>
-      <div className={styles.note}>
-        <p>
-          <b>Note!</b>
-        </p>
-        <p>
-          Creating a full copy is a <b>time intensive</b> process that involves creating a
-          checkpoint on the source, deleting the data on target, creating a copy of the source data
-          using backup, and replicating the data to target using restore.
-        </p>
-        <p>
-          <b>Data</b> on the target cluster <b>will be deleted</b> during when creating a full copy.
-          Queries to these temporarily deleted tables will error out.
-        </p>
-        <p>
-          We recommend <b>creating a full copy during off-peak hours.</b>
-        </p>
-      </div>
-    </>
+    <div className={classes.stepContainer}>
+      <ol start={3}>
+        <li>
+          <Typography variant="body1" className={classes.instruction}>
+            {t('instruction')}
+          </Typography>
+          <div className={classes.formSectionDescription}>
+            <Typography variant="body2">{t('infoText')}</Typography>
+          </div>
+          <div className={classes.fieldLabel}>
+            <Typography variant="body2">{t('backupStorageConfig.label')}</Typography>
+            <YBTooltip
+              title={
+                <Typography variant="body2">
+                  <Trans
+                    i18nKey={`${TRANSLATION_KEY_PREFIX}.backupStorageConfig.tooltip`}
+                    components={{ paragraph: <p />, bold: <b /> }}
+                  />
+                </Typography>
+              }
+            >
+              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+            </YBTooltip>
+          </div>
+          <ReactSelectStorageConfigField
+            control={control}
+            name="storageConfig"
+            rules={{ required: t('error.backupStorageConfigRequired') }}
+            isDisabled={isFormDisabled}
+            autoSizeMinWidth={350}
+            maxWidth="100%"
+          />
+        </li>
+      </ol>
+    </div>
   );
 };

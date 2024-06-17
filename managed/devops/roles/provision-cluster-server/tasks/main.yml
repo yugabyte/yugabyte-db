@@ -121,6 +121,16 @@
     name: setup-cgroup
   when: not systemd_option
 
+- name: Grant traverse permission on yb_home directory
+  file:
+    path: "{{ yb_home_dir }}"
+    mode: '0711'
+  become: yes
+  become_method: sudo
+  when: (install_node_exporter is defined and install_node_exporter|bool) or
+        ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
+
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations
   lineinfile:
@@ -135,116 +145,73 @@
 - block:
   - set_fact:
       systemd_dir: "/etc/systemd/system"
-  - block:
-    - name: Register yb user id
-      shell:
-        cmd: "id -u {{ user_name }}"
-      register: output
 
-    - name: Add yb user bash profile
-      lineinfile:
-        dest: "{{ yb_home_dir }}/.bash_profile"
-        line: ". {{ yb_home_dir }}/.bashrc"
-        owner: "{{ user_name }}"
-        group: "{{ user_name }}"
-        create: yes
-        state: present
+  # Give yugabyte user sudo access to start/stop/restart master and tserver
+  - name: Add yugabyte sudo user without password
+    lineinfile:
+      dest: /etc/sudoers.d/yugabyte
+      line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master,
+            /bin/systemctl stop yb-master,
+            /bin/systemctl restart yb-master,
+            /bin/systemctl enable yb-master,
+            /bin/systemctl disable yb-master,
+            /bin/systemctl start yb-tserver,
+            /bin/systemctl stop yb-tserver,
+            /bin/systemctl restart yb-tserver,
+            /bin/systemctl enable yb-tserver,
+            /bin/systemctl disable yb-tserver,
+            /bin/systemctl start yb-controller,
+            /bin/systemctl stop yb-controller,
+            /bin/systemctl restart yb-controller,
+            /bin/systemctl enable yb-controller,
+            /bin/systemctl disable yb-controller,
+            /bin/systemctl start yb-bind_check.service,
+            /bin/systemctl stop yb-bind_check.service,
+            /bin/systemctl restart yb-bind_check.service,
+            /bin/systemctl enable yb-bind_check.service,
+            /bin/systemctl disable yb-bind_check.service,
+            /bin/systemctl start yb-zip_purge_yb_logs.timer,
+            /bin/systemctl stop yb-zip_purge_yb_logs.timer,
+            /bin/systemctl restart yb-zip_purge_yb_logs.timer,
+            /bin/systemctl enable yb-zip_purge_yb_logs.timer,
+            /bin/systemctl disable yb-zip_purge_yb_logs.timer,
+            /bin/systemctl start yb-clean_cores.timer,
+            /bin/systemctl stop yb-clean_cores.timer,
+            /bin/systemctl restart yb-clean_cores.timer,
+            /bin/systemctl enable yb-clean_cores.timer,
+            /bin/systemctl disable yb-clean_cores.timer,
+            /bin/systemctl start yb-collect_metrics.timer,
+            /bin/systemctl stop yb-collect_metrics.timer,
+            /bin/systemctl restart yb-collect_metrics.timer,
+            /bin/systemctl enable yb-collect_metrics.timer,
+            /bin/systemctl disable yb-collect_metrics.timer,
+            /bin/systemctl start yb-zip_purge_yb_logs,
+            /bin/systemctl stop yb-zip_purge_yb_logs,
+            /bin/systemctl restart yb-zip_purge_yb_logs,
+            /bin/systemctl enable yb-zip_purge_yb_logs,
+            /bin/systemctl disable yb-zip_purge_yb_logs,
+            /bin/systemctl start yb-clean_cores,
+            /bin/systemctl stop yb-clean_cores,
+            /bin/systemctl restart yb-clean_cores,
+            /bin/systemctl enable yb-clean_cores,
+            /bin/systemctl disable yb-clean_cores,
+            /bin/systemctl start yb-collect_metrics,
+            /bin/systemctl stop yb-collect_metrics,
+            /bin/systemctl restart yb-collect_metrics,
+            /bin/systemctl enable yb-collect_metrics,
+            /bin/systemctl disable yb-collect_metrics,
+            /bin/systemctl daemon-reload'
+      create: yes
+      state: present
+      mode: 0440
+      validate: 'visudo -cf %s'
 
-    - name: Export XDG_RUNTIME_DIR for yb user
-      lineinfile:
-        dest: "{{ yb_home_dir }}/.bashrc"
-        line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
-        owner: "{{ user_name }}"
-        group: "{{ user_name }}"
-        create: yes
-        state: present
-
-    - name: Add user systemd directory
-      file:
-        path: "{{ yb_home_dir }}/.config/systemd/user/"
-        state: directory
-        owner: "{{ user_name }}"
-        group: "{{ user_name }}"
-        mode: 0744
-
-    - set_fact:
-        systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
-
-    - name: Enable linger for {{ user_name }} user
-      become: yes
-      become_method: sudo
-      shell:
-        cmd: "loginctl enable-linger {{ user_name }}"
-    # Do not configure user scope for setting up systemd in centos7/amazonLinux:2.
-    when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
-  - block:
-    # Give yugabyte user sudo access to start/stop/restart master and tserver
-    - name: Add yugabyte sudo user without password
-      lineinfile:
-        dest: /etc/sudoers.d/yugabyte
-        line: 'yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master,
-              /bin/systemctl stop yb-master,
-              /bin/systemctl restart yb-master,
-              /bin/systemctl enable yb-master,
-              /bin/systemctl disable yb-master,
-              /bin/systemctl start yb-tserver,
-              /bin/systemctl stop yb-tserver,
-              /bin/systemctl restart yb-tserver,
-              /bin/systemctl enable yb-tserver,
-              /bin/systemctl disable yb-tserver,
-              /bin/systemctl start yb-controller,
-              /bin/systemctl stop yb-controller,
-              /bin/systemctl restart yb-controller,
-              /bin/systemctl enable yb-controller,
-              /bin/systemctl disable yb-controller,
-              /bin/systemctl start yb-bind_check.service,
-              /bin/systemctl stop yb-bind_check.service,
-              /bin/systemctl restart yb-bind_check.service,
-              /bin/systemctl enable yb-bind_check.service,
-              /bin/systemctl disable yb-bind_check.service,
-              /bin/systemctl start yb-zip_purge_yb_logs.timer,
-              /bin/systemctl stop yb-zip_purge_yb_logs.timer,
-              /bin/systemctl restart yb-zip_purge_yb_logs.timer,
-              /bin/systemctl enable yb-zip_purge_yb_logs.timer,
-              /bin/systemctl disable yb-zip_purge_yb_logs.timer,
-              /bin/systemctl start yb-clean_cores.timer,
-              /bin/systemctl stop yb-clean_cores.timer,
-              /bin/systemctl restart yb-clean_cores.timer,
-              /bin/systemctl enable yb-clean_cores.timer,
-              /bin/systemctl disable yb-clean_cores.timer,
-              /bin/systemctl start yb-collect_metrics.timer,
-              /bin/systemctl stop yb-collect_metrics.timer,
-              /bin/systemctl restart yb-collect_metrics.timer,
-              /bin/systemctl enable yb-collect_metrics.timer,
-              /bin/systemctl disable yb-collect_metrics.timer,
-              /bin/systemctl start yb-zip_purge_yb_logs,
-              /bin/systemctl stop yb-zip_purge_yb_logs,
-              /bin/systemctl restart yb-zip_purge_yb_logs,
-              /bin/systemctl enable yb-zip_purge_yb_logs,
-              /bin/systemctl disable yb-zip_purge_yb_logs,
-              /bin/systemctl start yb-clean_cores,
-              /bin/systemctl stop yb-clean_cores,
-              /bin/systemctl restart yb-clean_cores,
-              /bin/systemctl enable yb-clean_cores,
-              /bin/systemctl disable yb-clean_cores,
-              /bin/systemctl start yb-collect_metrics,
-              /bin/systemctl stop yb-collect_metrics,
-              /bin/systemctl restart yb-collect_metrics,
-              /bin/systemctl enable yb-collect_metrics,
-              /bin/systemctl disable yb-collect_metrics,
-              /bin/systemctl daemon-reload'
-        create: yes
-        state: present
-        mode: 0440
-        validate: 'visudo -cf %s'
-
-    - name: Set includedir in sudoers
-      lineinfile:
-        dest: /etc/sudoers
-        line: "#includedir /etc/sudoers.d"
-        state: present
-        validate: "/usr/sbin/visudo -cf %s"
-      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+  - name: Set includedir in sudoers
+    lineinfile:
+      dest: /etc/sudoers
+      line: "#includedir /etc/sudoers.d"
+      state: present
+      validate: "/usr/sbin/visudo -cf %s"
 
   - name: setup-postgres-cgroups
     include_role:
@@ -258,7 +225,7 @@
   # Adding systemd service files for yb-master and yb-tserver
   - name: Add yb-master.service
     template:
-      src: yb-master.service
+      src: "roles/configure-cluster-server/templates/yb-master.service"
       dest: "{{ systemd_dir }}/yb-master.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -266,7 +233,7 @@
 
   - name: Add yb-tserver.service
     template:
-      src: yb-tserver.service
+      src: "roles/configure-cluster-server/templates/yb-tserver.service"
       dest: "{{ systemd_dir }}/yb-tserver.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -275,7 +242,7 @@
   # Adding systemd service files for yb-controller
   - name: Add yb-controller.service
     template:
-      src: "yb-controller.service"
+      src: "roles/configure-cluster-server/templates/yb-controller.service"
       dest: "{{ systemd_dir }}/yb-controller.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -284,7 +251,7 @@
   # Adding yb-bind_check service files for the availability of the port
   - name: Add yb-bind_check.service
     template:
-      src: "yb-bind_check.service"
+      src: "roles/configure-cluster-server/templates/yb-bind_check.service"
       dest: "{{ systemd_dir }}/yb-bind_check.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -293,7 +260,7 @@
   # Adding systemd service and timer files for zip_purge_yb_logs
   - name: Add yb-zip_purge_yb_logs.service
     template:
-      src: yb-zip_purge_yb_logs.service
+      src: "roles/configure-cluster-server/templates/yb-zip_purge_yb_logs.service"
       dest: "{{ systemd_dir }}/yb-zip_purge_yb_logs.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -301,7 +268,7 @@
 
   - name: Add yb-zip_purge_yb_logs.timer
     template:
-      src: yb-zip_purge_yb_logs.timer
+      src: "roles/configure-cluster-server/templates/yb-zip_purge_yb_logs.timer"
       dest: "{{ systemd_dir }}/yb-zip_purge_yb_logs.timer"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -310,7 +277,7 @@
   # Adding systemd service and timer files for clean_cores
   - name: Add yb-clean_cores.service
     template:
-      src: yb-clean_cores.service
+      src: "roles/configure-cluster-server/templates/yb-clean_cores.service"
       dest: "{{ systemd_dir }}/yb-clean_cores.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -318,7 +285,7 @@
 
   - name: Add yb-clean_cores.timer
     template:
-      src: yb-clean_cores.timer
+      src: "roles/configure-cluster-server/templates/yb-clean_cores.timer"
       dest: "{{ systemd_dir }}/yb-clean_cores.timer"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -327,7 +294,7 @@
   # Adding systemd service and timer files for collect_metrics
   - name: Add yb-collect_metrics.service
     template:
-      src: yb-collect_metrics.service
+      src: "roles/configure-cluster-server/templates/yb-collect_metrics.service"
       dest: "{{ systemd_dir }}/yb-collect_metrics.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -335,7 +302,7 @@
 
   - name: Add yb-collect_metrics.timer
     template:
-      src: yb-collect_metrics.timer
+      src: "roles/configure-cluster-server/templates/yb-collect_metrics.timer"
       dest: "{{ systemd_dir }}/yb-collect_metrics.timer"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
@@ -352,7 +319,6 @@
             then export PS1="[\u@\h ~]\$ "
             if [ "$EUID" -eq 0 ]
                 then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
-                else echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
             fi
         fi
       create: yes
@@ -360,7 +326,8 @@
       mode: 0644
 
   tags: systemd_upgrade
-  when: systemd_option
+  when: (systemd_option and ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
+        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')))
 
 - block:
   - name: Check if /etc/apt/apt.conf.d/20auto-upgrades exists

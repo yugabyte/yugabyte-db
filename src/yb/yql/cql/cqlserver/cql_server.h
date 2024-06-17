@@ -37,7 +37,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/server/server_base.h"
-
+#include "yb/server/ycql_stat_provider.h"
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status_fwd.h"
@@ -52,11 +52,16 @@
 
 namespace yb {
 
+namespace tserver {
+class PgYCQLStatementStatsRequestPB;
+class PgYCQLStatementStatsResponsePB;
+}
+
 namespace cqlserver {
 
 class CQLServiceImpl;
 
-class CQLServer : public server::RpcAndWebServerBase {
+class CQLServer : public server::RpcAndWebServerBase, public server::YCQLStatementStatsProvider {
  public:
   static const uint16_t kDefaultPort = 9042;
   static const uint16_t kDefaultWebPort = 12000;
@@ -72,6 +77,9 @@ class CQLServer : public server::RpcAndWebServerBase {
   tserver::TabletServerIf* tserver() const { return tserver_; }
 
   Status ReloadKeysAndCertificates() override;
+
+  Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
+      tserver::PgYCQLStatementStatsResponsePB* resp) const override;
 
   std::shared_ptr<CQLServiceImpl> TEST_cql_service() const { return cql_service_; }
 

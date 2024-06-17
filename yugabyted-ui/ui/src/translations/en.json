@@ -702,9 +702,9 @@
         "ycqlRemoteOps": "YCQL Remote Operations",
         "totalLiveNodes": "Total Live Nodes",
         "liveNodes": "Live Nodes",
-        "totalConnections": "Total Connections",
-        "logicalConnections": "Logical Connections",
-        "physicalConnections": "Physical Connections"
+        "totalConnectionsYsql": "Total Connections (YSQL)",
+        "logicalConnectionsYsql": "Logical Connections (YSQL)",
+        "physicalConnectionsYsql": "Physical Connections (YSQL)"
       },
       "contactSupportForFailedCluster": "Cluster operation failed due to unexpected error. <1>{{contactSupport}}</1>",
       "contactSupport": "Contact Support",
@@ -776,6 +776,9 @@
       "databases": {
         "tabYsql": "YSQL",
         "tabYcql": "YCQL",
+        "tabBackups": "Backups",
+        "tabPitr": "Point-in-time Recovery",
+        "tabRestore": "Restore History",
         "ysqlDatabases": "YSQL Databases",
         "ycqlKeyspaces": "YCQL Keyspaces",
         "noDatabases": "There are no databases available",
@@ -801,7 +804,43 @@
         "keyspace": "Keyspace",
         "table": "Table",
         "partition": "Partition",
-        "size": "Size"
+        "size": "Size",
+        "backups": {
+          "backups": "Backups",
+          "database": "Database",
+          "tserverIP": "Tserver IP",
+          "bytesTransferred": "Bytes transferred",
+          "actualSize": "Actual size",
+          "taskStatus": "Task status",
+          "timeTaken": "Time taken",
+          "taskStartTime": "Task start time",
+          "refresh": "Refresh",
+          "noBackups": "No backups available",
+          "searchBackups": "Search database"
+        },
+        "pitr": {
+          "pitr": "Point-in-time Recovery",
+          "database": "Database",
+          "interval": "Interval",
+          "retention": "Retention",
+          "recoverableTime": "Recoverable time",
+          "refresh": "Refresh",
+          "noPitr": "No Point-in-time Recoveries available",
+          "searchPitr": "Search database"
+        },
+        "restore": {
+          "restores": "Restores",
+          "database": "Database",
+          "tserverIP": "Tserver IP",
+          "bytesTransferred": "Bytes transferred",
+          "actualSize": "Actual size",
+          "taskStatus": "Task status",
+          "timeTaken": "Time taken",
+          "taskStartTime": "Task start time",
+          "refresh": "Refresh",
+          "noRestores": "No restores available",
+          "searchRestores": "Search database"
+        }
       },
       "voyager": {
         "migrationOverview": "Migration Overview",
@@ -1180,8 +1219,9 @@
         "readOpsPerSec": "Read Ops/sec",
         "writeOpsPerSec": "Write Ops/sec",
         "activeConnections": "Active Connections",
-        "activeLogicalConnections": "Active Logical Connections",
-        "activePhysicalConnections": "Active Physical Connections",
+        "activeLogicalConnectionsYsql": "Active Logical Connections (YSQL)",
+        "activePhysicalConnectionsYsql": "Active Physical Connections (YSQL)",
+        "activeConnectionsYcql": "Active Connections (YCQL)",
         "memory": "Memory",
         "diskStorage": "Disk Storage",
         "numberOfTablets": "Number of Tablets",

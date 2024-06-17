@@ -12,9 +12,7 @@
 
 #include <chrono>
 
-#include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
@@ -34,7 +32,6 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
-#include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 
 using std::min;
@@ -504,7 +501,7 @@ Result<XClusterSafeTimeService::ProducerTabletToSafeTimeMap>
 XClusterSafeTimeService::GetSafeTimeFromTable() {
   ProducerTabletToSafeTimeMap tablet_safe_time;
 
-  auto* yb_client = master_->cdc_state_client_initializer().client();
+  auto* yb_client = master_->client_future().get();
   if (!yb_client) {
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }
@@ -584,22 +581,32 @@ XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetMaxNamespaceSafeTimeF
 Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
   auto latest_config_version = VERIFY_RESULT(catalog_manager_->GetClusterConfigVersion());
 
-  if (latest_config_version != cluster_config_version_) {
-    producer_tablet_namespace_map_.clear();
-    ddl_queue_tablet_ids_.clear();
+  if (latest_config_version == cluster_config_version_) {
+    return Status::OK();
+  }
 
-    auto consumer_registry = VERIFY_RESULT(catalog_manager_->GetConsumerRegistry());
-    if (consumer_registry && consumer_registry->role() != cdc::XClusterRole::ACTIVE) {
-      const auto& producer_map = consumer_registry->producer_map();
-      for (const auto& [replication_group_id, producer_entry] : producer_map) {
+  producer_tablet_namespace_map_.clear();
+  ddl_queue_tablet_ids_.clear();
+
+  const auto transactional_replication_groups =
+      master_->xcluster_manager()->GetInboundTransactionalReplicationGroups();
+  if (!transactional_replication_groups.empty()) {
+    const auto consumer_registry = VERIFY_RESULT(catalog_manager_->GetConsumerRegistry());
+    if (consumer_registry) {
+      for (const auto& [replication_group_id_str, producer_entry] :
+           consumer_registry->producer_map()) {
+        auto replication_group_id = xcluster::ReplicationGroupId(replication_group_id_str);
+        if (!transactional_replication_groups.contains(replication_group_id)) {
+          continue;
+        }
+
         for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
           const auto& consumer_table_id = stream_entry.consumer_table_id();
           auto consumer_namespace_id =
               VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(consumer_table_id));
           for (const auto& [_, producer_tablets] : stream_entry.consumer_producer_tablet_map()) {
             for (const auto& tablet_id : producer_tablets.tablets()) {
-              producer_tablet_namespace_map_[{
-                  xcluster::ReplicationGroupId(replication_group_id), tablet_id}] =
+              producer_tablet_namespace_map_[{replication_group_id, tablet_id}] =
                   consumer_namespace_id;
               if (stream_entry.is_ddl_queue_table()) {
                 ddl_queue_tablet_ids_.insert(tablet_id);
@@ -609,13 +616,13 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
         }
       }
     }
-
-    // Its important to use the version we got before getting the registry, as it could have
-    // changed again.
-    cluster_config_version_ = latest_config_version;
   }
 
-  return OK();
+  // Its important to use the version we got before getting the registry, as it could have
+  // changed again.
+  cluster_config_version_ = latest_config_version;
+
+  return Status::OK();
 }
 
 Result<bool> XClusterSafeTimeService::CreateTableRequired() {
@@ -649,7 +656,7 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
     return OK();
   }
 
-  auto* ybclient = master_->cdc_state_client_initializer().client();
+  auto* ybclient = master_->client_future().get();
   if (!ybclient) {
     return STATUS(IllegalState, "Client not initialized or shutting down");
   }

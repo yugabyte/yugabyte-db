@@ -30,6 +30,10 @@ export enum NodeType {
   TServer = 'TServer'
 }
 
+export enum InstanceRole {
+  LEADER = 'LEADER'
+}
+
 export interface PerfRecommendationMetaData {
   suggestion?: string;
   maxNodeName: string;
@@ -247,4 +251,22 @@ export interface ProviderNode {
 
 export interface TaskResponse {
   taskUUID: string;
+}
+
+export interface MetadataFields {
+	id: string;
+	name?: string;
+	customerId: string;
+	apiToken: string;
+	platformUrl: string;
+	metricsUrl: string;
+	metricsScrapePeriodSec: number;
+	dataMountPoints: string[];
+	otherMountPoints: string[];
+	lastSyncError?: string | null;
+}
+
+export interface UpdateMetadataFormFields {
+	apiToken: string;
+	metricsScrapePeriodSec: number;
 }

@@ -25,6 +25,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 extern void _PG_output_plugin_init(OutputPluginCallbacks *cb);
@@ -45,11 +48,14 @@ static void pgoutput_truncate(LogicalDecodingContext *ctx,
 static bool pgoutput_origin_filter(LogicalDecodingContext *ctx,
 					   RepOriginId origin_id);
 
+static void yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
+
 static bool publications_valid;
 
 static List *LoadPublications(List *pubnames);
 static void publication_invalidation_cb(Datum arg, int cacheid,
 							uint32 hashvalue);
+static void update_replication_progress(LogicalDecodingContext *ctx);
 
 /* Entry in the map used to remember which relation schemas we sent. */
 typedef struct RelationSyncEntry
@@ -84,6 +90,9 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->commit_cb = pgoutput_commit_txn;
 	cb->filter_by_origin_cb = pgoutput_origin_filter;
 	cb->shutdown_cb = pgoutput_shutdown;
+
+	if (IsYugaByteEnabled())
+		cb->yb_schema_change_cb = yb_pgoutput_schema_change;
 }
 
 static void
@@ -192,6 +201,9 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("publication_names parameter missing")));
 
+		if (IsYugaByteEnabled())
+			opt->yb_publication_names = data->publication_names;
+
 		/* Init publication state. */
 		data->publications = NIL;
 		publications_valid = false;
@@ -210,7 +222,9 @@ pgoutput_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt,
 static void
 pgoutput_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 {
-	bool		send_replication_origin = txn->origin_id != InvalidRepOriginId;
+	/* Skip sending replication origin as it is not applicable for YB. */
+	bool send_replication_origin = !IsYugaByteEnabled() &&
+								   txn->origin_id != InvalidRepOriginId;
 
 	OutputPluginPrepareWrite(ctx, !send_replication_origin);
 	logicalrep_write_begin(ctx->out, txn);
@@ -247,7 +261,7 @@ static void
 pgoutput_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 					XLogRecPtr commit_lsn)
 {
-	OutputPluginUpdateProgress(ctx);
+	update_replication_progress(ctx);
 
 	OutputPluginPrepareWrite(ctx, true);
 	logicalrep_write_commit(ctx->out, txn, commit_lsn);
@@ -291,6 +305,10 @@ maybe_send_schema(LogicalDecodingContext *ctx,
 		logicalrep_write_rel(ctx->out, relation);
 		OutputPluginWrite(ctx, false);
 		relentry->schema_sent = true;
+
+		if (IsYugaByteEnabled())
+			elog(DEBUG1, "Sent the RELATION message for table_id: %d",
+				RelationGetRelid(relation));
 	}
 }
 
@@ -304,6 +322,8 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	PGOutputData *data = (PGOutputData *) ctx->output_plugin_private;
 	MemoryContext old;
 	RelationSyncEntry *relentry;
+
+	update_replication_progress(ctx);
 
 	if (!is_publishable_relation(relation))
 		return;
@@ -348,9 +368,22 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				HeapTuple	oldtuple = change->data.tp.oldtuple ?
 				&change->data.tp.oldtuple->tuple : NULL;
 
+				bool		*yb_old_is_omitted = NULL;
+				bool		*yb_new_is_omitted = NULL;
+				if (IsYugaByteEnabled())
+				{
+					yb_old_is_omitted =
+						(change->data.tp.oldtuple) ?
+							change->data.tp.oldtuple->yb_is_omitted :
+							NULL;
+
+					yb_new_is_omitted = change->data.tp.newtuple->yb_is_omitted;
+				}
+
 				OutputPluginPrepareWrite(ctx, true);
 				logicalrep_write_update(ctx->out, relation, oldtuple,
-										&change->data.tp.newtuple->tuple);
+										&change->data.tp.newtuple->tuple,
+										yb_old_is_omitted, yb_new_is_omitted);
 				OutputPluginWrite(ctx, true);
 				break;
 			}
@@ -384,6 +417,8 @@ pgoutput_truncate(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	int			i;
 	int			nrelids;
 	Oid		   *relids;
+
+	update_replication_progress(ctx);
 
 	old = MemoryContextSwitchTo(data->context);
 
@@ -446,6 +481,14 @@ pgoutput_shutdown(LogicalDecodingContext *ctx)
 		hash_destroy(RelationSyncCache);
 		RelationSyncCache = NULL;
 	}
+}
+
+static void
+yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
+{
+	elog(DEBUG1, "yb_pgoutput_schema_change for relid: %d", relid);
+
+	rel_sync_cache_relation_cb(0 /* unused */, relid);
 }
 
 /*
@@ -655,4 +698,37 @@ rel_sync_cache_publication_cb(Datum arg, int cacheid, uint32 hashvalue)
 	hash_seq_init(&status, RelationSyncCache);
 	while ((entry = (RelationSyncEntry *) hash_seq_search(&status)) != NULL)
 		entry->replicate_valid = false;
+}
+
+/*
+ * Try to update progress and send a keepalive message if too many changes were
+ * processed.
+ *
+ * For a large transaction, if we don't send any change to the downstream for a
+ * long time (exceeds the wal_receiver_timeout of standby) then it can timeout.
+ * This can happen when all or most of the changes are not published.
+ */
+static void
+update_replication_progress(LogicalDecodingContext *ctx)
+{
+	static int	changes_count = 0;
+
+	/*
+	 * We don't want to try sending a keepalive message after processing each
+	 * change as that can have overhead. Tests revealed that there is no
+	 * noticeable overhead in doing it after continuously processing 100 or so
+	 * changes.
+	 */
+#define CHANGES_THRESHOLD 100
+
+	/*
+	 * If we are at the end of transaction LSN, update progress tracking.
+	 * Otherwise, after continuously processing CHANGES_THRESHOLD changes, we
+	 * try to send a keepalive message if required.
+	 */
+	if (ctx->end_xact || ++changes_count >= CHANGES_THRESHOLD)
+	{
+		OutputPluginUpdateProgress(ctx);
+		changes_count = 0;
+	}
 }

@@ -24,6 +24,15 @@
       &:hover {
         background: #f2f6ff !important;
       }
+
+      &[role="button"] {
+        cursor: not-allowed;
+        opacity: 0.6;
+
+        &:hover {
+          background: #fff !important;
+        }
+      }
     }
   }
 
@@ -47,7 +56,7 @@
     border-radius: 8px;
     min-height: 32px;
 
-    > span {
+    >span {
       font-weight: 500;
       font-size: 10px;
       line-height: 16px;
@@ -65,7 +74,8 @@
       vertical-align: 0.255em;
       content: "\f107";
       color: #97a5b0;
-      font-family: "Font Awesome 6 Free";
+      font-family: $font-awesome-font-name;
+      font-weight: 700;
       border: 0;
     }
   }
@@ -100,13 +110,14 @@
 
       .dropdown-menu {
         width: 100%;
-        transform:translate3d(0px, 38px, 0px)!important;
+        transform: translate3d(0px, 38px, 0px) !important;
       }
     }
 
     @media (min-width: 992px) {
       display: none;
     }
+
     @media (max-width: 991px) and (min-width: 768px) {
       margin-top: 18px;
       width: calc(100% - 85px);

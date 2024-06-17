@@ -13,8 +13,13 @@ int od_compression_frontend_setup(od_client_t *client,
 				  od_config_listen_t *config,
 				  od_logger_t *logger)
 {
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	kiwi_var_t *compression_var =
+		yb_kiwi_vars_get(&client->vars, "compression");
+#else
 	kiwi_var_t *compression_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_COMPRESSION);
+#endif
 
 	if (compression_var == NULL) {
 		/* if there is no compression variable in startup packet,

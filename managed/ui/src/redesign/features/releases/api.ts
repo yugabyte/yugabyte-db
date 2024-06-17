@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { ROOT_URL } from '../../../config';
-import { ReleaseArtifactId, ReleaseSpecificArtifact, Releases, UUID } from './components/dtos';
+import { ReleaseSpecificArtifact, Releases, UUID } from './components/dtos';
 
 export enum QUERY_KEY {
   fetchReleasesList = 'fetchReleasesList',
@@ -8,6 +8,7 @@ export enum QUERY_KEY {
   fetchFileReleaseArtifact = 'fetchFileReleaseArtifact',
   fetchUrlReleaseArtifact = 'fetchUrlReleaseArtifact',
   createRelease = 'createRelease',
+  refreshRelease = 'refreshRelease',
   uploadReleaseArtifact = 'uploadReleaseArtifact',
   updateReleaseMetadata = 'updateReleaseMetadata',
   deleteRelease = 'deleteRelease'
@@ -64,11 +65,10 @@ class ApiService {
     return axios.post<UUID>(requestUrl, data).then((resp) => resp.data);
   };
 
-  // Upload a new release artifact by streaming the file bits
-  // uploadReleaseArtifact = (fileContent: any) => {
-  //   const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release/upload`;
-  //   return axios.post<ReleaseArtifactId>(requestUrl, fileContent).then((resp) => resp.data);
-  // };
+  refreshRelease = () => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
+    return axios.put(requestUrl).then((resp) => resp.data);
+  };
 
   // Edit/Update a specific release, operations like adding/remove artifacts are performed
   updateReleaseMetadata = (data: Releases, releaseUUID: string) => {

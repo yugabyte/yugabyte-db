@@ -81,7 +81,7 @@
 using std::vector;
 using std::string;
 
-DEFINE_RUNTIME_int32(ysql_index_backfill_rpc_timeout_ms, 60 * 1000, // 1 min.
+DEFINE_RUNTIME_int32(ysql_index_backfill_rpc_timeout_ms, 5 * 60 * 1000, // 5 min.
     "Timeout used by the master when attempting to backfill a YSQL tablet during index creation.");
 TAG_FLAG(ysql_index_backfill_rpc_timeout_ms, advanced);
 
@@ -137,6 +137,9 @@ DEFINE_test_flag(bool, block_do_backfill, false,
 DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
     "Skips updating an index table to GC delete markers and sending of the corresponding RPC "
     "to the TServer.");
+
+DEFINE_test_flag(int32, delay_clearing_fully_applied_ms, 0,
+    "Amount of time to delay clearing the fully applied schema.");
 
 namespace yb {
 namespace master {
@@ -244,6 +247,9 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
     boost::optional<uint32_t> expected_version,
     bool update_state_to_running,
     const LeaderEpoch& epoch) {
+  if (PREDICT_FALSE(FLAGS_TEST_delay_clearing_fully_applied_ms > 0)) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_delay_clearing_fully_applied_ms));
+  }
   auto l = table->LockForWrite();
   uint32_t current_version = l->pb.version();
   if (expected_version && *expected_version != current_version) {
@@ -787,7 +793,7 @@ void BackfillTable::LaunchBackfillOrAbort() {
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
   RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
 
-  if (master_->catalog_manager_impl()->IsTableXClusterConsumer(*indexed_table_)) {
+  if (master_->catalog_manager_impl()->IsTableXClusterConsumer(indexed_table_->id())) {
     auto res = master_->xcluster_manager()->GetXClusterSafeTime(indexed_table_->namespace_id());
     if (res.ok()) {
       SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
@@ -1031,7 +1037,9 @@ Status BackfillTable::MarkAllIndexesAsFailed() {
 }
 
 Status BackfillTable::MarkAllIndexesAsSuccess() {
-  return MarkIndexesAsDesired(indexes_to_build(), BackfillJobPB::SUCCESS, "");
+  const auto index_ids = indexes_to_build();
+  RETURN_NOT_OK(master_->xcluster_manager()->MarkIndexBackfillCompleted(index_ids, epoch_));
+  return MarkIndexesAsDesired(index_ids, BackfillJobPB::SUCCESS, "");
 }
 
 Status BackfillTable::MarkIndexesAsDesired(

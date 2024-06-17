@@ -1,0 +1,129 @@
+title: UniverseInfo
+description: These are read-only system generated properties of a Universe. Returned as part of a Universe resource.
+type: object
+properties:
+  universe_uuid:
+    description: UUID of the Universe
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  version:
+    description: Universe version
+    type: integer
+    format: int32
+    readOnly: true
+  creation_date:
+    description: Universe creation date
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  arch:
+    description: CPU Arch of DB nodes.
+    type: string
+    example: x86_64
+    enum:
+      - x86_64
+      - aarch64
+    readOnly: true
+  dns_name:
+    description: DNS name
+    type: string
+    example: dbnode1.dev.universe.company.com
+    readOnly: true
+  ybc_software_version:
+    description: YBC Software version installed in DB nodes of this Universe
+    type: string
+    example: 2.1.0.0-b6
+    readOnly: true
+  platform_url:
+    description: YBA that is managing this Universe
+    type: string
+    example: yba.dev.company.com
+    readOnly: true
+  node_prefix:
+    description: A globally unique name generated as a combination of the customer id and the universe name. This is used as the prefix of node names in the universe. Can be configured at the time of universe creation.
+    type: string
+    example: yb-dev-universe-name
+    readOnly: true
+  encryption_at_rest_info:
+    $ref: "./EncryptionAtRestInfo.yaml"
+  update_in_progress:
+    description: Whether a create/edit/destroy intent on the universe is currently running.
+    type: boolean
+    example: false
+    readOnly: true
+  updating_task:
+    description: Type of task which set updateInProgress flag.
+    type: string
+    example: CreateUniverse
+    readOnly: true
+  updating_task_uuid:
+    description: UUID of task which set updateInProgress flag.
+    type: string
+    format: uuid
+    example: 489a0632-2d6c-460f-b3d3-d8413b8559c0
+    readOnly: true
+  update_succeeded:
+    description: Whether the latest operation on this universe has successfully completed. Is updated for each operation on the universe.
+    type: boolean
+    example: true
+    readOnly: true
+  universe_paused:
+    description: Whether the universe is in the paused state
+    type: boolean
+    example: false
+    readOnly: true
+  placement_modification_task_uuid:
+    description: UUID of last failed task that applied modification to cluster state
+    type: string
+    format: uuid
+    example: 18d9e569-5e01-49ef-88a3-eff0804bad4a
+    readOnly: true
+  software_upgrade_state:
+    description: The state of the last YugabyteDB software upgrade operation on this universe
+    type: string
+    example: Ready
+    enum:
+      - Ready
+      - Upgrading
+      - UpgradeFailed
+      - PreFinalize
+      - Finalizing
+      - FinalizeFailed
+      - RollingBack
+      - RollbackFailed
+    readOnly: true
+  is_software_rollback_allowed:
+    description: Whether a rollback of the last YugabyteDB upgrade operation is allowed
+    type: boolean
+    example: true
+    readOnly: true
+  nodes_resize_available:
+    description: Set to true if nodes of this Universe can be resized without a full move
+    type: boolean
+    example: true
+    readOnly: true
+  is_kubernetes_operator_controlled:
+    description: Whether this Universe is created and controlled by the Kubernetes Operator
+    type: boolean
+    example: true
+    readOnly: true
+  otel_collector_enabled:
+    description: Whether OpenTelemetry Collector is enabled for universe
+    type: boolean
+    x-yba-api-visibility: internal
+  x_cluster_info:
+    $ref: "./XClusterInfo.yaml"
+  clusters:
+    type: array
+    items:
+      $ref: "./ClusterInfo.yaml"
+    maxItems: 16
+    minItems: 1
+  node_details_set:
+    description: Node details
+    type: array
+    items:
+      $ref: "./NodeDetails.yaml"

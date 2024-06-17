@@ -53,12 +53,12 @@ SELECT id FROM text_books
 -- Drop INDEX and run again.
 DROP index text_books_author_first_name;
 EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
-                      QUERY PLAN
--------------------------------------------------------
+                       QUERY PLAN
+--------------------------------------------------------
  Sort
    Sort Key: year
    ->  Seq Scan on text_books
-         Remote Filter: (author = 'Hello World'::text)
+         Storage Filter: (author = 'Hello World'::text)
 (4 rows)
 
 SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
@@ -68,12 +68,12 @@ SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 
 EXPLAIN (COSTS OFF) SELECT id FROM text_books
   WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
-                                            QUERY PLAN
----------------------------------------------------------------------------------------------------
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
  Sort
    Sort Key: year
    ->  Seq Scan on text_books
-         Remote Filter: (author = '{ "first_name": "William", "last_name": "Shakespeare" }'::text)
+         Storage Filter: (author = '{ "first_name": "William", "last_name": "Shakespeare" }'::text)
 (4 rows)
 
 SELECT id FROM text_books
@@ -155,12 +155,12 @@ SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
 DROP index books_author_first_name;
 EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
   ORDER BY details->>'name';
-                                             QUERY PLAN
------------------------------------------------------------------------------------------------------
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: ((details ->> 'name'::text))
    ->  Seq Scan on books
-         Remote Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Hello World'::text)
+         Storage Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Hello World'::text)
 (4 rows)
 
 SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
@@ -171,12 +171,12 @@ SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
 
 EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
   ORDER BY details->>'name';
-                                           QUERY PLAN
--------------------------------------------------------------------------------------------------
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
  Sort
    Sort Key: ((details ->> 'name'::text))
    ->  Seq Scan on books
-         Remote Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Charles'::text)
+         Storage Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Charles'::text)
 (4 rows)
 
 SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'

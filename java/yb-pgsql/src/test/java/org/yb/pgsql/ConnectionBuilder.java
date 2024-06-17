@@ -59,9 +59,10 @@ public class ConnectionBuilder implements Cloneable {
   private String sslcert = null;
   private String sslkey = null;
   private String sslrootcert = null;
-  private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
+  private IsolationLevel isolationLevel = null;
   private AutoCommit autoCommit = AutoCommit.DEFAULT;
   private ConnectionEndpoint connectionEndpoint = ConnectionEndpoint.DEFAULT;
+  private String options = null;
 
   public ConnectionBuilder(MiniYBCluster miniCluster) {
     this.miniCluster = checkNotNull(miniCluster);
@@ -139,6 +140,12 @@ public class ConnectionBuilder implements Cloneable {
     return copy;
   }
 
+  public ConnectionBuilder withOptions(String options) {
+    ConnectionBuilder copy = clone();
+    copy.options = options;
+    return copy;
+  }
+
   @Override
   protected ConnectionBuilder clone() {
     try {
@@ -199,6 +206,10 @@ public class ConnectionBuilder implements Cloneable {
 
     if (sslrootcert != null) {
       props.setProperty("sslrootcert", sslrootcert);
+    }
+
+    if (options != null) {
+      props.setProperty("options", options);
     }
 
     if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {

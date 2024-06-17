@@ -1,0 +1,12 @@
+title: AvailabilityZoneGFlags
+description: GFlags for tserver and master. Part of ClusterGFlags.
+type: object
+properties:
+  tserver:
+    description: GFlags applied on TServer process
+    additionalProperties:
+      type: string
+  master:
+    description: GFlags applied on Master process
+    additionalProperties:
+      type: string

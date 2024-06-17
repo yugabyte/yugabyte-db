@@ -10,8 +10,6 @@ menu:
     identifier: configure-backup-storage
     weight: 10
 type: docs
-rightNav:
-  hideH4: true
 ---
 
 Before you can back up universes, you need to configure a storage location for your backups.
@@ -112,7 +110,7 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
 
-1. Complete the **GCS Credentials** field.
+1. Complete the **GCS Bucket** and **GCS Credentials** fields.
 
     For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
 

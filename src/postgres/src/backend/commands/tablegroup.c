@@ -346,7 +346,7 @@ get_tablegroup_name(Oid grp_oid)
  * grp_oid - the oid of the tablegroup.
  */
 void
-RemoveTablegroupById(Oid grp_oid)
+RemoveTablegroupById(Oid grp_oid, bool remove_implicit)
 {
 	Relation		pg_tblgrp_rel;
 	HeapScanDesc	scandesc;
@@ -358,6 +358,22 @@ RemoveTablegroupById(Oid grp_oid)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("Tablegroup system catalog does not exist.")));
+	}
+
+	/*
+	 * Checking if it is an implicit tablegroup before checking if the
+	 * tablegroup exists to give proper error message if DROP TABLEGROUP ...
+	 * CASCADE is executed. This is because during DROP CASCADE, the implicit
+	 * tablegroup will be implicitly deleted when dependent tables are dropped
+	 * (if ysql_enable_colocated_tables_with_tablespaces is enabled) and we
+	 * would get a "tablegroup with oid does not exist" error message.
+	 */
+	if (MyDatabaseColocated && !remove_implicit)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot drop an implicit tablegroup "
+						"in a colocated database.")));
 	}
 
 	pg_tblgrp_rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
@@ -381,14 +397,6 @@ RemoveTablegroupById(Oid grp_oid)
 				 		grp_oid)));
 	}
 
-	if (MyDatabaseColocated)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot drop an implicit tablegroup "
-						"in a colocated database.")));
-	}
-
 	/* DROP hook for the tablegroup being removed */
 	InvokeObjectDropHook(YbTablegroupRelationId, grp_oid, 0);
 
@@ -406,6 +414,20 @@ RemoveTablegroupById(Oid grp_oid)
 
 	/* We keep the lock on pg_yb_tablegroup until commit */
 	heap_close(pg_tblgrp_rel, NoLock);
+}
+
+char*
+get_implicit_tablegroup_name(Oid oidSuffix)
+{
+	char *tablegroup_name_from_tablespace = (char*) palloc(
+		(
+			10 /*strlen("colocation")*/ + 10 /*Max digits in OID*/ + 1 /*Under Scores*/
+			+ 1 /*Null Terminator*/
+		) * sizeof(char)
+	);
+
+	sprintf(tablegroup_name_from_tablespace, "colocation_%u", oidSuffix);
+	return tablegroup_name_from_tablespace;
 }
 
 /*
@@ -583,4 +605,57 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 	heap_close(rel, NoLock);
 
 	return address;
+}
+
+/*
+ * ybAlterTablespaceForTablegroup - Update tablespace entry
+ *									for the given tablegroup.
+ *
+ * If a tablegroup does not exist with the provided oid, then an error is
+ * raised.
+ */
+void
+ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace)
+{
+	Oid					tablegroupoid;
+	HeapTuple			tuple;
+	Relation			rel;
+	ScanKeyData			entry[1];
+	HeapScanDesc		scandesc;
+	Form_pg_yb_tablegroup	datForm;
+
+	if (!YbTablegroupCatalogExists)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Tablegroup system catalog does not exist.")));
+	}
+
+	rel = heap_open(YbTablegroupRelationId, RowExclusiveLock);
+	ScanKeyInit(&entry[0],
+				Anum_pg_yb_tablegroup_grpname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(grpname));
+	scandesc = heap_beginscan_catalog(rel, 1, entry);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablegroup \"%s\" does not exist", grpname)));
+
+	tablegroupoid = HeapTupleGetOid(tuple);
+	datForm = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
+
+	if (datForm->grptablespace != newTablespace)
+	{
+		datForm->grptablespace = newTablespace;
+
+		CatalogTupleUpdate(rel, &tuple->t_self, tuple);
+	}
+
+	InvokeObjectPostAlterHook(YbTablegroupRelationId, tablegroupoid, 0);
+
+	heap_endscan(scandesc);
+
+	heap_close(rel, RowExclusiveLock);
 }

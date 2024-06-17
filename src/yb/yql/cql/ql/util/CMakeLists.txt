@@ -12,7 +12,6 @@
 #
 
 set(YB_PCH_PREFIX ql)
-set(YB_PCH_DEP_LIBS opid_proto)
 set(YB_PCH_PATH ../)
 
 ADD_YB_LIBRARY(

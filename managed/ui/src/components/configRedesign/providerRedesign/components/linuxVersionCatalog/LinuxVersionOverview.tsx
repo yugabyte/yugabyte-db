@@ -12,7 +12,7 @@ import { noop } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { LinuxVersionsCard } from './LinuxVersionsList';
-import { IsOsPatchingEnabled } from './LinuxVersionUtils';
+import { IsImgBundleInUseEditEnabled, IsOsPatchingEnabled } from './LinuxVersionUtils';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { ArchitectureType } from '../../constants';
 
@@ -50,6 +50,7 @@ export const LinuxVersionOverview: FC<LinuxVersionOverviewProps> = ({ imageBundl
   }
 
   const osPatchingEnabled = IsOsPatchingEnabled();
+  const isImgBundleInUseEditEnabled = IsImgBundleInUseEditEnabled();
 
   if (!osPatchingEnabled) {
     return null;
@@ -78,6 +79,8 @@ export const LinuxVersionOverview: FC<LinuxVersionOverviewProps> = ({ imageBundl
                 setImageAsDefault={noop}
                 showMoreActions={false}
                 showTitle={false}
+                viewMode="EDIT"
+                isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
               />
             );
           }}

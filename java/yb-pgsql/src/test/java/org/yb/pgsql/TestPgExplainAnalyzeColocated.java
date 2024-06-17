@@ -458,7 +458,8 @@ public class TestPgExplainAnalyzeColocated extends BasePgExplainAnalyzeTest {
               .build())
           .build();
 
-      testExplain(String.format(query, "/*+ NestLoop(foo bar) Leading((foo bar)) */"), checker);
+      testExplain(String.format(query,
+          "/*+ Set(yb_prefer_bnl false) NestLoop(foo bar) Leading((foo bar)) */"), checker);
     }
 
   }

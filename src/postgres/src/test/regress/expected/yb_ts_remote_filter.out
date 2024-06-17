@@ -9,14 +9,14 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on test_remote_filter (actual rows=4 loops=1)
-   Remote Filter: (tq @@ '''cat'''::tsvector)
+   Storage Filter: (tq @@ '''cat'''::tsvector)
 (2 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE tq @@ ts;
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on test_remote_filter (actual rows=4 loops=1)
-   Remote Filter: (tq @@ ts)
+   Storage Filter: (tq @@ ts)
 (2 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE tq @@ to_tsvector(t);
@@ -54,7 +54,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on test_remote_filter (actual rows=4 loops=1)
-   Remote Filter: ('''cat'''::tsquery @@ ts)
+   Storage Filter: ('''cat'''::tsquery @@ ts)
 (2 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE 'cat'::tsquery @@ to_tsvector(t);
@@ -91,7 +91,7 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_
                        QUERY PLAN
 --------------------------------------------------------
  Seq Scan on test_remote_filter (actual rows=4 loops=1)
-   Remote Filter: ('''cat'''::tsquery @@ ts)
+   Storage Filter: ('''cat'''::tsquery @@ ts)
 (2 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', 'cat') @@ to_tsvector(t);

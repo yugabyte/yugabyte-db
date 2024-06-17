@@ -28,12 +28,12 @@ export type ApiEndpointPermMappingType = {
     }
 }[]
 
-export type ApiProps = {
+export type ApiPermissionProps = {
     requestType: ApiEndpointPermMappingType[number]['requestType'];
     endpoint: ApiEndpointPermMappingType[number]['endpoint']
 };
 
-type ApiPermissionMapType = Record<string, ApiProps>;
+type ApiPermissionMapType = Record<string, ApiPermissionProps>;
 
 
 export const ApiPermissionMap = {
@@ -342,7 +342,7 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/providers/$pUUID<[^/]+>/initialize'
     },
-    GET_PROVIDER_ENDPOINT: {
+    CREATE_INSTANCE_TYPE: {
         requestType: ApiRequestType.POST,
         endpoint: '/providers/$pUUID<[^/]+>/instance_types'
     },
@@ -921,7 +921,7 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>'
     },
-    MODIFY_XLCUSTER_REPLICATION: {
+    MODIFY_XCLUSTER_REPLICATION: {
         requestType: ApiRequestType.PUT,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>'
     },

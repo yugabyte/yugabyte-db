@@ -75,7 +75,9 @@ export const UniverseSupportBundle = (props) => {
     if (supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
       setSteps(stepsObj.firstStep);
     } else {
-      setSteps(stepsObj.thirdStep);
+      if (steps !== stepsObj.secondStep) {
+        setSteps(stepsObj.thirdStep);
+      }
       if (
         supportBundles &&
         Array.isArray(supportBundles) &&

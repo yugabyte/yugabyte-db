@@ -57,6 +57,10 @@ public class ScheduleUtil {
   }
 
   public static Date nextExpectedIncrementTaskTime(Schedule schedule) {
+    return nextExpectedIncrementTaskTime(schedule, new Date());
+  }
+
+  public static Date nextExpectedIncrementTaskTime(Schedule schedule, Date currentTime) {
     // Checking incremental backup frequency instead of using Util function as function is called
     // before object is created
     BackupRequestParams scheduleParams =
@@ -79,12 +83,11 @@ public class ScheduleUtil {
     }
 
     // check if calculated increment backup time is after current time
-    Date currentTime = new Date();
-    while ((!Objects.isNull(nextIncrementScheduleTaskTime))
-        && currentTime.after(nextIncrementScheduleTaskTime)) {
+    do {
       nextIncrementScheduleTaskTime =
           new Date(nextIncrementScheduleTaskTime.getTime() + incrementFrequency);
-    }
+    } while (currentTime.after(nextIncrementScheduleTaskTime));
+
     return nextIncrementScheduleTaskTime;
   }
 }

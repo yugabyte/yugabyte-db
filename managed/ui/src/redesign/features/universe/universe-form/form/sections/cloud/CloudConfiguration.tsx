@@ -40,7 +40,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
 
   const providerRuntimeConfigQuery = useQuery(
     runtimeConfigQueryKey.providerScope(provider?.uuid),
-    () => api.fetchRuntimeConfigs(provider?.uuid),
+    () => api.fetchRuntimeConfigs(provider?.uuid, true),
     { enabled: !!provider?.uuid }
   );
 
@@ -102,6 +102,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
               isPrimary={isPrimary}
               useK8CustomResources={useK8CustomResources}
               disabled={isViewMode}
+              isEditMode={isEditMode}
             />
           </Box>
         )}

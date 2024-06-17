@@ -11,6 +11,7 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.controllers.handlers.EnvProxySelector;
 import io.ebean.DB;
@@ -18,6 +19,7 @@ import java.net.ProxySelector;
 import lombok.extern.slf4j.Slf4j;
 import play.Environment;
 import play.db.ebean.EbeanDynamicEvolutions;
+import play.mvc.Http.Status;
 
 /** Play lifecycle does not give onStartup event */
 @Slf4j
@@ -71,6 +73,21 @@ public class YBALifeCycle {
             .getConfig(ConfigHelper.ConfigType.YugawareMetadata)
             .getOrDefault("version", "")
             .toString();
+
+    boolean isPreviousVersionStable = Util.isStableVersion(previousSoftwareVersion, false);
+    boolean isCurrentVersionStable = Util.isStableVersion(version, false);
+    // Skip version checks if runtime flag enabled. User must take care of downgrades
+    if (!config.getBoolean(GlobalConfKeys.skipVersionChecks.getKey())) {
+      if (previousSoftwareVersion != "" && (isPreviousVersionStable ^ isCurrentVersionStable)) {
+        String msg =
+            String.format(
+                "Cannot upgrade from preview to stable version or stable to preview. If required,"
+                    + " set runtime flag 'yb.skip_version_checks' to true. Tried to upgrade from"
+                    + " '%s' to '%s'.",
+                previousSoftwareVersion, version);
+        throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+      }
+    }
 
     boolean isPlatformDowngradeAllowed = config.getBoolean("yb.is_platform_downgrade_allowed");
 

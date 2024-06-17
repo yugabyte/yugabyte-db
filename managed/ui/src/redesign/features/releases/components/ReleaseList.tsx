@@ -1,9 +1,9 @@
 import { ChangeEvent, useState } from 'react';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { TableHeaderColumn, SortOrder } from 'react-bootstrap-table';
 import { DropdownButton, MenuItem, Dropdown } from 'react-bootstrap';
-import { useQuery, useQueryClient } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { Box, Divider, Tooltip, makeStyles } from '@material-ui/core';
+import { Box, Divider, makeStyles } from '@material-ui/core';
 import { Add, Refresh } from '@material-ui/icons';
 import clsx from 'clsx';
 import { ReleaseDetails } from './ReleaseDetails';
@@ -11,14 +11,15 @@ import { DeploymentStatus } from './ReleaseDeploymentStatus';
 import { AddReleaseModal } from './ReleaseDialogs/AddReleaseModal';
 import { EditArchitectureModal } from './ReleaseDialogs/EditArchitectureModal';
 import { EditReleaseTagModal } from './ReleaseDialogs/EditReleaseTagModal';
-import { DisableReleaseModal } from './ReleaseDialogs/DisableReleaseModal';
+import { ModifyReleaseStateModal } from './ReleaseDialogs/ModifyReleaseStateModal';
 import { DeleteReleaseModal } from './ReleaseDialogs/DeleteReleaseModal';
 import { YBButton, YBCheckbox } from '../../../components';
 import { YBPanelItem } from '../../../../components/panels';
+import { YBTable } from '../../../../components/common/YBTable';
 import { YBSearchInput } from '../../../../components/common/forms/fields/YBSearchInput';
+import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
 import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
-import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
 import {
   ModalTitle,
   ReleaseArtifacts,
@@ -28,14 +29,22 @@ import {
   Releases
 } from './dtos';
 import { QUERY_KEY, ReleasesAPI } from '../api';
-import { getImportedArchitectures } from '../helpers/utils';
+import {
+  getImportedArchitectures,
+  MAX_RELEASE_TAG_CHAR,
+  MAX_RELEASE_VERSION_CHAR
+} from '../helpers/utils';
+import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg';
 import Checked from '../../../../redesign/assets/checkbox/Checked.svg';
-import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
+import AddIcon from '../../../../redesign/assets/Add.svg';
 
 const useStyles = makeStyles((theme) => ({
+  releaseListBox: {
+    overflow: 'unset'
+  },
   biggerReleaseText: {
     fontWeight: 400,
     fontFamily: 'Inter',
@@ -49,6 +58,9 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[900],
     alignSelf: 'center'
   },
+  verticalText: {
+    verticalAlign: 'super'
+  },
   versionText: {
     alignSelf: 'center',
     overflow: 'visible !important'
@@ -58,6 +70,7 @@ const useStyles = makeStyles((theme) => ({
   },
   releaseTagBox: {
     border: '1px',
+    height: '24px',
     borderRadius: '6px',
     padding: '4px 6px 4px 6px',
     backgroundColor: theme.palette.grey[200],
@@ -65,7 +78,8 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: theme.spacing(0.5)
   },
   releaseTagText: {
-    color: theme.palette.grey[700]
+    color: theme.palette.grey[700],
+    cursor: 'pointer'
   },
   flexRow: {
     display: 'flex',
@@ -92,8 +106,9 @@ const useStyles = makeStyles((theme) => ({
     padding: '4px 6px 4px 6px',
     gap: '4px',
     marginRight: theme.spacing(0.5),
-    height: '28px',
+    height: '24px',
     borderStyle: 'solid',
+    backgroundColor: theme.palette.common.white,
     borderColor: theme.palette.grey[300]
   },
   dropdownValueBox: {
@@ -134,13 +149,36 @@ const useStyles = makeStyles((theme) => ({
     }
   },
   overrideMuiStartIcon: {
-    height: '28px',
-    '& .MuiButton-startIcon': {
-      marginLeft: 0,
-      marginRight: 0
+    padding: '0px',
+    height: theme.spacing(3)
+  },
+  addButtonBox: {
+    height: theme.spacing(3),
+    width: '26px',
+    border: '1px',
+    borderRadius: '6px',
+    borderColor: theme.palette.grey[200]
+  },
+  releaseRow: {
+    cursor: 'pointer'
+  },
+  releaseActionsDropdown: {
+    width: '24px',
+    height: '24px',
+    border: '0px',
+    padding: '0px',
+    fontWeight: 'bold'
+  },
+  rowHover: {
+    '&:hover': {
+      cursor: 'pointer',
+      backgroundColor: '#F3F3F3'
     }
   }
 }));
+
+const DEFAULT_SORT_COLUMN = 'version';
+const DEFAULT_SORT_DIRECTION = 'DESC';
 
 const MAIN_ACTION = {
   ADD_ARCHITECTURE: 'Add Architecture'
@@ -154,12 +192,10 @@ const EDIT_ACTIONS = {
 
 const OTHER_ACTONS = {
   EDIT_RELEASE_TAG: 'Edit Release Tag',
-  DISABLE_RELEASE: 'Disable',
-  ENABLE_RELEASE: 'Enable',
+  DISABLE_RELEASE: 'Disallow',
+  ENABLE_RELEASE: 'Allow',
   DELETE_RELEASE: 'Delete'
 } as const;
-
-const MAX_RELEASE_TAG_CHAR = 10;
 
 export const NewReleaseList = () => {
   const helperClasses = useStyles();
@@ -185,6 +221,8 @@ export const NewReleaseList = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [modalTitle, setModalTitle] = useState<string>(ModalTitle.ADD_RELEASE);
 
+  const refreshRelease = useMutation(() => ReleasesAPI.refreshRelease());
+
   const {
     data: releasesData,
     isIdle: isReleasesIdle,
@@ -208,27 +246,44 @@ export const NewReleaseList = () => {
   const formatVersion = (cell: any, row: any) => {
     return (
       <Box className={clsx(helperClasses.flexRow, helperClasses.alignText)}>
-        <span className={helperClasses.versionText}>{row.version}</span>
+        <span
+          title={row.version}
+          data-testid={'ReleaseList-VersionText'}
+          className={helperClasses.versionText}
+        >
+          {row.version.length > MAX_RELEASE_VERSION_CHAR
+            ? `${row.version.substring(0, MAX_RELEASE_VERSION_CHAR)}...`
+            : row.version}
+        </span>
         {isNonEmptyString(row.release_tag) && (
           <>
             <Box className={helperClasses.releaseTagBox}>
               <span
-                className={clsx(helperClasses.releaseTagText, helperClasses.smallerReleaseText)}
+                title={row.release_tag}
+                data-testid={'ReleaseList-ReleaseTag'}
+                className={clsx(
+                  helperClasses.releaseTagText,
+                  helperClasses.smallerReleaseText,
+                  helperClasses.verticalText
+                )}
               >
                 {row.release_tag.length > MAX_RELEASE_TAG_CHAR
-                  ? `${row.release_tag.substring(0, 10)}...`
+                  ? `${row.release_tag.substring(0, MAX_RELEASE_TAG_CHAR)}...`
                   : row.release_tag}
               </span>
             </Box>
-            <span>
-              {row.release_tag.length > MAX_RELEASE_TAG_CHAR && (
-                <Tooltip title={row.release_tag} arrow placement="top">
-                  <img src={InfoMessageIcon} alt="info" />
-                </Tooltip>
-              )}
-            </span>
           </>
         )}
+      </Box>
+    );
+  };
+
+  const formatDateMilliSecs = (cell: any, row: any) => {
+    return (
+      <Box className={helperClasses.biggerReleaseText}>
+        {row.release_date_msecs
+          ? ybFormatDate(row.release_date_msecs, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+          : '--'}
       </Box>
     );
   };
@@ -245,9 +300,9 @@ export const NewReleaseList = () => {
     return (
       <Box className={helperClasses.flexRow}>
         <span className={helperClasses.biggerReleaseText}>
-          {row.in_use ? 'In Use' : 'Not in Use'}
+          {row.universes?.length > 0 ? 'In Use' : 'Not in Use'}
         </span>
-        {row.in_use && (
+        {row.universes?.length > 0 && (
           <Box className={helperClasses.releaseNumUniversesBox}>
             <span className={helperClasses.smallerReleaseText}>{row.universes.length}</span>
           </Box>
@@ -264,23 +319,30 @@ export const NewReleaseList = () => {
           architectures.map((architecture: string) => {
             return (
               <Box className={helperClasses.importedArchitectureBox}>
-                <span className={helperClasses.smallerReleaseText}>
+                <span
+                  className={clsx(helperClasses.smallerReleaseText, helperClasses.verticalText)}
+                >
                   {t(`releases.tags.${architecture === null ? 'kubernetes' : architecture}`)}
                 </span>
               </Box>
             );
           })}
         {row.artifacts.length < 3 && (
-          <YBButton
-            className={helperClasses.overrideMuiStartIcon}
-            onClick={() => {
-              setSelectedReleaseDetails(row);
-              onNewReleaseButtonClick();
-              onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
-            }}
-            startIcon={<Add />}
-            variant="secondary"
-          ></YBButton>
+          <Box className={helperClasses.addButtonBox}>
+            <YBButton
+              className={helperClasses.overrideMuiStartIcon}
+              onClick={(e: any) => {
+                setSelectedReleaseDetails(row);
+                onNewReleaseButtonClick();
+                onSetModalTitle(ModalTitle.ADD_ARCHITECTURE);
+                e.stopPropagation();
+              }}
+              data-testid="ReleaseList-AddArchitectureButton"
+              variant="secondary"
+            >
+              <img src={AddIcon} alt="add" />
+            </YBButton>
+          </Box>
         )}
       </Box>
     );
@@ -327,6 +389,10 @@ export const NewReleaseList = () => {
     setReleaseArchitecture(selectedArchitecture);
   };
 
+  const onRefreshRelease = () => {
+    refreshRelease.mutate();
+  };
+
   const onActionPerformed = () => {
     const getLatestReleasesList = async () => {
       queryClient.invalidateQueries(QUERY_KEY.fetchReleasesList);
@@ -345,7 +411,9 @@ export const NewReleaseList = () => {
             value={value}
             onClick={(e: any) => {
               onActionClick(value, row);
+              e.stopPropagation();
             }}
+            data-testid={`ReleaseList-Action${value}`}
           >
             {value}
           </MenuItem>
@@ -358,13 +426,19 @@ export const NewReleaseList = () => {
         artifact.architecture === null
           ? EDIT_ACTIONS['kubernetes']
           : EDIT_ACTIONS[artifact.architecture!];
+      const isDisabled = row.universes?.length > 0 || row.state === ReleaseState.DISABLED;
       renderedItems.push(
         <MenuItem
           key={artifact.architecture}
           value={action}
           onClick={(e: any) => {
-            onActionClick(action, row);
+            if (!isDisabled) {
+              onActionClick(action, row);
+            }
+            e.stopPropagation();
           }}
+          disabled={isDisabled}
+          data-testid={`ReleaseList-Action${action}`}
         >
           {action}
         </MenuItem>
@@ -372,6 +446,7 @@ export const NewReleaseList = () => {
     });
 
     for (const [key, value] of Object.entries(OTHER_ACTONS)) {
+      let disabled = false;
       if (row.state === ReleaseState.ACTIVE && value === OTHER_ACTONS.ENABLE_RELEASE) {
         continue;
       }
@@ -383,13 +458,25 @@ export const NewReleaseList = () => {
         renderedItems.push(<Divider />);
       }
 
+      if (
+        row.universes?.length > 0 &&
+        (value === OTHER_ACTONS.DISABLE_RELEASE || value === OTHER_ACTONS.DELETE_RELEASE)
+      ) {
+        disabled = true;
+      }
+
       renderedItems.push(
         <MenuItem
           key={key}
           value={value}
           onClick={(e: any) => {
-            onActionClick(value, row);
+            if (!disabled) {
+              onActionClick(value, row);
+            }
+            e.stopPropagation();
           }}
+          disabled={disabled}
+          data-testid={`ReleaseList-Action${value}`}
         >
           {value}
         </MenuItem>
@@ -401,7 +488,15 @@ export const NewReleaseList = () => {
 
   const formatActionButtons = (cell: any, row: any) => {
     return (
-      <DropdownButton title="Actions" id="release-list-actions" pullRight={false}>
+      <DropdownButton
+        noCaret
+        key={`release-list-actions-${row.release_uuid}`}
+        title="..."
+        className={helperClasses.releaseActionsDropdown}
+        id="release-list-actions"
+        pullRight={false}
+        onClick={(e) => e.stopPropagation()}
+      >
         {getMenuItemsActions(row)}
       </DropdownButton>
     );
@@ -451,7 +546,7 @@ export const NewReleaseList = () => {
     setOpenSidePanel(false);
   };
 
-  const onRowDoubleClick = (row: any, event: any) => {
+  const onRowClick = (row: any, event: any) => {
     setSelectedReleaseDetails(row);
     setOpenSidePanel(true);
   };
@@ -502,12 +597,13 @@ export const NewReleaseList = () => {
   };
 
   return (
-    <Box ml={3} mr={3}>
+    <Box ml={3} mr={3} className={helperClasses.releaseListBox}>
       <YBPanelItem
         header={
           <Box mt={2}>
             <Box className={clsx(helperClasses.floatBoxLeft, helperClasses.flexRow)} mt={2}>
               <YBSearchInput
+                data-testid="ReleaseList-SearchReleaseVersion"
                 className={helperClasses.searchInput}
                 defaultValue={searchText}
                 onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -562,16 +658,19 @@ export const NewReleaseList = () => {
                     helperClasses.refreshButton,
                     helperClasses.overrideMuiRefreshIcon
                   )}
+                  data-testid="ReleaseList-RefreshReleasesButton"
                   size="large"
                   startIcon={<Refresh />}
                   variant="secondary"
                   onClick={() => {
                     onActionPerformed();
+                    onRefreshRelease();
                   }}
                 />
                 <YBButton
                   size="large"
                   variant={'primary'}
+                  data-testid="ReleaseList-AddReleaseButton"
                   startIcon={<Add />}
                   onClick={onNewReleaseButtonClick}
                 >
@@ -593,17 +692,21 @@ export const NewReleaseList = () => {
         }
         body={
           <Box>
-            <BootstrapTable
+            <YBTable
               data={filteredReleaseList}
               pagination={true}
               options={{
-                onRowDoubleClick: onRowDoubleClick
+                defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
+                defaultSortName: DEFAULT_SORT_COLUMN,
+                onRowClick: onRowClick
               }}
+              trClassName={helperClasses.rowHover}
             >
               <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
               <TableHeaderColumn
-                width="10%"
+                width="15%"
                 tdStyle={{ verticalAlign: 'middle' }}
+                dataField={'version'}
                 dataFormat={formatVersion}
                 dataSort
               >
@@ -612,7 +715,8 @@ export const NewReleaseList = () => {
               <TableHeaderColumn
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
-                dataField={'release_date'}
+                dataFormat={formatDateMilliSecs}
+                dataField={'release_date_msecs'}
                 dataSort
               >
                 {t('releases.releaseDate')}
@@ -620,6 +724,7 @@ export const NewReleaseList = () => {
               <TableHeaderColumn
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
+                dataField={'release_type'}
                 dataFormat={formatReleaseSupport}
                 dataSort
               >
@@ -629,12 +734,11 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatUsage}
-                dataSort
               >
                 {t('releases.releaseUsage')}
               </TableHeaderColumn>
               <TableHeaderColumn
-                width="20%"
+                width="15%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatImportedArchitecture}
               >
@@ -644,6 +748,7 @@ export const NewReleaseList = () => {
                 width="10%"
                 tdStyle={{ verticalAlign: 'middle' }}
                 dataFormat={formatDeploymentStatus}
+                dataField={'state'}
                 dataSort
               >
                 {t('releases.releaseDeployment')}
@@ -656,7 +761,7 @@ export const NewReleaseList = () => {
               >
                 Actions
               </TableHeaderColumn>
-            </BootstrapTable>
+            </YBTable>
           </Box>
         }
       />
@@ -692,7 +797,7 @@ export const NewReleaseList = () => {
         />
       )}
       {showDisableReleaseDialog && selectedReleaseDetails && (
-        <DisableReleaseModal
+        <ModifyReleaseStateModal
           open={showDisableReleaseDialog}
           onActionPerformed={onActionPerformed}
           onClose={onDisableReleaseDialogClose}

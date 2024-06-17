@@ -15,7 +15,6 @@
 
 #include "yb/util/flags.h"
 
-DECLARE_int32(pgsql_rpc_keepalive_time_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);
@@ -47,5 +46,3 @@ DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
 DECLARE_bool(ysql_use_relcache_file);
-
-DECLARE_bool(TEST_yb_enable_ash);

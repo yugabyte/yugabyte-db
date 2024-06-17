@@ -1,6 +1,9 @@
 package com.yugabyte.yw.controllers;
 
+import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -15,6 +18,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -29,14 +33,15 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.io.File;
-import java.text.DateFormat;
-import java.text.ParseException;
+import java.time.DateTimeException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -47,6 +52,7 @@ import play.mvc.Result;
     hidden = true)
 @Slf4j
 public class ReleasesController extends AuthenticatedController {
+  @Inject ReleasesUtils releasesUtils;
 
   @ApiOperation(
       value = "Create a release",
@@ -73,8 +79,13 @@ public class ReleasesController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     CreateRelease reqRelease =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), CreateRelease.class);
+
+    // Validate the version
+    releasesUtils.validateVersionAgainstCurrentYBA(reqRelease.version);
+
+    // Validate the version/tag combo doesn't exist
     if (reqRelease.release_uuid == null) {
-      log.debug("generating random release UUID as one was not provided");
+      log.trace("generating random release UUID as one was not provided");
       reqRelease.release_uuid = UUID.randomUUID();
     }
     Release release;
@@ -130,13 +141,37 @@ public class ReleasesController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.1.0")
-  public Result list(UUID customerUUID, Http.Request request) {
+  public Result list(UUID customerUUID, @Nullable String deploymentType, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    List<Release> releases = Release.getAll();
+    List<Release> releases = null;
+    if (deploymentType != null) {
+      switch (deploymentType) {
+        case "x86_64":
+          releases =
+              Release.getAllWithArtifactType(ReleaseArtifact.Platform.LINUX, Architecture.x86_64);
+          break;
+        case "aarch64":
+          releases =
+              Release.getAllWithArtifactType(ReleaseArtifact.Platform.LINUX, Architecture.aarch64);
+          break;
+        case "kubernetes":
+          releases = Release.getAllWithArtifactType(ReleaseArtifact.Platform.KUBERNETES, null);
+          break;
+        default:
+          log.error(
+              "unknown deployment type {}, must be 'x86_64', 'aarch64', or 'kubernetes'",
+              deploymentType);
+          throw new PlatformServiceException(
+              BAD_REQUEST, "unknown deployment type " + deploymentType);
+      }
+    } else {
+      releases = Release.getAll();
+    }
+    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
     List<ResponseRelease> respReleases = new ArrayList<>();
     for (Release release : releases) {
-      ResponseRelease resp = releaseToResponseRelease(release);
+      ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
       respReleases.add(resp);
     }
     return PlatformResults.withData(respReleases);
@@ -157,7 +192,8 @@ public class ReleasesController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID releaseUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Release release = Release.getOrBadRequest(releaseUUID);
-    ResponseRelease resp = releaseToResponseRelease(release);
+    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
+    ResponseRelease resp = releaseToResponseRelease(release, versionUniverseMap);
     return PlatformResults.withData(resp);
   }
 
@@ -179,6 +215,10 @@ public class ReleasesController extends AuthenticatedController {
     if (release == null) {
       log.info("Release {} does not exist, skipping delete");
     } else {
+      if (!release.getUniverses().isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "cannot delete in-use release " + releaseUUID);
+      }
       if (!release.delete()) {
         log.error("Failed to delete release {}", releaseUUID);
         throw new PlatformServiceException(
@@ -225,29 +265,32 @@ public class ReleasesController extends AuthenticatedController {
       if (reqRelease.release_tag != null
           && !reqRelease.release_tag.equals(release.getReleaseTag())) {
         log.debug("updating release tag to {}", reqRelease.release_tag);
-        release.setReleaseTag(reqRelease.release_tag);
+        release.saveReleaseTag(reqRelease.release_tag);
       }
       if (reqRelease.release_date != null) {
-        DateFormat df = DateFormat.getDateInstance();
         try {
-          Date releaseDate = df.parse(reqRelease.release_date);
+          Date releaseDate = Date.from(Instant.ofEpochSecond(reqRelease.release_date));
           if (!releaseDate.equals(release.getReleaseDate())) {
             log.debug("updating release date to {}", reqRelease.release_date);
-            release.setReleaseDate(releaseDate);
+            release.saveReleaseDate(releaseDate);
           }
-        } catch (ParseException e) {
+        } catch (IllegalArgumentException | DateTimeException e) {
           log.warn("unable to parse date format", e);
         }
       }
       if (reqRelease.release_notes != null
           && !reqRelease.release_notes.equals(release.getReleaseNotes())) {
         log.debug("updating release notes to {}", reqRelease.release_notes);
-        release.setReleaseNotes(reqRelease.release_notes);
+        release.saveReleaseNotes(reqRelease.release_notes);
       }
       if (reqRelease.state != null
           && !release.getState().equals(Release.ReleaseState.valueOf(reqRelease.state))) {
+        if (!release.getUniverses().isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "cannot change state of in-use release " + releaseUUID);
+        }
         log.info("updating release state to {}", reqRelease.state);
-        release.setState(Release.ReleaseState.valueOf(reqRelease.state));
+        release.saveState(Release.ReleaseState.valueOf(reqRelease.state));
       }
 
       // Now, check if any artifacts have changed, and update them as needed
@@ -285,35 +328,39 @@ public class ReleasesController extends AuthenticatedController {
                     "updating artifact {} sha to {}",
                     artifact.getArtifactUUID(),
                     reqArtifact.sha256);
-                artifact.setSha256(reqArtifact.sha256);
+                artifact.saveSha256(reqArtifact.sha256);
               }
               break;
             }
-            if (!found) {
-              log.info("creating new artifact");
-              if (reqArtifact.package_file_id != null) {
-                ReleaseArtifact newArtifact =
-                    ReleaseArtifact.create(
-                        reqArtifact.sha256,
-                        reqArtifact.platform,
-                        reqArtifact.architecture,
-                        reqArtifact.package_file_id);
-                release.addArtifact(newArtifact);
-              }
-              if (reqArtifact.package_url != null) {
-                ReleaseArtifact newArtifact =
-                    ReleaseArtifact.create(
-                        reqArtifact.sha256,
-                        reqArtifact.platform,
-                        reqArtifact.architecture,
-                        reqArtifact.package_url);
-                release.addArtifact(newArtifact);
-              }
+          }
+          if (!found) {
+            log.info("creating new artifact");
+            if (reqArtifact.package_file_id != null) {
+              ReleaseArtifact newArtifact =
+                  ReleaseArtifact.create(
+                      reqArtifact.sha256,
+                      reqArtifact.platform,
+                      reqArtifact.architecture,
+                      reqArtifact.package_file_id);
+              release.addArtifact(newArtifact);
+            }
+            if (reqArtifact.package_url != null) {
+              ReleaseArtifact newArtifact =
+                  ReleaseArtifact.create(
+                      reqArtifact.sha256,
+                      reqArtifact.platform,
+                      reqArtifact.architecture,
+                      reqArtifact.package_url);
+              release.addArtifact(newArtifact);
             }
           }
         }
       }
       for (UUID artifactUUID : removeArtifacts) {
+        if (!release.getUniverses().isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "cannot remove artifacts from in-use release " + releaseUUID);
+        }
         ReleaseArtifact artifact = ReleaseArtifact.get(artifactUUID);
         if (artifact != null) {
           log.info("deleting artifact {}", artifact.getArtifactUUID());
@@ -331,7 +378,8 @@ public class ReleasesController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  private ResponseRelease releaseToResponseRelease(Release release) {
+  private ResponseRelease releaseToResponseRelease(
+      Release release, Map<String, List<Universe>> versionUniversesMap) {
     ResponseRelease resp = new ResponseRelease();
     resp.release_uuid = release.getReleaseUUID();
     resp.version = release.getVersion();
@@ -339,7 +387,7 @@ public class ReleasesController extends AuthenticatedController {
     resp.release_type = release.getReleaseType();
     resp.state = release.getState().toString();
     if (release.getReleaseDate() != null) {
-      resp.release_date = release.getReleaseDate().toString();
+      resp.release_date_msecs = release.getReleaseDate().toInstant().toEpochMilli();
     }
     resp.release_notes = release.getReleaseNotes();
     resp.release_tag = release.getReleaseTag();
@@ -351,15 +399,20 @@ public class ReleasesController extends AuthenticatedController {
       if (artifact.getPackageFileID() != null) {
         respArtifact.package_file_id = artifact.getPackageFileID();
         ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
-        respArtifact.file_name = new File(rlf.getLocalFilePath()).getName();
+        respArtifact.file_name = rlf.getLocalFilePath();
       } else {
         respArtifact.package_url = artifact.getPackageURL();
       }
       resp.artifacts.add(respArtifact);
     }
-    // Add 0 universes for now
-    // TODO: Get active universes
-    resp.universes = new ArrayList<>();
+
+    resp.universes =
+        versionUniversesMap.getOrDefault(release.getVersion(), new ArrayList<Universe>()).stream()
+            .map(
+                u ->
+                    new ResponseRelease.Universe(
+                        u.getUniverseUUID(), u.getName(), u.getCreationDate()))
+            .collect(Collectors.toList());
     return resp;
   }
 }

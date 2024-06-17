@@ -55,7 +55,7 @@ body:not(.td-searchpage) {
       border-radius: 5px;
 
       nav {
-        > a {
+        >a {
           position: absolute;
           right: 15px;
           bottom: 7px;
@@ -114,6 +114,17 @@ body:not(.td-searchpage) {
         &:not(.no-result):hover {
           background: #f2f6ff;
         }
+
+        &.no-result {
+          a {
+            color: #507ce1 !important;
+            font-weight: 500;
+          }
+
+          a:hover {
+            text-decoration: underline;
+          }
+        }
       }
     }
 
@@ -124,6 +135,22 @@ body:not(.td-searchpage) {
 }
 
 body.td-searchpage {
+  #search-summary {
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 28px;
+    color: #4e5f6d;
+
+    a {
+      color: #507ce1;
+      font-weight: 500;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+
   .search-result {
     em {
       font-weight: 600;
@@ -329,9 +356,10 @@ body.td-searchpage .td-content {
   }
 
   .td-search-input.have-text {
+
     &:hover,
     &:focus {
-      + .reset-input {
+      +.reset-input {
         opacity: 1;
       }
     }
@@ -386,7 +414,9 @@ body.td-searchpage .td-content {
   }
 
   @keyframes cssAnimation {
-    to { visibility: visible; }
+    to {
+      visibility: visible;
+    }
   }
 }
 
@@ -456,4 +486,30 @@ body.td-searchpage .td-content {
       padding: 0;
     }
   }
+}
+
+@media (max-width: 1315px) and (min-width: 1130px) {
+  body > header .td-navbar.navbar-expand .page-header .navbar-nav form .td-search-input,
+  body > header .td-navbar.navbar-expand .top-nav .navbar-nav form .td-search-input {
+    width: 215px !important;
+  }
+}
+
+@media (max-width: 1131px) and (min-width: 992px) {
+  body #nav_bar .tritiery-btn:not(.btn-priority) {
+    font-size: 12px !important;
+    padding: 0 5px 0 3px !important;
+  }
+}
+
+@media (max-width: 991px) and (min-width: 768px) {
+  body > header .td-navbar.navbar-expand .page-header .navbar-nav form .td-search-input,
+  body > header .td-navbar.navbar-expand .top-nav .navbar-nav form .td-search-input {
+    width: 280px !important;
+  }
+}
+@media (max-width: 767px) {
+    body>header .td-navbar.navbar-expand .page-header .navbar-nav form .td-search-input, body>header .td-navbar.navbar-expand .top-nav .navbar-nav form .td-search-input {
+        width: 100% !important;
+    }
 }

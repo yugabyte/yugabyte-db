@@ -9,7 +9,7 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-techPreview: /preview/releases/versioning/#feature-availability
+techPreview: /preview/releases/versioning/#feature-maturity
 type: docs
 ---
 
@@ -37,11 +37,36 @@ The following illustration describes the workflow for live migration using YB Vo
 
 ![Live migration with fall-forward workflow](/images/migrate/live-fall-forward-new.png)
 
+| Phase | Step | Description |
+| :---- | :--- | :---|
+| PREPARE | [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
+| | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
+| | [Prepare source-replica DB](#prepare-source-replica-database) | Deploy a database (a replica of your original source database) and create a user with necessary privileges. |
+| SCHEMA | [Export](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
+| | [Analyze](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
+| | [Modify](#manually-edit-the-schema) | Using the report recommendations, manually change the exported schema. |
+| | [Import](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
+| LIVE MIGRATION | Start | Start the phases: export data, import data to target, followed by import data to source-replica, and archive changes simultaneously. |
+| | [Export data](#export-data-from-source) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
+| | [Import data](#import-data-to-target) | The import data to target command first imports the snapshot, and then continuously applies the exported change events on the target. |
+| | [Import indexes and triggers to target DB](#import-indexes-and-triggers) | After the snapshot import is complete, import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
+| | [Import data to source-replica](#import-data-to-source-replica) | The import data to source-replica command imports the snapshot, and then continuously applies the exported change events on the source-replica. |
+| | [Archive changes](#archive-changes-optional) | Continuously archive migration changes to limit disk utilization. |
+| CUTOVER TO TARGET | [Initiate cutover to target](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
+| | [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| | [Verify target DB](#cutover-to-the-target) | Check if the live migration is successful on both the source and the target databases. |
+| CUTOVER TO SOURCE&nbsp;REPLICA | [Initiate cutover to source-replica](#cutover-to-source-replica-optional) | Perform a cutover (stop streaming changes) from the target YugabyteDB database to the source-replica database only when the target YugabyteDB database is not working as expected, allow all the change events to be applied to the source-replica database, and then restart your applications pointing to the source-replica database. |
+| | [Wait for cutover to complete](#cutover-to-source-replica-optional) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| | [(Manual)&nbsp;Import&nbsp;indexes and triggers to source-replica DB](#cutover-to-source-replica-optional) | After the snapshot import is complete, import indexes and triggers to the source-replica database manually. |
+| | [Verify source-replica DB](#cutover-to-source-replica-optional) | Check if the live migration is successful on both the target and the source-replica databases. |
+| END | [End migration](#end-migration) | Clean up the migration information stored in export directory and databases (source, source-replica, and target). |
+
 Before proceeding with migration, ensure that you have completed the following steps:
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
 - Review the [guidelines for your migration](../../known-issues/).
-- Review [data modeling](../../reference/data-modeling/) strategies.
+- Review [data modeling](../../../develop/learn/data-modeling-ysql) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -156,7 +181,7 @@ Create a new database user, and assign the necessary user permissions.
 
     ```sql
     ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
-    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (PRIMARY KEY) COLUMNS;
+    ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (ALL) COLUMNS;
     ```
 
   {{% /tab %}}
@@ -326,7 +351,7 @@ Create a new database user, and assign the necessary user permissions.
     begin
         rdsadmin.rdsadmin_util.alter_supplemental_logging(
             p_action => 'ADD',
-            p_type   => 'PRIMARY KEY');
+            p_type   => 'ALL');
     end;
     /
     ```
@@ -357,9 +382,10 @@ Create a new database user, and assign the necessary user permissions.
     1. Check the replica identity using the following query:
 
         ```sql
-        SELECT relname, relreplident
-        FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
+        SELECT n.nspname, relname, relreplident
+        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
+        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
     1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
@@ -367,13 +393,14 @@ Create a new database user, and assign the necessary user permissions.
         ```sql
         DO $$
         DECLARE
-          table_name_var text;
+          r Record;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
+          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
           LOOP
-            EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
+            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
           END LOOP;
         END $$;
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
 1. Create user `ybvoyager` for the migration using the following command:
@@ -429,13 +456,14 @@ Create a new database user, and assign the necessary user permissions.
     ```sql
     DO $$
     DECLARE
-      cur_table text;
+       r Record;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
+       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
       LOOP
-        EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
+        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
       END LOOP;
     END $$;
+    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
 1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
@@ -460,12 +488,13 @@ Create a new database user, and assign the necessary user permissions.
 
 1. Check that the replica identity is FULL (`f`) for all tables on the database.
 
-    1. Check the Replica identity for all the tables on the database as follows:
+    1. Check the replica identity using the following query:
 
         ```sql
-        SELECT relname, relreplident
-        FROM pg_class
-        WHERE relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = '<source_schema_name>') AND relkind = 'r';
+        SELECT n.nspname, relname, relreplident
+        FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid
+        WHERE n.nspname in (<SCHEMA_LIST>) and relkind = 'r';
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
     1. Change the replica identity of all tables if the tables have an identity other than FULL (`f`), using the following query:
@@ -473,13 +502,14 @@ Create a new database user, and assign the necessary user permissions.
         ```sql
         DO $$
         DECLARE
-          table_name_var text;
+          r Record;
         BEGIN
-          FOR table_name_var IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>' AND table_type = 'BASE TABLE')
+          FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name  FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>) AND table_type = 'BASE TABLE')
           LOOP
-            EXECUTE 'ALTER TABLE ' || table_name_var || ' REPLICA IDENTITY FULL';
+            EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' REPLICA IDENTITY FULL';
           END LOOP;
         END $$;
+        --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
         ```
 
 1. Create user `ybvoyager` for the migration using the following command:
@@ -529,18 +559,19 @@ Create a new database user, and assign the necessary user permissions.
     GRANT replication_group TO ybvoyager;
     ```
 
-1. Transfer ownership of the tables to the role <replication_group> as follows:
+1. Transfer ownership of the tables to the role `replication_group` as follows:
 
     ```sql
     DO $$
     DECLARE
-      cur_table text;
+       r Record;
     BEGIN
-      FOR cur_table IN (SELECT table_name FROM information_schema.tables WHERE table_schema = '<source_schema_name>')
+       FOR r IN (SELECT table_schema, '"' || table_name || '"' as t_name FROM information_schema.tables WHERE table_schema IN (<SCHEMA_LIST>))
       LOOP
-        EXECUTE 'ALTER TABLE ' || cur_table || ' OWNER TO replication_group';
+        EXECUTE 'ALTER TABLE ' || r.table_schema || '.' || r.t_name || ' OWNER TO replication_group';
       END LOOP;
     END $$;
+    --- SCHEMA_LIST used is a comma-separated list of schemas, for example, SCHEMA_LIST 'abc','public', 'xyz'.
     ```
 
 1. Grant `CREATE` privilege on the source database to `ybvoyager` as follows:
@@ -570,6 +601,27 @@ You can use only one of the following arguments to connect to your Oracle instan
 ## Prepare the target database
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
+
+{{<note title="Important">}}
+
+Add the following flags to the cluster before starting migration, and revert them after the migration is complete.
+
+For the target YugabyteDB versions `2.18.5.1` and `2.18.6.0` (or later minor versions), set the following flag:
+
+```sh
+ysql_pg_conf_csv = yb_max_query_layer_retries=0
+```
+
+For all the other target YugabyteDB versions, set the following flags:
+
+```sh
+ysql_max_read_restart_attempts = 0
+ysql_max_write_restart_attempts = 0
+```
+
+Turn off the [read-committed](../../../explore/transactions/isolation-levels/#read-committed-isolation) isolation level on the target YugabyteDB cluster during the migration.
+
+{{</note>}}
 
 ### Create the target database
 
@@ -868,10 +920,9 @@ Because the presence of indexes and triggers can slow down the rate at which dat
 
 Manually, set up the source-replica database with the same schema as that of the source database with the following considerations:
 
-- The table names on the source-replica database need to be case insensitive (YB Voyager currently does not support case-sensitivity).
 - Do not create indexes and triggers at the schema setup stage, as it will degrade performance of importing data into the source-replica database. Create them later as described in [cutover to source-replica](#cutover-to-source-replica-optional).
 
-- Disable foreign key constraints and check constraints on the source-replica database.
+- For Oracle migrations, disable foreign key constraints and check constraints on the source-replica database.
 
 ### Export data from source
 
@@ -1007,25 +1058,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-snapshot-import true
 ```
 
-If any of the CREATE INDEX DDLs fail in the preceding command, drop the INVALID indexes on the target database using:
-
-```sql
-DO $$
-DECLARE
-  index_name text;
-BEGIN
-  FOR index_name IN (
-    SELECT indexrelid::regclass
-    FROM pg_index
-    WHERE indisvalid = false
-  )
-  LOOP
-    EXECUTE 'DROP INDEX ' || index_name;
-  END LOOP;
-END $$;
-```
-
-and then retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
+If any of the CREATE INDEX DDLs fail in the preceding command, retry the command with the argument `--ignore-exist` to ignore already created indexes and create new ones instead.
 
 ```sh
 # Replace the argument values with those applicable for your migration.

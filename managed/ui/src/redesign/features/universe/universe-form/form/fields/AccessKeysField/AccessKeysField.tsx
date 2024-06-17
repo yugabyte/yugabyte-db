@@ -29,7 +29,6 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
-  const fieldVal = useWatch({ name: ACCESS_KEY_FIELD });
 
   //all access keys
   const allAccessKeys = useSelector((state: any) => state.cloud.accessKeys);
@@ -50,7 +49,7 @@ export const AccessKeysField = ({ disabled }: AccessKeysFieldProps): ReactElemen
 
   //only first time
   useEffectOnce(() => {
-    if (accessKeysList?.length && provider?.uuid && !fieldVal)
+    if (accessKeysList?.length && provider?.uuid)
       setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
   });
 

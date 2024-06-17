@@ -1,3 +1,4 @@
+SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
 -- This file is meant to test and track the optimizer's plan choices with BNL
 -- enabled. yb_join_batching on the other hand is meant to test BNL execution
 -- and planning when we force the creation of a BNL.
@@ -21,6 +22,7 @@ CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
 ANALYZE p5;
 SET yb_enable_optimizer_statistics = on;
 SET yb_enable_base_scans_cost_model = on;
+SET yb_prefer_bnl = off;
 -- We're testing nested loop join batching in this file
 SET yb_bnl_batch_size = 1024;
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
@@ -29,34 +31,34 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p2 t2
-         Remote Filter: (a <= 100)
+         Storage Filter: (a <= 100)
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.a, $1, $2, ..., $1023]))
-         Remote Filter: (a <= 100)
+         Storage Filter: (a <= 100)
 (7 rows)
 
 /*+NoYbBatchedNL(t1 t2)*/ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Hash Join
    Hash Cond: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Remote Filter: (a <= 100)
+         Storage Filter: (a <= 100)
    ->  Hash
          ->  Seq Scan on p2 t2
-               Remote Filter: (a <= 100)
+               Storage Filter: (a <= 100)
 (7 rows)
 
 /*+NestLoop(t1 t2)*/ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Nested Loop
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Remote Filter: (a <= 100)
+         Storage Filter: (a <= 100)
    ->  Materialize
          ->  Seq Scan on p2 t2
-               Remote Filter: (a <= 100)
+               Storage Filter: (a <= 100)
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
@@ -65,22 +67,22 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a
  YB Batched Nested Loop Join
    Join Filter: (t1.a = (t2.a + 1))
    ->  Seq Scan on p2 t2
-         Remote Filter: (a <= 100)
+         Storage Filter: (a <= 100)
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[(t2.a + 1), ($1 + 1), ($2 + 1), ..., ($1023 + 1)]))
-         Remote Filter: (a <= 100)
+         Storage Filter: (a <= 100)
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-               QUERY PLAN
------------------------------------------
+                QUERY PLAN
+------------------------------------------
  Hash Join
    Hash Cond: ((t1.a - 1) = (t2.a + 1))
    ->  Seq Scan on p1 t1
-         Remote Filter: (a <= 100)
+         Storage Filter: (a <= 100)
    ->  Hash
          ->  Seq Scan on p2 t2
-               Remote Filter: (a <= 100)
+               Storage Filter: (a <= 100)
 (7 rows)
 
 -- Batching on compound clauses
@@ -105,28 +107,26 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE 
 (5 rows)
 
 explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
-                           QUERY PLAN
------------------------------------------------------------------
- Merge Left Join
-   Merge Cond: ((((p1.a - 1)) = p5.a) AND (((p1.b - 1)) = p5.b))
-   ->  Sort
-         Sort Key: ((p1.a - 1)), ((p1.b - 1))
+                         QUERY PLAN
+------------------------------------------------------------
+ Hash Right Join
+   Hash Cond: ((p5.a = (p1.a - 1)) AND (p5.b = (p1.b - 1)))
+   ->  Seq Scan on p5
+   ->  Hash
          ->  Seq Scan on p1
-               Remote Filter: (a <= 30)
-   ->  Index Scan using p5_pkey on p5
-(7 rows)
+               Storage Filter: (a <= 30)
+(6 rows)
 
 /*+NoYbBatchedNL(p1 p5)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
-                           QUERY PLAN
------------------------------------------------------------------
- Merge Left Join
-   Merge Cond: ((((p1.a - 1)) = p5.a) AND (((p1.b - 1)) = p5.b))
-   ->  Sort
-         Sort Key: ((p1.a - 1)), ((p1.b - 1))
+                         QUERY PLAN
+------------------------------------------------------------
+ Hash Right Join
+   Hash Cond: ((p5.a = (p1.a - 1)) AND (p5.b = (p1.b - 1)))
+   ->  Seq Scan on p5
+   ->  Hash
          ->  Seq Scan on p1
-               Remote Filter: (a <= 30)
-   ->  Index Scan using p5_pkey on p5
-(7 rows)
+               Storage Filter: (a <= 30)
+(6 rows)
 
 /*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
                                                                                QUERY PLAN
@@ -134,7 +134,7 @@ explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 
  YB Batched Nested Loop Left Join
    Join Filter: (((p1.a - 1) = p5.a) AND ((p1.b - 1) = p5.b))
    ->  Seq Scan on p1
-         Remote Filter: (a <= 30)
+         Storage Filter: (a <= 30)
    ->  Index Scan using p5_hash on p5
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((p1.a - 1), (p1.b - 1)), ROW(($1 - 1), ($1025 - 1)), ROW(($2 - 1), ($1026 - 1)), ..., ROW(($1023 - 1), ($2047 - 1))]))
 (6 rows)
@@ -145,7 +145,7 @@ explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 
  YB Batched Nested Loop Left Join
    Join Filter: (((p1.a - 1) = p5.a) AND ((p1.b - 1) = p5.b))
    ->  Seq Scan on p1
-         Remote Filter: (a <= 30)
+         Storage Filter: (a <= 30)
    ->  Index Scan using p5_hash_asc on p5
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((p1.a - 1), (p1.b - 1)), ROW(($1 - 1), ($1025 - 1)), ROW(($2 - 1), ($1026 - 1)), ..., ROW(($1023 - 1), ($2047 - 1))]))
 (6 rows)
@@ -193,49 +193,50 @@ DROP TABLE t10;
 DROP TABLE t11;
 DROP TABLE t12;
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
-                              QUERY PLAN
------------------------------------------------------------------------
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  Seq Scan on p3 t3
-         Remote Filter: (a <= 30)
-   ->  Nested Loop
+         Storage Filter: (a <= 30)
+   ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
          ->  Index Scan using p1_pkey on p1 t1
                Index Cond: (a = ANY (ARRAY[t3.a, $1, $2, ..., $1023]))
-               Remote Filter: (a <= 100)
-         ->  Seq Scan on p2 t2
-               Remote Filter: (a <= 100)
-(11 rows)
+               Storage Filter: (a <= 100)
+         ->  Index Scan using p2_pkey on p2 t2
+               Index Cond: (b = ANY (ARRAY[t1.a, $1025, $1026, ..., $2047]))
+               Storage Filter: (a <= 100)
+(12 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
-                  QUERY PLAN
-----------------------------------------------
- Hash Left Join
-   Hash Cond: (t1.a = t3.a)
-   ->  Hash Join
-         Hash Cond: (t1.a = t2.b)
-         ->  Seq Scan on p1 t1
-               Remote Filter: (b <= 10)
-         ->  Hash
-               ->  Seq Scan on p2 t2
-                     Remote Filter: (b <= 15)
+                     QUERY PLAN
+-----------------------------------------------------
+ Hash Right Join
+   Hash Cond: (t3.a = t1.a)
+   ->  Seq Scan on p3 t3
    ->  Hash
-         ->  Seq Scan on p3 t3
+         ->  Hash Join
+               Hash Cond: (t1.a = t2.b)
+               ->  Seq Scan on p1 t1
+                     Storage Filter: (b <= 10)
+               ->  Hash
+                     ->  Seq Scan on p2 t2
+                           Storage Filter: (b <= 15)
 (11 rows)
 
 /*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
- Nested Loop Left Join
-   Join Filter: (t3.a = t1.a)
+ Hash Left Join
+   Hash Cond: (t1.a = t3.a)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
          ->  Seq Scan on p1 t1
-               Remote Filter: (b <= 10)
+               Storage Filter: (b <= 10)
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: ((b = ANY (ARRAY[t1.a, $1, $2, ..., $1023])) AND (b <= 15))
-   ->  Materialize
+   ->  Hash
          ->  Seq Scan on p3 t3
 (10 rows)
 
@@ -246,18 +247,18 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Remote Filter: (a <= 40)
+         Storage Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (6 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
             QUERY PLAN
-----------------------------------
+-----------------------------------
  Hash Anti Join
    Hash Cond: (t1.a = t2.b)
    ->  Seq Scan on p1 t1
-         Remote Filter: (a <= 40)
+         Storage Filter: (a <= 40)
    ->  Hash
          ->  Seq Scan on p2 t2
 (6 rows)
@@ -269,18 +270,18 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
  YB Batched Nested Loop Semi Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Remote Filter: (a <= 40)
+         Storage Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
 (6 rows)
 
 /*+NoYbBatchedNL(t1 t2)*/ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
             QUERY PLAN
-----------------------------------
+-----------------------------------
  Hash Semi Join
    Hash Cond: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Remote Filter: (a <= 40)
+         Storage Filter: (a <= 40)
    ->  Hash
          ->  Seq Scan on p2 t2
 (6 rows)
@@ -295,7 +296,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
          ->  Seq Scan on p2 t2
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.b, $1, $2, ..., $1023]))
-         Remote Filter: (a <= 40)
+         Storage Filter: (a <= 40)
 (8 rows)
 
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
@@ -305,14 +306,14 @@ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a =
    Sort Key: a.a, d.a
    ->  Nested Loop
          ->  Seq Scan on p4 d
-               Remote Filter: (b = 10)
+               Storage Filter: (b = 10)
          ->  Materialize
                ->  YB Batched Nested Loop Join
                      Join Filter: (a.a = b.a)
                      ->  YB Batched Nested Loop Join
                            Join Filter: (a.a = c.a)
-                           ->  Index Scan using p1_b_idx on p1 a
-                                 Index Cond: (b = 10)
+                           ->  Seq Scan on p1 a
+                                 Storage Filter: (b = 10)
                            ->  Index Scan using p3_pkey on p3 c
                                  Index Cond: (a = ANY (ARRAY[a.a, $1, $2, ..., $1023]))
                      ->  Index Scan using p2_pkey on p2 b
@@ -326,14 +327,14 @@ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a =
    Sort Key: a.a, d.a
    ->  Nested Loop
          ->  Seq Scan on p4 d
-               Remote Filter: (b = 10)
+               Storage Filter: (b = 10)
          ->  Materialize
                ->  YB Batched Nested Loop Join
                      Join Filter: (a.a = c.a)
                      ->  YB Batched Nested Loop Join
                            Join Filter: (a.a = b.a)
-                           ->  Index Scan using p1_b_idx on p1 a
-                                 Index Cond: (b = 10)
+                           ->  Seq Scan on p1 a
+                                 Storage Filter: (b = 10)
                            ->  Index Scan using p2_pkey on p2 b
                                  Index Cond: (a = ANY (ARRAY[a.a, $1, $2, ..., $1023]))
                      ->  Index Scan using p3_pkey on p3 c
@@ -441,7 +442,7 @@ on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a < 5;
                Index Cond: (a < 5)
          ->  Index Scan using s2_pkey on s2
    ->  Materialize
-         ->  Index Scan using s3_pkey on s3
+         ->  Seq Scan on s3
 (9 rows)
 
 drop table s1;
@@ -457,7 +458,7 @@ explain (costs off) /*+IndexScan(p2)*/ select * from test1 p1 join test2 p2 on p
 --------------------------------------------------------------------
  Nested Loop
    Join Filter: ((p1.a = p2.a) AND (p1.b = p2.b) AND (p1.c = p2.c))
-   ->  Index Scan using test1_pkey on test1 p1
+   ->  Seq Scan on test1 p1
    ->  Materialize
          ->  Index Scan using test2_pkey on test2 p2
 (5 rows)
@@ -554,33 +555,33 @@ explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order b
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
-                  QUERY PLAN
------------------------------------------------
- Hash Right Join
-   Hash Cond: (p2.c1 = p1.c1)
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (p2.c1 = p1.c1)
+   ->  Seq Scan on q1 p1
    ->  Nested Loop
-         ->  Seq Scan on q2 p2
+         ->  Index Scan using q2_pkey on q2 p2
+               Index Cond: (c1 = ANY (ARRAY[p1.c1, $1, $2, ..., $1023]))
          ->  Materialize
-               ->  Seq Scan on q3 p3
-   ->  Hash
-         ->  Index Scan using q1_pkey on q1 p1
+               ->  Index Only Scan using q3_range on q3 p3
 (8 rows)
 
 -- this should not be a batched NL join as it contains an unbatchable clause
 -- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
 -- present
 explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
-                  QUERY PLAN
------------------------------------------------
+                        QUERY PLAN
+-----------------------------------------------------------
  Hash Right Join
    Hash Cond: (p2.c1 = p1.c1)
    Join Filter: (p3.a <= p1.c1)
    ->  Nested Loop
          ->  Seq Scan on q2 p2
          ->  Materialize
-               ->  Seq Scan on q3 p3
+               ->  Index Only Scan using q3_range on q3 p3
    ->  Hash
-         ->  Index Scan using q1_pkey on q1 p1
+         ->  Seq Scan on q1 p1
 (9 rows)
 
 DROP TABLE q1;
@@ -597,20 +598,18 @@ create table tab2_p3 partition of tab2 for values from (20) to (maxvalue);
 create index i_tab2_r2 on tab2 (r2 asc);
 SET yb_bnl_batch_size = 1024;
 explain (costs off) /*+ Leading((tab1 tab2)) IndexScan(tab2) NestLoop(tab1 tab2) */ select * from tab1 join tab2 on tab1.r1 = tab2.r2;
-                             QUERY PLAN
---------------------------------------------------------------------
+                          QUERY PLAN
+--------------------------------------------------------------
  Nested Loop
    Join Filter: (tab1.r1 = tab2_p1.r2)
    ->  Seq Scan on tab1
    ->  Materialize
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Append
-                     ->  Index Scan using tab2_p1_r2_idx on tab2_p1
-                     ->  Index Scan using tab2_p2_r2_idx on tab2_p2
-                     ->  Index Scan using tab2_p3_r2_idx on tab2_p3
-                     ->  Index Scan using tab2_p0_r2_idx on tab2_p0
-(11 rows)
+         ->  Append
+               ->  Index Scan using tab2_p1_r2_idx on tab2_p1
+               ->  Index Scan using tab2_p2_r2_idx on tab2_p2
+               ->  Index Scan using tab2_p3_r2_idx on tab2_p3
+               ->  Index Scan using tab2_p0_r2_idx on tab2_p0
+(9 rows)
 
 drop table tab2;
 drop table tab1;

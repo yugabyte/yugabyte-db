@@ -430,7 +430,10 @@ def linux_get_ip_address(ifname):
 # and connect_options to connect to the remote host
 # returns a comma separated string of the root mount paths for those paths
 def get_mount_roots(connect_options, paths):
-    remote_shell = RemoteShell(connect_options)
+    connect_options_copy = connect_options.copy()
+    # Remove node_agent_user to default to the user of the server process.
+    connect_options_copy.pop("node_agent_user")
+    remote_shell = RemoteShell(connect_options_copy)
     remote_cmd = 'df --output=target {}'.format(" ".join(paths.split(",")))
     # Example output of the df cmd
     # $ df --output=target /bar/foo/rnd /storage/abc

@@ -22,10 +22,10 @@ servers:
       host_port:
         default: 'localhost:9000'
 tags:
-  - name: Universe Upgrades Management
-    description: APIs to upgrade various parts of a Universe
+  - name: Universe
+    description: CRUD operations for a Universe
 paths:
-  $ref: paths/_index.yaml
+  $ref: "paths/_index.yaml"
 components:
   securitySchemes:
     apiKeyAuth:

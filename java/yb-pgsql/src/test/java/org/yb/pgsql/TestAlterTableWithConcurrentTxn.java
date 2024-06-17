@@ -16,6 +16,7 @@ import static org.yb.AssertionWrappers.*;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Map;
 
 import com.yugabyte.util.PSQLException;
 import org.junit.Test;
@@ -26,6 +27,13 @@ import org.yb.YBTestRunner;
 
 @RunWith(value = YBTestRunner.class)
 public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_yb_test_table_rewrite_keep_old_table", "true");
+    return flagMap;
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAlterTableWithConcurrentTxn.class);
 
   // When a transaction is performed on a table that is altered,
@@ -52,7 +60,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       DROP_IDENTITY, ADD_IDENTITY,
       ENABLE_ROW_SECURITY, DISABLE_ROW_SECURITY,
       ATTACH_PARTITION, DETACH_PARTITION,
-      ADD_FOREIGN_KEY, DROP_FOREIGN_KEY }
+      ADD_FOREIGN_KEY, DROP_FOREIGN_KEY,
+      ADD_PRIMARY_KEY, DROP_PRIMARY_KEY,
+      ADD_COLUMN_WITH_VOLATILE_DEFAULT, ALTER_TYPE}
 
   private void prepareAndPopulateTable(AlterCommand alterCommand, String tableName)
       throws Exception {
@@ -77,7 +87,12 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       }
 
       // Create table
-      String createTableQuery = "CREATE TABLE " + tableName + " (a INT PRIMARY KEY";
+      String createTableQuery = "CREATE TABLE " + tableName;
+      if (alterCommand == AlterCommand.ADD_PRIMARY_KEY) {
+        createTableQuery += " (a INT";
+      } else {
+        createTableQuery += " (a INT PRIMARY KEY";
+      }
       if (alterCommand == AlterCommand.DROP_CONSTRAINT) {
         createTableQuery += " CONSTRAINT positive CHECK (a > 0)";
       }
@@ -91,6 +106,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         createTableQuery += ", c INT NOT NULL";
       } else if (alterCommand == AlterCommand.DROP_IDENTITY) {
         createTableQuery += ", c INT GENERATED ALWAYS AS IDENTITY";
+      }
+      if (alterCommand == AlterCommand.ALTER_TYPE) {
+        createTableQuery += ", d TEXT";
       }
       createTableQuery += ")";
       if (alterCommand == AlterCommand.ATTACH_PARTITION ||
@@ -146,7 +164,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         case DISABLE_ROW_SECURITY:
         case DROP_IDENTITY:
         case ATTACH_PARTITION:
-        case DETACH_PARTITION: {
+        case DETACH_PARTITION:
+        case ADD_PRIMARY_KEY:
+        case DROP_PRIMARY_KEY:
+        case ADD_COLUMN_WITH_VOLATILE_DEFAULT: {
           statement.execute("INSERT INTO " + tableName + " VALUES (1, 'foo')");
           break;
         }
@@ -170,6 +191,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           statement.execute("INSERT INTO " + tableName + "_f VALUES (1)");
           break;
         }
+        case ALTER_TYPE: {
+          statement.execute("INSERT INTO " + tableName + " VALUES (1, 'foo', 'bar')");
+          break;
+        }
         default: {
           throw new Exception("Alter command type " + alterCommand + " not supported");
         }
@@ -178,6 +203,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   }
 
   private String getAlterSql(AlterCommand alterCommand, String tableName) throws Exception {
+    // Set test flag to skip dropping old tables for table rewrite operations.
+    String rewriteTestFlag = "SET yb_test_table_rewrite_keep_old_table=true;";
     switch (alterCommand) {
       case DROP_COLUMN: {
         return "ALTER TABLE " + tableName + " DROP COLUMN b";
@@ -225,7 +252,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         return "ALTER TABLE " + tableName + " ALTER COLUMN c DROP IDENTITY";
       }
       case ATTACH_PARTITION: {
-        return "ALTER TABLE " + tableName + " ATTACH PARTITION " +
+        return rewriteTestFlag + "ALTER TABLE " + tableName + " ATTACH PARTITION " +
             tableName + "_p2 FOR VALUES IN (2)";
       }
       case DETACH_PARTITION: {
@@ -237,6 +264,21 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       }
       case DROP_FOREIGN_KEY: {
         return "ALTER TABLE " + tableName + "_f DROP CONSTRAINT c";
+      }
+      case ADD_PRIMARY_KEY: {
+        return rewriteTestFlag + "ALTER TABLE " + tableName + " ADD PRIMARY KEY (a)";
+      }
+      case DROP_PRIMARY_KEY: {
+        return rewriteTestFlag + "ALTER TABLE " + tableName + " DROP CONSTRAINT " + tableName
+          + "_pkey";
+      }
+      case ADD_COLUMN_WITH_VOLATILE_DEFAULT: {
+        return rewriteTestFlag + "ALTER TABLE " + tableName
+          + " ADD COLUMN d float DEFAULT random()";
+      }
+      case ALTER_TYPE: {
+        return rewriteTestFlag + "ALTER TABLE " + tableName
+          + " ALTER COLUMN d TYPE int USING length(d)";
       }
       default: {
         throw new Exception("Alter command type " + alterCommand + " not supported");
@@ -275,7 +317,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           case SET_NOT_NULL:
           case DROP_NOT_NULL:
           case ENABLE_ROW_SECURITY:
-          case DISABLE_ROW_SECURITY: {
+          case DISABLE_ROW_SECURITY:
+          case ADD_PRIMARY_KEY:
+          case DROP_PRIMARY_KEY: {
             return "INSERT INTO " + tableName + " VALUES (2, 'foo')";
           }
           case ADD_FOREIGN_KEY:
@@ -313,6 +357,20 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
               return "INSERT INTO " + tableName + " VALUES (2, 'bar', 2)";
             }
           }
+          case ADD_COLUMN_WITH_VOLATILE_DEFAULT: {
+            if (useOriginalSchema) {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar')";
+            } else {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar', 2.0)";
+            }
+          }
+          case ALTER_TYPE: {
+            if (useOriginalSchema) {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar', 'foobar')";
+            } else {
+              return "INSERT INTO " + tableName + " VALUES (2, 'bar', 6)";
+            }
+          }
           default: {
             throw new Exception("Alter command type " + alterCommand + " not supported");
           }
@@ -337,6 +395,10 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
           case DROP_IDENTITY:
           case ADD_FOREIGN_KEY:
           case DROP_FOREIGN_KEY:
+          case ADD_PRIMARY_KEY:
+          case DROP_PRIMARY_KEY:
+          case ADD_COLUMN_WITH_VOLATILE_DEFAULT:
+          case ALTER_TYPE:
           case ATTACH_PARTITION:
             return "SELECT a FROM " + tableName + " WHERE a = 1";
           case DETACH_PARTITION:

@@ -12,12 +12,9 @@
 //
 package org.yb.loadtester;
 
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-
-import java.util.Arrays;
 
 /**
  * This is an integration test that ensures we can expand, shrink a YB cluster

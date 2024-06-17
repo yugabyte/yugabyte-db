@@ -1,0 +1,72 @@
+title: YSQLAuditConfig
+description: YSQL Audit Logging Configuration. Part of AuditLogConfig.
+type: object
+required:
+  - classes
+  - enabled
+  - log_catalog
+  - log_client
+  - log_level
+  - log_parameter
+  - log_parameter_max_size
+  - log_relation
+  - log_rows
+  - log_statement
+  - log_statement_once
+properties:
+  classes:
+    description: YSQL statement classes
+    type: array
+    items:
+      enum:
+        - READ
+        - WRITE
+        - FUNCTION
+        - ROLE
+        - DDL
+        - MISC
+        - MISC_SET
+      type: string
+    uniqueItems: true
+  enabled:
+    description: Enabled
+    type: boolean
+    readOnly: true
+  log_catalog:
+    description: Log catalog
+    type: boolean
+  log_client:
+    description: Log client
+    type: boolean
+  log_level:
+    description: Log level
+    type: string
+    enum:
+      - DEBUG1
+      - DEBUG2
+      - DEBUG3
+      - DEBUG4
+      - DEBUG5
+      - INFO
+      - NOTICE
+      - WARNING
+      - LOG
+  log_parameter:
+    description: Log parameter
+    type: boolean
+  log_parameter_max_size:
+    description: Log parameter max size
+    type: integer
+    format: int32
+  log_relation:
+    description: Log relation
+    type: boolean
+  log_rows:
+    description: Log row
+    type: boolean
+  log_statement:
+    description: Log statement
+    type: boolean
+  log_statement_once:
+    description: Log statement once
+    type: boolean

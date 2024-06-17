@@ -54,8 +54,8 @@ export default class MetricsPanelOverview extends Component {
 
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
-      metric.layout.width = this.state.dimensions.width || 300;
-      metric.layout.height = 145;
+      metric.layout.width = this.props.width || this.state.dimensions.width || 300;
+      metric.layout.height = this.props.height || 145;
       metric.layout.title = '';
       metric.layout.showlegend = false;
       metric.layout.margin = {

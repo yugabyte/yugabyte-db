@@ -945,6 +945,37 @@ NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table minmaxtest1
 drop cascades to table minmaxtest2
 drop cascades to table minmaxtest3
+-- DISTINCT can also trigger wrong answers with hash aggregation (bug #18465)
+begin;
+set local enable_sort = off;
+explain (costs off)
+  select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+  from int4_tbl t0;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Seq Scan on int4_tbl t0
+   SubPlan 2
+     ->  HashAggregate
+           Group Key: $1
+           InitPlan 1 (returns $1)
+             ->  Limit
+                   ->  Seq Scan on int4_tbl t1
+                         Filter: ((f1 IS NOT NULL) AND (f1 = t0.f1))
+           ->  Result
+(9 rows)
+
+select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+from int4_tbl t0;
+     f1      |     min     
+-------------+-------------
+           0 |           0
+      123456 |      123456
+     -123456 |     -123456
+  2147483647 |  2147483647
+ -2147483647 | -2147483647
+(5 rows)
+
+rollback;
 -- check for correct detection of nested-aggregate errors
 select max(min(unique1)) from tenk1;
 ERROR:  aggregate function calls cannot be nested
@@ -2164,4 +2195,22 @@ select v||'a', case when v||'a' = 'aa' then 1 else 0 end, count(*)
  aa       |    1 |     1
  ba       |    0 |     1
 (2 rows)
+
+-- Make sure that generation of HashAggregate for uniqification purposes
+-- does not lead to array overflow due to unexpected duplicate hash keys
+-- see CAFeeJoKKu0u+A_A9R9316djW-YW3-+Gtgvy3ju655qRHR3jtdA@mail.gmail.com
+explain (costs off)
+  select 1 from tenk1
+   where (hundred, thousand) in (select twothousand, twothousand from onek);
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Hash Join
+   Hash Cond: (tenk1.hundred = onek.twothousand)
+   ->  Seq Scan on tenk1
+         Filter: (hundred = thousand)
+   ->  Hash
+         ->  HashAggregate
+               Group Key: onek.twothousand, onek.twothousand
+               ->  Seq Scan on onek
+(8 rows)
 

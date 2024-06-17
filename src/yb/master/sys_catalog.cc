@@ -144,6 +144,7 @@ METRIC_DEFINE_counter(
 
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
+DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
@@ -346,7 +347,8 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-      partition_schema, "" /* pg_table_id */);
+      partition_schema, "" /* pg_table_id */,
+      tablet::SkipTableTombstoneCheck::kTrue);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
@@ -444,7 +446,7 @@ void SysCatalogTable::SysCatalogStateChanged(
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
-    auto client_future = master_->async_client_initializer().get_client_future();
+    auto client_future = master_->client_future();
 
     // Check if client was already initialized, otherwise we don't have to refresh master leader,
     // since it will be fetched as part of initialization.
@@ -551,14 +553,10 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
-      metadata,
-      local_peer_pb_,
-      scoped_refptr<server::Clock>(master_->clock()),
+      metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_,
-      nullptr /* tablet_splitter */,
-      master_->async_client_initializer().get_client_future());
+      metric_registry_, nullptr /* tablet_splitter */, master_->client_future());
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
@@ -574,13 +572,14 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
-  consensus::RetryableRequestsManager retryable_requests_manager(
-      metadata->raft_group_id(),
-      metadata->fs_manager(),
-      metadata->wal_dir(),
-      master_->mem_tracker(),
-      LogPrefix());
-  RETURN_NOT_OK(retryable_requests_manager.Init(master_->clock()));
+
+  auto bootstrap_state_manager = std::make_shared<tablet::TabletBootstrapStateManager>(
+      metadata->raft_group_id(), metadata->fs_manager(), metadata->wal_dir());
+  RETURN_NOT_OK(bootstrap_state_manager->Init());
+
+  consensus::RetryableRequests retryable_requests(master_->mem_tracker(), LogPrefix());
+  retryable_requests.SetServerClock(master_->clock());
+  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
 
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
@@ -599,7 +598,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
-      .client_future = master_->async_client_initializer().get_client_future(),
+      .client_future = master_->client_future(),
       .clock = scoped_refptr<server::Clock>(master_->clock()),
       .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
       .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
@@ -639,7 +638,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests_manager = &retryable_requests_manager,
+      .retryable_requests = &retryable_requests,
+      .bootstrap_state_manager = bootstrap_state_manager.get(),
       .bootstrap_retryable_requests = true
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
@@ -659,10 +659,11 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           raft_pool(),
           raft_notifications_pool(),
           tablet_prepare_pool(),
-          &retryable_requests_manager /* retryable_requests_manager */,
+          &retryable_requests,
+          bootstrap_state_manager,
           nullptr,
           multi_raft_manager_.get(),
-          nullptr /* flush_retryable_requests_pool */),
+          nullptr /* flush_bootstrap_state_pool */),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info), "Failed to Start() TabletPeer");
@@ -1333,7 +1334,6 @@ Status SysCatalogTable::ReadPgClassInfo(
       continue;
     }
 
-    bool is_colocated_table = false;
     if (is_colocated_database) {
       // A table in a colocated database is colocated unless it opted out
       // of colocation.
@@ -1345,15 +1345,6 @@ Status SysCatalogTable::ReadPgClassInfo(
         // their own entry in YugaByte's catalog manager. So, we skip them here.
         continue;
       }
-
-      is_colocated_table = table_info->IsColocatedUserTable();
-    }
-
-    if (is_colocated_table) {
-      // This is a colocated table. This cannot have a tablespace associated with it.
-      VLOG(5) << "Table { oid: " << oid << ", name: " << table_name << " }"
-              << " skipped as it is colocated";
-      continue;
     }
 
     // Process the tablespace oid for this table/index.

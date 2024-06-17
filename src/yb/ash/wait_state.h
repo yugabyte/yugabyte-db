@@ -12,6 +12,8 @@
 //
 #pragma once
 
+#include <sys/socket.h>
+
 #include <atomic>
 #include <string>
 
@@ -28,11 +30,12 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/uuid.h"
 
-DECLARE_bool(TEST_export_wait_state_names);
-DECLARE_bool(TEST_export_ash_uuids_as_hex_strings);
+DECLARE_bool(ysql_yb_enable_ash);
 
+#define SET_WAIT_STATUS_TO_CODE(ptr, code) \
+  if ((ptr)) (ptr)->set_code(code, __PRETTY_FUNCTION__)
 #define SET_WAIT_STATUS_TO(ptr, code) \
-  if ((ptr)) (ptr)->set_code(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
+  SET_WAIT_STATUS_TO_CODE(ptr, BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
 #define SET_WAIT_STATUS(code) \
   SET_WAIT_STATUS_TO(yb::ash::WaitStateInfo::CurrentWaitState(), code)
 
@@ -40,7 +43,14 @@ DECLARE_bool(TEST_export_ash_uuids_as_hex_strings);
   yb::ash::ScopedAdoptWaitState _scoped_state { (ptr) }
 
 #define SCOPED_WAIT_STATUS(code) \
-  yb::ash::ScopedWaitStatus _scoped_status(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
+  yb::ash::ScopedWaitStatus _scoped_status( \
+      BOOST_PP_CAT(yb::ash::WaitStateCode::k, code), __PRETTY_FUNCTION__)
+
+#define ASH_ENABLE_CONCURRENT_UPDATES_FOR(ptr) \
+  yb::ash::EnableConcurrentUpdates(ptr)
+#define ASH_ENABLE_CONCURRENT_UPDATES() \
+  ASH_ENABLE_CONCURRENT_UPDATES_FOR(yb::ash::WaitStateInfo::CurrentWaitState())
+
 
 namespace yb {
 class Trace;
@@ -66,17 +76,11 @@ namespace yb::ash {
 //   a specific wait event component.
 // - The next 8 bits are set to 0, and reserved for future use.
 // - Each wait event class may have up to 2^16 wait events.
-//
-// Note that it's not possible to get the wait event class solely from the 'class'
-// bits because those bits are reused for each component. You need the first 8 bits
-// to get the wait event class. Similar thing applies for wait event.
 
 #define YB_ASH_CLASS_BITS          4U
 #define YB_ASH_CLASS_POSITION      24U
-
-#define YB_ASH_MAKE_CLASS(comp) \
-    (yb::to_underlying(BOOST_PP_CAT(yb::ash::Component::k, comp)) << \
-     YB_ASH_CLASS_BITS)
+#define YB_ASH_COMPONENT_POSITION  (YB_ASH_CLASS_POSITION + YB_ASH_CLASS_BITS)
+#define YB_ASH_COMPONENT_BITS      4U
 
 #define YB_ASH_MAKE_EVENT(class) \
     (static_cast<uint32_t>(yb::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
@@ -85,35 +89,46 @@ namespace yb::ash {
 // YB ASH Wait Components (4 bits)
 // Don't reorder this enum
 YB_DEFINE_TYPED_ENUM(Component, uint8_t,
-    (kPostgres)
+    (kYSQL)
     (kYCQL)
-    (kTServer));
+    (kTServer)
+    (kMaster));
 
-// YB ASH Wait Classes (8 bits)
+// YB ASH Wait Classes (4 bits)
 // Don't reorder this enum
 YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     // PG classes
-    ((kTServerWait, YB_ASH_MAKE_CLASS(Postgres)))
+    (kTServerWait)
 
-    // YB Client classes
-    ((kCqlQueryProcessing, YB_ASH_MAKE_CLASS(YCQL)))
+    // QL/YB Client classes
+    (kYCQLQueryProcessing)
     (kClient)
 
-    // Tserver classes
-    ((kRpc, YB_ASH_MAKE_CLASS(TServer)))
-    (kFlushAndCompaction)
+    // Docdb related classes
+    (kRpc)
     (kConsensus)
     (kTabletWait)
     (kRocksDB)
     (kCommon));
 
+// This is YB equivalent of wait events from pgstat.h, the term wait event and wait state
+// is used interchangeably in the code. The uint32_t values of all the wait events across PG
+// and WaitStateCode is distinct, so PG can use these wait events as well.
+//
+// The difference between PG and us is that this enum is only 28 bits long. 4 bits (component bits)
+// are prepended while fetching the wait events so that we can reuse some wait events across
+// components. Another difference is that if a PG wait event were casted/interpreted as an
+// ASH wait event, the bits where we expect to see class information would actually contain type
+// information.
+//
+// The wait event type is not directly encoded in our wait events.
 YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Don't change the value of kUnused
     ((kUnused, 0xFFFFFFFFU))
 
     // Wait states related to postgres
-    // Don't change the position of kPostgresReserved
-    ((kPostgresReserved, YB_ASH_MAKE_EVENT(TServerWait)))
+    // Don't change the position of kYSQLReserved
+    ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
     (kCatalogRead)
     (kIndexRead)
     (kStorageRead)
@@ -134,7 +149,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kCreatingNewTablet)
     (kSaveRaftGroupMetadataToDisk)
     (kTransactionStatusCache_DoGetCommitData)
-    (kWaitForYsqlBackendsCatalogVersion)
+    (kWaitForYSQLBackendsCatalogVersion)
     (kWriteSysCatalogSnapshotToDisk)
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
@@ -159,13 +174,17 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kRocksDB_RateLimiter)
     (kRocksDB_WaitForSubcompaction)
     (kRocksDB_NewIterator)
-    ((kCQL_Parse, YB_ASH_MAKE_EVENT(CqlQueryProcessing)))
-    (kCQL_Read)
-    (kCQL_Write)
-    (kCQL_Analyze)
-    (kCQL_Execute)
-    ((kYBC_WaitingOnDocdb, YB_ASH_MAKE_EVENT(Client)))
-    (kYBC_LookingUpTablet)
+
+    // Wait states related to YCQL
+    ((kYCQL_Parse, YB_ASH_MAKE_EVENT(YCQLQueryProcessing)))
+    (kYCQL_Read)
+    (kYCQL_Write)
+    (kYCQL_Analyze)
+    (kYCQL_Execute)
+
+    // Wait states related to YBClient
+    ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
+    (kYBClient_LookingUpTablet)
 );
 
 // We also want to track background operations such as, log-append
@@ -174,18 +193,31 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
 // fixed query-ids to identify these background tasks.
 YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForLogAppender, 1))
-  (kQueryIdForFlush)
-  (kQueryIdForCompaction)
-  (kQueryIdForRaftUpdateConsensus)
+  ((kQueryIdForFlush, 2))
+  ((kQueryIdForCompaction, 3))
+  ((kQueryIdForRaftUpdateConsensus, 4))
+  ((kQueryIdForCatalogRequests, 5))
+  ((kQueryIdForLogBackgroundSync, 6))
 );
+
+YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
+  (kCpu)
+  (kDiskIO)
+  (kNetwork)
+  (kWaitOnCondition)
+);
+
+WaitStateType GetWaitStateType(WaitStateCode code);
 
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
   uint64_t query_id = 0;
   uint64_t session_id = 0;
+  uint32_t database_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
+  uint8_t addr_family = AF_UNSPEC;
 
   void set_client_host_port(const HostPort& host_port);
 
@@ -204,31 +236,29 @@ struct AshMetadata {
     if (other.session_id != 0) {
       session_id = other.session_id;
     }
+    if (other.database_id != 0) {
+      database_id = other.database_id;
+    }
     if (other.rpc_request_id != 0) {
       rpc_request_id = other.rpc_request_id;
     }
     if (other.client_host_port != HostPort()) {
       client_host_port = other.client_host_port;
     }
+    if (other.addr_family != AF_UNSPEC) {
+      addr_family = other.addr_family;
+    }
   }
 
   template <class PB>
-  void ToPB(PB* pb, bool use_hex) const {
+  void ToPB(PB* pb) const {
     if (!root_request_id.IsNil()) {
-      if (use_hex) {
-        pb->set_root_request_id(root_request_id.ToHexString());
-      } else {
-        root_request_id.ToBytes(pb->mutable_root_request_id());
-      }
+      root_request_id.ToBytes(pb->mutable_root_request_id());
     } else {
       pb->clear_root_request_id();
     }
     if (!yql_endpoint_tserver_uuid.IsNil()) {
-      if (use_hex) {
-        pb->set_yql_endpoint_tserver_uuid(yql_endpoint_tserver_uuid.ToHexString());
-      } else {
-        yql_endpoint_tserver_uuid.ToBytes(pb->mutable_yql_endpoint_tserver_uuid());
-      }
+      yql_endpoint_tserver_uuid.ToBytes(pb->mutable_yql_endpoint_tserver_uuid());
     } else {
       pb->clear_yql_endpoint_tserver_uuid();
     }
@@ -242,6 +272,11 @@ struct AshMetadata {
     } else { // valid PgClient session id cannot be zero
       pb->clear_session_id();
     }
+    if (database_id != 0) {
+      pb->set_database_id(database_id);
+    } else {
+      pb->clear_database_id();
+    }
     if (rpc_request_id != 0) {
       pb->set_rpc_request_id(rpc_request_id);
     } else {
@@ -252,21 +287,18 @@ struct AshMetadata {
     } else {
       pb->clear_client_host_port();
     }
+    if (addr_family != AF_UNSPEC) {
+      pb->set_addr_family(addr_family);
+    } else {
+      pb->clear_addr_family();
+    }
   }
 
   template <class PB>
-  void ToPB(PB* pb) const {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
-    ToPB(pb, use_hex);
-  }
-
-  template <class PB>
-  static AshMetadata FromPB(const PB& pb, bool use_hex) {
+  static AshMetadata FromPB(const PB& pb) {
     Uuid root_request_id = Uuid::Nil();
     if (pb.has_root_request_id()) {
-      Result<Uuid> result =
-          (use_hex ? Uuid::FromHexString(pb.root_request_id())
-                   : Uuid::FromSlice(pb.root_request_id()));
+      Result<Uuid> result = Uuid::FromSlice(pb.root_request_id());
       WARN_NOT_OK(result, "Could not decode uuid from protobuf.");
       if (result.ok()) {
         root_request_id = *result;
@@ -274,9 +306,7 @@ struct AshMetadata {
     }
     Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
     if (pb.has_yql_endpoint_tserver_uuid()) {
-      Result<Uuid> result =
-          (use_hex ? Uuid::FromHexString(pb.yql_endpoint_tserver_uuid())
-                   : Uuid::FromSlice(pb.yql_endpoint_tserver_uuid()));
+      Result<Uuid> result = Uuid::FromSlice(pb.yql_endpoint_tserver_uuid());
       WARN_NOT_OK(result, "Could not decode uuid from protobuf.");
       if (result.ok()) {
         yql_endpoint_tserver_uuid = *result;
@@ -287,8 +317,10 @@ struct AshMetadata {
         yql_endpoint_tserver_uuid,             // yql_endpoint_tserver_uuid
         pb.query_id(),                         // query_id
         pb.session_id(),                       // session_id
+        pb.database_id(),                      // database_id
         pb.rpc_request_id(),                   // rpc_request_id
-        HostPortFromPB(pb.client_host_port())  // client_host_port
+        HostPortFromPB(pb.client_host_port()), // client_host_port
+        static_cast<uint8_t>(pb.addr_family()) // addr_family
     };
   }
 };
@@ -317,11 +349,10 @@ struct AshAuxInfo {
 
 class WaitStateInfo {
  public:
-  WaitStateInfo() {}
-  explicit WaitStateInfo(AshMetadata&& meta);
+  WaitStateInfo();
   virtual ~WaitStateInfo() = default;
 
-  void set_code(WaitStateCode c);
+  void set_code(WaitStateCode c, const char* location);
   WaitStateCode code() const;
   std::atomic<WaitStateCode>& mutable_code();
 
@@ -331,6 +362,7 @@ class WaitStateInfo {
   void set_query_id(uint64_t query_id) EXCLUDES(mutex_);
   uint64_t session_id() EXCLUDES(mutex_);
   void set_session_id(uint64_t session_id) EXCLUDES(mutex_);
+  int64_t rpc_request_id() EXCLUDES(mutex_);
   void set_rpc_request_id(int64_t id) EXCLUDES(mutex_);
   void set_client_host_port(const HostPort& host_port) EXCLUDES(mutex_);
 
@@ -341,40 +373,27 @@ class WaitStateInfo {
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
 
   template <class PB>
-  static void UpdateMetadataFromPB(const PB& pb, bool use_hex) {
+  static void UpdateMetadataFromPB(const PB& pb) {
     const auto& wait_state = CurrentWaitState();
     if (wait_state) {
-      wait_state->UpdateMetadata(AshMetadata::FromPB(pb, use_hex));
+      wait_state->UpdateMetadata(AshMetadata::FromPB(pb));
     }
   }
 
   template <class PB>
-  static void UpdateMetadataFromPB(const PB& pb) {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
-    UpdateMetadataFromPB(pb, use_hex);
-  }
-
-  template <class PB>
-  void MetadataToPB(PB* pb, bool use_hex) EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    metadata_.ToPB(pb, use_hex);
-  }
-
-  template <class PB>
   void MetadataToPB(PB* pb) EXCLUDES(mutex_) {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
-    MetadataToPB(pb, use_hex);
+    std::lock_guard lock(mutex_);
+    metadata_.ToPB(pb);
   }
 
   template <class PB>
-  void ToPB(PB* pb) EXCLUDES(mutex_) {
-    bool use_hex = GetAtomicFlag(&FLAGS_TEST_export_ash_uuids_as_hex_strings);
+  void ToPB(PB* pb, bool export_wait_state_names) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    metadata_.ToPB(pb->mutable_metadata(), use_hex);
+    metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = this->code();
-    pb->set_wait_status_code(yb::to_underlying(code));
-    if (FLAGS_TEST_export_wait_state_names) {
-      pb->set_wait_status_code_as_string(yb::ToString(code));
+    pb->set_wait_state_code(yb::to_underlying(code));
+    if (export_wait_state_names) {
+      pb->set_wait_state_code_as_string(yb::ToString(code));
     }
     aux_info_.ToPB(pb->mutable_aux_info());
   }
@@ -384,11 +403,23 @@ class WaitStateInfo {
   void TEST_SleepForTests(uint32_t sleep_time_ms);
   static bool TEST_EnteredSleep();
 
-  static WaitStateInfoPtr CreateIfAshIsEnabled();
+  template <class T>
+  static std::shared_ptr<T> CreateIfAshIsEnabled() {
+    return FLAGS_ysql_yb_enable_ash
+              ? std::make_shared<T>()
+              : nullptr;
+  }
 
   virtual void VTrace(int level, GStringPiece data) {
     VTraceTo(nullptr, level, data);
   }
+
+  virtual std::string DumpTraceToString() {
+    return "n/a";
+  }
+
+  void EnableConcurrentUpdates();
+  bool IsConcurrentUpdatesEnabled();
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);
@@ -400,8 +431,11 @@ class WaitStateInfo {
   AshMetadata metadata_ GUARDED_BY(mutex_);
   AshAuxInfo aux_info_ GUARDED_BY(mutex_);
 
+  std::atomic_bool concurrent_updates_allowed_{false};
   std::atomic<uint8_t> TEST_num_sleeps_{0};
 };
+
+void EnableConcurrentUpdates(const WaitStateInfoPtr& ptr);
 
 // A helper to adopt a WaitState and revert to the previous WaitState based on RAII.
 // This should only be used on the stack (and thus created and destroyed
@@ -432,11 +466,13 @@ class ScopedAdoptWaitState {
 // be reverted back to the previous state.
 class ScopedWaitStatus {
  public:
-  explicit ScopedWaitStatus(WaitStateCode code);
+  ScopedWaitStatus(WaitStateCode code, const char* location);
   ~ScopedWaitStatus();
 
  private:
   const WaitStateCode code_;
+  // The location where the scoped wait state is created. Used for printing useful debug messages.
+  const char* location_;
   const WaitStateCode prev_code_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedWaitStatus);
@@ -455,6 +491,7 @@ class WaitStateTracker {
 };
 
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
-WaitStateTracker& RaftLogAppenderWaitStatesTracker();
+WaitStateTracker& RaftLogWaitStatesTracker();
+WaitStateTracker& SharedMemoryPgPerformTracker();
 
 }  // namespace yb::ash

@@ -69,6 +69,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="JSON of custom data disk options to merge.")
         self.parser.add_argument("--custom_network_params", default=None,
                                  help="JSON of custom network interface options to merge.")
+        self.parser.add_argument("--ignore_plan", action="store_true", default=False,
+                                 help="Whether or not to skip passing in plan information.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)

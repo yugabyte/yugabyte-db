@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Sets;
+import com.google.common.hash.Hashing;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -43,6 +44,7 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -63,11 +65,13 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import javax.inject.Singleton;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -87,13 +91,13 @@ public class LocalNodeManager {
   private static final String MAX_MEM_RATIO_TSERVER = "0.1";
   private static final String MAX_MEM_RATIO_MASTER = "0.05";
 
-  private static final int ERROR_LINES_TO_DUMP = 100;
-  private static final int OUT_LINES_TO_DUMP = 20;
-  private static final int EXIT_LINES_TO_DUMP = 30;
+  private static final int ERROR_LINES_TO_DUMP = 200;
+  private static final int OUT_LINES_TO_DUMP = 200;
+  private static final int EXIT_LINES_TO_DUMP = 10;
 
   private static final String LOOPBACK_PREFIX = "127.0.";
   public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
-  private static final boolean RUN_LOG_THREADS = false;
+  private static final boolean RUN_LOG_THREADS = true;
 
   private static Map<String, String> versionBinPathMap = new HashMap<>();
 
@@ -101,6 +105,7 @@ public class LocalNodeManager {
   private Set<String> usedIPs = Sets.newConcurrentHashSet();
 
   private Map<String, NodeInfo> nodesByNameMap = new ConcurrentHashMap<>();
+  private Map<String, String> nodeFSByNameMap = new ConcurrentHashMap<>();
 
   private SpecificGFlags additionalGFlags;
 
@@ -124,26 +129,99 @@ public class LocalNodeManager {
 
   // Temporary method.
   public void shutdown() {
-    nodesByNameMap.values().stream()
-        .flatMap(n -> n.processMap.values().stream())
-        .forEach(
-            process -> {
-              try {
-                log.debug("Destroying {}", process.pid());
-                killProcess(process.pid());
-              } catch (Exception e) {
-                log.error("Failed to destroy process " + process, e);
-              }
-            });
+    nodesByNameMap.forEach(
+        (name, node) -> {
+          Map<UniverseTaskBase.ServerType, Process> processMap = node.processMap;
+          processMap.forEach(
+              (serverType, process) -> {
+                try {
+                  if (serverType == UniverseTaskBase.ServerType.TSERVER) {
+                    String baseDir = nodeFSByNameMap.get(name);
+                    killPostMasterProcess(baseDir);
+                  }
+                  log.debug("Destroying {}", process.pid());
+                  killProcess(process.pid());
+                } catch (Exception e) {
+                  log.error("Failed to destroy process " + process, e);
+                }
+              });
+        });
+
     nodesByNameMap.clear();
+    nodeFSByNameMap.clear();
+  }
+
+  private void killPostMasterProcess(String path) {
+    // kill the postmaster pid's as well for the nodes.
+    String filePath = path + "pg_data/postmaster.pid";
+    List<String> postmasterPid = readProcessIdsFromFile(filePath);
+
+    if (postmasterPid != null && !postmasterPid.isEmpty()) {
+      for (String pid : postmasterPid) {
+        if (pid.matches("^\\d+$")) {
+          List<String> pgPids = new ArrayList<>();
+          try {
+            ProcessBuilder psProcessBuilder =
+                new ProcessBuilder("ps", "--no-headers", "-p", pid, "--ppid", pid, "-o", "pid:1");
+            Process psProcess = psProcessBuilder.start();
+
+            BufferedReader psReader =
+                new BufferedReader(new InputStreamReader(psProcess.getInputStream()));
+            String line;
+            while ((line = psReader.readLine()) != null) {
+              pgPids.add(line.trim());
+            }
+
+            int psExitCode = psProcess.waitFor();
+
+            if (psExitCode == 0 && !pgPids.isEmpty()) {
+              for (String pgPid : pgPids) {
+                if (pgPid.matches("^\\d+$")) {
+                  log.info("Killing postgres PID: {} ...", pgPid);
+                  ProcessBuilder killProcessBuilder = new ProcessBuilder("kill", "-KILL", pgPid);
+                  Process killProcess = killProcessBuilder.start();
+                  int killExitCode = killProcess.waitFor();
+                  if (killExitCode != 0) {
+                    log.error("Failed to kill process with PID: {}", pgPid);
+                  }
+                } else {
+                  log.error("Found invalid Postgres PID: {}. Skipped.", pgPid);
+                }
+              }
+            }
+          } catch (IOException | InterruptedException e) {
+            log.error("pg process deletion failed with: {}", e.getMessage());
+          }
+        } else {
+          log.error("Invalid process ID: {}", pid);
+        }
+      }
+    } else {
+      log.info("No valid process IDs found in the file.");
+    }
   }
 
   private void killProcess(long pid) throws IOException, InterruptedException {
-    int exitCode = Runtime.getRuntime().exec(String.format("kill -SIGTERM %d", pid)).waitFor();
-    if (exitCode != 0) {
-      throw new IllegalStateException(
-          String.format("Failed to kill process %d - exit code is %d", pid, exitCode));
+    try {
+      terminateProcessAndSubprocesses(pid);
+    } catch (SecurityException | IllegalArgumentException e) {
+      System.err.println("Error occurred while terminating process: " + e.getMessage());
+      e.printStackTrace();
     }
+  }
+
+  private void terminateProcessAndSubprocesses(long pid) {
+    ProcessHandle.of(pid)
+        .ifPresentOrElse(
+            process -> {
+              // Terminate the process and all its subprocesses
+              Stream<ProcessHandle> descendants = process.descendants();
+              descendants.forEach(ProcessHandle::destroy);
+              process.destroy();
+            },
+            () -> {
+              throw new IllegalArgumentException("No such process with PID: " + pid);
+            });
   }
 
   public void killProcess(String nodeName, UniverseTaskBase.ServerType serverType)
@@ -152,6 +230,26 @@ public class LocalNodeManager {
     Process process = nodeInfo.processMap.get(serverType);
     log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
     killProcess(process.pid());
+  }
+
+  public void checkAllProcessesAlive() {
+    nodesByNameMap.values().stream()
+        .flatMap(n -> n.processMap.values().stream())
+        .forEach(
+            process -> {
+              try {
+                Optional<ProcessHandle> processHandle = ProcessHandle.of(process.pid());
+                if (processHandle.isEmpty()) {
+                  log.error("Process " + process.pid() + " doesn't exist!!");
+                }
+              } catch (Exception e) {
+                log.error("Failed check process " + process, e);
+              }
+            });
+    log.debug("Processes: ");
+    ProcessHandle.allProcesses()
+        .filter(ph -> ph.info().command().isPresent() && ph.info().command().get().contains("yb-"))
+        .forEach(ph -> log.debug("PID: " + ph.pid() + " command: " + ph.info().command()));
   }
 
   private enum NodeState {
@@ -269,6 +367,7 @@ public class LocalNodeManager {
       case Create:
         NodeInfo newNodeInfo = new NodeInfo(nodeDetails, nodeTaskParam);
         nodesByNameMap.put(newNodeInfo.name, newNodeInfo);
+        nodeFSByNameMap.put(newNodeInfo.name, getNodeFSRoot(userIntent, newNodeInfo));
         response = successResponse(convertNodeInfoToJson(newNodeInfo));
         break;
       case Provision:
@@ -334,14 +433,14 @@ public class LocalNodeManager {
             startProcessForNode(userIntent, process, nodeInfo);
             break;
           case "stop":
-            stopProcessForNode(process, nodeInfo);
+            stopProcessForNode(userIntent, process, nodeInfo, false);
             break;
         }
         break;
       case Destroy:
         for (UniverseTaskBase.ServerType serverType :
             nodeInfo.processMap.keySet().toArray(new UniverseTaskBase.ServerType[0])) {
-          stopProcessForNode(serverType, nodeInfo);
+          stopProcessForNode(userIntent, serverType, nodeInfo, true);
         }
         nodesByNameMap.remove(nodeInfo.name);
         response = ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
@@ -370,44 +469,45 @@ public class LocalNodeManager {
         universe.getCluster(nodeDetails.placementUuid).userIntent;
     NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
     Process process = nodeInfo.processMap.get(serverType);
-    String logsDir = getLogsDir(intent, serverType, nodeInfo);
-    String processLogName = "yb-" + serverType.name().toLowerCase();
+    String logsDirPath = getLogsDir(intent, serverType, nodeInfo);
+    File logsDir = new File(logsDirPath);
     try {
-      File errFile = new File(logsDir + processLogName + ".ERROR");
-      if (errFile.exists()) {
-        log.error(
-            "Node {} process {} last {} error logs: \n {}",
-            nodeName,
-            serverType,
-            ERROR_LINES_TO_DUMP,
-            getLogOutput(
-                nodeName + "_" + serverType + "_ERR", errFile, (l) -> true, ERROR_LINES_TO_DUMP));
+      // Access files inside master/logs directory
+      File[] files = logsDir.listFiles();
+      if (files != null) {
+        for (File file : files) {
+          log.debug("Catching o/p for file {}", file.getName());
+          // Log or process master file
+          if (file.exists()) {
+            log.error(
+                "Node {} process {} last {} error logs: \n {}",
+                nodeName,
+                serverType,
+                ERROR_LINES_TO_DUMP,
+                getLogOutput(
+                    nodeName + "_" + serverType + "_ERR", file, (l) -> true, ERROR_LINES_TO_DUMP));
+          }
+        }
       }
-
-      File outFile = new File(logsDir + processLogName + ".INFO");
-      if (outFile.exists()) {
-        log.error(
-            "Node {} process {} last {} kills: \n {}",
-            nodeName,
-            serverType,
-            EXIT_LINES_TO_DUMP,
-            getLogOutput(
-                nodeName + "_" + serverType + "_EXIT",
-                outFile,
-                (l) -> l.contains("exited with code"),
-                EXIT_LINES_TO_DUMP));
-
-        log.error(
-            "Node {} process {} last {} output lines: \n {}",
-            nodeName,
-            serverType,
-            OUT_LINES_TO_DUMP,
-            getLogOutput(
-                nodeName + "_" + serverType + "_OUT", outFile, (l) -> true, OUT_LINES_TO_DUMP));
-      }
-
     } catch (IOException ignored) {
     }
+  }
+
+  public String getTmpDir(
+      Map<String, String> gflags,
+      String nodeName,
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    if (gflags.containsKey(GFlagsUtil.TMP_DIRECTORY)) {
+      String tmpDir = gflags.get(GFlagsUtil.TMP_DIRECTORY);
+      if (tmpDir.contains("/tmp/local/")) {
+        return tmpDir;
+      }
+      String nodeRoot = getNodeRoot(userIntent, nodeName);
+      // Otherwise it will be too long string
+      String hashedRoot = Hashing.md5().hashString(nodeRoot, Charset.defaultCharset()).toString();
+      return "/tmp/local/" + hashedRoot;
+    }
+    return "/tmp";
   }
 
   private String getLogOutput(String prefix, File file, Predicate<String> filter, int maxLines)
@@ -492,6 +592,11 @@ public class LocalNodeManager {
                 ? MAX_MEM_RATIO_TSERVER
                 : MAX_MEM_RATIO_MASTER);
       }
+      if (gflags.containsKey(GFlagsUtil.TMP_DIRECTORY)) {
+        String tmpDir = getTmpDir(gflags, nodeInfo.name, userIntent);
+        new File(tmpDir).mkdirs();
+        gflags.put(GFlagsUtil.TMP_DIRECTORY, tmpDir);
+      }
       processCerts(args, nodeInfo, userIntent);
       writeGFlagsToFile(userIntent, gflags, serverType, nodeInfo);
     } catch (IOException e) {
@@ -571,7 +676,7 @@ public class LocalNodeManager {
     provider.save();
   }
 
-  private void startProcessForNode(
+  public void startProcessForNode(
       UniverseDefinitionTaskParams.UserIntent userIntent,
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo) {
@@ -619,13 +724,36 @@ public class LocalNodeManager {
     }
   }
 
-  private void stopProcessForNode(UniverseTaskBase.ServerType serverType, NodeInfo nodeInfo) {
+  private void stopProcessForNode(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      UniverseTaskBase.ServerType serverType,
+      NodeInfo nodeInfo,
+      boolean isDestroy) {
     Process process = nodeInfo.processMap.remove(serverType);
     if (process == null) {
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
     log.debug("Killing process {}", process.pid());
     process.destroy();
+  }
+
+  private static List<String> readProcessIdsFromFile(String filePath) {
+    List<String> processIds = new ArrayList<>();
+    File file = new File(filePath);
+    if (file.exists()) {
+      try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+        String line;
+        while ((line = reader.readLine()) != null) {
+          processIds.add(line.trim());
+        }
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    } else {
+      log.error("{}, does not exist.", filePath);
+    }
+
+    return processIds;
   }
 
   private void writeGFlagsToFile(

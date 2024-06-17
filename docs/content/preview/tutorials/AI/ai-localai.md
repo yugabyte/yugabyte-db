@@ -6,14 +6,14 @@ description: Learn to build LLM applications using LocalAI.
 image: /images/tutorials/ai/icons/localai-icon.svg
 headcontent: Use YugabyteDB as the database backend for LLM applications
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-ai-localai
     parent: tutorials-ai
     weight: 60
 type: docs
 ---
 
-This tutorial shows how you can use [LocalAI](https://localai.io/) to create an interactive query interface. It features a Python application that uses a locally-running LLM to generate text-embeddings. This LLM generates embeddings for Wikipedia texts of popular programming languages, as well as user prompts. Embeddings for each programming language are stored in a YugabyteDB database using the `pgvector extension`.
+This tutorial shows how you can use [LocalAI](https://localai.io/) to create an interactive query interface. It features a Python application that uses a locally-running LLM to generate text-embeddings. This LLM generates embeddings for Wikipedia texts of popular programming languages, as well as user prompts. Embeddings for each programming language are stored in a YugabyteDB database using the [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/).
 
 ## Prerequisites
 

@@ -16,6 +16,7 @@
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
@@ -140,17 +141,16 @@ Status XClusterProducerBootstrap::CreateAllBootstrapStreams() {
     return Status::OK();
   }
 
-  std::unordered_map<std::string, std::string> options;
-  options.reserve(2);
-  options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
-  options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
-
   // Generate bootstrap ids & setup the CDC streams, for use with the XCluster Consumer.
   for (const auto& table_id : req_.table_ids()) {
-    // Mark this stream as being bootstrapped, to help in finding dangling streams.
+    // Mark this stream as being bootstrapped, to help in finding dangling streams. Set state to
+    // inactive since it will take some time for the streams to be used. When the target cluster is
+    // setup it will switch the streams to active state. Transactional flag will also get set at
+    // that point.
     // TODO: Turn this into a batch RPC.
     const auto& bootstrap_id = VERIFY_RESULT(
-        cdc_service_->client()->CreateCDCStream(table_id, options, /* active */ false));
+        client::XClusterClient(*cdc_service_->client())
+            .CreateXClusterStream(table_id, /* active */ false, StreamModeTransactional::kFalse));
     creation_state_->created_cdc_streams.push_back(bootstrap_id);
 
     bootstrap_ids_and_tables_.emplace_back(bootstrap_id, table_id);
@@ -441,7 +441,7 @@ Status XClusterProducerBootstrap::UpdateCdcStateTableWithCheckpoints() {
     entry.checkpoint = op_id;
     entries_to_insert.emplace_back(std::move(entry));
   }
-  RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries_to_insert));
+  RETURN_NOT_OK(cdc_state_table_->UpsertEntries(entries_to_insert));
   return Status::OK();
 }
 

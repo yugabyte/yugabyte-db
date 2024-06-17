@@ -120,6 +120,31 @@ message ColocatedTableIdentifierPB {
   }
 }
 
+enum PgVectorDistanceType {
+  INVALID_DIST = 0;
+  DIST_L2 = 1;
+  DIST_IP = 2;
+  DIST_COSINE = 3;
+}
+
+enum PgVectorIndexType {
+  UNKNOWN_IDX = 0;
+  DUMMY = 1;
+  IVFFLAT = 2;
+  HNSW = 3;
+}
+
+message PgVectorIdxOptionsPB {
+  required PgVectorDistanceType dist_type = 1;
+  required PgVectorIndexType idx_type = 2;
+  required int32 dimensions = 3;
+}
+
+message PgVectorReadOptionsPB {
+  required QLValuePB vector = 1;
+  required int32 prefetch_size = 2;
+}
+
 message TablePropertiesPB {
   optional uint64 default_time_to_live = 1;
   optional bool contain_counters = 2;
@@ -158,6 +183,8 @@ message TablePropertiesPB {
   // Used to distinguish which algorithm should be used for partition key and bounds generation,
   // value == 0 stands for the default buggy algorithm for range partitioning case, see #12189.
   optional uint32 partitioning_version = 11;
+
+  optional PgReplicaIdentity ysql_replica_identity = 12;
 }
 
 message SchemaPB {
@@ -237,6 +264,8 @@ message IndexInfoPB {
   // table rows processed by the backfill job. The (default) value is zero, otherwise.
   // For partial indexes, this includes non-matching rows of the indexed table.
   optional uint64 num_rows_processed_by_backfill_job = 34;
+
+  optional PgVectorIdxOptionsPB vector_idx_options = 35;
 }
 
 // The possible order modes for clients.
@@ -606,6 +635,9 @@ message DatumMessagePB {
   oneof cdc_datum {
     PgDatumPB pg_value = 13;
     QLValuePB cql_value = 14;
+    // We send the datum as QLValuePB if the client is Walsender.
+    // The Walsender does the conversion from QLValuePB to the PG datum.
+    QLValuePB pg_ql_value = 15;
   }
 }
 
@@ -629,6 +661,8 @@ message AshMetadataPB {
   optional bytes root_request_id = 1;
   // The client which sent the request to YSQL-Pg/YCQL.
   optional HostPortPB client_host_port = 2;
+  // The address family of the client host
+  optional uint32 addr_family = 7;
   // The uuid of the local tserver which received the request from the client.
   // i.e. the local tserver running the YSQL-Pg backend/YCQL proxy. if set,
   // should be 16 bytes in length.
@@ -641,11 +675,13 @@ message AshMetadataPB {
   optional uint64 query_id = 5;
   // PgClient session id. This will be 0 for YCQL.
   optional uint64 session_id = 6;
+  // PG database OID. This will be 0 for YCQL.
+  optional uint32 database_id = 8;
 }
 
 // Some optional/additional fields that is collected in addition to the wait
 // statement Depending on the wait-state we may choose to persist at most one of
-// these into the pg_active_universe_history.wait_event_aux field.
+// these into the yb_active_universe_history.wait_event_aux field.
 message AshAuxDataPB {
   optional string tablet_id = 1;
   optional string table_id = 2;
@@ -657,10 +693,10 @@ message WaitStateInfoPB {
   // The metadata is rarely modified.
   optional AshMetadataPB metadata = 1;
   // Represents the state of the curreent rpc/request when it was polled.
-  optional uint32 wait_status_code = 2;
+  optional uint32 wait_state_code = 2;
   // Some additional information that may be persisted as
-  // pg_active_universe_history.wait_event_aux
+  // yb_active_universe_history.wait_event_aux
   optional AshAuxDataPB aux_info = 3;
-  // A string representation of wait_status_code for easy human consumption.
-  optional string wait_status_code_as_string = 4;
+  // A string representation of wait_state_code for easy human consumption.
+  optional string wait_state_code_as_string = 4;
 }

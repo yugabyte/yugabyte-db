@@ -6,6 +6,8 @@
 ####################################################################################################
 
 test: yb_catalog_version
+test: yb_boolean
 test: yb_disabled
 test: yb_errors
 test: yb_truncate
+test: yb_local_tablets

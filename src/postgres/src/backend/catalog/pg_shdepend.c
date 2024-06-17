@@ -21,6 +21,7 @@
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/objectaddress.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_conversion.h"
@@ -59,11 +60,11 @@
 #include "commands/schemacmds.h"
 #include "commands/subscriptioncmds.h"
 #include "commands/tablecmds.h"
+#include "commands/tablegroup.h"
 #include "commands/tablespace.h"
 #include "commands/typecmds.h"
 #include "postgres_ext.h"
 #include "storage/lmgr.h"
-#include "miscadmin.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
 #include "utils/memutils.h"
@@ -73,7 +74,9 @@
 /* YB includes. */
 #include "catalog/pg_yb_profile_d.h"
 #include "catalog/pg_yb_role_profile_d.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/yb_profile.h"
+#include "miscadmin.h"
 #include "pg_yb_utils.h"
 
 typedef enum
@@ -100,6 +103,7 @@ static void shdepDropDependency(Relation sdepRel,
 					SharedDependencyType deptype);
 static void storeObjectDescription(StringInfo descs,
 					   SharedDependencyObjectType type,
+						 Oid refobjid,
 					   ObjectAddress *object,
 					   SharedDependencyType deptype,
 					   int count);
@@ -301,6 +305,42 @@ shdepChangeDep(Relation sdepRel,
 
 	if (oldtup)
 		heap_freetuple(oldtup);
+}
+
+void
+shdepFindImplicitTablegroup(Oid tablespaceId, Oid *tablegroupId) 
+{
+	Oid databaseId;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	Relation	sdepRel;
+	HeapTuple	tup;
+
+	*tablegroupId = InvalidOid;
+	databaseId = MyDatabaseId;
+	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
+
+
+	ScanKeyInit(&key[0], Anum_pg_shdepend_dbid, 
+	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(databaseId));
+
+	ScanKeyInit(&key[1], Anum_pg_shdepend_classid, 
+	BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(YbTablegroupRelationId));
+
+	scan = systable_beginscan(sdepRel, SharedDependDependerIndexId, true, NULL, 2, key);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan))) 
+	{
+		Form_pg_shdepend shdepForm = (Form_pg_shdepend) GETSTRUCT(tup);
+		if (shdepForm->refobjid == tablespaceId) 
+    {
+			*tablegroupId = shdepForm->objid;
+			break;
+		}
+	}
+
+	systable_endscan(scan);
+	heap_close(sdepRel, RowExclusiveLock);
 }
 
 /*
@@ -673,12 +713,12 @@ checkSharedDependencies(Oid classId, Oid objectId,
 			if (numReportedDeps < MAX_REPORTED_DEPS)
 			{
 				numReportedDeps++;
-				storeObjectDescription(&descs, LOCAL_OBJECT, &object,
+				storeObjectDescription(&descs, LOCAL_OBJECT, objectId, &object,
 									   sdepForm->deptype, 0);
 			}
 			else
 				numNotReportedDeps++;
-			storeObjectDescription(&alldescs, LOCAL_OBJECT, &object,
+			storeObjectDescription(&alldescs, LOCAL_OBJECT, objectId, &object,
 								   sdepForm->deptype, 0);
 		}
 		else if (sdepForm->dbid == InvalidOid)
@@ -686,12 +726,12 @@ checkSharedDependencies(Oid classId, Oid objectId,
 			if (numReportedDeps < MAX_REPORTED_DEPS)
 			{
 				numReportedDeps++;
-				storeObjectDescription(&descs, SHARED_OBJECT, &object,
+				storeObjectDescription(&descs, SHARED_OBJECT, objectId, &object,
 									   sdepForm->deptype, 0);
 			}
 			else
 				numNotReportedDeps++;
-			storeObjectDescription(&alldescs, SHARED_OBJECT, &object,
+			storeObjectDescription(&alldescs, SHARED_OBJECT, objectId, &object,
 								   sdepForm->deptype, 0);
 		}
 		else
@@ -744,12 +784,12 @@ checkSharedDependencies(Oid classId, Oid objectId,
 		if (numReportedDeps < MAX_REPORTED_DEPS)
 		{
 			numReportedDeps++;
-			storeObjectDescription(&descs, REMOTE_OBJECT, &object,
+			storeObjectDescription(&descs, REMOTE_OBJECT, objectId, &object,
 								   SHARED_DEPENDENCY_INVALID, dep->count);
 		}
 		else
 			numNotReportedDbs++;
-		storeObjectDescription(&alldescs, REMOTE_OBJECT, &object,
+		storeObjectDescription(&alldescs, REMOTE_OBJECT, objectId, &object,
 							   SHARED_DEPENDENCY_INVALID, dep->count);
 	}
 
@@ -1146,6 +1186,7 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 static void
 storeObjectDescription(StringInfo descs,
 					   SharedDependencyObjectType type,
+						 Oid refobjid,
 					   ObjectAddress *object,
 					   SharedDependencyType deptype,
 					   int count)
@@ -1166,8 +1207,21 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("privileges for %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_POLICY)
 				appendStringInfo(descs, _("target of %s"), objdesc);
-			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
-				appendStringInfo(descs, _("tablespace of %s"), objdesc);
+			else if (deptype == SHARED_DEPENDENCY_TABLESPACE) 
+      {
+				char implicit_tablegroup_name[33];
+				sprintf(implicit_tablegroup_name, "tablegroup colocation_%u", refobjid);
+				
+				/*
+				 * Do not report dependency from implicit tablegroup to tablespace.
+				 * This would be fine since implicit tablegroup will be dropped if no tables
+				 * are present in it.
+				 */
+				if (strcmp(implicit_tablegroup_name, objdesc) != 0) 
+        {
+					appendStringInfo(descs, _("tablespace of %s"), objdesc);
+				}
+			}
 			else if (deptype == SHARED_DEPENDENCY_PROFILE)
 				appendStringInfo(descs, _("profile of %s"), objdesc);
 			else
