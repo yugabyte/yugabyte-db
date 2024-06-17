@@ -24,11 +24,11 @@ You should perform these actions in a specific order, depending on whether perfo
 | CREATE TABLE | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
 | DROP TABLE   | [Remove table from replication](#remove-a-table-from-dr) | Execute on Replica | Execute on Primary |
 | CREATE TABLE foo<br>PARTITION OF bar | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
-| CREATE INDEX | Execute on Primary | Execute&nbsp;on&nbsp;Replica | [Reconcile](#reconcile-configuration) |
-| DROP INDEX   | Execute on Replica | Execute on Primary | [Reconcile](#reconcile-configuration) |
+| CREATE INDEX | Execute on Primary | Execute&nbsp;on&nbsp;Replica | [Reconcile configuration](#reconcile-configuration) |
+| DROP INDEX   | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Replica | Execute on Primary | No changes needed |
-| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile](#reconcile-configuration) |
-| ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile](#reconcile-configuration) |
+| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile configuration](#reconcile-configuration) |
+| ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
 
 In addition, keep in mind the following:
 
