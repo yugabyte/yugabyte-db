@@ -30,9 +30,7 @@ PostgreSQL compatibility has two aspects:
 
 To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity.
 
-After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new {{<badge/ea>}} PostgreSQL compatibility features. As features included in the PostgreSQL compatibility mode transition from {{<badge/ea>}} to {{<badge/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under Enhanced Postgres Compatibility Mode.
-
-Depending on the version of YugabyteDB, this flag configures different features as described in the following table.
+Depending on the version of YugabyteDB, Enhanced Postgres Compatibility Mode configures a different set of features as described in the following table.
 
 | YugabyteDB Version | Feature | Flag |
 | :--- | :--- | :--- |
@@ -40,6 +38,10 @@ Depending on the version of YugabyteDB, this flag configures different features 
 |        | Wait-on-Conflict concurrency mode for predictable P99 latencies | |
 |        | Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
 |        | Use range sharding (ascending) by default | yb_use_hash_splitting_by_default=false |
+
+After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new designated PostgreSQL compatibility features.
+
+As features included in the PostgreSQL compatibility mode transition from {{<badge/ea>}} to {{<badge/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under Enhanced Postgres Compatibility Mode on your existing universes after the upgrade.
 
 {{<note title="Note">}}
 If you have set these features independent of Enhanced Postgres Compatibility Mode, you cannot use Enhanced Postgres Compatibility Mode.
