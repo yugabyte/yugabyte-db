@@ -11,24 +11,10 @@ menu:
 type: docs
 ---
 
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../scaling-queries-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../scaling-queries-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
+{{<tabs>}}
+{{<tabitem href="../scaling-queries-ysql/" text="YSQL" icon="postgres" active="true" >}}
+{{<tabitem href="../scaling-queries-ycql/" text="YCQL" icon="cassandra" >}}
+{{</tabs>}}
 
 There are a number of well-known experiments where eventually-consistent NoSQL databases were scaled out to perform millions of inserts and queries. Here, you do the same using YSQL, the Yugabyte SQL API that is PostgreSQL-compatible, strongly-consistent, and supports distributed SQL. We created a 100-node YugabyteDB cluster, ran single-row INSERT and SELECT workloads with high concurrency – each for an hour and measured the sustained performance (throughput and latency). This topic details the results of this experiment as well as highlights the key aspects of the YugabyteDB architecture that makes it fit for such high-volume ingest workloads. Although this topic describes the results of benchmark tests performed by Yugabyte, you can try the following steps to perform your own benchmarks on the scalability of queries in your YugabyteDB clusters.
 
