@@ -26,39 +26,36 @@ PostgreSQL parity is shorthand for two concepts:
 
 - Performance parity
 
-    Performance parity refers to the capabilities of YugabyteDB that allow applications running on PostgreSQL to run with predictable performance on YugabyteDB. In other words, the performance degradation experienced by small and medium scale applications going from a single server database to a distributed database should be predictable and bounded. For example, our goal is to have not more than 3x latency penalty due to distribution.
+    Performance parity refers to the capabilities of YugabyteDB that allow applications running on PostgreSQL to run with predictable performance on YugabyteDB. In other words, the performance degradation experienced by small and medium scale applications going from a single server database to a distributed database should be predictable and bounded.
 
 ### Enhanced Postgres Compatibility Mode
 
-{{<badge/ea>}} This mode enables you to take advantage of many early access improvements in PostgreSQL parity in YugabyteDB, making it even easier to lift and shift your applications from PostgreSQL. When this mode is turned on, YugabyteDB is configured to use the latest features developed for feature and performance parity.
+To test and take advantage of features developed for PostgreSQL parity in YugabyteDB that are currently in {{<badge/ea>}}, you can turn on Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity.
 
-Enhanced Postgres Compatibility Mode is managed using the `enable_pg_parity_early_access` flag.
+After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new {{<badge/ea>}} PostgreSQL compatibility features. As features included in the PostgreSQL compatibility mode transition from {{<badge/ea>}} to {{<badge/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under Enhanced Postgres Compatibility Mode.
 
-In YugabyteDB Anywhere, you manage this setting using the **Enhanced Postgres Compatibility Mode** option when creating a universe.
-
-In YugabyteDB Aeon, you manage this setting using the **Enhanced Postgres Compatibility Mode** option when creating a cluster.
-
-Depending on the version of YugabyteDB, this flag enables different PG parity features as described in the following table.
+Depending on the version of YugabyteDB, this flag enables different early access features as described in the following table.
 
 | YugabyteDB Version | Feature | Flag |
 | :--- | :--- | :--- |
-| 2024.1 | Read-Committed isolation mode | yb_enable_read_committed_isolation |
-|        | Wait-on-Conflict concurrency mode for predictable P99 latencies |
-|        | Cost Based Optimizer takes advantage of the distributed storage layer architecture and includes query pushdowns, LSM indexes, and batched nested loop joins to offer PostgreSQL-like performance. |
+| 2024.1 | Read-Committed isolation mode | yb_enable_read_committed_isolation=true |
+|        | Wait-on-Conflict concurrency mode for predictable P99 latencies | |
+|        | Cost based optimizer. Takes advantage of the distributed storage layer architecture and includes query pushdowns, LSM indexes, and batched nested loop joins to offer PostgreSQL-like performance. | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
+|        | Use range sharding (ascending) by default | yb_use_hash_splitting_by_default=false |
 
-yb_enable_read_committed_isolation=true
-ysql_enable_read_request_caching=true
-"ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,"
-                      "yb_bnl_batch_size=1024,"
-                      "yb_fetch_row_limit=0,"
-                      "yb_fetch_size_limit=1MB,"
-                      "yb_use_hash_splitting_by_default=false"
+{{<note title="Note">}}
+If you have set these features independent of Enhanced Postgres Compatibility Mode, you cannot use Enhanced Postgres Compatibility Mode.
 
-Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the --ysql_enable_packed_row_for_colocated_table flag to true.
+Conversely, if you are using Enhanced Postgres Compatibility Mode on a universe, you cannot set any of the features independently.
+{{</note>}}
 
-To enable compatibility mode:
+### Enable enhanced compatibility mode
 
-- Passing the `enable_pg_parity_early_access` flag to yugabyted when bringing up your cluster.
+#### YugabyteDB
+
+To enable compatibility mode in YugabyteDB:
+
+- Pass the `enable_pg_parity_early_access` flag to yugabyted when bringing up your cluster.
 
 For example, from your YugabyteDB home directory, run the following command:
 
@@ -66,7 +63,23 @@ For example, from your YugabyteDB home directory, run the following command:
 ./bin/yugabyted start --enable_pg_parity_early_access
 ```
 
-Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the --ysql_enable_packed_row_for_colocated_table flag to true.
+Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
+
+#### YugabyteDB Anywhere
+
+To enable compatibility mode in YugabyteDB Anywhere:
+
+- When creating a universe, turn on the **Enable Enhanced Postgres Compatibility** option.
+
+You can also change the setting on deployed universes using the **More > Edit Postgres Compatibility** option.
+
+#### YugabyteDB Aeon
+
+To enable compatibility mode in YugabyteDB Aeon:
+
+- When creating a cluster, turn on the **Enable Enhanced Postgres Compatibility** option.
+
+You can also change the setting on the **Settings** tab for deployed clusters.
 
 ## Unsupported PostgreSQL features
 
