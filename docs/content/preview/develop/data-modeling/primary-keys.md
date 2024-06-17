@@ -74,7 +74,7 @@ CREATE TABLE users (
 );
 ```
 
-For every row inserted, user-IDs are automatically generated as 100, 200,300, and so on.
+For every row inserted, user IDs are automatically generated as 100, 200,300, and so on.
 
 {{<tip>}}
 Use serial for basic use cases and opt for sequences when you need more control over the sequence behavior, need to share a sequence between multiple tables or columns, or require custom incrementing logic.
@@ -178,7 +178,7 @@ You will see an output similar to the following:
 
 ### Name as the primary key
 
-Suppose your most common lookup is based on the name. In this case you would make the name column part of the primary key. Because the name alone may not be unique enough to be the primary key (the primary key has to be unique), you can choose a primary key with both name and ID as follows:
+Suppose your most common lookup is based on the name. In this case you would make the `name` column part of the primary key. Because the name alone may not be unique enough to be the primary key (the primary key has to be unique), you can choose a primary key with both name and ID as follows:
 
 ```sql
 CREATE TABLE census2(

@@ -4,8 +4,8 @@ linkTitle: Data modeling
 description: Learn to develop YugabyteDB applications
 image: fa-sharp fa-light fa-objects-column
 aliases:
-- /preview/develop/learn/data-modeling-ysql
-- /preview/develop/data-modeling-ysql
+  - /preview/develop/learn/data-modeling-ysql/
+  - /preview/develop/data-modeling-ysql/
 menu:
   preview:
     identifier: data-modeling
