@@ -12,6 +12,7 @@ from .base_command import Command
 logger = logging.getLogger(__name__)
 
 class ProvisionCommand(Command):
+
     def __init__(self, config):
         super().__init__(config)
         self.base_package = "modules"
@@ -21,8 +22,8 @@ class ProvisionCommand(Command):
         logger.info("initialized")
 
     def validate(self):
-        # perform basic validation code
-        pass
+        # Validate the required packages needed for the provision to be successful.
+        self._validate_required_packages()
 
     def _load_modules(self):
         package = importlib.import_module(self.base_package)
@@ -39,7 +40,8 @@ class ProvisionCommand(Command):
     def _build_script(self, all_templates, phase):
         with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
-            temp_file.write("set -ex")
+            temp_file.write("set -ex\n")
+            self.populate_sudo_check(temp_file)
             for key in all_templates:
                 temp_file.write(f"\n######## {key} #########\n")
                 temp_file.write(all_templates[key][phase])
@@ -54,7 +56,18 @@ class ProvisionCommand(Command):
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
 
-    def execute(self):
+    def populate_sudo_check(self, file):
+        file.write("\n######## Check the SUDO Access #########\n")
+        file.write("SUDO_ACCESS=\"false\"\n")
+        file.write("set +e\n")
+        file.write("if [ $(id -u) = 0 ]; then\n")
+        file.write("\tSUDO_ACCESS=\"true\"\n")
+        file.write("elif sudo -n pwd >/dev/null 2>&1; then\n")
+        file.write("\tSUDO_ACCESS=\"true\"\n")
+        file.write("fi\n")
+        file.write("set -e\n")
+
+    def _generate_template(self):
         all_templates = {}
 
         for key in self.config:
@@ -71,11 +84,43 @@ class ProvisionCommand(Command):
         precheck_combined_script = self._build_script(all_templates, "precheck")
         run_combined_script = self._build_script(all_templates, "run")
 
+        return precheck_combined_script, run_combined_script
+
+    def _check_package(self, package_manager, package_name):
+        """Check if a package is installed."""
+        try:
+            if package_manager == 'rpm':
+                subprocess.run(['rpm', '-q', package_name], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            elif package_manager == 'deb':
+                subprocess.run(['dpkg', '-s', package_name], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            logger.info(f"{package_name} is installed.")
+        except subprocess.CalledProcessError:
+            logger.info(f"{package_name} is not installed.")
+
+    def _validate_required_packages(self):
+        try:
+            subprocess.run(['rpm', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            package_manager = 'rpm'
+        except subprocess.CalledProcessError:
+            try:
+                subprocess.run(['dpkg', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                package_manager = 'deb'
+            except subprocess.CalledProcessError:
+                logger.info("Unsupported package manager. Cannot determine package installation status.")
+                sys.exit(1)
+
+        packages = ['openssl', 'policycoreutils']
+        for package in packages:
+            self._check_package(package_manager, package)
+
+    def execute(self):
+        run_combined_script, precheck_combined_script = self._generate_template()
         self._run_script(run_combined_script)
         self._run_script(precheck_combined_script)
 
     def run_preflight_checks(self):
-        pass
+        _, precheck_combined_script = self._generate_template()
+        self._run_script(precheck_combined_script)
 
     def cleanup(self):
         # Cleanup tasks to clean up any tmp data to support rerun
