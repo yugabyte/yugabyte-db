@@ -1079,7 +1079,10 @@
           "phase": "Phase",
           "status": "Status",
           "filename": "File name",
-          "beforeYouProceed": "Before you proceed..."
+          "beforeYouProceed": "Before you proceed...",
+          "schemaExport": "Schema Export",
+          "schemaExportDesc": "Export schema from source database.",
+          "schemaExportLearn": "Learn how to export schema"
         },
         "migrateData": {
           "migratedData": "Migrate data completed successfully",
