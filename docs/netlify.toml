@@ -385,6 +385,12 @@
   from = "/preview/deploy/reference/configuration/yb-tserver/"
   to = "/preview/reference/configuration/yb-tserver/"
 
+## develop
+
+[[redirects]]
+  from = "/preview/develop/common-patterns/*"
+  to = "/preview/develop/data-modeling/common-patterns/:splat"
+
 [[redirects]]
   from = "/preview/develop/learn/acid-transactions/"
   to = "/preview/develop/learn/acid-transactions-ysql/"

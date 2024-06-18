@@ -22,8 +22,8 @@ With these three simple functionalities, key-value stores have carved themselves
 
 YugabyteDB provides several advantages when used as a key-value store:
 
-- YugabyteDB internally [stores data](../../../architecture/docdb/persistence/) as a collection of key-value pairs and therefore automatically excels as a key-value store.
-- Being [distributed by design](../../../architecture/transactions/distributed-txns/), YugabyteDB also naturally acts as a distributed key-value store.
+- YugabyteDB internally [stores data](../../../../architecture/docdb/persistence/) as a collection of key-value pairs and therefore automatically excels as a key-value store.
+- Being [distributed by design](../../../../architecture/transactions/distributed-txns/), YugabyteDB also naturally acts as a distributed key-value store.
 - YugabyteDB inherently provides consistency of data because of Raft replication, which is typically not guaranteed by other key-value stores.
 
 ## Use cases
@@ -35,7 +35,6 @@ YugabyteDB provides several advantages when used as a key-value store:
 1. **Session store** : A session-oriented application, such as a web application, starts a session when a user logs in, and is active until the user logs out or the session times out. During this period, the application stores all session-related data like profile information, themes, zipcode, geography, and so on, in a fast key-value store.
 
 1. **Shopping cart** : A user's shopping cart can be represented as a JSON or Hstore and stored under a key (for example, `user1.cart`). Given the strong consistency and resilience offered by YugabyteDB, the cart information will not be lost even in case of disasters.
-
 
 ## Simple scenario
 
@@ -234,4 +233,4 @@ you will notice that the `name` attribute has been removed for user `id=1`.
 ## Learn more
 
 - [Hstore](https://www.postgresql.org/docs/11/hstore.html)
-- [Json](../../../explore/ysql-language-features/jsonb-ysql/)
+- [Json](../../../../explore/ysql-language-features/jsonb-ysql/)
