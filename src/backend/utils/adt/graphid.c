@@ -65,7 +65,7 @@ void clear_global_Oids_GRAPHID(void)
 
 PG_FUNCTION_INFO_V1(graphid_in);
 
-// graphid type input function
+/* graphid type input function */
 Datum graphid_in(PG_FUNCTION_ARGS)
 {
     char *str = PG_GETARG_CSTRING(0);
@@ -86,11 +86,11 @@ Datum graphid_in(PG_FUNCTION_ARGS)
 
 PG_FUNCTION_INFO_V1(graphid_out);
 
-// graphid type output function
+/* graphid type output function */
 Datum graphid_out(PG_FUNCTION_ARGS)
 {
     graphid gid = AG_GETARG_GRAPHID(0);
-    char buf[32]; // greater than MAXINT8LEN+1
+    char buf[32]; /* greater than MAXINT8LEN+1 */
     char *out;
 
     pg_lltoa(gid, buf);
@@ -252,13 +252,13 @@ Datum _graphid(PG_FUNCTION_ARGS)
     AG_RETURN_GRAPHID(gid);
 }
 
-//Hashing Function for Hash Indexes
+/* Hashing Function for Hash Indexes */
 PG_FUNCTION_INFO_V1(graphid_hash_cmp);
 
 Datum graphid_hash_cmp(PG_FUNCTION_ARGS)
 {
     graphid l = AG_GETARG_GRAPHID(0);
-    int hash = (int) ((l >> 32) ^ l);// ^ seed;
+    int hash = (int) ((l >> 32) ^ l);/* ^ seed; */
 
     PG_RETURN_INT32(hash);
 }

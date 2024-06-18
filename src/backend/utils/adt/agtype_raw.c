@@ -26,9 +26,9 @@
  */
 struct agtype_build_state
 {
-    int a_offset;        // next location to write agtentry
-    int i;               // index of current agtentry being processed
-    int d_start;         // start of variable-length portion
+    int a_offset;        /* next location to write agtentry */
+    int i;               /* index of current agtentry being processed */
+    int d_start;         /* start of variable-length portion */
     StringInfo buffer;
 };
 
@@ -127,16 +127,16 @@ agtype_build_state *init_agtype_build_state(uint32 size, uint32 header_flag)
     bstate->a_offset = 0;
     bstate->i = 0;
 
-    // reserve for varlen header
+    /* reserve for varlen header */
     BUFFER_RESERVE(VARHDRSZ);
     bstate->a_offset += VARHDRSZ;
 
-    // write container header
+    /* write container header */
     BUFFER_RESERVE(sizeof(uint32));
     BUFFER_WRITE_CONST(bstate->a_offset, uint32, header_flag | size);
     bstate->a_offset += sizeof(uint32);
 
-    // reserve for agtentry headers
+    /* reserve for agtentry headers */
     if ((header_flag & AGT_FOBJECT) != 0)
     {
         agtentry_count = size * 2;
@@ -190,18 +190,18 @@ void write_graphid(agtype_build_state *bstate, graphid graphid)
 {
     int length = 0;
 
-    // padding
+    /* padding */
     length += BUFFER_WRITE_PAD();
 
-    // graphid header
+    /* graphid header */
     write_const(AGT_HEADER_INTEGER, AGT_HEADER_TYPE);
     length += AGT_HEADER_SIZE;
 
-    // graphid value
+    /* graphid value */
     write_const(graphid, int64);
     length += sizeof(int64);
 
-    // agtentry
+    /* agtentry */
     write_agt(AGTENTRY_IS_AGTYPE | length);
 
     bstate->i++;
@@ -211,13 +211,13 @@ void write_container(agtype_build_state *bstate, agtype *agtype)
 {
     int length = 0;
 
-    // padding
+    /* padding */
     length += BUFFER_WRITE_PAD();
 
-    // varlen data
+    /* varlen data */
     length += write_ptr((char *) &agtype->root, VARSIZE(agtype));
 
-    // agtentry
+    /* agtentry */
     write_agt(AGTENTRY_IS_CONTAINER | length);
 
     bstate->i++;
@@ -231,17 +231,17 @@ void write_extended(agtype_build_state *bstate, agtype *val, uint32 header)
 {
     int length = 0;
 
-    // padding
+    /* padding */
     length += BUFFER_WRITE_PAD();
 
-    // vertex header
+    /* vertex header */
     write_const(header, AGT_HEADER_TYPE);
     length += AGT_HEADER_SIZE;
 
-    // vertex data
+    /* vertex data */
     length += write_ptr((char *) &val->root, VARSIZE(val));
 
-    // agtentry
+    /* agtentry */
     write_agt(AGTENTRY_IS_AGTYPE | length);
 
     bstate->i++;

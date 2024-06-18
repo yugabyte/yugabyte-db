@@ -71,14 +71,14 @@ static void begin_cypher_delete(CustomScanState *node, EState *estate,
 
     Assert(list_length(css->cs->custom_plans) == 1);
 
-    // setup child
+    /* setup child */
     subplan = linitial(css->cs->custom_plans);
     node->ss.ps.lefttree = ExecInitNode(subplan, estate, eflags);
 
-    // setup expr context
+    /* setup expr context */
     ExecAssignExprContext(estate, &node->ss.ps);
 
-    // setup scan tuple slot and projection info
+    /* setup scan tuple slot and projection info */
     ExecInitScanTupleSlot(estate, &node->ss,
                           ExecGetResultType(node->ss.ps.lefttree),
                           &TTSOpsHeapTuple);
@@ -101,7 +101,7 @@ static void begin_cypher_delete(CustomScanState *node, EState *estate,
     MemSet(&hashctl, 0, sizeof(hashctl));
     hashctl.keysize = sizeof(graphid);
     hashctl.entrysize =
-        sizeof(graphid); // entries are not used, but entrysize must >= keysize
+        sizeof(graphid); /* entries are not used, but entrysize must >= keysize */
     hashctl.hash = tag_hash;
     css->vertex_id_htab = hash_create(DELETE_VERTEX_HTAB_NAME,
                                       DELETE_VERTEX_HTAB_SIZE, &hashctl,
@@ -143,7 +143,7 @@ static TupleTableSlot *exec_cypher_delete(CustomScanState *node)
          */
         while(true)
         {
-            //Process the subtree first
+            /* Process the subtree first */
             Decrement_Estate_CommandId(estate)
             slot = ExecProcNode(node->ss.ps.lefttree);
             Increment_Estate_CommandId(estate)
@@ -151,7 +151,7 @@ static TupleTableSlot *exec_cypher_delete(CustomScanState *node)
             if (TupIsNull(slot))
                 break;
 
-            // setup the scantuple that the process_delete_list needs
+            /* setup the scantuple that the process_delete_list needs */
             econtext->ecxt_scantuple =
                 node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
 
@@ -162,7 +162,7 @@ static TupleTableSlot *exec_cypher_delete(CustomScanState *node)
     }
     else
     {
-        //Process the subtree first
+        /* Process the subtree first */
         Decrement_Estate_CommandId(estate)
         slot = ExecProcNode(node->ss.ps.lefttree);
         Increment_Estate_CommandId(estate)
@@ -170,7 +170,7 @@ static TupleTableSlot *exec_cypher_delete(CustomScanState *node)
         if (TupIsNull(slot))
             return NULL;
 
-        // setup the scantuple that the process_delete_list needs
+        /* setup the scantuple that the process_delete_list needs */
         econtext->ecxt_scantuple =
             node->ss.ps.lefttree->ps_ProjInfo->pi_exprContext->ecxt_scantuple;
 
@@ -226,7 +226,7 @@ Node *create_cypher_delete_plan_state(CustomScan *cscan)
 
     cypher_css->cs = cscan;
 
-    // get the serialized data structure from the Const and deserialize it.
+    /* get the serialized data structure from the Const and deserialize it. */
     c = linitial(cscan->custom_private);
     serialized_data = (char *)c->constvalue;
     delete_data = stringToNode(serialized_data);
@@ -256,7 +256,7 @@ static agtype_value *extract_entity(CustomScanState *node,
 
     tupleDescriptor = scanTupleSlot->tts_tupleDescriptor;
 
-    // type checking, make sure the entity is an agtype vertex or edge
+    /* type checking, make sure the entity is an agtype vertex or edge */
     if (tupleDescriptor->attrs[entity_position -1].atttypid != AGTYPEOID)
         ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                 errmsg("DELETE clause can only delete agtype")));
@@ -285,7 +285,7 @@ static void delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
     TM_Result delete_result;
     Buffer buffer;
 
-    // Find the physical tuple, this variable is coming from
+    /* Find the physical tuple, this variable is coming from */
     saved_resultRels = estate->es_result_relations;
     estate->es_result_relations = &resultRelInfo;
 

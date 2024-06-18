@@ -1218,7 +1218,7 @@ bool agtype_deep_contains(agtype_iterator **val,
                 Assert(lhs_val->type == AGTV_BINARY);
                 Assert(vcontained.type == AGTV_BINARY);
 
-                // We will just check if the rhs value is equal to lhs
+                /* We will just check if the rhs value is equal to lhs */
                 if (compare_agtype_containers_orderability(
                                              lhs_val->val.binary.data,
                                              vcontained.val.binary.data) != 0)
@@ -2338,7 +2338,7 @@ void pfree_agtype_value_content(agtype_value* value)
 {
     int i;
 
-    // guards against stack overflow due to deeply nested agtype_value
+    /* guards against stack overflow due to deeply nested agtype_value */
     check_stack_depth();
 
     switch (value->type)

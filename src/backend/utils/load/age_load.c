@@ -77,12 +77,12 @@ static agtype_value *csv_value_to_agtype_value(char *csv_val)
 
     if (!json_validate(cstring_to_text(csv_val)))
     {
-        // wrap the string with double-quote
+        /* wrap the string with double-quote */
         int oldlen;
         int newlen;
 
         oldlen = strlen(csv_val);
-        newlen = oldlen + 2; // +2 for double-quotes
+        newlen = oldlen + 2; /* +2 for double-quotes */
         new_csv_val = (char *)palloc(sizeof(char) * (newlen + 1));
 
         new_csv_val[0] = '"';
@@ -97,7 +97,7 @@ static agtype_value *csv_value_to_agtype_value(char *csv_val)
 
     res = agtype_value_from_cstring(new_csv_val, strlen(new_csv_val));
 
-    // extract from top-level row scalar array
+    /* extract from top-level row scalar array */
     if (res->type == AGTV_ARRAY && res->val.array.raw_scalar)
     {
         res = &res->val.array.elems[0];
@@ -229,7 +229,7 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
     Relation label_relation;
     HeapTuple tuple;
 
-    // Check if label provided exists as vertex label, then throw error
+    /* Check if label provided exists as vertex label, then throw error */
     if (get_label_kind(label_name, graph_oid) == LABEL_KIND_VERTEX)
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -261,7 +261,7 @@ void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
     Relation label_relation;
     HeapTuple tuple;
 
-    // Check if label provided exists as edge label, then throw error
+    /* Check if label provided exists as edge label, then throw error */
     if (get_label_kind(label_name, graph_oid) == LABEL_KIND_EDGE)
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),

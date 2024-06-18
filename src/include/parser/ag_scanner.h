@@ -80,7 +80,7 @@ typedef struct ag_token
     int location;
 } ag_token;
 
-// an opaque data structure encapsulating the current state of the scanner
+/* an opaque data structure encapsulating the current state of the scanner */
 typedef void *ag_scanner_t;
 
 ag_scanner_t ag_scanner_create(const char *s);

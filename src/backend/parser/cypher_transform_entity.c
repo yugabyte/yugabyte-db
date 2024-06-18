@@ -21,7 +21,7 @@
 
 #include "parser/cypher_transform_entity.h"
 
-// creates a transform entity
+/* creates a transform entity */
 transform_entity *make_transform_entity(cypher_parsestate *cpstate,
                                         enum transform_entity_type type,
                                         Node *node, Expr *expr)
@@ -153,7 +153,7 @@ transform_entity *find_variable(cypher_parsestate *cpstate, char *name)
     return NULL;
 }
 
-// helper function that extracts the name associated with the transform_entity.
+/* helper function that extracts the name associated with the transform_entity. */
 char *get_entity_name(transform_entity *entity)
 {
     if (entity->type == ENT_EDGE || entity->type == ENT_VLE_EDGE)

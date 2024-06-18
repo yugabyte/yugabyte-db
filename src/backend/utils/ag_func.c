@@ -33,7 +33,7 @@
 #include "catalog/ag_namespace.h"
 #include "utils/ag_func.h"
 
-// checks that func_oid is of func_name function in ag_catalog
+/* checks that func_oid is of func_name function in ag_catalog */
 bool is_oid_ag_func(Oid func_oid, const char *func_name)
 {
     HeapTuple proctup;
@@ -61,7 +61,7 @@ bool is_oid_ag_func(Oid func_oid, const char *func_name)
     return (strcmp(nspname, "ag_catalog") == 0);
 }
 
-// gets the function OID that matches with func_name and argument types
+/* gets the function OID that matches with func_name and argument types */
 Oid get_ag_func_oid(const char *func_name, const int nargs, ...)
 {
     Oid oids[FUNC_MAX_ARGS];

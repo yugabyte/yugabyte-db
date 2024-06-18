@@ -46,7 +46,7 @@ enum transform_entity_join_side
  */
 typedef struct
 {
-    // denotes whether this entity is a vertex or edge
+    /* denotes whether this entity is a vertex or edge */
     enum transform_entity_type type;
 
     /*
@@ -75,7 +75,7 @@ typedef struct
      * declared by itself or a previous clause.
      */
     bool declared_in_current_clause;
-    // The parse data structure that we transformed
+    /* The parse data structure that we transformed */
     union
     {
         cypher_node *node;

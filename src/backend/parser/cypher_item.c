@@ -38,7 +38,7 @@ static List *expand_rel_attrs(ParseState *pstate, RangeTblEntry *rte,
                               int rtindex, int sublevels_up, int location);
 bool has_a_cypher_list_comprehension_node(Node *expr);
 
-// see transformTargetEntry()
+/* see transformTargetEntry() */
 TargetEntry *transform_cypher_item(cypher_parsestate *cpstate, Node *node,
                                    Node *expr, ParseExprKind expr_kind,
                                    char *colname, bool resjunk)
@@ -46,13 +46,13 @@ TargetEntry *transform_cypher_item(cypher_parsestate *cpstate, Node *node,
     ParseState *pstate = (ParseState *)cpstate;
     bool old_p_lateral_active = pstate->p_lateral_active;
 
-    // we want to see lateral variables
+    /* we want to see lateral variables */
     pstate->p_lateral_active = true;
 
     if (!expr)
         expr = transform_cypher_expr(cpstate, node, expr_kind);
 
-    // set lateral back to what it was
+    /* set lateral back to what it was */
     pstate->p_lateral_active = old_p_lateral_active;
 
     if (!colname && !resjunk)
@@ -68,13 +68,13 @@ TargetEntry *transform_cypher_item(cypher_parsestate *cpstate, Node *node,
  */
 bool has_a_cypher_list_comprehension_node(Node *expr)
 {
-    // return false on NULL input
+    /* return false on NULL input */
     if (expr == NULL)
     {
         return false;
     }
 
-    // since this function recurses, it could be driven to stack overflow
+    /* since this function recurses, it could be driven to stack overflow */
     check_stack_depth();
 
     switch (nodeTag(expr))
@@ -95,7 +95,7 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
         BoolExpr *bexpr = (BoolExpr *)expr;
         ListCell *lc;
 
-        // is any of the boolean expression argument a list comprehension?
+        /* is any of the boolean expression argument a list comprehension? */
         foreach(lc, bexpr->args)
         {
             Node *arg = lfirst(lc);
@@ -109,10 +109,10 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
     }
     case T_A_Indirection:
     {
-        // set expr to the object of the indirection
+        /* set expr to the object of the indirection */
         expr = ((A_Indirection *)expr)->arg;
 
-        // check the object of the indirection
+        /* check the object of the indirection */
         return has_a_cypher_list_comprehension_node(expr);
     }
     case T_ExtensibleNode:
@@ -121,7 +121,7 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
         {
             cypher_unwind *cu = (cypher_unwind *)expr;
 
-            // it is a list comprehension if it has a collect node
+            /* it is a list comprehension if it has a collect node */
             return cu->collect != NULL;
         }
         else if (is_ag_node(expr, cypher_map))
@@ -136,15 +136,15 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
                 return false;
             }
 
-            // check each key and value for a list comprehension
+            /* check each key and value for a list comprehension */
             for (i = 0; i < map->keyvals->length; i += 2)
             {
                 Node *val;
 
-                // get the value
+                /* get the value */
                 val = (Node *)map->keyvals->elements[i + 1].ptr_value;
 
-                // check the value
+                /* check the value */
                 if (has_a_cypher_list_comprehension_node(val))
                 {
                     return true;
@@ -155,7 +155,7 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
         {
             cypher_string_match *csm_match = (cypher_string_match *)expr;
 
-            // is lhs or rhs of the string match a list comprehension?
+            /* is lhs or rhs of the string match a list comprehension? */
             return (has_a_cypher_list_comprehension_node(csm_match->lhs) ||
                     has_a_cypher_list_comprehension_node(csm_match->rhs));
         }
@@ -163,14 +163,14 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
         {
             cypher_typecast *ctypecast = (cypher_typecast *)expr;
 
-            // is expr being typecasted a list comprehension?
+            /* is expr being typecasted a list comprehension? */
             return has_a_cypher_list_comprehension_node(ctypecast->expr);
         }
         else if (is_ag_node(expr, cypher_comparison_aexpr))
         {
             cypher_comparison_aexpr *aexpr = (cypher_comparison_aexpr *)expr;
 
-            // is left or right argument a list comprehension?
+            /* is left or right argument a list comprehension? */
             return (has_a_cypher_list_comprehension_node(aexpr->lexpr) ||
                     has_a_cypher_list_comprehension_node(aexpr->rexpr));
         }
@@ -179,7 +179,7 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
             cypher_comparison_boolexpr *bexpr = (cypher_comparison_boolexpr *)expr;
             ListCell *lc;
 
-            // is any of the boolean expression argument a list comprehension?
+            /* is any of the boolean expression argument a list comprehension? */
             foreach(lc, bexpr->args)
             {
                 Node *arg = lfirst(lc);
@@ -195,11 +195,11 @@ bool has_a_cypher_list_comprehension_node(Node *expr)
     default:
         break;
     }
-    // otherwise, return false
+    /* otherwise, return false */
     return false;
 }
 
-// see transformTargetList()
+/* see transformTargetList() */
 List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
                                  List **groupClause, ParseExprKind expr_kind)
 {
@@ -244,10 +244,10 @@ List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
             }
         }
 
-        // Check if we have a list comprehension
+        /* Check if we have a list comprehension */
         has_list_comp = has_a_cypher_list_comprehension_node(item->val);
 
-        // Clear the exprHasAgg flag to check transform for an aggregate
+        /* Clear the exprHasAgg flag to check transform for an aggregate */
         cpstate->exprHasAgg = false;
 
         if (has_list_comp && item_list->length > 1)
@@ -279,7 +279,7 @@ List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
         }
         else
         {
-            // transform the item
+            /* transform the item */
             te = transform_cypher_item(cpstate, item->val, NULL, expr_kind,
                                        item->name, false);
 
@@ -338,15 +338,15 @@ List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
                     ColumnRef *cref = NULL;
                     char *colname = NULL;
 
-                    // get the name of the column (varname)
+                    /* get the name of the column (varname) */
                     colname = strVal(lfirst(list_head(rte->eref->colnames)));
 
-                    // create the ColumnRef
+                    /* create the ColumnRef */
                     cref = makeNode(ColumnRef);
                     cref->fields = list_make1(makeString(colname));
                     cref->location = -1;
 
-                    // add the expression for grouping
+                    /* add the expression for grouping */
                     group_clause = lappend(group_clause, cref);
                 }
             }

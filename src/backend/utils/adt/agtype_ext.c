@@ -190,7 +190,7 @@ static void ag_deserialize_composite(char *base, enum agtype_value_type type,
     agtype_parse_state *parse_state = NULL;
     agtype_value *r = NULL;
     agtype_value *parsed_agtype_value = NULL;
-    //offset container by the extended type header
+    /* offset container by the extended type header */
     char *container_base = base + AGT_HEADER_SIZE;
 
     r = palloc(sizeof(agtype_value));

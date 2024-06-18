@@ -283,13 +283,13 @@ static agtype *delete_from_array(agtype *agt, agtype *indexes)
                         "using integer index")));
     }
 
-    // array is empty, pass the original array
+    /* array is empty, pass the original array */
     if (AGT_ROOT_COUNT(agt) == 0)
     {
         return agt;
     }
 
-    // start buidiling the result agtype array
+    /* start buidiling the result agtype array */
     it = agtype_iterator_init(&agt->root);
 
     r = agtype_iterator_next(&it, &v, false);
@@ -329,7 +329,7 @@ static agtype *delete_from_array(agtype *agt, agtype *indexes)
             it_indexes = agtype_iterator_init(&indexes->root);
             contains_idx = agtype_deep_contains(&it_indexes, &it_cur_idx, false);
 
-            // re-initialize indexes array iterator
+            /* re-initialize indexes array iterator */
             it_indexes = agtype_iterator_init(&indexes->root);
             contains_neg_idx = agtype_deep_contains(&it_indexes, &it_neg_idx, false);
 

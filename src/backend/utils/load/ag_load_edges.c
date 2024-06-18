@@ -33,7 +33,7 @@ void edge_field_cb(void *field, size_t field_len, void *data)
         ereport(NOTICE,(errmsg("There is some unknown error")));
     }
 
-    // check for space to store this field
+    /* check for space to store this field */
     if (cr->cur_field == cr->alloc)
     {
         cr->alloc *= 2;
@@ -53,7 +53,7 @@ void edge_field_cb(void *field, size_t field_len, void *data)
     cr->cur_field += 1;
 }
 
-// Parser calls this function when it detects end of a row
+/* Parser calls this function when it detects end of a row */
 void edge_row_cb(int delim __attribute__((unused)), void *data)
 {
 

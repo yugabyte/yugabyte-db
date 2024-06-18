@@ -25,7 +25,7 @@
 #include "nodes/cypher_nodes.h"
 #include "utils/agtype.h"
 
-// declaration of a useful postgres macro that isn't in a header file
+/* declaration of a useful postgres macro that isn't in a header file */
 #define DatumGetItemPointer(X)	 ((ItemPointer) DatumGetPointer(X))
 #define ItemPointerGetDatum(X)	 PointerGetDatum(X)
 

@@ -26,7 +26,7 @@
  * and DEFINE_NODE_METHODS_EXTENDED macros in ag_nodes.c.
  */
 
-// clauses
+/* clauses */
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
 void out_cypher_match(StringInfo str, const ExtensibleNode *node);
@@ -37,53 +37,53 @@ void out_cypher_delete(StringInfo str, const ExtensibleNode *node);
 void out_cypher_unwind(StringInfo str, const ExtensibleNode *node);
 void out_cypher_merge(StringInfo str, const ExtensibleNode *node);
 
-// pattern
+/* pattern */
 void out_cypher_path(StringInfo str, const ExtensibleNode *node);
 void out_cypher_node(StringInfo str, const ExtensibleNode *node);
 void out_cypher_relationship(StringInfo str, const ExtensibleNode *node);
 
-// expression
+/* expression */
 void out_cypher_bool_const(StringInfo str, const ExtensibleNode *node);
 void out_cypher_param(StringInfo str, const ExtensibleNode *node);
 void out_cypher_map(StringInfo str, const ExtensibleNode *node);
 void out_cypher_map_projection(StringInfo str, const ExtensibleNode *node);
 void out_cypher_list(StringInfo str, const ExtensibleNode *node);
 
-// comparison expression
+/* comparison expression */
 void out_cypher_comparison_aexpr(StringInfo str, const ExtensibleNode *node);
 void out_cypher_comparison_boolexpr(StringInfo str, const ExtensibleNode *node);
 
-// string match
+/* string match */
 void out_cypher_string_match(StringInfo str, const ExtensibleNode *node);
 
-// typecast
+/* typecast */
 void out_cypher_typecast(StringInfo str, const ExtensibleNode *node);
 
-// integer constant
+/* integer constant */
 void out_cypher_integer_const(StringInfo str, const ExtensibleNode *node);
 
-// sub patterns/queries
+/* sub patterns/queries */
 void out_cypher_sub_pattern(StringInfo str, const ExtensibleNode *node);
 void out_cypher_sub_query(StringInfo str, const ExtensibleNode *node);
 
-// procedure call
+/* procedure call */
 
 void out_cypher_call(StringInfo str, const ExtensibleNode *node);
 
-// create private data structures
+/* create private data structures */
 void out_cypher_create_target_nodes(StringInfo str, const ExtensibleNode *node);
 void out_cypher_create_path(StringInfo str, const ExtensibleNode *node);
 void out_cypher_target_node(StringInfo str, const ExtensibleNode *node);
 
-// set/remove private data structures
+/* set/remove private data structures */
 void out_cypher_update_information(StringInfo str, const ExtensibleNode *node);
 void out_cypher_update_item(StringInfo str, const ExtensibleNode *node);
 
-// delete private data structures
+/* delete private data structures */
 void out_cypher_delete_information(StringInfo str, const ExtensibleNode *node);
 void out_cypher_delete_item(StringInfo str, const ExtensibleNode *node);
 
-// merge private data structures
+/* merge private data structures */
 void out_cypher_merge_information(StringInfo str, const ExtensibleNode *node);
 
 #endif

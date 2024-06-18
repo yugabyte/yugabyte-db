@@ -52,7 +52,7 @@ const uint16 CypherKeywordCategories[] = {
 
 PG_FUNCTION_INFO_V1(get_cypher_keywords);
 
-// function to return the list of grammar keywords
+/* function to return the list of grammar keywords */
 Datum get_cypher_keywords(PG_FUNCTION_ARGS)
 {
     FuncCallContext *func_ctx;
@@ -82,7 +82,7 @@ Datum get_cypher_keywords(PG_FUNCTION_ARGS)
         char *values[3];
         HeapTuple tuple;
 
-        // cast-away-const is ugly but alternatives aren't much better
+        /* cast-away-const is ugly but alternatives aren't much better */
         values[0] = (char *) GetScanKeyword((int) func_ctx->call_cntr,
                                             &CypherKeyword);
 
@@ -105,7 +105,7 @@ Datum get_cypher_keywords(PG_FUNCTION_ARGS)
             values[2] = "reserved";
             break;
         default:
-            // shouldn't be possible
+            /* shouldn't be possible */
             values[1] = NULL;
             values[2] = NULL;
             break;

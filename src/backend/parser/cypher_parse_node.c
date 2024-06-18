@@ -30,7 +30,7 @@
 
 static void errpos_ecb(void *arg);
 
-// NOTE: sync the logic with make_parsestate()
+/* NOTE: sync the logic with make_parsestate() */
 cypher_parsestate *make_cypher_parsestate(cypher_parsestate *parent_cpstate)
 {
     ParseState *parent_pstate = (ParseState *)parent_cpstate;

@@ -31,7 +31,7 @@
 
 #include "parser/ag_scanner.h"
 
-// override the default data type of locations (yylloc)
+/* override the default data type of locations (yylloc) */
 #define YYLTYPE int
 
 /*
@@ -64,7 +64,7 @@ typedef struct cypher_yy_extra
  */
 #include "parser/cypher_gram_def.h"
 
-// cypher_parser.c
+/* cypher_parser.c */
 int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner);
 void cypher_yyerror(YYLTYPE *llocp, ag_scanner_t scanner,
                     cypher_yy_extra *extra, const char *msg);

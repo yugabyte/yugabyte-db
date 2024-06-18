@@ -22,56 +22,56 @@
 
 #include "nodes/extensible.h"
 
-// This list must match node_names and node_methods.
+/* This list must match node_names and node_methods. */
 typedef enum ag_node_tag
 {
     ag_node_invalid_t = 0,
 
-    // projection
+    /* projection */
     cypher_return_t,
     cypher_with_t,
-    // reading clause
+    /* reading clause */
     cypher_match_t,
-    // updating clause
+    /* updating clause */
     cypher_create_t,
     cypher_set_t,
     cypher_set_item_t,
     cypher_delete_t,
     cypher_unwind_t,
     cypher_merge_t,
-    // pattern
+    /* pattern */
     cypher_path_t,
     cypher_node_t,
     cypher_relationship_t,
-    // expression
+    /* expression */
     cypher_bool_const_t,
     cypher_param_t,
     cypher_map_t,
     cypher_map_projection_t,
     cypher_map_projection_element_t,
     cypher_list_t,
-    // comparison expression
+    /* comparison expression */
     cypher_comparison_aexpr_t,
     cypher_comparison_boolexpr_t,
-    // string match
+    /* string match */
     cypher_string_match_t,
-    // typecast
+    /* typecast */
     cypher_typecast_t,
-    // integer constant
+    /* integer constant */
     cypher_integer_const_t,
-    // sub patterns/queries
+    /* sub patterns/queries */
     cypher_sub_pattern_t,
     cypher_sub_query_t,
-    // procedure calls
+    /* procedure calls */
     cypher_call_t,
-    // create data structures
+    /* create data structures */
     cypher_create_target_nodes_t,
     cypher_create_path_t,
     cypher_target_node_t,
-    // set/remove data structures
+    /* set/remove data structures */
     cypher_update_information_t,
     cypher_update_item_t,
-    // delete data structures
+    /* delete data structures */
     cypher_delete_information_t,
     cypher_delete_item_t,
     cypher_merge_information_t

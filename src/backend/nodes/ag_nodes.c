@@ -27,7 +27,7 @@
 
 static bool equal_ag_node(const ExtensibleNode *a, const ExtensibleNode *b);
 
-// This list must match ag_node_tag.
+/* This list must match ag_node_tag. */
 const char *node_names[] = {
     "ag_node_invalid",
     "cypher_return",
@@ -96,7 +96,7 @@ const char *node_names[] = {
         CppConcat(read_, type) \
     }
 
-// This list must match ag_node_tag.
+/* This list must match ag_node_tag. */
 const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_return),
     DEFINE_NODE_METHODS(cypher_with),

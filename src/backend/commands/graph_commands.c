@@ -65,26 +65,26 @@ Datum create_graph(PG_FUNCTION_ARGS)
     char *graph_name_str;
     Oid nsp_id;
 
-    //if no argument is passed with the function, graph name cannot be null
+    /* if no argument is passed with the function, graph name cannot be null */
     if (PG_ARGISNULL(0))
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("graph name can not be NULL")));
     }
 
-    //gets graph name as function argument
+    /* gets graph name as function argument */
     graph_name = PG_GETARG_NAME(0);  
 
     graph_name_str = NameStr(*graph_name);
 
-    //checking if the name of the graph falls under the pre-decided graph naming conventions(regex)
+    /* checking if the name of the graph falls under the pre-decided graph naming conventions(regex) */
     if (!is_valid_graph_name(graph_name_str))
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("graph name is invalid")));
     }
 
-    //graph name must be unique, a graph with the same name should not exist
+    /* graph name must be unique, a graph with the same name should not exist */
     if (graph_exists(graph_name_str))
     {
         ereport(ERROR,
@@ -94,13 +94,13 @@ Datum create_graph(PG_FUNCTION_ARGS)
 
     nsp_id = create_schema_for_graph(graph_name);
 
-    //inserts the graph info into the relation which has all the other existing graphs info
+    /* inserts the graph info into the relation which has all the other existing graphs info */
     insert_graph(graph_name, nsp_id);  
 
-    //Increment the Command counter before create the generic labels.
+    /* Increment the Command counter before create the generic labels. */
     CommandCounterIncrement();
 
-    //Create the default label tables
+    /* Create the default label tables */
     graph = graph_name->data;
     create_label(graph, AG_DEFAULT_LABEL_VERTEX, LABEL_TYPE_VERTEX, NIL);
     create_label(graph, AG_DEFAULT_LABEL_EDGE, LABEL_TYPE_EDGE, NIL);
@@ -108,7 +108,7 @@ Datum create_graph(PG_FUNCTION_ARGS)
     ereport(NOTICE,
             (errmsg("graph \"%s\" has been created", NameStr(*graph_name))));
 
-    //according to postgres specification of c-language functions if function returns void this is the syntax
+    /* according to postgres specification of c-language functions if function returns void this is the syntax */
     PG_RETURN_VOID(); 
 }
 
@@ -157,7 +157,7 @@ static Oid create_schema_for_graph(const Name graph_name)
     schema_stmt->if_not_exists = false;
     nsp_id = CreateSchemaCommand(schema_stmt,
                                  "(generated CREATE SCHEMA command)", -1, -1);
-    // CommandCounterIncrement() is called in CreateSchemaCommand()
+    /* CommandCounterIncrement() is called in CreateSchemaCommand() */
 
     return nsp_id;
 }
@@ -207,7 +207,7 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
      * so the event triggers will not be fired.
      */
 
-    // DROP SEQUENCE `graph_name_str`.`LABEL_ID_SEQ_NAME`
+    /* DROP SEQUENCE `graph_name_str`.`LABEL_ID_SEQ_NAME` */
     drop_stmt = makeNode(DropStmt);
     schema_name = makeString(get_graph_namespace_name(graph_name_str));
     label_id_seq_name = list_make2(schema_name, makeString(LABEL_ID_SEQ_NAME));
@@ -218,15 +218,15 @@ static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
     drop_stmt->concurrent = false;
 
     RemoveRelations(drop_stmt);
-    // CommandCounterIncrement() is called in RemoveRelations()
+    /* CommandCounterIncrement() is called in RemoveRelations() */
 
-    // DROP SCHEMA `graph_name_str` [ CASCADE ]
+    /* DROP SCHEMA `graph_name_str` [ CASCADE ] */
     behavior = cascade ? DROP_CASCADE : DROP_RESTRICT;
     remove_schema((Node *)schema_name, behavior);
-    // CommandCounterIncrement() is called in performDeletion()
+    /* CommandCounterIncrement() is called in performDeletion() */
 }
 
-// See RemoveObjects() for more details.
+/* See RemoveObjects() for more details. */
 static void remove_schema(Node *schema_name, DropBehavior behavior)
 {
     ObjectAddress address;
@@ -234,12 +234,12 @@ static void remove_schema(Node *schema_name, DropBehavior behavior)
 
     address = get_object_address(OBJECT_SCHEMA, schema_name, &relation,
                                  AccessExclusiveLock, false);
-    // since the target object is always a schema, relation is NULL
+    /* since the target object is always a schema, relation is NULL */
     Assert(!relation);
 
     if (!OidIsValid(address.objectId))
     {
-        // missing_ok is always false
+        /* missing_ok is always false */
 
         /*
          * before calling this function, this condition is already checked in
@@ -251,7 +251,7 @@ static void remove_schema(Node *schema_name, DropBehavior behavior)
                                 strVal(schema_name))));
     }
 
-    // removeType is always OBJECT_SCHEMA
+    /* removeType is always OBJECT_SCHEMA */
 
     /*
      * Check permissions. Since the target object is always a schema, the
@@ -260,9 +260,9 @@ static void remove_schema(Node *schema_name, DropBehavior behavior)
     check_object_ownership(GetUserId(), OBJECT_SCHEMA, address, schema_name,
                            NULL);
 
-    // the target schema is not temporary
+    /* the target schema is not temporary */
 
-    // the target object is always a schema
+    /* the target object is always a schema */
 
     /*
      * set PERFORM_DELETION_INTERNAL flag so that object_access_hook can ignore
@@ -355,7 +355,7 @@ static void rename_graph(const Name graph_name, const Name new_name)
             (errmsg("graph \"%s\" renamed to \"%s\"", oldname, newname)));
 }
 
-// returns a list containing the name of every graph in the database
+/* returns a list containing the name of every graph in the database */
 List *get_graphnames(void)
 {
     TupleTableSlot *slot;
@@ -393,7 +393,7 @@ List *get_graphnames(void)
     return graphnames;
 }
 
-// deletes all the graphs in the list.
+/* deletes all the graphs in the list. */
 void drop_graphs(List *graphnames)
 {
     ListCell *lc;

@@ -20,7 +20,7 @@
 #ifndef AG_AG_CACHE_H
 #define AG_AG_CACHE_H
 
-// graph_cache_data contains the same fields that ag_graph catalog table has
+/* graph_cache_data contains the same fields that ag_graph catalog table has */
 typedef struct graph_cache_data
 {
     Oid oid;
@@ -28,7 +28,7 @@ typedef struct graph_cache_data
     Oid namespace;
 } graph_cache_data;
 
-// label_cache_data contains the same fields that ag_label catalog table has
+/* label_cache_data contains the same fields that ag_label catalog table has */
 typedef struct label_cache_data
 {
     NameData name;
@@ -39,7 +39,7 @@ typedef struct label_cache_data
     NameData seq_name;
 } label_cache_data;
 
-// callers of these functions must not modify the returned struct
+/* callers of these functions must not modify the returned struct */
 graph_cache_data *search_graph_name_cache(const char *name);
 graph_cache_data *search_graph_namespace_cache(Oid namespace);
 label_cache_data *search_label_oid_cache(Oid oid);

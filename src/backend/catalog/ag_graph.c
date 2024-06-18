@@ -40,7 +40,7 @@
 
 static Oid get_graph_namespace(const char *graph_name);
 
-// INSERT INTO ag_catalog.ag_graph VALUES (graph_name, nsp_id)
+/* INSERT INTO ag_catalog.ag_graph VALUES (graph_name, nsp_id) */
 void insert_graph(const Name graph_name, const Oid nsp_id)
 {
     Datum values[Natts_ag_graph];
@@ -73,7 +73,7 @@ void insert_graph(const Name graph_name, const Oid nsp_id)
     table_close(ag_graph, RowExclusiveLock);
 }
 
-// DELETE FROM ag_catalog.ag_graph WHERE name = graph_name
+/* DELETE FROM ag_catalog.ag_graph WHERE name = graph_name */
 void delete_graph(const Name graph_name)
 {
     ScanKeyData scan_keys[1];
@@ -102,7 +102,7 @@ void delete_graph(const Name graph_name)
     table_close(ag_graph, RowExclusiveLock);
 }
 
-// Function updates graph name in ag_graph table.
+/* Function updates graph name in ag_graph table. */
 void update_graph_name(const Name graph_name, const Name new_name)
 {
     ScanKeyData scan_keys[1];
@@ -114,7 +114,7 @@ void update_graph_name(const Name graph_name, const Name new_name)
     bool do_replace[Natts_ag_graph];
     HeapTuple new_tuple;
 
-    // open and scan ag_graph for graph name
+    /* open and scan ag_graph for graph name */
     ScanKeyInit(&scan_keys[0], Anum_ag_graph_name, BTEqualStrategyNumber,
                 F_NAMEEQ, NameGetDatum(graph_name));
 
@@ -131,7 +131,7 @@ void update_graph_name(const Name graph_name, const Name new_name)
                  errmsg("graph \"%s\" does not exist", NameStr(*graph_name))));
     }
 
-    // modify (which creates a new tuple) the current tuple's graph name
+    /* modify (which creates a new tuple) the current tuple's graph name */
     MemSet(repl_values, 0, sizeof(repl_values));
     MemSet(repl_isnull, false, sizeof(repl_isnull));
     MemSet(do_replace, false, sizeof(do_replace));
@@ -143,10 +143,10 @@ void update_graph_name(const Name graph_name, const Name new_name)
     new_tuple = heap_modify_tuple(cur_tuple, RelationGetDescr(ag_graph),
                                   repl_values, repl_isnull, do_replace);
 
-    // update the current tuple with the new tuple
+    /* update the current tuple with the new tuple */
     CatalogTupleUpdate(ag_graph, &cur_tuple->t_self, new_tuple);
 
-    // end scan and close ag_graph
+    /* end scan and close ag_graph */
     systable_endscan(scan_desc);
     table_close(ag_graph, RowExclusiveLock);
 }

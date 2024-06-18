@@ -108,7 +108,7 @@ static void begin_cypher_merge(CustomScanState *node, EState *estate,
 
     Assert(list_length(css->cs->custom_plans) == 1);
 
-    // initialize the subplan
+    /* initialize the subplan */
     subplan = linitial(css->cs->custom_plans);
     node->ss.ps.lefttree = ExecInitNode(subplan, estate, eflags);
 
@@ -151,19 +151,19 @@ static void begin_cypher_merge(CustomScanState *node, EState *estate,
             continue;
         }
 
-        // Open relation and acquire a row exclusive lock.
+        /* Open relation and acquire a row exclusive lock. */
         rel = table_open(cypher_node->relid, RowExclusiveLock);
 
-        // Initialize resultRelInfo for the vertex
+        /* Initialize resultRelInfo for the vertex */
         cypher_node->resultRelInfo = makeNode(ResultRelInfo);
         InitResultRelInfo(cypher_node->resultRelInfo, rel,
                           list_length(estate->es_range_table), NULL,
                           estate->es_instrument);
 
-        // Open all indexes for the relation
+        /* Open all indexes for the relation */
         ExecOpenIndices(cypher_node->resultRelInfo, false);
 
-        // Setup the relation's tuple slot
+        /* Setup the relation's tuple slot */
         cypher_node->elemTupleSlot = ExecInitExtraTupleSlot(
             estate,
             RelationGetDescr(cypher_node->resultRelInfo->ri_RelationDesc),
@@ -813,10 +813,10 @@ static TupleTableSlot *exec_cypher_merge(CustomScanState *node)
             /* setup the scantuple that the process_path needs */
             econtext->ecxt_scantuple = sss->ss.ss_ScanTupleSlot;
 
-            // create the path
+            /* create the path */
             process_path(css, NULL, true);
 
-            // mark the create_new_path flag to true.
+            /* mark the create_new_path flag to true. */
             css->created_new_path = true;
 
             /*
@@ -825,7 +825,7 @@ static TupleTableSlot *exec_cypher_merge(CustomScanState *node)
              */
             mark_tts_isnull(econtext->ecxt_scantuple);
 
-            // store the heap tuble
+            /* store the heap tuble */
             ExecStoreVirtualTuple(econtext->ecxt_scantuple);
 
             /*
@@ -835,7 +835,7 @@ static TupleTableSlot *exec_cypher_merge(CustomScanState *node)
             sss->ss.ps.ps_ProjInfo->pi_exprContext->ecxt_scantuple =
                                                         econtext->ecxt_scantuple;
 
-            // assign this to be our scantuple
+            /* assign this to be our scantuple */
             econtext->ecxt_scantuple = ExecProject(node->ss.ps.lefttree->ps_ProjInfo);
 
             /*
@@ -860,7 +860,7 @@ static void end_cypher_merge(CustomScanState *node)
     ListCell *lc = NULL;
     int path_length = list_length(path->target_nodes);
 
-    // increment the command counter
+    /* increment the command counter */
     CommandCounterIncrement();
 
     ExecEndNode(node->ss.ps.lefttree);
@@ -874,10 +874,10 @@ static void end_cypher_merge(CustomScanState *node)
             continue;
         }
 
-        // close all indices for the node
+        /* close all indices for the node */
         ExecCloseIndices(cypher_node->resultRelInfo);
 
-        // close the relation itself
+        /* close the relation itself */
         table_close(cypher_node->resultRelInfo->ri_RelationDesc,
                     RowExclusiveLock);
     }
@@ -930,7 +930,7 @@ Node *create_cypher_merge_plan_state(CustomScan *cscan)
 
     cypher_css->cs = cscan;
 
-    // get the serialized data structure from the Const and deserialize it.
+    /* get the serialized data structure from the Const and deserialize it. */
     c = linitial(cscan->custom_private);
     serialized_data = (char *)c->constvalue;
     merge_information = stringToNode(serialized_data);
@@ -1290,13 +1290,13 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
      */
     if (node->dir == CYPHER_REL_DIR_RIGHT || node->dir == CYPHER_REL_DIR_NONE)
     {
-        // create pattern (prev_vertex)-[edge]->(next_vertex)
+        /* create pattern (prev_vertex)-[edge]->(next_vertex) */
         start_id = prev_vertex_id;
         end_id = next_vertex_id;
     }
     else if (node->dir == CYPHER_REL_DIR_LEFT)
     {
-        // create pattern (prev_vertex)<-[edge]-(next_vertex)
+        /* create pattern (prev_vertex)<-[edge]-(next_vertex) */
         start_id = next_vertex_id;
         end_id = prev_vertex_id;
     }
@@ -1422,14 +1422,14 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
         result = make_edge(id, start_id, end_id,
                            CStringGetDatum(node->label_name), prop);
 
-        // add the Datum to the list of entities for creating the path variable
+        /* add the Datum to the list of entities for creating the path variable */
         if (CYPHER_TARGET_NODE_IN_PATH(node->flags))
         {
             prev_path = lappend(prev_path, DatumGetPointer(result));
             css->path_values = list_concat(prev_path, css->path_values);
         }
 
-        // Add the entity to the TupleTableSlot if necessary
+        /* Add the entity to the TupleTableSlot if necessary */
         if (CYPHER_TARGET_NODE_IS_VARIABLE(node->flags))
         {
             TupleTableSlot *scantuple = econtext->ecxt_scantuple;

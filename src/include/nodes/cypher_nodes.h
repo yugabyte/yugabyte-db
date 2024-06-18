@@ -52,7 +52,7 @@ typedef struct cypher_return
 {
     ExtensibleNode extensible;
     bool distinct;
-    List *items; // a list of ResTarget's
+    List *items; /* a list of ResTarget's */
     List *order_by;
     Node *skip;
     Node *limit;
@@ -67,8 +67,8 @@ typedef struct cypher_with
 {
     ExtensibleNode extensible;
     bool distinct;
-    bool subquery_intermediate; //flag that denotes a subquery node
-    List *items; // a list of ResTarget's
+    bool subquery_intermediate; /* flag that denotes a subquery node */
+    List *items; /* a list of ResTarget's */
     List *order_by;
     Node *skip;
     Node *limit;
@@ -78,39 +78,39 @@ typedef struct cypher_with
 typedef struct cypher_match
 {
     ExtensibleNode extensible;
-    List *pattern; // a list of cypher_paths
-    Node *where; // optional WHERE subclause (expression)
-    bool optional; // OPTIONAL MATCH
+    List *pattern; /* a list of cypher_paths */
+    Node *where; /* optional WHERE subclause (expression) */
+    bool optional; /* OPTIONAL MATCH */
 } cypher_match;
 
 typedef struct cypher_create
 {
     ExtensibleNode extensible;
-    List *pattern; // a list of cypher_paths
+    List *pattern; /* a list of cypher_paths */
 } cypher_create;
 
 typedef struct cypher_set
 {
     ExtensibleNode extensible;
-    List *items; // a list of cypher_set_items
-    bool is_remove; // true if this is REMOVE clause
+    List *items; /* a list of cypher_set_items */
+    bool is_remove; /* true if this is REMOVE clause */
     int location;
 } cypher_set;
 
 typedef struct cypher_set_item
 {
     ExtensibleNode extensible;
-    Node *prop; // LHS
-    Node *expr; // RHS
-    bool is_add; // true if this is +=
+    Node *prop; /* LHS */
+    Node *expr; /* RHS */
+    bool is_add; /* true if this is += */
     int location;
 } cypher_set_item;
 
 typedef struct cypher_delete
 {
     ExtensibleNode extensible;
-    bool detach; // true if DETACH is specified
-    List *exprs; // targets of this deletion
+    bool detach; /* true if DETACH is specified */
+    List *exprs; /* targets of this deletion */
     int location;
 } cypher_delete;
 
@@ -137,13 +137,13 @@ typedef struct cypher_merge
 typedef struct cypher_path
 {
     ExtensibleNode extensible;
-    List *path; // [ node ( , relationship , node , ... ) ]
+    List *path; /* [ node ( , relationship , node , ... ) ] */
     char *var_name;
     char *parsed_var_name;
     int location;
 } cypher_path;
 
-// ( name :label props )
+/* ( name :label props ) */
 typedef struct cypher_node
 {
     ExtensibleNode extensible;
@@ -152,7 +152,7 @@ typedef struct cypher_node
     char *label;
     char *parsed_label;
     bool use_equals;
-    Node *props; // map or parameter
+    Node *props; /* map or parameter */
     int location;
 } cypher_node;
 
@@ -163,7 +163,7 @@ typedef enum
     CYPHER_REL_DIR_RIGHT = 1
 } cypher_rel_dir;
 
-// -[ name :label props ]-
+/* -[ name :label props ]- */
 typedef struct cypher_relationship
 {
     ExtensibleNode extensible;
@@ -172,8 +172,8 @@ typedef struct cypher_relationship
     char *label;
     char *parsed_label;
     bool use_equals;
-    Node *props; // map or parameter
-    Node *varlen; // variable length relationships (A_Indices)
+    Node *props; /* map or parameter */
+    Node *varlen; /* variable length relationships (A_Indices) */
     cypher_rel_dir dir;
     int location;
 } cypher_relationship;
@@ -208,7 +208,7 @@ typedef struct cypher_map
     ExtensibleNode extensible;
     List *keyvals;
     int location;
-    bool keep_null; // if false, keyvals with null value are removed
+    bool keep_null; /* if false, keyvals with null value are removed */
 } cypher_map;
 
 typedef struct cypher_map_projection
@@ -318,7 +318,7 @@ typedef struct cypher_call
     FuncExpr *funcexpr; /*transformed */
 
     Node *where;
-    List *yield_items; // optional yield subclause
+    List *yield_items; /* optional yield subclause */
 } cypher_call;
 
 #define CYPHER_CLAUSE_FLAG_NONE 0x0000
@@ -342,11 +342,11 @@ typedef struct cypher_call
 typedef struct cypher_target_node
 {
     ExtensibleNode extensible;
-    // 'v' for vertex or 'e' for edge
+    /* 'v' for vertex or 'e' for edge */
     char type;
-    // flags defined below, prefaced with CYPHER_TARGET_NODE_FLAG_*
+    /* flags defined below, prefaced with CYPHER_TARGET_NODE_FLAG_* */
     uint32 flags;
-    // if an edge, denotes direction
+    /* if an edge, denotes direction */
     cypher_rel_dir dir;
     /*
      * Used to create the id for the vertex/edge,
@@ -368,15 +368,15 @@ typedef struct cypher_target_node
      * are stored in the CustomScanState's child TupleTableSlot
      */
     AttrNumber prop_attr_num;
-    // RelInfo for the table this entity will be stored in
+    /* RelInfo for the table this entity will be stored in */
     ResultRelInfo *resultRelInfo;
-    // elemTupleSlot used to insert the entity into its table
+    /* elemTupleSlot used to insert the entity into its table */
     TupleTableSlot *elemTupleSlot;
-    // relid that the label stores its entity
+    /* relid that the label stores its entity */
     Oid relid;
-    // label this entity belongs to.
+    /* label this entity belongs to. */
     char *label_name;
-    // variable name for this entity
+    /* variable name for this entity */
     char *variable_name;
     /*
      * Attribute number this entity needs to be stored in
@@ -387,7 +387,7 @@ typedef struct cypher_target_node
 } cypher_target_node;
 
 #define CYPHER_TARGET_NODE_FLAG_NONE 0x0000
-// node must insert data
+/* node must insert data */
 #define CYPHER_TARGET_NODE_FLAG_INSERT 0x0001
 /*
  * Flag that denotes if this target node is referencing
@@ -396,9 +396,9 @@ typedef struct cypher_target_node
  */
 #define EXISTING_VARIABLE_DECLARED_SAME_CLAUSE 0x0002
 
-//node is the first instance of a declared variable
+/* node is the first instance of a declared variable */
 #define CYPHER_TARGET_NODE_IS_VAR 0x0004
-// node is an element in a path variable
+/* node is an element in a path variable */
 #define CYPHER_TARGET_NODE_IN_PATH_VAR 0x0008
 
 #define CYPHER_TARGET_NODE_MERGE_EXISTS 0x0010

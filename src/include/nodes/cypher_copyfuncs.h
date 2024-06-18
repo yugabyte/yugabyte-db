@@ -29,7 +29,7 @@
 
 void copy_ag_node(ExtensibleNode *newnode, const ExtensibleNode *oldnode);
 
-// create data structures
+/* create data structures */
 void copy_cypher_create_target_nodes(ExtensibleNode *newnode,
                                      const ExtensibleNode *from);
 void copy_cypher_create_path(ExtensibleNode *newnode,
@@ -37,19 +37,19 @@ void copy_cypher_create_path(ExtensibleNode *newnode,
 void copy_cypher_target_node(ExtensibleNode *newnode,
                              const ExtensibleNode *from);
 
-// set/remove data structures
+/* set/remove data structures */
 void copy_cypher_update_information(ExtensibleNode *newnode,
                                     const ExtensibleNode *from);
 void copy_cypher_update_item(ExtensibleNode *newnode,
                              const ExtensibleNode *from);
 
-// delete data structures
+/* delete data structures */
 void copy_cypher_delete_information(ExtensibleNode *newnode,
                                     const ExtensibleNode *from);
 void copy_cypher_delete_item(ExtensibleNode *newnode,
                              const ExtensibleNode *from);
 
-// merge data structure
+/* merge data structure */
 void copy_cypher_merge_information(ExtensibleNode *newnode,
                                    const ExtensibleNode *from);
 #endif

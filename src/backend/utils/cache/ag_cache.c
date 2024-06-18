@@ -32,13 +32,13 @@
 
 typedef struct graph_name_cache_entry
 {
-    NameData name; // hash key
+    NameData name; /* hash key */
     graph_cache_data data;
 } graph_name_cache_entry;
 
 typedef struct graph_namespace_cache_entry
 {
-    Oid namespace; // hash key
+    Oid namespace; /* hash key */
     graph_cache_data data;
 } graph_namespace_cache_entry;
 
@@ -50,7 +50,7 @@ typedef struct label_name_graph_cache_key
 
 typedef struct label_name_graph_cache_entry
 {
-    label_name_graph_cache_key key; // hash key
+    label_name_graph_cache_key key; /* hash key */
     label_cache_data data;
 } label_name_graph_cache_entry;
 
@@ -62,13 +62,13 @@ typedef struct label_graph_oid_cache_key
 
 typedef struct label_graph_oid_cache_entry
 {
-    label_graph_oid_cache_key key; // hash key
+    label_graph_oid_cache_key key; /* hash key */
     label_cache_data data;
 } label_graph_oid_cache_entry;
 
 typedef struct label_relation_cache_entry
 {
-    Oid relation; // hash key
+    Oid relation; /* hash key */
     label_cache_data data;
 } label_relation_cache_entry;
 
@@ -80,43 +80,43 @@ typedef struct label_seq_name_graph_cache_key
 
 typedef struct label_seq_name_graph_cache_entry
 {
-    label_seq_name_graph_cache_key key; // hash key
+    label_seq_name_graph_cache_key key; /* hash key */
     label_cache_data data;
 } label_seq_name_graph_cache_entry;
 
-// ag_graph.name
+/* ag_graph.name */
 static HTAB *graph_name_cache_hash = NULL;
 static ScanKeyData graph_name_scan_keys[1];
 
-// ag_graph.namespace
+/* ag_graph.namespace */
 static HTAB *graph_namespace_cache_hash = NULL;
 static ScanKeyData graph_namespace_scan_keys[1];
 
-// ag_label.name, ag_label.graph
+/* ag_label.name, ag_label.graph */
 static HTAB *label_name_graph_cache_hash = NULL;
 static ScanKeyData label_name_graph_scan_keys[2];
 
-// ag_label.graph, ag_label.id
+/* ag_label.graph, ag_label.id */
 static HTAB *label_graph_oid_cache_hash = NULL;
 static ScanKeyData label_graph_oid_scan_keys[2];
 
-// ag_label.relation
+/* ag_label.relation */
 static HTAB *label_relation_cache_hash = NULL;
 static ScanKeyData label_relation_scan_keys[1];
 
-// ag_label.seq_name, ag_label.graph
+/* ag_label.seq_name, ag_label.graph */
 static HTAB *label_seq_name_graph_cache_hash = NULL;
 static ScanKeyData label_seq_name_graph_scan_keys[2];
 
-// initialize all caches
+/* initialize all caches */
 static void initialize_caches(void);
 
-// common
+/* common */
 static void ag_cache_scan_key_init(ScanKey entry, AttrNumber attno,
                                    RegProcedure func);
 static int name_hash_compare(const void *key1, const void *key2, Size keysize);
 
-// ag_graph
+/* ag_graph */
 static void initialize_graph_caches(void);
 static void create_graph_caches(void);
 static void create_graph_name_cache(void);
@@ -130,7 +130,7 @@ static graph_cache_data *search_graph_namespace_cache_miss(Oid namespace);
 static void fill_graph_cache_data(graph_cache_data *cache_data,
                                   HeapTuple tuple, TupleDesc tuple_desc);
 
-// ag_label
+/* ag_label */
 static void initialize_label_caches(void);
 static void create_label_caches(void);
 static void create_label_name_graph_cache(void);
@@ -201,7 +201,7 @@ static int name_hash_compare(const void *key1, const void *key2, Size keysize)
     Name name1 = (Name)key1;
     Name name2 = (Name)key2;
 
-    // keysize parameter is superfluous here
+    /* keysize parameter is superfluous here */
     AssertArg(keysize == NAMEDATALEN);
 
     return strncmp(NameStr(*name1), NameStr(*name2), NAMEDATALEN);
@@ -209,11 +209,11 @@ static int name_hash_compare(const void *key1, const void *key2, Size keysize)
 
 static void initialize_graph_caches(void)
 {
-    // ag_graph.name
+    /* ag_graph.name */
     ag_cache_scan_key_init(&graph_name_scan_keys[0], Anum_ag_graph_name,
                            F_NAMEEQ);
 
-    // ag_graph.namespace
+    /* ag_graph.namespace */
     ag_cache_scan_key_init(&graph_namespace_scan_keys[0],
                            Anum_ag_graph_namespace, F_OIDEQ);
 
@@ -374,7 +374,7 @@ static graph_cache_data *search_graph_name_cache_miss(Name name)
     scan_desc = systable_beginscan(ag_graph, ag_graph_name_index_id(), true,
                                    NULL, 1, scan_keys);
 
-    // don't need to loop over scan_desc because ag_graph_name_index is UNIQUE
+    /* don't need to loop over scan_desc because ag_graph_name_index is UNIQUE */
     tuple = systable_getnext(scan_desc);
     if (!HeapTupleIsValid(tuple))
     {
@@ -384,11 +384,11 @@ static graph_cache_data *search_graph_name_cache_miss(Name name)
         return NULL;
     }
 
-    // get a new entry
+    /* get a new entry */
     entry = hash_search(graph_name_cache_hash, name, HASH_ENTER, &found);
-    Assert(!found); // no concurrent update on graph_name_cache_hash
+    Assert(!found); /* no concurrent update on graph_name_cache_hash */
 
-    // fill the new entry with the retrieved tuple
+    /* fill the new entry with the retrieved tuple */
     fill_graph_cache_data(&entry->data, tuple, RelationGetDescr(ag_graph));
 
     systable_endscan(scan_desc);
@@ -435,8 +435,8 @@ static graph_cache_data *search_graph_namespace_cache_miss(Oid namespace)
     scan_desc = systable_beginscan(ag_graph, ag_graph_namespace_index_id(),
                                    true, NULL, 1, scan_keys);
 
-    // don't need to loop over scan_desc because ag_graph_namespace_index is
-    // UNIQUE
+    /* don't need to loop over scan_desc because ag_graph_namespace_index is */
+    /* UNIQUE */
     tuple = systable_getnext(scan_desc);
     if (!HeapTupleIsValid(tuple))
     {
@@ -446,12 +446,12 @@ static graph_cache_data *search_graph_namespace_cache_miss(Oid namespace)
         return NULL;
     }
 
-    // get a new entry
+    /* get a new entry */
     entry = hash_search(graph_namespace_cache_hash, &namespace, HASH_ENTER,
                         &found);
-    Assert(!found); // no concurrent update on graph_namespace_cache_hash
+    Assert(!found); /* no concurrent update on graph_namespace_cache_hash */
 
-    // fill the new entry with the retrieved tuple
+    /* fill the new entry with the retrieved tuple */
     fill_graph_cache_data(&entry->data, tuple, RelationGetDescr(ag_graph));
 
     systable_endscan(scan_desc);
@@ -467,17 +467,17 @@ static void fill_graph_cache_data(graph_cache_data *cache_data,
     Datum value;
     Name name;
 
-    // ag_graph.id
+    /* ag_graph.id */
     value = heap_getattr(tuple, Anum_ag_graph_oid, tuple_desc, &is_null);
     Assert(!is_null);
     cache_data->oid = DatumGetObjectId(value);
-    // ag_graph.name
+    /* ag_graph.name */
     value = heap_getattr(tuple, Anum_ag_graph_name, tuple_desc, &is_null);
     Assert(!is_null);
     name = DatumGetName(value);
     Assert(name != NULL);
     namestrcpy(&cache_data->name, name->data);
-    // ag_graph.namespace
+    /* ag_graph.namespace */
     value = heap_getattr(tuple, Anum_ag_graph_namespace, tuple_desc, &is_null);
     Assert(!is_null);
     cache_data->namespace = DatumGetObjectId(value);
@@ -485,35 +485,35 @@ static void fill_graph_cache_data(graph_cache_data *cache_data,
 
 static void initialize_label_caches(void)
 {
-    // ag_label.name, ag_label.graph
+    /* ag_label.name, ag_label.graph */
     ag_cache_scan_key_init(&label_name_graph_scan_keys[0], Anum_ag_label_name,
                            F_NAMEEQ);
     ag_cache_scan_key_init(&label_name_graph_scan_keys[1], Anum_ag_label_graph,
                            F_INT4EQ);
 
-    // ag_label.graph, ag_label.id
+    /* ag_label.graph, ag_label.id */
     ag_cache_scan_key_init(&label_graph_oid_scan_keys[0], Anum_ag_label_graph,
                            F_INT4EQ);
     ag_cache_scan_key_init(&label_graph_oid_scan_keys[1], Anum_ag_label_id,
                            F_INT4EQ);
 
-    // ag_label.relation
+    /* ag_label.relation */
     ag_cache_scan_key_init(&label_relation_scan_keys[0],
                            Anum_ag_label_relation, F_OIDEQ);
     
-    // ag_label.seq_name, ag_label.graph
+    /* ag_label.seq_name, ag_label.graph */
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[0], Anum_ag_label_seq_name,
                            F_NAMEEQ);
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[1], Anum_ag_label_graph,
                            F_OIDEQ);
 
-    // ag_label.seq_name, ag_label.graph
+    /* ag_label.seq_name, ag_label.graph */
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[0],
                            Anum_ag_label_seq_name, F_NAMEEQ);
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[1],
                            Anum_ag_label_graph, F_OIDEQ);
 
-    // ag_label.seq_name, ag_label.graph
+    /* ag_label.seq_name, ag_label.graph */
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[0],
                            Anum_ag_label_seq_name, F_NAMEEQ);
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[1],
@@ -902,12 +902,12 @@ static label_cache_data *search_label_name_graph_cache_miss(Name name,
         return NULL;
     }
 
-    // get a new entry
+    /* get a new entry */
     entry = label_name_graph_cache_hash_search(name, graph, HASH_ENTER,
                                                &found);
-    Assert(!found); // no concurrent update on label_name_graph_cache_hash
+    Assert(!found); /* no concurrent update on label_name_graph_cache_hash */
 
-    // fill the new entry with the retrieved tuple
+    /* fill the new entry with the retrieved tuple */
     fill_label_cache_data(&entry->data, tuple, RelationGetDescr(ag_label));
 
     systable_endscan(scan_desc);
@@ -921,7 +921,7 @@ static void *label_name_graph_cache_hash_search(Name name, Oid graph,
 {
     label_name_graph_cache_key key;
 
-    // initialize the hash key for label_name_graph_cache_hash
+    /* initialize the hash key for label_name_graph_cache_hash */
     namestrcpy(&key.name, name->data);
     key.graph = graph;
 
@@ -980,11 +980,11 @@ static label_cache_data *search_label_graph_oid_cache_miss(Oid graph, uint32 id)
         return NULL;
     }
 
-    // get a new entry
+    /* get a new entry */
     entry = label_graph_oid_cache_hash_search(graph, id, HASH_ENTER, &found);
-    Assert(!found); // no concurrent update on label_graph_oid_cache_hash
+    Assert(!found); /* no concurrent update on label_graph_oid_cache_hash */
 
-    // fill the new entry with the retrieved tuple
+    /* fill the new entry with the retrieved tuple */
     fill_label_cache_data(&entry->data, tuple, RelationGetDescr(ag_label));
 
     systable_endscan(scan_desc);
@@ -998,7 +998,7 @@ static void *label_graph_oid_cache_hash_search(uint32 graph, int32 id,
 {
     label_graph_oid_cache_key key;
 
-    // initialize the hash key for label_graph_oid_cache_hash
+    /* initialize the hash key for label_graph_oid_cache_hash */
     key.graph = graph;
     key.id = id;
 
@@ -1041,8 +1041,8 @@ static label_cache_data *search_label_relation_cache_miss(Oid relation)
     scan_desc = systable_beginscan(ag_label, ag_label_relation_index_id(), true,
                                    NULL, 1, scan_keys);
 
-    // don't need to loop over scan_desc because ag_label_relation_index is
-    // UNIQUE
+    /* don't need to loop over scan_desc because ag_label_relation_index is */
+    /* UNIQUE */
     tuple = systable_getnext(scan_desc);
     if (!HeapTupleIsValid(tuple))
     {
@@ -1052,12 +1052,12 @@ static label_cache_data *search_label_relation_cache_miss(Oid relation)
         return NULL;
     }
 
-    // get a new entry
+    /* get a new entry */
     entry = hash_search(label_relation_cache_hash, &relation, HASH_ENTER,
                         &found);
-    Assert(!found); // no concurrent update on label_relation_cache_hash
+    Assert(!found); /* no concurrent update on label_relation_cache_hash */
 
-    // fill the new entry with the retrieved tuple
+    /* fill the new entry with the retrieved tuple */
     fill_label_cache_data(entry, tuple, RelationGetDescr(ag_label));
 
     systable_endscan(scan_desc);
@@ -1123,12 +1123,12 @@ static label_cache_data *search_label_seq_name_graph_cache_miss(Name name,
         return NULL;
     }
 
-    // get a new entry
+    /* get a new entry */
     entry = label_seq_name_graph_cache_hash_search(name, graph, HASH_ENTER,
                                                    &found);
-    Assert(!found); // no concurrent update on label_seq_name_graph_cache_hash
+    Assert(!found); /* no concurrent update on label_seq_name_graph_cache_hash */
 
-    // fill the new entry with the retrieved tuple
+    /* fill the new entry with the retrieved tuple */
     fill_label_cache_data(&entry->data, tuple, RelationGetDescr(ag_label));
 
     systable_endscan(scan_desc);
@@ -1143,7 +1143,7 @@ static void *label_seq_name_graph_cache_hash_search(Name name, Oid graph,
 {
     label_seq_name_graph_cache_key key;
 
-    // initialize the hash key for label_seq_name_graph_cache_hash
+    /* initialize the hash key for label_seq_name_graph_cache_hash */
     namestrcpy(&key.name, name->data);
     key.graph = graph;
 
@@ -1157,29 +1157,29 @@ static void fill_label_cache_data(label_cache_data *cache_data,
     Datum value;
     Name name;
 
-    // ag_label.name
+    /* ag_label.name */
     value = heap_getattr(tuple, Anum_ag_label_name, tuple_desc, &is_null);
     Assert(!is_null);
     name = DatumGetName(value);
     Assert(name != NULL);
     namestrcpy(&cache_data->name, name->data);
-    // ag_label.graph
+    /* ag_label.graph */
     value = heap_getattr(tuple, Anum_ag_label_graph, tuple_desc, &is_null);
     Assert(!is_null);
     cache_data->graph = DatumGetObjectId(value);
-    // ag_label.id
+    /* ag_label.id */
     value = heap_getattr(tuple, Anum_ag_label_id, tuple_desc, &is_null);
     Assert(!is_null);
     cache_data->id = DatumGetInt32(value);
-    // ag_label.kind
+    /* ag_label.kind */
     value = heap_getattr(tuple, Anum_ag_label_kind, tuple_desc, &is_null);
     Assert(!is_null);
     cache_data->kind = DatumGetChar(value);
-    // ag_label.relation
+    /* ag_label.relation */
     value = heap_getattr(tuple, Anum_ag_label_relation, tuple_desc, &is_null);
     Assert(!is_null);
     cache_data->relation = DatumGetObjectId(value);
-    // ag_label.seq_name
+    /* ag_label.seq_name */
     value = heap_getattr(tuple, Anum_ag_label_seq_name, tuple_desc, &is_null);
     Assert(!is_null);
     namestrcpy(&cache_data->seq_name, DatumGetName(value)->data);

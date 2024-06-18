@@ -119,7 +119,7 @@ Datum create_complete_graph(PG_FUNCTION_ARGS)
         vtx_label_name = PG_GETARG_NAME(3);
         vtx_name_str = NameStr(*vtx_label_name);
 
-        // Check if vertex and edge label are same
+        /* Check if vertex and edge label are same */
         if (strcmp(vtx_name_str, edge_name_str) == 0)
         {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -136,7 +136,7 @@ Datum create_complete_graph(PG_FUNCTION_ARGS)
 
     if (!PG_ARGISNULL(3))
     {
-        // Check if label with the input name already exists
+        /* Check if label with the input name already exists */
         if (!label_exists(vtx_name_str, graph_oid))
         {
             DirectFunctionCall2(create_vlabel,
@@ -256,8 +256,8 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
 
     arguments = fcinfo;
 
-    // Checking for possible NULL arguments
-    // Name graph_name
+    /* Checking for possible NULL arguments */
+    /* Name graph_name */
     if (PG_ARGISNULL(0))
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -267,7 +267,7 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
     graph_name = PG_GETARG_NAME(0);
     graph_name_str = NameStr(*graph_name);
 
-    // int graph size (number of nodes in each complete graph)
+    /* int graph size (number of nodes in each complete graph) */
     if (PG_ARGISNULL(1) && PG_GETARG_INT32(1) < 3)
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -284,7 +284,7 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
                 errmsg("Bridge size cannot be NULL or lower than 0")));
     }
 
-    // node label: if null, gets default label, which is "_ag_label_vertex"
+    /* node label: if null, gets default label, which is "_ag_label_vertex" */
     if (PG_ARGISNULL(3))
     {
         namestrcpy(node_label_name, AG_DEFAULT_LABEL_VERTEX);
@@ -306,7 +306,7 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
     edge_label_str = NameStr(*edge_label_name);
 
 
-    // create two separate complete graphs
+    /* create two separate complete graphs */
     DirectFunctionCall4(create_complete_graph, arguments->args[0].value,
                                                arguments->args[1].value,
                                                arguments->args[5].value,
@@ -327,20 +327,22 @@ Datum age_create_barbell_graph(PG_FUNCTION_ARGS)
     graph_cache = search_graph_name_cache(graph_name_str);
     edge_cache = search_label_name_graph_cache(edge_label_str,graph_oid);
 
-    // connect a node from each graph
-    start_node_index = 1; // first created node, from the first complete graph
-    end_node_index = arguments->args[1].value*2; // last created node, second graph
+    /* connect a node from each graph */
+    /* first created node, from the first complete graph */
+    start_node_index = 1;
+    /* last created node, second graph */
+    end_node_index = arguments->args[1].value*2;
 
-    // next index to be assigned to a node or edge
+    /* next index to be assigned to a node or edge */
     nextval = get_nextval_internal(graph_cache, edge_cache);
 
-    // build the graph id's of the edge to be created
+    /* build the graph id's of the edge to be created */
     object_graph_id = make_graphid(edge_label_id, nextval);
     start_node_graph_id = make_graphid(node_label_id, start_node_index);
     end_node_graph_id = make_graphid(node_label_id, end_node_index);
     properties = create_empty_agtype();
 
-    // connect two nodes
+    /* connect two nodes */
     insert_edge_simple(graph_oid, edge_label_str,
                        object_graph_id, start_node_graph_id,
                        end_node_graph_id, properties);

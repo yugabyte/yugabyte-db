@@ -118,7 +118,7 @@ static void post_parse_analyze(ParseState *pstate, Query *query, JumbleState *js
     }
 }
 
-// find cypher() calls in FROM clauses and convert them to SELECT subqueries
+/* find cypher() calls in FROM clauses and convert them to SELECT subqueries */
 static bool convert_cypher_walker(Node *node, ParseState *pstate)
 {
     if (!node)
@@ -131,7 +131,7 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
         switch (rte->rtekind)
         {
         case RTE_SUBQUERY:
-            // traverse other RTE_SUBQUERYs
+            /* traverse other RTE_SUBQUERYs */
             return convert_cypher_walker((Node *)rte->subquery, pstate);
         case RTE_FUNCTION:
             if (is_rte_cypher(rte))
@@ -361,7 +361,7 @@ static bool is_func_cypher(FuncExpr *funcexpr)
     return is_oid_ag_func(funcexpr->funcid, "cypher");
 }
 
-// convert cypher() call to SELECT subquery in-place
+/* convert cypher() call to SELECT subquery in-place */
 static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
 {
     RangeTblFunction *rtfunc = linitial(rte->functions);
@@ -591,8 +591,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
 
     Assert(pstate->p_expr_kind == EXPR_KIND_NONE);
     pstate->p_expr_kind = EXPR_KIND_FROM_SUBSELECT;
-    // transformRangeFunction() always sets p_lateral_active to true.
-    // FYI, rte is RTE_FUNCTION and is being converted to RTE_SUBQUERY here.
+    /* transformRangeFunction() always sets p_lateral_active to true. */
+    /* FYI, rte is RTE_FUNCTION and is being converted to RTE_SUBQUERY here. */
     pstate->p_lateral_active = true;
 
     /*
@@ -603,7 +603,7 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     if (is_ag_node(llast(stmt), cypher_create) || is_ag_node(llast(stmt), cypher_set) ||
         is_ag_node(llast(stmt), cypher_delete) || is_ag_node(llast(stmt), cypher_merge))
     {
-        // column definition list must be ... AS relname(colname agtype) ...
+        /* column definition list must be ... AS relname(colname agtype) ... */
         if (!(rtfunc->funccolcount == 1 &&
               linitial_oid(rtfunc->funccoltypes) == AGTYPEOID))
         {
@@ -627,10 +627,10 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     pstate->p_lateral_active = false;
     pstate->p_expr_kind = EXPR_KIND_NONE;
 
-    // rte->functions and rte->funcordinality are kept for debugging.
-    // rte->alias, rte->eref, and rte->lateral need to be the same.
-    // rte->inh is always false for both RTE_FUNCTION and RTE_SUBQUERY.
-    // rte->inFromCl is always true for RTE_FUNCTION.
+    /* rte->functions and rte->funcordinality are kept for debugging. */
+    /* rte->alias, rte->eref, and rte->lateral need to be the same. */
+    /* rte->inh is always false for both RTE_FUNCTION and RTE_SUBQUERY. */
+    /* rte->inFromCl is always true for RTE_FUNCTION. */
     rte->rtekind = RTE_SUBQUERY;
     rte->subquery = query;
 }
@@ -1193,7 +1193,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
     pstate->p_lateral_active = false;
     pstate->p_expr_kind = EXPR_KIND_NONE;
 
-    // ALIAS Syntax makes `RESJUNK`. So, It must be skipping.
+    /* ALIAS Syntax makes `RESJUNK`. So, It must be skipping. */
     foreach(lt, subquery->targetList)
     {
         TargetEntry *te = lfirst(lt);
@@ -1203,7 +1203,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
         }
     }
 
-    // check the number of attributes first
+    /* check the number of attributes first */
     if (attr_count != rtfunc->funccolcount)
     {
         ereport(ERROR,
@@ -1216,7 +1216,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
                                         lateral, true);
 
     rtindex = list_length(pstate->p_rtable);
-    // rte is the only RangeTblEntry in pstate
+    /* rte is the only RangeTblEntry in pstate */
     if (rtindex !=1 )
     {
         ereport(ERROR,
@@ -1230,7 +1230,7 @@ static Query *analyze_cypher_and_coerce(List *stmt, RangeTblFunction *rtfunc,
 
     markTargetListOrigins(pstate, query->targetList);
 
-    // do the type coercion for each target entry
+    /* do the type coercion for each target entry */
     lc1 = list_head(rtfunc->funccolnames);
     lc2 = list_head(rtfunc->funccoltypes);
     lc3 = list_head(rtfunc->funccoltypmods);

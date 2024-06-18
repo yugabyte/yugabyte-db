@@ -271,11 +271,11 @@ typedef struct ag_yy_extra
      */
     strbuf literal_buf;
 
-    // for Unicode surrogate pair
+    /* for Unicode surrogate pair */
     pg_wchar high_surrogate;
     int start_cond;
 
-    // for the location of the current token and the actual position of it
+    /* for the location of the current token and the actual position of it */
     const char *scan_buf;
     int last_loc;
 } ag_yy_extra;
@@ -326,22 +326,22 @@ static int _scan_errposition(const int location, const ag_yy_extra *extra);
 %%
 
 %{
-// This is used in the actions below.
+/* This is used in the actions below. */
 ag_token token;
 %}
 
 {whitespace} {
-    // ignore
+    /* ignore */
 }
 
 {mlcstart} {
-    // update location in case of unterminated comment
+    /* update location in case of unterminated comment */
     update_location();
     BEGIN(mlcomment);
 }
 
 <mlcomment>{mlcchars} {
-    // ignore
+    /* ignore */
 }
 
 <mlcomment>{mlcstop} {
@@ -355,7 +355,7 @@ ag_token token;
 }
 
 {slcomment} {
-    // ignore
+    /* ignore */
 }
 
 {digitseq} |
@@ -383,12 +383,12 @@ ag_token token;
 }
 
 {decimalfail} {
-    // return dot_dot back to the input stream
+    /* return dot_dot back to the input stream */
     yyless(yyleng - 2);
 
     update_location();
 
-    // consume digitseq
+    /* consume digitseq */
     integer_literal_to_token(yytext, &token, &yyextra);
     token.location = get_location();
     return token;
@@ -440,7 +440,7 @@ ag_token token;
         c = '\t';
         break;
     default:
-        // '"', '\'', '/', and '\\'
+        /* '"', '\'', '/', and '\\' */
         c = yytext[1];
         break;
     }
@@ -471,11 +471,11 @@ ag_token token;
 <dqstr,sqstr>{esunicode} {
     pg_wchar c;
 
-    // It is unnecessary to check endptr and errno here.
+    /* It is unnecessary to check endptr and errno here. */
     c = strtoul(yytext + 2, NULL, 16);
     if (c > 0x10FFFF)
     {
-        // c is greater than the maximum value of a Unicode code point.
+        /* c is greater than the maximum value of a Unicode code point. */
         update_location();
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
@@ -517,7 +517,7 @@ ag_token token;
     }
     else if (c > 0)
     {
-        // c is an ASCII character.
+        /* c is an ASCII character. */
         strbuf_append_char(&yyextra.literal_buf, (char)c);
     }
     else
@@ -542,7 +542,7 @@ ag_token token;
     if (is_low_surrogate(c))
     {
         c = surrogate_pair_to_codepoint(yyextra.high_surrogate, c);
-        // 0x010000 <= c <= 0x10FFFF always holds for surrogate pairs.
+        /* 0x010000 <= c <= 0x10FFFF always holds for surrogate pairs. */
         strbuf_append_codepoint(&yyextra.literal_buf, c);
         BEGIN(yyextra.start_cond);
     }
@@ -789,7 +789,7 @@ void *ag_yyalloc(yy_size_t size, yyscan_t yyscanner)
 
 void *ag_yyrealloc(void *ptr, yy_size_t size, yyscan_t yyscanner)
 {
-    // see realloc(3)
+    /* see realloc(3) */
     if (ptr)
     {
         if (size == 0)
@@ -855,7 +855,7 @@ static void strbuf_append_codepoint(strbuf *sb, const pg_wchar c)
  */
 static void strbuf_ensure_capacity(strbuf *sb, int len)
 {
-    // consider additional 1 byte for the last '\0' character
+    /* consider additional 1 byte for the last '\0' character */
     if (len < sb->capacity)
         return;
 
@@ -898,7 +898,7 @@ static void integer_literal_to_token(const char *s, ag_token *token,
                         _scan_errposition(extra->last_loc, extra)));
     }
 
-    // Treat it as a decimal if it is too large to be an "int" value.
+    /* Treat it as a decimal if it is too large to be an "int" value. */
     if (errno == ERANGE)
     {
         /*
@@ -939,7 +939,7 @@ static void integer_literal_to_token(const char *s, ag_token *token,
  */
 static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
 {
-    // constants for each base
+    /* constants for each base */
     int ndigits_per_word;
     int nbits_per_digit;
     uint32 (*digit_value)(const char);
@@ -967,7 +967,7 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
     int nremainders;
     int i;
 
-    // set constants for each base
+    /* set constants for each base */
     switch (base)
     {
     case 16:
@@ -1019,27 +1019,27 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
         return;
     }
 
-    // skip leading zeros
+    /* skip leading zeros */
     while (*numstr == '0')
         numstr++;
 
-    // number of digits in "numstr"
+    /* number of digits in "numstr" */
     ndigits = strlen(numstr);
     Assert(ndigits > 0);
 
-    // prepare "words" to store "numstr" in two's complement representation
+    /* prepare "words" to store "numstr" in two's complement representation */
     nwords = (ndigits + (ndigits_per_word - 1)) / ndigits_per_word;
     words = palloc(sizeof(*words) * nwords);
 
     digitp = numstr;
     word_i = 0;
 
-    // number of digits for the first word
+    /* number of digits for the first word */
     ndigits_word0 = ndigits % ndigits_per_word;
     if (ndigits_word0 == 0)
         ndigits_word0 = ndigits_per_word;
 
-    // fill the first word
+    /* fill the first word */
     word = digit_value(*digitp++);
     for (i = 1; i < ndigits_word0; i++)
     {
@@ -1048,7 +1048,7 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
     }
     words[word_i++] = word;
 
-    // fill the rest of "words"
+    /* fill the rest of "words" */
     while (word_i < nwords)
     {
         word = digit_value(*digitp++);
@@ -1060,18 +1060,18 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
         words[word_i++] = word;
     }
 
-    // At most "ndivisions" divisions are needed to eliminate 1 word.
+    /* At most "ndivisions" divisions are needed to eliminate 1 word. */
     remainders = palloc(sizeof(*remainders) * (ndivisions * nwords));
 
     nremainders = 0;
     word_i = 0;
-    // repeat dividing "words" by "divisor" until the quotient becomes 0
+    /* repeat dividing "words" by "divisor" until the quotient becomes 0 */
     while (word_i < nwords)
     {
         uint64 r;
 
         r = 0;
-        // divide "words" by "divisor"
+        /* divide "words" by "divisor" */
         for (i = word_i; i < nwords; i++)
         {
             uint64 d;
@@ -1086,7 +1086,7 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
             words[i] = (uint32)q;
         }
 
-        // collect the remainder to build the result
+        /* collect the remainder to build the result */
         remainders[nremainders++] = (uint32)r;
 
         /*
@@ -1097,7 +1097,7 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
             word_i++;
     }
 
-    // convert the collected remainders to a string, starting from the last one
+    /* convert the collected remainders to a string, starting from the last one */
     for (i = nremainders - 1; i >= 0; i--)
     {
         char buf[NDIGITS_PER_REMAINDER];
@@ -1109,7 +1109,7 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
         for (tmp = remainders[i]; tmp > 0; tmp /= 10)
             buf[--buf_i] = '0' + (char)(tmp % 10);
 
-        // leading zeros for intermediate digits
+        /* leading zeros for intermediate digits */
         if (i < nremainders - 1)
         {
             while (buf_i > 0)
@@ -1165,11 +1165,11 @@ static int _scan_errposition(const int location, const ag_yy_extra *extra)
 {
     int pos;
 
-    // no-op if location is unknown
+    /* no-op if location is unknown */
     if (location < 0)
         return 0;
 
-    // convert byte offset to number of characters
+    /* convert byte offset to number of characters */
     pos = pg_mbstrlen_with_len(extra->scan_buf, location) + 1;
 
     return errposition(pos);
@@ -1183,7 +1183,7 @@ ag_scanner_t ag_scanner_create(const char *s)
     ag_yy_extra extra;
     int ret;
 
-    // The last two YY_END_OF_BUFFER_CHAR are required by flex.
+    /* The last two YY_END_OF_BUFFER_CHAR are required by flex. */
     len = strlen(s);
     buf = palloc(len + 2);
     memcpy(buf, s, len);

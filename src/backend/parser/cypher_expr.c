@@ -103,7 +103,7 @@ Node *transform_cypher_expr(cypher_parsestate *cpstate, Node *expr,
     ParseExprKind old_expr_kind;
     Node *result;
 
-    // save and restore identity of expression type we're parsing
+    /* save and restore identity of expression type we're parsing */
     Assert(expr_kind != EXPR_KIND_NONE);
     old_expr_kind = pstate->p_expr_kind;
     pstate->p_expr_kind = expr_kind;
@@ -121,7 +121,7 @@ static Node *transform_cypher_expr_recurse(cypher_parsestate *cpstate,
     if (!expr)
         return NULL;
 
-    // guard against stack overflow due to overly complex expressions
+    /* guard against stack overflow due to overly complex expressions */
     check_stack_depth();
 
     switch (nodeTag(expr))
@@ -298,7 +298,7 @@ static Node *transform_A_Const(cypher_parsestate *cpstate, A_Const *ac)
     }
     cancel_parser_errposition_callback(&pcbstate);
 
-    // typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded.
+    /* typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded. */
     c = makeConst(AGTYPEOID, -1, InvalidOid, -1, d, is_null, false);
     c->location = ac->location;
     return (Node *)c;
@@ -597,7 +597,7 @@ static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a)
 
     Assert(is_ag_node(a->rexpr, cypher_list));
 
-    // If the operator is <>, combine with AND not OR.
+    /* If the operator is <>, combine with AND not OR. */
     if (strcmp(strVal(linitial(a->name)), "<>") == 0)
     {
         useOr = false;
@@ -676,13 +676,13 @@ static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a)
         rexprs = rvars;
     }
 
-    // Must do it the hard way, with a boolean expression tree.
+    /* Must do it the hard way, with a boolean expression tree. */
     foreach(l, rexprs)
     {
         Node *rexpr = (Node *) lfirst(l);
         Node *cmp;
 
-        // Ordinary scalar operator
+        /* Ordinary scalar operator */
         cmp = (Node *) make_op(pstate, a->name, copyObject(lexpr), rexpr,
                                pstate->p_last_srf, a->location);
 
@@ -769,7 +769,7 @@ static Node *transform_cypher_bool_const(cypher_parsestate *cpstate,
     agt = boolean_to_agtype(bc->boolean);
     cancel_parser_errposition_callback(&pcbstate);
 
-    // typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded.
+    /* typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded. */
     c = makeConst(AGTYPEOID, -1, InvalidOid, -1, agt, false, false);
     c->location = bc->location;
 
@@ -788,7 +788,7 @@ static Node *transform_cypher_integer_const(cypher_parsestate *cpstate,
     agt = integer_to_agtype(ic->integer);
     cancel_parser_errposition_callback(&pcbstate);
 
-    // typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded.
+    /* typtypmod, typcollation, typlen, and typbyval of agtype are hard-coded. */
     c = makeConst(AGTYPEOID, -1, InvalidOid, -1, agt, false, false);
     c->location = ic->location;
 
@@ -1101,8 +1101,8 @@ static Node *transform_cypher_map(cypher_parsestate *cpstate, cypher_map *cm)
 
         /* build and append the transformed key/val pair */
         setup_parser_errposition_callback(&pcbstate, pstate, cm->location);
-        // typtypmod, typcollation, typlen, and typbyval of agtype are
-        // hard-coded.
+        /* typtypmod, typcollation, typlen, and typbyval of agtype are */
+        /* hard-coded. */
         newkey = makeConst(TEXTOID, -1, InvalidOid, -1,
                            CStringGetTextDatum(strVal(key)), false, false);
         cancel_parser_errposition_callback(&pcbstate);
@@ -1237,7 +1237,7 @@ static Node *transform_cypher_list(cypher_parsestate *cpstate, cypher_list *cl)
     return (Node *)fexpr;
 }
 
-// makes a VARIADIC agtype array
+/* makes a VARIADIC agtype array */
 static ArrayExpr *make_agtype_array_expr(List *args)
 {
     ArrayExpr  *newa = makeNode(ArrayExpr);
@@ -1859,10 +1859,10 @@ static Node *transform_CaseExpr(cypher_parsestate *cpstate, CaseExpr
      */
     ptype = select_common_type(pstate, resultexprs, NULL, NULL);
 
-    //InvalidOid shows that there is a boolean in the result expr.
+    /* InvalidOid shows that there is a boolean in the result expr. */
     if (ptype == InvalidOid)
     {
-        //we manually set the type to boolean here to handle the bool casting.
+        /* we manually set the type to boolean here to handle the bool casting. */
         ptype = BOOLOID;
     }
 

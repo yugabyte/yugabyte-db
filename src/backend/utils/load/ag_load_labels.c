@@ -33,7 +33,7 @@ void vertex_field_cb(void *field, size_t field_len, void *data)
         ereport(NOTICE,(errmsg("There is some unknown error")));
     }
 
-    // check for space to store this field
+    /* check for space to store this field */
     if (cr->cur_field == cr->alloc)
     {
         cr->alloc *= 2;

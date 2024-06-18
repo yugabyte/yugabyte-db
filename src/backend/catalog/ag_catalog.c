@@ -103,10 +103,10 @@ void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString, bool re
 
 static void drop_age_extension(DropStmt *stmt)
 {
-    // Remove all graphs
+    /* Remove all graphs */
     drop_graphs(get_graphnames());
 
-    // Remove the object access hook
+    /* Remove the object access hook */
     object_access_hook_fini();
 
     /*
@@ -120,7 +120,7 @@ static void drop_age_extension(DropStmt *stmt)
     clear_global_Oids_GRAPHID();
 }
 
-// Check to see if the Utility Command is to drop the AGE Extension.
+/* Check to see if the Utility Command is to drop the AGE Extension. */
 static bool is_age_drop(PlannedStmt *pstmt)
 {
     ListCell *lc;
@@ -162,7 +162,7 @@ static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
     if (prev_object_access_hook)
         prev_object_access_hook(access, class_id, object_id, sub_id, arg);
 
-    // We are interested in DROP SCHEMA and DROP TABLE commands.
+    /* We are interested in DROP SCHEMA and DROP TABLE commands. */
     if (access != OAT_DROP)
         return;
 
@@ -204,7 +204,7 @@ static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
 
         cache_data = search_label_relation_cache(object_id);
 
-        // We are interested in only tables that are labels.
+        /* We are interested in only tables that are labels. */
         if (!cache_data)
             return;
 

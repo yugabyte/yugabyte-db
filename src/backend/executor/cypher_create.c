@@ -93,19 +93,19 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
             if (!CYPHER_TARGET_NODE_INSERT_ENTITY(cypher_node->flags))
                 continue;
 
-            // Open relation and acquire a row exclusive lock.
+            /* Open relation and acquire a row exclusive lock. */
             rel = table_open(cypher_node->relid, RowExclusiveLock);
 
-            // Initialize resultRelInfo for the vertex
+            /* Initialize resultRelInfo for the vertex */
             cypher_node->resultRelInfo = makeNode(ResultRelInfo);
             InitResultRelInfo(cypher_node->resultRelInfo, rel,
                               list_length(estate->es_range_table), NULL,
                               estate->es_instrument);
 
-            // Open all indexes for the relation
+            /* Open all indexes for the relation */
             ExecOpenIndices(cypher_node->resultRelInfo, false);
 
-            // Setup the relation's tuple slot
+            /* Setup the relation's tuple slot */
             cypher_node->elemTupleSlot = table_slot_create(
                 rel, &estate->es_tupleTable);
 
@@ -256,7 +256,7 @@ static void end_cypher_create(CustomScanState *node)
         (cypher_create_custom_scan_state *)node;
     ListCell *lc;
 
-    // increment the command counter
+    /* increment the command counter */
     CommandCounterIncrement();
 
     ExecEndNode(node->ss.ps.lefttree);
@@ -276,10 +276,10 @@ static void end_cypher_create(CustomScanState *node)
                 continue;
             }
 
-            // close all indices for the node
+            /* close all indices for the node */
             ExecCloseIndices(cypher_node->resultRelInfo);
 
-            // close the relation itself
+            /* close the relation itself */
             table_close(cypher_node->resultRelInfo->ri_RelationDesc,
                         RowExclusiveLock);
         }
@@ -303,7 +303,7 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
 
     cypher_css->cs = cscan;
 
-    // get the serialized data structure from the Const and deserialize it.
+    /* get the serialized data structure from the Const and deserialize it. */
     c = linitial(cscan->custom_private);
     serialized_data = (char *)c->constvalue;
     target_nodes = stringToNode(serialized_data);
@@ -354,13 +354,13 @@ static void create_edge(cypher_create_custom_scan_state *css,
      */
     if (node->dir == CYPHER_REL_DIR_RIGHT)
     {
-        // create pattern (prev_vertex)-[edge]->(next_vertex)
+        /* create pattern (prev_vertex)-[edge]->(next_vertex) */
         start_id = prev_vertex_id;
         end_id = next_vertex_id;
     }
     else if (node->dir == CYPHER_REL_DIR_LEFT)
     {
-        // create pattern (prev_vertex)<-[edge]-(next_vertex)
+        /* create pattern (prev_vertex)<-[edge]-(next_vertex) */
         start_id = next_vertex_id;
         end_id = prev_vertex_id;
     }
@@ -385,26 +385,26 @@ static void create_edge(cypher_create_custom_scan_state *css,
 
     ExecClearTuple(elemTupleSlot);
 
-    // Graph Id for the edge
+    /* Graph Id for the edge */
     id = ExecEvalExpr(node->id_expr_state, econtext, &isNull);
     elemTupleSlot->tts_values[edge_tuple_id] = id;
     elemTupleSlot->tts_isnull[edge_tuple_id] = isNull;
 
-    // Graph id for the starting vertex
+    /* Graph id for the starting vertex */
     elemTupleSlot->tts_values[edge_tuple_start_id] = start_id;
     elemTupleSlot->tts_isnull[edge_tuple_start_id] = false;
 
-    // Graph id for the ending vertex
+    /* Graph id for the ending vertex */
     elemTupleSlot->tts_values[edge_tuple_end_id] = end_id;
     elemTupleSlot->tts_isnull[edge_tuple_end_id] = false;
 
-    // Edge's properties map
+    /* Edge's properties map */
     elemTupleSlot->tts_values[edge_tuple_properties] =
         scanTupleSlot->tts_values[node->prop_attr_num];
     elemTupleSlot->tts_isnull[edge_tuple_properties] =
         scanTupleSlot->tts_isnull[node->prop_attr_num];
 
-    // Insert the new edge
+    /* Insert the new edge */
     insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 
     /* restore the old result relation info */
@@ -480,18 +480,18 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
 
         ExecClearTuple(elemTupleSlot);
 
-        // get the next graphid for this vertex.
+        /* get the next graphid for this vertex. */
         id = ExecEvalExpr(node->id_expr_state, econtext, &isNull);
         elemTupleSlot->tts_values[vertex_tuple_id] = id;
         elemTupleSlot->tts_isnull[vertex_tuple_id] = isNull;
 
-        // get the properties for this vertex
+        /* get the properties for this vertex */
         elemTupleSlot->tts_values[vertex_tuple_properties] =
             scanTupleSlot->tts_values[node->prop_attr_num];
         elemTupleSlot->tts_isnull[vertex_tuple_properties] =
             scanTupleSlot->tts_isnull[node->prop_attr_num];
 
-        // Insert the new vertex
+        /* Insert the new vertex */
         insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 
         /* restore the old result relation info */
@@ -512,11 +512,11 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
             ps = css->css.ss.ps.lefttree;
             scantuple = ps->ps_ExprContext->ecxt_scantuple;
 
-            // make the vertex agtype
+            /* make the vertex agtype */
             result = make_vertex(id, CStringGetDatum(node->label_name),
                 PointerGetDatum(scanTupleSlot->tts_values[node->prop_attr_num]));
 
-            // append to the path list
+            /* append to the path list */
             if (CYPHER_TARGET_NODE_IN_PATH(node->flags))
             {
                 css->path_values = lappend(css->path_values,
@@ -545,10 +545,10 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
         ps = css->css.ss.ps.lefttree;
         scantuple = ps->ps_ExprContext->ecxt_scantuple;
 
-        // get the vertex agtype in the scanTupleSlot
+        /* get the vertex agtype in the scanTupleSlot */
         a = DATUM_GET_AGTYPE_P(scantuple->tts_values[node->tuple_position - 1]);
 
-        // Convert to an agtype value
+        /* Convert to an agtype value */
         v = get_ith_agtype_value_from_container(&a->root, 0);
 
         if (v->type != AGTV_VERTEX)
@@ -558,10 +558,10 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
                      errmsg("agtype must resolve to a vertex")));
         }
 
-        // extract the id agtype field
+        /* extract the id agtype field */
         id_value = GET_AGTYPE_VALUE_OBJECT_VALUE(v, "id");
 
-        // extract the graphid and cast to a Datum
+        /* extract the graphid and cast to a Datum */
         id = GRAPHID_GET_DATUM(id_value->val.int_value);
 
         /*
@@ -594,7 +594,7 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
         }
     }
 
-    // If the path continues, create the next edge, passing the vertex's id.
+    /* If the path continues, create the next edge, passing the vertex's id. */
     if (next != NULL)
     {
         create_edge(css, lfirst(next), id, lnext(list, next), list);

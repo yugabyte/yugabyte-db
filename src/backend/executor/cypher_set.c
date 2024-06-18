@@ -118,7 +118,7 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
         tuple = ExecFetchSlotHeapTuple(elemTupleSlot, true, NULL);
         tuple->t_self = old_tuple->t_self;
 
-        // Check the constraints of the tuple
+        /* Check the constraints of the tuple */
         tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
         if (resultRelInfo->ri_RelationDesc->rd_att->constr != NULL)
         {
@@ -153,7 +153,7 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                     errmsg("Entity failed to be updated: %i", result)));
         }
 
-        // Insert index entries for the tuple
+        /* Insert index entries for the tuple */
         if (resultRelInfo->ri_NumIndices > 0 && update_indexes)
         {
           ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate, false, false, NULL, NIL);
@@ -251,21 +251,21 @@ static agtype_value *replace_entity_in_path(agtype_value *path,
     parsed_agtype_value = push_agtype_value(&parse_state, tok,
                                             tok < WAGT_BEGIN_ARRAY ? r : NULL);
 
-    // Iterate through the path, replace entities as necessary.
+    /* Iterate through the path, replace entities as necessary. */
     for (i = 0; i < path->val.array.num_elems; i++)
     {
         agtype_value *id, *elem;
 
         elem = &path->val.array.elems[i];
 
-        // something unexpected happened, throw an error.
+        /* something unexpected happened, throw an error. */
         if (elem->type != AGTV_VERTEX && elem->type != AGTV_EDGE)
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                             errmsg("unsupported agtype found in a path")));
         }
 
-        // extract the id field
+        /* extract the id field */
         id = GET_AGTYPE_VALUE_OBJECT_VALUE(elem, "id");
 
         /*
@@ -308,13 +308,13 @@ static void update_all_paths(CustomScanState *node, graphid id,
         agtype *original_entity;
         agtype_value *original_entity_value;
 
-        // skip nulls
+        /* skip nulls */
         if (scanTupleSlot->tts_tupleDescriptor->attrs[i].atttypid != AGTYPEOID)
         {
             continue;
         }
 
-        // skip non agtype values
+        /* skip non agtype values */
         if (scanTupleSlot->tts_isnull[i])
         {
             continue;
@@ -322,7 +322,7 @@ static void update_all_paths(CustomScanState *node, graphid id,
 
         original_entity = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[i]);
 
-        // if the value is not a scalar type, its not a path
+        /* if the value is not a scalar type, its not a path */
         if (!AGTYPE_CONTAINER_IS_SCALAR(&original_entity->root))
         {
             continue;
@@ -330,13 +330,13 @@ static void update_all_paths(CustomScanState *node, graphid id,
 
         original_entity_value = get_ith_agtype_value_from_container(&original_entity->root, 0);
 
-        // we found a path
+        /* we found a path */
         if (original_entity_value->type == AGTV_PATH)
         {
-            // check if the path contains the entity.
+            /* check if the path contains the entity. */
             if (check_path(original_entity_value, id))
             {
-                // the path does contain the entity replace with the new entity.
+                /* the path does contain the entity replace with the new entity. */
                 agtype_value *new_path = replace_entity_in_path(original_entity_value, id, updated_entity);
 
                 scanTupleSlot->tts_values[i] = AGTYPE_P_GET_DATUM(agtype_value_to_agtype(new_path));
@@ -470,7 +470,7 @@ static void process_update_list(CustomScanState *node)
             new_property_value = DATUM_GET_AGTYPE_P(scanTupleSlot->tts_values[update_item->prop_position - 1]);
         }
 
-        // Alter the properties Agtype value.
+        /* Alter the properties Agtype value. */
         if (strcmp(update_item->prop_name, ""))
         {
             altered_properties = alter_property_value(original_properties,
@@ -607,7 +607,7 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
 
     saved_resultRels = estate->es_result_relations;
 
-    //Process the subtree first
+    /* Process the subtree first */
     Decrement_Estate_CommandId(estate);
     slot = ExecProcNode(node->ss.ps.lefttree);
     Increment_Estate_CommandId(estate);
@@ -670,7 +670,7 @@ Node *create_cypher_set_plan_state(CustomScan *cscan)
 
     cypher_css->cs = cscan;
 
-    // get the serialized data structure from the Const and deserialize it.
+    /* get the serialized data structure from the Const and deserialize it. */
     c = linitial(cscan->custom_private);
     serialized_data = (char *)c->constvalue;
     set_list = stringToNode(serialized_data);

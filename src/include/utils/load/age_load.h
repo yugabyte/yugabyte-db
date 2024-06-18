@@ -43,4 +43,4 @@ void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         graphid start_id, graphid end_id,
                         agtype* end_properties);
 
-#endif //AGE_ENTITY_CREATOR_H
+#endif /* AGE_ENTITY_CREATOR_H */
