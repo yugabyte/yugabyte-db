@@ -1091,4 +1091,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Percentage of current disk usage that may consume on the target nodes",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> cpuUsageAggregationInterval =
+      new ConfKeyInfo<>(
+          "yb.alert.cpu_usage_interval_secs",
+          ScopeType.UNIVERSE,
+          "CPU usage alert aggregation interval",
+          "CPU usage alert aggregation interval in seconds.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
