@@ -734,7 +734,12 @@ public class LocalNodeManager {
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
     log.debug("Killing process {}", process.pid());
-    process.destroy();
+    try {
+      killProcess(process.pid());
+    } catch (IOException | InterruptedException e) {
+      System.err.println("Error occurred while terminating process: " + e.getMessage());
+      e.printStackTrace();
+    }
   }
 
   private static List<String> readProcessIdsFromFile(String filePath) {
