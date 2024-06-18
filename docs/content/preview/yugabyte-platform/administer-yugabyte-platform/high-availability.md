@@ -135,7 +135,7 @@ To confirm communication between the active and standby, you can do the followin
     ![Verify Prometheus](/images/yp/high-availability/ha-prometheus.png)
 
     {{<note title="Metrics availability on the standby">}}
-Metrics on the standby are only available from the time the standby was activated. When activated, the standby begins collecting metrics, and no historical metrics are copied from the active instance at that time.
+Metrics on the standby are only available from the time the standby was activated. The standby begins collecting metrics from the active instance when activated; no historical metrics are copied from the active instance at that time.
 
 For example, if your metrics retention is 14 days on your active instance, and you activated your standby 7 days ago, you will not see metrics for the 7 days prior to standby activation. After the standby has been active for 14 days, you will see the same metrics on both.
     {{</note>}}
