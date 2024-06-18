@@ -667,7 +667,7 @@ BsonValueGetGeometry(const bson_value_t *value, ShapeOperatorInfo *opInfo)
 			 */
 			ereport(ERROR, (
 						errcode(MongoCommandNotSupported),
-						errmsg("Big polygons are not supported yet.")));
+						errmsg("Custom CRS for big polygon is not supported yet.")));
 		}
 	}
 
