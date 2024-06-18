@@ -81,6 +81,7 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_bool(TEST_fail_clone_pg_schema);
+DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
 
 namespace yb {
@@ -713,6 +714,21 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(UserIsSet)) {
   auto owner = ASSERT_RESULT(source_conn_->FetchRows<std::string>(owner_query));
   ASSERT_EQ(owner.size(), 1);
   ASSERT_EQ(owner[0], "test_user");
+}
+
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(PreventConnectionsUntilCloneSuccessful)) {
+  // Test that we prevent connections to the target DB until the clone operation is successful.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_clone_tablets) = true;
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fail_clone_tablets");
+
+  auto result = ConnectToDB(kTargetNamespaceName1, 3 /* connection timeout */);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(
+      result.status().message().ToBuffer(),
+      Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
 }
 
 }  // namespace master

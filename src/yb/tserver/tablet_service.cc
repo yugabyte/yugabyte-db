@@ -1952,6 +1952,18 @@ void TabletServiceAdminImpl::CloneTablet(
   });
 }
 
+Result<HostPort> TabletServiceAdminImpl::GetLocalPgHostPort() {
+  HostPort local_pg_host_port;
+  if (!FLAGS_TEST_mini_cluster_pg_host_port.empty()) {
+    RETURN_NOT_OK(local_pg_host_port.ParseString(
+        FLAGS_TEST_mini_cluster_pg_host_port, pgwrapper::PgProcessConf::kDefaultPort));
+  } else {
+    local_pg_host_port = server_->pgsql_proxy_bind_address();
+  }
+  std::string unix_domain_socket = PgDeriveSocketDir(local_pg_host_port);
+  return HostPort(unix_domain_socket, local_pg_host_port.port());
+}
+
 void TabletServiceAdminImpl::ClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp, rpc::RpcContext context) {
   auto status = DoClonePgSchema(req, resp);
@@ -1965,17 +1977,9 @@ void TabletServiceAdminImpl::ClonePgSchema(
 Status TabletServiceAdminImpl::DoClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp) {
   // Run ysql_dump to generate the schema of the clone database as of restore time.
-  HostPort local_pg_host_port;
-  if (!FLAGS_TEST_mini_cluster_pg_host_port.empty()) {
-    RETURN_NOT_OK(local_pg_host_port.ParseString(
-        FLAGS_TEST_mini_cluster_pg_host_port, pgwrapper::PgProcessConf::kDefaultPort));
-  } else {
-    local_pg_host_port = server_->pgsql_proxy_bind_address();
-  }
   const std::string& target_db_name = req->target_db_name();
-  std::string unix_domain_socket = PgDeriveSocketDir(local_pg_host_port);
-  HostPort local_hostport(unix_domain_socket, local_pg_host_port.port());
 
+  auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlDumpRunner ysql_dump_runner =
       VERIFY_RESULT(YsqlDumpRunner::GetYsqlDumpRunner(local_hostport));
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
@@ -1983,29 +1987,39 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
       HybridTime(req->restore_ht())));
   VLOG(2) << "Dump output: " << dump_output;
 
-  // Write the dump output to a file in order to execute it using ysqlsh.
-  std::unique_ptr<WritableFile> dump_output_file;
-  std::string tmp_file_name;
-  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
-      WritableFileOptions(), target_db_name + "_ysql_dump_XXXXXX", &tmp_file_name,
-      &dump_output_file));
-  RETURN_NOT_OK(dump_output_file->Append(dump_output));
-  RETURN_NOT_OK(dump_output_file->Close());
-  auto scope_exit = ScopeExit([tmp_file_name] {
-    if (Env::Default()->FileExists(tmp_file_name)) {
-      WARN_NOT_OK(
-          Env::Default()->DeleteFile(tmp_file_name),
-          Format("Failed to delete ysql_dump_file $0 as a cloning cleanup.", tmp_file_name));
-    }
-  });
-
   // Execute the sql script to generate the PG database.
-  YsqlshRunner ysqlsh_runner =
-      VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(HostPort::FromPB(local_hostport)));
-  Result<std::string> ysqlsh_output = VERIFY_RESULT(ysqlsh_runner.ExecuteSqlScript(tmp_file_name));
+  YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
+  RETURN_NOT_OK(ysqlsh_runner.ExecuteSqlScript(dump_output, "ysql_dump" /* tmp_file_prefix */));
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
+  return Status::OK();
+}
+
+void TabletServiceAdminImpl::EnableDbConns(
+    const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = DoEnableDbConns(req, resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+Status TabletServiceAdminImpl::DoEnableDbConns(
+    const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
+  const std::string script = Format(
+      "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
+      "UPDATE pg_database SET datallowconn = true WHERE datname = '$0'", req->target_db_name());
+
+  auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
+  YsqlshRunner ysqlsh_runner =
+      VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(HostPort::FromPB(local_hostport)));
+  RETURN_NOT_OK(ysqlsh_runner.ExecuteSqlScript(script, "enable_connections" /* tmp_file_prefix */));
+
+  LOG(INFO) << Format(
+      "Successfully enabled connections to clone target database $0", req->target_db_name());
   return Status::OK();
 }
 
