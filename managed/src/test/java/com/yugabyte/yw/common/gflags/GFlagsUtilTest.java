@@ -120,7 +120,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCheckGFlagGroups() {
+  public void testProcessGFlagGroups() {
 
     SpecificGFlags specificGFlags1 = new SpecificGFlags();
     List<GFlagGroup.GroupName> gflagGroups = new ArrayList<>();
@@ -131,11 +131,13 @@ public class GFlagsUtilTest extends FakeDBApplication {
     PlatformServiceException exception2 =
         assertThrows(
             PlatformServiceException.class,
-            () -> GFlagsUtil.checkGFlagGroups(specificGFlags1, "2.0", mockGFlagsValidation));
+            () -> GFlagsUtil.processGFlagGroups(specificGFlags1, "2.0", mockGFlagsValidation));
 
     // Test with lower DB version
-    SpecificGFlags specificGFlags2 =
-        GFlagsUtil.checkGFlagGroups(specificGFlags1, "2024.0.0.0", mockGFlagsValidation);
-    assertEquals(specificGFlags1, specificGFlags2);
+    PlatformServiceException exception1 =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                GFlagsUtil.processGFlagGroups(specificGFlags1, "2024.0.0.0", mockGFlagsValidation));
   }
 }
