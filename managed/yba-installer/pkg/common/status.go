@@ -7,6 +7,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/viper"
+
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // IsHappyStatus will check if the given Status is "happy" - or the service is up and running.
@@ -60,6 +62,9 @@ func generalStatus() {
 	outString := "YBA Url" + " \t" + "Install Root" + " \t" + "yba-ctl config" + " \t" +
 		"yba-ctl Logs" + " \t"
 	hostnames := SplitInput(viper.GetString("host"))
+	if hostnames == nil || len(hostnames) == 0 {
+		log.Fatal("Could not read host in yba-ctl.yml")
+	}
 	ybaUrl := "https://" + hostnames[0]
 	if viper.GetInt("platform.port") != 443 {
 		ybaUrl += fmt.Sprintf(":%d", viper.GetInt("platform.port"))
