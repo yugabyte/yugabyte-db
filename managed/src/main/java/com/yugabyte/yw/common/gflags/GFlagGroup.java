@@ -13,23 +13,25 @@ import java.util.Map;
 @ApiModel(value = "GFlagGroup", description = "GFlag Groups")
 public class GFlagGroup {
   public enum GroupName {
-    @EnumValue("PG_PARITY")
-    PG_PARITY;
+    @EnumValue("ENHANCED_POSTGRES_COMPATIBILITY")
+    ENHANCED_POSTGRES_COMPATIBILITY;
   }
 
-  private static class ServerTypeFlags {
+  public static class ServerTypeFlags {
     @ApiModelProperty(value = "YbaApi Internal. Master GFlags")
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.1.0")
     @JsonProperty(value = "MASTER")
-    Map<String, String> masterGFlags;
+    public Map<String, String> masterGFlags;
 
     @ApiModelProperty(value = "YbaApi Internal. TServer GFlags")
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.1.0")
     @JsonProperty(value = "TSERVER")
-    Map<String, String> tserverGFlags;
+    public Map<String, String> tserverGFlags;
   }
 
-  @ApiModelProperty(value = "YbaApi Internal. GFlag Group Name", allowableValues = "PG_PARITY")
+  @ApiModelProperty(
+      value = "YbaApi Internal. GFlag Group Name",
+      allowableValues = "ENHANCED_POSTGRES_COMPATIBILITY")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.1.0")
   @JsonProperty(value = "group_name")
   public GroupName groupName;

@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static com.yugabyte.yw.common.Util.ENHANCED_POSTGRES_COMPATIBILITY_DB_PREVIEW_VERSION;
+import static com.yugabyte.yw.common.Util.ENHANCED_POSTGRES_COMPATIBILITY_DB_STABLE_VERSION;
 import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 import static com.yugabyte.yw.common.Util.isIpAddress;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -20,12 +22,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -115,6 +119,9 @@ public class GFlagsUtil {
   public static final String PSQL_PROXY_WEBSERVER_PORT = "pgsql_proxy_webserver_port";
   public static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
   public static final String YSQL_PG_CONF_CSV = "ysql_pg_conf_csv";
+  public static final String YSQL_ENABLE_READ_REQUEST_CACHING = "ysql_enable_read_request_caching";
+  public static final String YSQL_ENABLE_READ_COMMITTED_ISOLATION =
+      "ysql_enable_read_committed_isolation";
   public static final String CSQL_PROXY_BIND_ADDRESS = "cql_proxy_bind_address";
   public static final String CSQL_PROXY_WEBSERVER_PORT = "cql_proxy_webserver_port";
   public static final String ALLOW_INSECURE_CONNECTIONS = "allow_insecure_connections";
@@ -194,6 +201,17 @@ public class GFlagsUtil {
           .add(CERT_NODE_FILENAME)
           .add(CERTS_DIR)
           .add(CERTS_FOR_CLIENT_DIR)
+          .build();
+
+  private static final Map<GroupName, Set<String>> GFLAGS_FORBIDDEN_TO_OVERRIDE_IF_GROUP_SET =
+      ImmutableMap.<GroupName, Set<String>>builder()
+          .put(
+              GroupName.ENHANCED_POSTGRES_COMPATIBILITY,
+              // This group has changes to YSQL_PG_CONF_CSV that would have to be manually verified
+              ImmutableSet.<String>builder()
+                  .add(YSQL_ENABLE_READ_REQUEST_CACHING)
+                  .add(YSQL_ENABLE_READ_COMMITTED_ISOLATION)
+                  .build())
           .build();
 
   private static final Map<String, StringIntentAccessor> GFLAG_TO_INTENT_ACCESSOR =
@@ -356,6 +374,75 @@ public class GFlagsUtil {
     }
 
     return extra_gflags;
+  }
+
+  public static SpecificGFlags checkGFlagGroups(
+      SpecificGFlags specificGFlags, String ybdbVersion, GFlagsValidation gFlagsValidation) {
+    // check if any groups are set in specificGFlags
+    SpecificGFlags result = specificGFlags;
+    List<GroupName> requestedGroups = specificGFlags.getGflagGroups();
+    if (requestedGroups == null) {
+      return result;
+    }
+    if (Util.compareYBVersions(
+            ybdbVersion,
+            ENHANCED_POSTGRES_COMPATIBILITY_DB_STABLE_VERSION,
+            ENHANCED_POSTGRES_COMPATIBILITY_DB_PREVIEW_VERSION,
+            true)
+        < 0) {
+      LOG.warn("GFlag groups not supported in current version.");
+      return result;
+    }
+    try {
+      List<GFlagGroup> gflagGroups = gFlagsValidation.extractGFlagGroups(ybdbVersion);
+      for (GroupName requestedGroup : requestedGroups) {
+        Optional<GFlagGroup> gFlagGroup =
+            gflagGroups.stream().filter(gFlag -> gFlag.groupName == requestedGroup).findFirst();
+        if (!gFlagGroup.isPresent()) {
+          throw new PlatformServiceException(BAD_REQUEST, "Unknown gflag group: " + requestedGroup);
+        }
+        LOG.info("Adding GFlagGroup {} to SpecificGFlags", requestedGroup);
+        GFlagGroup.ServerTypeFlags flags = gFlagGroup.get().flags;
+        if (flags.masterGFlags != null && !flags.masterGFlags.isEmpty()) {
+          // NOTE: if the same flag is used by multiple groups (like ysql_pg_conf_csv) check
+          // if existing values are not overridden
+          Map<String, String> existingMasterGFlags =
+              result.getPerProcessFlags().value.get(ServerType.MASTER);
+          if (existingMasterGFlags == null) {
+            existingMasterGFlags = new HashMap<>();
+          }
+          existingMasterGFlags.putAll(flags.masterGFlags);
+          result.getPerProcessFlags().value.put(ServerType.MASTER, existingMasterGFlags);
+        }
+        if (flags.tserverGFlags != null && !flags.tserverGFlags.isEmpty()) {
+          Map<String, String> existingTserverGFlags =
+              result.getPerProcessFlags().value.get(ServerType.TSERVER);
+          String requestedGroupYsqlPgConfCsv = flags.tserverGFlags.get(YSQL_PG_CONF_CSV);
+          flags.tserverGFlags.remove(YSQL_PG_CONF_CSV);
+          if (existingTserverGFlags == null) {
+            existingTserverGFlags = new HashMap<>();
+          }
+          String existingTserverYsqlPgConfCsv = existingTserverGFlags.get(YSQL_PG_CONF_CSV);
+          existingTserverGFlags.putAll(flags.tserverGFlags);
+          if (existingTserverYsqlPgConfCsv != null) {
+            String ysqlPgConfCsv =
+                mergeCSVs(requestedGroupYsqlPgConfCsv, existingTserverYsqlPgConfCsv, true);
+            existingTserverGFlags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
+          } else {
+            existingTserverGFlags.put(YSQL_PG_CONF_CSV, requestedGroupYsqlPgConfCsv);
+          }
+          result.getPerProcessFlags().value.put(ServerType.TSERVER, existingTserverGFlags);
+        }
+        LOG.info("Added GFlag Group {} to SpecificGFlags", requestedGroup);
+      }
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Failed to fetch GFlag groups for YBDB version {}, {}", ybdbVersion, e.getMessage()));
+    }
+
+    return result;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */

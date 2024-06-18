@@ -49,7 +49,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -137,6 +139,8 @@ public class UniverseCRUDHandler {
   @Inject ReleaseManager releaseManager;
 
   @Inject CertificateHelper certificateHelper;
+
+  @Inject GFlagsValidation gflagsValidation;
 
   private enum OpType {
     CONFIGURE,
@@ -541,6 +545,10 @@ public class UniverseCRUDHandler {
                 + nodeDetails.nodeIdx);
       }
     }
+    List<GroupName> gflagGroups = new ArrayList<>();
+    if (taskParams.getPrimaryCluster().userIntent.specificGFlags != null) {
+      gflagGroups = taskParams.getPrimaryCluster().userIntent.specificGFlags.getGflagGroups();
+    }
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Multiple layers of check as cloud info can be null in unit tests
@@ -619,6 +627,14 @@ public class UniverseCRUDHandler {
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
       if (c.userIntent.specificGFlags != null) {
+        if (c.clusterType == ClusterType.ASYNC) {
+          // Apply group uniformly to all clusters
+          c.userIntent.specificGFlags.setGflagGroups(gflagGroups);
+        }
+        // check gflag groups
+        c.userIntent.specificGFlags =
+            GFlagsUtil.checkGFlagGroups(
+                c.userIntent.specificGFlags, c.userIntent.ybSoftwareVersion, gflagsValidation);
         c.userIntent.masterGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
         c.userIntent.tserverGFlags =
