@@ -13,100 +13,59 @@ menu:
 type: indexpage
 ---
 
-<div class="row">
+## Transactions
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="transactions/acid-transactions-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Transactions</div>
-      </div>
-      <div class="body">
-          Performing distributed transactions.
-      </div>
-    </a>
-  </div>
+Transactions are a sequence of operations performed as a single logical unit of work. These operations can modify multiple tables or rows. Transactions are important to maintain data integrity when multiple users are modifying the same set of rows across tables. Eg. Credit/Debit from a bank account.
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="text-search/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/explore.png" aria-hidden="true" />
-        <div class="title">Text search</div>
-      </div>
-      <div class="body">
-          Performing text search in YSQL.
-      </div>
-    </a>
-  </div>
+{{<lead link="./transactions/acid-transactions-ysql">}}
+To understand how to use transactions when developing applications, see [Transactions](./transactions/acid-transactions-ysql)
+{{</lead>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="aggregations-ycql/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-solid fa-chart-line"></i>
-        </div>
-        <div class="title">Aggregations</div>
-      </div>
-      <div class="body">
-          Implementing common aggregation functions.
-      </div>
-    </a>
-  </div>
+## Text search
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="batch-operations-ycql/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-solid fa-object-group"></i>
-        </div>
-        <div class="title">Batch operations</div>
-      </div>
-      <div class="body">
-        Achieve high throughput by batching reads and writes.
-      </div>
-    </a>
-  </div>
+YugabyteDB supports advanced text search schemes like similarity search, phonetic search and full-text search along with the standard pattern matching with the `LIKE` operator.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="date-and-time-ysql/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-regular fa-clock"></i>
-        </div>
-        <div class="title">Date and time</div>
-      </div>
-      <div class="body">
-        Work with date and time.
-      </div>
-    </a>
-  </div>
+{{<lead link="./transactions/acid-transactions-ysql">}}
+To understand build advanced search functionalities into your applications, see [Text search](./text-search/)
+{{</lead>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="strings-and-text-ysql/">
-      <div class="head">
-        <div class="icon">
-          <img src="/icons/file-lines.svg" alt="Strings and text Icon">
-        </div>
-        <div class="title">Strings and text</div>
-      </div>
-      <div class="body">
-        Manipulate and output strings and text.
-      </div>
-    </a>
-  </div>
+## Aggregations
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ttl-data-expiration-ycql/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-regular fa-clock"></i>
-        </div>
-        <div class="title">TTL and data expiration</div>
-      </div>
-      <div class="body">
-        Expire data with time-to-live (TTL).
-      </div>
-    </a>
-  </div>
+When performing analytical operations on your data, it is common to fetch aggregates like min, max, sum, average etc.
 
-</div>
+{{<lead link="./aggregations-ycql">}}
+To understand how to best use aggregates in your applications, see [Aggregations](./aggregations-ycql)
+{{</lead>}}
+
+## Batch operations
+
+It is sometimes better to batch multiple statements into one request to avoid round trips to the server. In [YSQL](/{{<version>}}/api/ysql), this can be accomplished with [Stored Procedures](/{{<version>}}/explore/ysql-language-features/stored-procedures/), which are not supported in the [YCQL](/{{<version>}}/api/ycql) API.
+
+{{<lead link="./batch-operations-ycql">}}
+To understand how to best do batch operations in YCQL, see [Batch operations](./batch-operations-ycql)
+{{</lead>}}
+
+## Date and time
+
+Although date and time are common concepts, working with dates and times across various time zones can be quite a challenge. It is important that you understand the various formatting and functionalities around these important data types.
+
+{{<lead link="./date-and-time-ysql">}}
+To understand how to use date and time data types effectively in your applications, see [Date and Time](./date-and-time-ysql)
+{{</lead>}}
+
+## Strings and text
+
+Text, String and character data types are probably some of the most commonly used types when designing a schema. YugabyteDB provides an extensive suite of functionality to format and manipulate text data types.
+
+{{<lead link="./strings-and-text-ysql">}}
+To use text, string and character types effectively in your applications, see [Strings and text](./strings-and-text-ysql)
+{{</lead>}}
+
+## Data expiration
+
+Cleaning up old, unwanted data can be a painful task. YugabyteDB supports Time-to-Live (TTL) functionality in the YCQL API which can be very useful to automatically purge old data and reduce storage costs.
+
+{{<lead link="./ttl-data-expiration-ycql">}}
+To understand how to use TTL in your YCQL applications, see [TTL for data expiration](./ttl-data-expiration-ycql)
+{{</lead>}}
+
