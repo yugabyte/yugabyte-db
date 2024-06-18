@@ -32,4 +32,26 @@
       background: rgba(255, 96, 59, 0.8);
     }
   }
+
+  &.ysql {
+    background: #3FC47E;
+    border: 1px solid #3FC47E;
+
+    &:hover,
+    &:focus,
+    &:active {
+      background: rgba(146, 237, 169, 0.8);
+    }
+  }
+
+  &.ycql {
+    background: #6198EA;
+    border: 1px solid #6198EA;
+
+    &:hover,
+    &:focus,
+    &:active {
+      background: rgba(97, 152, 234, 0.8);
+    }
+  }
 }
