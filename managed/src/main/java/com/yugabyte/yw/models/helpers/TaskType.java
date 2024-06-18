@@ -537,6 +537,16 @@ public enum TaskType {
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Node),
 
+  MasterFailover(
+      com.yugabyte.yw.commissioner.tasks.MasterFailover.class,
+      CustomerTask.TaskType.MasterFailover,
+      CustomerTask.TargetType.Universe),
+
+  SyncMasterAddresses(
+      com.yugabyte.yw.commissioner.tasks.SyncMasterAddresses.class,
+      CustomerTask.TaskType.SyncMasterAddresses,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -967,7 +977,11 @@ public enum TaskType {
 
   WaitStartingFromTime(WaitStartingFromTime.class),
 
-  RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class);
+  RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class),
+
+  UpdateUniverseFields(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields.class),
+
+  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1065,6 +1079,8 @@ public enum TaskType {
           .put(UpdateLoadBalancerConfig, 136)
           .put(LdapUniverseSync, 137)
           .put(UpgradeYbcGFlags, 138)
+          .put(MasterFailover, 139)
+          .put(SyncMasterAddresses, 140)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

@@ -429,6 +429,7 @@ public class CustomerTaskManager {
       case EditKubernetesUniverse:
       case ReadOnlyKubernetesClusterCreate:
       case ReadOnlyClusterCreate:
+      case SyncMasterAddresses:
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
       case ResizeNode:
@@ -494,6 +495,7 @@ public class CustomerTaskManager {
       case StartNodeInUniverse:
       case StopNodeInUniverse:
       case StartMasterOnNode:
+      case MasterFailover:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
         UUID universeUUID = UUID.fromString(universeUUIDStr);
@@ -520,6 +522,9 @@ public class CustomerTaskManager {
           nodeTaskParams.setYbcInstalled(true);
           nodeTaskParams.setYbcSoftwareVersion(
               universe.getUniverseDetails().getYbcSoftwareVersion());
+        }
+        if (taskType == TaskType.MasterFailover) {
+          nodeTaskParams.azUuid = UUID.fromString(oldTaskParams.get("azUuid").textValue());
         }
         taskParams = nodeTaskParams;
         break;

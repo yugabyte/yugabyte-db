@@ -704,7 +704,8 @@ class YBClient {
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-      PartitionsOnly partitions_only, GetTableLocationsCallback callback);
+      PartitionsOnly partitions_only, GetTableLocationsCallback callback,
+      master::IncludeInactive = master::IncludeInactive::kFalse);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
@@ -837,8 +838,10 @@ class YBClient {
   // the table exists and look up its schema.
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   Status OpenTable(const YBTableName& table_name, YBTablePtr* table);
-  Status OpenTable(const TableId& table_id, YBTablePtr* table,
-                   master::GetTableSchemaResponsePB* resp = nullptr);
+  Status OpenTable(
+      const TableId& table_id, YBTablePtr* table,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+      master::GetTableSchemaResponsePB* resp = nullptr);
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
   void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
@@ -1065,15 +1068,20 @@ class YBClient {
       YBClient* client, const YBTablePtr& table);
 
   template <class Id>
-  Status DoOpenTable(const Id& id, YBTablePtr* table,
-                   master::GetTableSchemaResponsePB* resp = nullptr);
+  Status DoOpenTable(
+      const Id& id, YBTablePtr* table,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+      master::GetTableSchemaResponsePB* resp = nullptr);
 
   template <class Id>
-  void DoOpenTableAsync(const Id& id, const OpenTableAsyncCallback& callback,
-                        master::GetTableSchemaResponsePB* resp = nullptr);
+  void DoOpenTableAsync(
+      const Id& id, const OpenTableAsyncCallback& callback,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
+      master::GetTableSchemaResponsePB* resp = nullptr);
 
   void GetTableSchemaCallback(
-      std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback, const Status& s);
+      std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback,
+      master::IncludeInactive include_inactive, const Status& s);
 
   CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
 

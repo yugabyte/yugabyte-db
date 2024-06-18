@@ -11,7 +11,7 @@ import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
-import com.yugabyte.yw.commissioner.AutomatedMasterFailover;
+import com.yugabyte.yw.commissioner.AutoMasterFailover;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
@@ -192,7 +192,7 @@ public class MainModule extends AbstractModule {
     bind(HealthChecker.class).asEagerSingleton();
     bind(TaskGarbageCollector.class).asEagerSingleton();
     bind(PitrConfigPoller.class).asEagerSingleton();
-    bind(AutomatedMasterFailover.class).asEagerSingleton();
+    bind(AutoMasterFailover.class).asEagerSingleton();
     bind(BackupGarbageCollector.class).asEagerSingleton();
     bind(SupportBundleCleanup.class).asEagerSingleton();
     bind(EncryptionAtRestManager.class).asEagerSingleton();

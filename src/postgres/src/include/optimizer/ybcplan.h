@@ -34,7 +34,8 @@ bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
 bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 
-bool is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo, bool bitmapindex);
+bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
+								  bool bitmapindex);
 
 void extract_pushdown_clauses(List *restrictinfo_list,
 							  IndexOptInfo *indexinfo,

@@ -47,9 +47,10 @@ class PgTableCache::Impl {
 
   Status GetInfo(
       const TableId& table_id,
+      master::IncludeInactive include_inactive,
       client::YBTablePtr* table,
       master::GetTableSchemaResponsePB* schema) {
-    auto entry = GetEntry(table_id);
+    auto entry = GetEntry(table_id, include_inactive);
     const auto& table_result = entry->future.get();
     RETURN_NOT_OK(table_result);
     *table = *table_result;
@@ -119,10 +120,12 @@ class PgTableCache::Impl {
     return *client_future_.get();
   }
 
-  std::shared_ptr<CacheEntry> GetEntry(const TableId& table_id) {
+  std::shared_ptr<CacheEntry> GetEntry(
+      const TableId& table_id,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse) {
     auto p = DoGetEntry(table_id);
     if (p.second) {
-      LoadEntry(table_id, p.first.get());
+      LoadEntry(table_id, include_inactive, p.first.get());
     }
     return p.first;
   }
@@ -143,16 +146,18 @@ class PgTableCache::Impl {
 
   Status OpenTable(
       const TableId& table_id,
+      master::IncludeInactive include_inactive,
       client::YBTablePtr* table,
       master::GetTableSchemaResponsePB* schema) {
-    RETURN_NOT_OK(client().OpenTable(table_id, table, schema));
+    RETURN_NOT_OK(client().OpenTable(table_id, table, include_inactive, schema));
     RSTATUS_DCHECK(
         (**table).table_type() == client::YBTableType::PGSQL_TABLE_TYPE, RuntimeError,
         "Wrong table type");
     return Status::OK();
   }
 
-  void LoadEntry(const TableId& table_id, CacheEntry* entry) {
+  void LoadEntry(
+      const TableId& table_id, master::IncludeInactive include_inactive, CacheEntry* entry) {
     client::YBTablePtr table;
     bool finished = false;
     auto se = ScopeExit([entry, &finished] {
@@ -161,7 +166,7 @@ class PgTableCache::Impl {
       }
       entry->promise.set_value(STATUS(InternalError, "Unexpected return"));
     });
-    auto status = OpenTable(table_id, &table, &entry->schema);
+    auto status = OpenTable(table_id, include_inactive, &table, &entry->schema);
     if (!status.ok()) {
       Invalidate(table_id);
       entry->promise.set_value(std::move(status));
@@ -189,9 +194,10 @@ PgTableCache::~PgTableCache() {
 
 Status PgTableCache::GetInfo(
     const TableId& table_id,
+    master::IncludeInactive include_inactive,
     client::YBTablePtr* table,
     master::GetTableSchemaResponsePB* schema) {
-  return impl_->GetInfo(table_id, table, schema);
+  return impl_->GetInfo(table_id, include_inactive, table, schema);
 }
 
 Result<client::YBTablePtr> PgTableCache::Get(const TableId& table_id) {

@@ -498,7 +498,7 @@ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1
 -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
-Follow the instructions provided in [Explore YSQL](../../../../../quick-start/explore/ysql/) and then browse to `http://<external-ip>:7000/tablet-servers` of the YB-Master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data, as per the following illustration:
+Follow the instructions provided in [Explore YSQL](/preview/quick-start/explore/ysql/) and then browse to `http://<external-ip>:7000/tablet-servers` of the YB-Master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data, as per the following illustration:
 
 ![mz-ybtserver](/images/deploy/kubernetes/gke-multicluster-ybtserver.png)
 

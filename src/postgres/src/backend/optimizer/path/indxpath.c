@@ -200,6 +200,7 @@ static Datum string_to_datum(const char *str, Oid datatype);
 static Const *string_to_const(const char *str, Oid datatype);
 static bool is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
+static bool yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo);
 
 /*
  * create_index_paths()
@@ -2721,7 +2722,6 @@ match_clause_to_index(IndexOptInfo *index,
 					  List **yb_bitmap_idx_pushdowns)
 {
 	int			indexcol;
-	List	   *colrefs = NIL;
 
 	/*
 	 * Never match pseudoconstants to indexes.  (Normally a match could not
@@ -2754,16 +2754,40 @@ match_clause_to_index(IndexOptInfo *index,
 		}
 	}
 
-	/*
-	 * If the restrict info cannot be directly applied to an index col, check if
-	 * it could be pushed down as a remote index filter.
-	 */
 	if (IsYugaByteEnabled() && yb_bitmap_idx_pushdowns &&
-			YbCanPushdownExpr(rinfo->clause, &colrefs) &&
-			is_index_only_refs(colrefs, index, true /* bitmapindex */)) {
+		yb_can_pushdown_as_filter(index, rinfo))
+	{
 		rinfo->yb_pushable = true;
 		*yb_bitmap_idx_pushdowns = lappend(*yb_bitmap_idx_pushdowns, rinfo);
 	}
+}
+
+/*
+ * yb_can_pushdown_as_filter
+ *	  If a condition is not valid as an index condition, it might be able to be
+ *	  pushed down as a filter on the index. For example, modulo or LIKE
+ *	  operations aren't indexable but are valid as filters.
+ */
+static bool
+yb_can_pushdown_as_filter(IndexOptInfo *index, RestrictInfo *rinfo)
+{
+	List   *colrefs = NIL;
+	int		required_relid;
+
+	/* Does the clause reference only the given index? */
+	if (!bms_get_singleton_member(rinfo->required_relids, &required_relid) ||
+		required_relid != index->rel->relid)
+		return false;
+
+	/* Can DocDB evaluate this operation? */
+	if (!YbCanPushdownExpr(rinfo->clause, &colrefs))
+		return false;
+
+	/* Do all of the clause's referenced attributes exist in the index? */
+	if (!is_index_only_attribute_nums(colrefs, index, true /* bitmapindex */))
+		return false;
+
+	return true;
 }
 
 static bool is_yb_hash_code_call(Node *clause)

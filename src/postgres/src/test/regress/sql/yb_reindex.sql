@@ -269,7 +269,7 @@ REINDEX (VERBOSE) INDEX yb_j_idx;
 -- shared system index
 REINDEX INDEX pg_database_datname_index; -- fail
 -- make sure index isn't broken after failure
-/*+IndexOnlyScan(pg_database_datname_index)*/
+/*+IndexOnlyScan(pg_database pg_database_datname_index)*/
 SELECT datname from pg_database WHERE datname LIKE 'template%';
 
 -- colocation (via tablegroup)

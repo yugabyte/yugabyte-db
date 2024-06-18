@@ -5,9 +5,7 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	osuser "os/user"
 	"strings"
@@ -54,7 +52,7 @@ func initAfterFlagsParsed(cmdName string) {
 	// License does not need any config, so skip for now
 	if !(strings.HasPrefix(cmdName, "yba-ctl replicated-migrate") ||
 		strings.HasPrefix(cmdName, "yba-ctl license")) {
-		handleRootCheck()
+		handleRootCheck(cmdName)
 	}
 
 	// Finally, do basic yba-ctl setup
@@ -113,7 +111,7 @@ func initServices() {
 	// populate names of services for valid args
 }
 
-func handleRootCheck() {
+func handleRootCheck(cmdName string) {
 	user, err := osuser.Current()
 	if err != nil {
 		log.Fatal("Could not determine current user: " + err.Error())
@@ -122,15 +120,14 @@ func handleRootCheck() {
 	// First, validate that the user (root access) matches the config 'as_root'
 	if user.Uid == "0" && !viper.GetBool("as_root") {
 		log.Fatal("running as root user with 'as_root' set to false is not supported")
-	} else if user.Uid != "0" && viper.GetBool("as_root") {
-		log.Fatal("running as non-root user with 'as_root' set to true is not supported")
+	} else if user.Uid != "0" &&
+		(viper.GetBool("as_root") || common.Exists(common.YbactlRootInstallDir)) {
+		// Allow running certain commands as non-root in root install mode
+		switch cmdName {
+			case "yba-ctl version", "yba-ctl status", "yba-ctl createBackup":
+				break
+			default:
+				log.Fatal("running as non-root user with 'as_root' set to true is not supported")
+		}
 	}
-
-	// We also need to validate that there is no /opt/yba-ctl (root used as the install) when we
-	// are doing a non-root workflow
-	if _, err := os.Stat(common.YbactlRootInstallDir); !errors.Is(err, fs.ErrNotExist) &&
-		!common.HasSudoAccess() {
-		log.Fatal("found an existing install with root user, must run yba-ctl with root access")
-	}
-
 }

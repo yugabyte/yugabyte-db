@@ -35,6 +35,8 @@
 
 using std::string;
 
+DECLARE_int32(retryable_request_timeout_secs);
+
 namespace yb {
 namespace tserver {
 
@@ -130,13 +132,16 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                                                                       config_peer.cloud_info());
 
   log_anchor_registry_.reset(new LogAnchorRegistry());
-  consensus::RetryableRequestsManager retryable_requests_manager(
-      tablet_id,
-      fs_manager(),
-      fs_manager()->GetWalRootDirs()[0],
+
+  auto bootstrap_state_manager = std::make_shared<tablet::TabletBootstrapStateManager>(
+      tablet_id, fs_manager(), fs_manager()->GetWalRootDirs()[0]);
+  ASSERT_OK(bootstrap_state_manager->Init());
+
+  consensus::RetryableRequests retryable_requests(
       MemTracker::FindOrCreateTracker(tablet_id),
       "");
-  Status s = retryable_requests_manager.Init(clock());
+  retryable_requests.SetServerClock(clock());
+  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
   ASSERT_OK(tablet_peer_->SetBootstrapping());
   ASSERT_OK(tablet_peer_->InitTabletPeer(
       tablet(),
@@ -149,10 +154,11 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       raft_pool_.get(),
       raft_notifications_pool_.get(),
       tablet_prepare_pool_.get(),
-      &retryable_requests_manager,
+      &retryable_requests,
+      bootstrap_state_manager,
       nullptr /* consensus_meta */,
       multi_raft_manager_.get(),
-      nullptr /* flush_retryable_requests_pool */));
+      nullptr /* flush_bootstrap_state_pool */));
   consensus::ConsensusBootstrapInfo boot_info;
   ASSERT_OK(tablet_peer_->Start(boot_info));
 

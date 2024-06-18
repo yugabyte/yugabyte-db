@@ -10,7 +10,7 @@ import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
-import com.yugabyte.yw.commissioner.AutomatedMasterFailover;
+import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -49,6 +49,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.scheduler.JobScheduler;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
 import io.prometheus.client.CollectorRegistry;
@@ -84,7 +85,7 @@ public class AppInit {
       YamlWrapper yaml,
       ExtraMigrationManager extraMigrationManager,
       PitrConfigPoller pitrConfigPoller,
-      AutomatedMasterFailover automatedMasterFailover,
+      AutoMasterFailoverScheduler autoMasterFailoverScheduler,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
       RefreshKmsService refreshKmsService,
@@ -116,7 +117,8 @@ public class AppInit {
       PrometheusConfigManager prometheusConfigManager,
       ImageBundleUtil imageBundleUtil,
       @Named("AppStartupTimeMs") Long startupTime,
-      ReleasesUtils releasesUtils)
+      ReleasesUtils releasesUtils,
+      JobScheduler jobScheduler)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -319,14 +321,15 @@ public class AppInit {
         replicationManager.init();
 
         scheduler.init();
+        jobScheduler.init();
         callHome.start();
         queryAlerts.start();
         healthChecker.initialize();
         shellLogsManager.startLogsGC();
         nodeAgentPoller.init();
         pitrConfigPoller.start();
-        automatedMasterFailover.start();
         xClusterSyncScheduler.start();
+        autoMasterFailoverScheduler.init();
 
         ybcUpgrade.start();
 

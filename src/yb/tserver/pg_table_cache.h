@@ -35,6 +35,7 @@ class PgTableCache {
 
   Status GetInfo(
       const TableId& table_id,
+      master::IncludeInactive include_inactive,
       client::YBTablePtr* table,
       master::GetTableSchemaResponsePB* schema);
 

@@ -2397,15 +2397,16 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
  * that they are removed from the YbBitmapTableScan node before calling this.
  */
 static void
-YbGetBitmapScanRecheckColumns(YbBitmapTableScan *plan, Bitmapset *required_attrs,
-							  Index target_relid, int min_attr)
+YbGetBitmapScanRecheckColumns(YbBitmapTableScan *plan,
+							  Bitmapset **required_attrs, Index target_relid,
+							  int min_attr)
 {
 	if (plan->fallback_local_quals)
 		pull_varattnos_min_attr((Node *) plan->fallback_local_quals, target_relid,
-								&required_attrs, min_attr);
+								required_attrs, min_attr);
 	if (plan->recheck_local_quals)
 		pull_varattnos_min_attr((Node *) plan->recheck_local_quals, target_relid,
-								&required_attrs, min_attr);
+								required_attrs, min_attr);
 }
 
 /*
@@ -2427,7 +2428,7 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
 		{
 			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
-				YBFirstLowInvalidAttributeNumber, keys[i]->sk_attno);
+				YBFirstLowInvalidAttributeNumber, ybScan->target_key_attnums[i]);
 			columns = bms_add_member(columns, bms_idx);
 		}
 	}
@@ -2486,7 +2487,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbGetBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
-										  required_attrs, target_relid,
+										  &required_attrs, target_relid,
 										  min_attr);
 
 		if (ybScan->hash_code_keys != NIL)

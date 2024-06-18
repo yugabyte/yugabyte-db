@@ -264,12 +264,7 @@ public class NodeAgent extends Model {
   }
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
-    NodeAgent nodeAgent = finder.byId(uuid);
-    if (nodeAgent == null) {
-      log.trace("Cannot find node-agent {}", uuid);
-      return Optional.empty();
-    }
-    return Optional.of(nodeAgent);
+    return Optional.ofNullable(finder.byId(uuid));
   }
 
   public static Optional<NodeAgent> maybeGetByIp(String ip) {

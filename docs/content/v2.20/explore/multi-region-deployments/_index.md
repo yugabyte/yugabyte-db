@@ -21,7 +21,7 @@ YugabyteDB supports a rich set of multi-region deployment topologies. This secti
 
 The following table summarizes these different multi-region deployments in YugabyteDB along with some of their key characteristics.
 
-|     | [Default](synchronous-replication-ysql/) | [Geo-partitioning](row-level-geo-partitioning/) | [xCluster](asynchronous-replication-ysql/) | [Read replicas](read-replicas/) |
+|     | [Default](synchronous-replication-ysql/) | [Geo-partitioning](row-level-geo-partitioning/) | [xCluster](asynchronous-replication-ysql/) | [Read replicas](read-replicas-ysql/) |
 | :-- | :--------------------------------------- | :---------------------------------------------- | :----------------------------------------- | :------------ |
 | **Replication** | Synchronous | Synchronous  | Asynchronous <br/> *(unidirectional and bidirectional)* | Asynchronous <br/> *(unidirectional only)* |
 | **Data residency** | All data replicated across regions | Data partitioned across regions. <br/>Partitions replicated inside region. | All data replicated inside region. <br/>Configure per-table cross-region replication. | All data replicated in primary region. <br/>Cluster-wide asynchronous replication to read replicas. |
@@ -72,7 +72,7 @@ The deployment types are explained in the following sections.
   </div>
 
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="read-replicas/">
+    <a class="section-link icon-offset" href="read-replicas-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
         <div class="title">Read replicas</div>

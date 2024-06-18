@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { AxiosError } from 'axios';
-import { Box, Typography, useTheme } from '@material-ui/core';
+import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 
 import {
-  createXClusterReplication,
+  createXClusterConfig,
+  CreateXClusterConfigRequest,
   fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
   fetchUniverseDiskUsageMetric
@@ -19,7 +20,12 @@ import {
   parseFloatIfDefined
 } from '../ReplicationUtils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
-import { api, drConfigQueryKey, universeQueryKey } from '../../../redesign/helpers/api';
+import {
+  api,
+  drConfigQueryKey,
+  runtimeConfigQueryKey,
+  universeQueryKey
+} from '../../../redesign/helpers/api';
 import { YBButton, YBModal, YBModalProps } from '../../../redesign/components';
 import { StorageConfigOption } from '../sharedComponents/ReactSelectStorageConfig';
 import { CurrentFormStep } from './CurrentFormStep';
@@ -29,6 +35,7 @@ import {
   XClusterConfigType,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import { XClusterTableType } from '../XClusterTypes';
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../redesign/helpers/dtos';
@@ -72,6 +79,12 @@ export const FormStep = {
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
+const useStyles = makeStyles(() => ({
+  secondarySubmitButton: {
+    marginLeft: 'auto'
+  }
+}));
+
 const MODAL_NAME = 'CreateConfigModal';
 const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.createConfigModal';
@@ -89,7 +102,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   } | null>(null);
   const [bootstrapRequiredTableUUIDs, setBootstrapRequiredTableUUIDs] = useState<string[]>([]);
   const [isTableSelectionValidated, setIsTableSelectionValidated] = useState<boolean>(false);
-
+  const [skipBootstrapping, setSkipBootStrapping] = useState<boolean>(false);
   // The purpose of committedTargetUniverse is to store the targetUniverse field value prior
   // to the user submitting their target universe step.
   // This value updates whenever the user submits SelectTargetUniverseStep with a new
@@ -100,24 +113,32 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
   const theme = useTheme();
+  const classes = useStyles();
 
   const xClusterConfigMutation = useMutation(
     (formValues: CreateXClusterConfigFormValues) => {
-      return createXClusterReplication(
-        formValues.targetUniverse.value.universeUUID,
-        sourceUniverseUuid,
-        formValues.configName,
-        formValues.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
-        formValues.tableUuids.map(formatUuidForXCluster),
-        bootstrapRequiredTableUUIDs.length > 0
-          ? {
+      const createXClusterConfigRequest: CreateXClusterConfigRequest = {
+        name: formValues.configName,
+        sourceUniverseUUID: sourceUniverseUuid,
+        targetUniverseUUID: formValues.targetUniverse.value.universeUUID,
+        configType: formValues.isTransactionalConfig
+          ? XClusterConfigType.TXN
+          : XClusterConfigType.BASIC,
+        tables: formValues.tableUuids.map(formatUuidForXCluster),
+
+        ...(!skipBootstrapping &&
+          bootstrapRequiredTableUUIDs.length > 0 && {
+            bootstrapParams: {
               tables: bootstrapRequiredTableUUIDs,
+              allowBootstrapping: true,
+
               backupRequestParams: {
                 storageConfigUUID: formValues.storageConfig.value.uuid
               }
             }
-          : null
-      );
+          })
+      };
+      return createXClusterConfig(createXClusterConfigRequest);
     },
     {
       onSuccess: async (response, values) => {
@@ -182,6 +203,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     api.fetchUniverse(sourceUniverseUuid)
   );
 
+  const customerUuid = localStorage.getItem('customerId') ?? '';
+  const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.customerScope(customerUuid), () =>
+    api.fetchRuntimeConfigs(sourceUniverseUuid, true)
+  );
+
   const formMethods = useForm<CreateXClusterConfigFormValues>({
     defaultValues: {
       namespaceUuids: [],
@@ -195,19 +221,18 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   });
 
   const modalTitle = t('title');
-  const cancelLabel = t('cancel', { keyPrefix: 'common' });
   if (
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle
+    sourceUniverseQuery.isIdle ||
+    runtimeConfigQuery.isLoading ||
+    runtimeConfigQuery.isIdle
   ) {
     return (
       <YBModal
         title={modalTitle}
-        cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
-        cancelTestId={`${MODAL_NAME}-CancelButton`}
         maxWidth="xl"
         size="md"
         overrideWidth="960px"
@@ -218,24 +243,27 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     );
   }
 
-  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
+  if (
+    sourceUniverseTablesQuery.isError ||
+    sourceUniverseQuery.isError ||
+    runtimeConfigQuery.isError
+  ) {
+    const errorMessage = runtimeConfigQuery.isError
+      ? t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })
+      : t('failedToFetchSourceUniverse', {
+          keyPrefix: 'clusterDetail.xCluster.error',
+          universeUuid: sourceUniverseUuid
+        });
     return (
       <YBModal
         title={modalTitle}
-        cancelLabel={cancelLabel}
         submitTestId={`${MODAL_NAME}-SubmitButton`}
-        cancelTestId={`${MODAL_NAME}-CancelButton`}
         maxWidth="xl"
         size="md"
         overrideWidth="960px"
         {...modalProps}
       >
-        <YBErrorIndicator
-          customErrorMessage={t('failedToFetchSourceUniverse', {
-            keyPrefix: 'clusterDetail.xCluster.error',
-            universeUuid: sourceUniverseUuid
-          })}
-        />
+        <YBErrorIndicator customErrorMessage={errorMessage} />
       </YBModal>
     );
   }
@@ -278,7 +306,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   };
 
   const sourceUniverseTables = sourceUniverseTablesQuery.data;
-  const onSubmit: SubmitHandler<CreateXClusterConfigFormValues> = async (formValues) => {
+
+  const onSubmit = async (
+    formValues: CreateXClusterConfigFormValues,
+    skipBootstrapping: boolean
+  ) => {
     // When the user changes target universe or table type, the old table selection is no longer valid.
     const isTableSelectionInvalidated =
       formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUuid ||
@@ -316,6 +348,12 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
               keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
             })
           });
+          return;
+        }
+
+        setSkipBootStrapping(skipBootstrapping);
+        if (skipBootstrapping) {
+          setCurrentFormStep(FormStep.CONFIRM_ALERT);
           return;
         }
 
@@ -411,7 +449,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         return assertUnreachableCase(currentFormStep);
     }
   };
-
+  const onFormSubmit: SubmitHandler<CreateXClusterConfigFormValues> = async (formValues) =>
+    onSubmit(formValues, false);
+  const onSkipBootstrapAndSubmit: SubmitHandler<CreateXClusterConfigFormValues> = async (
+    formValues
+  ) => onSubmit(formValues, true);
   const handleBackNavigation = () => {
     // We can clear errors here because prior steps have already been validated
     // and future steps will be revalidated when the user clicks the next page button.
@@ -427,7 +469,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
       case FormStep.CONFIRM_ALERT:
-        if (bootstrapRequiredTableUUIDs.length > 0) {
+        if (bootstrapRequiredTableUUIDs.length > 0 && !skipBootstrapping) {
           setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         } else {
           setCurrentFormStep(FormStep.SELECT_TABLES);
@@ -481,16 +523,20 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const isTransactionalConfig = formMethods.watch('isTransactionalConfig');
 
   const isFormDisabled = formMethods.formState.isSubmitting;
+  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const isSkipBootstrappingEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING && config.value === 'true'
+  );
   return (
     <YBModal
       title={modalTitle}
       submitLabel={submitLabel}
-      cancelLabel={cancelLabel}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
-      onSubmit={formMethods.handleSubmit(onSubmit)}
+      onSubmit={formMethods.handleSubmit(onFormSubmit)}
       submitTestId={`${MODAL_NAME}-SubmitButton`}
-      cancelTestId={`${MODAL_NAME}-CancelButton`}
       isSubmitting={formMethods.formState.isSubmitting}
+      showSubmitSpinner={currentFormStep !== FormStep.SELECT_TABLES || !skipBootstrapping}
       maxWidth="xl"
       size={
         ([FormStep.SELECT_TARGET_UNIVERSE, FormStep.SELECT_TABLES] as FormStep[]).includes(
@@ -501,11 +547,26 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       }
       overrideWidth="960px"
       footerAccessory={
-        currentFormStep !== FIRST_FORM_STEP && (
-          <YBButton variant="secondary" onClick={handleBackNavigation}>
-            {t('back', { keyPrefix: 'common' })}
-          </YBButton>
-        )
+        <>
+          {currentFormStep !== FIRST_FORM_STEP && (
+            <YBButton variant="secondary" onClick={handleBackNavigation}>
+              {t('back', { keyPrefix: 'common' })}
+            </YBButton>
+          )}
+          {currentFormStep === FormStep.SELECT_TABLES &&
+            isBootstrapStepRequired &&
+            isSkipBootstrappingEnabled && (
+              <YBButton
+                className={classes.secondarySubmitButton}
+                variant="secondary"
+                onClick={formMethods.handleSubmit(onSkipBootstrapAndSubmit)}
+                showSpinner={formMethods.formState.isSubmitting && skipBootstrapping}
+                disabled={isFormDisabled}
+              >
+                {t('step.selectTables.submitButton.skipBootstrapping')}
+              </YBButton>
+            )}
+        </>
       }
       {...modalProps}
     >

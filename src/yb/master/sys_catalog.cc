@@ -144,6 +144,7 @@ METRIC_DEFINE_counter(
 
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
+DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
@@ -571,13 +572,14 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
-  consensus::RetryableRequestsManager retryable_requests_manager(
-      metadata->raft_group_id(),
-      metadata->fs_manager(),
-      metadata->wal_dir(),
-      master_->mem_tracker(),
-      LogPrefix());
-  RETURN_NOT_OK(retryable_requests_manager.Init(master_->clock()));
+
+  auto bootstrap_state_manager = std::make_shared<tablet::TabletBootstrapStateManager>(
+      metadata->raft_group_id(), metadata->fs_manager(), metadata->wal_dir());
+  RETURN_NOT_OK(bootstrap_state_manager->Init());
+
+  consensus::RetryableRequests retryable_requests(master_->mem_tracker(), LogPrefix());
+  retryable_requests.SetServerClock(master_->clock());
+  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
 
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
@@ -636,7 +638,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests_manager = &retryable_requests_manager,
+      .retryable_requests = &retryable_requests,
+      .bootstrap_state_manager = bootstrap_state_manager.get(),
       .bootstrap_retryable_requests = true
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
@@ -656,10 +659,11 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           raft_pool(),
           raft_notifications_pool(),
           tablet_prepare_pool(),
-          &retryable_requests_manager /* retryable_requests_manager */,
+          &retryable_requests,
+          bootstrap_state_manager,
           nullptr,
           multi_raft_manager_.get(),
-          nullptr /* flush_retryable_requests_pool */),
+          nullptr /* flush_bootstrap_state_pool */),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info), "Failed to Start() TabletPeer");

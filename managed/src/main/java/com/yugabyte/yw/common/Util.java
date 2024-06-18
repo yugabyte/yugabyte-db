@@ -18,6 +18,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
@@ -767,6 +768,19 @@ public class Util {
       ip = node.cloudInfo.private_ip;
     }
     return ip;
+  }
+
+  public static String getIpToUse(Universe universe, String nodeName, boolean cloudEnabled) {
+    // For K8s the NodeDetails are only populated with nodeName, so need to fetch details
+    // from Universe, which works for both K8s and VMs.
+    NodeDetails nodeInUniverse = universe.getNode(nodeName);
+    if (nodeInUniverse == null) {
+      return null;
+    }
+    if (GFlagsUtil.isUseSecondaryIP(universe, nodeInUniverse, cloudEnabled)) {
+      return nodeInUniverse.cloudInfo.secondary_private_ip;
+    }
+    return nodeInUniverse.cloudInfo.private_ip;
   }
 
   // Generate a deterministic node UUID from the universe UUID and the node name.

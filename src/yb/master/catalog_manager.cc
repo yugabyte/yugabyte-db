@@ -7498,8 +7498,14 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
-
+  if (req->include_inactive()) {
+    // Do not return the schema of a deleted tablet even if include_inactive is set to true
+    SCHECK_EC_FORMAT(
+        l->is_running(), NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
+        "The object '$0.$1' is not running", l->namespace_id(), l->name());
+  } else {
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  }
   if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
     // schema that has reached every TS.

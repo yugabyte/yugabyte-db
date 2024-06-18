@@ -2,8 +2,8 @@ package systemd
 
 import (
 	"fmt"
-	osuser "os/user"
 
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 )
 
@@ -66,9 +66,5 @@ func runSysctlCmd(cmd string, args ...string) error {
 }
 
 func isRoot() bool {
-	user, err := osuser.Current()
-	if err != nil {
-		panic(err)
-	}
-	return user.Uid == "0"
+	return viper.GetBool("as_root")
 }

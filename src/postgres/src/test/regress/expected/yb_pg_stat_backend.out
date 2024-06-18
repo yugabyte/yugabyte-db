@@ -8,12 +8,12 @@
 -- this connection, and the java test.
 SELECT datname, usename, state, query, backend_type,
        catalog_version IS NOT null AS has_catalog_snapshot
-    FROM pg_stat_activity;
+    FROM pg_stat_activity ORDER BY usename;
  datname  |    usename    | state  |                           query                            |  backend_type  | has_catalog_snapshot
 ----------+---------------+--------+------------------------------------------------------------+----------------+----------------------
  yugabyte | yugabyte      | active | SELECT datname, usename, state, query, backend_type,      +| client backend | t
           |               |        |        catalog_version IS NOT null AS has_catalog_snapshot+|                |
-          |               |        |     FROM pg_stat_activity;                                 |                |
+          |               |        |     FROM pg_stat_activity ORDER BY usename;                |                |
  yugabyte | yugabyte_test | idle   | COMMIT                                                     | client backend | f
           |               |        |                                                            | checkpointer   | f
 (3 rows)

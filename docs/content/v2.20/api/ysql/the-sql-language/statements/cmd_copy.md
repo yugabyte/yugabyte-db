@@ -190,4 +190,4 @@ yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' WITH (FORMAT CSV,
 HEADER, DELIMITER ',', ROWS_PER_TRANSACTION 5000, DISABLE_FK_CHECK, REPLACE, SKIP 50);
 ```
 
-For COPY operation examples using the `pg_stat_progress_copy` view, refer to [View COPY status with pg_stat_progress_copy](../../../../../explore/query-1-performance/pg-stat-progress-copy/).
+For COPY operation examples using the `pg_stat_progress_copy` view, refer to [View COPY status with pg_stat_progress_copy](../../../../../explore/observability/pg-stat-progress-copy/).

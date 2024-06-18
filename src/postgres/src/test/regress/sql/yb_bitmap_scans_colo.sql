@@ -214,6 +214,20 @@ SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 15000 OR c > 27000)) ORDER
 /*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 3000 OR c > 15000)) ORDER BY a;
 
+-- check aggregates
+SET yb_enable_expression_pushdown = true;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+SET yb_enable_expression_pushdown = false;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+RESET yb_enable_expression_pushdown;
 RESET work_mem;
 
 --

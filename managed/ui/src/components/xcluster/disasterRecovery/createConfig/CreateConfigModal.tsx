@@ -334,11 +334,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     <YBModal
       title={modalTitle}
       submitLabel={submitLabel}
-      cancelLabel={cancelLabel}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       onSubmit={formMethods.handleSubmit(onSubmit)}
       submitTestId={`${MODAL_NAME}-SubmitButton`}
-      cancelTestId={`${MODAL_NAME}-CancelButton`}
       isSubmitting={formMethods.formState.isSubmitting}
       maxWidth="xl"
       size={currentFormStep === FormStep.SELECT_TABLES ? 'fit' : 'md'}

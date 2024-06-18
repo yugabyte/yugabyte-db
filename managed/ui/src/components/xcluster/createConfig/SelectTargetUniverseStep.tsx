@@ -278,7 +278,8 @@ export const SelectTargetUniverseStep = ({
         </li>
       </ol>
       <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)} marginTop={4}>
-        {!isTransactionalConfig && (
+        {/* Txn xCluster is only available for YSQL. We don't warn for YCQL as we don't offer an alternative. */}
+        {!isTransactionalConfig && tableType === TableType.PGSQL_TABLE_TYPE && (
           <YBBanner variant={YBBannerVariant.WARNING}>
             <Typography variant="body2" component="p">
               {t('warning.nonTxnXCluster')}

@@ -711,6 +711,8 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 	*detail_buf = NULL;
 	*detail_nargs = 0;
 	*detail_args = NULL;
+	elog(DEBUG2,
+			 "status_msg=%s txn_err_code=%d pg_err_code=%d", status_msg, txn_err_code, pg_err_code);
 
 	switch(pg_err_code)
 	{

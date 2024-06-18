@@ -175,17 +175,17 @@ For an example of how connection pooling reduces latencies, see [Database Connec
 
 ## Using smart drivers with YugabyteDB Managed
 
-[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
+[YugabyteDB Managed](/preview/yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
 
 When connecting using an upstream driver, you connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
 If you are using a smart driver, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
 
-YugabyteDB Managed clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
+YugabyteDB Managed clusters also support topology-aware load balancing. If the cluster has a [preferred region](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
 
 ### Deploying applications
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 Applications that use smart drivers from outside the peered network fall back to the upstream driver behavior automatically. You may see a warning similar to the following:
 

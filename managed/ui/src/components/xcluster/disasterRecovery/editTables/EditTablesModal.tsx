@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, Typography, useTheme } from '@material-ui/core';
+import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { AxiosError } from 'axios';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,7 @@ import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components
 import {
   api,
   drConfigQueryKey,
+  runtimeConfigQueryKey,
   universeQueryKey,
   xClusterQueryKey
 } from '../../../../redesign/helpers/api';
@@ -36,6 +37,7 @@ import {
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CurrentFormStep } from './CurrentFormStep';
 import { getTableUuid } from '../../../../utils/tableUtils';
+import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
 
 import { Universe, UniverseNamespace, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig } from '../../dtos';
@@ -59,7 +61,7 @@ export interface EditTablesFormValues {
   tableUuids: string[];
   namespaceUuids: string[];
 
-  storageConfig?: StorageConfigOption;
+  storageConfig: StorageConfigOption;
 }
 
 export const FormStep = {
@@ -67,6 +69,12 @@ export const FormStep = {
   CONFIGURE_BOOTSTRAP: 'configureBootstrap'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
+
+const useStyles = makeStyles(() => ({
+  secondarySubmitButton: {
+    marginLeft: 'auto'
+  }
+}));
 
 const MODAL_NAME = 'EditTablesModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.editTablesModal';
@@ -85,7 +93,9 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   } | null>(null);
   const [bootstrapRequiredTableUUIDs, setBootstrapRequiredTableUUIDs] = useState<string[]>([]);
   const [isTableSelectionValidated, setIsTableSelectionValidated] = useState<boolean>(false);
+  const [skipBootstrapping, setSkipBootStrapping] = useState<boolean>(false);
 
+  const classes = useStyles();
   const theme = useTheme();
   const queryClient = useQueryClient();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
@@ -110,17 +120,13 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     universeQueryKey.namespaces(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
   );
+  const customerUuid = localStorage.getItem('customerId') ?? '';
+  const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.customerScope(customerUuid), () =>
+    api.fetchRuntimeConfigs(customerUuid, true)
+  );
+
   const editTableMutation = useMutation(
     (formValues: EditTablesFormValues) => {
-      const bootstrapParams =
-        bootstrapRequiredTableUUIDs.length > 0
-          ? {
-              tables: bootstrapRequiredTableUUIDs,
-              backupRequestParams: {
-                storageConfigUUID: formValues.storageConfig?.value.uuid
-              }
-            }
-          : undefined;
       return props.isDrInterface
         ? api.updateTablesInDr(props.drConfigUuid, {
             tables: formValues.tableUuids
@@ -128,7 +134,16 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         : editXClusterConfigTables(xClusterConfig.uuid, {
             tables: formValues.tableUuids,
             autoIncludeIndexTables: shouldAutoIncludeIndexTables(xClusterConfig),
-            bootstrapParams: bootstrapParams
+            ...(!skipBootstrapping &&
+              bootstrapRequiredTableUUIDs.length > 0 && {
+                bootstrapParams: {
+                  tables: bootstrapRequiredTableUUIDs,
+                  allowBootstrapping: true,
+                  backupRequestParams: {
+                    storageConfigUUID: formValues.storageConfig.value.uuid
+                  }
+                }
+              })
           });
     },
     {
@@ -175,23 +190,18 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     }
   );
   const modalTitle = t('title');
-  const cancelLabel = t('cancel', { keyPrefix: 'common' });
   if (
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
     sourceUniverseNamespacesQuery.isLoading ||
-    sourceUniverseNamespacesQuery.isIdle
+    sourceUniverseNamespacesQuery.isIdle ||
+    runtimeConfigQuery.isLoading ||
+    runtimeConfigQuery.isIdle
   ) {
     return (
-      <YBModal
-        title={modalTitle}
-        cancelLabel={cancelLabel}
-        submitTestId={`${MODAL_NAME}-SubmitButton`}
-        cancelTestId={`${MODAL_NAME}-CancelButton`}
-        {...modalProps}
-      >
+      <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
         <YBLoading />
       </YBModal>
     );
@@ -209,7 +219,8 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
     sourceUniverseQuery.isError ||
     sourceUniverseTablesQuery.isError ||
     sourceUniverseNamespacesQuery.isError ||
-    !xClusterConfigTableType
+    !xClusterConfigTableType ||
+    runtimeConfigQuery.isError
   ) {
     const errorMessage = !xClusterConfig.sourceUniverseUUID
       ? t('error.undefinedSourceUniverseUuid')
@@ -217,15 +228,11 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       ? t('error.undefinedTargetUniverseUuid')
       : !xClusterConfigTableType
       ? t('error.undefinedXClusterTableType', { keyPrefix: TRANSLATION_KEY_PREFIX_XCLUSTER })
+      : runtimeConfigQuery.isError
+      ? t('failedToFetchCustomerRuntimeConfig', { keyPrefix: 'queryError' })
       : t('error.fetchSourceUniverseDetailsFailure');
     return (
-      <YBModal
-        title={modalTitle}
-        cancelLabel={cancelLabel}
-        submitTestId={`${MODAL_NAME}-SubmitButton`}
-        cancelTestId={`${MODAL_NAME}-CancelButton`}
-        {...modalProps}
-      >
+      <YBModal title={modalTitle} submitTestId={`${MODAL_NAME}-SubmitButton`} {...modalProps}>
         <YBErrorIndicator customErrorMessage={errorMessage} />
       </YBModal>
     );
@@ -281,7 +288,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   };
 
   const sourceUniverse = sourceUniverseQuery.data;
-  const onSubmit: SubmitHandler<EditTablesFormValues> = async (formValues) => {
+  const onSubmit = async (formValues: EditTablesFormValues, skipBootstrapping: boolean) => {
     switch (currentFormStep) {
       case FormStep.SELECT_TABLES: {
         setSelectionError(null);
@@ -304,6 +311,11 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             })
           });
           return;
+        }
+
+        setSkipBootStrapping(skipBootstrapping);
+        if (skipBootstrapping) {
+          return editTableMutation.mutateAsync(formValues);
         }
 
         if (!isTableSelectionValidated) {
@@ -399,6 +411,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
         return assertUnreachableCase(currentFormStep);
     }
   };
+  const onFormSubmit: SubmitHandler<EditTablesFormValues> = async (formValues) =>
+    onSubmit(formValues, false);
+  const onSkipBootstrapAndSubmit: SubmitHandler<EditTablesFormValues> = async (formValues) =>
+    onSubmit(formValues, true);
 
   const handleBackNavigation = () => {
     switch (currentFormStep) {
@@ -417,9 +433,13 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
       case FormStep.SELECT_TABLES:
         return isTableSelectionValidated
           ? bootstrapRequiredTableUUIDs.length > 0
-            ? t('step.selectTables.nextButton')
+            ? t(
+                `step.selectTables.submitButton.configureBootstrap.${
+                  props.isDrInterface ? 'dr' : 'xCluster'
+                }`
+              )
             : t('applyChanges', { keyPrefix: 'common' })
-          : t('submitButton.validate');
+          : t('step.selectTables.submitButton.validateSelection');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('applyChanges', { keyPrefix: 'common' });
       default:
@@ -431,25 +451,44 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   const selectedTableUuids = formMethods.watch('tableUuids');
   const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
   const isFormDisabled = formMethods.formState.isSubmitting;
+  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const isSkipBootstrappingEnabled = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING && config.value === 'true'
+  );
   return (
     <YBModal
       title={modalTitle}
       submitLabel={submitLabel}
-      cancelLabel={cancelLabel}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
-      onSubmit={formMethods.handleSubmit(onSubmit)}
+      onSubmit={formMethods.handleSubmit(onFormSubmit)}
       submitTestId={`${MODAL_NAME}-SubmitButton`}
-      cancelTestId={`${MODAL_NAME}-CancelButton`}
       isSubmitting={formMethods.formState.isSubmitting}
+      showSubmitSpinner={currentFormStep === FormStep.SELECT_TABLES || !skipBootstrapping}
       maxWidth="xl"
       size={currentFormStep === FormStep.SELECT_TABLES ? 'fit' : 'md'}
       overrideWidth="960px"
       footerAccessory={
-        currentFormStep !== FIRST_FORM_STEP && (
-          <YBButton variant="secondary" onClick={handleBackNavigation}>
-            {t('back', { keyPrefix: 'common' })}
-          </YBButton>
-        )
+        <>
+          {currentFormStep !== FIRST_FORM_STEP && (
+            <YBButton variant="secondary" onClick={handleBackNavigation}>
+              {t('back', { keyPrefix: 'common' })}
+            </YBButton>
+          )}
+          {currentFormStep === FormStep.SELECT_TABLES &&
+            !props.isDrInterface &&
+            isSkipBootstrappingEnabled && (
+              <YBButton
+                className={classes.secondarySubmitButton}
+                variant="secondary"
+                onClick={formMethods.handleSubmit(onSkipBootstrapAndSubmit)}
+                showSpinner={formMethods.formState.isSubmitting && skipBootstrapping}
+                disabled={isFormDisabled}
+              >
+                {t('step.selectTables.submitButton.skipBootstrapping')}
+              </YBButton>
+            )}
+        </>
       }
       {...modalProps}
     >

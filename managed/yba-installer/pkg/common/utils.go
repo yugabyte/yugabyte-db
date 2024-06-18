@@ -485,6 +485,13 @@ func NewYBVersion(versionString string) (*YBVersion, error) {
 
 }
 
+func Exists(file string) bool {
+	if _, err := os.Stat(file); errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	return true
+}
+
 func (ybv YBVersion) String() string {
 	reprStr, _ := json.Marshal(ybv)
 	return string(reprStr)

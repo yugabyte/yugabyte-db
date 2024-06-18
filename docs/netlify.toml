@@ -605,41 +605,41 @@
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
   to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
-#   to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
-#   to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
-#   to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
   to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
-#   to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
   to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
-#   to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
 [[redirects]]
    from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
@@ -667,6 +667,10 @@
 
 [[redirects]]
   from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/stable/develop/realworld-apps/*"
   to = "/preview/tutorials/"
 
 [[redirects]]
@@ -1177,12 +1181,12 @@
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
-  from = ":version/quick-start/*"
+  from = "/:version/quick-start/*"
   to = "/preview/quick-start/"
   force = true
 
 [[redirects]]
-  from = ":version/quick-start-yugabytedb-managed/*"
+  from = "/:version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
