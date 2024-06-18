@@ -64,11 +64,16 @@ run_as_super_user() {
 }
 
 export_path() {
+  set +euo pipefail
+  source "$INSTALL_USER_HOME"/.bashrc >/dev/null 2>&1
   if [[ ":$PATH:" != *":$1:"* ]]; then
-    PATH="$1${PATH:+":$PATH"}"
-    echo "PATH=$PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    NEW_PATH="$1":\$PATH
+    PATH="$1":$PATH
+    echo "PATH=$NEW_PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    echo "export PATH" >> "$INSTALL_USER_HOME"/.bashrc
     export PATH
   fi
+  set -euo pipefail
 }
 
 save_node_agent_home() {
