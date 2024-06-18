@@ -5,9 +5,7 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 
 	"github.com/spf13/viper"
@@ -115,8 +113,10 @@ func handleRootCheck(cmdName string) {
 				os.Exit(1)
 			}
 		}
+	case "yba-ctl version", "yba-ctl status", "yba-ctl createBackup":
+		return
 	default:
-		if _, err := os.Stat(common.YbactlRootInstallDir); !errors.Is(err, fs.ErrNotExist) {
+		if common.Exists(common.YbactlRootInstallDir) {
 			// If /opt/yba-ctl/yba-ctl.yml exists, it was put there be root?
 			if !common.HasSudoAccess() {
 				fmt.Println("Please run yba-ctl as root")

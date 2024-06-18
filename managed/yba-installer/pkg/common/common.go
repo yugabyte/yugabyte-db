@@ -44,6 +44,15 @@ func Install(version string) {
 
 	createYugabyteUser()
 
+	// Set ownership of yba-ctl.yml and yba-ctl.log
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		log.Fatal(fmt.Sprintf("could not set ownership of %s: %v", InputFile(), err))
+	}
+
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		log.Fatal(fmt.Sprintf("could not set ownership of %s: %v", YbactlLogFile(), err))
+	}
 	createInstallDirs()
 	copyBits(version)
 	extractPlatformSupportPackageAndYugabundle(version)
@@ -171,6 +180,14 @@ func Upgrade(version string) {
 	// TODO(minor): probably not a good idea in the long run
 	os.Chdir(GetBinaryDir())
 
+	// Change ownership as part of upgrade to allow non-root commands
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		log.Fatal(fmt.Sprintf("could not set ownership of %s: %v", InputFile(), err))
+	}
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		log.Fatal(fmt.Sprintf("could not set ownership of %s: %v", YbactlLogFile(), err))
+	}
 	createUpgradeDirs()
 	copyBits(version)
 	extractPlatformSupportPackageAndYugabundle(version)
