@@ -38,9 +38,9 @@ Depending on the version of YugabyteDB, Enhanced Postgres Compatibility Mode con
 |        | Wait-on-Conflict concurrency for predictable P99 latencies | | |
 |        | Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | {{<badge/ea>}} | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
 |        | Use range sharding (ascending) by default | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
-| 2024.2 | Read-Committed isolation | {{<badge/ga>}} | yb_enable_read_committed_isolation=true |
+| 2024.2 | Read-Committed isolation | {{<badge/ga>}} | |
 |        | Wait-on-Conflict concurrency | | |
-|        | Cost based optimizer | {{<badge/ga>}} | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
+|        | Cost based optimizer | {{<badge/ga>}} |  |
 |        | Use range sharding (ascending) by default | {{<badge/ga>}} | yb_use_hash_splitting_by_default=false |
 |        | TOAST compression | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
 |        | Auto analyze | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
