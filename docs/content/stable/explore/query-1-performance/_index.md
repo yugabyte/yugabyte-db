@@ -110,7 +110,7 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg
 
   {{<index/item
     title="Get query statistics"
-    body="Track planning and execution statistics for all SQL statements executed by a server."
+    body="Track planning and execution statistics for all statements executed by a server using pg_stat_staments and ycql_stat_statements."
     href="pg-stat-statements/"
     icon="/images/section_icons/develop/learn.png">}}
 
