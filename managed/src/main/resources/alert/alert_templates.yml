@@ -1000,10 +1000,11 @@ templates:
 
   NODE_CPU_USAGE:
     name: DB node CPU usage
-    description: Average node CPU usage percentage for 30 minutes is above threshold
+    description: Average node CPU usage percentage for is above threshold.
+      Aggregation period is set via yb.alert.cpu_usage_interval_secs runtime property
     queryTemplate: count by(universe_uuid) ((avg by (universe_uuid, node_name)
       (sum by (universe_uuid, node_name, cpu)
-      (rate(node_cpu_seconds_total{job="node",mode!="idle",universe_uuid="__universeUuid__"}[30m])
+      (rate(node_cpu_seconds_total{job="node",mode!="idle",universe_uuid="__universeUuid__"}[{{ range }}s])
       * 100))) {{ query_condition }} {{ query_threshold }})
     createForNewCustomer: true
     defaultThresholdMap:
@@ -1011,6 +1012,8 @@ templates:
         paramName: yb.alert.max_cpu_usage_pct_warn
       SEVERE:
         paramName: yb.alert.max_cpu_usage_pct_severe
+    parameters:
+      range: yb.alert.cpu_usage_interval_secs
     targetType: UNIVERSE
     defaultThresholdCondition: GREATER_THAN
     defaultThresholdUnit: PERCENT
@@ -1024,7 +1027,7 @@ templates:
         {{ range $index, $element := query "avg by (universe_uuid, node_name)
         (sum by (universe_uuid, node_name, cpu)
         (rate(node_cpu_seconds_total{job='node',mode!='idle',
-        universe_uuid='{{ $labels.universe_uuid }}'}[30m])* 100))
+        universe_uuid='{{ $labels.universe_uuid }}'}[{{ range }}s])* 100))
         {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-

@@ -553,6 +553,8 @@ public class ModelFactory {
       Customer customer, Universe universe, AlertDefinition definition, Consumer<Alert> modifier) {
     AlertTemplateService alertTemplateService =
         StaticInjectorHolder.injector().instanceOf(AlertTemplateService.class);
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
@@ -579,7 +581,11 @@ public class ModelFactory {
     List<AlertLabel> labels =
         definition
             .getEffectiveLabels(
-                alertTemplateDescription, configuration, null, AlertConfiguration.Severity.SEVERE)
+                alertTemplateDescription,
+                configuration,
+                null,
+                AlertConfiguration.Severity.SEVERE,
+                runtimeConfGetter)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());

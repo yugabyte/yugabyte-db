@@ -1048,4 +1048,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing the CheckLeaderlessTablets subtask",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> cpuUsageAggregationInterval =
+      new ConfKeyInfo<>(
+          "yb.alert.cpu_usage_interval_secs",
+          ScopeType.UNIVERSE,
+          "CPU usage alert aggregation interval",
+          "CPU usage alert aggregation interval in seconds.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

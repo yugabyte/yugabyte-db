@@ -20,15 +20,19 @@ import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import java.util.Map;
 
 @Singleton
 public class RuntimeConfGetter {
+
+  private final Map<String, ConfKeyInfo<?>> keyMetaData;
   private final RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject
   public RuntimeConfGetter(
-      RuntimeConfigFactory runtimeConfigFactory, CustomerConfKeys customerKeys) {
+      RuntimeConfigFactory runtimeConfigFactory, Map<String, ConfKeyInfo<?>> keyMetaData) {
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.keyMetaData = keyMetaData;
   }
 
   public <T> T getConfForScope(Customer customer, ConfKeyInfo<T> keyInfo) {
@@ -77,5 +81,10 @@ public class RuntimeConfGetter {
 
   public Config getStaticConf() {
     return runtimeConfigFactory.staticApplicationConf();
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T> ConfKeyInfo<T> getConfKeyInfo(String path, Class<T> type) {
+    return (ConfKeyInfo<T>) keyMetaData.get(path);
   }
 }
