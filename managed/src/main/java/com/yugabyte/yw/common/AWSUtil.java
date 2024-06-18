@@ -237,6 +237,9 @@ public class AWSUtil implements CloudUtil {
   // splitLocation[0] gives the bucket
   // splitLocation[1] gives the suffix string
   public static String[] getSplitLocationValue(String location) {
+    if (StringUtils.isBlank(location)) {
+      return new String[] {""};
+    }
     location = location.substring(AWS_S3_LOCATION_PREFIX.length());
     String[] split = location.split("/", 2);
     return split;
@@ -265,13 +268,15 @@ public class AWSUtil implements CloudUtil {
   }
 
   public static String getClientRegion(String fallbackRegion) {
-    String region = "";
-    try {
-      region = new DefaultAwsRegionProviderChain().getRegion();
-    } catch (SdkClientException e) {
-      log.debug("No region found in Default region chain.");
+    String region = fallbackRegion;
+    if (StringUtils.isBlank(region)) {
+      try {
+        region = new DefaultAwsRegionProviderChain().getRegion();
+      } catch (SdkClientException e) {
+        log.trace("No region found in Default region chain.");
+      }
     }
-    return StringUtils.isBlank(region) ? fallbackRegion : region;
+    return StringUtils.isBlank(region) ? "us-east-1" : region;
   }
 
   public AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)
@@ -290,6 +295,7 @@ public class AWSUtil implements CloudUtil {
    */
   public AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data, String region)
       throws SdkClientException, PlatformServiceException {
+    AmazonS3 client = null;
     AmazonS3ClientBuilder s3ClientBuilder = AmazonS3ClientBuilder.standard();
     if (s3Data.isIAMInstanceProfile) {
       // Using credential chaining here.
@@ -314,10 +320,13 @@ public class AWSUtil implements CloudUtil {
     if (s3Data.isPathStyleAccess) {
       s3ClientBuilder.withPathStyleAccessEnabled(true);
     }
-    s3ClientBuilder.withForceGlobalBucketAccessEnabled(true);
     //  Use region specific hostbase
     String endpoint = getRegionHostBaseMap(s3Data).get(region);
     String clientRegion = getClientRegion(s3Data.fallbackRegion);
+    if (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint)) {
+      // Use global bucket access only for standard S3.
+      s3ClientBuilder.withForceGlobalBucketAccessEnabled(true);
+    }
     if (StringUtils.isNotBlank(endpoint)) {
       // Need to set region because region-chaining may
       // fail if correct environment variables not found.
@@ -355,7 +364,7 @@ public class AWSUtil implements CloudUtil {
             clientConfig = new ClientConfiguration();
           }
           clientConfig.getApacheHttpClientConfig().setSslSocketFactory(sslSocketFactory);
-          return s3ClientBuilder.withClientConfiguration(clientConfig).build();
+          client = s3ClientBuilder.withClientConfiguration(clientConfig).build();
         } catch (Exception e) {
           log.error("Could not create S3 client", e);
           throw new PlatformServiceException(
@@ -366,8 +375,22 @@ public class AWSUtil implements CloudUtil {
         if (caStoreEnabled && !certVerificationEnforced) {
           log.warn("CA store feature is enabled but certificate verification is not enforced.");
         }
-        return s3ClientBuilder.build();
+        client = s3ClientBuilder.build();
       }
+      // First bucket region fetch may fail, so call and skip.
+      try {
+        if (client != null) {
+          String bucket = getCloudLocationInfo(region, s3Data, null /* backupLocation */).bucket;
+          if (StringUtils.isNotBlank(bucket)) {
+            getBucketRegion(bucket, client);
+          }
+        } else {
+          throw new RuntimeException("S3 client is null. This is unexpected!");
+        }
+      } catch (SdkClientException e) {
+        log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
+      }
+      return client;
     } catch (SdkClientException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
@@ -498,7 +521,8 @@ public class AWSUtil implements CloudUtil {
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath) {
     try {
       maybeDisableCertVerification();
-      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+      CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+      AmazonS3 s3Client = createS3Client(s3Data);
       String[] splitLocation = getSplitLocationValue(cloudPath);
       String bucketName = splitLocation[0];
       String objectPrefix = splitLocation[1];
