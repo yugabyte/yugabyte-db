@@ -1078,7 +1078,8 @@
           "suggestionsErrors": "Suggestions and Errors",
           "phase": "Phase",
           "status": "Status",
-          "filename": "File name"
+          "filename": "File name",
+          "beforeYouProceed": "Before you proceed..."
         },
         "migrateData": {
           "migratedData": "Migrate data completed successfully",
