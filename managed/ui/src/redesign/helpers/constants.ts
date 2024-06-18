@@ -55,7 +55,8 @@ export const RuntimeConfigKey = {
   GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled',
   ENABLE_TROUBLESHOOTING: 'yb.ui.feature_flags.enable_troubleshooting',
   AWS_COOLDOWN_HOURS: 'yb.aws.disk_resize_cooldown_hours',
-  BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources'
+  BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources',
+  ENABLE_AUDIT_LOG: 'yb.universe.audit_logging_enabled'
 } as const;
 
 /**

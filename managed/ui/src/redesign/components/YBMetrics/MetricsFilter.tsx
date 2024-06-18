@@ -2,8 +2,8 @@ import { Box, makeStyles, useTheme } from '@material-ui/core';
 import { ToggleButton, ToggleButtonGroup } from '@material-ui/lab';
 import { useTranslation } from 'react-i18next';
 
-import { YBInput } from '../../../../redesign/components';
-import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
+import { YBInput } from '..';
+import { NodeAggregation, SplitMode, SplitType } from '../../../components/metrics/dtos';
 
 interface MetricsFilterProps {
   metricsNodeAggregation: NodeAggregation;

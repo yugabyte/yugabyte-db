@@ -141,7 +141,7 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 
 ### Features present in both YCQL and CQL but YCQL provides stricter guarantees
 
-1. [Secondary indexes](../../develop/learn/data-modeling/) are by default strongly consistent because internally they use distributed transactions.
+1. [Secondary indexes](../../develop/data-modeling/secondary-indexes-ycql) are by default strongly consistent because internally they use distributed transactions.
 1. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) data types are equivalent and both can be incremented without any lightweight transactions.
 1. Timeline-consistent tunably-stale reads that maintain ordering guarantees from either a follower replica in the primary cluster or a observer replica in the read replica cluster.
 

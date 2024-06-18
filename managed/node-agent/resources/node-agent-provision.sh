@@ -14,20 +14,28 @@ set -euo pipefail
 
 # Function to display usage information
 show_usage() {
-    echo "Usage: $0 [-c|--command COMMAND] [--airgap]"
+    echo "Usage: $0 [-c|--command COMMAND]"
     echo "  -c, --command COMMAND    Specify the command to run"
-    echo "  --airgap                 Enable airgap installation"
 }
 
 # Function to handle errors
 err_msg() {
-    echo "$1" >&2
+    echo "Error: $1" >&2
+    show_usage
+    exit 1
 }
 
 # Function to set up the environment
 setup_environment() {
     detect_os
     activate_pex
+}
+
+# Function to check for Python
+check_python() {
+    if ! command -v python &> /dev/null; then
+        err_msg "Python is not installed or not found in PATH."
+    fi
 }
 
 # Function to execute the Python script
@@ -38,6 +46,7 @@ execute_python() {
 # Main function
 main() {
     setup_environment
+    check_python
     execute_python "$@"
 }
 

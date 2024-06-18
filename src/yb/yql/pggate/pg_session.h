@@ -431,7 +431,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
  private:
-  Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
+  Result<PgTableDescPtr> DoLoadTable(
+      const PgObjectId& table_id, bool fail_on_cache_hit,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
   Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   const std::string LogPrefix() const;
