@@ -333,6 +333,7 @@ GET     /customers/:cUUID/universes/:uniUUID/masters                           c
 GET     /customers/:cUUID/universes/:uniUUID/yqlservers                        com.yugabyte.yw.controllers.MetaMasterController.getYQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/ysqlservers                       com.yugabyte.yw.controllers.MetaMasterController.getYSQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/redisservers                      com.yugabyte.yw.controllers.MetaMasterController.getRedisServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/master_lb_state                   com.yugabyte.yw.controllers.MetaMasterController.getMasterLBState(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe - Yugabyte DB management
 POST    /customers/:cUUID/universes/:uniUUID/run_query                         com.yugabyte.yw.controllers.UniverseYbDbAdminController.runQuery(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)

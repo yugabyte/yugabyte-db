@@ -163,7 +163,7 @@
       "x" : 0,
       "y" : 1
     },
-    "id" : 186,
+    "id" : 187,
     "interval" : null,
     "links" : [ ],
     "mappingType" : 2,
@@ -310,7 +310,7 @@
       "value" : "null"
     } ],
     "valueName" : "current",
-    "id" : 187
+    "id" : 188
   }, {
     "collapsed" : false,
     "datasource" : "$datasource",
@@ -323,7 +323,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Container",
-    "id" : 188
+    "id" : 189
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -796,7 +796,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master",
-    "id" : 189
+    "id" : 190
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -1345,8 +1345,110 @@
       "align" : false,
       "alignLevel" : null
     },
+    "title" : "Master load balancer statistics",
+    "id" : 69,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Tablets in wrong placement",
+      "expr" : "max(max_over_time(tablets_in_wrong_placement{node_prefix=~\"$dbcluster\", export_type=\"master_export\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Total table load difference",
+      "expr" : "max(max_over_time(total_table_load_difference{node_prefix=~\"$dbcluster\", export_type=\"master_export\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Tablets with blacklisted leaders",
+      "expr" : "max(max_over_time(blacklisted_leaders{node_prefix=~\"$dbcluster\", export_type=\"master_export\"}[300s])) by (saved_name)",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 83
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
     "title" : "Max Follower Lag (ms)",
-    "id" : 83,
+    "id" : 84,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Max Follower Lag (ms)",
@@ -1356,7 +1458,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 83
     }
   }, {
@@ -1438,7 +1540,7 @@
       "alignLevel" : null
     },
     "title" : "MultiRaftUpdateConsensus / sec",
-    "id" : 84,
+    "id" : 85,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -1448,8 +1550,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 83
+      "x" : 0,
+      "y" : 92
     }
   }, {
     "aliasColors" : { },
@@ -1530,7 +1632,7 @@
       "alignLevel" : null
     },
     "title" : "MultiRaftUpdateConsensus Latency",
-    "id" : 85,
+    "id" : 86,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -1540,7 +1642,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 92
     }
   }, {
@@ -1622,7 +1724,7 @@
       "alignLevel" : null
     },
     "title" : "Overall RPCs / sec",
-    "id" : 86,
+    "id" : 87,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "RPCs",
@@ -1632,8 +1734,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 92
+      "x" : 0,
+      "y" : 101
     }
   }, {
     "aliasColors" : { },
@@ -1714,7 +1816,7 @@
       "alignLevel" : null
     },
     "title" : "Create/Delete Table RPCs",
-    "id" : 87,
+    "id" : 88,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Create Table",
@@ -1729,7 +1831,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 101
     }
   }, {
@@ -1811,7 +1913,7 @@
       "alignLevel" : null
     },
     "title" : "TS Heartbeats / sec",
-    "id" : 90,
+    "id" : 91,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TS Heartbeats",
@@ -1821,8 +1923,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 101
+      "x" : 0,
+      "y" : 110
     }
   }, {
     "aliasColors" : { },
@@ -1903,7 +2005,7 @@
       "alignLevel" : null
     },
     "title" : "Master TSService Reads / sec",
-    "id" : 91,
+    "id" : 92,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TS Reads",
@@ -1913,7 +2015,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 110
     }
   }, {
@@ -1995,7 +2097,7 @@
       "alignLevel" : null
     },
     "title" : "Master TS Read Latency",
-    "id" : 92,
+    "id" : 93,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TSService Read Latency",
@@ -2005,8 +2107,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 110
+      "x" : 0,
+      "y" : 119
     }
   }, {
     "aliasColors" : { },
@@ -2087,7 +2189,7 @@
       "alignLevel" : null
     },
     "title" : "Master TSService Writes / sec",
-    "id" : 93,
+    "id" : 94,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TS Writes",
@@ -2097,7 +2199,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 119
     }
   }, {
@@ -2179,7 +2281,7 @@
       "alignLevel" : null
     },
     "title" : "Master TS Write Latency",
-    "id" : 94,
+    "id" : 95,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TSService Write Latency",
@@ -2189,8 +2291,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 119
+      "x" : 0,
+      "y" : 128
     }
   }, {
     "aliasColors" : { },
@@ -2271,7 +2373,7 @@
       "alignLevel" : null
     },
     "title" : "Uptime",
-    "id" : 95,
+    "id" : 96,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Uptime",
@@ -2281,7 +2383,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 128
     }
   }, {
@@ -2363,7 +2465,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 96,
+    "id" : 97,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -2373,8 +2475,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 128
+      "x" : 0,
+      "y" : 137
     }
   }, {
     "aliasColors" : { },
@@ -2455,7 +2557,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 168,
+    "id" : 169,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "rpcs_in_queue_.*",
@@ -2465,7 +2567,7 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
+      "x" : 12,
       "y" : 137
     }
   }, {
@@ -2480,7 +2582,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master Advanced",
-    "id" : 190
+    "id" : 191
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -2754,7 +2856,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Read / Sec / Node",
-    "id" : 69,
+    "id" : 70,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -2846,7 +2948,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Written / Sec / Node",
-    "id" : 70,
+    "id" : 71,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -2938,7 +3040,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Latency",
-    "id" : 71,
+    "id" : 72,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -3040,7 +3142,7 @@
       "alignLevel" : null
     },
     "title" : "Average SSTables",
-    "id" : 72,
+    "id" : 73,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SST Files",
@@ -3132,7 +3234,7 @@
       "alignLevel" : null
     },
     "title" : "Cache Hit & Miss",
-    "id" : 73,
+    "id" : 74,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Hit",
@@ -3229,7 +3331,7 @@
       "alignLevel" : null
     },
     "title" : "Block cache usage",
-    "id" : 74,
+    "id" : 75,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Multi Touch",
@@ -3326,7 +3428,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Blooms usefulness",
-    "id" : 75,
+    "id" : 76,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Blooms Useful",
@@ -3423,7 +3525,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction",
-    "id" : 76,
+    "id" : 77,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -3520,7 +3622,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction num files",
-    "id" : 77,
+    "id" : 78,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Num Files",
@@ -3612,7 +3714,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction time",
-    "id" : 78,
+    "id" : 79,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Avg",
@@ -3704,7 +3806,7 @@
       "alignLevel" : null
     },
     "title" : "Flush write",
-    "id" : 79,
+    "id" : 80,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -3796,7 +3898,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seeks / Sec / Node",
-    "id" : 80,
+    "id" : 81,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -3888,7 +3990,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seek/Next/Prev Ops / Sec",
-    "id" : 81,
+    "id" : 82,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -3990,7 +4092,7 @@
       "alignLevel" : null
     },
     "title" : "SSTable size",
-    "id" : 82,
+    "id" : 83,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Size",
@@ -4082,7 +4184,7 @@
       "alignLevel" : null
     },
     "title" : "TCMalloc Stats",
-    "id" : 88,
+    "id" : 89,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "In Use",
@@ -4179,7 +4281,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Running",
-    "id" : 89,
+    "id" : 90,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Running",
@@ -4204,7 +4306,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Misc",
-    "id" : 191
+    "id" : 192
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -4938,7 +5040,7 @@
       "alignLevel" : null
     },
     "title" : "Cache Hit & Miss",
-    "id" : 131,
+    "id" : 132,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Hit",
@@ -5035,7 +5137,7 @@
       "alignLevel" : null
     },
     "title" : "Compaction",
-    "id" : 132,
+    "id" : 133,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -5132,7 +5234,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Written / Sec",
-    "id" : 133,
+    "id" : 134,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -5224,7 +5326,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Latency",
-    "id" : 134,
+    "id" : 135,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -5326,7 +5428,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Ops / Sec",
-    "id" : 135,
+    "id" : 136,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -5428,7 +5530,7 @@
       "alignLevel" : null
     },
     "title" : "Memtable Size",
-    "id" : 136,
+    "id" : 137,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "IntentsDB",
@@ -5545,7 +5647,7 @@
       "alignLevel" : null
     },
     "title" : "Memory Pressure Rejections",
-    "id" : 137,
+    "id" : 138,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Leader",
@@ -5647,7 +5749,7 @@
       "alignLevel" : null
     },
     "title" : "Operations Inflight",
-    "id" : 138,
+    "id" : 139,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -5744,7 +5846,7 @@
       "alignLevel" : null
     },
     "title" : "Read Op Latency (Avg)",
-    "id" : 139,
+    "id" : 140,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -5836,7 +5938,7 @@
       "alignLevel" : null
     },
     "title" : "Read Ops / Sec",
-    "id" : 140,
+    "id" : 141,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -5928,7 +6030,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seek/Next/Prev Ops / Sec",
-    "id" : 141,
+    "id" : 142,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -6030,7 +6132,7 @@
       "alignLevel" : null
     },
     "title" : "Write Op Latency (Avg)",
-    "id" : 142,
+    "id" : 143,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -6122,7 +6224,7 @@
       "alignLevel" : null
     },
     "title" : "Write Lock Latency",
-    "id" : 143,
+    "id" : 144,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write Lock",
@@ -6214,7 +6316,7 @@
       "alignLevel" : null
     },
     "title" : "Write Rejections",
-    "id" : 144,
+    "id" : 145,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejections",
@@ -6306,7 +6408,7 @@
       "alignLevel" : null
     },
     "title" : "Write Ops / Sec",
-    "id" : 145,
+    "id" : 146,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -6331,7 +6433,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Node Metrics",
-    "id" : 192
+    "id" : 193
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -7545,7 +7647,7 @@
       "alignLevel" : null
     },
     "title" : "Memory Usage",
-    "id" : 97,
+    "id" : 98,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Total",
@@ -7652,7 +7754,7 @@
       "alignLevel" : null
     },
     "title" : "Network Bytes / Sec / Node",
-    "id" : 98,
+    "id" : 99,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TX",
@@ -7749,7 +7851,7 @@
       "alignLevel" : null
     },
     "title" : "Network Errors / Sec / Node",
-    "id" : 99,
+    "id" : 100,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "RX",
@@ -7846,7 +7948,7 @@
       "alignLevel" : null
     },
     "title" : "Network Packets / Sec / Node",
-    "id" : 100,
+    "id" : 101,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TX",
@@ -7943,7 +8045,7 @@
       "alignLevel" : null
     },
     "title" : "Clock Skew",
-    "id" : 101,
+    "id" : 102,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Max",
@@ -8035,7 +8137,7 @@
       "alignLevel" : null
     },
     "title" : "node_up",
-    "id" : 102,
+    "id" : 103,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -8127,7 +8229,7 @@
       "alignLevel" : null
     },
     "title" : "System Load Over Time",
-    "id" : 130,
+    "id" : 131,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "5 minutes",
@@ -8162,7 +8264,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Otel Collector",
-    "id" : 193
+    "id" : 194
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8242,7 +8344,7 @@
       "alignLevel" : null
     },
     "title" : "Audit Log Send Queue Size",
-    "id" : 103,
+    "id" : 104,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -8334,7 +8436,7 @@
       "alignLevel" : null
     },
     "title" : "Audit Log Records Read / Sec",
-    "id" : 104,
+    "id" : 105,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -8426,7 +8528,7 @@
       "alignLevel" : null
     },
     "title" : "Audit Log Records Refused / Sec",
-    "id" : 105,
+    "id" : 106,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -8518,7 +8620,7 @@
       "alignLevel" : null
     },
     "title" : "Audit Log Records Send Failed / Sec",
-    "id" : 106,
+    "id" : 107,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -8610,7 +8712,7 @@
       "alignLevel" : null
     },
     "title" : "Audit Log Records Sent / Sec",
-    "id" : 107,
+    "id" : 108,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -8635,7 +8737,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "RocksDB",
-    "id" : 194
+    "id" : 195
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -10814,7 +10916,7 @@
       "alignLevel" : null
     },
     "title" : "Tablet Splitting Operations",
-    "id" : 146,
+    "id" : 147,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Apply",
@@ -10854,7 +10956,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Tablet Server",
-    "id" : 195
+    "id" : 196
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -11399,7 +11501,7 @@
       "alignLevel" : null
     },
     "title" : "Raft Leader",
-    "id" : 108,
+    "id" : 109,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Raft Leader",
@@ -11491,7 +11593,7 @@
       "alignLevel" : null
     },
     "title" : "Total Ops / Sec",
-    "id" : 147,
+    "id" : 148,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -11593,7 +11695,7 @@
       "alignLevel" : null
     },
     "title" : "Async Replication Lag",
-    "id" : 148,
+    "id" : 149,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -11685,7 +11787,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Cache Num Ops / Node",
-    "id" : 149,
+    "id" : 150,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Num Ops",
@@ -11777,7 +11879,7 @@
       "alignLevel" : null
     },
     "title" : "Total Consensus Change Config",
-    "id" : 150,
+    "id" : 151,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ChangeConfig",
@@ -11884,7 +11986,7 @@
       "alignLevel" : null
     },
     "title" : "Change Config Latency",
-    "id" : 151,
+    "id" : 152,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ChangeConfig",
@@ -11976,7 +12078,7 @@
       "alignLevel" : null
     },
     "title" : "Consensus Rpc Latencies",
-    "id" : 152,
+    "id" : 153,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -12078,7 +12180,7 @@
       "alignLevel" : null
     },
     "title" : "Consensus Ops / Sec",
-    "id" : 153,
+    "id" : 154,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -12180,7 +12282,7 @@
       "alignLevel" : null
     },
     "title" : "Context Switches",
-    "id" : 154,
+    "id" : 155,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Voluntary",
@@ -12277,7 +12379,7 @@
       "alignLevel" : null
     },
     "title" : "CPU Util Secs / Sec",
-    "id" : 155,
+    "id" : 156,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "System",
@@ -12374,7 +12476,7 @@
       "alignLevel" : null
     },
     "title" : "Glog messages",
-    "id" : 156,
+    "id" : 157,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Warning",
@@ -12476,7 +12578,7 @@
       "alignLevel" : null
     },
     "title" : "Reactor Delays",
-    "id" : 157,
+    "id" : 158,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Incoming Queue",
@@ -12578,7 +12680,7 @@
       "alignLevel" : null
     },
     "title" : "Live Tablet Peers",
-    "id" : 158,
+    "id" : 159,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Live Tablet Peers",
@@ -12670,7 +12772,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Read / Sec / Node",
-    "id" : 159,
+    "id" : 160,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -12762,7 +12864,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Written / Sec / Node",
-    "id" : 160,
+    "id" : 161,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -12854,7 +12956,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Latency",
-    "id" : 161,
+    "id" : 162,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -12956,7 +13058,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Ops / Sec / Node",
-    "id" : 162,
+    "id" : 163,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -13058,7 +13160,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Stats / Node",
-    "id" : 163,
+    "id" : 164,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Bytes Read",
@@ -13155,7 +13257,7 @@
       "alignLevel" : null
     },
     "title" : "Max Follower Lag (ms)",
-    "id" : 164,
+    "id" : 165,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Max Follower Lag (ms)",
@@ -13247,7 +13349,7 @@
       "alignLevel" : null
     },
     "title" : "Average Latency",
-    "id" : 165,
+    "id" : 166,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -13349,7 +13451,7 @@
       "alignLevel" : null
     },
     "title" : "Remote Bootstraps",
-    "id" : 166,
+    "id" : 167,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Remote Bootstraps",
@@ -13441,7 +13543,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 167,
+    "id" : 168,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YCQL RPC",
@@ -13533,7 +13635,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 170,
+    "id" : 171,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "rpcs_in_queue_.*",
@@ -13625,7 +13727,7 @@
       "alignLevel" : null
     },
     "title" : "tserver_rpcs_per_sec_by_universe",
-    "id" : 171,
+    "id" : 172,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -13717,7 +13819,7 @@
       "alignLevel" : null
     },
     "title" : "Ops / Sec / Node",
-    "id" : 172,
+    "id" : 173,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -13819,7 +13921,7 @@
       "alignLevel" : null
     },
     "title" : "SpinLock Time/Server",
-    "id" : 173,
+    "id" : 174,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SpinLock",
@@ -13911,7 +14013,7 @@
       "alignLevel" : null
     },
     "title" : "TCMalloc Stats",
-    "id" : 174,
+    "id" : 175,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "In Use",
@@ -14008,7 +14110,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Running",
-    "id" : 175,
+    "id" : 176,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Running",
@@ -14100,7 +14202,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Started",
-    "id" : 176,
+    "id" : 177,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Started",
@@ -14192,7 +14294,7 @@
       "alignLevel" : null
     },
     "title" : "Uptime",
-    "id" : 177,
+    "id" : 178,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Uptime",
@@ -14284,7 +14386,7 @@
       "alignLevel" : null
     },
     "title" : "Write Lock Latency",
-    "id" : 178,
+    "id" : 179,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write Lock",
@@ -14376,7 +14478,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 179,
+    "id" : 180,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -14401,7 +14503,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "YCQL Ops & Latency",
-    "id" : 196
+    "id" : 197
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -15526,7 +15628,7 @@
       "alignLevel" : null
     },
     "title" : "Response Size",
-    "id" : 129,
+    "id" : 130,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Response Size",
@@ -15551,7 +15653,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "YEDIS Ops & Latency",
-    "id" : 197
+    "id" : 198
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -15631,7 +15733,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency (Avg)",
-    "id" : 109,
+    "id" : 110,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -15723,7 +15825,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Hash",
-    "id" : 110,
+    "id" : 111,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "HIncrBy",
@@ -15870,7 +15972,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Others",
-    "id" : 111,
+    "id" : 112,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Auth",
@@ -16002,7 +16104,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Set",
-    "id" : 112,
+    "id" : 113,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SCard",
@@ -16119,7 +16221,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Sorted Set",
-    "id" : 113,
+    "id" : 114,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ZRem",
@@ -16231,7 +16333,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- Str",
-    "id" : 114,
+    "id" : 115,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "GetRange",
@@ -16378,7 +16480,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency -- TS",
-    "id" : 115,
+    "id" : 116,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TsGet",
@@ -16485,7 +16587,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Reactor Delays",
-    "id" : 116,
+    "id" : 117,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Incoming Queue",
@@ -16587,7 +16689,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec",
-    "id" : 117,
+    "id" : 118,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -16679,7 +16781,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Hash",
-    "id" : 118,
+    "id" : 119,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "HGetAll",
@@ -16826,7 +16928,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Others",
-    "id" : 119,
+    "id" : 120,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Echo",
@@ -16958,7 +17060,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Set",
-    "id" : 120,
+    "id" : 121,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SCard",
@@ -17075,7 +17177,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Sorted Set",
-    "id" : 121,
+    "id" : 122,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ZRangeByScore",
@@ -17187,7 +17289,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- Str",
-    "id" : 122,
+    "id" : 123,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MGet",
@@ -17334,7 +17436,7 @@
       "alignLevel" : null
     },
     "title" : "Total YEDIS Ops / Sec -- TS",
-    "id" : 123,
+    "id" : 124,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TsGet",
@@ -17441,7 +17543,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency (P95)",
-    "id" : 124,
+    "id" : 125,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -17533,7 +17635,7 @@
       "alignLevel" : null
     },
     "title" : "YEDIS Op Latency (P99)",
-    "id" : 125,
+    "id" : 126,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -17625,7 +17727,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Latency Local vs Remote",
-    "id" : 126,
+    "id" : 127,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -17717,7 +17819,7 @@
       "alignLevel" : null
     },
     "title" : "YBClient Ops Local vs Remote",
-    "id" : 127,
+    "id" : 128,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -17809,7 +17911,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 128,
+    "id" : 129,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -17901,7 +18003,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 169,
+    "id" : 170,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YEDIS RPC",
@@ -17926,7 +18028,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL Ops & Latency",
-    "id" : 198
+    "id" : 199
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -18006,7 +18108,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections",
-    "id" : 180,
+    "id" : 181,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Total",
@@ -18103,7 +18205,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections / Sec",
-    "id" : 181,
+    "id" : 182,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejected",
@@ -18200,7 +18302,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 182,
+    "id" : 183,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Begin",
@@ -18312,7 +18414,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 183,
+    "id" : 184,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -18419,7 +18521,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Advanced Op Latency (Avg)",
-    "id" : 184,
+    "id" : 185,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rollback",
@@ -18531,7 +18633,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (Avg)",
-    "id" : 185,
+    "id" : 186,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",

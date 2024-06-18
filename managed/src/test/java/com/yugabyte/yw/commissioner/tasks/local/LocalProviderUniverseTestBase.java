@@ -45,6 +45,8 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.apiModels.MasterLBStateResponse;
+import com.yugabyte.yw.controllers.handlers.MetaMasterHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
@@ -1113,5 +1115,14 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
         universe.getUniverseDetails().nodeDetailsSet.stream()
             .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
             .count());
+  }
+
+  protected void verifyMasterLBStatus(
+      Customer customer, Universe universe, boolean isEnabled, boolean isLoadBalancerIdle) {
+    MetaMasterHandler metaMasterHandler = app.injector().instanceOf(MetaMasterHandler.class);
+    MasterLBStateResponse resp =
+        metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
+    assertEquals(resp.isEnabled, isEnabled);
+    assertEquals(resp.isIdle, isLoadBalancerIdle);
   }
 }

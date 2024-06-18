@@ -9,6 +9,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.apiModels.MasterLBStateResponse;
+import com.yugabyte.yw.controllers.handlers.MetaMasterHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -41,6 +43,8 @@ public class MetaMasterController extends Controller {
   @Inject private YBClientService ybService;
 
   @Inject KubernetesManagerFactory kubernetesManagerFactory;
+
+  @Inject MetaMasterHandler metaMasterHandler;
 
   @ApiOperation(
       value = "List a universe's master nodes",
@@ -76,6 +80,22 @@ public class MetaMasterController extends Controller {
   })
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.MASTER);
+  }
+
+  @ApiOperation(
+      notes = "Available since YBA version 2024.2.0",
+      value = "Get the state of master load balancing ops",
+      response = MasterLBStateResponse.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result getMasterLBState(UUID customerUUID, UUID universeUUID) {
+    MasterLBStateResponse resp = metaMasterHandler.getMasterLBState(customerUUID, universeUUID);
+    return PlatformResults.withData(resp);
   }
 
   @ApiOperation(

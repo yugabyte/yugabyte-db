@@ -7185,6 +7185,11 @@
       "required" : [ "instanceUUID", "peerRole", "port", "privateIp", "uptimeSeconds" ],
       "type" : "object"
     },
+    "MasterLBStateResponse" : {
+      "description" : "Master tablet load balancer status",
+      "properties" : { },
+      "type" : "object"
+    },
     "MasterNode" : {
       "properties" : {
         "cloudInfo" : {
@@ -26304,6 +26309,46 @@
         } ],
         "summary" : "Flag a universe as Helm 3-compatible - deprecated",
         "tags" : [ "Universe management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/master_lb_state" : {
+      "get" : {
+        "description" : "Available since YBA version 2024.2.0",
+        "operationId" : "getMasterLBState",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MasterLBStateResponse"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MasterLBStateResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get the state of master load balancing ops",
+        "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/masters" : {

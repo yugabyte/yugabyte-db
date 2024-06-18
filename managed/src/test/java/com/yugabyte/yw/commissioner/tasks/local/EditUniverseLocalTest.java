@@ -46,6 +46,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
     initAndStartPayload(universe);
+    verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
+
     changeNumberOfNodesInPrimary(universe, 2);
     UUID taskID =
         universeCRUDHandler.update(
@@ -53,6 +55,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
     TaskInfo taskInfo = waitForTask(taskID, universe);
+
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
