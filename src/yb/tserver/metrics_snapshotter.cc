@@ -465,6 +465,7 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
       uint64_t total_ticks = cur_ticks[0] - prev_ticks_[0];
       uint64_t user_ticks = cur_ticks[1] - prev_ticks_[1];
       uint64_t system_ticks = cur_ticks[2] - prev_ticks_[2];
+      prev_ticks_ = cur_ticks;
       if (total_ticks <= 0) {
         YB_LOG_EVERY_N_SECS(ERROR, 120) << Format("Failed to calculate CPU usage - "
                                                  "invalid total CPU ticks: $0.", total_ticks);
