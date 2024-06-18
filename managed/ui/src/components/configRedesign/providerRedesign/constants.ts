@@ -8,8 +8,7 @@ export const ConfigTabKey = {
   BACKUP: 'backup',
   BACKUP_NEW: 'newBackupConfig',
   SECURITY: 'security',
-  TROUBLESHOOT: 'troubleshoot',
-  LOG: 'log'
+  TROUBLESHOOT: 'troubleshoot'
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 

@@ -21,8 +21,6 @@ import {
 import { TaskResponse } from './dtos';
 import { EncryptionInTransitFormValues } from '../features/universe/universe-actions/encryption-in-transit/EncryptionInTransitUtils';
 import { ReplicationSlotResponse } from '../features/universe/universe-tabs/replication-slots/utils/types';
-import { ExportLogPayload, ExportLogResponse } from '../features/export-log/utils/types';
-import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -37,9 +35,7 @@ export enum QUERY_KEY {
   getCertificates = 'getCertificates',
   getFinalizeInfo = 'getFinalizeInfo',
   getReplicationSlots = 'getReplicationSlots',
-  getSessionInfo = 'getSessionInfo',
-  getAllTelemetryProviders = 'getAllTelemetryProviders',
-  getTelemetryProviderByID = 'getTelemetryProviderByID'
+  getSessionInfo = 'getSessionInfo'
 }
 
 class ApiService {
@@ -59,11 +55,6 @@ class ApiService {
   fetchUniverse = (universeId: string): Promise<Universe> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}`;
     return axios.get<Universe>(requestUrl).then((resp) => resp.data);
-  };
-
-  fetchUniverseList = (): Promise<Universe[]> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes`;
-    return axios.get<Universe[]>(requestUrl).then((response) => response.data);
   };
 
   setKMSConfig = (universeId: string, data: EncryptionAtRestConfig): Promise<Universe> => {
@@ -147,26 +138,7 @@ class ApiService {
   getSessionInfo = () => {
     const requestUrl = `${ROOT_URL}/session_info`;
     return axios.get<any>(requestUrl).then((resp) => resp.data);
-  };
-  getAllTelemetryProviders = (): Promise<ExportLogResponse[]> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider`;
-    return axios.get<ExportLogResponse[]>(requestUrl).then((resp) => resp.data);
-  };
-
-  getTelemetryProviderByID = (tpID: string): Promise<ExportLogResponse> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider/${tpID}`;
-    return axios.get<ExportLogResponse>(requestUrl).then((resp) => resp.data);
-  };
-
-  createTelemetryProvider = (data: ExportLogPayload): Promise<AxiosResponse> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider`;
-    return axios.post<AxiosResponse>(requestUrl, data).then((resp) => resp.data);
-  };
-
-  createAuditLogConfig = (universeId: string, data: AuditLogPayload): Promise<AxiosResponse> => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/audit_log_config`;
-    return axios.post<AxiosResponse>(requestUrl, data).then((resp) => resp.data);
-  };
+  }
 }
 
 export const api = new ApiService();

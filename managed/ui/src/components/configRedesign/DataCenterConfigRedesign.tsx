@@ -6,7 +6,7 @@
  */
 import { Tab } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
-import { useQuery, useQueries } from 'react-query';
+import { useQueries } from 'react-query';
 
 import SecurityConfiguration from '../config/Security/SecurityConfiguration';
 import awsLogo from '../config/ConfigProvider/images/aws.svg';
@@ -28,7 +28,6 @@ import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
 import { ProviderView } from './providerRedesign/providerView/ProviderView';
 import { StorageConfigurationContainer } from '../config';
-import { ExportLog } from '../../redesign/features/export-log/ExportLog';
 import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
@@ -37,9 +36,6 @@ import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { TroubleshootingDetails } from '../../redesign/features/Troubleshooting/TroubleshootingDetails';
-import { fetchGlobalRunTimeConfigs } from '../../api/admin';
-import { runtimeConfigQueryKey } from '../../redesign/helpers/api';
-import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
 interface ReactRouterProps {
   location: LocationShape;
@@ -75,15 +71,6 @@ export const DataCenterConfigRedesign = ({
       queryFn: () => api.fetchRegionMetadata(ProviderCode.KUBERNETES, kubernetesProvider)
     }))
   );
-
-  const globalRuntimeConfigs = useQuery(runtimeConfigQueryKey.globalScope(), () =>
-    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
-  );
-
-  const isExportLogEnabled =
-    globalRuntimeConfigs?.data?.configEntries?.find(
-      (c: any) => c.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
-    )?.value === 'true';
 
   // Validate the URL params.
   if (
@@ -222,13 +209,6 @@ export const DataCenterConfigRedesign = ({
               />
             </Tab>
           )}
-
-          {isExportLogEnabled && (
-            <Tab eventKey={ConfigTabKey.LOG} title="Log" key="log">
-              <ExportLog />
-            </Tab>
-          )}
-
           {isAvailable(currentCustomer.data.features, 'config.security') && (
             <Tab eventKey={ConfigTabKey.SECURITY} title="Security" key="security-config">
               <SecurityConfiguration activeTab={params.section} />

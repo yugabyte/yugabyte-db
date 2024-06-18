@@ -82,40 +82,40 @@ class UniverseDisplayItem extends Component {
 
     return (
       <Col sm={4} md={3} lg={2}>
-        <Link to={'/universes/' + universe.universeUUID}>
-          <div className="universe-display-item-container">
-            <div className="status-icon">
-              <UniverseStatusContainer
-                currentUniverse={universe}
-                refreshUniverseData={refreshUniverseData}
-                shouldDisplayTaskButton={false}
-              />
+          <Link to={'/universes/' + universe.universeUUID}>
+            <div className="universe-display-item-container">
+              <div className="status-icon">
+                <UniverseStatusContainer
+                  currentUniverse={universe}
+                  refreshUniverseData={refreshUniverseData}
+                  shouldDisplayTaskButton={false}
+                />
+              </div>
+              <div className="display-name">{universe.name}</div>
+              <div className="provider-name">{universeProviderText}</div>
+              <div className="description-item-list">
+                <DescriptionItem title="Nodes">
+                  <span>{numNodes}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Replication Factor">
+                  <span>{replicationFactor}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Monthly Cost">
+                  <span>{costPerMonth}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Created">
+                  <span>{universeCreationDate}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Version">
+                  <span>
+                    {optimizeVersion(
+                      primaryCluster?.userIntent.ybSoftwareVersion.split('-')[0].split('.')
+                    )}
+                  </span>
+                </DescriptionItem>
+              </div>
             </div>
-            <div className="display-name">{universe.name}</div>
-            <div className="provider-name">{universeProviderText}</div>
-            <div className="description-item-list">
-              <DescriptionItem title="Nodes">
-                <span>{numNodes}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Replication Factor">
-                <span>{replicationFactor}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Monthly Cost">
-                <span>{costPerMonth}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Created">
-                <span>{universeCreationDate}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Version">
-                <span>
-                  {optimizeVersion(
-                    primaryCluster?.userIntent.ybSoftwareVersion.split('-')[0].split('.')
-                  )}
-                </span>
-              </DescriptionItem>
-            </div>
-          </div>
-        </Link>
+          </Link>
       </Col>
     );
   }

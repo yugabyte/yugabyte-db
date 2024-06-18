@@ -22,6 +22,7 @@ export interface OverrideButtonProps {
 
 export interface YBModalProps extends DialogProps {
   onClose: () => void;
+
   title?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'fit';
   overrideHeight?: string | number;
@@ -89,7 +90,7 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     minHeight: '100%'
   },
   sidePanel: {
-    width: ({ overrideWidth }) => overrideWidth ?? '736',
+    width: 736,
     height: '100%',
     maxHeight: '100%',
     margin: '0 0 0 auto',

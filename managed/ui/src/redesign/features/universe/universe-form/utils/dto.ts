@@ -1,6 +1,5 @@
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
-import { AuditLogConfig } from '../../universe-tabs/db-audit-logs/utils/types';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
 //--------------------------------------------------------- Most Used OR Common Types - Starts --------------------------------------------------------
@@ -151,7 +150,6 @@ export interface UserIntent {
   proxyConfig?: {};
   useSpotInstance?: boolean | null;
   imageBundleUUID?: string;
-  auditLogConfig?: AuditLogConfig;
 }
 
 export interface Cluster {
