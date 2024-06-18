@@ -32,12 +32,19 @@ To test and take advantage of features developed for PostgreSQL compatibility in
 
 Depending on the version of YugabyteDB, Enhanced Postgres Compatibility Mode configures a different set of features as described in the following table. Enhanced Postgres Compatibility Mode is available in v2024.1 and later.
 
-| YugabyteDB Version | Feature | Flag |
-| :--- | :--- | :--- |
-| 2024.1 | Read-Committed isolation | yb_enable_read_committed_isolation=true |
-|        | Wait-on-Conflict concurrency for predictable P99 latencies | |
-|        | Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
-|        | Use range sharding (ascending) by default | yb_use_hash_splitting_by_default=false |
+| Version | Feature | | Flag |
+| :--- | :--- | :--- | :--- |
+| 2024.1 | Read-Committed isolation | {{<badge/ea>}} | yb_enable_read_committed_isolation=true |
+|        | Wait-on-Conflict concurrency for predictable P99 latencies | | |
+|        | Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | {{<badge/ea>}} | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
+|        | Use range sharding (ascending) by default | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
+| 2024.2 | Read-Committed isolation | {{<badge/ga>}} | yb_enable_read_committed_isolation=true |
+|        | Wait-on-Conflict concurrency | | |
+|        | Cost based optimizer | {{<badge/ga>}} | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
+|        | Use range sharding (ascending) by default | {{<badge/ga>}} | yb_use_hash_splitting_by_default=false |
+|        | TOAST compression | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
+|        | Auto analyze | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
+|        | pg to tserver shared memory | {{<badge/ea>}} | pg_client_use_shared_memory=false |
 
 After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new designated PostgreSQL compatibility features.
 
