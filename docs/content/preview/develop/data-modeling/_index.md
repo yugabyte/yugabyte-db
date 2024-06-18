@@ -22,7 +22,7 @@ Data modeling is the process of defining the structure, organization, and relati
 In YugabyteDB, data is stored as rows and columns in tables; tables are organized under schemas and databases.
 
 {{<lead link="../../explore/ysql-language-features/databases-schemas-tables">}}
-To understand how to create and manage tables, schemas, and databases, see [Schemas and tables](../../explore/ysql-language-features/databases-schemas-tables)
+To understand how to create and manage tables, schemas, and databases, see [Schemas and tables](../../explore/ysql-language-features/databases-schemas-tables).
 {{</lead>}}
 
 ## Sharding
