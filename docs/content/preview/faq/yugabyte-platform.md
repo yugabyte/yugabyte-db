@@ -103,13 +103,13 @@ YugabyteDB Anywhere also requires the following:
 - A YugabyteDB Anywhere license file from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
 - Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes via SSH.
 
-For a complete list of prerequisites, refer to [YBA prerequisites](../../yugabyte-platform/install-yugabyte-platform/prerequisites/installer/).
+For a complete list of prerequisites, refer to [YBA prerequisites](../../yugabyte-platform/prepare/server-yba/).
 
 ## Data nodes
 
 ### What are the requirements to run YugabyteDB data nodes?
 
-Prerequisites for YugabyteDB data nodes are listed in the YugabyteDB [Deployment checklist](../../../deploy/checklist/).
+Prerequisites for YugabyteDB data nodes are listed in the YugabyteDB [Deployment checklist](../../deploy/checklist/).
 
 ### How does the YugabyteDB Anywhere UI interact with YugabyteDB data nodes?
 

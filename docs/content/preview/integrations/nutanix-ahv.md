@@ -16,7 +16,7 @@ type: docs
 
 The following steps describe how to deploy YugabyteDB Anywhere (YBA) and YugabyteDB using Nutanix AHV VMs:
 
-1. Choose an operating system from the [list of YBA supported operating systems](../../yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/) for deploying YugabyteDB.
+1. Choose an operating system from the [list of YBA supported operating systems](../../yugabyte-platform/prepare/server-nodes-software/) for deploying YugabyteDB.
 
 1. [Create AHV VMs](https://portal.nutanix.com/page/documents/details?targetId=Prism-Central-Guide-vpc_2023_4:mul-vm-create-acropolis-pc-t.html) on Nutanix Prism with Network Interface Controller (NIC).
 
@@ -30,9 +30,9 @@ The following steps describe how to deploy YugabyteDB Anywhere (YBA) and Yugabyt
 
 1. Create additional [AHV VMs](https://portal.nutanix.com/page/documents/details?targetId=Prism-Central-Guide-vpc_2023_4:mul-vm-create-acropolis-pc-t.html) to act as on-premises database nodes.
 
-1. Configure [on-premises database AHV VMs](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+1. Configure [on-premises database AHV VMs](../../yugabyte-platform/configure-yugabyte-platform/on-premises/).
 
-1. [Provision on-premises](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) database VMs.
+1. [Provision on-premises](../../yugabyte-platform/configure-yugabyte-platform/on-premises-script/) database VMs.
 
 1. Create an [on-premises YBA universe](../../yugabyte-platform/create-deployments/).
 

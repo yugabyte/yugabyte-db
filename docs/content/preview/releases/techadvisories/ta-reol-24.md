@@ -47,7 +47,7 @@ Do not upgrade your YBA to a version that no longer supports your currently runn
 
 If there are no version compatibility issues, YBA upgrades should be performed before any additional upgrades to the database.
 
-When performing step 1 of the mitigation, review the [prerequisites](../../../yugabyte-platform/install-yugabyte-platform/prerequisites/default) for Replicated-based installs to avoid any potential upgrade issues.
+When performing step 1 of the mitigation, review the [prerequisites](../../../yugabyte-platform/prepare/server-yba/) for Replicated-based installs to avoid any potential upgrade issues.
 
 ### Recommended upgrade path (Ideal)
 
@@ -69,7 +69,7 @@ Suppose you are running a YBA earlier than the latest v2.18, with universes runn
 
 If you want to upgrade YBA to the latest v2.18 or v2.20, and only upgrade database nodes to v2.14, do the following:
 
-1. Check Replicated [prerequisites](../../../yugabyte-platform/install-yugabyte-platform/prerequisites/default).
+1. Check Replicated [prerequisites](../../../yugabyte-platform/prepare/server-yba/).
 1. Upgrade YBA to the latest version of your current branch (using Replicated).
 1. Upgrade YBA to the latest v2.18 (using Replicated).
 1. Upgrade YugabyteDB database nodes to latest v2.14.
@@ -82,7 +82,7 @@ Suppose you are running a YBA earlier than the latest v2.18, with universes runn
 
 If you want to upgrade YBA to the latest v2.18 or 2.20, and leave your database on its current version, do the following:
 
-1. Check Replicated [prerequisites](../../../yugabyte-platform/install-yugabyte-platform/prerequisites/default).
+1. Check Replicated [prerequisites](../../../yugabyte-platform/prepare/server-yba/).
 1. Upgrade YBA to the latest version of your current branch (using Replicated).
 1. Upgrade YBA to the latest v2.18 or v2.20 (using Replicated).
 1. [Migrate YBA off Replicated](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated), to YBA Installer.
@@ -103,7 +103,7 @@ Suppose you are running YBA v2.14, with universes running YugabyteDB nodes on v2
 
 To upgrade YBA to the latest v2.18 or v2.20, and only upgrade your database to the latest v2.14, do the following:
 
-1. Check Replicated [prerequisites](../../../yugabyte-platform/install-yugabyte-platform/prerequisites/default).
+1. Check Replicated [prerequisites](../../../yugabyte-platform/prepare/server-yba/).
 1. Upgrade YBA to the latest v2.14 (using Replicated).
 1. Upgrade YugabyteDB database to the latest v2.14.
 1. Upgrade YBA to the latest v2.18 or v2.20 (using Replicated).
