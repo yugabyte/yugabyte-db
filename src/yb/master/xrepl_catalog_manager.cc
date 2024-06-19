@@ -1563,19 +1563,9 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table->name();
           continue;
         }
-        bool has_pk = true;
-        for (const auto& col : schema.columns()) {
-          if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
-            // ybrowid column is added for tables that don't have user-specified primary key.
-            RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
-            VLOG(1)
-                << "Table: " << unprocessed_table_id
-                << ", will not be added to CDCSDK stream, since it does not have a primary key ";
-            has_pk = false;
-            break;
-          }
-        }
-        if (!has_pk) {
+
+        if (!CanTableBeAddedToCDCSDKStream(table, schema)) {
+          RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
           continue;
         }
 
@@ -1652,6 +1642,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
   std::vector<TableInfoPtr> tables;
 
   for (const auto& table_info : tables_->GetAllTables()) {
+    Schema schema;
     {
       auto ltm = table_info->LockForRead();
       if (!ltm->visible_to_client()) {
@@ -1661,25 +1652,14 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
         continue;
       }
 
-      bool has_pk = true;
-      for (const auto& col : ltm->schema().columns()) {
-        if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
-          // ybrowid column is added for tables that don't have user-specified primary key.
-          VLOG(1) << "Table: " << table_info->id()
-                  << ", will not be added to CDCSDK stream, since it does not have a primary key";
-          has_pk = false;
-          break;
-        }
-      }
-      if (!has_pk) {
+      auto status = SchemaFromPB(ltm->schema(), &schema);
+      if (!status.ok()) {
+        LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table_info->name();
         continue;
       }
     }
 
-    if (IsMatviewTable(*table_info)) {
-      continue;
-    }
-    if (!IsUserTableUnlocked(*table_info)) {
+    if (!CanTableBeAddedToCDCSDKStream(table_info.get(), schema)) {
       continue;
     }
 
@@ -1687,6 +1667,36 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
   }
 
   return tables;
+}
+
+bool CatalogManager::CanTableBeAddedToCDCSDKStream(
+    const TableInfoPtr& table_info, const Schema& schema) const {
+  bool has_pk = true;
+  for (const auto& col : schema.columns()) {
+    if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
+      // ybrowid column is added for tables that don't have user-specified primary key.
+      VLOG(1) << "Table: " << table_info->id()
+              << ", will not be added to CDCSDK stream, since it does not have a primary key";
+      has_pk = false;
+      break;
+    }
+  }
+  if (!has_pk) {
+    return false;
+  }
+
+  if (IsMatviewTable(*table_info)) {
+    // Materialized view should not be added as they are not supported for streaming.
+    return false;
+  }
+
+  if (!IsUserTableUnlocked(*table_info)) {
+    // Non-user tables like indexes, system tables etc should not be added as they are not
+    // supported for streaming.
+    return false;
+  }
+
+  return true;
 }
 
 /*
