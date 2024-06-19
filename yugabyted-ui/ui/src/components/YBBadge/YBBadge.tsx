@@ -21,6 +21,7 @@ export interface BadgeProps {
   variant?: BadgeVariant;
   icon?: boolean;
   iconComponent?: typeof WarningIcon;
+  className?: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -87,7 +88,13 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
-  const { text, variant = BadgeVariant.Info, icon = true, iconComponent: CustomIcon } = props;
+  const {
+    text,
+    variant = BadgeVariant.Info,
+    icon = true,
+    iconComponent: CustomIcon,
+    className,
+  } = props;
 
   const classes = useStyles({ ...props, icon });
   let alertClassName = classes.root;
@@ -97,22 +104,27 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
     case BadgeVariant.Warning:
       alertClassName = clsx(alertClassName, classes.warning);
       alertIcon = <WarningIcon className={clsx(classes.icon, classes.warningIcon)} />;
-      alertText = text || "Warning";
+      alertText = text ?? "Warning";
       break;
     case BadgeVariant.Success:
       alertClassName = clsx(alertClassName, classes.success);
       alertIcon = <SuccessIcon className={clsx(classes.icon, classes.successIcon)} />;
-      alertText = text || "Success";
+      alertText = text ?? "Success";
       break;
     case BadgeVariant.Error:
       alertClassName = clsx(alertClassName, classes.error);
       alertIcon = <ErrorIcon className={clsx(classes.icon, classes.errorIcon)} />;
-      alertText = text || "Error";
+      alertText = text ?? "Error";
       break;
     case BadgeVariant.InProgress:
       alertClassName = clsx(alertClassName, classes.inprogress);
       alertIcon = <LoadingIcon className={clsx(classes.icon, classes.inprogressIcon)} />;
-      alertText = text || "In progress";
+      alertText = text ?? "In progress";
+      break;
+    case BadgeVariant.Light:
+      alertClassName = clsx(alertClassName, classes.light);
+      alertIcon = <span className={clsx(classes.icon, classes.lightIcon)} />;
+      alertText = text ?? "Light";
       break;
     case BadgeVariant.Light:
       alertClassName = clsx(alertClassName, classes.light);
@@ -123,7 +135,7 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
     default:
       alertClassName = clsx(alertClassName, classes.info);
       alertIcon = <InfoIcon className={clsx(classes.icon, classes.infoIcon)} />;
-      alertText = text || "Info";
+      alertText = text ?? "Info";
       break;
   }
 
@@ -140,7 +152,7 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
 
   return (
     <div className={alertClassName} role="alert" aria-label={`alert ${variant}`}>
-      <span>{alertText}</span>
+      {alertText && <span>{alertText}</span>}
       {getIcon()}
     </div>
   );
