@@ -191,4 +191,12 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enables Troubleshooting for the Universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<Integer> backupGcNumberOfRetries =
+      new ConfKeyInfo<>(
+          "yb.backupGC.number_of_retries",
+          ScopeType.CUSTOMER,
+          "Backup Garbage Collector Number of Retries",
+          "Number of retries during backup deletion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

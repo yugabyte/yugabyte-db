@@ -15,6 +15,7 @@
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
 | "Enable IMDSv2" | "yb.aws.enable_imdsv2_support" | "CUSTOMER" | "Enable IMDSv2 support for AWS providers" | "Boolean" |
+| "Backup Garbage Collector Number of Retries" | "yb.backupGC.number_of_retries" | "CUSTOMER" | "Number of retries during backup deletion" | "Integer" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -235,3 +236,4 @@
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
 | "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |
+| "CPU usage alert aggregation interval" | "yb.alert.cpu_usage_interval_secs" | "UNIVERSE" | "CPU usage alert aggregation interval in seconds." | "Integer" |

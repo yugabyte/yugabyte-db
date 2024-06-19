@@ -137,7 +137,7 @@ public class Util {
 
   public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
-  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_STABLE_VERSION = "2024.1.1.0-b1";
+  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_STABLE_VERSION = "2024.1.0.0-b129";
 
   public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_PREVIEW_VERSION = "2.23.0.0-b416";
 

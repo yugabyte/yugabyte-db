@@ -1,6 +1,25 @@
 import os
 import configparser
 from jinja2 import Environment, FileSystemLoader
+from collections import defaultdict
+import copy
+
+
+def convert_dotted_keys_to_nested(config_dict):
+    ret = defaultdict(dict)
+    for key in list(config_dict):
+        if "." in key:
+            value_to_update = dict(config_dict[key])
+            for defkey in config_dict["DEFAULT"]:
+                del value_to_update[defkey]
+            keylist = key.split(".")
+            d = config_dict
+            for k in keylist[:-1]:
+                d = d.setdefault(k, {})
+            d[keylist[-1]] = value_to_update
+
+    return config_dict
+
 
 def parse_config(ynp_config):
     # Determine the directory containing the current script
@@ -35,4 +54,5 @@ def parse_config(ynp_config):
     except Exception as e:
         print("Error occurred while parsing config.ini:", str(e))
 
-    return config_dict
+    # Post-process config_dict to handle nested keys
+    return convert_dotted_keys_to_nested(config_dict)

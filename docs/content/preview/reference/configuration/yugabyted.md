@@ -245,7 +245,7 @@ The following sub-commands are available for `yugabyted configure` command:
 
 #### data_placement
 
-Use the `yugabyted configure data_placement` sub-command to set or modify placement policy of the nodes of the deployed cluster, and specify the [preferred region(s)](../../../architecture/key-concepts/#preferred-region).
+{{<badge/ea>}} Use the `yugabyted configure data_placement` sub-command to set or modify placement policy of the nodes of the deployed cluster, and specify the [preferred region(s)](../../../architecture/key-concepts/#preferred-region).
 
 For example, you would use the following command to create a multi-zone YugabyteDB cluster:
 
@@ -335,13 +335,13 @@ Enable point-in-time recovery for a database:
 Disable point-in-time recovery for a database:
 
 ```sh
-./bin/yugabyted configure point_in_time_recovery --disable --database <database_name> 
+./bin/yugabyted configure point_in_time_recovery --disable --database <database_name>
 ```
 
 Display point-in-time schedules configured on the cluster:
 
 ```sh
-./bin/yugabyted configure point_in_time_recovery --status 
+./bin/yugabyted configure point_in_time_recovery --status
 ```
 
 #### admin_operation
@@ -1326,6 +1326,8 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 ```
 
 ### Create a multi-region cluster in Docker
+
+Docker-based deployments are in {{<badge/ea>}}.
 
 You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
 
