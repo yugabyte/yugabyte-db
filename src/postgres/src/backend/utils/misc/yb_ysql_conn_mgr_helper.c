@@ -887,7 +887,7 @@ YbGetNumYsqlConnMgrConnections(const char *db_name, const char *user_name,
 		 * can get changed while reading the shared memory segment.
 		 */
 		*num_logical_conn += shmp[itr].active_clients +
-							 shmp[itr].idle_or_pending_clients +
+							 shmp[itr].waiting_clients +
 							 shmp[itr].queued_clients;
 		*num_physical_conn += shmp[itr].active_servers + shmp[itr].idle_servers;
 	}

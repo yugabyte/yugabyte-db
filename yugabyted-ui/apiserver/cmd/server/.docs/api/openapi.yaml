@@ -2615,7 +2615,7 @@ components:
         queued_logical_connections:
           format: int64
           type: integer
-        idle_or_pending_logical_connections:
+        waiting_logical_connections:
           format: int64
           type: integer
         active_physical_connections:
@@ -2637,7 +2637,7 @@ components:
       - active_logical_connections
       - active_physical_connections
       - avg_wait_time_ns
-      - idle_or_pending_logical_connections
+      - waiting_logical_connections
       - idle_physical_connections
       - qps
       - queued_logical_connections

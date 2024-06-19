@@ -1722,8 +1722,7 @@ func (c *Container) GetClusterConnections(ctx echo.Context) error {
                         UserName: connectionPool.UserName,
                         ActiveLogicalConnections: connectionPool.ActiveLogicalConnections,
                         QueuedLogicalConnections: connectionPool.QueuedLogicalConnections,
-                        IdleOrPendingLogicalConnections:
-                            connectionPool.IdleOrPendingLogicalConnections,
+                        WaitingLogicalConnections: connectionPool.WaitingLogicalConnections,
                         ActivePhysicalConnections: connectionPool.ActivePhysicalConnections,
                         IdlePhysicalConnections: connectionPool.IdlePhysicalConnections,
                         AvgWaitTimeNs: connectionPool.AvgWaitTimeNs,

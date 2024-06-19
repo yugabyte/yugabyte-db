@@ -27,7 +27,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
        "user_name",
        "active_logical_connections",
        "queued_logical_connections",
-       "idle_or_pending_logical_connections",
+       "waiting_logical_connections",
        "active_physical_connections",
        "idle_physical_connections",
        "avg_wait_time_ns",
@@ -117,7 +117,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     int num_logical_conn =
     pool.get("active_logical_connections").getAsInt() +
     pool.get("queued_logical_connections").getAsInt() +
-    pool.get("idle_or_pending_logical_connections").getAsInt();
+    pool.get("waiting_logical_connections").getAsInt();
     assertEquals("Did not get the expected number of logical connections for pool with user "
         + user_name + " and database " + db_name, exp_val, num_logical_conn);
   }
