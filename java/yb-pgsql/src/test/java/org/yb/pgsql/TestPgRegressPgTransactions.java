@@ -23,7 +23,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressTransactionSavepoints extends BasePgRegressTestSequentialYbrowid {
+public class TestPgRegressPgTransactions extends BasePgRegressTestSequentialYbrowid {
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
       "yb_default_copy_from_rows_per_transaction=0";
 
@@ -41,15 +41,7 @@ public class TestPgRegressTransactionSavepoints extends BasePgRegressTestSequent
   }
 
   @Test
-  public void testPgRegressTransaction() throws Exception {
-    runPgRegressTest("yb_transaction_savepoints_schedule");
-  }
-
-  @Test
-  public void testPgRegressTransactionWithReadCommitted() throws Exception {
-    restartClusterWithFlags(Collections.emptyMap(),
-                            Collections.singletonMap("yb_enable_read_committed_isolation",
-                                                     "true"));
-    runPgRegressTest("yb_transaction_savepoints_schedule");
+  public void schedule() throws Exception {
+    runPgRegressTest("yb_pg_transactions_schedule");
   }
 }

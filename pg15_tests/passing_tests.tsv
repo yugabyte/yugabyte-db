@@ -66,6 +66,7 @@ JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
 JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
+JAVA	org.yb.pgsql.TestPgRegressPgTransactions
 JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressProfile
 JAVA	org.yb.pgsql.TestPgRegressPublication
@@ -78,8 +79,7 @@ JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsHypopg
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgHintPlan
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgStatMonitor
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgaudit
-JAVA	org.yb.pgsql.TestPgRegressTransactionSavepoints#testPgRegressTransaction
-JAVA	org.yb.pgsql.TestPgRegressTransactionSavepoints#testPgRegressTransactionWithReadCommitted
+JAVA	org.yb.pgsql.TestPgRegressTransactions
 JAVA	org.yb.pgsql.TestPgRegressTrigger
 JAVA	org.yb.pgsql.TestPgRegressTypesGeo
 JAVA	org.yb.pgsql.TestPgRegressTypesMisc
