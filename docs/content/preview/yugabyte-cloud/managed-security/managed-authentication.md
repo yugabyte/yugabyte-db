@@ -192,24 +192,32 @@ To use Jumpcloud for your IdP, do the following:
 
     - Log in to Jumpcloud with an administrator account.
     - Under **SSO Applications**, click **Add New Application**.
-    - Select **Create a Custom Integration**, click **Next** until you can select **Create New Application Integration**.
-    - Under **Manage Single Sign-On (SSO)**, select **Configure SSO with OIDC**.
-    - Under **Enter General Info**, add some general information and select **Show this application in User Portal**; the information gets displayed as a tile when you log in the next time.
-    - Add the tile to the **Application** section.
+    - Select **Custom Application**, and make sure the integration supports "SSO with OIDC" on the next page.
+    - Under **Manage Single Sign-On (SSO)**, select **Configure SSO with OIDC**, and click **Next**.
+    - Under **Enter General Info**, add the application name (for **Display Label**), **Description** and logo (for **User Portal Image**), and select **Show this application in User Portal**; the information gets displayed as a tile when you log in the next time.
+    - Click **Save Application**.
 
-1. Select the application tile you created, click **Configure Your New Application**, and set the following options:
+1. Configure your application.
+
+    Under **Endpoint Configuration**, do the following:
 
     - **Redirect URIs** - enter `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`.
     - **Client Authentication Type** - select **Client Secret Post**.
-    - **Login URI** - enter `https://cloud.yugabyte.com/login`.
+    - **Login URL** - enter `https://cloud.yugabyte.com/login`.
 
-    Click the green activate icon when you are done. You will get a pop up to save the **Client ID** and **Client Secret**.
+    Under **Attribute Mapping**, for **Standard Scopes**, select **Email** and **Profile**.
 
-1. Integrate the user within Jumpcloud.
+    Click **Activate** when you are done. You will get a pop up to save the **Client ID** and **Client Secret**.
+
+1. Configure Attributes and Identity Management as required.
+
+1. Integrate the user in Jumpcloud.
+
+    - Navigate to **User Groups**, select the user groups you want to access YugabyteDB Managed, and click **Save** when you are done.
 
 To configure Jumpcloud federated authentication in YugabyteDB Managed, you need the following application properties:
 
-- Client ID and secret of the application you created. These are provided on the **Overview** and **Configuration** tabs.
+- Client ID and secret of the application you created. Note that you will get a pop up to save the **Client ID** and **Client Secret** when you activate your application. Alternatively, the **Client ID** is provided on the **SSO** tab.
 
 For more information, refer to the [Jumpcloud](https://jumpcloud.com/support/sso-with-oidc) documentation.
 
