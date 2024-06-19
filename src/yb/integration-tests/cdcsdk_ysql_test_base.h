@@ -641,6 +641,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       xrepl::StreamId stream_id, YBTableName table,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
       CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
+
+  void TestNonUserTableShouldNotGetAddedToCDCStream (bool create_consistent_snapshot_stream);
 };
 
 }  // namespace cdc
