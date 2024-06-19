@@ -274,11 +274,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
 DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
   "Determines the behavior of read-after-commit-visibility guarantee.");
 
-static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
+static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
   if (value != "database" && value != "tablet") {
-    fprintf(
-        stderr, "Invalid value for --%s: %s, must be 'database' or 'tablet'\n", flagname,
-        value.c_str());
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 'database' or 'tablet'";
     return false;
   }
   return true;

@@ -610,7 +610,7 @@ message ClientReplicatedRetryableRequestRangesPB {
   repeated ReplicatedRetryableRequestRangePB range = 3;
 }
 
-message RetryableRequestsPB {
+message TabletBootstrapStatePB {
   optional OpIdPB last_op_id = 1;
   repeated ClientReplicatedRetryableRequestRangesPB client_requests = 2;
 }

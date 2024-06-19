@@ -1276,12 +1276,6 @@ Stop retaining logs if the space available for the logs falls below this limit, 
 
 Default: `102400`
 
-##### --enable_truncate_cdcsdk_table
-
-By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
-
-Default: `false`
-
 ##### --cdc_intent_retention_ms
 
 The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
@@ -1501,7 +1495,7 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## DDL atomicity flags
 
-DDL atomicity flags are currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+DDL atomicity feature is in {{<badge/ea>}}.
 
 ##### ysql_yb_ddl_rollback_enabled
 

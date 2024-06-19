@@ -455,7 +455,7 @@ WaitStateTracker& FlushAndCompactionWaitStatesTracker() {
   return flush_and_compaction_wait_states_tracker;
 }
 
-WaitStateTracker& RaftLogAppenderWaitStatesTracker() {
+WaitStateTracker& RaftLogWaitStatesTracker() {
   return raft_log_appender_wait_states_tracker;
 }
 

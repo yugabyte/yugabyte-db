@@ -55,7 +55,7 @@ The following tutorial creates a basic Python application that connects to a Yug
 
 Before you start using Aiopg, ensure you have the following:
 
-- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/linux/) to have YugabyteDB up and running in minutes.
+- YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](/preview/quick-start/linux/) to have YugabyteDB up and running in minutes.
 - [Python 3](https://www.python.org/downloads/), or later, is installed.
 - [aiopg](https://aiopg.readthedocs.io/en/stable/) package is installed. Install the package using the following command:
 

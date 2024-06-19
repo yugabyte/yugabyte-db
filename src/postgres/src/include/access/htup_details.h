@@ -838,4 +838,6 @@ extern size_t varsize_any(void *p);
 extern HeapTuple heap_expand_tuple(HeapTuple sourceTuple, TupleDesc tupleDesc);
 extern MinimalTuple minimal_expand_tuple(HeapTuple sourceTuple, TupleDesc tupleDesc);
 
+extern void yb_heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest);
+
 #endif							/* HTUP_DETAILS_H */

@@ -1481,6 +1481,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
+  bool CanTableBeAddedToCDCSDKStream(
+      const TableInfoPtr& table_info, const Schema& schema) const REQUIRES_SHARED(mutex_);
+
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
   void FindAllTablesMissingInCDCSDKStream(
@@ -2876,14 +2879,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void AddCDCStreamToUniverseAndInitConsumer(
       const xcluster::ReplicationGroupId& replication_group_id, const TableId& table,
-      const Result<xrepl::StreamId>& stream_id, std::function<void()> on_success_cb = nullptr);
+      const Result<xrepl::StreamId>& stream_id, std::function<Status()> on_success_cb = nullptr);
 
   Status AddCDCStreamToUniverseAndInitConsumerInternal(
       scoped_refptr<UniverseReplicationInfo> universe, const TableId& table,
-      const xrepl::StreamId& stream_id, std::function<void()> on_success_cb);
+      const xrepl::StreamId& stream_id, std::function<Status()> on_success_cb);
 
-  void MergeUniverseReplication(
-      scoped_refptr<UniverseReplicationInfo> info, xcluster::ReplicationGroupId original_id);
+  Status MergeUniverseReplication(
+      scoped_refptr<UniverseReplicationInfo> info, xcluster::ReplicationGroupId original_id,
+      std::function<Status()> on_success_cb);
 
   Status DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
   Status DeleteUniverseReplication(

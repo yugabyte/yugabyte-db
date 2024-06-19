@@ -16,6 +16,7 @@ ynp:
   public_key_filepath: ""
   # Airgapped
   is_airgap: false
+  use_system_level_systemd: false
 
 yba:
   url: http://yba.foo.bar.com

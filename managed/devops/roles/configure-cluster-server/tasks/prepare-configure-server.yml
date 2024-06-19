@@ -302,7 +302,7 @@
     vars:
         prometheus_components:
           - node_exporter
-        yb_home_dir: "{{ yb_home_dir }}"
+        home_dir: "{{ yb_home_dir }}"
     when: install_node_exporter is defined and install_node_exporter|bool
 
   tags: systemd_upgrade
@@ -497,7 +497,7 @@
     vars:
         prometheus_components:
           - node_exporter
-        yb_home_dir: "{{ yb_home_dir }}"
+        home_dir: "{{ yb_home_dir }}"
 
   when: not systemd_option and not node_exporter_installed.stat.exists
         and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')

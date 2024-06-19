@@ -14,31 +14,6 @@ type: indexpage
 ---
 
 <div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="data-modeling-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/core_functions/table.png" aria-hidden="true" />
-        <div class="title">Data modeling</div>
-      </div>
-      <div class="body">
-          Learn how to optimally model data on YugabyteDB.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="sql-nosql/">
-      <div class="head">
-        <div class="icon">
-          <i class="icon-database-alt2"></i>
-        </div>
-        <div class="title">SQL vs NoSQL</div>
-      </div>
-      <div class="body">
-        Read more about the workloads YugabyteDB can power.
-      </div>
-    </a>
-  </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="transactions/acid-transactions-ysql/">

@@ -19,6 +19,17 @@ On this page:
 
 ## Change log
 
+### June 13, 2024
+
+**New Features**
+
+- Support for exporting [PostgreSQL logs](https://www.postgresql.org/docs/11/runtime-config-logging.html) to third-party tools (such as Datadog) for security monitoring, to build operations and health dashboards, troubleshooting, and more.
+- New regions. Jakarta and Hyderabad on AWS, and Singapore on Azure.
+
+**Database**
+
+- Production track updated to 2.14.17.0.
+
 ### April 22, 2024
 
 **New Features**

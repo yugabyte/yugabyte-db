@@ -36,7 +36,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 
 You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
 
-- [Installed](../quick-start/linux/) YugabyteDB.
+- [Installed](/preview/quick-start/linux/) YugabyteDB.
 - [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed.
 - [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
@@ -97,7 +97,7 @@ To check the status of a running single-node universe, run the following command
 ./bin/yugabyted status
 ```
 
-For more information, refer to [Quick Start](../quick-start/linux/#create-a-local-cluster).
+For more information, refer to [Quick Start](/preview/quick-start/linux/#create-a-local-cluster).
 
   {{% /tab %}}
 
@@ -197,7 +197,7 @@ To run the examples in YugabyteDB Managed, create a single- or multi-node univer
 
   {{% tab header="Single-node cluster" lang="YBM Single" %}}
 
-Examples requiring a single-node cluster can be run using the free [Sandbox](../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
+Examples requiring a single-node cluster can be run using the free [Sandbox](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
 
 If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
@@ -205,9 +205,9 @@ If you haven't already created your sandbox cluster, log in to YugabyteDB Manage
 
   {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
 
-Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
-To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
+To create a single region three-node cluster, refer to [Create a single-region cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 
   {{% /tab %}}
 
@@ -217,7 +217,7 @@ Save your cluster credentials in a convenient location. You will use them to con
 
 **Connect to your clusters**
 
-You can run Explore exercises in YugabyteDB Managed using the [Cloud Shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/):
+You can run Explore exercises in YugabyteDB Managed using the [Cloud Shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/):
 
 1. In YugabyteDB Managed, on the **Clusters** page, select your cluster.
 1. Click **Connect**.

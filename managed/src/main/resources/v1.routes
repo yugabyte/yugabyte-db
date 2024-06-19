@@ -450,6 +450,7 @@ POST   /customers/:cUUID/tasks/:tUUID/resume                                   c
 GET    /customers/:cUUID/universes/:uniUUID/tasks                              com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/failed                                   com.yugabyte.yw.controllers.CustomerTaskController.failedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/failed_subtasks                          com.yugabyte.yw.controllers.CustomerTaskController.listFailedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
+GET    /customers/:cUUID/tasks/:tUUID/details                                  com.yugabyte.yw.controllers.CustomerTaskController.getTaskStatusWithDetails(cUUID: java.util.UUID, tUUID: java.util.UUID)
 
 # Node Management API
 GET    /customers/:cUUID/nodes/:nodeUUID/list                                  com.yugabyte.yw.controllers.NodeInstanceController.get(cUUID: java.util.UUID, nodeUUID: java.util.UUID)

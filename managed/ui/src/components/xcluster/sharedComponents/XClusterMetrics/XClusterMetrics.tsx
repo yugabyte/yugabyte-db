@@ -4,17 +4,6 @@ import { useTranslation } from 'react-i18next';
 import moment from 'moment';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { Dropdown, MenuItem } from 'react-bootstrap';
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from 'recharts';
 import { ToggleButton } from '@material-ui/lab';
 import i18next from 'i18next';
 
@@ -30,7 +19,8 @@ import {
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   PollingIntervalMs,
-  TimeRangeType
+  TimeRangeType,
+  XClusterConfigType
 } from '../../constants';
 import {
   adaptMetricDataForRecharts,
@@ -39,13 +29,11 @@ import {
   getStrictestReplicationLagAlertThreshold
 } from '../../ReplicationUtils';
 import { CustomDatePicker } from '../../../metrics/CustomDatePicker/CustomDatePicker';
-import { formatDatetime, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
-import { CHART_RESIZE_DEBOUNCE } from '../../../../redesign/helpers/constants';
-import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
-import { YBMetricGraphTitle } from '../../../../redesign/components/YBMetricGraphTitle/YBMetricGraphTitle';
 import { getAlertConfigurations } from '../../../../actions/universe';
-import { MetricsFilter } from './MetricsFilter';
 import { YBTooltip } from '../../../../redesign/components';
+import { YBMetricGraph } from '../../../../redesign/components/YBMetrics/YBMetricGraph';
+import { getUniqueTraceId } from '../../../../redesign/components/YBMetrics/utils';
+import { MetricsFilter } from '../../../../redesign/components/YBMetrics/MetricsFilter';
 
 import { MetricTimeRangeOption } from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
@@ -221,7 +209,7 @@ export const XClusterMetrics = ({
         ),
     () => api.fetchMetrics(consumerSafeTimeLagMetricRequestParams),
     {
-      enabled: !!targetUniverseQuery.data,
+      enabled: !!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN,
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
       // queries will return the same data.
       staleTime: isFixedTimeRange ? Infinity : 0,
@@ -261,7 +249,7 @@ export const XClusterMetrics = ({
         ),
     () => api.fetchMetrics(consumerSafeTimeSkewMetricRequestParams),
     {
-      enabled: !!targetUniverseQuery.data,
+      enabled: !!targetUniverseQuery.data && xClusterConfig.type === XClusterConfigType.TXN,
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
       // queries will return the same data.
       staleTime: isFixedTimeRange ? Infinity : 0,
@@ -312,8 +300,8 @@ export const XClusterMetrics = ({
   //              Tracking with PLAT-11663
   if (
     configReplicationLagMetricQuery.isError ||
-    consumerSafeTimeLagMetricsQuery.isError ||
-    consumerSafeTimeSkewMetricsQuery.isError
+    (xClusterConfig.type === XClusterConfigType.TXN &&
+      (consumerSafeTimeLagMetricsQuery.isError || consumerSafeTimeSkewMetricsQuery.isError))
   ) {
     return (
       <YBErrorIndicator
@@ -358,7 +346,7 @@ export const XClusterMetrics = ({
   const handleToggleShowAlertThresholdReferenceLine = () =>
     setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
 
-  const namespaceUuidToNamespace = targetUniverseNamespaceQuery.data
+  const namespaceUuidToNamespaceName = targetUniverseNamespaceQuery.data
     ? Object.fromEntries(
         targetUniverseNamespaceQuery.data.map((namespace) => [
           namespace.namespaceUUID,
@@ -366,7 +354,6 @@ export const XClusterMetrics = ({
         ])
       )
     : {};
-  const traceStrokes = Object.values(theme.palette.chart.stroke);
   const configReplicationLagMetrics = {
     ...(configReplicationLagMetricQuery.data ?? {
       metricData: [],
@@ -377,7 +364,7 @@ export const XClusterMetrics = ({
       MetricName.ASYNC_REPLICATION_SENT_LAG,
       replicationLagMetricSettings,
       configReplicationLagMetricQuery.data?.metricTraces ?? [],
-      namespaceUuidToNamespace
+      namespaceUuidToNamespaceName
     )
   };
   const consumerSafeTimeLagMetrics = {
@@ -390,7 +377,7 @@ export const XClusterMetrics = ({
       MetricName.CONSUMER_SAFE_TIME_LAG,
       consumerSafeTimeLagMetricSettings,
       consumerSafeTimeLagMetricsQuery.data?.metricTraces ?? [],
-      namespaceUuidToNamespace
+      namespaceUuidToNamespaceName
     )
   };
   const consumerSafeTimeSkewMetrics = {
@@ -403,7 +390,7 @@ export const XClusterMetrics = ({
       MetricName.CONSUMER_SAFE_TIME_SKEW,
       consumerSafeTimeSkewMetricSettings,
       consumerSafeTimeSkewMetricsQuery.data?.metricTraces ?? [],
-      namespaceUuidToNamespace
+      namespaceUuidToNamespaceName
     )
   };
   return (
@@ -429,24 +416,33 @@ export const XClusterMetrics = ({
         </Box>
       </Box>
       <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)} marginTop={2}>
-        <Box
-          display="flex"
-          flexDirection="column"
-          justifyContent="center"
-          width="100%"
-          height="600px"
-        >
-          <Box display="flex" justifyContent="space-between">
-            <YBMetricGraphTitle
-              title={t('graphTitle.asyncReplicationSentLag')}
-              metricsLinkUseBrowserFqdn={configReplicationLagMetrics.metricsLinkUseBrowserFqdn}
-              directUrls={configReplicationLagMetrics.directURLs}
-            />
-            <Box display="flex" gridGap={theme.spacing(2)}>
+        <YBMetricGraph
+          metric={configReplicationLagMetrics}
+          title={t('graphTitle.asyncReplicationSentLag')}
+          metricSettings={replicationLagMetricSettings}
+          namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
+          referenceLines={
+            maxAcceptableLag && showAlertThresholdReferenceLine
+              ? [
+                  {
+                    y: maxAcceptableLag,
+                    name: i18next.t(
+                      'clusterDetail.xCluster.metrics.lowestReplicationLagAlertThresholdLabel'
+                    ),
+                    strokeColor: '#EF5824',
+                    ifOverflow: 'extendDomain'
+                  }
+                ]
+              : []
+          }
+          graphHeaderAccessor={
+            <>
               <YBTooltip
                 title={
                   maxAcceptableLag === undefined
-                    ? t('showAlertThresholdReferenceLine.disabledTooltip')
+                    ? `${i18next.t(
+                        'clusterDetail.xCluster.metrics.showAlertThresholdReferenceLine.disabledTooltip'
+                      )}`
                     : ''
                 }
                 placement="top"
@@ -461,7 +457,9 @@ export const XClusterMetrics = ({
                     <Box display="flex" gridGap={theme.spacing(0.5)} alignItems="center">
                       <i className="fa fa-bell" aria-hidden="true" />
                       <Typography variant="body2" display="inline" component="span">
-                        {t('showAlertThresholdReferenceLine.label')}
+                        {i18next.t(
+                          'clusterDetail.xCluster.metrics.showAlertThresholdReferenceLine.label'
+                        )}
                       </Typography>
                     </Box>
                   </ToggleButton>
@@ -483,268 +481,54 @@ export const XClusterMetrics = ({
                 setMetricsSplitMode={setReplicationLagMetricsSplitMode}
                 setMetricsSplitCount={setReplicationLagMetricsSplitCount}
               />
-            </Box>
-          </Box>
-          <ResponsiveContainer width="100%" height="100%" debounce={CHART_RESIZE_DEBOUNCE}>
-            <LineChart
-              data={configReplicationLagMetrics.metricData}
-              margin={{
-                top: theme.spacing(3),
-                bottom: theme.spacing(2),
-                left: theme.spacing(2),
-                right: theme.spacing(2)
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="x"
-                tickFormatter={(value) =>
-                  formatDatetime(value, YBTimeFormats.YB_TIME_ONLY_TIMESTAMP)
-                }
-                type="number"
-                domain={['dataMin', 'dataMax']}
-              />
-              <YAxis tickFormatter={(value) => `${value} ms`} />
-              <Tooltip
-                labelFormatter={(value) => formatDatetime(value)}
-                isAnimationActive={false}
-              />
-              <Legend iconType="plainline" />
-              {configReplicationLagMetrics.metricTraces.map((trace, index) => {
-                const timeSeriesKey = getUniqueTraceId(trace);
-                const timeSeriesName = getUniqueTraceName(
-                  replicationLagMetricSettings,
-                  trace,
-                  namespaceUuidToNamespace
-                );
-                return (
-                  <Line
-                    key={timeSeriesKey}
-                    name={timeSeriesName}
-                    type="linear"
-                    dataKey={timeSeriesKey}
-                    stroke={traceStrokes[index]}
-                    unit=" ms"
-                  />
-                );
-              })}
-              {maxAcceptableLag !== undefined && showAlertThresholdReferenceLine && (
-                <>
-                  {/* Line component with no dataKey used to add the reference line in the legend.
-                      Recharts doesn't provide an option to add reference lines to the legend directly. */}
-                  <Line
-                    name={t('lowestReplicationLagAlertThresholdLabel')}
-                    stroke="#EF5824"
-                    strokeDasharray="4 4"
-                  />
-                  <ReferenceLine
-                    y={maxAcceptableLag}
-                    stroke="#EF5824"
-                    ifOverflow="extendDomain"
-                    strokeDasharray="4 4"
-                  />
-                </>
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
-        <Box
-          display="flex"
-          flexDirection="column"
-          justifyContent="center"
-          width="100%"
-          height="600px"
-        >
-          <Box display="flex" justifyContent="space-between">
-            <YBMetricGraphTitle
+            </>
+          }
+        />
+        {xClusterConfig.type === XClusterConfigType.TXN && (
+          <>
+            <YBMetricGraph
+              metric={consumerSafeTimeLagMetrics}
               title={t('graphTitle.consumerSafeTimeLag')}
-              metricsLinkUseBrowserFqdn={consumerSafeTimeLagMetrics.metricsLinkUseBrowserFqdn}
-              directUrls={consumerSafeTimeLagMetrics.directURLs}
+              metricSettings={consumerSafeTimeLagMetricSettings}
+              namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
+              graphHeaderAccessor={
+                <MetricsFilter
+                  metricsNodeAggregation={consumerSafeTimeLagMetricsNodeAggregation}
+                  metricsSplitType={consumerSafeTimeLagMetricsSplitType}
+                  metricsSplitMode={consumerSafeTimeLagMetricsSplitMode}
+                  metricsSplitCount={consumerSafeTimeLagMetricsSplitCount}
+                  metricsSplitTypeOptions={[SplitType.NAMESPACE, SplitType.NONE]}
+                  setMetricsNodeAggregation={setConsumerSafeTimeLagMetricsNodeAggregation}
+                  setMetricsSplitType={setConsumerSafeTimeLagMetricsSplitType}
+                  setMetricsSplitMode={setConsumerSafeTimeLagMetricsSplitMode}
+                  setMetricsSplitCount={setConsumerSafeTimeLagMetricsSplitCount}
+                />
+              }
             />
-            <MetricsFilter
-              metricsNodeAggregation={consumerSafeTimeLagMetricsNodeAggregation}
-              metricsSplitType={consumerSafeTimeLagMetricsSplitType}
-              metricsSplitMode={consumerSafeTimeLagMetricsSplitMode}
-              metricsSplitCount={consumerSafeTimeLagMetricsSplitCount}
-              metricsSplitTypeOptions={[SplitType.NAMESPACE, SplitType.NONE]}
-              setMetricsNodeAggregation={setConsumerSafeTimeLagMetricsNodeAggregation}
-              setMetricsSplitType={setConsumerSafeTimeLagMetricsSplitType}
-              setMetricsSplitMode={setConsumerSafeTimeLagMetricsSplitMode}
-              setMetricsSplitCount={setConsumerSafeTimeLagMetricsSplitCount}
-            />
-          </Box>
-          <ResponsiveContainer width="100%" height="100%" debounce={CHART_RESIZE_DEBOUNCE}>
-            <LineChart
-              data={consumerSafeTimeLagMetrics.metricData}
-              margin={{
-                top: theme.spacing(3),
-                bottom: theme.spacing(2),
-                left: theme.spacing(2),
-                right: theme.spacing(2)
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="x"
-                tickFormatter={(value) =>
-                  formatDatetime(value, YBTimeFormats.YB_TIME_ONLY_TIMESTAMP)
-                }
-                type="number"
-                domain={['dataMin', 'dataMax']}
-              />
-              <YAxis tickFormatter={(value) => `${value} ms`} />
-              <Tooltip
-                labelFormatter={(value) => formatDatetime(value)}
-                isAnimationActive={false}
-              />
-              <Legend iconType="plainline" />
-              {consumerSafeTimeLagMetrics.metricTraces.map((trace, index) => {
-                const timeSeriesKey = getUniqueTraceId(trace);
-                const timeSeriesName = getUniqueTraceName(
-                  consumerSafeTimeLagMetricSettings,
-                  trace,
-                  namespaceUuidToNamespace
-                );
-                return (
-                  <Line
-                    key={timeSeriesKey}
-                    name={timeSeriesName}
-                    type="linear"
-                    dataKey={timeSeriesKey}
-                    stroke={traceStrokes[index]}
-                    unit=" ms"
-                  />
-                );
-              })}
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
-        <Box
-          display="flex"
-          flexDirection="column"
-          justifyContent="center"
-          width="100%"
-          height="600px"
-        >
-          <Box display="flex" justifyContent="space-between">
-            <YBMetricGraphTitle
+            <YBMetricGraph
+              metric={consumerSafeTimeSkewMetrics}
               title={t('graphTitle.consumerSafeTimeSkew')}
-              metricsLinkUseBrowserFqdn={consumerSafeTimeSkewMetrics.metricsLinkUseBrowserFqdn}
-              directUrls={consumerSafeTimeSkewMetrics.directURLs}
+              metricSettings={consumerSafeTimeSkewMetricSettings}
+              namespaceUuidToNamespaceName={namespaceUuidToNamespaceName}
+              graphHeaderAccessor={
+                <MetricsFilter
+                  metricsNodeAggregation={consumerSafeTimeSkewMetricsNodeAggregation}
+                  metricsSplitType={consumerSafeTimeSkewMetricsSplitType}
+                  metricsSplitMode={consumerSafeTimeSkewMetricsSplitMode}
+                  metricsSplitCount={consumerSafeTimeSkewMetricsSplitCount}
+                  metricsSplitTypeOptions={[SplitType.NAMESPACE, SplitType.NONE]}
+                  setMetricsNodeAggregation={setConsumerSafeTimeSkewMetricsNodeAggregation}
+                  setMetricsSplitType={setConsumerSafeTimeSkewMetricsSplitType}
+                  setMetricsSplitMode={setConsumerSafeTimeSkewMetricsSplitMode}
+                  setMetricsSplitCount={setConsumerSafeTimeSkewMetricsSplitCount}
+                />
+              }
             />
-            <MetricsFilter
-              metricsNodeAggregation={consumerSafeTimeSkewMetricsNodeAggregation}
-              metricsSplitType={consumerSafeTimeSkewMetricsSplitType}
-              metricsSplitMode={consumerSafeTimeSkewMetricsSplitMode}
-              metricsSplitCount={consumerSafeTimeSkewMetricsSplitCount}
-              metricsSplitTypeOptions={[SplitType.NAMESPACE, SplitType.NONE]}
-              setMetricsNodeAggregation={setConsumerSafeTimeSkewMetricsNodeAggregation}
-              setMetricsSplitType={setConsumerSafeTimeSkewMetricsSplitType}
-              setMetricsSplitMode={setConsumerSafeTimeSkewMetricsSplitMode}
-              setMetricsSplitCount={setConsumerSafeTimeSkewMetricsSplitCount}
-            />
-          </Box>
-          <ResponsiveContainer width="100%" height="100%" debounce={CHART_RESIZE_DEBOUNCE}>
-            <LineChart
-              data={consumerSafeTimeSkewMetrics.metricData}
-              margin={{
-                top: theme.spacing(3),
-                bottom: theme.spacing(2),
-                left: theme.spacing(2),
-                right: theme.spacing(2)
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="x"
-                tickFormatter={(value) =>
-                  formatDatetime(value, YBTimeFormats.YB_TIME_ONLY_TIMESTAMP)
-                }
-                type="number"
-                domain={['dataMin', 'dataMax']}
-              />
-              <YAxis tickFormatter={(value) => `${value} ms`} />
-              <Tooltip
-                labelFormatter={(value) => formatDatetime(value)}
-                isAnimationActive={false}
-              />
-              <Legend iconType="plainline" />
-              {consumerSafeTimeSkewMetrics.metricTraces.map((trace, index) => {
-                const timeSeriesKey = getUniqueTraceId(trace);
-                const timeSeriesName = getUniqueTraceName(
-                  consumerSafeTimeSkewMetricSettings,
-                  trace,
-                  namespaceUuidToNamespace
-                );
-                return (
-                  <Line
-                    key={timeSeriesKey}
-                    name={timeSeriesName}
-                    type="linear"
-                    dataKey={timeSeriesKey}
-                    stroke={traceStrokes[index]}
-                    unit=" ms"
-                  />
-                );
-              })}
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
+          </>
+        )}
       </Box>
     </div>
   );
-};
-
-const getUniqueTraceId = (trace: MetricTrace): string =>
-  `${trace.name}.${trace.instanceName}.${trace.namespaceId ?? trace.namespaceName}.${
-    trace.tableId ?? trace.tableName
-  }`;
-
-const getUniqueTraceName = (
-  metricSettings: MetricSettings,
-  trace: MetricTrace,
-  namespaceUuidToNamespace: { [namespaceUuid: string]: string | undefined }
-): string => {
-  const traceName = i18next.t(`prometheusMetricTrace.${trace.name}`);
-
-  if (
-    metricSettings.splitMode !== SplitMode.NONE &&
-    !(
-      trace.instanceName ||
-      trace.namespaceId ||
-      trace.namespaceName ||
-      trace.tableId ||
-      trace.tableName
-    )
-  ) {
-    // If the we're showing top/bottom k and there is a trace with no extra metadata, then
-    // we assume this is the average trace.
-    return `${traceName} (Average)`;
-  }
-  switch (metricSettings.splitType) {
-    case undefined:
-    case SplitType.NONE:
-      return traceName;
-    case SplitType.NODE:
-      return `${traceName} (${trace.instanceName})`;
-    case SplitType.NAMESPACE: {
-      const namespaceName =
-        trace.namespaceName ??
-        namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '')];
-      return namespaceName ? `${traceName} (${namespaceName})` : traceName;
-    }
-    case SplitType.TABLE: {
-      const namespaceName =
-        trace.namespaceName ??
-        namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '<unknown>')];
-      const tableIdentifier = trace.tableName
-        ? `${namespaceName}/${trace.tableName}`
-        : namespaceName;
-      return `${traceName} (${tableIdentifier})`;
-    }
-    default:
-      return assertUnreachableCase(metricSettings.splitType);
-  }
 };
 
 const getFilteredMetricTraces = (
@@ -767,7 +551,8 @@ const getFilteredMetricTraces = (
     ] as MetricName[]).includes(metric)
   ) {
     return metricTraces.filter(
-      (trace) => namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId ?? '')]
+      (trace) =>
+        !trace.namespaceId || namespaceUuidToNamespace[formatUuidFromXCluster(trace.namespaceId)]
     );
   }
   return metricTraces;

@@ -1343,10 +1343,12 @@ static bool YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
 }
 
 static bool YbIsTupleInRange(Datum value, TupleDesc bind_desc,
-							 int key_length, ScanKey keys[])
+							 int key_length, ScanKey keys[],
+							 AttrNumber bind_key_attnums[])
 {
 	/* Move past header key. */
 	++keys;
+	++bind_key_attnums;
 	--key_length;
 
 	Oid tupType =
@@ -1371,7 +1373,7 @@ static bool YbIsTupleInRange(Datum value, TupleDesc bind_desc,
 	for (int i = 0; i < key_length; i++) {
 		Datum val = datum_values[i];
 		Oid val_type = ybc_get_atttypid(val_tupdesc, i + 1);
-		Oid column_type = ybc_get_atttypid(bind_desc, keys[i]->sk_attno);
+		Oid column_type = ybc_get_atttypid(bind_desc, bind_key_attnums[i]);
 
 		if (!YbShouldRecheckEquality(column_type, val_type))
 			continue;
@@ -1737,7 +1739,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 				!YbIsTupleInRange(elem_values[j],
 			 					  scan_plan->bind_desc,
 			 					  length_of_key,
-								  &ybScan->keys[i]))
+								  &ybScan->keys[i],
+								  &scan_plan->bind_key_attnums[i]))
 				continue;
 		}
 
@@ -2394,15 +2397,16 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
  * that they are removed from the YbBitmapTableScan node before calling this.
  */
 static void
-YbGetBitmapScanRecheckColumns(YbBitmapTableScan *plan, Bitmapset *required_attrs,
-							  Index target_relid, int min_attr)
+YbGetBitmapScanRecheckColumns(YbBitmapTableScan *plan,
+							  Bitmapset **required_attrs, Index target_relid,
+							  int min_attr)
 {
 	if (plan->fallback_local_quals)
 		pull_varattnos_min_attr((Node *) plan->fallback_local_quals, target_relid,
-								&required_attrs, min_attr);
+								required_attrs, min_attr);
 	if (plan->recheck_local_quals)
 		pull_varattnos_min_attr((Node *) plan->recheck_local_quals, target_relid,
-								&required_attrs, min_attr);
+								required_attrs, min_attr);
 }
 
 /*
@@ -2424,7 +2428,7 @@ YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
 		{
 			int bms_idx = YBAttnumToBmsIndexWithMinAttr(
-				YBFirstLowInvalidAttributeNumber, keys[i]->sk_attno);
+				YBFirstLowInvalidAttributeNumber, ybScan->target_key_attnums[i]);
 			columns = bms_add_member(columns, bms_idx);
 		}
 	}
@@ -2483,7 +2487,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbGetBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
-										  required_attrs, target_relid,
+										  &required_attrs, target_relid,
 										  min_attr);
 
 		if (ybScan->hash_code_keys != NIL)

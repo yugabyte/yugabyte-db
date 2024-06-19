@@ -6,6 +6,6 @@ description: |
 type: object
 properties:
   spec:
-    $ref: ../schemas/UniverseSpec.yaml
+    $ref: "../schemas/UniverseSpec.yaml"
   info:
-    $ref: ../schemas/UniverseInfo.yaml
+    $ref: "../schemas/UniverseInfo.yaml"

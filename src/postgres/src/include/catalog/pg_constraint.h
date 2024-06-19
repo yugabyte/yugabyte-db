@@ -23,6 +23,7 @@
 
 #include "catalog/dependency.h"
 #include "nodes/pg_list.h"
+#include "utils/catcache.h"
 
 /* ----------------
  *		pg_constraint definition.  cpp turns this into

@@ -52,8 +52,8 @@ public enum KnownAlertLabels {
   NODE_CLUSTER_TYPE,
   PARENT_TASK_TYPE,
   YBA_VERSION,
-
-  DB_VERSION;
+  DB_VERSION,
+  TASK_UUID;
 
   public String labelName() {
     return name().toLowerCase();

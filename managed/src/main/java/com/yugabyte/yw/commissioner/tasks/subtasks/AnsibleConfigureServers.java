@@ -102,7 +102,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean overrideNodePorts = false;
     // Supplier for master addresses override which is invoked only when the subtask starts
     // execution.
-    @Nullable public Supplier<String> masterAddrsOverride;
+    @JsonIgnore @Nullable public Supplier<String> masterAddrsOverride;
 
     @JsonIgnore
     public String getMasterAddrsOverride() {

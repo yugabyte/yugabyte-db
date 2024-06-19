@@ -179,7 +179,6 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
-    assertEquals(1l, 2l);
   }
 
   // @Test

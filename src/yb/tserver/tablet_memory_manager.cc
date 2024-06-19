@@ -112,8 +112,8 @@ bool ValidateTabletOverheadSizePercentage(const char* flag_name, int value) {
   if (value == USE_RECOMMENDED_MEMORY_VALUE) {
     return true;
   }
-  LOG(WARNING) << flag_name << " must be a percentage (0 to 100) or the special value "
-               << USE_RECOMMENDED_MEMORY_VALUE << ", value " << value << " is invalid";
+  LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+  "Must be a percentage (0 to 100) or the special value " << USE_RECOMMENDED_MEMORY_VALUE;
   return false;
 }
 

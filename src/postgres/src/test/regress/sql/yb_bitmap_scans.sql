@@ -206,6 +206,20 @@ SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 15000 OR c > 27000)) ORDER
 /*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 3000 OR c > 15000)) ORDER BY a;
 
+-- check aggregates
+SET yb_enable_expression_pushdown = true;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+SET yb_enable_expression_pushdown = false;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+RESET yb_enable_expression_pushdown;
 RESET work_mem;
 
 --
@@ -293,6 +307,19 @@ explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
 explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+
+--
+-- #22065: test pushdowns on Subplans
+--
+CREATE TABLE text_pushdown_test (a text, b text);
+CREATE INDEX ON text_pushdown_test (a ASC);
+CREATE INDEX ON text_pushdown_test (b ASC);
+INSERT INTO text_pushdown_test VALUES ('hi', 'hello');
+
+/*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
 
 --
 -- #22622: test local recheck of condition for a column that is not a target
@@ -395,6 +422,13 @@ SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
 /*+ BitmapScan(t) */
 SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
 
+--
+-- #22062: variable not found in subplan target list
+--
+CREATE TABLE t2 (k1 INT, k2 INT);
+CREATE INDEX ON t2 (k1 ASC);
+CREATE INDEX ON t2 (k2 ASC);
+EXPLAIN (COSTS OFF) /*+ BitmapScan(t2) */ SELECT * FROM t2 AS a JOIN t2 AS b ON a.k1 = b.k1 OR (a.k2 = b.k1 AND a.k1 = 1);
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

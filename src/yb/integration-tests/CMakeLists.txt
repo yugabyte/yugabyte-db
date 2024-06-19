@@ -265,6 +265,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
 ADD_YB_TEST(minicluster-snapshot-test)
 YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
 
+ADD_YB_TEST(disk_full-test)
+YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
+
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)

@@ -285,7 +285,7 @@ DEFINE_RUNTIME_bool(enable_copy_retryable_requests_from_parent, true,
                     "Whether to copy retryable requests from parent tablet when opening"
                     "the child tablet");
 
-DEFINE_UNKNOWN_int32(flush_retryable_requests_pool_max_threads, -1,
+DEFINE_UNKNOWN_int32(flush_bootstrap_state_pool_max_threads, -1,
                      "The maximum number of threads used to flush retryable requests");
 
 DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
@@ -304,6 +304,8 @@ DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
+
+DECLARE_int32(retryable_request_timeout_secs);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -507,7 +509,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .set_min_threads(1)
                .unlimited_threads()
                .Build(&log_sync_pool_));
-  auto num_flush_threads = FLAGS_flush_retryable_requests_pool_max_threads;
+  auto num_flush_threads = FLAGS_flush_bootstrap_state_pool_max_threads;
   if (num_flush_threads < 0) {
     num_flush_threads = base::NumCPUs();
     if (num_flush_threads < 2) {
@@ -517,7 +519,7 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   CHECK_OK(ThreadPoolBuilder("flush-retryable-requests")
                .set_min_threads(1)
                .set_max_threads(num_flush_threads)
-               .Build(&flush_retryable_requests_pool_));
+               .Build(&flush_bootstrap_state_pool_));
   CHECK_OK(ThreadPoolBuilder("prepare")
                .set_min_threads(1)
                .unlimited_threads()
@@ -1901,30 +1903,31 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::ConsensusBootstrapInfo bootstrap_info;
   bool bootstrap_retryable_requests = true;
 
-  consensus::RetryableRequestsManager retryable_requests_manager(
-      tablet_id, fs_manager_, meta->wal_dir(),
-      mem_manager_->FindOrCreateOverheadMemTrackerForTablet(cmeta->tablet_id()), kLogPrefix);
-
-  s = retryable_requests_manager.Init(server_->Clock());
+  auto bootstrap_state_manager = std::make_shared<tablet::TabletBootstrapStateManager>(
+      tablet_id, fs_manager_, meta->wal_dir());
+  s = bootstrap_state_manager->Init();
   if(!s.ok()) {
-    LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
+    LOG(ERROR) << kLogPrefix << "Tablet failed to init bootstrap state manager: " << s;
     tablet_peer->SetFailed(s);
     return;
   }
+
+  consensus::RetryableRequests retryable_requests(
+      mem_manager_->FindOrCreateOverheadMemTrackerForTablet(cmeta->tablet_id()), kLogPrefix);
+  retryable_requests.SetServerClock(server_->Clock());
+  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
 
   if (GetAtomicFlag(&FLAGS_enable_copy_retryable_requests_from_parent) &&
           cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
-      retryable_requests_manager.retryable_requests().CopyFrom(*parent_tablet_requests);
+      retryable_requests.CopyFrom(*parent_tablet_requests);
       bootstrap_retryable_requests = false;
     } else {
       LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "
                 << ResultToStatus(parent_tablet_requests);
     }
   }
-  retryable_requests_manager.retryable_requests().set_log_prefix(kLogPrefix);
-
   // Create metadata cache if its not created yet.
   auto metadata_cache = YBMetaDataCache();
   if (!metadata_cache) {
@@ -1990,13 +1993,14 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests_manager = &retryable_requests_manager,
+      .retryable_requests = &retryable_requests,
+      .bootstrap_state_manager = bootstrap_state_manager.get(),
       .bootstrap_retryable_requests = bootstrap_retryable_requests,
       .consensus_meta = cmeta.get(),
       .pre_log_rollover_callback = [peer_weak_ptr, kLogPrefix]() {
         auto peer = peer_weak_ptr.lock();
         if (peer) {
-          Status s = peer->SubmitFlushRetryableRequestsTask();
+          Status s = peer->SubmitFlushBootstrapStateTask();
           LOG_IF(WARNING, !s.ok() && !s.IsNotSupported()) << kLogPrefix
               <<  "Failed to submit retryable requests task: " << s.ToString();
         }
@@ -2024,10 +2028,11 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         raft_pool(),
         raft_notifications_pool(),
         tablet_prepare_pool(),
-        &retryable_requests_manager,
+        &retryable_requests,
+        bootstrap_state_manager,
         std::move(cmeta),
         multi_raft_manager_.get(),
-        flush_retryable_requests_pool());
+        flush_bootstrap_state_pool());
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -2037,7 +2042,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     }
 
     // Enable flush retryable requests after the peer is fully initialized.
-    tablet_peer->EnableFlushRetryableRequests();
+    tablet_peer->EnableFlushBootstrapState();
 
     TRACE("Starting tablet peer");
     s = tablet_peer->Start(bootstrap_info);
@@ -2185,8 +2190,8 @@ void TSTabletManager::CompleteShutdown() {
   if (log_sync_pool_) {
     log_sync_pool_->Shutdown();
   }
-  if (flush_retryable_requests_pool_) {
-    flush_retryable_requests_pool_->Shutdown();
+  if (flush_bootstrap_state_pool_) {
+    flush_bootstrap_state_pool_->Shutdown();
   }
   if (tablet_prepare_pool_) {
     tablet_prepare_pool_->Shutdown();

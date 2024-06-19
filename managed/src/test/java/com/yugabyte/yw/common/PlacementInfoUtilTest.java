@@ -4067,6 +4067,38 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testConfigureModifyCommPorts() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 0), // -> 7001
+            new Pair(UserAction.MODIFY_AZ_COUNT, 1), // inc az
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 1) // port -> 7000
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // full move + one more node
+              assertEquals(7, params.nodeDetailsSet.size());
+              break;
+            case 2:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // one more added node
+              assertEquals(4, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
+  @Test
   public void testChaosConfigureEdit() {
     Customer customer =
         ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
@@ -4197,6 +4229,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                   PublicCloudConstants.StorageType.GP3;
               details.getPrimaryCluster().userIntent.deviceInfo.throughput = 500;
               details.getPrimaryCluster().userIntent.deviceInfo.diskIops = 5000;
+              details.communicationPorts.masterHttpPort = 7000;
               u.setUniverseDetails(details);
               if (mutator != null) {
                 mutator.accept(u);
@@ -4334,17 +4367,21 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       String oldInstanceType = oldCluster.userIntent.getInstanceTypeForNode(nodeDetails);
       String newInstanceType = cluster.userIntent.getInstanceTypeForNode(nodeDetails);
       boolean sameInstanceType = oldInstanceType.equals(newInstanceType);
+      boolean instanceConfChanges =
+          UniverseCRUDHandler.isAwsArnChanged(cluster, oldCluster)
+              || UniverseCRUDHandler.areCommunicationPortsChanged(params, universe)
+              || oldCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
 
       String recap =
           String.format(
-              "absentInPlacement %s, sameInstanceType %s, sameDevice %s",
-              absentInPlacement, sameInstanceType, sameDevice);
+              "absentInPlacement %s, sameInstanceType %s, sameDevice %s, instanceConfChanges %s",
+              absentInPlacement, sameInstanceType, sameDevice, instanceConfChanges);
 
       // Should be either removed from placement or modified something related to instance.
       // For instance change we do remove nodes but update option will return SMART_RESIZE.
       assertTrue(
           "Assert " + nodeDetails.nodeName + " removal reason (" + recap + ")",
-          absentInPlacement || !sameInstanceType || !sameDevice);
+          absentInPlacement || !sameInstanceType || !sameDevice || instanceConfChanges);
     }
 
     String overall =
@@ -4461,7 +4498,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     CHANGE_MASTER_INSTANCE_TYPE(true),
     CHANGE_DEVICE_DETAILS,
     CHANGE_MASTER_DEVICE_DETAILS(true),
-    MODIFY_AFFINITIZED;
+    MODIFY_AFFINITIZED,
+    MODIFY_COMMUNICATION_PORTS;
 
     UserAction() {
       this(false);
@@ -4692,6 +4730,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
         taskParams.userAZSelected = true;
         return placementAZtoSwitch.name + "->" + placementAZtoSwitch.isAffinitized;
+      case MODIFY_COMMUNICATION_PORTS:
+        int targetVal = 7001 - taskParams.communicationPorts.masterHttpPort;
+        taskParams.communicationPorts.masterHttpPort = targetVal;
+        return "masterHttpPort -> " + targetVal;
     }
     return null;
   }

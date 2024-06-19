@@ -19,14 +19,16 @@ When DDL changes are made to databases in replication for xCluster disaster reco
 
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
-| DB Change&nbsp;on&nbsp;DR&nbsp;primary | On DR replica | In YBA |
-| :----------- | :----------- | :--- |
-| 1. CREATE TABLE | 2. CREATE TABLE | 3. Add the table to replication |
-| 2. DROP TABLE   | 3. DROP TABLE   | 1. Remove the table from replication. |
-| 1. CREATE INDEX | 2. CREATE INDEX | 3. [Resynchronize](#resynchronize-yba) |
-| 2. DROP INDEX   | 1. DROP INDEX   | 3. [Resynchronize](#resynchronize-yba) |
-| 1. CREATE TABLE foo PARTITION OF bar | 2. CREATE TABLE foo PARTITION OF bar | 3. Add the table to replication |
-| 2. ALTER TABLE or INDEX | 1. ALTER TABLE or INDEX | No changes needed |
+| DDL | Step 1 | Step 2 | Step 3 |
+| :-- | :----- | :----- | :----- |
+| CREATE TABLE | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
+| DROP TABLE   | [Remove table from replication](#remove-a-table-from-dr) | Execute on Replica | Execute on Primary |
+| CREATE TABLE foo<br>PARTITION OF bar | Execute on Primary | Execute on Replica | [Add table to replication](#add-a-table-to-dr) |
+| CREATE INDEX | Execute on Primary | Execute&nbsp;on&nbsp;Replica | [Reconcile configuration](#reconcile-configuration) |
+| DROP INDEX   | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
+| ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Replica | Execute on Primary | No changes needed |
+| ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile configuration](#reconcile-configuration) |
+| ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
 
 In addition, keep in mind the following:
 
@@ -35,11 +37,9 @@ In addition, keep in mind the following:
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
 
-## Best practices
-
-If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
-
 ## Tables
+
+Note: If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
 
 ### Add a table to DR
 
@@ -76,9 +76,9 @@ Remove tables from DR in the following sequence:
 1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
-1. Click **Next: Confirm Full Copy**.
 1. Click **Apply Changes**.
-1. Drop the table from both DR primary and replica databases separately.
+1. Drop the table from the DR replica database.
+1. Drop the table from the DR primary database.
 
 ## Indexes
 
@@ -100,7 +100,7 @@ Add indexes to replication in the following sequence:
 
     For instructions on monitoring backfill, refer to [Create indexes and track the progress](../../../../explore/ysql-language-features/indexes-constraints/index-backfill/).
 
-1. [Resynchronize YBA](#resynchronize-yba).
+1. [Reconcile the configuration](#reconcile-configuration).
 
 ### Remove an index from DR
 
@@ -112,7 +112,7 @@ Remove indexes from replication in the following sequence:
 
 1. Drop the index on the DR primary.
 
-1. [Resynchronize YBA](#resynchronize-yba).
+1. [Reconcile the configuration](#reconcile-configuration).
 
 ## Table partitions
 
@@ -152,9 +152,9 @@ To add a table partition to DR, follow the same steps for [Add a table to DR](#a
 
 To remove a table partition from DR, follow the same steps as [Remove a table from DR](#remove-a-table-from-dr).
 
-## Resynchronize YBA
+## Reconcile configuration
 
-To ensure changes made outside of YugabyteDB Anywhere are reflected in YBA, resynchronize the YBA UI as follows:
+To ensure changes made outside of YugabyteDB Anywhere are reflected in YugabyteDB Anywhere, you need to reconcile the configuration as follows:
 
-1. Navigate to your DR primary and select **xCluster Disaster Recovery**.
+1. In YugabyteDB Anywhere, navigate to your DR primary and select **xCluster Disaster Recovery**.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.
