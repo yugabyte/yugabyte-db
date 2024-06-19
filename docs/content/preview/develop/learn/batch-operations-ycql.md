@@ -15,7 +15,7 @@ type: docs
 Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size, the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, the throughput of the batch of operations is much higher.
 
 {{<tip>}}
-For batch operations in [YSQL](/{{<version>}}/api/ysql), see [Stored Procedures](/{{<version>}}/explore/ysql-language-features/stored-procedures/) and [Transactions](../transactions/acid-transactions-ysql)
+For batch operations in [YSQL](/{{<version>}}/api/ysql), see [Stored Procedures](/{{<version>}}/explore/ysql-language-features/stored-procedures/) and [Transactions](../transactions/acid-transactions-ysql).
 {{</tip>}}
 
 ## Inserting data
