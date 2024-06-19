@@ -1381,7 +1381,7 @@ Default: `true`
 
 ## Catalog flags
 
-Catalog flags are currently in [Early Access](/preview/releases/versioning/#feature-maturity).
+Catalog flags are {{<badge/ea>}}.
 
 ##### ysql_catalog_preload_additional_table_list
 
@@ -1424,6 +1424,8 @@ Specifies the threshold (in bytes) beyond which catalog tuples will get compress
 To minimize performance impact when enabling this flag, set it to 2KB or higher.
 
 Default: -1 (disabled). Minimum: 128 bytes.
+
+## DDL concurrency flags
 
 ##### ysql_enable_db_catalog_version_mode
 
@@ -1494,8 +1496,6 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 {{< /note >}}
 
 ## DDL atomicity flags
-
-DDL atomicity feature is in {{<badge/ea>}}.
 
 ##### ysql_yb_ddl_rollback_enabled
 
