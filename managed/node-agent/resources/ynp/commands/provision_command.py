@@ -11,6 +11,7 @@ from .base_command import Command
 
 logger = logging.getLogger(__name__)
 
+
 class ProvisionCommand(Command):
 
     def __init__(self, config):
@@ -31,7 +32,8 @@ class ProvisionCommand(Command):
 
         for root, _, _ in os.walk(package_path):
             relative_path = os.path.relpath(root, package_path)
-            module_base = self.base_package if relative_path == "." else f"{self.base_package}.{relative_path.replace(os.sep, '.')}"
+            module_base = (self.base_package if relative_path == "."
+                           else f"{self.base_package}.{relative_path.replace(os.sep, '.')}")
 
             for loader, module_name, is_pkg in pkgutil.iter_modules([root]):
                 full_module_name = f"{module_base}.{module_name}"
@@ -43,9 +45,9 @@ class ProvisionCommand(Command):
             temp_file.write("set -ex\n")
             self.populate_sudo_check(temp_file)
             for key in all_templates:
-                temp_file.write(f"\n######## {key} #########\n")
+                temp_file.write(f"\n######## BEGIN {key} #########\n")
                 temp_file.write(all_templates[key][phase])
-                temp_file.write(f"\n######## {key} #########\n")
+                temp_file.write(f"\n######## END {key} #########\n")
         os.chmod(temp_file.name, 0o755)
         logger.info(temp_file.name)
         return temp_file.name
@@ -90,23 +92,28 @@ class ProvisionCommand(Command):
         """Check if a package is installed."""
         try:
             if package_manager == 'rpm':
-                subprocess.run(['rpm', '-q', package_name], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(['rpm', '-q', package_name], check=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             elif package_manager == 'deb':
-                subprocess.run(['dpkg', '-s', package_name], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(['dpkg', '-s', package_name], check=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             logger.info(f"{package_name} is installed.")
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
 
     def _validate_required_packages(self):
         try:
-            subprocess.run(['rpm', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(['rpm', '--version'], check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             package_manager = 'rpm'
         except subprocess.CalledProcessError:
             try:
-                subprocess.run(['dpkg', '--version'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(['dpkg', '--version'], check=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 package_manager = 'deb'
             except subprocess.CalledProcessError:
-                logger.info("Unsupported package manager. Cannot determine package installation status.")
+                logger.info("Unsupported package manager."
+                            "Cannot determine package installation status.")
                 sys.exit(1)
 
         packages = ['openssl', 'policycoreutils']
