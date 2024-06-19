@@ -743,6 +743,14 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
+Status TabletServer::BootstrapDdlObjectLocks(const master::TSHeartbeatResponsePB& heartbeat_resp) {
+  VLOG(2) << __func__;
+  if (!heartbeat_resp.has_ddl_lock_entries() || !ts_local_lock_manager_) {
+    return Status::OK();
+  }
+  return ts_local_lock_manager_->BootstrapDdlObjectLocks(heartbeat_resp.ddl_lock_entries());
+}
+
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
   std::lock_guard l(lock_);
   // We reset the list each time, since we want to keep the tservers that are live from the

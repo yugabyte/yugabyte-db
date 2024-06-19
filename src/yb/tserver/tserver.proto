@@ -426,3 +426,7 @@ message ReleaseObjectLockRequestPB {
 message ReleaseObjectLockResponsePB {
   optional TabletServerErrorPB error = 1;
 }
+
+message DdlLockEntriesPB {
+  repeated AcquireObjectLockRequestPB lock_entries = 1;
+}

@@ -92,6 +92,10 @@ Status MiniMaster::StartDistributedMaster(const vector<uint16_t>& peer_ports) {
   return StartDistributedMasterOnPorts(rpc_port_, web_port_, peer_ports);
 }
 
+std::string MiniMaster::ToString() const {
+  return Format("m-$0", index_);
+}
+
 void MiniMaster::Shutdown() {
   TEST_SetThreadPrefixScoped prefix_se(Format("m-$0", index_));
   if (tunnel_) {

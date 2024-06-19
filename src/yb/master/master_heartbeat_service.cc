@@ -1460,6 +1460,13 @@ Result<TSDescriptorPtr> MasterHeartbeatServiceImpl::RegisterTServerOrRespond(
   auto desc_result = server_->ts_manager()->RegisterFromHeartbeat(
       req, server_->MakeCloudInfoPB(), &server_->proxy_cache());
   if (desc_result.ok()) {
+    // Populate the response to bootstrap object locks.
+    // TODO: This would also need to be done whenever a tablet server with an
+    // expired lease gets a new lease. YSQL Leases are yet to be implemented.
+    // when that happens, we should re-bootstrap the TServer and bump up
+    // it's incarnation id (similar to how instance_seqno behaves across restarts).
+    LOG(INFO) << "Registering " << req.common().ts_instance().ShortDebugString();
+    server_->catalog_manager_impl()->ExportObjectLockInfo(resp->mutable_ddl_lock_entries());
     return std::move(*desc_result);
   }
   auto status = std::move(desc_result.status());

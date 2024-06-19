@@ -25,6 +25,7 @@ import "yb/consensus/consensus_types.proto";
 import "yb/encryption/encryption.proto";
 import "yb/master/master_types.proto";
 import "yb/tablet/tablet_types.proto";
+import "yb/tserver/tserver.proto";
 import "yb/rpc/service.proto";
 
 // Common information sent with every request from the tablet server
@@ -320,6 +321,10 @@ message TSHeartbeatResponsePB {
   optional uint32 xcluster_config_version = 24;
 
   optional string universe_uuid = 25;
+
+  // TODO: If this ends up being too big, consider adding a way to break this up
+  // into multiple messages.
+  optional tserver.DdlLockEntriesPB ddl_lock_entries = 26;
 }
 
 service MasterHeartbeat {
