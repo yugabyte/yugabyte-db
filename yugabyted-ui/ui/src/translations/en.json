@@ -1080,6 +1080,7 @@
           "status": "Status",
           "filename": "File name",
           "beforeYouProceed": "Before you proceed...",
+          "completeStepsTooltip": "Complete the prior step(s) to proceed",
           "schemaExport": "Schema Export",
           "schemaExportDesc": "Export schema from source database.",
           "schemaExportLearn": "Learn how to export schema"
