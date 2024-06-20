@@ -33,7 +33,7 @@ type: docs
 
 </ul>
 
-Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere (YBA) on a virtual machine. Most of these issues are related to connections.
+Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on a virtual machine. Most of these issues are related to connections.
 
 If you have problems while troubleshooting, contact {{% support-platform %}}.
 

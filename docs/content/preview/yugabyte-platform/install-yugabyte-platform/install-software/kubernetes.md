@@ -149,7 +149,7 @@ The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-op
 
 Note that for Yugabyte Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 
-To install YBA and a universe using the Yugabyte Kubernetes Operator, do the following:
+To install YugabyteDB Anywhere and a universe using the Yugabyte Kubernetes Operator, do the following:
 
 1. Apply the following Custom Resource Definition:
 
