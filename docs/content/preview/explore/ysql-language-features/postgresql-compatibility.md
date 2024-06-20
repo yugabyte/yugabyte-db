@@ -28,23 +28,9 @@ PostgreSQL compatibility has two aspects:
 
 ## Enhanced Postgres Compatibility Mode
 
-To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity.
+To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. Enhanced Postgres Compatibility Mode is available in v2024.1 and later.
 
-Depending on the version of YugabyteDB, Enhanced Postgres Compatibility Mode configures a different set of features as described in the following table. Enhanced Postgres Compatibility Mode is available in v2024.1 and later.
-
-| Version | Feature | | Flag |
-| :--- | :--- | :--- | :--- |
-| 2024.1 | Read-Committed isolation | {{<badge/ea>}} | yb_enable_read_committed_isolation=true |
-|        | Wait-on-Conflict concurrency for predictable P99 latencies | | |
-|        | Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | {{<badge/ea>}} | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
-|        | Use range sharding (ascending) by default | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
-| 2024.2 | Read-Committed isolation | {{<badge/ga>}} | |
-|        | Wait-on-Conflict concurrency | | |
-|        | Cost based optimizer | {{<badge/ga>}} |  |
-|        | Use range sharding (ascending) by default | {{<badge/ga>}} | yb_use_hash_splitting_by_default=false |
-|        | TOAST compression | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
-|        | Auto analyze | {{<badge/ea>}} | yb_use_hash_splitting_by_default=false |
-|        | pg to tserver shared memory | {{<badge/ea>}} | pg_client_use_shared_memory=false |
+Depending on the version of YugabyteDB, Enhanced Postgres Compatibility Mode configures a different set of features as described in the following sections.
 
 After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new designated PostgreSQL compatibility features.
 
@@ -56,9 +42,32 @@ If you have set these features independent of Enhanced Postgres Compatibility Mo
 Conversely, if you are using Enhanced Postgres Compatibility Mode on a universe, you cannot set any of the features independently.
 {{</note>}}
 
-### Enable enhanced compatibility mode
+### v2024.1
 
-#### YugabyteDB
+| EA Feature | Flag |
+| :--- | :--- |
+| Read-Committed isolation | yb_enable_read_committed_isolation=true |
+| Wait-on-Conflict concurrency for predictable P99 latencies | |
+| Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
+| Use range sharding (ascending) by default | yb_use_hash_splitting_by_default=false |
+
+### v2024.2
+
+| EA Feature | Flag |
+| :--- | :--- | :--- |
+| Feature 1 | flag=false |
+| Feature 2 | flag=true |
+| Feature 3 | flag=false |
+
+The following features are {{<badge/ga>}} in v2024.2 and are no longer managed under Enhanced Postgres Compatibility Mode:
+
+- Read-Committed isolation
+- Cost based optimizer
+- Use range sharding (ascending) by default
+
+## Enable enhanced compatibility mode
+
+### YugabyteDB
 
 To enable compatibility mode in YugabyteDB:
 
@@ -72,15 +81,17 @@ For example, from your YugabyteDB home directory, run the following command:
 
 Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
 
-#### YugabyteDB Anywhere
+### YugabyteDB Anywhere
 
-To enable compatibility mode in YugabyteDB Anywhere:
+To enable compatibility mode in YugabyteDB Anywhere v2024.1, see the [Release notes](../../../releases/yba-releases/v2024.1/#highlights).
+
+To enable compatibility mode in YugabyteDB Anywhere v2024.2 or later:
 
 - When creating a universe, turn on the **Enable Enhanced Postgres Compatibility** option.
 
-You can also change the setting on deployed universes using the **More > Edit Postgres Compatibility** option.
+  You can also change the setting on deployed universes using the **More > Edit Postgres Compatibility** option.
 
-#### YugabyteDB Aeon
+### YugabyteDB Aeon
 
 To enable compatibility mode in YugabyteDB Aeon:
 
