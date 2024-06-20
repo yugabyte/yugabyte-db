@@ -64,3 +64,10 @@ yb_user = {{ ynp.yb_user }}
 [ConfigureNodeExporter]
 prometheus_user = prometheus
 yb_home_dir = {{ ynp.yb_home_dir }}
+
+[ConfigureNetwork]
+ip_address={{ ynp.ip_address }}
+ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
+
+[YBA]
+{{ render_section(yba) }}
