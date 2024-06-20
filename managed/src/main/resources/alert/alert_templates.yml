@@ -213,7 +213,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_c2n_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Client to node certificate for universe '{{ $labels.source_name }}'
@@ -238,7 +238,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_c2n_ca_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Client to node CA certificate for universe '{{ $labels.source_name }}'
@@ -906,7 +906,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_n2n_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Node to node certificate for universe '{{ $labels.source_name }}'
@@ -1080,7 +1080,7 @@ templates:
       affected_node_names: >-
         {{ range $index, $element := query "min by (universe_uuid, node_name)
         (ybp_health_check_n2n_ca_cert_validity_days{universe_uuid='{{ $labels.universe_uuid }}'}
-        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+        {{ query_condition }} {{ query_threshold }})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
         Node to node CA certificate for universe '{{ $labels.source_name }}'
