@@ -53,13 +53,15 @@ Conversely, if you are using Enhanced Postgres Compatibility Mode on a universe,
 
 ### v2024.2
 
+The following shows the features that are planned for Enhanced Postgres Compatibility Mode for v2024.2 and is subject to change without notice.
+
 | EA Feature | Flag |
 | :--- | :--- | :--- |
 | Feature 1 | flag=false |
 | Feature 2 | flag=true |
 | Feature 3 | flag=false |
 
-The following features are {{<badge/ga>}} in v2024.2 and are no longer managed under Enhanced Postgres Compatibility Mode:
+The following features are planned to go {{<badge/ga>}} in v2024.2 and will no longer be managed under Enhanced Postgres Compatibility Mode:
 
 - Read-Committed isolation
 - Cost based optimizer
