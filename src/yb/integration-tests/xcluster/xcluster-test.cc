@@ -148,6 +148,7 @@ DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_xcluster_fail_setup_stream_update);
+DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 
 namespace yb {
 
@@ -2705,6 +2706,9 @@ TEST_P(XClusterTest, TestAlterUniverseRemoveTableAndDrop) {
 TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
   ASSERT_OK(SetUpWithParams({1}, 1));
 
+  // Disable health check on setup since we are stopping all consumer tservers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = true;
+
   // Stop the consumer tserver before setting up replication.
   consumer_cluster()->mini_tablet_server(0)->Shutdown();
 
@@ -3482,6 +3486,8 @@ TEST_F_EX(XClusterTest, ListMetaCacheAfterXClusterSetup, XClusterTestNoParam) {
 TEST_F_EX(XClusterTest, PollerShutdownWithLongPollDelay, XClusterTestNoParam) {
   // Make Pollers enter a long sleep state.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = true;
+
   ASSERT_OK(SET_FLAG(async_replication_idle_delay_ms, 10 * 60 * 1000));  // 10 minutes
   const auto kTimeout = 10s * kTimeMultiplier;
 
@@ -3856,9 +3862,24 @@ TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {
   ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
 }
 
+// If the Pollers are not able to successfully poll then Setup should fail.
+TEST_F_EX(XClusterTest, FailedSetupOnReplicationError, XClusterTestNoParam) {
+  // Disable polling so that errors don't get cleared by successful polls.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 1, /* num_tservers */ 1));
+
+  ASSERT_NOK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED));
+}
+
 TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
   // Disable polling so that errors don't get cleared by successful polls.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = true;
   ASSERT_OK(SetUpWithParams(
       {1}, {1}, /* replication_factor */ 1, /* num_masters */ 3, /* num_tservers */ 1));
   ASSERT_OK(SetupReplication());

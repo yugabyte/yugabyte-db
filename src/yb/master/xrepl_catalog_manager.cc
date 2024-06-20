@@ -5832,9 +5832,13 @@ void CatalogManager::SyncXClusterConsumerReplicationStatusMap(
     return;
   }
 
+  auto& replication_group_errors = xcluster_consumer_replication_error_map_[replication_group_id];
   auto& producer_entry = producer_map.at(replication_group_id.ToString());
 
+  std::unordered_set<TableId> all_consumer_table_ids;
   for (auto& [_, stream_map] : producer_entry.stream_map()) {
+    const auto& consumer_table_id = stream_map.consumer_table_id();
+
     std::unordered_set<TabletId> all_producer_tablet_ids;
     for (auto& [_, producer_tablet_ids] : stream_map.consumer_producer_tablet_map()) {
       all_producer_tablet_ids.insert(
@@ -5842,27 +5846,38 @@ void CatalogManager::SyncXClusterConsumerReplicationStatusMap(
     }
 
     if (all_producer_tablet_ids.empty()) {
-      if (xcluster_consumer_replication_error_map_.contains(replication_group_id)) {
-        xcluster_consumer_replication_error_map_.at(replication_group_id)
-            .erase(stream_map.consumer_table_id());
-      }
       continue;
     }
+    all_consumer_table_ids.insert(consumer_table_id);
 
-    auto& consumer_error_map =
-        xcluster_consumer_replication_error_map_[replication_group_id]
-                                                [stream_map.consumer_table_id()];
-    // Remove entries that are no longer part of replication.
-    std::erase_if(consumer_error_map, [&all_producer_tablet_ids](const auto& entry) {
+    auto& tablet_error_map = replication_group_errors[consumer_table_id];
+    // Remove tablets that are no longer part of replication.
+    std::erase_if(tablet_error_map, [&all_producer_tablet_ids](const auto& entry) {
       return !all_producer_tablet_ids.contains(entry.first);
     });
 
-    // Add new entries.
+    // Add new tablets.
     for (const auto& producer_tablet_id : all_producer_tablet_ids) {
-      if (!consumer_error_map.contains(producer_tablet_id)) {
+      if (!tablet_error_map.contains(producer_tablet_id)) {
         // Default to UNINITIALIZED error. Once the Pollers send the status, this will be updated.
-        consumer_error_map[producer_tablet_id].error =
+        tablet_error_map[producer_tablet_id].error =
             ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
+      }
+    }
+  }
+
+  // Remove tables that are no longer part of replication.
+  std::erase_if(replication_group_errors, [&all_consumer_table_ids](const auto& entry) {
+    return !all_consumer_table_ids.contains(entry.first);
+  });
+
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Synced xcluster_consumer_replication_error_map_ for replication group "
+              << replication_group_id;
+    for (const auto& [consumer_table_id, tablet_error_map] : replication_group_errors) {
+      LOG(INFO) << "Table: " << consumer_table_id;
+      for (const auto& [tablet_id, error] : tablet_error_map) {
+        LOG(INFO) << "Tablet: " << tablet_id << ", Error: " << ReplicationErrorPb_Name(error.error);
       }
     }
   }
@@ -6099,6 +6114,32 @@ Status CatalogManager::TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::str
   }
   return Status::OK();
 }
+Result<bool> CatalogManager::HasReplicationGroupErrors(
+    const xcluster::ReplicationGroupId& replication_group_id) const {
+  yb::SharedLock l(xcluster_consumer_replication_error_map_mutex_);
+
+  auto* replication_error_map =
+      FindOrNull(xcluster_consumer_replication_error_map_, replication_group_id);
+  SCHECK(
+      replication_error_map, NotFound, "Could not find replication group $0",
+      replication_group_id.ToString());
+
+  std::unordered_map<TableId, std::unordered_set<std::string>> table_errors;
+  for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
+    for (const auto& [_, error_info] : tablet_error_map) {
+      if (error_info.error != ReplicationErrorPb::REPLICATION_OK) {
+        table_errors[consumer_table_id].insert(ReplicationErrorPb_Name(error_info.error));
+      }
+    }
+  }
+
+  if (!table_errors.empty()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Replication group " << replication_group_id
+        << " has errors for the following tables:" << AsString(table_errors);
+  }
+  return !table_errors.empty();
+}
 
 Status CatalogManager::PopulateReplicationGroupErrors(
     const xcluster::ReplicationGroupId& replication_group_id,
@@ -6137,7 +6178,7 @@ Status CatalogManager::PopulateReplicationGroupErrors(
     resp_status->set_stream_id(stream_id.ToString());
     for (const auto& [error_pb, tablet_ids] : errors) {
       if (error_pb == ReplicationErrorPb::REPLICATION_OK) {
-        // Do not report healthy tablets.
+        // Do not add errors for healthy tablets.
         continue;
       }
 
