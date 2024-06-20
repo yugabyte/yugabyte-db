@@ -1,11 +1,6 @@
 ynp:
   # Home directory for the yugabyte user
   yb_home_dir: /home/yugabyte
-  data_disk:
-    - deviceName: "/dev/nvme1n1"
-      mountPath: "/mnt/d0"
-    - deviceName: "/dev/nvme2n1"
-      mountPath: "/mnt/d1"
   # NTP servers for the node
   chrony_servers: ["0.pool.ntp.org", "1.pool.ntp.org"]
   yb_user: yugabyte

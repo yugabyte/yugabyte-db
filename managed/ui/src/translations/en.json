@@ -1135,6 +1135,24 @@
             }
           }
         },
+        "metrics": {
+          "showAlertThresholdReferenceLine": {
+            "label": "Show Alert Threshold",
+            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
+          },
+          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
+        },
+        "tableLevelMetricModal": {
+          "title": "Table Replication Lag",
+          "label": {
+            "table": "Table",
+            "schema": "Schema",
+            "database": "Database"
+          },
+          "graphTitle": {
+            "asyncReplicationSentLag": "Async Replication Lag"
+          }
+        },
         "metricsPanel": {
           "graphFilter": {
             "nodeAggregation": {
@@ -1154,16 +1172,11 @@
               "bottom": "Bottom K"
             }
           },
-          "showAlertThresholdReferenceLine": {
-            "label": "Show Alert Threshold",
-            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
-          },
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
             "consumerSafeTimeSkew": "Consumer Safe Time Skew"
-          },
-          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
+          }
         },
         "error": {
           "undefinedXClusterTableType": "Unable to determine the table type of the current xCluster configuration. Please ensure the source universe is reachable and contains at least one table among those configured for xCluster replication.",

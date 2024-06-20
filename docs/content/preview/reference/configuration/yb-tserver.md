@@ -813,7 +813,7 @@ Default: `100`
 
 ##### --ysql_yb_fetch_size_limit
 
-Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
+{{<badge/tp>}} Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
 
 You can also specify the value as a string. For example, you can set it to `'10MB'`.
 
@@ -827,7 +827,7 @@ Default: 0
 
 ##### --ysql_yb_fetch_row_limit
 
-Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{<badge/tp>}} Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 You should have at least one of row limit or size limit set.
 
@@ -1392,7 +1392,7 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
-The catalog flags are in [Early Access](/preview/releases/versioning/#feature-maturity).
+Catalog flags are {{<badge/ea>}}.
 
 ##### ysql_catalog_preload_additional_table_list
 
@@ -1436,9 +1436,13 @@ To minimize performance impact when enabling this flag, set it to 2KB or higher.
 
 Default: -1 (disabled). Minimum: 128 bytes.
 
+## DDL concurrency flags
+
+DDL concurrency flags are {{<badge/tp>}}.
+
 ##### ysql_enable_db_catalog_version_mode
 
-{{<badge/ea>}} Enable the per database catalog version mode. A DDL statement that
+Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
 that database.
 
@@ -1484,7 +1488,7 @@ To re-enable the per database catalog version mode using the following steps:
 
 ##### enable_heartbeat_pg_catalog_versions_cache
 
-{{<badge/ea>}} Whether to enable the use of heartbeat catalog versions cache for the
+Whether to enable the use of heartbeat catalog versions cache for the
 `pg_yb_catalog_version` table which can help to reduce the number of reads
 from the table. This is beneficial when there are many databases and/or
 many yb-tservers in the cluster.
@@ -1505,6 +1509,8 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 {{< /note >}}
 
 ## DDL atomicity flags
+
+DDL atomicity flags are {{<badge/tp>}}.
 
 ##### ysql_yb_ddl_rollback_enabled
 
@@ -1691,7 +1697,7 @@ Default: false
 
 ##### yb_fetch_size_limit
 
-Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+{{<badge/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
@@ -1701,7 +1707,7 @@ Default: 0
 
 ##### yb_fetch_row_limit
 
-Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{<badge/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 

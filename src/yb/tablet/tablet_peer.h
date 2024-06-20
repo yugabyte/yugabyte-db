@@ -600,6 +600,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool FlushBootstrapStateEnabled() const;
 
+  void MinRunningHybridTimeUpdated(HybridTime min_running_ht);
+
   MetricRegistry* metric_registry_;
 
   bool IsLeader() override {

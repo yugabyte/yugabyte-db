@@ -45,7 +45,7 @@ YugabyteDB Anywhere retains the root certificate and the root private key for al
 
 YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
 
-If you are using YBA version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
+If you are using YugabyteDB Anywhere version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
 
 Note that, for the change to take effect, you need to set the flag _before_ you run a workflow that generates a self-signed certificate.
 
@@ -441,7 +441,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
     - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
     - `period` — If specified, the token can be infinitely renewed.
 
-    YBA automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
+    YugabyteDB Anywhere automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
 
     For more information, refer to [Tokens](https://developer.hashicorp.com/vault/tutorials/tokens/tokens) in the Hashicorp documentation.
 
@@ -669,7 +669,7 @@ YugabyteDB Anywhere uses TLS to protect data in transit when connecting to other
 - Webhook
 - [S3 backup storage](../../back-up-restore-universes/configure-backup-storage/)
 - Hashicorp Vault
-- [YBA high availability](../../administer-yugabyte-platform/high-availability/)
+- [YugabyteDB Anywhere high availability](../../administer-yugabyte-platform/high-availability/)
 
 If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
 

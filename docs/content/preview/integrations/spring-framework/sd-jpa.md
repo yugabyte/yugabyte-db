@@ -39,7 +39,7 @@ Add the following dependencies for Spring Data JPA with [YugabyteDB JDBC Driver]
   <dependency>
     <groupId>com.yugabyte</groupId>
     <artifactId>jdbc-yugabytedb</artifactId>
-    <version>42.3.4</version>
+    <version>42.3.5-yb-5</version>
   </dependency>
 <dependencies>
 ```
