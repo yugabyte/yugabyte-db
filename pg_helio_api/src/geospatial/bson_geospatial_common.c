@@ -82,6 +82,7 @@ static Datum BsonExtractGeospatialInternal(const pgbson *document,
 										   GeospatialValidationLevel level,
 										   WKBGeometryType collectType,
 										   GeospatialErrorContext *errCtxt);
+static void SetQueryMatcherResult(ProcessCommonGeospatialState *state);
 
 /*
  * Execution function while extracting the coordinates using legacy point system
@@ -145,6 +146,29 @@ ShouldThrowGeoValidationError(ProcessCommonGeospatialState *state)
 		return true;
 	}
 	SetNonEmptyIfBloomValidation(state);
+	return false;
+}
+
+
+/*
+ * Callers must ensure this is called only if a valid shape is found.
+ * This function increments the total count of valid shapes found
+ * and runs the matcher function in case of GeospatialValidationLevel_Runtime
+ * and returns the result from the matcher function.
+ * Note: For other GeospatialValidationLevel or when runtime matcher doesn't exist,
+ * this function returns `false` which the caller should take into consideration
+ */
+static inline bool
+UpdateStateAndRunMatcherIfValidPointFound(ProcessCommonGeospatialState *state)
+{
+	state->isEmpty = false;
+	state->total++;
+	if (IsRuntimeValidation(state) && state->runtimeMatcher.matcherFunc != NULL)
+	{
+		SetQueryMatcherResult(state);
+		return state->runtimeMatcher.isMatched;
+	}
+
 	return false;
 }
 
@@ -383,32 +407,41 @@ LegacyPointVisitTopLevelField(pgbsonelement *element, const StringView *filterPa
 		 firstValue->value_type == BSON_TYPE_DOCUMENT))
 	{
 		processState->isMultiKeyContext = true;
-
 		BsonValueInitIterator(value, &iter);
 		while (bson_iter_next(&iter))
 		{
 			const bson_value_t *nestedValue = bson_iter_value(&iter);
 			isValid = BsonValueParseAsLegacyPoint2d(nestedValue, processState);
+
+			/* If we have runtime matcher then run the match against each value individually */
+			if (isValid)
+			{
+				/*
+				 * Don't need to set total and run matcher in case of bloom filter.
+				 * We can return as soon as 1 valid shape is found on path.
+				 */
+				if (IsBloomValidation(processState))
+				{
+					return false;
+				}
+
+				bool isMatched = UpdateStateAndRunMatcherIfValidPointFound(processState);
+				if (isMatched)
+				{
+					return false;
+				}
+			}
 		}
 	}
 	else
 	{
 		isValid = BsonValueParseAsLegacyPoint2d(value, processState);
+		if (isValid)
+		{
+			UpdateStateAndRunMatcherIfValidPointFound(processState);
+		}
 	}
 
-	if (!isValid)
-	{
-		return false;
-	}
-
-	/* If we have runtime matcher then run the match against each value individually */
-	if (IsRuntimeValidation(processState) &&
-		processState->runtimeMatcher.matcherFunc != NULL)
-	{
-		SetQueryMatcherResult(processState);
-	}
-
-	processState->isEmpty = false;
 	return false;
 }
 
@@ -452,11 +485,6 @@ BsonValueParseAsLegacyPoint2d(const bson_value_t *value,
 			state->isEmpty = false;
 			return false;
 		}
-	}
-
-	if (isValid)
-	{
-		state->total++;
 	}
 
 	return isValid;
@@ -715,67 +743,101 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 	 *    Json format
 	 */
 	GeometryParseFlag parseFlag = ParseFlag_None;
+	bool isValid = false;
+	GeoJsonParseState parseState;
+	memset(&parseState, 0, sizeof(GeoJsonParseState));
+	parseState.shouldThrowValidityError = throwError;
+	parseState.buffer = processState->WKBBuffer;
+	parseState.errorCtxt = processState->errorCtxt;
+
 	if (value->value_type == BSON_TYPE_ARRAY)
 	{
-		/* This can only be legacy point */
+		bson_iter_t iter;
+		BsonValueInitIterator(value, &iter);
 		parseFlag = parseFlag | ParseFlag_Legacy;
+		if (!bson_iter_next(&iter))
+		{
+			return false;
+		}
+
+		/*
+		 * Check if first value is again array or object inside an array, then treat this as multipoint array.
+		 * Querying documents containing array of legacy coordinate pairs ( for e.g. [ [ 1, 1 ], [ 2, 2 ], [ 3, 3 ] ] ) are supported with 2d index and in runtime but not with 2dsphere index.
+		 * We only end up here in case of runtime or 2dsphere index validation. Hence adding this check here - throwError signifies 2dsphere index validation.
+		 */
+		const bson_value_t *firstValue = bson_iter_value(&iter);
+		if ((firstValue->value_type == BSON_TYPE_ARRAY ||
+			 firstValue->value_type == BSON_TYPE_DOCUMENT) &&
+			!throwError)
+		{
+			processState->isMultiKeyContext = true;
+			BsonValueInitIterator(value, &iter);
+			while (bson_iter_next(&iter))
+			{
+				const bson_value_t *nestedValue = bson_iter_value(&iter);
+				isValid = BsonValueGetGeometryWKB(nestedValue, parseFlag,
+												  &parseState);
+
+				if (isValid)
+				{
+					bool isMatched =
+						UpdateStateAndRunMatcherIfValidPointFound(processState);
+
+					if (isMatched)
+					{
+						return false;
+					}
+				}
+			}
+		}
+		else
+		{
+			/* value must be a simple legacy coordinate pair, process it like that */
+			isValid = BsonValueGetGeometryWKB(value, parseFlag, &parseState);
+
+			if (isValid)
+			{
+				UpdateStateAndRunMatcherIfValidPointFound(processState);
+			}
+		}
 	}
 	else
 	{
 		/* This can either by legacy or GeoJSON, so try to parse this as legacy without error */
 		parseFlag = parseFlag | ParseFlag_Legacy_NoError | ParseFlag_GeoJSON_All;
-	}
+		isValid = BsonValueGetGeometryWKB(value, parseFlag, &parseState);
 
-	GeoJsonParseState parseState;
-	memset(&parseState, 0, sizeof(GeoJsonParseState));
-
-	parseState.shouldThrowValidityError = throwError;
-	parseState.buffer = processState->WKBBuffer;
-	parseState.errorCtxt = processState->errorCtxt;
-
-	bool isValid = BsonValueGetGeometryWKB(value, parseFlag, &parseState);
-	if (!isValid)
-	{
-		return false;
-	}
-
-	if (parseState.crs != NULL &&
-		strcmp(parseState.crs, GEOJSON_CRS_BIGPOLYGON) == 0)
-	{
-		/* Strict CRS are not valid for insertions with strict index validation */
-		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
-			throwError, (
-				errcode(GEO_ERROR_CODE(processState->errorCtxt)),
-				errmsg("%scan't index geometry with strict winding order",
-					   GEO_ERROR_PREFIX(processState->errorCtxt)),
-				errhint("%scan't index geometry with strict winding order",
-						GEO_HINT_PREFIX(processState->errorCtxt))));
-	}
+		if (parseState.crs != NULL &&
+			strcmp(parseState.crs, GEOJSON_CRS_BIGPOLYGON) == 0)
+		{
+			/* Strict CRS are not valid for insertions with strict index validation */
+			RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+				throwError, (
+					errcode(GEO_ERROR_CODE(processState->errorCtxt)),
+					errmsg("%scan't index geometry with strict winding order",
+						   GEO_ERROR_PREFIX(processState->errorCtxt)),
+					errhint("%scan't index geometry with strict winding order",
+							GEO_HINT_PREFIX(processState->errorCtxt))));
+		}
 
 
-	if (processState->opInfo != NULL &&
-		IsGeoWithinQueryOperator(processState->opInfo->queryOperatorType) &&
-		parseState.type == GeoJsonType_POLYGON && parseState.numOfRingsInPolygon > 1)
-	{
-		/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of
-		 * Postgis matching difference for these cases
-		 */
-		ereport(ERROR, (
-					errcode(MongoCommandNotSupported),
-					errmsg("$geoWithin currently doesn't support polygons with holes")
-					));
-	}
+		if (processState->opInfo != NULL &&
+			IsGeoWithinQueryOperator(processState->opInfo->queryOperatorType) &&
+			parseState.type == GeoJsonType_POLYGON && parseState.numOfRingsInPolygon > 1)
+		{
+			/* TODO: Fix polygon with holes geowithin comparision, for now we throw unsupported error because of
+			 * Postgis matching difference for these cases
+			 */
+			ereport(ERROR, (
+						errcode(MongoCommandNotSupported),
+						errmsg("$geoWithin currently doesn't support polygons with holes")
+						));
+		}
 
-
-	/* We found a valid geography */
-	processState->isEmpty = false;
-	processState->total++;
-
-	/* If we have runtime matcher then run the match against each value individually */
-	if (IsRuntimeValidation(processState) &&
-		processState->runtimeMatcher.matcherFunc != NULL)
-	{
-		SetQueryMatcherResult(processState);
+		if (isValid)
+		{
+			UpdateStateAndRunMatcherIfValidPointFound(processState);
+		}
 	}
 
 	return false;

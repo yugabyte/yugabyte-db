@@ -64,6 +64,7 @@ TraverseWKBBufferCore(WKBBufferIterator *iter, const WKBVisitorFunctions *visito
 	if ((type & POSTGIS_EWKB_SRID_FLAG) == POSTGIS_EWKB_SRID_FLAG)
 	{
 		type = type & POSTGIS_EWKB_SRID_NEGATE_FLAG;
+		IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_SRID);
 	}
 	WKBGeometryType geoType = (WKBGeometryType) type;
 	IncrementWKBBufferIteratorByNBytes(iter, WKB_BYTE_SIZE_TYPE);
