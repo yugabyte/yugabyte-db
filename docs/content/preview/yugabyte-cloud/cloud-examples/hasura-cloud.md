@@ -1,8 +1,8 @@
 ---
 title: Hasura Cloud
-headerTitle: Connect Hasura Cloud to YugabyteDB Managed
+headerTitle: Connect Hasura Cloud to YugabyteDB Aeon
 linkTitle: Hasura Cloud
-description: Connect Hasura Cloud to YugabyteDB Managed.
+description: Connect Hasura Cloud to YugabyteDB Aeon.
 aliases:
   - /preview/yugabyte-cloud/hasura-cloud/
 menu:
@@ -13,19 +13,19 @@ menu:
 type: docs
 ---
 
-Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB Managed to power your GraphQL applications with a distributed SQL database.
+Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB Aeon to power your GraphQL applications with a distributed SQL database.
 
-This page describes how to connect a YugabyteDB Managed cluster to a Hasura Cloud project.
+This page describes how to connect a YugabyteDB Aeon cluster to a Hasura Cloud project.
 
-For an example of how to deploy a GraphQL application for a Hasura Cloud project connected to YugabyteDB Managed, refer to [Deploy a GraphQL application](../hasura-sample-app/).
+For an example of how to deploy a GraphQL application for a Hasura Cloud project connected to YugabyteDB Aeon, refer to [Deploy a GraphQL application](../hasura-sample-app/).
 
 ## Obtain your Yugabyte cluster connection info
 
-Sign up for YugabyteDB Managed and create a Sandbox cluster by following the steps in the [Quick Start](../../cloud-quickstart/).
+Sign up for YugabyteDB Aeon and create a Sandbox cluster by following the steps in the [Quick Start](../../cloud-quickstart/).
 
 The cluster has a default database called `yugabyte`. You'll use this along with your database credentials (username and password) in your connection with the Hasura project. To connect, you'll also need the connection string with the cluster's host address and port number.
 
-To get these details, in YugabyteDB Managed:
+To get these details, in YugabyteDB Aeon:
 
 1. On the **Clusters** page, select the cluster you will use for the application, and click **Connect**.
 
@@ -61,13 +61,13 @@ To create a project in Hasura Cloud:
 
 1. Copy the endpoint URL and **Admin Secret**. You will need these to connect applications.
 
-1. Note the **Hasura Cloud IP**. You will need to add this to your cluster IP allow list in YugabyteDB Managed.
+1. Note the **Hasura Cloud IP**. You will need to add this to your cluster IP allow list in YugabyteDB Aeon.
 
 ## Add the Hasura Cloud project to your Yugabyte cluster IP allow list
 
-YugabyteDB Managed restricts access to clusters to IP addresses whitelisted in IP allow lists. To connect the Hasura project, you must add the project's IP address to the  cluster IP allow list.
+YugabyteDB Aeon restricts access to clusters to IP addresses whitelisted in IP allow lists. To connect the Hasura project, you must add the project's IP address to the  cluster IP allow list.
 
-1. In YugabyteDB Managed, select your cluster, click **Actions**, and choose **Edit IP Allow List**.
+1. In YugabyteDB Aeon, select your cluster, click **Actions**, and choose **Edit IP Allow List**.
 
 1. Click **Create New List and Add to Cluster**.
 
@@ -85,7 +85,7 @@ To connect your cluster:
 
 1. Under **Connect Existing Database**, enter the following details:
 
-    * **Database Display Name**: enter a display name for your YugabyteDB Managed cluster
+    * **Database Display Name**: enter a display name for your YugabyteDB Aeon cluster
     * **Data Source Driver**: PostgreSQL
     * **Connect Database Via**: Database URL
 

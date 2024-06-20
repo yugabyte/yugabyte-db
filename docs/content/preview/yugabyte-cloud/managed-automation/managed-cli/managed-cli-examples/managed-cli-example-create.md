@@ -2,7 +2,7 @@
 title: Create clusters example for ybm CLI automation
 headerTitle: "ybm CLI: Create clusters"
 linkTitle: Create clusters
-description: Tutorial for using YugabyteDB Managed ybm CLI to create clusters.
+description: Tutorial for using YugabyteDB Aeon ybm CLI to create clusters.
 headcontent: Create and connect to a cluster from the command line
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Managed.
+The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Aeon.
 
 ## Prerequisites
 
@@ -93,7 +93,7 @@ my-computer                                       173.206.17.104/32   my-sandbox
 
 ### Download the cluster certificate
 
-To connect to a cluster in YugabyteDB Managed using a shell, you need the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
+To connect to a cluster in YugabyteDB Aeon using a shell, you need the [cluster certificate](../../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
 
 ```sh
 ybm cluster cert download --out $HOME/root.crt

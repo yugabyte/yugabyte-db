@@ -2,7 +2,7 @@
 title: VPC network
 headerTitle: VPC network
 linkTitle: VPC network
-description: Configure VPC networking in YugabyteDB Managed.
+description: Configure VPC networking in YugabyteDB Aeon.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 headcontent: Set up VPC networking so that your clusters can communicate privately with applications
 aliases:
@@ -16,11 +16,11 @@ menu:
 type: indexpage
 ---
 
-A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Managed clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
+A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Aeon clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
 
 Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs.
 
-In YugabyteDB Managed, a VPC network consists of the following components:
+In YugabyteDB Aeon, a VPC network consists of the following components:
 
 | Component | Description |
 | :--- | :--- |

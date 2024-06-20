@@ -1,8 +1,8 @@
 ---
-title: VPCs in YugabyteDB Managed
+title: VPCs in YugabyteDB Aeon
 headerTitle: VPC network overview
 linkTitle: Overview
-description: Requirements and considerations for setting up a VPC network in YugabyteDB Managed.
+description: Requirements and considerations for setting up a VPC network in YugabyteDB Aeon.
 headcontent: What you need to know before creating VPCs
 menu:
   preview_yugabyte-cloud:
@@ -66,7 +66,7 @@ When creating a VPC, you need to determine the following:
 
 ### Choose the region for your VPC
 
-For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by YugabyteDB Managed. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
+For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by YugabyteDB Aeon. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
 
 For AWS, you can only define a single region per VPC.
 
@@ -92,7 +92,7 @@ In AWS and GCP, because you can't resize a VPC once it is created, you need to d
 
 Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
-When entering the range for your VPC in YugabyteDB Managed, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Managed supports network sizes from `/26` to `/16`. For typical applications, `/25` is sufficient.
+When entering the range for your VPC in YugabyteDB Aeon, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Aeon supports network sizes from `/26` to `/16`. For typical applications, `/25` is sufficient.
 
 The number of available addresses and sizing recommendation depends on the cloud provider where you are deploying.
 
@@ -158,12 +158,12 @@ If you are using VPC peering, addresses have the following additional restrictio
 
   ![VPCs peering with the same application VPC can't overlap](/images/yb-cloud/managed-vpc-overlap-cidr.png)
 
-  YugabyteDB Managed warns you when you enter an overlapping range.
+  YugabyteDB Aeon warns you when you enter an overlapping range.
 - Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
 
   ![VPC CIDR can't overlap application CIDR](/images/yb-cloud/managed-vpc-overlap-app.png)
 
-YugabyteDB Managed reserves the following ranges for internal operations.
+YugabyteDB Aeon reserves the following ranges for internal operations.
 
 | Provider | Range |
 | :--- | :--- |

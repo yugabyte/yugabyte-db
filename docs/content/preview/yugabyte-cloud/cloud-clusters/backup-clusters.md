@@ -1,7 +1,7 @@
 ---
 title: Back up and restore clusters
 linkTitle: Backup and restore
-description: Back up and restore clusters in YugabyteDB Managed.
+description: Back up and restore clusters in YugabyteDB Aeon.
 headcontent: Configure your backup schedule and restore databases
 menu:
   preview_yugabyte-cloud:
@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed can perform full and incremental cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
+YugabyteDB Aeon can perform full and incremental cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
 
-{{< youtube id="3qzAdrVFgxc" title="Back up and restore clusters in YugabyteDB Managed" >}}
+{{< youtube id="3qzAdrVFgxc" title="Back up and restore clusters in YugabyteDB Aeon" >}}
 
 By default, clusters are backed up automatically every 24 hours, and these automatic full backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
 

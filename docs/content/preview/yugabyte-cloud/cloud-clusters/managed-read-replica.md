@@ -1,8 +1,8 @@
 ---
-title: Read replicas in YugabyteDB Managed
+title: Read replicas in YugabyteDB Aeon
 headerTitle: Read replicas
 linkTitle: Read replicas
-description: Add read replicas to YugabyteDB Managed clusters.
+description: Add read replicas to YugabyteDB Aeon clusters.
 headcontent: Reduce read latencies in remote regions
 menu:
   preview_yugabyte-cloud:
@@ -14,7 +14,7 @@ type: docs
 
 If your user base is geographically distributed, you can add [read replicas](../../cloud-basics/create-clusters-topology/#read-replicas) to improve read latency in regions that are far from your primary region.
 
-{{< youtube id="aar4vW6Z1Zg" title="Add read replicas to a cluster in YugabyteDB Managed" >}}
+{{< youtube id="aar4vW6Z1Zg" title="Add read replicas to a cluster in YugabyteDB Aeon" >}}
 
 Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to read replicas asynchronously. To read data from a read replica, you need to enable follower reads for the cluster.
 

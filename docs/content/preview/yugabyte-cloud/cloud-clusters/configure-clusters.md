@@ -1,7 +1,7 @@
 ---
 title: Scale and configure clusters
 linkTitle: Scale and configure clusters
-description: Scale YugabyteDB Managed clusters.
+description: Scale YugabyteDB Aeon clusters.
 headcontent: Scale clusters horizontally and vertically
 menu:
   preview_yugabyte-cloud:
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed supports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
+YugabyteDB Aeon supports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.
 
 You can scale the following cluster properties:
 
@@ -22,7 +22,7 @@ You can scale the following cluster properties:
 
 Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.
 
-{{< youtube id="Dhb-R-tlFKM" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
+{{< youtube id="Dhb-R-tlFKM" title="Perform a live infrastructure upgrade in YugabyteDB Aeon" >}}
 
 For clusters with Region, Availability Zone, or Node Level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
@@ -108,7 +108,7 @@ You can scale partition-by-region clusters horizontally and vertically.
 
 In addition, you can add and delete regions.
 
-New regions must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster. YugabyteDB Managed automatically creates tablespaces in the new regions named `region_name_ts`. For example, if you add the us-central1 region, the tablespace is named `us_central1_ts`.
+New regions must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster. YugabyteDB Aeon automatically creates tablespaces in the new regions named `region_name_ts`. For example, if you add the us-central1 region, the tablespace is named `us_central1_ts`.
 
 Before you can delete a region, you must drop all the tablespaces located in the region. You can't delete the primary region.
 

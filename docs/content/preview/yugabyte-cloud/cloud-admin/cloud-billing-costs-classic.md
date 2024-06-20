@@ -1,7 +1,7 @@
 ---
 title: Cluster costs
 linkTitle: Cluster costs
-description: YugabyteDB Managed cluster configuration costs.
+description: YugabyteDB Aeon cluster configuration costs.
 headcontent: Classic cluster pricing
 menu:
   preview_yugabyte-cloud:
@@ -242,7 +242,7 @@ The free allowance for data out transfers is 10GB per month for every 1 vCPU per
   - Re-read data that already exists on the client.
   - Re-write existing data to your database deployment.
 
-- If possible, configure your client driver to use network compression to communicate with the YugabyteDB cluster. YugabyteDB Managed always compresses intra-cluster communication.
+- If possible, configure your client driver to use network compression to communicate with the YugabyteDB cluster. YugabyteDB Aeon always compresses intra-cluster communication.
 
 ## Paused cluster costs
 

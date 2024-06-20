@@ -1,7 +1,7 @@
 ---
 title: Billing and invoices
 linkTitle: Manage billing
-description: Manage your YugabyteDB Managed billing profile and payment methods and view invoices.
+description: Manage your YugabyteDB Aeon billing profile and payment methods and view invoices.
 headcontent: Manage your plan and payment, and review invoices and usage
 menu:
   preview_yugabyte-cloud:
@@ -15,13 +15,13 @@ Review your usage and charges, manage your plan, and manage your billing informa
 
 Yugabyte bills for its services as follows:
 
-- Charges by the minute for your YugabyteDB Managed clusters, at rates based on your plan.
+- Charges by the minute for your YugabyteDB Aeon clusters, at rates based on your plan.
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Usage & Billing** page.
 
 **Invoices are sent to the email provided in the Billing Profile**.
 
-For information on YugabyteDB Managed plans and add-ons, refer to [YugabyteDB Pricing](https://www.yugabyte.com/pricing/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
+For information on YugabyteDB Aeon plans and add-ons, refer to [YugabyteDB Pricing](https://www.yugabyte.com/pricing/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
 
 ![Usage & Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
@@ -63,7 +63,7 @@ Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for th
 
 ### Usage Breakdown
 
-Shows a breakdown of costs for the current billing cycle. YugabyteDB Managed billing is based on your actual usage across the following dimensions:
+Shows a breakdown of costs for the current billing cycle. YugabyteDB Aeon billing is based on your actual usage across the following dimensions:
 
 - Instance Capacity
 - Disk Storage

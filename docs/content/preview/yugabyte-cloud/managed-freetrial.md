@@ -1,8 +1,8 @@
 ---
 title: Start a free trial
 linkTitle: Start a free trial
-description: Start a free trial of YugabyteDB Managed to conduct POCs and performance testing.
-headcontent: Explore all YugabyteDB Managed features
+description: Start a free trial of YugabyteDB Aeon to conduct POCs and performance testing.
+headcontent: Explore all YugabyteDB Aeon features
 menu:
   preview_yugabyte-cloud:
     identifier: managed-freetrial
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Managed.
+To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Aeon.
 
 To start a free trial:
 
