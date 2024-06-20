@@ -163,9 +163,6 @@ DEFINE_test_flag(bool, block_get_changes, false,
     "For testing only. When set to true, GetChanges will not send any new changes "
     "to the consumer.");
 
-DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
-    "Injects an error after updating a tablet's replication index entry");
-
 DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
     "Always bypass the cache and fetch the checkpoint from the cdc state table");
 
@@ -392,12 +389,7 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
 
 class CDCServiceImpl::Impl {
  public:
-  explicit Impl(CDCServiceContext* context, rw_spinlock* mutex)
-      : async_client_init_(context->MakeClientInitializer(
-            "cdc_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms))),
-        mutex_(*mutex) {
-    async_client_init_->Start();
-  }
+  explicit Impl(CDCServiceContext* context, rw_spinlock* mutex) : mutex_(*mutex) {}
 
   void UpdateCDCStateMetadata(
       const TabletStreamInfo& producer_tablet, const uint64_t& timestamp,
@@ -768,8 +760,6 @@ class CDCServiceImpl::Impl {
     cdc_state_metadata_.clear();
   }
 
-  std::unique_ptr<client::AsyncClientInitializer> async_client_init_;
-
   // this will be used for the std::call_once call while caching the client
   std::once_flag is_client_cached_;
 
@@ -783,7 +773,8 @@ class CDCServiceImpl::Impl {
 
 CDCServiceImpl::CDCServiceImpl(
     std::unique_ptr<CDCServiceContext> context,
-    const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry)
+    const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
+    const std::shared_future<client::YBClient*>& client_future)
     : CDCServiceIf(metric_entity_server),
       context_(std::move(context)),
       metric_registry_(metric_registry),
@@ -792,9 +783,9 @@ CDCServiceImpl::CDCServiceImpl(
           1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
           GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
-      impl_(new Impl(context_.get(), &mutex_)) {
-  cdc_state_table_ =
-      std::make_unique<cdc::CDCStateTable>(impl_->async_client_init_->get_client_future());
+      impl_(new Impl(context_.get(), &mutex_)),
+      client_future_(client_future) {
+  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(client_future);
 
   CHECK_OK(Thread::Create(
       "cdc_service", "update_peers_and_metrics", &CDCServiceImpl::UpdatePeersAndMetrics, this,
@@ -807,7 +798,7 @@ CDCServiceImpl::CDCServiceImpl(
 
 CDCServiceImpl::~CDCServiceImpl() { Shutdown(); }
 
-client::YBClient* CDCServiceImpl::client() { return impl_->async_client_init_->client(); }
+client::YBClient* CDCServiceImpl::client() { return client_future_.get(); }
 
 namespace {
 
@@ -3464,10 +3455,6 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     }
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_cdc_inject_replication_index_update_failure)) {
-    return STATUS(InternalError, "Simulated error when setting the replication index");
-  }
-
   return Status::OK();
 }
 
@@ -3634,21 +3621,17 @@ void CDCServiceImpl::BootstrapProducer(
 }
 
 void CDCServiceImpl::Shutdown() {
-  if (impl_->async_client_init_) {
-    impl_->async_client_init_->Shutdown();
-    rpcs_.Shutdown();
-    {
-      std::lock_guard l(mutex_);
-      cdc_service_stopped_ = true;
-    }
-    if (update_peers_and_metrics_thread_) {
-      update_peers_and_metrics_thread_->Join();
-    }
-
-    cdc_state_table_.reset();
-    impl_->async_client_init_ = nullptr;
-    impl_->ClearCaches();
+  rpcs_.Shutdown();
+  {
+    std::lock_guard l(mutex_);
+    cdc_service_stopped_ = true;
   }
+  if (update_peers_and_metrics_thread_) {
+    update_peers_and_metrics_thread_->Join();
+  }
+
+  cdc_state_table_.reset();
+  impl_->ClearCaches();
 }
 
 Status CDCServiceImpl::CheckStreamActive(
