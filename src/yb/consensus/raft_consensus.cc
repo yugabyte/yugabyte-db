@@ -348,7 +348,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     TableType table_type,
     ThreadPool* raft_pool,
     rpc::ThreadPool* raft_notifications_pool,
-    RetryableRequestsManager* retryable_requests_manager,
+    RetryableRequests* retryable_requests,
     MultiRaftManager* multi_raft_manager) {
 
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
@@ -403,7 +403,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      retryable_requests_manager);
+      retryable_requests);
 }
 
 RaftConsensus::RaftConsensus(
@@ -419,7 +419,7 @@ RaftConsensus::RaftConsensus(
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequestsManager* retryable_requests_manager)
+    RetryableRequests* retryable_requests)
     : raft_pool_concurrent_token_(std::move(raft_pool_concurrent_token)),
       log_(log),
       clock_(clock),
@@ -459,7 +459,7 @@ RaftConsensus::RaftConsensus(
       std::move(cmeta),
       DCHECK_NOTNULL(consensus_context),
       this,
-      retryable_requests_manager,
+      retryable_requests,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -3677,28 +3677,20 @@ Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
   return state_->retryable_requests();
 }
 
+Result<std::unique_ptr<RetryableRequests>> RaftConsensus::TakeSnapshotOfRetryableRequests() {
+  return state_->TakeSnapshotOfRetryableRequests();
+}
+
 OpId RaftConsensus::GetLastFlushedOpIdInRetryableRequests() {
   return state_->GetLastFlushedOpIdInRetryableRequests();
 }
 
-Status RaftConsensus::FlushRetryableRequests() {
-  return state_->FlushRetryableRequests();
-}
-
-Status RaftConsensus::CopyRetryableRequestsTo(const std::string &dest_path) {
-  auto lock = state_->LockForRead();
-  if(state_->state() != ReplicaState::kRunning) {
-    return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
-  }
-  return state_->CopyRetryableRequestsTo(dest_path);
+Status RaftConsensus::SetLastFlushedOpIdInRetryableRequests(const OpId& op_id) {
+  return state_->SetLastFlushedOpIdInRetryableRequests(op_id);
 }
 
 int64_t RaftConsensus::follower_lag_ms() const {
   return follower_last_update_time_ms_metric_->lag_ms();
-}
-
-bool RaftConsensus::TEST_HasRetryableRequestsOnDisk() const {
-  return state_->TEST_HasRetryableRequestsOnDisk();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
