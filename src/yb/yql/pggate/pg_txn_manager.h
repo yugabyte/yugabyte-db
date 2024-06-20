@@ -60,8 +60,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
-  Status CommitTransaction();
-  Status AbortTransaction();
+  Status CommitPlainTransaction();
+  Status AbortPlainTransaction();
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
@@ -96,7 +96,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::string TxnStateDebugStr() const;
 
-  Status FinishTransaction(Commit commit);
+  Status FinishPlainTransaction(Commit commit);
 
   void IncTxnSerialNo();
 

@@ -172,7 +172,8 @@ PgTxnManager::PgTxnManager(
 
 PgTxnManager::~PgTxnManager() {
   // Abort the transaction before the transaction manager gets destroyed.
-  WARN_NOT_OK(AbortTransaction(), "Failed to abort transaction in dtor");
+  WARN_NOT_OK(ExitSeparateDdlTxnMode(Commit::kFalse), "Failed to abort DDL transaction in dtor");
+  WARN_NOT_OK(AbortPlainTransaction(), "Failed to abort DML transaction in dtor");
 }
 
 Status PgTxnManager::BeginTransaction(int64_t start_time) {
@@ -368,16 +369,21 @@ void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
   active_sub_transaction_id_ = id;
 }
 
-Status PgTxnManager::CommitTransaction() {
-  return FinishTransaction(Commit::kTrue);
+Status PgTxnManager::CommitPlainTransaction() {
+  return FinishPlainTransaction(Commit::kTrue);
 }
 
-Status PgTxnManager::FinishTransaction(Commit commit) {
-  // If a DDL operation during a DDL txn fails the txn will be aborted before we get here.
-  // However if there are failures afterwards (i.e. during COMMIT or catalog version increment),
-  // then we might get here with a ddl_txn_. Clean it up in that case.
-  if (IsDdlMode() && !commit) {
-    RETURN_NOT_OK(ExitSeparateDdlTxnMode(commit));
+Status PgTxnManager::AbortPlainTransaction() {
+  return FinishPlainTransaction(Commit::kFalse);
+}
+
+Status PgTxnManager::FinishPlainTransaction(Commit commit) {
+  if (PREDICT_FALSE(IsDdlMode())) {
+    // GH #22353 - A DML txn must be aborted or committed only when there is no active DDL txn
+    // (ie. after any active DDL txn has itself committed or aborted). Silently ignoring this
+    // scenario may lead to errors in the future. Convert this to an SCHECK once the GH issue is
+    // resolved.
+    LOG(WARNING) << "Received DML txn commit with DDL txn state active";
   }
 
   if (!txn_in_progress_) {
@@ -391,15 +397,15 @@ Status PgTxnManager::FinishTransaction(Commit commit) {
     return Status::OK();
   }
 
+  // Aborting a transaction is on a best-effort basis. In the event that the abort RPC to the
+  // tserver fails, we simply reset the transaction state here and return any error back to the
+  // caller. In the event that the tserver recovers, it will eventually expire the transaction due
+  // to inactivity.
   VLOG_TXN_STATE(2) << (commit ? "Committing" : "Aborting") << " transaction.";
   Status status = client_->FinishTransaction(commit, DdlType::NonDdl);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
   return status;
-}
-
-Status PgTxnManager::AbortTransaction() {
-  return FinishTransaction(Commit::kFalse);
 }
 
 void PgTxnManager::ResetTxnAndSession() {
@@ -430,9 +436,16 @@ Status PgTxnManager::ExitSeparateDdlTxnMode(Commit commit) {
     RSTATUS_DCHECK(!commit, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_type_));
-  ddl_type_ = DdlType::NonDdl;
-  return Status::OK();
+
+  Status status = client_->FinishTransaction(commit, ddl_type_);
+  WARN_NOT_OK(status, Format("Failed to $0 DDL transaction", commit ? "commit" : "abort"));
+  if (PREDICT_TRUE(status.ok() || !commit)) {
+    // In case of an abort, reset the DDL mode here as we may later re-enter this function and retry
+    // the abort as part of transaction error recovery if the status is not ok.
+    ddl_type_ = DdlType::NonDdl;
+  }
+
+  return status;
 }
 
 void PgTxnManager::SetDdlHasSyscatalogChanges() {
