@@ -2103,16 +2103,16 @@ bool PgApiImpl::IsRestartReadPointRequested() {
   return pg_txn_manager_->IsRestartReadPointRequested();
 }
 
-Status PgApiImpl::CommitTransaction() {
+Status PgApiImpl::CommitPlainTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  return pg_txn_manager_->CommitTransaction();
+  return pg_txn_manager_->CommitPlainTransaction();
 }
 
-Status PgApiImpl::AbortTransaction() {
+Status PgApiImpl::AbortPlainTransaction() {
   pg_session_->InvalidateForeignKeyReferenceCache();
   pg_session_->DropBufferedOperations();
-  return pg_txn_manager_->AbortTransaction();
+  return pg_txn_manager_->AbortPlainTransaction();
 }
 
 Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {

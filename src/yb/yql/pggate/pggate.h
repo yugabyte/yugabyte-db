@@ -646,8 +646,8 @@ class PgApiImpl {
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
-  Status CommitTransaction();
-  Status AbortTransaction();
+  Status CommitPlainTransaction();
+  Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
