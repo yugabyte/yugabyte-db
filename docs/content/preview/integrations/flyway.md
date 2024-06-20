@@ -39,7 +39,7 @@ To use Flyway with YugabyteDB, you need the following:
     flyway.password=yugabyte
     ```
 
-- Add YugabyteDB JDBC Smart Driver jar in your application's classpath. The maven coordinates of the driver are given below. For its latest version, see [this mvn repository page](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb).
+- Add YugabyteDB JDBC Smart Driver jar in your application's classpath. Use the following maven coordinates; for the latest version, see the [mvn repository](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb).
   ```
   <dependency>
     <groupId>com.yugabyte</groupId>
@@ -129,6 +129,6 @@ To check the state of the database and run the migration, execute the following 
  ./flyway migrate
 ```
 
-## More on Flyway usage
+## Learn more
 
-Refer to [Flyway documentation](https://documentation.red-gate.com/flyway/flyway-cli-and-api/usage) for more details on using Flyway.
+Refer to the [Flyway documentation](https://documentation.red-gate.com/flyway/flyway-cli-and-api/usage) for more details on using Flyway.
