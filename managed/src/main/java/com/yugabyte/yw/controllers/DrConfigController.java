@@ -683,8 +683,12 @@ public class DrConfigController extends AuthenticatedController {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
 
-    failoverXClusterCreatePreChecks(
-        requestedTableInfoList, targetTableInfoList, targetUniverse, sourceUniverse);
+    drSwitchoverFailoverPreChecks(
+        CustomerTask.TaskType.Switchover,
+        requestedTableInfoList,
+        targetTableInfoList,
+        targetUniverse,
+        sourceUniverse);
 
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, targetUniverse, tableIds);
@@ -796,8 +800,12 @@ public class DrConfigController extends AuthenticatedController {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
 
-    failoverXClusterCreatePreChecks(
-        requestedTableInfoList, targetTableInfoList, targetUniverse, sourceUniverse);
+    drSwitchoverFailoverPreChecks(
+        CustomerTask.TaskType.Failover,
+        requestedTableInfoList,
+        targetTableInfoList,
+        targetUniverse,
+        sourceUniverse);
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, targetUniverse, tableIds);
 
@@ -1196,18 +1204,22 @@ public class DrConfigController extends AuthenticatedController {
   }
 
   /**
-   * It runs some pre-checks to ensure that the failover xClsuter config can be set up. A failover
-   * xCluster config is almost the same as the main xCluster config but in the reverse direction.
+   * It runs some pre-checks to ensure that the reverse direction xCluster config can be set up. A
+   * reverse direction xCluster config is almost the same as the main xCluster config but in the
+   * reverse direction.
    *
+   * @param taskType This specifies the task that triggered the creation of a reverse direction
+   *     xCluster config.
    * @param requestedTableInfoList The table info list on the target universe that will be part of
    *     the failover xCluster config
    * @param targetTableInfoList The table info list for all tables on the target universe
    * @param targetUniverse The target universe in the main xCluster config which is the same as the
-   *     source universe in the failover xCluster config
+   *     source universe in the reverse direction xCluster config
    * @param sourceUniverse The source universe in the main xCluster config which is the same as the
-   *     target universe in the failover xCluster config
+   *     target universe in the reverse direction xCluster config
    */
-  public static void failoverXClusterCreatePreChecks(
+  public static void drSwitchoverFailoverPreChecks(
+      CustomerTask.TaskType taskType,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
       Universe targetUniverse,
@@ -1242,12 +1254,31 @@ public class DrConfigController extends AuthenticatedController {
                                           .equals(namespaceId))
                           .map(tableInfo -> tableInfo.getId().toStringUtf8())
                           .collect(Collectors.toSet());
-                  if (tableIdsInNamespace.size() != requestedTableIdsInNamespace.size()) {
+                  if (tableIdsInNamespace.size() > requestedTableIdsInNamespace.size()) {
+                    Set<String> extraTableIds =
+                        tableIdsInNamespace.stream()
+                            .filter(tableId -> !requestedTableIdsInNamespace.contains(tableId))
+                            .collect(Collectors.toSet());
                     throw new IllegalArgumentException(
                         String.format(
-                            "For YSQL tables, all the tables in a keyspace must be selected: "
-                                + "selected: %s, tables in the keyspace: %s",
-                            requestedTableIdsInNamespace, tableIdsInNamespace));
+                            "The DR replica databases under replication contain tables which are"
+                                + " not part of the DR config. %s is not possible until the extra"
+                                + " tables on the DR replica are removed. The extra tables from DR"
+                                + " replica are: %s",
+                            taskType, extraTableIds));
+                  }
+                  if (tableIdsInNamespace.size() < requestedTableIdsInNamespace.size()) {
+                    Set<String> extraTableIds =
+                        requestedTableIdsInNamespace.stream()
+                            .filter(tableId -> !tableIdsInNamespace.contains(tableId))
+                            .collect(Collectors.toSet());
+                    throw new IllegalArgumentException(
+                        String.format(
+                            "The DR replica databases under replication dropped tables that are"
+                                + " part of the DR config. %s is not possible until the same tables"
+                                + " are dropped from the DR primary and DR config. The extra tables"
+                                + " from DR config are: %s",
+                            taskType, extraTableIds));
                   }
                 }
               });
