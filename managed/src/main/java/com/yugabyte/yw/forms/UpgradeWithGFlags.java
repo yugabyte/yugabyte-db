@@ -10,7 +10,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -125,6 +124,11 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
 
   public Map<UUID, UniverseDefinitionTaskParams.Cluster> getNewVersionsOfClusters(
       Universe universe) {
+    return getVersionsOfClusters(universe, this);
+  }
+
+  public Map<UUID, UniverseDefinitionTaskParams.Cluster> getVersionsOfClusters(
+      Universe universe, UpgradeWithGFlags params) {
     boolean usingSpecificGFlags = isUsingSpecificGFlags(universe);
     Map<UUID, Cluster> clustersFromParams =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
@@ -136,8 +140,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
               curCluster.clusterType, curCluster.userIntent.clone());
       newVersion.uuid = curCluster.uuid;
       if (!usingSpecificGFlags) {
-        newVersion.userIntent.masterGFlags = this.masterGFlags;
-        newVersion.userIntent.tserverGFlags = this.tserverGFlags;
+        newVersion.userIntent.masterGFlags = params.masterGFlags;
+        newVersion.userIntent.tserverGFlags = params.tserverGFlags;
       } else if (clusterFromParams != null) {
         newVersion.userIntent.specificGFlags = clusterFromParams.userIntent.specificGFlags;
       }
@@ -150,7 +154,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       NodeDetails node,
       UniverseTaskBase.ServerType serverType,
       UniverseDefinitionTaskParams.Cluster curCluster,
-      List<Cluster> curClusters,
+      Collection<Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newClusterVersion,
       Collection<Cluster> newClusters) {
     Map<String, String> newGflags =
