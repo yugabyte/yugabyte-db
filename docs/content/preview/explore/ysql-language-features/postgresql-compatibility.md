@@ -47,7 +47,7 @@ Conversely, if you are using Enhanced Postgres Compatibility Mode on a universe,
 | EA Feature | Flag |
 | :--- | :--- |
 | Read-Committed isolation | yb_enable_read_committed_isolation=true |
-| Wait-on-Conflict concurrency for predictable P99 latencies | |
+| Wait-on-Conflict concurrency for predictable P99 latencies | enable_wait_queues=true |
 | Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
 | Use range sharding (ascending) by default | yb_use_hash_splitting_by_default=false |
 
