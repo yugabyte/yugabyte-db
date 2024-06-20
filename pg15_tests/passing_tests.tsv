@@ -23,6 +23,7 @@ JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeScans#testFetchLimitCosting
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeScans#testIndexScanConditionAndFilter
 JAVA	org.yb.pgsql.TestPgForeignKey
+JAVA	org.yb.pgsql.TestPgInsert
 JAVA	org.yb.pgsql.TestPgMisc#testVacuum
 JAVA	org.yb.pgsql.TestPgParallelReadIsolation
 JAVA	org.yb.pgsql.TestPgParallelSelect
