@@ -1083,7 +1083,18 @@
           "completeStepsTooltip": "Complete the prior step(s) to proceed",
           "schemaExport": "Schema Export",
           "schemaExportDesc": "Export schema from source database.",
-          "schemaExportLearn": "Learn how to export schema"
+          "schemaExportLearn": "Learn how to export schema",
+          "schemaExportSourceDB": "Schema export from source database",
+          "schemaAnalysis": "Schema analysis",
+          "schemaImportTargetDB": "Schema import to target database",
+          "schemaAnalysisDesc": "Analyze schema in order to xyz",
+          "schemaAnalysisLearn": "Learn how to analyze schema",
+          "automaticDDLImport": "Automatic DDL Import",
+          "manualRefactoring": "Manual Refactoring",
+          "totalAnalyzed": "Total Analyzed",
+          "schemaImport": "Schema Import",
+          "schemaImportDesc": "Import schema to target database.",
+          "schemaImportLearn": "Learn how to import schema"
         },
         "migrateData": {
           "migratedData": "Migrate data completed successfully",
