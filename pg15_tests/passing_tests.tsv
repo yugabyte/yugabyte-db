@@ -93,6 +93,7 @@ JAVA	org.yb.pgsql.TestPgSequences#testInt64LimitsInSequences
 JAVA	org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
 JAVA	org.yb.pgsql.TestPgTruncate
 JAVA	org.yb.pgsql.TestPgUniqueConstraint
+JAVA	org.yb.pgsql.TestPgUpdatePrimaryKey
 JAVA	org.yb.pgsql.TestPgWrapper#testNotNullConstraint
 JAVA	org.yb.pgsql.TestPgWriteRestart
 JAVA	org.yb.pgsql.TestTablespaceProperties#testAlterIndexSetTablespace
