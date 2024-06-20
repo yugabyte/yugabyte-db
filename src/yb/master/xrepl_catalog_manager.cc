@@ -927,36 +927,60 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   ReplicationSlotName slot_name;
   auto has_replication_slot_name = req.has_cdcsdk_ysql_replication_slot_name();
-  if (has_replication_slot_name) {
-    slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
-
+  {
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
 
-    // Duplicate detection.
-    if (cdcsdk_replication_slots_to_stream_map_.contains(
-            ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()))) {
-      auto stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
-      SCHECK(
-          stream_id, IllegalState, "Stream with slot name $0 was not found unexpectedly",
-          slot_name);
-      auto stream = FindOrNull(cdc_stream_map_, *stream_id);
-      SCHECK(stream, IllegalState, "Stream with id $0 was not found unexpectedly", stream_id);
-      if (!(*stream)->LockForRead()->is_deleting()) {
-        return STATUS(
-            AlreadyPresent, "CDC stream with the given replication slot name already exists",
-            MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+    if (has_replication_slot_name) {
+      slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
+
+      // Duplicate detection.
+      if (cdcsdk_replication_slots_to_stream_map_.contains(
+              ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()))) {
+        auto stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+        SCHECK(
+            stream_id, IllegalState, "Stream with slot name $0 was not found unexpectedly",
+            slot_name);
+        auto stream = FindOrNull(cdc_stream_map_, *stream_id);
+        SCHECK(stream, IllegalState, "Stream with id $0 was not found unexpectedly", stream_id);
+        if (!(*stream)->LockForRead()->is_deleting()) {
+          return STATUS(
+              AlreadyPresent, "CDC stream with the given replication slot name already exists",
+              MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+        }
+
+        // A prior replication slot with the same name exists which is in the DELETING state. Remove
+        // from the map early so that we don't have to fail this request.
+        cdcsdk_replication_slots_to_stream_map_.erase(slot_name);
       }
 
-      // A prior replication slot with the same name exists which is in the DELETING state. Remove
-      // from the map early so that we don't have to fail this request.
-      cdcsdk_replication_slots_to_stream_map_.erase(slot_name);
+      if (cdcsdk_replication_slots_to_stream_map_.size() >= FLAGS_max_replication_slots) {
+        return STATUS(
+            ReplicationSlotLimitReached, "Replication slot limit reached",
+            MasterError(MasterErrorPB::REPLICATION_SLOT_LIMIT_REACHED));
+      }
     }
 
-    if (cdcsdk_replication_slots_to_stream_map_.size() >= FLAGS_max_replication_slots) {
-      return STATUS(
-          ReplicationSlotLimitReached, "Replication slot limit reached",
-          MasterError(MasterErrorPB::REPLICATION_SLOT_LIMIT_REACHED));
+    // On a given namespace we allow either new model (replicaion slot) streams or old model
+    // (yb-admin) streams. Streams of both types cannot be present on the same namespace.
+    for (const auto& entry : cdc_stream_map_) {
+      const auto& stream = entry.second;
+      if (stream->namespace_id() == namespace_id) {
+        if (has_replication_slot_name && stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+          return STATUS(
+              IllegalState,
+              "Cannot create a replication slot on the same namespace which already has a yb-admin "
+              "stream on it. ",
+              MasterError(MasterErrorPB::INVALID_REQUEST));
+        } else if (
+            !has_replication_slot_name && !stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+          return STATUS(
+              IllegalState,
+              "Cannot create a stream on the same namespace which already has replication slot on "
+              "it. ",
+              MasterError(MasterErrorPB::INVALID_REQUEST));
+        }
+      }
     }
   }
 
@@ -1100,7 +1124,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   // consistent snapshot time.
   RETURN_NOT_OK(PopulateCDCStateTable(
       stream->StreamId(), table_ids, false /* has_consistent_snapshot_option */,
-      false /* consistent_snapshot_option_use */, 0 /* ignored */, 0 /* ignored */));
+      false /* consistent_snapshot_option_use */, 0 /* ignored */, 0 /* ignored */,
+      has_replication_slot_name));
 
   RETURN_NOT_OK(
       TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterDummyCDCStateEntries"));
@@ -1143,7 +1168,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   }
   RETURN_NOT_OK(PopulateCDCStateTable(
       stream->StreamId(), table_ids, has_consistent_snapshot_option, consistent_snapshot_option_use,
-      consistent_snapshot_time, stream_creation_time));
+      consistent_snapshot_time, stream_creation_time, has_replication_slot_name));
 
   RETURN_NOT_OK(TEST_CDCSDKFailCreateStreamRequestIfNeeded(
       "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails"));
@@ -1204,7 +1229,8 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
                                              bool has_consistent_snapshot_option,
                                              bool consistent_snapshot_option_use,
                                              uint64_t consistent_snapshot_time,
-                                             uint64_t stream_creation_time) {
+                                             uint64_t stream_creation_time,
+                                             bool has_replication_slot_name) {
   // Validate that the AlterTable callback has populated the checkpoint i.e. it is no longer
   // OpId::Invalid().
   std::unordered_set<TabletId> seen_tablet_ids;
@@ -1281,7 +1307,8 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
   //
   // If these values are changed here, also update the consistent point sent as part of the
   // creation of logical replication slot in walsender.c and slotfuncs.c.
-  if (FLAGS_ysql_TEST_enable_replication_slot_consumption && has_consistent_snapshot_option) {
+  if (FLAGS_ysql_TEST_enable_replication_slot_consumption && has_consistent_snapshot_option &&
+      has_replication_slot_name) {
     cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
     std::ostringstream oss;
     oss << consistent_snapshot_time << 'F';

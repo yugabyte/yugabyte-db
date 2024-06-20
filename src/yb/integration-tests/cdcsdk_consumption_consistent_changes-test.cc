@@ -3290,5 +3290,88 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   }
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfOldStreamAfterUpgrade) {
+  // All the flags are ON by default, this simulates an upgraded environment.
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+
+  // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
+  // that order.
+  int expected_count_old_model[] = {1, 1, 0, 0, 0, 0, 1, 1};
+  int expected_count_new_model[] = {0, 1, 0, 0, 0, 0, 1, 1};
+  int actual_count_old_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  int actual_count_new_model[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  // Create a table and a replication slot.
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto conn_1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(conn_1.Execute("INSERT INTO test1 values (1,1)"));
+
+  // Create a new DB and an old consumption model stream.
+  std::string kNamespaceName_2 = "test_namespace_2";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "test2"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id_2 = ASSERT_RESULT(
+      (CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName_2)));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn_2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName_2));
+  ASSERT_OK(conn_2.Execute("INSERT INTO test2 values (2,2)"));
+
+  // Call GetConsistentChanges on table_1.
+  auto change_resp_1 = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id_1, {table_1.table_id()}, 1, true /* init_virtual_wal */));
+  ASSERT_EQ(change_resp_1.records.size(), 3);
+  for (auto record : change_resp_1.records) {
+    UpdateRecordCount(record, actual_count_new_model);
+  }
+
+  // Call GetChanges on table_2.
+  auto change_resp_2 = ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets));
+  ASSERT_EQ(change_resp_2.cdc_sdk_proto_records().size(), 5);
+  for (auto record : change_resp_2.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, actual_count_old_model);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count_old_model[i], actual_count_old_model[i]);
+    ASSERT_EQ(expected_count_new_model[i], actual_count_new_model[i]);
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDifferentTypesOnSameDB) {
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+
+  std::string kNamespaceName_2 = "test_namespace_for_old_model";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "test2"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(test_client()->GetTablets(table_1, 0, &tablets_1, nullptr));
+  ASSERT_EQ(tablets_1.size(), 1);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, nullptr));
+  ASSERT_EQ(tablets_2.size(), 1);
+
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "test_slot", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
+      kNamespaceName));
+  // Since a replication slot is created on kNamespace, creation of old model stream should fail.
+  ASSERT_NOK(CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName));
+
+  ASSERT_RESULT(
+      CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName_2));
+  // Since a old model stream is created on kNamespace_2, creation of replication slot should fail.
+  ASSERT_NOK(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "test_slot_2", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
+      kNamespaceName_2));
+}
+
 }  // namespace cdc
 }  // namespace yb
