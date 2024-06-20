@@ -84,6 +84,7 @@ typedef struct
 
 
 void UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
-			   int64 shardKeyHash, text *transactionId, UpdateOneResult *result);
+			   int64 shardKeyHash, text *transactionId, UpdateOneResult *result,
+			   bool forceInlineWrites);
 
 #endif

@@ -70,7 +70,7 @@ ERROR:  database name cannot be NULL
 select helio_api.update('db', '{"updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
 ERROR:  BSON field 'update.update' is missing but a required field
 select helio_api.update('db', '{"update":"updateme"}');
-ERROR:  BSON field 'update.updates' is missing but a required field
+ERROR:  BSON field 'update.updates' is missing but is a required field
 select helio_api.update('db', '{"update":["updateme"], "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
 ERROR:  collection name has invalid type array
 select helio_api.update('db', '{"update":"updateme", "updates":{"q":{},"u":{"$set":{"b":0}},"multi":true}}');

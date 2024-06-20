@@ -485,8 +485,9 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 		};
 
 		UpdateOneResult updateOneResult = { 0 };
+		bool forceInlineWrites = false;
 		UpdateOne(collection, &updateOneParams, shardKeyHash, transactionId,
-				  &updateOneResult);
+				  &updateOneResult, forceInlineWrites);
 
 		bool performedUpdateOrUpsert = updateOneResult.isRowUpdated ||
 									   updateOneResult.upsertedObjectId != NULL;

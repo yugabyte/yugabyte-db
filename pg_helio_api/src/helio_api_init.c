@@ -227,6 +227,9 @@ int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 #define DEFAULT_ENABLE_PUSH_SUPPORT false
 bool EnableGroupPushSupport = DEFAULT_ENABLE_PUSH_SUPPORT;
 
+#define DEFAULT_UNSHARDED_BATCH_UPDATE false
+bool EnableUnshardedBatchUpdate = DEFAULT_UNSHARDED_BATCH_UPDATE;
+
 #define DEFAULT_ENABLE_ADD_TO_SET_SUPPORT false
 bool EnableGroupAddToSetSupport = DEFAULT_ENABLE_ADD_TO_SET_SUPPORT;
 
@@ -591,6 +594,14 @@ InitApiConfigurations(char *prefix)
 		"helio_api.enableGroupPushSupport",
 		gettext_noop("Feature flag for the group push support"), NULL,
 		&EnableGroupPushSupport, DEFAULT_ENABLE_PUSH_SUPPORT, PGC_USERSET, 0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableUnshardedBatchUpdate",
+		gettext_noop(
+			"Feature flag to enable pushing an unsharded batch update to the worker"),
+		NULL,
+		&EnableUnshardedBatchUpdate, DEFAULT_ENABLE_PUSH_SUPPORT, PGC_USERSET, 0,
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

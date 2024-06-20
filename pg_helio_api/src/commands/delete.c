@@ -119,7 +119,7 @@ static void CallDeleteWorkerForDeleteOne(MongoCollection *collection,
 										 int64 shardKeyHash, text *transactionId,
 										 DeleteOneResult *result);
 static pgbson * SerializeDeleteOneParams(const DeleteOneParams *deleteParams);
-static void DeserializeUpdateWorkerSpec(pgbson *workerSpec,
+static void DeserializeDeleteWorkerSpec(pgbson *workerSpec,
 										DeleteOneParams *deleteOneParams);
 static void DeserializeWorkerDeleteResult(pgbson *resultBson, DeleteOneResult *result);
 static pgbson * SerializeDeleteOneResult(DeleteOneResult *result);
@@ -1071,7 +1071,7 @@ command_delete_worker(PG_FUNCTION_ARGS)
 	text *transactionId = PG_ARGISNULL(5) ? NULL : PG_GETARG_TEXT_PP(5);
 
 	DeleteOneParams deleteOneParams = { 0 };
-	DeserializeUpdateWorkerSpec(deleteInternalSpec, &deleteOneParams);
+	DeserializeDeleteWorkerSpec(deleteInternalSpec, &deleteOneParams);
 
 	DeleteOneResult result;
 	memset(&result, 0, sizeof(result));
@@ -1295,7 +1295,7 @@ SerializeDeleteOneParams(const DeleteOneParams *deleteParams)
 
 
 static void
-DeserializeUpdateWorkerSpec(pgbson *workerSpec, DeleteOneParams *deleteOneParams)
+DeserializeDeleteWorkerSpec(pgbson *workerSpec, DeleteOneParams *deleteOneParams)
 {
 	pgbsonelement commandElement;
 	PgbsonToSinglePgbsonElement(workerSpec, &commandElement);
