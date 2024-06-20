@@ -32,7 +32,7 @@ type: docs
 
 </ul>
 
-You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere installed on [Kubernetes](https://kubernetes.io/) to a newer version.
+You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere (YBA) installed on [Kubernetes](https://kubernetes.io/) to a newer version.
 
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
