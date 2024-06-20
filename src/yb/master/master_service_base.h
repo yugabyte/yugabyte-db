@@ -116,6 +116,7 @@ class MasterServiceBase {
       HoldCatalogLock hold_catalog_lock);
 
   CatalogManager* handler(CatalogManager*);
+  TabletSplitManager* handler(TabletSplitManager*);
   FlushManager* handler(FlushManager*);
   TabletHealthManager* handler(TabletHealthManager*);
   YsqlBackendsManager* handler(YsqlBackendsManager*);

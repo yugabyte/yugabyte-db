@@ -119,7 +119,7 @@ func (h *HelperContainer) GetHostToUuidMap(nodeHost string) (map[string]string, 
         // Now we parse the html to get the hostnames and uuids
         // This regex will not work if the layout of the page changes. In the future, it would be
         // better if this information can be found in a json endpoint.
-        regex, err := regexp.Compile(`<\/tr>\s*<tr>\s*<td><a href=.*?>(.*?)<\/a><\/br>\s*(.*?)<\/td>`)
+        regex, err := regexp.Compile(`<\/tr>\s*<tr>\s*<td><a href=.*?>(.*?)<\/a><\/br>\s*(.*?)<\/`)
         if err != nil {
                 return hostToUuidMap, err
         }

@@ -76,6 +76,10 @@ func (prom Prometheus) TemplateFile() string {
 	return prom.templateFileName
 }
 
+func (prom Prometheus) SystemdFile() string {
+	return prom.SystemdFileLocation
+}
+
 // Name returns the name of the service.
 func (prom Prometheus) Name() string {
 	return prom.name
@@ -266,11 +270,15 @@ func (prom Prometheus) Uninstall(removeData bool) error {
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
 func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
-	config.GenerateTemplate(prom) // No need to reload systemd, start takes care of that for us.
+	if err := config.GenerateTemplate(prom); err != nil {
+		return err
+	}
 	if err := prom.FixBasicAuth(); err != nil {
 		return err
 	}
-	prom.moveAndExtractPrometheusPackage()
+	if err := prom.moveAndExtractPrometheusPackage(); err != nil {
+		return err
+	}
 	if err := prom.createPrometheusSymlinks(); err != nil {
 		return err
 	}
@@ -278,7 +286,9 @@ func (prom Prometheus) Upgrade() error {
 	//have the necessary access.
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
-		common.Chown(common.GetSoftwareRoot()+"/prometheus", userName, userName, true)
+		if err := common.Chown(common.GetSoftwareRoot()+"/prometheus", userName, userName, true); err != nil {
+			return err
+		}
 	}
 
 	//Crontab based monitoring for non-root installs.
@@ -309,15 +319,18 @@ func (prom Prometheus) Status() (common.Status, error) {
 	// Get the service status
 	if common.HasSudoAccess() {
 		props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
-			"ActiveState")
+			"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
 		if props["LoadState"] == "not-found" {
 			status.Status = common.StatusNotInstalled
 		} else if props["SubState"] == "running" {
 			status.Status = common.StatusRunning
+			status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
 		} else if props["ActiveState"] == "inactive" {
 			status.Status = common.StatusStopped
+			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 		} else {
 			status.Status = common.StatusErrored
+			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 		}
 	} else {
 		out := shell.Run("pgrep", "prometheus")

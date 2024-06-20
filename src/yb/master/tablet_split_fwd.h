@@ -18,9 +18,6 @@
 namespace yb {
 namespace master {
 
-class TabletSplitCandidateFilterIf;
-class TabletSplitCompleteHandlerIf;
-class TabletSplitDriverIf;
 class TabletSplitManager;
 
 struct SplitTabletIds;

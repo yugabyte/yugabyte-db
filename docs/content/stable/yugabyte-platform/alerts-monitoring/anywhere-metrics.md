@@ -204,7 +204,7 @@ Resource metrics should be considered on a per-node basis.
 
 ### DocDB
 
-DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store. The majority of the following metrics are used internally by engineers when troubleshooting a deployment, and, therefore, should not be subject to alerting.
+DocDB uses a highly customized version of [RocksDB](https://rocksdb.org/), a log-structured merge tree (LSM)-based key-value store. The majority of the following metrics are used internally by engineers when troubleshooting a deployment, and, therefore, should not be subject to alerting.
 
 | **Graph**                   | **Description**                                              | **Alert Guidance**                                           | **Example**                       |
 | --------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |

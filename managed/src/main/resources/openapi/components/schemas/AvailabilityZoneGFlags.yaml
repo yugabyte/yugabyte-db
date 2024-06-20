@@ -1,5 +1,5 @@
-title: GFlags for tserver and master
-description: GFlags for tserver and master
+title: AvailabilityZoneGFlags
+description: GFlags for tserver and master. Part of ClusterGFlags.
 type: object
 properties:
   tserver:

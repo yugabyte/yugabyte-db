@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <memory>
 #include <unordered_map>
 
 #include <boost/container/small_vector.hpp>
@@ -266,9 +267,11 @@ struct PackedColumnDecoderDataV1 {
 };
 
 struct PackedColumnDecoderEntry;
+union PackedColumnDecoderArgsUnion;
 
 using PackedColumnDecoderV1 = UnsafeStatus(*)(
     PackedColumnDecoderDataV1* data, size_t projection_index,
+    const PackedColumnDecoderArgsUnion& args,
     const PackedColumnDecoderEntry* chain);
 
 class PackedRowDecoderFactory {
@@ -291,8 +294,13 @@ struct PackedColumnDecodersV2 {
   PackedColumnDecoderV2 no_nulls;
 };
 
+struct PackedColumnRouterData {
+  void* context;
+};
+
 using PackedColumnRouter = UnsafeStatus(*)(
-    const uint8_t* value, void* context, size_t projection_index,
+    PackedColumnRouterData* data,
+    const uint8_t* value, size_t projection_index,
     const PackedColumnDecoderEntry* chain);
 
 union PackedColumnDecoderUnion {
@@ -301,12 +309,59 @@ union PackedColumnDecoderUnion {
   PackedColumnDecodersV2 v2;
 };
 
+union PackedColumnRouterArgsUnion {
+  struct {
+    const SchemaPacking* schema_packing;
+  } v1;
+  struct {
+    size_t value_offset;
+  } v2;
+};
+
+struct PackedColumnEntry;
+
+union PackedColumnDecoderArgsUnion {
+  size_t packed_index;                // Used by regular packed column decoder.
+  const QLValuePB* missing_value;     // Used by missed column decoder.
+  PackedColumnRouterArgsUnion router; // Used by decoder router.
+  PackedColumnEntry* column;          // Used by tracking decoder.
+};
+
 struct PackedColumnDecoderEntry {
-  PackedColumnDecoderUnion decoder;
-  size_t data;
+  PackedColumnDecoderUnion     decoder;
+  PackedColumnDecoderArgsUnion decoder_args;
+};
+
+struct PackedColumnTrackingDecoderEntry : public PackedColumnDecoderEntry {
+  PackedColumnDecoderEntry base_decoder;
+  PackedColumnDecoderEntry skip_decoder;
+};
+
+struct PackedRowScope;
+
+class PackedRowColumnUpdateTracker {
+ public:
+  PackedRowColumnUpdateTracker();
+  ~PackedRowColumnUpdateTracker();
+  bool HasUpdates() const;
+  bool HasUpdatesAfter(const EncodedDocHybridTime& ht_time) const;
+  void Reset();
+  const PackedRowScope& GetRowScope() const;
+  void TrackRow(const EncodedDocHybridTime* row_time);
+  void TrackColumn(ColumnId column_id, const EncodedDocHybridTime& column_time);
+  PackedColumnEntry& GetEntry(ColumnId column_id);
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 class PackedRowDecoder {
+ public:
+  using DecoderVector = boost::container::small_vector<PackedColumnDecoderEntry, 0x10>;
+  using DecoderVectorBase = boost::container::small_vector_base<PackedColumnDecoderEntry>;
+  using TrackingDecoderVector = std::vector<PackedColumnDecoderEntry>;
+
  public:
   PackedRowDecoder();
 
@@ -319,21 +374,22 @@ class PackedRowDecoder {
   }
 
   void Init(
-      PackedRowVersion version, const ReaderProjection& projection, const SchemaPacking& packing,
-      PackedRowDecoderFactory* callback, const Schema& schema);
+      PackedRowVersion version, const ReaderProjection& projection,
+      const SchemaPacking& packing, PackedRowDecoderFactory* factory,
+      const Schema& schema, PackedRowColumnUpdateTracker* tracker = nullptr);
 
   Status Apply(Slice value, void* context);
+  Status Apply(Slice value, void* context, const PackedRowScope& row_scope);
 
  private:
   const SchemaPacking* schema_packing_ = nullptr;
   const Schema* schema_ = nullptr;
   size_t num_key_columns_ = 0;
-  boost::container::small_vector<PackedColumnDecoderEntry, 0x10> decoders_;
+  DecoderVector decoders_;
+  TrackingDecoderVector tracking_decoders_;
 };
 
 using PackedRowDecoderVariant = std::variant<PackedRowDecoderV1, PackedRowDecoderV2>;
-
-PackedRowDecoderBase& DecoderBase(PackedRowDecoderVariant* decoder);
 
 template <bool kCheckNull, bool kLast, bool kIncrementProjectionIndex = true>
 UnsafeStatus CallNextDecoderV2(
@@ -358,7 +414,7 @@ UnsafeStatus CallNextDecoderV1(
     return UnsafeStatus();
   }
   ++chain;
-  return chain->decoder.v1(data, ++projection_index, chain);
+  return chain->decoder.v1(data, ++projection_index, chain->decoder_args, chain);
 }
 
 size_t VarLenColEndOffset(size_t idx, const uint8_t* data);

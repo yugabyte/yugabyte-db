@@ -32,6 +32,16 @@ BEGIN;
 COMMIT;
 
 -- Creating the system view yb_active_session_history
-CREATE OR REPLACE VIEW pg_catalog.yb_active_session_history WITH (use_initdb_acl = true) AS
-  SELECT *
-  FROM yb_active_session_history();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT TRUE FROM pg_views
+    WHERE viewname = 'yb_active_session_history'
+  ) THEN
+    CREATE OR REPLACE VIEW pg_catalog.yb_active_session_history
+    WITH (use_initdb_acl = true)
+    AS
+      SELECT *
+      FROM yb_active_session_history();
+  END IF;
+END $$;

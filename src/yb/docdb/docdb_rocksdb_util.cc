@@ -306,13 +306,14 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
+    const FastBackwardScan use_fast_backward_scan,
     const DocDBStatistics* statistics) {
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
       user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
       statistics ? statistics->RegularDBStatistics() : nullptr);
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, read_operation_data, txn_op_context,
+      doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan,
       statistics ? statistics->IntentsDBStatistics() : nullptr);
 }
 

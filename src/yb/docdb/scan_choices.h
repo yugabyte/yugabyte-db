@@ -305,8 +305,6 @@ class HybridScanChoices : public ScanChoices {
   // the filter this ScanChoices iterates over is trivial.
   bool is_trivial_filter_ = false;
 
-  dockv::KeyBytes prev_scan_target_;
-
   // The following fields aid in the goal of iterating through all possible
   // scan key values based on given IN-lists and range filters.
 

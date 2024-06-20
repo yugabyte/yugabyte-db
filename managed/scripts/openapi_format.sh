@@ -12,6 +12,25 @@ mkdir -p tmp
 tmp_yml="tmp/tmp.yml"
 rm -f $tmp_yml
 
+openapi_format_ver="1.17.1"
+openapi_format_cmd=""
+# Check if openapi-format is installed locally.
+if command -v openapi-format > /dev/null
+then
+  local_version=$(openapi-format --version)
+  if [ "$local_version" != "$openapi_format_ver" ];
+  then
+    echo "Warning: Local openapi-format version ($local_version) is not the required \
+        ($openapi_format_ver). Installing..."
+    npm install -g openapi-format@$openapi_format_ver
+  else
+    echo "Using local openapi-format version: $local_version"
+  fi
+  openapi_format_cmd="openapi-format"
+else
+  openapi_format_cmd="$NPM_BIN/npx openapi-format"
+fi
+
 # Format all the required YML files.
 for file in $yaml_files
 do
@@ -22,7 +41,7 @@ do
     continue
   fi
 
-  $NPM_BIN/npx openapi-format \
+  $openapi_format_cmd \
     --sortFile ../openapi_sort_format.json \
     --sortComponentsFile ../openapi_sort_components.json \
     --output ${tmp_yml} ${file} # > /dev/null 2>&1

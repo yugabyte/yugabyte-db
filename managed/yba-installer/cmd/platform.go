@@ -100,6 +100,10 @@ func (plat Platform) Name() string {
 	return plat.name
 }
 
+func (plat Platform) SystemdFile() string {
+	return plat.SystemdFileLocation
+}
+
 // Version gets the version
 func (plat Platform) Version() string {
 	return plat.version
@@ -473,15 +477,18 @@ func (plat Platform) Status() (common.Status, error) {
 	// Get the service status
 	if common.HasSudoAccess() {
 		props := systemd.Show(filepath.Base(plat.SystemdFileLocation), "LoadState", "SubState",
-			"ActiveState")
+			"ActiveState", "ActiveEnterTimestamp", "ActiveExitTimestamp")
 		if props["LoadState"] == "not-found" {
 			status.Status = common.StatusNotInstalled
 		} else if props["SubState"] == "running" {
 			status.Status = common.StatusRunning
+			status.Since = common.StatusSince(props["ActiveEnterTimestamp"])
 		} else if props["ActiveState"] == "inactive" {
 			status.Status = common.StatusStopped
+			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 		} else {
 			status.Status = common.StatusErrored
+			status.Since = common.StatusSince(props["ActiveExitTimestamp"])
 		}
 	} else {
 		out := shell.Run("pgrep", "-f", "yb-platform")
@@ -501,14 +508,24 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
 	plat.platformDirectories = newPlatDirectories(plat.version)
-	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
+	if err := config.GenerateTemplate(plat); err != nil {
+		return err
+	} // systemctl reload is not needed, start handles it for us.
 	if err := plat.createNecessaryDirectories(); err != nil {
 		return err
 	}
-	plat.untarDevopsAndYugawarePackages()
-	plat.copyYbcPackages()
-	plat.deleteNodeAgentPackages()
-	plat.copyNodeAgentPackages()
+	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
+		return err
+	}
+	if err := plat.copyYbcPackages(); err != nil {
+		return err
+	}
+	if err := plat.deleteNodeAgentPackages(); err != nil {
+		return err
+	}
+	if err := plat.copyNodeAgentPackages(); err != nil {
+		return err
+	}
 	if err := plat.renameAndCreateSymlinks(); err != nil {
 		return err
 	}

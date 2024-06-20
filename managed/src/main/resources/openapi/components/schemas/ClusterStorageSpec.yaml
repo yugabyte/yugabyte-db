@@ -1,4 +1,5 @@
-title: Storage volume specification that is used for tserver nodes in this cluster
+title: ClusterStorageSpec
+description: 'Storage volume specification that is used for tserver nodes in this cluster. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec.'
 type: object
 properties:
   volume_size:

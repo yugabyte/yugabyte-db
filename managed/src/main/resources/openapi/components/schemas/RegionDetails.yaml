@@ -1,4 +1,5 @@
-title: Region Details for a cloud provider
+title: RegionDetails
+description: Region Details for a cloud provider. Part of Region.
 type: object
 properties:
   cloud_info:

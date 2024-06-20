@@ -384,6 +384,58 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   }
 
   /**
+   * No restarts expected when yb_read_after_commit_visibility is relaxed.
+   * Note that this is a long read that exceeds the output buffer size.
+   */
+  @Test
+  public void selectStarLong_relaxedReadAfterCommitVisibility() throws Exception {
+    new RegularStatementTester(
+        getConnectionBuilder(),
+        "SELECT * FROM test_rr",
+        getLongString(),
+        false /* expectRestartErrors */
+    ) {
+      @Override
+      public String getReadAfterCommitVisibility() {
+        return "relaxed";
+      }
+    }.runTest();
+  }
+
+  /*
+   * Ensures that we need not set the yb_read_after_commit_visibility GUC
+   * before the prepare statement.
+   * This test guards us against scenarios where the GUC
+   * is captured in the prepared statement to be used during execution.
+   *
+   * Example: pg_hint_plan is a planner time configuration and is to be
+   * captured in the prepare phase to be used during execution.
+   *
+   * Also, use simple query mode to test that simultaneously.
+   */
+  @Test
+  public void selectStarLongExecute_relaxedReadAfterCommitVisibility() throws Exception {
+    new RegularStatementTester(
+        getConnectionBuilder().withPreferQueryMode("simple"),
+        "EXECUTE select_stmt(0)",
+        getLongString(),
+        false /* expectRestartErrors */) {
+
+      @Override
+      public Statement createStatement(Connection conn) throws Exception {
+        Statement stmt = super.createStatement(conn);
+        stmt.execute("PREPARE select_stmt (int) AS SELECT * FROM test_rr WHERE i >= $1");
+        return stmt;
+      };
+
+      @Override
+      public String getReadAfterCommitVisibility() {
+        return "relaxed";
+      }
+    }.runTest();
+  }
+
+  /**
    * The following two methods attempt to test retries on kReadRestart for all below combinations -
    *    1. Type of statement - UPDATE/DELETE.
    *      We already have a parallel INSERT thread running. So don't need a separate insert() test.
@@ -903,9 +955,16 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           !is_wait_on_conflict_concurrency_control;
     }
 
+    // Override this function to set a different read window behavior.
+    public String getReadAfterCommitVisibility() {
+      return "strict";
+    }
+
     @Override
     public List<ThrowingRunnable> getRunnableThreads(
         ConnectionBuilder cb, BooleanSupplier isExecutionDone) {
+      String setReadAfterCommitVisibility = "SET yb_read_after_commit_visibility TO ";
+
       List<ThrowingRunnable> runnables = new ArrayList<>();
       //
       // Singular SELECT statement (equal probability of being either serializable/repeatable read/
@@ -943,6 +1002,14 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             auxSerializableStatement.execute(LOG_RESTARTS_SQL);
             auxRrStatement.execute(LOG_RESTARTS_SQL);
             auxRcStatement.execute(LOG_RESTARTS_SQL);
+
+            // SET yb_read_after_commit_visibility
+            auxSerializableStatement.execute(
+              setReadAfterCommitVisibility + getReadAfterCommitVisibility());
+            auxRrStatement.execute(
+              setReadAfterCommitVisibility + getReadAfterCommitVisibility());
+            auxRcStatement.execute(
+              setReadAfterCommitVisibility + getReadAfterCommitVisibility());
           }
 
           for (/* No setup */; !isExecutionDone.getAsBoolean(); /* NOOP */) {
@@ -1037,8 +1104,18 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               Stmt stmt = createStatement(selectTxnConn)) {
             try (Statement auxStmt = selectTxnConn.createStatement()) {
               auxStmt.execute(LOG_RESTARTS_SQL);
+
+              // SET yb_read_after_commit_visibility
+              auxStmt.execute(setReadAfterCommitVisibility + getReadAfterCommitVisibility());
             }
             selectTxnConn.setAutoCommit(false);
+            // This is a read only txn, so setReadOnly.
+            // Moreover, yb_read_after_commit_visibility option relies on txn being read only.
+            if (isolation != IsolationLevel.SERIALIZABLE) {
+              // SERIALIZABLE, READ ONLY txns are not actually serializable
+              // txns and we wish to test SERIALIZABLE txns too.
+              selectTxnConn.setReadOnly(true);
+            }
             for (/* No setup */; !isExecutionDone.getAsBoolean(); ++txnsAttempted) {
               int numCompletedOps = 0;
               try {

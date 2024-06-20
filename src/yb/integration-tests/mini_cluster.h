@@ -161,6 +161,12 @@ class MiniCluster : public MiniClusterBase {
   // Same as above, but get options from flags.
   Status AddTabletServer();
 
+  // Start YB Controller servers for all the existing TSs.
+  Status StartYbControllerServers();
+
+  // Add a new YB Controller server for the given tablet server
+  Status AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer>);
+
   Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
@@ -225,7 +231,7 @@ class MiniCluster : public MiniClusterBase {
 
   // Return all YBController servers.
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
-    return yb_controllers_;
+    return yb_controller_servers_;
   }
 
   tserver::TSTabletManager* GetTabletManager(size_t idx);
@@ -293,12 +299,21 @@ class MiniCluster : public MiniClusterBase {
   MiniMasters mini_masters_;
   MiniTabletServers mini_tablet_servers_;
 
-  std::vector<scoped_refptr<ExternalYbController>> yb_controllers_;
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_servers_;
 
   PortPicker port_picker_;
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
+
+// Requires that skewed clock is registered as physical clock.
+// Jumps the physical clock by delta
+// i.e. no effect on hybrid ts unless by physical clock.
+// new_clock = old_clock + delta (clocks are moving).
+// Returns an RAII structure that resets the delta change
+// when it goes out of scope.
+server::SkewedClockDeltaChanger JumpClock(
+    tserver::MiniTabletServer* server, std::chrono::milliseconds delta);
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);

@@ -59,7 +59,8 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
                   targetUniverse.getMasterAddresses(
                       false /* mastersQueryable */, true /* getSecondary */)));
       CreateXClusterReplicationResponse createResponse =
-          client.createXClusterReplication(xClusterConfig.getName(), targetMasterAddresses);
+          client.createXClusterReplication(
+              xClusterConfig.getReplicationGroupName(), targetMasterAddresses);
       if (createResponse.hasError()) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
@@ -78,7 +79,7 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
                 try {
                   doneResponse =
                       client.isCreateXClusterReplicationDone(
-                          xClusterConfig.getName(), targetMasterAddresses);
+                          xClusterConfig.getReplicationGroupName(), targetMasterAddresses);
                 } catch (Exception e) {
                   log.error(
                       "IsCreateXClusterReplicationDone rpc for xClusterConfig: {}, hit error: {}",

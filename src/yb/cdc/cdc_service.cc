@@ -184,6 +184,10 @@ DEFINE_test_flag(bool, cdc_force_destroy_virtual_wal_failure, false,
                  "For testing only. When set to true, DestroyVirtualWal RPC will return RPC "
                  "failure response.");
 
+DEFINE_RUNTIME_PREVIEW_bool(enable_cdcsdk_setting_get_changes_response_byte_limit, false,
+    "When enabled, we'll consider the proto field getchanges_resp_max_size_bytes in "
+    "GetChangesRequestPB to limit the size of GetChanges response.");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -1693,14 +1697,19 @@ void CDCServiceImpl::GetChanges(
         GetCompositeAttsMapFromCache(namespace_name, cql_namespace), resp->mutable_error(),
         CDCErrorPB::INTERNAL_ERROR, context);
 
+    std::optional<uint64_t> getchanges_resp_max_size_bytes = std::nullopt;
+    if (FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit &&
+        req->has_getchanges_resp_max_size_bytes()) {
+      getchanges_resp_max_size_bytes = req->getchanges_resp_max_size_bytes();
+    }
+
     status = GetChangesForCDCSDK(
         stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker, enum_map,
         composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
         &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
-        consistent_snapshot_time,
-        req->wal_segment_index(),
-        &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
-        get_changes_deadline);
+        consistent_snapshot_time, req->wal_segment_index(), &last_readable_index,
+        tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline,
+        getchanges_resp_max_size_bytes);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
     // out of date, hence we need to repopulate.
     if (status.IsCacheMissError()) {
@@ -1735,7 +1744,8 @@ void CDCServiceImpl::GetChanges(
           enum_map, composite_atts_map, req->cdcsdk_request_source(), client(), &msgs_holder, resp,
           &commit_timestamp, &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
           consistent_snapshot_time, req->wal_segment_index(), &last_readable_index,
-          tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline);
+          tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline,
+          getchanges_resp_max_size_bytes);
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {

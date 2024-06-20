@@ -1,14 +1,13 @@
-title: Kubernetes Resource Details
-description: Identifies the K8S Resource to operate upon
+title: KubernetesResourceDetails
+description: Identifies the K8S Resource to operate upon. An internal object used as part of Universe edit operations.
 type: object
 x-yba-api-visibility: internal
 properties:
   resource_type:
-    description: abcd
+    description: Type of YBA resource to operate upon
     type: string
     enum:
       - UNIVERSE
-      - blah
   name:
     description: Name of this Kubernetes resource
     type: string

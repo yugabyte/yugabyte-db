@@ -88,6 +88,7 @@ struct CDCStateTableEntry {
   std::optional<uint64_t> record_id_commit_time;
   std::optional<uint64_t> last_pub_refresh_time;
   std::optional<std::string> pub_refresh_times;
+  std::optional<std::string> last_decided_pub_refresh_time;
 
   std::string ToString() const;
 };
@@ -107,6 +108,7 @@ struct CDCStateTableEntrySelector {
   CDCStateTableEntrySelector&& IncludeRecordIdCommitTime();
   CDCStateTableEntrySelector&& IncludeLastPubRefreshTime();
   CDCStateTableEntrySelector&& IncludePubRefreshTimes();
+  CDCStateTableEntrySelector&& IncludeLastDecidedPubRefreshTime();
   std::unordered_set<std::string> columns_;
 };
 

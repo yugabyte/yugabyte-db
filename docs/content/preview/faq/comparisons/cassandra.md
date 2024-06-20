@@ -23,7 +23,7 @@ If you simultaneously require strong consistency, low latency, and high density,
 
 - Lightweight transactions are obviated altogether in YugabyteDB because the Raft-based writes on a single key are automatically linearizable.
 
-- Secondary indexes are global similar to the primary indexes so only the nodes storing the secondary indexes are queried.
+- Secondary indexes are global, similar to the primary indexes, so only the nodes storing the secondary indexes are queried.
 
 Following are the details of the key differences between YugabyteDB and [Apache Cassandra](http://cassandra.apache.org/).
 

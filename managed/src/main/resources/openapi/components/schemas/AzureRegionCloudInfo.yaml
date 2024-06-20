@@ -1,4 +1,5 @@
-title: Region in Azure provider
+title: AzureRegionCloudInfo
+description: Region in Azure provider. Part of RegionCloudInfo.
 type: object
 properties:
   security_group_id:

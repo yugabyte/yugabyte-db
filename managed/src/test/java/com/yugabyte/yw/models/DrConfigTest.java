@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -63,6 +64,10 @@ public class DrConfigTest extends FakeDBApplication {
     assertEquals(0, activeXClusterConfig.getTableIds().size());
     assertEquals(ConfigType.Db, activeXClusterConfig.getType());
     assertEquals(config.getConfigUUID(), found.getStorageConfigUuid());
+    assertTrue(
+        activeXClusterConfig
+            .getReplicationGroupName()
+            .startsWith(sourceUniverse.getUniverseUUID().toString()));
   }
 
   @Test

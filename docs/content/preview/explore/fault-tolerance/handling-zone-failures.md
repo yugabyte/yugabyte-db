@@ -24,9 +24,7 @@ Consider a setup where YugabyteDB is deployed across three zones in a single reg
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-{{<collapse title="Setup a local cluster">}}
 {{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-east-1b,aws.us-west.us-west-1c">}}
-{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}

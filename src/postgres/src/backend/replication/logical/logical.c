@@ -313,8 +313,6 @@ StartupDecodingContext(List *output_plugin_options,
 	{
 		HASHCTL		ctl;
 
-		ctx->yb_handle_relcache_invalidation_startup = true;
-
 		/*
 		 * Allocate the hash table to handle relcache invaldations. Uses the
 		 * memory context of the LogicalDecodingContext.

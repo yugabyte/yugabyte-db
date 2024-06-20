@@ -164,7 +164,7 @@ libraryDependencies ++= Seq(
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-lang3" % "3.14.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
-  "org.apache.commons" % "commons-compress" % "1.25.0",
+  "org.apache.commons" % "commons-compress" % "1.26.0",
   "org.apache.commons" % "commons-csv" % "1.10.0",
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",

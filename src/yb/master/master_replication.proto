@@ -721,6 +721,40 @@ message GetXClusterOutboundReplicationGroupInfoResponsePB {
   repeated NamespaceInfoPB namespace_infos = 2;
 }
 
+message GetUniverseReplicationsRequestPB {
+  optional string namespace_id = 1;
+}
+
+message GetUniverseReplicationsResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated string replication_group_ids = 2;
+}
+
+message GetUniverseReplicationInfoRequestPB {
+  required string replication_group_id = 1;
+}
+
+message GetUniverseReplicationInfoResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional XClusterReplicationType replication_type = 2;
+  optional string source_master_addresses = 3;
+
+  message TableInfoPB {
+    required string target_table_id = 1;
+    required string source_table_id = 2;
+    required string stream_id = 3;
+  }
+  repeated TableInfoPB table_infos = 4;
+
+  message DbScopedInfoPB {
+    required string target_namespace_id = 1;
+    required string source_namespace_id = 2;
+  }
+
+  repeated DbScopedInfoPB db_scoped_infos = 5;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -774,6 +808,10 @@ service MasterReplication {
   rpc UpdateConsumerOnProducerMetadata(UpdateConsumerOnProducerMetadataRequestPB)
       returns (UpdateConsumerOnProducerMetadataResponsePB);
 
+  rpc GetUniverseReplications(GetUniverseReplicationsRequestPB)
+      returns (GetUniverseReplicationsResponsePB);
+  rpc GetUniverseReplicationInfo(GetUniverseReplicationInfoRequestPB)
+      returns (GetUniverseReplicationInfoResponsePB);
   rpc GetReplicationStatus(GetReplicationStatusRequestPB)
       returns (GetReplicationStatusResponsePB);
 

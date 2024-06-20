@@ -118,7 +118,8 @@ Result<XClusterStatus> XClusterManager::GetXClusterStatus() const {
   XClusterStatus status;
   RETURN_NOT_OK(XClusterSourceManager::PopulateXClusterStatus(
       status, VERIFY_RESULT(xcluster_config_->GetXClusterConfigEntryPB())));
-  RETURN_NOT_OK(XClusterTargetManager::PopulateXClusterStatus(status));
+  status.inbound_replication_group_statuses =
+      VERIFY_RESULT(XClusterTargetManager::GetXClusterStatus());
   return status;
 }
 
@@ -468,6 +469,49 @@ Status XClusterManager::GetXClusterOutboundReplicationGroupInfo(
     for (const auto& [table_id, stream_id] : table_streams) {
       ns_info->mutable_table_streams()->insert({table_id, stream_id.ToString()});
     }
+  }
+
+  return Status::OK();
+}
+
+Status XClusterManager::GetUniverseReplications(
+    const GetUniverseReplicationsRequestPB* req, GetUniverseReplicationsResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  const auto& namespace_filter = req->namespace_id();
+
+  const auto replication_groups = XClusterTargetManager::GetUniverseReplications(namespace_filter);
+  for (const auto& replication_group : replication_groups) {
+    resp->add_replication_group_ids(replication_group.ToString());
+  }
+
+  return Status::OK();
+}
+
+Status XClusterManager::GetUniverseReplicationInfo(
+    const GetUniverseReplicationInfoRequestPB* req, GetUniverseReplicationInfoResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  const auto replication_info = VERIFY_RESULT(XClusterTargetManager::GetUniverseReplicationInfo(
+      xcluster::ReplicationGroupId(req->replication_group_id())));
+
+  resp->set_replication_type(replication_info.replication_type);
+  resp->set_source_master_addresses(replication_info.master_addrs);
+
+  for (const auto& [_, tables] : replication_info.table_statuses_by_namespace) {
+    for (const auto& table_status : tables) {
+      auto* table_info = resp->add_table_infos();
+      table_info->set_target_table_id(table_status.target_table_id);
+      table_info->set_source_table_id(table_status.source_table_id);
+      table_info->set_stream_id(table_status.stream_id.ToString());
+    }
+  }
+
+  for (const auto& [target_namespace_id, source_namespace_id] :
+       replication_info.db_scope_namespace_id_map) {
+    auto* ns_info = resp->add_db_scoped_infos();
+    ns_info->set_target_namespace_id(target_namespace_id);
+    ns_info->set_source_namespace_id(source_namespace_id);
   }
 
   return Status::OK();

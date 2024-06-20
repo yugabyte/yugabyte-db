@@ -722,6 +722,10 @@ maybe_send_schema(LogicalDecodingContext *ctx,
 		set_schema_sent_in_streamed_txn(relentry, topxid);
 	else
 		relentry->schema_sent = true;
+
+	if (IsYugaByteEnabled())
+		elog(DEBUG1, "Sent the RELATION message for table_id: %d",
+			RelationGetRelid(relation));
 }
 
 /*
@@ -1756,6 +1760,8 @@ pgoutput_shutdown(LogicalDecodingContext *ctx)
 static void
 yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
 {
+	elog(DEBUG1, "yb_pgoutput_schema_change for relid: %d", relid);
+
 	rel_sync_cache_relation_cb(0 /* unused */, relid);
 }
 

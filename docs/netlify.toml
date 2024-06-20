@@ -698,6 +698,10 @@
   to = "/preview/yugabyte-voyager/:splat"
   force = true
 
+[[redirects]]
+  from = "/preview/yugabyte-voyager/reference/data-modeling/"
+  to = "/preview/develop/learn/data-modeling-ysql/"
+  force = true
 # Redirect for Reference connectors
 
 [[redirects]]

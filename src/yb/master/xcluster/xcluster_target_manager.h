@@ -28,7 +28,7 @@ class TSHeartbeatResponsePB;
 class PostTabletCreateTaskBase;
 class UniverseReplicationInfo;
 class XClusterSafeTimeService;
-struct XClusterStatus;
+struct XClusterInboundReplicationGroupStatus;
 
 class XClusterTargetManager {
  public:
@@ -94,13 +94,30 @@ class XClusterTargetManager {
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Status PopulateXClusterStatus(XClusterStatus& xcluster_status) const;
+  Result<std::vector<XClusterInboundReplicationGroupStatus>> GetXClusterStatus() const;
 
   Status PopulateXClusterStatusJson(JsonWriter& jw) const;
 
   std::unordered_set<xcluster::ReplicationGroupId> GetTransactionalReplicationGroups() const;
 
+  // Returns list of all universe replication group ids if consumer_namespace_id is empty. If
+  // consumer_namespace_id is not empty then returns DB scoped replication groups that contain the
+  // namespace.
+  std::vector<xcluster::ReplicationGroupId> GetUniverseReplications(
+      const NamespaceId& consumer_namespace_id) const;
+
+  // Gets the replication group status for the given replication group id. Does not populate the
+  // table statuses (only contains fields required for GetUniverseReplicationInfoResponsePB).
+  Result<XClusterInboundReplicationGroupStatus> GetUniverseReplicationInfo(
+      const xcluster::ReplicationGroupId& replication_group_id) const;
+
  private:
+  // Gets the replication group status for the given replication group id. Does not populate the
+  // table statuses.
+  Result<XClusterInboundReplicationGroupStatus> GetUniverseReplicationInfo(
+      const SysUniverseReplicationEntryPB& replication_info_pb,
+      const SysClusterConfigEntryPB& cluster_config_pb) const;
+
   Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;

@@ -1,4 +1,8 @@
-title: Edit universe gflags request
+title: UniverseEditGFlags
+description: |
+  UniverseEditGFlags
+
+  Request payload to edit GFlags of a Universe.
 type: object
 properties:
   upgrade_option:

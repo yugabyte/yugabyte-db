@@ -24,6 +24,8 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
     google::SetVLOGLevel("cdcsdk_virtual_wal*", 3);
   }
 
@@ -81,7 +83,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForSingleShardTxn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 50;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -129,7 +131,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForSingleSh
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForMultiShardTxn) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 100_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 100_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -181,7 +183,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplicitCheckpointForMultiSha
 
 void CDCSDKConsumptionConsistentChangesTest::TestConcurrentConsumptionFromMultipleVWAL(
     CDCSDKSnapshotOption snapshot_option) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -306,7 +308,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestVWALRestartOnFullTxnAck(
   // 3. Acknowledge 3rd txn
   // 4. Destroy Virtual WAL ~ Restart
   // 5. Consume records & verify we receive 4 & 5th txns.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -426,7 +428,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALRestartOnPartialTxnAck) {
   // 3. Acknowledge a DML in 3rd txn
   // 4. Destroy Virtual WAL ~ Restart
   // 5. Consume records & verify we receive 3rd, 4th & 5th txns.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -523,7 +525,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestVWALRestartOnMultiThenSingleSha
   // explicit checkpoint as the from_checkpoint.
   // 6. Destroy Virtual WAL ~ Restart
   // 7. Consume records & verify we receive 6th txn.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 5_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 5_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 160;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -642,7 +644,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestVWALRestartOnLongTxns(FeedbackT
   // explicit checkpoint.
   // 5. Destroy Virtual WAL ~ Restart
   // 6. Consume records & verify we receive only the 4th txn.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -766,7 +768,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALRestartOnLongTxnsAckBegin
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithGenerateSeries) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 250;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
@@ -983,7 +985,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithCol
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionOnMixTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 15;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 40;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
 
@@ -1197,7 +1199,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsistentSnapshotWithCDCSDKC
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatements) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1254,7 +1256,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatementsAndRestart) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1340,7 +1342,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWitDDLStatemen
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWithMultipleAlter) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
@@ -1406,7 +1408,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithTab
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1467,7 +1469,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTabletSplitDuringConsumptionF
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 25;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1549,7 +1551,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRecordCountsAfterMultipleTabl
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 25;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1633,7 +1635,7 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 25;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1726,7 +1728,7 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -1864,7 +1866,7 @@ TEST_F(
 }
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
   uint64_t publication_refresh_interval = 5;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
       publication_refresh_interval;
@@ -1935,7 +1937,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesRemoval) {
   uint64_t publication_refresh_interval = 5;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
       publication_refresh_interval;
@@ -2036,7 +2038,7 @@ TEST_F(
 // WALSender to refresh publication's table list
 void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRefreshRecord(
     bool pub_refresh_record_in_separate_response) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
@@ -2182,7 +2184,7 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 15;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros) =
@@ -2326,7 +2328,7 @@ TEST_F(
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAdditionForTableCreatedAfterStream) {
   auto publication_refresh_interval = MonoDelta::FromSeconds(10);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) =
       publication_refresh_interval.ToSeconds();
@@ -2831,9 +2833,176 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestLSNDeterminismWithChangingPub
   }
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesSwitch) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test2"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Txn 1.
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (1,1)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  vector<CDCSDKProtoRecordPB> records_before_restart;
+  GetConsistentChangesResponsePB change_resp;
+  bool contains_pub_refresh = false;
+
+  // Call GetConsistentChanges to consume the records of first txn.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_before_restart.insert(
+              records_before_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+        return records_before_restart.size() == 3;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  // This will be false since the flag cdcsdk_enable_dynamic_table_support is false.
+  ASSERT_FALSE(contains_pub_refresh);
+
+  // Verify slot entry.
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_EQ(slot_row->pub_refresh_times, "");
+  ASSERT_NE(slot_row->last_decided_pub_refresh_time, "");
+  ASSERT_EQ(slot_row->last_decided_pub_refresh_time.back(), 'F');
+
+  // Txn 2
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (2,2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (2,2)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Turn dynamic tables support ON.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
+
+  // Call GetConsistentChanges till we receive a pub refresh notification.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_before_restart.insert(
+              records_before_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+        return contains_pub_refresh;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  // Verfiy slot entry.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_NE(slot_row->pub_refresh_times, "");
+  ASSERT_NE(slot_row->last_decided_pub_refresh_time, "");
+  ASSERT_EQ(slot_row->last_decided_pub_refresh_time.back(), 'T');
+
+  // Update the tables list.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  // Txn 3.
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (3,3)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (3,3)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Turn dynamic tables support OFF.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  contains_pub_refresh = false;
+
+  // Sleep to ensure that a pub refresh record is popped from the PQ between txn 3 and txn 4.
+  SleepFor(MonoDelta::FromSeconds(
+      FLAGS_cdcsdk_publication_list_refresh_interval_secs * kTimeMultiplier));
+
+  ASSERT_OK(conn.Execute("BEGIN;"));
+  ASSERT_OK(conn.Execute("INSERT INTO test1 values (4,4)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test2 values (4,4)"));
+  ASSERT_OK(conn.Execute("COMMIT;"));
+
+  // Call GetConsistentChanges to consume txn 3 and txn 4. No pub refresh notification should be
+  // received as the flag cdcsdk_enable_dynamic_table_support is FALSE.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_before_restart.insert(
+              records_before_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+
+        return records_before_restart.size() == 14;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  ASSERT_FALSE(contains_pub_refresh);
+
+  // Verify slot entry.
+  slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_NE(slot_row->pub_refresh_times, "");
+  ASSERT_NE(slot_row->last_decided_pub_refresh_time, "");
+  ASSERT_EQ(slot_row->last_decided_pub_refresh_time.back(), 'F');
+
+  // Restart.
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id()}));
+
+  vector<CDCSDKProtoRecordPB> records_after_restart;
+
+  // Call GetConsistentChanges till we consume records of all 4 txns. Update Publication's tables
+  // list if a pub refresh notification is received.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          records_after_restart.insert(
+              records_after_restart.end(), change_resp.cdc_sdk_proto_records().begin(),
+              change_resp.cdc_sdk_proto_records().end());
+        }
+        contains_pub_refresh =
+            contains_pub_refresh || (change_resp.has_needs_publication_table_list_refresh() &&
+                                     change_resp.needs_publication_table_list_refresh() &&
+                                     change_resp.has_publication_refresh_time());
+
+        if (contains_pub_refresh) {
+          RETURN_NOT_OK(
+              UpdatePublicationTableList(stream_id, {table_1.table_id(), table_2.table_id()}));
+        }
+        return records_after_restart.size() == 14;
+      },
+      MonoDelta::FromSeconds(20 * kTimeMultiplier), "Timed out waiting to receive the records"));
+
+  // Check for LSN determinism.
+  ASSERT_EQ(records_before_restart.size(), records_after_restart.size());
+  for (size_t i = 0; i < records_after_restart.size(); i++) {
+    AssertCDCSDKProtoRecords(records_before_restart[i], records_after_restart[i]);
+  }
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConsumptionAfterDroppingTableNotInPublication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 20;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 10_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -2966,7 +3135,8 @@ void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_s
         auto slot_row = VERIFY_RESULT(ReadSlotEntryFromStateTable(stream_id));
         return !slot_row.has_value();
       },
-      MonoDelta::FromSeconds(10), "Timed out waiting for slot entry deletion from state table"));
+      MonoDelta::FromSeconds(10 * kTimeMultiplier),
+      "Timed out waiting for slot entry deletion from state table"));
 
   if (multiple_streams) {
     // Since one stream still exists, the retention barriers will not be lifted.

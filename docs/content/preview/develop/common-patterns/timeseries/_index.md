@@ -20,26 +20,34 @@ A time series pattern works best for range queries where you need to look up ite
 
 You can use the following common patterns to store and retrieve time series data in YugabyteDB in both distributed and ordered manner:
 
-- **Global ordering by time**
+## Global ordering by time
 
-    In this pattern, all your data is ordered by time across different tablets.
+In this pattern, all your data is ordered by time across different tablets.
 
-    To understand how to efficiently store and retrieve data in this pattern, see [Global ordering by time](./global-ordering).
+{{<lead link="./global-ordering">}}
+To understand how to efficiently store and retrieve data in this pattern, see [Global ordering by time](./global-ordering).
+{{</lead>}}
 
-- **Ordering by time per entity**
+## Ordering by time per entity
 
-    In this pattern, the data is ordered by time in a specific entity.
+In this pattern, the data is ordered by time in a specific entity.
 
-    To understand how to distribute the entities effectively and avoid hot shards, see [Ordering by time per entity](./ordering-by-entity).
+{{<lead link="./ordering-by-entity">}}
+To understand how to distribute the entities effectively and avoid hot shards, see [Ordering by time per entity](./ordering-by-entity).
+{{</lead>}}
 
-- **Automatic data expiration**
+## Automatic data expiration
 
-    In some scenarios, you don't want data lying around for a long time as they may not be needed or you have rules in your organization that you cannot store specific data longer than a particular duration. For such cases, you can set a time-to-live value on rows, columns, and the table itself.
+In some scenarios, you don't want data lying around for a long time as they may not be needed or you have rules in your organization that you cannot store specific data longer than a particular duration. For such cases, you can set a time-to-live value on rows, columns, and the table itself.
 
-    For more details, see [Automatic data expiration](./data-expiry).
+{{<lead link="./data-expiry">}}
+For more details, see [Automatic data expiration](./data-expiry).
+{{</lead>}}
 
-- **Partitioning**
+## Partitioning
 
-    When you have a lot of data that needs to deleted regularly, you can opt to partition your data. This also has speed advantages in some cases.
+When you have a lot of data that needs to be deleted regularly, you can opt to partition your data. This also has speed advantages in some cases.
 
-    For more details, see [Partitioning by time](./partitioning-by-time).
+{{<lead link="./data-expiry">}}
+For more details, see [Partitioning by time](./partitioning-by-time).
+{{</lead>}}

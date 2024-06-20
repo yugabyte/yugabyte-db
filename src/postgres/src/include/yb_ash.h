@@ -51,6 +51,7 @@ extern void YbAshMain(Datum main_arg);
 
 extern void YbAshInit(void);
 extern void YbAshSetSessionId(uint64 session_id);
+extern void YbAshSetDatabaseId(Oid database_id);
 extern bool YbAshShouldIgnoreWaitEvent(uint32 wait_event_info);
 
 extern bool YbAshStoreSample(PGPROC *proc, int num_procs,

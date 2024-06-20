@@ -159,6 +159,12 @@ class XClusterManager : public XClusterManagerIf,
       const GetXClusterOutboundReplicationGroupInfoRequestPB* req,
       GetXClusterOutboundReplicationGroupInfoResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+  Status GetUniverseReplications(
+      const GetUniverseReplicationsRequestPB* req, GetUniverseReplicationsResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status GetUniverseReplicationInfo(
+      const GetUniverseReplicationInfoRequestPB* req, GetUniverseReplicationInfoResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);

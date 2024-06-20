@@ -59,7 +59,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
 
       XClusterCreateOutboundReplicationGroupResponse createResponse =
           client.xClusterCreateOutboundReplicationGroup(
-              xClusterConfig.getName(), taskParams().getDbs());
+              xClusterConfig.getReplicationGroupName(), taskParams().getDbs());
 
       if (createResponse.hasError()) {
         throw new RuntimeException(
@@ -98,7 +98,8 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
 
                 try {
                   completionResponse =
-                      client.isXClusterBootstrapRequired(xClusterConfig.getName(), dbId);
+                      client.isXClusterBootstrapRequired(
+                          xClusterConfig.getReplicationGroupName(), dbId);
                 } catch (Exception e) {
                   log.error(
                       "IsXClusterBootstrapRequired rpc for xClusterConfig: {}, db: {}, hit error:"

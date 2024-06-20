@@ -1,4 +1,5 @@
-title: User provided Universe Spec
+title: UniverseSpec
+description: These are user configured properties of a Universe. Part of create Universe request payload. Returned as part of a Universe resource.
 type: object
 required:
   - name
@@ -19,9 +20,9 @@ properties:
   encryption_in_transit_spec:
     $ref: "./EncryptionInTransitSpec.yaml"
   ysql:
-    $ref: "./YsqlSpec.yaml"
+    $ref: "./YSQLSpec.yaml"
   ycql:
-    $ref: "./YcqlSpec.yaml"
+    $ref: "./YCQLSpec.yaml"
   use_time_sync:
     description: Whether to use time sync services like chrony on DB nodes of this cluster
     type: boolean

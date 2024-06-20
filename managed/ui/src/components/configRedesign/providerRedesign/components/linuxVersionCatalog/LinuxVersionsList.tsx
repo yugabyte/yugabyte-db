@@ -24,7 +24,7 @@ import {
 import { MoreActionsMenu } from '../../../../customCACerts/MoreActionsMenu';
 import { YBButton } from '../../../../../redesign/components';
 import { AddLinuxVersionModal } from './AddLinuxVersionModal';
-import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUtils';
+import { ImageBundleDefaultTag, ImageBundleYBActiveTag, IsImgBundleInUseEditEnabled } from './LinuxVersionUtils';
 
 import { LinuxVersionDeleteModal } from './DeleteLinuxVersionModal';
 import { YBPopover } from '../../../../../redesign/components/YBPopover/YBPopover';
@@ -61,6 +61,7 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
   const imageBundles: ImageBundle[] = useWatch({ name: 'imageBundles' });
 
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const isImgBundleInUseEditEnabled = IsImgBundleInUseEditEnabled();
 
   const setImageAsDefault = (img: ImageBundle) => {
     const bundles = imageBundles.map((i: ImageBundle) => {
@@ -144,6 +145,7 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
         inUseImageBundleUuids={inUseImageBundleUuids}
         showMoreActions={true}
         errors={errors as any}
+        isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
       />
       <div style={{ marginTop: '24px' }} />
       {providerType === ProviderCode.AWS && (
@@ -161,6 +163,7 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
           inUseImageBundleUuids={inUseImageBundleUuids}
           showMoreActions={true}
           errors={errors as any}
+          isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
         />
       )}
 
@@ -238,6 +241,7 @@ interface LinuxVersionCardCommonProps {
 
   showTitle?: boolean;
   errors?: any[];
+  isImgBundleInUseEditEnabled: boolean;
 }
 type LinuxVersionCardProps =
   | (LinuxVersionCardCommonProps & {
@@ -255,6 +259,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = (props) => {
     showMoreActions,
     showTitle = true,
     viewMode,
+    isImgBundleInUseEditEnabled,
     errors = []
   } = props;
   const inUseImageBundleUuids = props.showMoreActions
@@ -305,7 +310,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = (props) => {
                   </RbacValidator>
                 );
               },
-              disabled: inUseImageBundleUuids.has(image.uuid)
+              disabled: !isImgBundleInUseEditEnabled && inUseImageBundleUuids.has(image.uuid)
             },
             {
               text: t('setDefault'),

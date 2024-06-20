@@ -266,6 +266,9 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 10
 DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
     "Size threshold in bytes for a catcache tuple to be compressed.");
 
+DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
+  "Determines the behavior of read-after-commit-visibility guarantee.");
+
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
     fprintf(

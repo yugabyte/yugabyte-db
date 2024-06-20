@@ -15,7 +15,7 @@ import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigAction,
-  XClusterConfigType
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
 import { YBButton } from '../../../redesign/components';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -23,8 +23,7 @@ import {
   api,
   drConfigQueryKey,
   metricQueryKey,
-  universeQueryKey,
-  xClusterQueryKey
+  universeQueryKey
 } from '../../../redesign/helpers/api';
 import { getEnabledConfigActions, getXClusterConfigUuids } from '../ReplicationUtils';
 import { getEnabledDrConfigActions, getXClusterConfig } from './utils';
@@ -44,10 +43,6 @@ import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPer
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { EditConfigModal } from './editConfig/EditConfigModal';
-
-import { TableType } from '../../../redesign/helpers/dtos';
-import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
-import { XClusterConfig } from '../dtos';
 
 interface DrPanelProps {
   currentUniverseUuid: string;

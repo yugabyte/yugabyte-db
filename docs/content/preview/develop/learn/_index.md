@@ -26,40 +26,6 @@ type: indexpage
     </a>
   </div>
 
-<!--
-    <a class="section-link icon-offset" href="conditional-updates/">
-      <div class="icon">
-        <i class="fa-brands fa-java"></i>
-      </div>
-      <div class="text">
-        3. Reads and Writes
-        <div class="caption">How to perform conditional updates and achieve compare-and-swap operations.</div>
-      </div>
-    </a>
-
-    <a class="section-link icon-offset" href="conditional-updates/">
-      <div class="icon">
-        <i class="fa-brands fa-java"></i>
-      </div>
-      <div class="text">
-        4. Conditional Updates
-        <div class="caption">How to perform conditional updates and achieve compare-and-swap operations.</div>
-      </div>
-    </a>
--->
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="data-types-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/json_documents.png" aria-hidden="true" />
-        <div class="title">Data types</div>
-      </div>
-      <div class="body">
-          Using various data types, including the JSONB data type
-      </div>
-    </a>
-  </div>
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="sql-nosql/">
       <div class="head">

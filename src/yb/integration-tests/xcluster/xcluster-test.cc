@@ -146,6 +146,7 @@ DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
 DECLARE_bool(TEST_xcluster_simulate_get_changes_response_error);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
+DECLARE_int32(heartbeat_interval_ms);
 
 namespace yb {
 
@@ -3903,6 +3904,37 @@ TEST_F_EX(XClusterTest, VerifyReplicationError, XClusterTestNoParam) {
   ASSERT_EQ(2, xcluster_consumer->TEST_metric_replication_error_count()->value());
 }
 
+// Make sure the full replication error report is sent to a new master leader even when the metric
+// collection is skipped on the very first heartbeat to the new master.
+TEST_F_EX(XClusterTest, ReplicationErrorAfterMasterFailover, XClusterTestNoParam) {
+  // Send metrics report including the xCluster status in every heartbeat.
+  const auto short_metric_report_interval_ms = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = short_metric_report_interval_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
+
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 3, /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      MonoTime::kMillisecondsPerHour;
+  SleepFor(FLAGS_heartbeat_interval_ms * 2ms);
+
+  ASSERT_OK(consumer_cluster()->StepDownMasterLeader());
+  ASSERT_OK(consumer_cluster()->WaitForAllTabletServers());
+
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
 // Test deleting inbound replication group without performing source stream cleanup.
 TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
   constexpr int kNTabletsPerTable = 1;
@@ -4006,6 +4038,55 @@ TEST_F_EX(XClusterTest, DeleteWhenSourceIsDown, XClusterTestNoParam) {
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
     ASSERT_OK(master_proxy->DeleteCDCStream(delete_cdc_stream_req, &delete_cdc_stream_resp, &rpc));
   }
+}
+
+TEST_F_EX(XClusterTest, TestYbAdmin, XClusterTestNoParam) {
+  // Create 2 tables with 1 tablet each.
+  ASSERT_OK(SetUpWithParams({1, 1}, /*replication_factor=*/1));
+
+  auto result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications"));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+
+  ASSERT_OK(SetupReplication());
+
+  result =
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications", "NonExistent"));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+
+  // This is not a db scoped replication group so it should not be listed.
+  result = ASSERT_RESULT(CallAdmin(
+      consumer_cluster(), "list_universe_replications",
+      producer_tables_[0]->name().namespace_id()));
+  ASSERT_STR_NOT_CONTAINS(result, kReplicationGroupId.ToString());
+
+  result = ASSERT_RESULT(CallAdmin(consumer_cluster(), "list_universe_replications"));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+
+  result = ASSERT_RESULT(
+      CallAdmin(consumer_cluster(), "get_universe_replication_info", kReplicationGroupId));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+  constexpr auto host_port_str = "host: \"$0\" port: $1";
+  const auto& source_addr =
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr();
+  ASSERT_STR_CONTAINS(result, Format(host_port_str, source_addr.host(), source_addr.port()));
+  const auto& consumer_addr =
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr();
+  ASSERT_STR_NOT_CONTAINS(
+      result, Format(host_port_str, consumer_addr.host(), consumer_addr.port()));
+  ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_NON_TRANSACTIONAL));
+  ASSERT_STR_CONTAINS(result, producer_tables_[0]->id());
+  ASSERT_STR_CONTAINS(result, producer_tables_[1]->id());
+
+  ASSERT_OK(DeleteUniverseReplication());
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables_, {LeaderOnly::kFalse, Transactional::kTrue}));
+
+  result = ASSERT_RESULT(
+      CallAdmin(consumer_cluster(), "get_universe_replication_info", kReplicationGroupId));
+  ASSERT_STR_CONTAINS(result, kReplicationGroupId.ToString());
+  ASSERT_STR_CONTAINS(result, xcluster::ShortReplicationType(XCLUSTER_YSQL_TRANSACTIONAL));
+  ASSERT_STR_CONTAINS(result, producer_tables_[0]->id());
+  ASSERT_STR_CONTAINS(result, producer_tables_[1]->id());
 }
 
 }  // namespace yb

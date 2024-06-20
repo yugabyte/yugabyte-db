@@ -320,7 +320,6 @@ Each tablet replica generally requires 700 MiB of this memory.
 
 Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
 
-
 ## Raft flags
 
 For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-tserver` configurations should match the values in [yb-master](../yb-master/#raft-flags) configurations.
@@ -580,6 +579,18 @@ For more details, see [clusters in colocated tables](../../../architecture/docdb
 
 Default: `false`
 
+##### tablet_replicas_per_core_limit
+
+The number of tablet replicas that each core on a YB-TServer can support.
+
+Default: `0` for no limit.
+
+##### tablet_replicas_per_gib_limit
+
+The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
+
+Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+
 ## Geo-distribution flags
 
 Settings related to managing geo-distributed clusters:
@@ -768,7 +779,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED` {{<badge/ea>}}
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -1149,7 +1160,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-availability) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-availability).
+The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-maturity) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-maturity).
 
 To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
@@ -1175,7 +1186,7 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1193,7 +1204,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1359,10 +1370,12 @@ Default: `100`
 
 ## Metric export flags
 
+YB-TServer metrics are available in Prometheus format atmax_prometheus_metric_entries
+`http://localhost:9000/prometheus-metrics`.
+
 ##### --export_help_and_type_in_prometheus_metrics
 
-YB-TServer metrics are available in Prometheus format at
-`http://localhost:9000/prometheus-metrics`.  This flag controls whether
+This flag controls whether
 #TYPE and #HELP information is included as part of the Prometheus
 metrics output by default.
 
@@ -1373,6 +1386,15 @@ help information.  For example, querying
 type and help information regardless of the setting of this flag.
 
 Default: `true`
+
+##### --max_prometheus_metric_entries
+
+Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
+
+To override this flag on a per-scrape basis, you can adjust the URL parameter
+`max_metric_entries`.
+
+Default: `UINT32_MAX`
 
 ## Catalog flags
 
@@ -1409,6 +1431,14 @@ Default: `false`
 Controls whether to use the PostgreSQL relcache init file, which caches critical system catalog entries. If enabled, each PostgreSQL connection loads only this minimal set of cached entries (except if the relcache init file needs to be re-built, for example, after a DDL invalidates the cache). If disabled, each PostgreSQL connection preloads the catalog cache, which consumes more memory but reduces first query latency.
 
 Default: `true`
+
+##### ysql_yb_toast_catcache_threshold
+
+Specifies the threshold (in bytes) beyond which catalog tuples will get compressed when they are stored in the PostgreSQL catalog cache. Setting this flag reduces memory usage for certain large objects, including functions and views, in exchange for slower catalog refreshes.
+
+To minimize performance impact when enabling this flag, set it to 2KB or higher.
+
+Default: -1 (disabled). Minimum: 128 bytes.
 
 ##### ysql_enable_db_catalog_version_mode
 
@@ -1476,6 +1506,42 @@ response. As there is one row in the table `pg_yb_catalog_version` for each
 database, the cost of reading `table pg_yb_catalog_version` becomes more
 expensive when the number of yb-tservers, or the number of databases goes up.
 
+{{< /note >}}
+
+## DDL atomicity flags
+
+##### ysql_yb_ddl_rollback_enabled
+
+Enable DDL atomicity. When a DDL transaction that affects the DocDB system catalog fails, YB-Master will rollback the changes made to the DocDB system catalog.
+
+Default: true
+
+{{< note title="Important" >}}
+In YSQL, a DDL statement creates a separate DDL transaction to execute the DDL statement. A DDL transaction generally needs to read and write PostgreSQL metadata stored in catalog tables in the same way as a native PostgreSQL DDL statement. In addition, some DDL statements also involve updating DocDB system catalog table.
+(for example, a DDL statement such as `alter table add/drop column`). When a DDL transaction fails, the corresponding DDL statement is aborted. This means that the PostgreSQL metadata will be rolled back atomically.
+<br>Before the introduction of the flag `--ysql_yb_ddl_rollback_enabled`, the DocDB system catalog changes were not automatically rolled back by YB-Master, possibly leading to metadata corruption that had to be manually fixed. Currently, with this flag being set to true, YB-Master can rollback the DocDB system catalog changes
+automatically to prevent metadata corruption.
+{{< /note >}}
+
+##### report_ysql_ddl_txn_status_to_master
+
+If set, at the end of a DDL operation, the YB-TServer notifies the YB-Master whether the DDL operation was committed or aborted.
+
+Default: true
+
+{{< note title="Important" >}}
+Due to implementation restrictions, after a DDL statement commits or aborts, YB-Master performs a relatively expensive operation by continuously polling the transaction status tablet, and comparing the DocDB schema with PostgreSQL schema to determine whether the transaction was a success.<br> This behavior is optimized with the flag `report_ysql_ddl_txn_status_to_master`, where at the end of a DDL transaction, YSQL sends the status of the transaction (commit/abort) to YB-Master. Once received, YB-Master can stop polling the transaction status tablet, and also skip the relatively expensive schema comparison.
+{{< /note >}}
+
+##### ysql_ddl_transaction_wait_for_ddl_verification
+
+If set, DDL transactions will wait for DDL verification to complete before returning to the client.
+
+Default: true
+
+{{< note title="Important" >}}
+After a DDL statement that includes updating DocDB system catalog completes, YB-Master still needs to work on the DocDB system catalog changes in the background asynchronously, to ensure that they are eventually in sync with the corresponding PostgreSQL catalog changes. This can take additional time in order to reach eventual consistency. During this period, an immediately succeeding DML or DDL statement can fail due to changes made by YB-Master to the DocDB system catalog in the background, which may cause confusion.<br>
+When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
 ## Advanced flags
@@ -1591,10 +1657,9 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `nMB` (in megabytes
 
 Default: `1GB`
 
-<!-- TODO 2024.1 >
 ##### enable_bitmapscan
 
-Enables or disables the query planner's use of bitmap-scan plan types.
+{{<badge/tp>}} Enables or disables the query planner's use of bitmap-scan plan types.
 
 Bitmap Scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Multiple bitmaps can be combined with AND or OR operators to create a final bitmap that is used to collect rows from the main table.
 
@@ -1603,7 +1668,6 @@ Bitmap scans follow the same work_mem behavior as PostgreSQL: each individual bi
 Bitmap scans are only supported for LSM indexes.
 
 Default: false
--->
 
 ##### yb_bnl_batch_size
 

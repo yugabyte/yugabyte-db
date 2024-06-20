@@ -23,4 +23,6 @@ bool IsAlterReplicationGroupId(const ReplicationGroupId& replication_group_id);
 
 ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& replication_group_id);
 
+std::string ShortReplicationType(XClusterReplicationType type);
+
 }  // namespace yb::xcluster

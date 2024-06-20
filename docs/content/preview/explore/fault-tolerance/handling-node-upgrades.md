@@ -26,13 +26,11 @@ Consider a setup where YugabyteDB is deployed in a single region (us-east-1) acr
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-{{<collapse title="Set up a local cluster">}}
 {{<setup/local
   numnodes="6"
   rf="3"
   locations="aws.us-east.us-east-1a,aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1b,aws.us-east.us-east-1c,aws.us-east.us-east-1c"
   fault-domain="zone">}}
-{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
