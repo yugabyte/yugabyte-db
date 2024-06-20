@@ -644,6 +644,9 @@ GET /customers/:cUUID/troubleshooting_platform                                co
 POST /customers/:cUUID/troubleshooting_platform                               com.yugabyte.yw.controllers.TroubleshootingPlatformController.createTroubleshootingPlatform(cUUID: java.util.UUID, request: Request)
 PUT /customers/:cUUID/troubleshooting_platform/:tpUUID                        com.yugabyte.yw.controllers.TroubleshootingPlatformController.editTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
 DELETE /customers/:cUUID/troubleshooting_platform/:tpUUID                     com.yugabyte.yw.controllers.TroubleshootingPlatformController.deleteTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
+GET /customers/:cUUID/troubleshooting_platform/:tpUUID/universes/:uUUID       com.yugabyte.yw.controllers.TroubleshootingPlatformController.checkRegistered(cUUID: java.util.UUID, tpUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
+PUT /customers/:cUUID/troubleshooting_platform/:tpUUID/universes/:uUUID       com.yugabyte.yw.controllers.TroubleshootingPlatformController.registerUniverse(cUUID: java.util.UUID, tpUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
+DELETE /customers/:cUUID/troubleshooting_platform/:tpUUID/universes/:uUUID    com.yugabyte.yw.controllers.TroubleshootingPlatformController.unregisterUniverse(cUUID: java.util.UUID, tpUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 
 # New Release APIs
 POST /customers/:cUUID/ybdb_release                                            com.yugabyte.yw.controllers.ReleasesController.create(cUUID: java.util.UUID, request: Request)
