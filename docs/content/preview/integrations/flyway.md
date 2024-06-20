@@ -32,12 +32,12 @@ To use Flyway with YugabyteDB, you need the following:
   flyway.user=yugabyte
   flyway.password=yugabyte
   ```
-  - Alternatively, you can also use the vanilla PostgreSQL JDBC Driver instead of the YugabyteDB JDBC Smart Driver. If you use the url with prefix `jdbc:/postgresql://`, the plugin would attempt to use the corresponding driver.
-    ```properties
-    flyway.url=jdbc:postgresql://localhost:5433/yugabyte
-    flyway.user=yugabyte
-    flyway.password=yugabyte
-    ```
+    You can also use the vanilla PostgreSQL JDBC Driver instead of the YugabyteDB JDBC Smart Driver by setting the URL prefix to `jdbc:/postgresql://`, and the plugin will attempt to use the corresponding driver.
+  ```properties
+  flyway.url=jdbc:postgresql://localhost:5433/yugabyte
+  flyway.user=yugabyte
+  flyway.password=yugabyte
+  ```
 
 - Add YugabyteDB JDBC Smart Driver jar in your application's classpath. Use the following maven coordinates; for the latest version, see the [mvn repository](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb).
   ```
