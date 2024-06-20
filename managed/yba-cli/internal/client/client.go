@@ -99,7 +99,9 @@ func NewAuthAPIClientInitialize(url *url.URL, apiToken string) (*AuthAPIClient, 
 		cfg.Scheme = "http"
 	}
 
-	cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiToken}
+	cfg.DefaultHeader = map[string]string{
+		"X-AUTH-YW-API-TOKEN": apiToken,
+	}
 
 	apiClient := ybaclient.NewAPIClient(cfg)
 

@@ -52,6 +52,9 @@
 } while (0)
 
 namespace yb {
+
+class CurlGlobalInitializer;
+
 namespace rpc {
 
 class Messenger;
@@ -87,6 +90,7 @@ class YBTest : public ::testing::Test {
 
  private:
   std::string test_dir_;
+  std::unique_ptr<CurlGlobalInitializer> global_curl_;
 };
 
 // Returns true if slow tests are runtime-enabled.
@@ -210,6 +214,8 @@ backups to fail.
 TODO: Re-enable the tests once GH#21689 is done.
 */
 bool DisableMiniClusterBackupTests();
+
+void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest);
 
 int CalcNumTablets(size_t num_tablet_servers);
 

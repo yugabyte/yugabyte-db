@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"syscall"
 	"time"
 
@@ -148,7 +146,9 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		initServices()
 
 		// Lay out new YBA bits, don't start
-		common.Install(ybaCtl.Version())
+		if err := common.Install(ybaCtl.Version()); err != nil {
+			log.Fatal(fmt.Sprintf("error installing new ybactl %s: %s", ybaCtl.Version(), err.Error()))
+		}
 		for _, name := range serviceOrder {
 			log.Info("About to migrate component " + name)
 			if err := services[name].MigrateFromReplicated(); err != nil {
@@ -164,8 +164,13 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 
 		// Take a backup of running YBA using replicated settings.
-		replBackupDir := "/tmp/replBackupDir"
+		replBackupDir := filepath.Join(common.GetDataRoot(), "replBackupDir")
 		common.MkdirAllOrFail(replBackupDir, common.DirMode)
+		defer func () {
+			if err := common.RemoveAll(replBackupDir); err != nil {
+				log.Warn("error cleaning up " + replBackupDir)
+			}
+		}()
 		dataDir, err := configView.Get("storage_path")
 		if err != nil {
 			log.Fatal("no storage path found in config view: " + err.Error())
@@ -230,31 +235,8 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 
 		// Restore data using yugabundle method, pass in ybai data dir so that data can be copied over
 		log.Info("Restoring data to newly installed YBA.")
-		files, err := os.ReadDir(replBackupDir)
-		if err != nil {
-			log.Fatal(fmt.Sprintf("error reading directory %s: %s", replBackupDir, err.Error()))
-		}
-		// Looks for most recent backup first.
-		sort.Slice(files, func(i, j int) bool {
-			iinfo, e1 := files[i].Info()
-			jinfo, e2 := files[j].Info()
-			if e1 != nil || e2 != nil {
-				log.Fatal("Error determining modification time for backups.")
-			}
-			return iinfo.ModTime().After(jinfo.ModTime())
-		})
-		// Find the old backup.
-		for _, file := range files {
-			log.Info(file.Name())
-			match, _ := regexp.MatchString(`^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`, file.Name())
-			if match {
-				input := fmt.Sprintf("%s/%s", replBackupDir, file.Name())
-				log.Info(fmt.Sprintf("Restoring replicated backup %s to YBA.", input))
-				// backup path, destination, skipRestart, verbose, platform, migration, systemPG, disableVersion
-				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false, true)
-				break
-			}
-		}
+		RestoreBackupScript(common.FindRecentBackup(replBackupDir), common.GetBaseInstall(), false,
+			true, plat, true, false, true)
 
 		// Start YBA once postgres is fully ready.
 		if err := plat.Start(); err != nil {
@@ -262,7 +244,9 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		}
 		log.Info("Started yb-platform after restoring data.")
 
-		common.WaitForYBAReady(ybaCtl.Version())
+		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
+			log.Fatal(err.Error())
+		}
 
 		var statuses []common.Status
 		for _, name := range serviceOrder {

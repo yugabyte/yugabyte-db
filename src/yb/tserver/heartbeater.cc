@@ -34,7 +34,6 @@
 
 #include <cstdint>
 #include <iosfwd>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -47,41 +46,24 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/consensus/log_fwd.h"
-
-#include "yb/docdb/docdb.pb.h"
-
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_rpc.h"
 #include "yb/master/master_types.pb.h"
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
-
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.proxy.h"
-
-#include "yb/tablet/tablet_options.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/enums.h"
-#include "yb/util/flags.h"
-#include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -89,7 +71,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
-#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
@@ -753,9 +734,13 @@ const std::string& HeartbeatDataProvider::LogPrefix() const {
 
 void PeriodicalHeartbeatDataProvider::AddData(
     const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) {
-  if (prev_run_time_ + period_ < CoarseMonoClock::Now()) {
-    DoAddData(last_resp, req);
+  // Save that fact that we will need to send a full report the next time we run.
+  needs_full_tablet_report_ |= last_resp.needs_full_tablet_report();
+
+  if (prev_run_time_ + Period() < CoarseMonoClock::Now()) {
+    DoAddData(needs_full_tablet_report_, req);
     prev_run_time_ = CoarseMonoClock::Now();
+    needs_full_tablet_report_ = false;
   }
 }
 

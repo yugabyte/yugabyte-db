@@ -4,7 +4,7 @@ package api.v2.handlers;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseEditGFlagsMapper;
 import api.v2.models.UniverseEditGFlags;
-import api.v2.models.YBPTask;
+import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
@@ -23,7 +23,7 @@ import play.mvc.Http;
 public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   @Inject public UpgradeUniverseHandler v1Handler;
 
-  public YBPTask editGFlags(
+  public YBATask editGFlags(
       Http.Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
       throws JsonProcessingException {
     log.info("Starting v2 edit GFlags with {}", editGFlags);
@@ -46,9 +46,9 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     // invoke v1 upgrade api UpgradeUniverseHandler.upgradeGFlags
     UUID taskUuid = v1Handler.upgradeGFlags(v1Params, customer, universe);
     // construct a v2 Task to return from here
-    YBPTask ybpTask = new YBPTask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+    YBATask YBATask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
 
-    log.info("Started gflags upgrade task {}", mapper.writeValueAsString(ybpTask));
-    return ybpTask;
+    log.info("Started gflags upgrade task {}", mapper.writeValueAsString(YBATask));
+    return YBATask;
   }
 }

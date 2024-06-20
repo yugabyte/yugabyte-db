@@ -355,6 +355,7 @@ void AshCopyTServerSample(
 
   cb_metadata->query_id = tserver_metadata.query_id();
   cb_metadata->session_id = tserver_metadata.session_id();
+  cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_state_code());
@@ -1730,6 +1731,14 @@ YBCStatus YBCPgSetEnableTracing(bool tracing) {
 
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
+}
+
+YBCStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
+  return ToYBCStatus(pgapi->SetInTxnBlock(in_txn_blk));
+}
+
+YBCStatus YBCPgSetReadOnlyStmt(bool read_only_stmt) {
+  return ToYBCStatus(pgapi->SetReadOnlyStmt(read_only_stmt));
 }
 
 YBCStatus YBCPgEnterSeparateDdlTxnMode() {

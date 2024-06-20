@@ -9,7 +9,7 @@ menu:
     identifier: live-fall-back
     parent: migration-types
     weight: 104
-techPreview: /preview/releases/versioning/#feature-availability
+techPreview: /preview/releases/versioning/#feature-maturity
 type: docs
 ---
 
@@ -67,7 +67,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
 - Review the [guidelines for your migration](../../known-issues/).
-- Review [data modeling](../../reference/data-modeling/) strategies.
+- Review [data modeling](../../../develop/learn/data-modeling-ysql) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 

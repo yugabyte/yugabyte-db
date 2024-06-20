@@ -8,7 +8,7 @@ menu:
     identifier: assess-migration
     parent: migration-types
     weight: 101
-techPreview: /preview/releases/versioning/#feature-availability
+techPreview: /preview/releases/versioning/#feature-maturity
 type: docs
 ---
 

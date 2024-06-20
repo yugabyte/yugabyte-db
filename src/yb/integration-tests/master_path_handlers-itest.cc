@@ -51,6 +51,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.pb.h"
 
@@ -78,6 +79,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_uint32(leaderless_tablet_alert_delay_secs);
 DECLARE_bool(TEST_assert_local_op);
+DECLARE_bool(TEST_echo_service_enabled);
 
 namespace yb {
 namespace master {
@@ -116,19 +118,19 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
   }
 
  protected:
-  Status GetUrl(const string& query_path, faststring* result) {
-    const string tables_url = master_http_url_ + query_path;
-    EasyCurl curl;
-    return curl.FetchURL(tables_url, result);
-  }
-
   // Attempts to fetch url until a response with status OK, or until timeout.
-  Status GetUrlWaitForOK(const string& query_path, faststring* result, MonoDelta timeout) {
-    const string tables_url = master_http_url_ + query_path;
-    EasyCurl curl;
+  // On mac the curl command fails with error "A libcurl function was given a bad argument", but
+  // succeeds on retries.
+  Status GetUrl(const string& query_path, faststring* result, MonoDelta timeout = 30s) {
+    const string url = master_http_url_ + query_path;
+    Status status;
     return WaitFor(
         [&]() -> bool {
-          return curl.FetchURL(tables_url, result).ok();
+          EasyCurl curl;
+          status = curl.FetchURL(url, result);
+          YB_LOG_IF_EVERY_N(WARNING, !status.ok(), 5) << status;
+
+          return status.ok();
         },
         timeout, "Wait for curl response to return with status OK");
   }
@@ -442,7 +444,7 @@ void verifyTestTableTablets(const rapidjson::Value* json_obj) {
   }
 }
 
-TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointValidTableId)) {
+TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableId) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
 
@@ -456,8 +458,7 @@ TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointVa
 
   // Call endpoint and validate format of response.
   faststring result;
-  ASSERT_OK(
-      GetUrlWaitForOK(Format("/api/v1/table?id=$0", table->id()), &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl(Format("/api/v1/table?id=$0", table->id()), &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -470,7 +471,7 @@ TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointVa
   verifyTestTableTablets(json_obj);
 }
 
-TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointValidTableName)) {
+TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
 
@@ -487,11 +488,9 @@ TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointVa
 
   // Call endpoint and validate format of response.
   faststring result;
-  ASSERT_OK(
-      GetUrlWaitForOK(
-          Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"),
-          &result,
-          30s /* timeout */));
+  ASSERT_OK(GetUrl(
+      Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"), &result,
+      30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -504,13 +503,12 @@ TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointVa
   verifyTestTableTablets(json_obj);
 }
 
-TEST_F(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestTableJsonEndpointInvalidTableId)) {
+TEST_F(MasterPathHandlersItest, TestTableJsonEndpointInvalidTableId) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   // Call endpoint and validate format of response.
   faststring result;
-  ASSERT_OK(
-      GetUrlWaitForOK("/api/v1/table?id=12345", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/table?id=12345", &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -526,8 +524,7 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
 
   // Call endpoint and validate format of response.
   faststring result;
-  ASSERT_OK(
-      GetUrlWaitForOK("/api/v1/table", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/table", &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -542,7 +539,7 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
   auto table = CreateTestTable();
 
   faststring result;
-  ASSERT_OK(GetUrlWaitForOK("/api/v1/tables", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/tables", &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -590,7 +587,7 @@ TEST_F(MasterPathHandlersItest, TestMemTrackersJsonEndpoint) {
   auto table = CreateTestTable();
 
   faststring result;
-  ASSERT_OK(GetUrlWaitForOK("/api/v1/mem-trackers", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/mem-trackers", &result, 30s /* timeout */));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -645,8 +642,7 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
   }
 };
 
-TEST_F_EX(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(ShowDeletedTablets),
-  TabletSplitMasterPathHandlersItest) {
+TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHandlersItest) {
   CreateTestTable(1 /* num_tablets */);
 
   client::TableHandle table;
@@ -659,18 +655,16 @@ TEST_F_EX(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(ShowDeletedTablets),
   const auto webpage_shows_deleted_tablets =
       [this, &table](const bool should_show_deleted) -> Result<bool> {
         faststring result;
-        RETURN_NOT_OK(
-            GetUrlWaitForOK(
-                "/table?id=" + table->id() + (should_show_deleted ? "&show_deleted" : ""),
-                &result,
-                30s /* timeout */));
-    const auto webpage = result.ToString();
-    std::smatch match;
-    const std::regex regex(
-        "<tr>.*<td>Delete*d</td><td>0</td><td>Not serving tablet deleted upon request "
-        "at(.|\n)*</tr>");
-    std::regex_search(webpage, match, regex);
-    return !match.empty();
+        RETURN_NOT_OK(GetUrl(
+            "/table?id=" + table->id() + (should_show_deleted ? "&show_deleted" : ""), &result,
+            30s /* timeout */));
+        const auto webpage = result.ToString();
+        std::smatch match;
+        const std::regex regex(
+            "<tr>.*<td>Delete*d</td><td>0</td><td>Not serving tablet deleted upon request "
+            "at(.|\n)*</tr>");
+        std::regex_search(webpage, match, regex);
+        return !match.empty();
   };
 
   ASSERT_OK(yb_admin_client_->FlushTables(
@@ -688,8 +682,7 @@ TEST_F_EX(MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(ShowDeletedTablets),
 
 // Hidden split parent tablet shouldn't be shown as leaderless.
 TEST_F_EX(
-    MasterPathHandlersItest, YB_DISABLE_TEST_ON_MACOS(TestHiddenSplitParentTablet),
-    TabletSplitMasterPathHandlersItest) {
+    MasterPathHandlersItest, TestHiddenSplitParentTablet, TabletSplitMasterPathHandlersItest) {
   const auto kLeaderlessTabletAlertDelaySecs = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
       kLeaderlessTabletAlertDelaySecs;
@@ -1538,6 +1531,52 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
       20s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
   faststring out;
   ASSERT_OK(GetUrl("/load-distribution", &out));
+}
+
+TEST_F(MasterPathHandlersItest, StatefulServices) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto service_name = StatefulServiceKind_Name(StatefulServiceKind::TEST_ECHO);
+
+  faststring out;
+  ASSERT_OK(GetUrl("/stateful-services", &out));
+  auto out_str = out.ToString();
+  ASSERT_STR_NOT_CONTAINS(out_str, service_name);
+
+  ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
+  {
+    JsonReader r(out.ToString());
+    ASSERT_OK(r.Init());
+    const rapidjson::Value* json_obj = nullptr;
+    ASSERT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+    ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+    ASSERT_TRUE(json_obj->HasMember("stateful_services"));
+    ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["stateful_services"].GetType());
+    const auto services = (*json_obj)["stateful_services"].GetArray();
+    ASSERT_EQ(services.Size(), 0);
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_echo_service_enabled) = true;
+  ASSERT_OK(client->WaitForCreateTableToFinish(
+      stateful_service::GetStatefulServiceTableName(StatefulServiceKind::TEST_ECHO)));
+
+  ASSERT_OK(GetUrl("/stateful-services", &out));
+  out_str = out.ToString();
+  ASSERT_STR_CONTAINS(out_str, service_name);
+
+  ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
+  {
+    JsonReader r(out.ToString());
+    ASSERT_OK(r.Init());
+    const rapidjson::Value* json_obj = nullptr;
+    ASSERT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+    ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+    ASSERT_TRUE(json_obj->HasMember("stateful_services"));
+    ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["stateful_services"].GetType());
+    const auto services = (*json_obj)["stateful_services"].GetArray();
+    ASSERT_EQ(services.Size(), 1);
+    ASSERT_TRUE(services.Begin()->HasMember("service_name"));
+    ASSERT_EQ(services.Begin()->FindMember("service_name")->value.GetString(), service_name);
+  }
 }
 
 }  // namespace master

@@ -1149,7 +1149,8 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 }
 
 void PgClientSession::ProcessReadTimeManipulation(
-    ReadTimeManipulation manipulation, uint64_t read_time_serial_no) {
+    ReadTimeManipulation manipulation, uint64_t read_time_serial_no,
+    ClampUncertaintyWindow clamp) {
   VLOG_WITH_PREFIX(2) << "ProcessReadTimeManipulation: " << manipulation
                       << ", read_time_serial_no: " << read_time_serial_no
                       << ", read_time_serial_no_: " << read_time_serial_no_;
@@ -1162,7 +1163,8 @@ void PgClientSession::ProcessReadTimeManipulation(
       return;
     case ReadTimeManipulation::ENSURE_READ_TIME_IS_SET :
       if (!read_point.GetReadTime() || read_time_serial_no_ != read_time_serial_no) {
-          read_point.SetCurrentReadTime();
+          // Clamp read uncertainty window when requested by the query layer.
+          read_point.SetCurrentReadTime(clamp);
           VLOG(1) << "Setting current ht as read point " << read_point.GetReadTime();
       }
       return;
@@ -1271,7 +1273,9 @@ PgClientSession::SetupSession(
       RSTATUS_DCHECK(
           kind == PgClientSessionKind::kPlain, IllegalState,
           "Read time manipulation can't be specified for non kPlain sessions");
-      ProcessReadTimeManipulation(options.read_time_manipulation(), read_time_serial_no);
+      ProcessReadTimeManipulation(
+        options.read_time_manipulation(), read_time_serial_no,
+        ClampUncertaintyWindow(options.clamp_uncertainty_window()));
     } else if (options.has_read_time() && options.read_time().has_read_ht()) {
       const auto read_time = ReadHybridTime::FromPB(options.read_time());
       session.SetReadPoint(read_time);
@@ -1312,6 +1316,21 @@ PgClientSession::SetupSession(
     if (in_txn_limit) {
       // TODO: Shouldn't the below logic for DDL transactions as well?
       session.SetInTxnLimit(in_txn_limit);
+    }
+
+    if (options.clamp_uncertainty_window()
+        && !session.read_point()->GetReadTime()) {
+      RSTATUS_DCHECK(
+        !(transaction && transaction->isolation() == SERIALIZABLE_ISOLATION),
+        IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+      // Set read time with clamped uncertainty window when reqeusted by
+      // the query layer.
+      // Do not mess with the read time if already set.
+      session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+        << "Setting read time to "
+        << session.read_point()->GetReadTime()
+        << " for read only txn/stmt";
     }
   }
 

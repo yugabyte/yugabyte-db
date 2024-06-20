@@ -40,6 +40,7 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/curl_util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
@@ -153,6 +154,8 @@ void YBTest::SetUp() {
       LOG(INFO) << "Environment variable " << env_var_name << ": " << value;
     }
   }
+
+  global_curl_ = std::make_unique<CurlGlobalInitializer>();
 }
 
 string YBTest::GetTestPath(const string& relative_path) {
@@ -325,6 +328,21 @@ bool DisableMiniClusterBackupTests() {
     }
   }
   return false;
+}
+
+void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest) {
+  const char* extra_daemon_flags_env_var_value = getenv(env_var_name);
+  if (extra_daemon_flags_env_var_value) {
+    LOG(INFO) << "Setting extra daemon flags as specified by env var " << env_var_name << ": "
+              << extra_daemon_flags_env_var_value;
+    // TODO: this has an issue with handling quoted arguments with embedded spaces.
+    std::istringstream iss(extra_daemon_flags_env_var_value);
+    copy(std::istream_iterator<string>(iss),
+         std::istream_iterator<string>(),
+         std::back_inserter(*args_dest));
+  } else {
+    LOG(INFO) << "Env var " << env_var_name << " not specified, not setting extra flags from it";
+  }
 }
 
 string GetCertsDir() {

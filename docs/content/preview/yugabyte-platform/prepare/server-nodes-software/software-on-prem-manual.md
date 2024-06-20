@@ -698,13 +698,13 @@ To reconfigure a node for use in a different provider, do the following:
 1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
 
     ```sh
-    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    node-agent node configure -t <api_token> -u https://<yba_address>
     ```
 
     For example, if you run the following:
 
     ```sh
-    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u https://10.98.0.42
     ```
 
     ```output
@@ -745,7 +745,7 @@ If you are running v2.18.5 or earlier, the node must be unregistered first. Use 
 1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
 
     ```sh
-    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    node-agent node configure -t <api_token> -u https://<yba_address>
     ```
 
 1. Start the Systemd service as a sudo user.

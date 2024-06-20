@@ -157,7 +157,7 @@ Scan method hints enforce the scanning method on tables when specified along wit
 | NoIndexOnlyScan(table) | Do not enable IndexOnlyScan on the table. |
 | IndexScanRegexp(table regex) | Enable index scan on the table whose indices match with the regular expression defined by `regex`. |
 | IndexOnlyScanRegexp(table regex) | Do not enable index scan on the table whose indices match with the regular expression defined by `regex`. |
-<!-- TODO 2024.1 | BitmapScan(table) | Enable BitmapScan on the table. | -->
+| BitmapScan(table) | Enable BitmapScan on the table. |
 
 In the following example, the hint `/*+SeqScan(t2)*/` allows table `t2` to be scanned using `SeqScan`.
 
@@ -457,7 +457,7 @@ The joining order in the first query is `/*+Leading(t1 t2 t3)*/`, whereas the jo
 
 Planner method configuration parameters provide a crude method of influencing the query plans chosen by the query optimizer. If the default plan chosen by the optimizer for a particular query is not optimal, a temporary solution is to use one of these configuration parameters to force the optimizer to choose a different plan. YugabyteDB supports the following configuration parameters:
 
-<!-- TODO 2024.1 - enable_bitmapscan -->
+- enable_bitmapscan
 - enable_hashagg
 - enable_hashjoin
 - enable_indexscan

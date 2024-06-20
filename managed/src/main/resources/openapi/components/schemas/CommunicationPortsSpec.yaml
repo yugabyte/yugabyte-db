@@ -1,4 +1,5 @@
-title: Communication Ports used by nodes of this Universe
+title: CommunicationPortsSpec
+description: Communication Ports used by nodes of this Universe. Part of UniverseNetworkingSpec.
 type: object
 readOnly: false
 properties:

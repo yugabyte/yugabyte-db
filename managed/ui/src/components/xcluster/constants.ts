@@ -37,7 +37,10 @@ export const XClusterTableStatus = {
   UPDATING: 'Updating',
   VALIDATED: 'Validated',
   BOOTSTRAPPING: 'Bootstrapping',
-  UNABLE_TO_FETCH: 'UnableToFetch'
+  UNABLE_TO_FETCH: 'UnableToFetch',
+  // DROPPPED - Client internal status. Does not exist on the backend.
+  //            Used to mark tables which are dropped on the source universe.
+  DROPPED: 'Dropped'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 //------------------------------------------------------------------------------------

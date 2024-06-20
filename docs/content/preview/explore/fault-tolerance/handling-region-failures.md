@@ -28,9 +28,7 @@ Consider a scenario where you have deployed your database across three regions -
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-{{<collapse title="Set up a local cluster">}}
 {{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-central-1a,aws.us-west.us-west-1a" fault-domain="region">}}
-{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}

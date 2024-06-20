@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"go.etcd.io/etcd/pkg/fileutil"
+	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"golang.org/x/sys/unix"
 
 	"github.com/dustin/go-humanize"

@@ -50,6 +50,11 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
+/* The number of columns in different versions of the view */
+#define ACTIVE_SESSION_HISTORY_COLS_V1 12
+#define ACTIVE_SESSION_HISTORY_COLS_V2 13
+#define ACTIVE_SESSION_HISTORY_COLS_V3 14
+
 #define MAX_NESTED_QUERY_LEVEL 64
 
 #define set_query_id() (nested_level == 0 || \
@@ -189,6 +194,14 @@ YbAshSetSessionId(uint64 session_id)
 {
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	MyProc->yb_ash_metadata.session_id = session_id;
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+void
+YbAshSetDatabaseId(Oid database_id)
+{
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+	MyProc->yb_ash_metadata.database_id = database_id;
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
@@ -734,9 +747,8 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	MemoryContext oldcontext;
 	int			i;
 	static int  ncols = 0;
-#define ACTIVE_SESSION_HISTORY_COLS 13
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V3)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
@@ -840,16 +852,17 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		values[j++] = Float4GetDatum(sample->sample_weight);
 
-		if (ncols >= ACTIVE_SESSION_HISTORY_COLS)
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V2)
 			values[j++] = CStringGetTextDatum(
 				pgstat_get_wait_event_type(sample->encoded_wait_event_code));
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V3)
+			values[j++] = ObjectIdGetDatum(metadata->database_id);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 
 	YbAshReleaseBufferLock();
-
-#undef ACTIVE_SESSION_HISTORY_COLS
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);

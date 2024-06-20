@@ -1,4 +1,5 @@
-title: Universe Cluster Info
+title: ClusterInfo
+description: Universe Cluster Info. Part of the Response payload UniverseInfo that describes system generated properties of a Cluster.
 type: object
 properties:
   uuid:

@@ -62,6 +62,7 @@ func authWriteConfigFile(r ybaclient.SessionInfo) {
 }
 
 func authUtil(url *url.URL, apiToken string) {
+	// this was established using authToken
 	authAPI, err := ybaAuthClient.NewAuthAPIClientInitialize(url, apiToken)
 	if err != nil {
 		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -84,6 +85,11 @@ func authUtil(url *url.URL, apiToken string) {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 	logrus.Debugf("Fetched Customer UUID without errors.\n")
+
+	
+		viper.GetViper().Set("apiToken", apiToken)
+		r.SetApiToken(apiToken)
+	
 
 	authWriteConfigFile(r)
 }

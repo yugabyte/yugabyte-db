@@ -15,14 +15,15 @@ package org.yb.cql;
 import java.util.*;
 
 import org.junit.Before;
-
+import org.yb.client.TestUtils;
 import org.yb.util.YBBackupUtil;
 
 public class BaseYbBackupTest extends BaseCQLTest {
   @Before
-  public void initYBBackupUtil() {
+  public void initYBBackupUtil() throws Exception {
     YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
     YBBackupUtil.setMasterAddresses(masterAddresses);
+    YBBackupUtil.maybeStartYbControllers(miniCluster);
   }
 
   @Override

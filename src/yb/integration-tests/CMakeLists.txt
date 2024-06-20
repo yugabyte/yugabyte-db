@@ -57,6 +57,7 @@ set(INTEGRATION_TESTS_SRCS
   cluster_verifier.cc
   create-table-itest-base.cc
   external_mini_cluster.cc
+  external_daemon.cc
   external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
   external_mini_cluster_validator.cc

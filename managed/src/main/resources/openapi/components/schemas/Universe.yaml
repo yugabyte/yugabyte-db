@@ -1,4 +1,8 @@
-title: Universe Details
+title: Universe
+description: |
+  Universe
+
+  Contains the user provided `spec` and system generated `info` of a Universe. Returned as response payload for a GET request on a Universe.
 type: object
 properties:
   spec:

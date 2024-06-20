@@ -46,6 +46,12 @@ namespace yb {
 
 class faststring;
 
+class CurlGlobalInitializer {
+ public:
+  CurlGlobalInitializer();
+  ~CurlGlobalInitializer();
+};
+
 // Simple wrapper around curl's "easy" interface, allowing the user to
 // fetch web pages into memory using a blocking API.
 //

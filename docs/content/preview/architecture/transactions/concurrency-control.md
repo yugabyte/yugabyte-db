@@ -310,7 +310,7 @@ Note that the retries will not be performed in case the amount of data to be sen
 
 {{< note >}}
 
-Wait-on-conflict is [Tech Preview](/preview/releases/versioning/#feature-availability).
+Wait-on-conflict is [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
 {{</note >}}
 

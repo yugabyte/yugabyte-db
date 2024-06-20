@@ -75,8 +75,9 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	TimestampTz start_time = GetCurrentTimestamp();
 
 	elog(DEBUG4,
-		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d.",
-		 record->yb_virtual_wal_record->action);
+		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d. "
+		 "yb_read_time is set to %d",
+		 record->yb_virtual_wal_record->action, yb_is_read_time_ht);
 
 	/* Check if we need a relcache refresh. */
 	YBHandleRelcacheRefresh(ctx, record);
@@ -86,6 +87,12 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 	{
 		/* Nothing to handle here. */
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
+			elog(DEBUG4,
+				 "Received DDL record for table: %d, xid: %d, commit_time: "
+				 "%" PRIu64,
+				 record->yb_virtual_wal_record->table_oid,
+				 record->yb_virtual_wal_record->xid,
+				 record->yb_virtual_wal_record->commit_time);
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
@@ -485,35 +492,21 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 		case YB_PG_ROW_MESSAGE_ACTION_UPDATE: switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_DELETE:
 		{
-			bool needs_invalidation =
-				ctx->yb_handle_relcache_invalidation_startup;
-			
-			if (!needs_invalidation)
-				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-							HASH_FIND, &needs_invalidation);
+			bool needs_invalidation = false;
+
+			hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+						HASH_FIND, &needs_invalidation);
 
 			if (needs_invalidation)
 			{
-				uint64_t	read_time_ht;
-				bool		for_startup;
+				uint64_t read_time_ht;
 
-				for_startup = ctx->yb_handle_relcache_invalidation_startup;
-				if (for_startup)
-				{
-					/*
-					 * Use the record_commit_time we received from the
-					 * replication slot metadata (cdc state table).
-					 */
-					read_time_ht =
-						MyReplicationSlot->data.yb_initial_record_commit_time_ht;
-					ctx->yb_handle_relcache_invalidation_startup = false;
-				}
-				else
-				{
-					/* Use the commit_time of the DML. */
-					read_time_ht = record->yb_virtual_wal_record->commit_time;
-				}
+				/* Use the commit_time of the DML. */
+				read_time_ht = record->yb_virtual_wal_record->commit_time;
 
+				elog(DEBUG2,
+					 "Setting yb_read_time to record's commit_time: %" PRIu64,
+					 read_time_ht);
 				YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
 
 				/*
@@ -523,13 +516,10 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 				 */
 				YBReorderBufferSchemaChange(ctx->reorder, table_oid);
 
-				if (!for_startup)
-				{
-					bool		found;
-					hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
-								HASH_REMOVE, &found);
-					Assert(found);
-				}
+				bool found;
+				hash_search(ctx->yb_needs_relcache_invalidation, &table_oid,
+							HASH_REMOVE, &found);
+				Assert(found);
 			}
 			break;
 		}

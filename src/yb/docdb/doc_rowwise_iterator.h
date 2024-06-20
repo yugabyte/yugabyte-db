@@ -85,7 +85,6 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   // key slice should point to block of memory, that contains kHighest after the end.
   // So extended slice could be used as upperbound.
-  Result<bool> PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row);
   Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
 
   bool TEST_is_flat_doc() const {
@@ -93,6 +92,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   }
 
   void TEST_force_allow_fetch_pg_table_row() {
+    CHECK(!use_fast_backward_scan_); // Refer to doc_mode_ description.
     doc_mode_ = DocMode::kAny;
   }
 
@@ -112,7 +112,7 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   template <class TableRow>
   Result<bool> FetchNextImpl(TableRow table_row);
 
-  void PrevDocKey(Slice key) override;
+  void SeekPrevDocKey(Slice key) override;
 
   void ConfigureForYsql();
   void InitResult();
@@ -145,7 +145,10 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   std::unique_ptr<IntentAwareIterator> db_iter_;
   KeyBuffer prefix_buffer_;
   std::optional<IntentAwareIteratorUpperboundScope> upperbound_scope_;
+  std::optional<IntentAwareIteratorLowerboundScope> lowerbound_scope_;
 
+  // NB! Doc mode runtime change is not supported as it's value may be used in InitIterator()
+  // to configure usage of fast backward scan.
   DocMode doc_mode_ = DocMode::kGeneric;
 
   // Points to appropriate alternative owned by result_ field.
@@ -155,6 +158,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   // DocReader result returned by the previous fetch.
   DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;
+
+  bool use_fast_backward_scan_ = false;
 
   const DocDBStatistics* statistics_;
 };

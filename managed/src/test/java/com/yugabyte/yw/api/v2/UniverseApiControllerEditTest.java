@@ -24,7 +24,7 @@ import com.yugabyte.yba.v2.client.models.PlacementRegion;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
-import com.yugabyte.yba.v2.client.models.YBPTask;
+import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -59,7 +59,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
 
-    YBPTask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
     universeUuid = createTask.getResourceUuid();
   }
 
@@ -93,7 +93,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
 
     // call the edit universe
-    YBPTask editTask = api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec);
+    YBATask editTask = api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec);
     assertThat(editTask.getResourceUuid(), is(universeUuid));
     ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
         ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
@@ -239,7 +239,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
         .thenReturn(fakeTaskUUID);
-    YBPTask addTask = api.addCluster(customer.getUuid(), universeUuid, clusterAddSpec);
+    YBATask addTask = api.addCluster(customer.getUuid(), universeUuid, clusterAddSpec);
     UUID newClusterUuid = addTask.getResourceUuid();
     ArgumentCaptor<UniverseConfigureTaskParams> v1AddClusterParamsCapture =
         ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
@@ -305,7 +305,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     when(mockCommissioner.submit(any(TaskType.class), any(ReadOnlyClusterDelete.Params.class)))
         .thenReturn(fakeTaskUUID);
 
-    YBPTask deleteTask = api.deleteCluster(customer.getUuid(), universeUuid, rrClusterUuid, null);
+    YBATask deleteTask = api.deleteCluster(customer.getUuid(), universeUuid, rrClusterUuid, null);
     assertThat(deleteTask.getTaskUuid(), is(fakeTaskUUID));
     assertThat(deleteTask.getResourceUuid(), is(universeUuid));
     ArgumentCaptor<ReadOnlyClusterDelete.Params> v1DeleteClusterParamsCapture =

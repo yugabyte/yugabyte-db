@@ -5074,6 +5074,8 @@ YbGetRelationWithOverwrittenReplicaIdentity(Oid relid, char replident)
 void
 YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 {
+	/* Shouldn't go backwards on yb_read_time */
+	Assert(yb_read_time <= read_time_ht);
 	char read_time[50];
 
 	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);

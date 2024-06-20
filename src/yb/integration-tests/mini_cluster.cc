@@ -247,37 +247,55 @@ Status MiniCluster::StartAsync(
   // Use ExternalMiniCluster if you need independent values.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_fs_data_dirs) = ts_data_dirs;
 
-  if (UseYbController()) {
-    // We need 1 yb controller server for each tserver.
-    // YB Controller uses the same IP as corresponding tserver.
-    yb_controllers_.reserve(options_.num_tablet_servers);
-    // All YB Controller servers need to be on the same port.
-    const auto server_port = port_picker_.AllocateFreePort();
-    for (size_t i = 0; i < options_.num_tablet_servers; ++i) {
-      const auto yb_controller_log_dir = JoinPathSegments(GetYbControllerServerFsRoot(i), "logs");
-      const auto yb_controller_tmp_dir = JoinPathSegments(GetYbControllerServerFsRoot(i), "tmp");
-      RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
-      RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
-      const auto server_address = mini_tablet_servers_[i]->bound_http_addr().address().to_string();
-      scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
-          i, yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
-          GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
-          GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
-          server_port, master_web_ports_[0], tserver_web_ports_[i], server_address,
-          GetYbcToolPath("yb-controller-server"), /*extra_flags*/ {});
-
-      RETURN_NOT_OK_PREPEND(
-          yb_controller->Start(),
-          "Failed to start YB Controller at index " + std::to_string(i + 1));
-      yb_controllers_.push_back(yb_controller);
-    }
-  }
-
   running_ = true;
   rpc::MessengerBuilder builder("minicluster-messenger");
   builder.set_num_reactors(1);
   messenger_ = VERIFY_RESULT(builder.Build());
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+  return Status::OK();
+}
+
+Status MiniCluster::StartYbControllerServers() {
+  for (auto ts : mini_tablet_servers_) {
+    RETURN_NOT_OK(AddYbControllerServer(ts));
+  }
+  return Status::OK();
+}
+
+Status MiniCluster::AddYbControllerServer(const std::shared_ptr<tserver::MiniTabletServer> ts) {
+  // Return if we already have a Yb Controller for the given ts
+  for (auto ybController : yb_controller_servers_) {
+    if (ybController->GetServerAddress() == ts->bound_http_addr().address().to_string()) {
+      return Status::OK();
+    }
+  }
+
+  size_t idx = yb_controller_servers_.size() + 1;
+
+  // All yb controller servers need to be on the same port.
+  uint16_t server_port;
+  if (idx == 1) {
+    server_port = port_picker_.AllocateFreePort();
+  } else {
+    server_port = yb_controller_servers_[0]->GetServerPort();
+  }
+
+  const auto yb_controller_log_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "logs");
+  const auto yb_controller_tmp_dir = JoinPathSegments(GetYbControllerServerFsRoot(idx), "tmp");
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
+  RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
+  const auto server_address = ts->bound_http_addr().address().to_string();
+  scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
+      idx, yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
+      GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
+      GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
+      server_port, master_web_ports_[0], tserver_web_ports_[idx - 1], server_address,
+      GetYbcToolPath("yb-controller-server"),
+      /*extra_flags*/ {});
+
+  RETURN_NOT_OK_PREPEND(
+      yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(idx));
+  yb_controller_servers_.push_back(yb_controller);
   return Status::OK();
 }
 
@@ -323,6 +341,14 @@ Status MiniCluster::StartMasters() {
   }
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_master_addrs) = master_addresses;
+
+  // Trigger an election to avoid an unnecessary 3s wait on every minicluster startup.
+  if (!mini_masters_.empty()) {
+    auto consensus = VERIFY_RESULT(RandomElement(mini_masters_)->tablet_peer()->GetConsensus());
+    consensus::LeaderElectionData data { .must_be_committed_opid = OpId() };
+    RETURN_NOT_OK(consensus->StartElection(data));
+  }
+
   started = true;
   return Status::OK();
 }
@@ -353,7 +379,7 @@ Status MiniCluster::RestartSync() {
 
   if (UseYbController()) {
     LOG(INFO) << "Restart YB Controller server(s)...";
-    for (const auto& yb_controller : yb_controllers_) {
+    for (const auto& yb_controller : yb_controller_servers_) {
       CHECK_OK(yb_controller->Restart());
     }
   }
@@ -584,10 +610,10 @@ void MiniCluster::Shutdown() {
   }
   mini_masters_.clear();
 
-  for (const auto& yb_controller : yb_controllers_) {
+  for (const auto& yb_controller : yb_controller_servers_) {
     yb_controller->Shutdown();
   }
-  yb_controllers_.clear();
+  yb_controller_servers_.clear();
 
   messenger_->Shutdown();
 
@@ -846,6 +872,11 @@ server::SkewedClockDeltaChanger JumpClock(
   DCHECK(skewed_clock)
       << ": Server physical clock is not a SkewedClock; did you forget to set --time_source?";
   return server::SkewedClockDeltaChanger(delta, skewed_clock);
+}
+
+server::SkewedClockDeltaChanger JumpClock(
+    tserver::MiniTabletServer* server, std::chrono::milliseconds delta) {
+  return JumpClock(server->server(), delta);
 }
 
 std::vector<server::SkewedClockDeltaChanger> SkewClocks(

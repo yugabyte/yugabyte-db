@@ -63,7 +63,6 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/cdc_split_driver.h"
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
@@ -80,8 +79,6 @@
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_index.h"
 #include "yb/master/tablet_creation_limits.h"
-#include "yb/master/tablet_split_candidate_filter.h"
-#include "yb/master/tablet_split_driver.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
@@ -202,10 +199,7 @@ struct YsqlTableDdlTxnState;
 //
 // Thread-safe.
 class CatalogManager : public tserver::TabletPeerLookupIf,
-                       public TabletSplitCandidateFilterIf,
-                       public TabletSplitDriverIf,
                        public CatalogManagerIf,
-                       public CDCSplitDriverIf,
                        public SnapshotCoordinatorContext {
   typedef std::unordered_map<NamespaceName, scoped_refptr<NamespaceInfo> > NamespaceInfoMap;
 
@@ -327,6 +321,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateStatefulService(
       const StatefulServiceKind& service_kind, const client::YBSchema& yb_schema,
       const LeaderEpoch& epoch);
+
+  struct StatefulServiceStatus {
+    std::string service_name;
+    const TSDescriptor* hosting_node = nullptr;
+    TableId service_table_id;
+    TabletId service_tablet_id;
+  };
+  Result<std::vector<StatefulServiceStatus>> GetStatefulServicesStatus() const EXCLUDES(mutex_);
 
   Status CreateTestEchoService(const LeaderEpoch& epoch);
 
@@ -693,21 +695,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                        GetUDTypeInfoResponsePB* resp,
                        rpc::RpcContext* rpc);
-
-  // Disables tablet splitting for a specified amount of time.
-  Status DisableTabletSplitting(
-      const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
-      rpc::RpcContext* rpc);
-
-  void DisableTabletSplittingInternal(const MonoDelta& duration, const std::string& feature);
-
-  // Returns true if there are no outstanding tablets and the tablet split manager is not currently
-  // processing tablet splits.
-  Status IsTabletSplittingComplete(
-      const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
-      rpc::RpcContext* rpc);
-
-  bool IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion, CoarseTimePoint deadline);
 
   // Delete CDC streams metadata for a table.
   Status DropCDCSDKStreams(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
@@ -1551,8 +1538,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void PrepareRestore() override;
 
-  void ReenableTabletSplitting(const std::string& feature) override;
-
   void RunXReplBgTasks(const LeaderEpoch& epoch);
 
   Status SetUniverseUuidIfNeeded(const LeaderEpoch& epoch);
@@ -2124,8 +2109,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // down to.
   Status SysCatalogRespectLeaderAffinity();
 
-  Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) override;
-
   // Is this table part of xCluster or CDCSDK?
   bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
@@ -2392,7 +2375,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   scoped_refptr<AtomicGauge<uint32_t>> metric_num_tablet_servers_dead_;
 
   scoped_refptr<Counter> metric_create_table_too_many_tablets_;
-  scoped_refptr<Counter> metric_split_tablet_too_many_tablets_;
 
   friend class ClusterLoadBalancer;
 
@@ -2455,8 +2437,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CanSupportAdditionalTabletsForTableCreation(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs);
-
-  void IncrementSplitBlockedByTabletLimitCounter() override;
 
  private:
   friend class SnapshotLoader;

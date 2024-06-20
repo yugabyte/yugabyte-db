@@ -1,4 +1,5 @@
-title: Cloud Provider settings for the cluster
+title: ClusterProviderSpec
+description: Cloud Provider settings for the cluster. Part of ClusterSpec.
 type: object
 required:
   - provider

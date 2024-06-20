@@ -726,13 +726,13 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
-   ./installer.sh -c install -u https://<yba_address>:9000 -t <api_token>
+   ./installer.sh -c install -u https://<yba_address> -t <api_token>
    ```
 
    For example, if you run the following:
 
    ```sh
-   ./installer.sh  -c install -u http://10.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
+   ./installer.sh  -c install -u https://10.98.0.42 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
    ```
 
    You should get output similar to the following:
@@ -858,13 +858,13 @@ To reconfigure a node for use in a different provider, do the following:
 1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
 
     ```sh
-    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    node-agent node configure -t <api_token> -u https://<yba_address>
     ```
 
     For example, if you run the following:
 
     ```sh
-    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u https://10.98.0.42:9000
     ```
 
     ```output

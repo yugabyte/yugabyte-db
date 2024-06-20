@@ -286,8 +286,8 @@ The following subcomponents are used:
 ## golang.org/x/crypto
 
 * Name: golang.org/x/crypto
-* Version: v0.14.0
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/crypto/+/v0.14.0:LICENSE)
+* Version: v0.18.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/crypto/+/v0.18.0:LICENSE)
 
 
 ## golang.org/x/exp
@@ -307,22 +307,22 @@ The following subcomponents are used:
 ## golang.org/x/sys/unix
 
 * Name: golang.org/x/sys/unix
-* Version: v0.13.0
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/v0.13.0:LICENSE)
+* Version: v0.16.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/v0.16.0:LICENSE)
 
 
 ## golang.org/x/term
 
 * Name: golang.org/x/term
-* Version: v0.13.0
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/term/+/v0.13.0:LICENSE)
+* Version: v0.16.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/term/+/v0.16.0:LICENSE)
 
 
 ## golang.org/x/text
 
 * Name: golang.org/x/text
-* Version: v0.13.0
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/text/+/v0.13.0:LICENSE)
+* Version: v0.14.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/text/+/v0.14.0:LICENSE)
 
 
 ## gopkg.in/ini.v1

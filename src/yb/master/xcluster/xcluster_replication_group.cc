@@ -638,4 +638,18 @@ Status ValidateTableListForDbScopedReplication(
   return Status::OK();
 }
 
+bool HasNamespace(UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
+  auto l = universe.LockForRead();
+  if (!l->IsDbScoped()) {
+    return false;
+  }
+
+  const auto& namespace_infos = l->pb.db_scoped_info().namespace_infos();
+  return std::any_of(
+      namespace_infos.begin(), namespace_infos.end(),
+      [&consumer_namespace_id](const auto& namespace_info) {
+        return namespace_info.consumer_namespace_id() == consumer_namespace_id;
+      });
+}
+
 }  // namespace yb::master

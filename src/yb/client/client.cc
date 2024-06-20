@@ -119,6 +119,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
@@ -288,6 +289,10 @@ DEFINE_RUNTIME_uint32(ddl_verification_timeout_multiplier, 5,
     " default_admin_operation_timeout which is the timeout used for a single DDL operation ");
 
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);
+
+DEFINE_test_flag(int32, create_namespace_if_not_exist_inject_delay_ms, 0,
+                 "After checking a namespace does not exist, inject delay "
+                 "before creating the namespace.");
 
 namespace yb {
 namespace client {
@@ -1016,22 +1021,43 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& source_namespace_id,
                                             const boost::optional<uint32_t>& next_pg_oid,
                                             const bool colocated) {
-  const auto namespace_exists = VERIFY_RESULT(
-      !namespace_id.empty() ? NamespaceIdExists(namespace_id)
-                            : NamespaceExists(namespace_name));
-  if (namespace_exists) {
-    // Verify that the namespace we found is running so that, once this request returns,
-    // the client can send operations without receiving a "namespace not found" error.
-    return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, namespace_id,
-        CoarseMonoClock::Now() + default_admin_operation_timeout());
-  }
+  bool retried = false;
+  while (true) {
+    const auto namespace_exists = VERIFY_RESULT(
+        !namespace_id.empty() ? NamespaceIdExists(namespace_id)
+                              : NamespaceExists(namespace_name));
+    if (namespace_exists) {
+      // Verify that the namespace we found is running so that, once this request returns,
+      // the client can send operations without receiving a "namespace not found" error.
+      return data_->WaitForCreateNamespaceToFinish(
+          this, namespace_name, database_type, namespace_id,
+          CoarseMonoClock::Now() + default_admin_operation_timeout());
+    } else if (FLAGS_TEST_create_namespace_if_not_exist_inject_delay_ms > 0) {
+      std::this_thread::sleep_for(FLAGS_TEST_create_namespace_if_not_exist_inject_delay_ms * 1ms);
+    }
 
-  Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                             source_namespace_id, next_pg_oid, nullptr /* txn */, colocated);
-  if (s.IsAlreadyPresent() && database_type && *database_type == YQLDatabase::YQL_DATABASE_CQL) {
-    return Status::OK();
+    Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
+                               source_namespace_id, next_pg_oid, nullptr /* txn */, colocated);
+
+    // Retain old behavior: return Status::OK() on s.IsAlreadyPresent() error for
+    // YQLDatabase::YQL_DATABASE_CQL database_type.
+    if (!s.IsAlreadyPresent() || !database_type) {
+      return s;
+    }
+    if (*database_type == YQLDatabase::YQL_DATABASE_CQL) {
+      return Status::OK();
+    }
+
+    // Do one time retry for YQL_DATABASE_PGSQL.
+    if (*database_type == YQLDatabase::YQL_DATABASE_PGSQL && !retried) {
+      // Sleep a bit before retrying.
+      std::this_thread::sleep_for(1000ms * kTimeMultiplier);
+      retried = true;
+    } else {
+      return s;
+    }
   }
-  return s;
+  return STATUS(RuntimeError, "Unreachable statement");
 }
 
 Status YBClient::IsCreateNamespaceInProgress(const std::string& namespace_name,
