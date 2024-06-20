@@ -4,7 +4,7 @@ headerTitle: Partition data by time
 linkTitle: Partition data by time
 description: Partition data for efficient data management
 headcontent: Partition data for efficient data management
-badges: ycql
+badges: ysql
 aliases:
    - /preview/common-patterns/timeseries/partitioning-by-time/
 menu:

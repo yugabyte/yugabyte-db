@@ -18,7 +18,7 @@ To understand how to model your data for YugabyteDB, see [Distributed data model
 
 ## Global applications
 
-Today's applications have to cater to users distributed across the globe. Running applications across multiple data centers while providing the best user experience is no trivial task. We have come up with some battle-tested design patterns for your global applications.
+Today's applications have to cater to users distributed across the globe. Running applications across multiple data centers while providing the best user experience is no trivial task. Yugabyte provides some battle-tested design patterns for your global applications.
 
 {{<lead link="./build-global-apps/">}}
 To learn more about building global applications, see [Build global applications](./build-global-apps/).
@@ -34,7 +34,7 @@ To understand how to build a multi-cloud setup with YugabyteDB, see [Build multi
 
 ## Application development
 
-Although building scalable applications on top of YugabyteDb is straightforward, you need to understand certain fundamental concepts like transactions, search, and more to ensure that you make the best use of them.
+Although building scalable applications on top of YugabyteDB is straightforward, you need to understand certain fundamental concepts like transactions, search, and more to make the best use of them.
 
 {{<lead link="./learn/">}}
 To learn how to build applications on top of YugabyteDB, see [Learn app development](./learn/).
@@ -42,7 +42,7 @@ To learn how to build applications on top of YugabyteDB, see [Learn app developm
 
 ## Best practices
 
-Use these best practices to build distributed applications on top of YugabyteDB. We've compiled a list of techniques that you can adopt to make your application perform its best.
+Use these best practices to build distributed applications on top of YugabyteDB; this includes a list of techniques that you can adopt to make your application perform its best.
 
 {{<lead link="./best-practices-ysql">}}
 For more details, see [Best practices](./best-practices-ysql).
@@ -50,7 +50,7 @@ For more details, see [Best practices](./best-practices-ysql).
 
 ## Drivers and ORMs
 
-To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages and have come up with the optimal configurations to get you up and running.
+To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
 
 {{<lead link="../drivers-orms/">}}
 For the list of drivers and ORMs with sample code, see [Drivers and ORMs](../drivers-orms/).
@@ -74,7 +74,7 @@ To learn more about how to use browser-based IDEs, see [Cloud-native development
 
 ## Tutorials
 
-We have come up with multiple step-by-step guides for building scalable and fault-tolerant applications with YugabyteDB using your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
+Yugabyte provides multiple step-by-step guides for building scalable and fault-tolerant applications with YugabyteDB using your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
 
 {{<lead link="../tutorials/">}}
 For step-by-step guides for various frameworks, see [Tutorials](../tutorials/).
