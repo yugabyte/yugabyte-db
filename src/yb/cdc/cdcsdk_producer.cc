@@ -1406,8 +1406,14 @@ Status PopulateCDCSDKWriteRecord(
     // and we should return from here.
     if (records_added == 0 && !resp->mutable_cdc_sdk_proto_records()->empty()) {
       VLOG(2) << "Removing the added BEGIN record because there are no other records to add";
-      resp->mutable_cdc_sdk_proto_records()->RemoveLast();
-      return Status::OK();
+      // Only remove the BEGIN record if it happens to be the last added record in the response. If
+      // its not the last record, skip removing it and instead add a commit record to the response.
+      auto size = resp->cdc_sdk_proto_records_size();
+      auto last_record = resp->cdc_sdk_proto_records().Get(size - 1);
+      if (last_record.has_row_message() && last_record.row_message().op() == RowMessage::BEGIN) {
+        resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+        return Status::OK();
+      }
     }
 
     FillCommitRecordForSingleShardTransaction(
