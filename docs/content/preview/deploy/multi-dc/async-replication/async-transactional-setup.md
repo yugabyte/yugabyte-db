@@ -173,7 +173,7 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
     - Select your database and click **Validate Table Selection**.
 
-        If there is data in the databases, then YBA will walk you through the backup and restore process.
+        If there is data in the databases, then YugabyteDB Anywhere will walk you through the backup and restore process.
 
     - Click **Next: Configure Bootstrap**.
 
@@ -194,7 +194,7 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
 Note that, although you don't need to create objects on Standby during initial replication, when you add a new database to an existing replication stream, you _do_ need to create the same objects on the Standby. If Primary and Standby objects don't match, you won't be able to add the database to the replication.
 
-In addition, If the WALs are garbage collected from Primary, then the database will need to be bootstrapped. The bootstrap process is handled by YBA. Only the single database is bootstrapped, not all the databases involved in the existing replication.
+In addition, If the WALs are garbage collected from Primary, then the database will need to be bootstrapped. The bootstrap process is handled by YugabyteDB Anywhere. Only the single database is bootstrapped, not all the databases involved in the existing replication.
 
   </div>
 

@@ -97,13 +97,13 @@ To run a shell from a universe node, do the following:
 
 ### Enable Tectia SSH
 
-By default, YBA uses OpenSSH for SSH to remote nodes. YBA also supports the use of Tectia SSH that is based on the latest SSH G3 protocol.
+By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB Anywhere also supports the use of Tectia SSH that is based on the latest SSH G3 protocol.
 
-[Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling. YBA is shipped with a trial version of Tectia SSH client that requires a license to notify YBA to permanently use Tectia instead of OpenSSH.
+[Tectia SSH](https://www.ssh.com/products/tectia-ssh/) is used for secure file transfer, secure remote access and tunnelling. YugabyteDB Anywhere is shipped with a trial version of Tectia SSH client that requires a license to notify YugabyteDB Anywhere to permanently use Tectia instead of OpenSSH.
 
 To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where _storage_path_ is the path provided during the Replicated installation.
 
-After the license is uploaded, YBA exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
 
 ```shell
 curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'

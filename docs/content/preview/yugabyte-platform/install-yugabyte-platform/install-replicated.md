@@ -25,7 +25,7 @@ To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installe
 
 {{< /warning >}}
 
-You can install YugabyteDB Anywhere on a host machine using Replicated in both online and airgapped environments.
+You can install YugabyteDB Anywhere (YBA) on a host machine using Replicated in both online and airgapped environments.
 
 Installation starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/). YugabyteDB Anywhere then becomes a managed application of Replicated, which starts by pulling the YugabyteDB Anywhere (`yugaware`) container images from Quay.io for the very first time.
 
