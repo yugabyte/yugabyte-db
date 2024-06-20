@@ -16,6 +16,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,9 +31,13 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -1260,6 +1266,45 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         TaskType.GFlagsUpgrade,
         taskParams,
         false);
+  }
+
+  @Test
+  public void testGFlagsUpgradeRerun() {
+    ShellResponse dummyShellResponse = new ShellResponse();
+    // Make the task fail the first time.
+    doAnswer(
+            inv -> {
+              AnsibleClusterServerCtl.Params params =
+                  (AnsibleClusterServerCtl.Params) inv.getArgument(1);
+              if (params.process.equalsIgnoreCase("tserver")
+                  && params.command.equalsIgnoreCase("start")) {
+                throw new RuntimeException("Startup failed");
+              }
+              return dummyShellResponse;
+            })
+        .when(mockNodeManager)
+        .nodeCommand(eq(NodeCommandType.Control), any());
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    TaskInfo taskInfo = submitTask(taskParams, -1);
+    assertEquals(Failure, taskInfo.getTaskState());
+    // Do not fail the task due to node command.
+    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Control), any()))
+        .thenReturn(dummyShellResponse);
+    taskParams.masterGFlags = null;
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
+    // Validation must fail.
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, -1));
+    assertEquals(
+        "Gflags upgrade rerun must affect all server types and nodes changed by the previously"
+            + " failed gflags operation",
+        exception.getMessage());
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m2");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
+    taskInfo = submitTask(taskParams, -1);
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   private Map<String, String> getGflagsForNode(

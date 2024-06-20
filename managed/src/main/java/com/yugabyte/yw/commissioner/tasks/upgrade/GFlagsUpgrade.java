@@ -2,17 +2,21 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -23,8 +27,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import play.libs.Json;
 
 @Slf4j
 @Retryable
@@ -63,6 +71,76 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   public void validateParams(boolean isFirstTry) {
     super.validateParams(isFirstTry);
     taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
+  protected void validateRerunParams(TaskInfo previousTaskInfo) {
+    Universe universe = getUniverse();
+    GFlagsUpgradeParams prevTaskParams =
+        Json.fromJson(previousTaskInfo.getDetails(), GFlagsUpgradeParams.class);
+    // Cluster with GFlags from the previous task params.
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> prevClusters =
+        taskParams().getVersionsOfClusters(universe, prevTaskParams);
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> curClusters =
+        universe.getUniverseDetails().clusters.stream()
+            .collect(Collectors.toMap(c -> c.uuid, Function.identity()));
+    // Cluster with GFlags from the current task params.
+    Map<UUID, UniverseDefinitionTaskParams.Cluster> newClusters =
+        taskParams().getNewVersionsOfClusters(universe);
+
+    Set<NodeDetails> prevAffectedNodes =
+        universe.getNodes().stream()
+            .filter(n -> n.isMaster || n.isTserver)
+            .filter(
+                n -> {
+                  UniverseDefinitionTaskParams.Cluster prevCluster =
+                      prevClusters.get(n.placementUuid);
+                  UniverseDefinitionTaskParams.Cluster curCluster =
+                      curClusters.get(n.placementUuid);
+                  return GFlagsUpgradeParams.nodeHasGflagsChanges(
+                      n,
+                      n.isMaster ? ServerType.MASTER : ServerType.TSERVER,
+                      prevCluster,
+                      prevClusters.values(),
+                      curCluster,
+                      curClusters.values());
+                })
+            .collect(Collectors.toSet());
+
+    Set<NodeDetails> currAffectedNodes =
+        universe.getNodes().stream()
+            .filter(n -> n.isMaster || n.isTserver)
+            .filter(
+                n -> {
+                  UniverseDefinitionTaskParams.Cluster curCluster =
+                      curClusters.get(n.placementUuid);
+                  UniverseDefinitionTaskParams.Cluster newCluster =
+                      newClusters.get(n.placementUuid);
+                  return GFlagsUpgradeParams.nodeHasGflagsChanges(
+                      n,
+                      n.isMaster ? ServerType.MASTER : ServerType.TSERVER,
+                      curCluster,
+                      curClusters.values(),
+                      newCluster,
+                      newClusters.values());
+                })
+            .collect(Collectors.toSet());
+
+    if (CollectionUtils.isNotEmpty(prevAffectedNodes)
+        && !currAffectedNodes.containsAll(prevAffectedNodes)) {
+      List<String> prevAffectedNodeNames =
+          prevAffectedNodes.stream().map(NodeDetails::getNodeName).collect(Collectors.toList());
+      List<String> currAffectedNodeNames =
+          currAffectedNodes.stream().map(NodeDetails::getNodeName).collect(Collectors.toList());
+      log.error(
+          "Currently affected nodes {} must contain the previously affected nodes {}, ",
+          currAffectedNodeNames,
+          prevAffectedNodeNames);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Gflags upgrade rerun must affect all server types and nodes changed by the previously"
+              + " failed gflags operation");
+    }
   }
 
   @Override
