@@ -339,6 +339,24 @@ SELECT * FROM cypher('issue_1043', $$ MATCH (x)<-[y *]-(),({n:y[0].n}) RETURN x 
 
 SELECT drop_graph('issue_1043', true);
 
+-- issue 1910
+SELECT create_graph('issue_1910');
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*1]-({name: 'Willem Defoe'}))
+                                      RETURN n.full_name $$) AS (full_name agtype);
+SELECT * FROM cypher('issue_1910', $$ CREATE ({name: 'Jane Doe'})-[:KNOWS]->({name: 'John Doe'}) $$) AS (result agtype);
+SELECT * FROM cypher('issue_1910', $$ CREATE ({name: 'Donald Defoe'})-[:KNOWS]->({name: 'Willem Defoe'}) $$) AS (result agtype);
+SELECT * FROM cypher('issue_1910', $$ MATCH (u {name: 'John Doe'})
+                                      MERGE (u)-[:KNOWS]->({name: 'Willem Defoe'}) $$) AS (result agtype);
+
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*]-({name: 'Willem Defoe'}))
+                                      RETURN n.name $$) AS (name agtype);
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*1]-({name: 'Willem Defoe'}))
+                                      RETURN n.name $$) AS (name agtype);
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*2..2]-({name: 'Willem Defoe'}))
+                                      RETURN n.name $$) AS (name agtype);
+
+SELECT drop_graph('issue_1910', true);
+
 --
 -- Clean up
 --

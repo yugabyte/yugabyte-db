@@ -1044,6 +1044,71 @@ NOTICE:  graph "issue_1043" has been dropped
  
 (1 row)
 
+-- issue 1910
+SELECT create_graph('issue_1910');
+NOTICE:  graph "issue_1910" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*1]-({name: 'Willem Defoe'}))
+                                      RETURN n.full_name $$) AS (full_name agtype);
+ full_name 
+-----------
+(0 rows)
+
+SELECT * FROM cypher('issue_1910', $$ CREATE ({name: 'Jane Doe'})-[:KNOWS]->({name: 'John Doe'}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1910', $$ CREATE ({name: 'Donald Defoe'})-[:KNOWS]->({name: 'Willem Defoe'}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1910', $$ MATCH (u {name: 'John Doe'})
+                                      MERGE (u)-[:KNOWS]->({name: 'Willem Defoe'}) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*]-({name: 'Willem Defoe'}))
+                                      RETURN n.name $$) AS (name agtype);
+      name      
+----------------
+ "Jane Doe"
+ "John Doe"
+ "Donald Defoe"
+(3 rows)
+
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*1]-({name: 'Willem Defoe'}))
+                                      RETURN n.name $$) AS (name agtype);
+      name      
+----------------
+ "John Doe"
+ "Donald Defoe"
+(2 rows)
+
+SELECT * FROM cypher('issue_1910', $$ MATCH (n) WHERE EXISTS((n)-[*2..2]-({name: 'Willem Defoe'}))
+                                      RETURN n.name $$) AS (name agtype);
+    name    
+------------
+ "Jane Doe"
+(1 row)
+
+SELECT drop_graph('issue_1910', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table issue_1910._ag_label_vertex
+drop cascades to table issue_1910._ag_label_edge
+drop cascades to table issue_1910."KNOWS"
+NOTICE:  graph "issue_1910" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 --
 -- Clean up
 --

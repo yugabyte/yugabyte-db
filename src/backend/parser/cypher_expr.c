@@ -481,7 +481,7 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
                 Assert(IsA(field2, String));
 
                 /* try to identify as a column of the RTE */
-                node = scanNSItemForColumn(pstate, pnsi, 0, colname,
+                node = scanNSItemForColumn(pstate, pnsi, levels_up, colname,
                                            cref->location);
 
                 if (node == NULL)

@@ -5354,6 +5354,8 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
         {
             cypher_parsestate *parent_cpstate =
                (cypher_parsestate *)pstate->parentParseState->parentParseState;
+            bool is_vle = false;
+
             /*
              *  If expr_kind is WHERE, the expressions are in the parent's
              *  parent's parsestate, due to the way we transform sublinks.
@@ -5371,7 +5373,22 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
             {
                 return get_relative_expr(tentity, 2);
             }
-            else
+
+            /*
+             * Is this a VLE end node? We check this now in case it did exist
+             * outside of the WHERE clause. In that case we would want to
+             * process it normally.
+             */
+            is_vle = (strncmp(node->name,
+                              AGE_DEFAULT_PREFIX"vle_function_end_var",
+                              strlen(AGE_DEFAULT_PREFIX"vle_function_end_var"))
+                      == 0);
+
+            /*
+             * The vle end node is an exception and needs to be created if it
+             * doesn't exist. So fall through for it, otherwise error out.
+             */
+            if (!is_vle)
             {
                 ereport(ERROR,
                        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
