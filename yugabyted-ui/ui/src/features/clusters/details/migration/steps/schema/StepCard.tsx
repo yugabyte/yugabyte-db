@@ -48,6 +48,7 @@ interface StepCardProps {
   showTooltip?: boolean;
   isDone?: boolean;
   isLoading?: boolean;
+  children?: (isDone: boolean) => React.ReactNode;
 }
 
 export const StepCard: FC<StepCardProps> = ({
@@ -64,6 +65,8 @@ export const StepCard: FC<StepCardProps> = ({
   const totalObjects = 25;
   const completedObjects = 12;
   const progress = Math.round((completedObjects / totalObjects) * 100);
+
+  const content = children?.(isDone);
 
   return (
     <Paper className={classes.paper}>
@@ -83,13 +86,13 @@ export const StepCard: FC<StepCardProps> = ({
           )}
           <Box flex={1} display="flex" alignItems="center" gridGap={6}>
             <Typography variant="body2">{title}</Typography>
-            {!showTooltip && (
+            {showTooltip && (
               <Box>
                 <YBTooltip title={t("clusterDetail.voyager.migrateSchema.completeStepsTooltip")} />
               </Box>
             )}
           </Box>
-          {!isDone && !isLoading && showTooltip && (
+          {!isDone && !isLoading && !showTooltip && (
             <YBBadge
               variant={BadgeVariant.InProgress}
               text={t("clusterDetail.voyager.todo")}
@@ -98,28 +101,28 @@ export const StepCard: FC<StepCardProps> = ({
           )}
         </Box>
 
-        {!isDone && (isLoading || children) && (
-          <Box ml={7} mt={2.5}>
-            {!isDone && !isLoading && children}
+        {isLoading && (
+          <Box ml={7} mt={2}>
+            <LinearProgress
+              classes={{
+                root: classes.progressbar,
+                colorPrimary: classes.barBg,
+                bar: classes.bar,
+              }}
+              variant="determinate"
+              value={progress}
+            />
+            <Box ml="auto" mt={1} width="fit-content">
+              <Typography variant="body2">
+                {completedObjects}/{totalObjects} objects completed
+              </Typography>
+            </Box>
+          </Box>
+        )}
 
-            {!isDone && isLoading && (
-              <Box>
-                <LinearProgress
-                  classes={{
-                    root: classes.progressbar,
-                    colorPrimary: classes.barBg,
-                    bar: classes.bar,
-                  }}
-                  variant="determinate"
-                  value={progress}
-                />
-                <Box ml="auto" mt={1} width="fit-content">
-                  <Typography variant="body2">
-                    {completedObjects}/{totalObjects} objects completed
-                  </Typography>
-                </Box>
-              </Box>
-            )}
+        {!isLoading && !showTooltip && content && (
+          <Box ml={7} mt={2}>
+            {content}
           </Box>
         )}
       </Box>
