@@ -27,6 +27,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetSta
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterDbReplicationSetup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromOutboundReplicationGroup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -119,6 +121,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           XClusterTableConfig.Status.Validated,
           XClusterTableConfig.Status.Updating,
           XClusterTableConfig.Status.Bootstrapping);
+
+  public static final List<XClusterNamespaceConfig.Status>
+      X_CLUSTER_NAMESPACE_CONFIG_RUNNING_STATUS_LIST =
+          ImmutableList.of(XClusterNamespaceConfig.Status.Running);
 
   public static final List<XClusterNamespaceConfig.Status>
       X_CLUSTER_NAMESPACE_CONFIG_PENDING_STATUS_LIST =
@@ -1942,7 +1948,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * completed.
    *
    * @param xClusterConfig config used
-   * @param dbIds db ids on the source universe that are being added to checkpoint.
+   * @param dbId db ids on the source universe that are being added to checkpoint.
    * @return The created subtask group
    */
   protected SubTaskGroup createXClusterAddNamespaceToOutboundReplicationGroupTask(
@@ -1956,6 +1962,51 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     taskParams.dbToAdd = dbId;
     XClusterAddNamespaceToOutboundReplicationGroup task =
         createTask(XClusterAddNamespaceToOutboundReplicationGroup.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Removes namespace from replication on the source universe only.
+   *
+   * @param xClusterConfig config used
+   * @param dbId db id on the source universe that are being added to checkpoint.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(
+      XClusterConfig xClusterConfig, String dbId) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("XClusterRemoveNamespaceFromOutboundReplication");
+    XClusterRemoveNamespaceFromOutboundReplicationGroup.Params taskParams =
+        new XClusterRemoveNamespaceFromOutboundReplicationGroup.Params();
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.dbToRemove = dbId;
+    XClusterRemoveNamespaceFromOutboundReplicationGroup task =
+        createTask(XClusterRemoveNamespaceFromOutboundReplicationGroup.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Removes namespace from replication on the target universe only.
+   *
+   * @param xClusterConfig config used
+   * @param dbId db id on the source universe that is being removed from the replication.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createXClusterRemoveNamespaceFromTargetUniverseTask(
+      XClusterConfig xClusterConfig, String dbId) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterRemoveNamespaceFromTargetUniverse");
+    XClusterRemoveNamespaceFromTargetUniverse.Params taskParams =
+        new XClusterRemoveNamespaceFromTargetUniverse.Params();
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.dbToRemove = dbId;
+    XClusterRemoveNamespaceFromTargetUniverse task =
+        createTask(XClusterRemoveNamespaceFromTargetUniverse.class);
     task.initialize(taskParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

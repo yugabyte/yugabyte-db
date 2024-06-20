@@ -541,12 +541,16 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   static XClusterConfigTaskParams getSetDatabasesTaskParams(
-      XClusterConfig xClusterConfig, Set<String> databaseIds) {
+      XClusterConfig xClusterConfig,
+      Set<String> databaseIds,
+      Set<String> databaseIdsToAdd,
+      Set<String> databaseIdsToRemove) {
 
     XClusterConfigEditFormData editForm = new XClusterConfigEditFormData();
     editForm.databases = databaseIds;
 
-    return new XClusterConfigTaskParams(xClusterConfig, editForm);
+    return new XClusterConfigTaskParams(
+        xClusterConfig, editForm, databaseIdsToAdd, databaseIdsToRemove);
   }
 
   static XClusterConfigTaskParams getSetTablesTaskParams(

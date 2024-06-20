@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Arrays;
@@ -128,7 +129,7 @@ public class DrConfigControllerTest extends FakeDBApplication {
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.enabled` = true with no parameter.
-  public void testSetDatabases() {
+  public void testSetDatabasesSuccess() {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.xcluster.db_scoped.enabled", "true");
@@ -169,36 +170,60 @@ public class DrConfigControllerTest extends FakeDBApplication {
             Json.toJson(setDatabasesData));
 
     assertOk(result);
-    drConfigs =
+
+    // Try adding a database and deleting a database.
+    setDatabasesData.databases = new HashSet<>(Set.of("db2", "db3"));
+    xClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+
+    taskUUID = buildTaskInfo(null, TaskType.EditDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/dr_configs/"
+                + drConfigId
+                + "/set_dbs",
+            authToken,
+            Json.toJson(setDatabasesData));
+
+    assertOk(result);
+  }
+
+  @Test
+  // Runtime config `yb.xcluster.db_scoped.enabled` = true with no parameter.
+  public void testSetDatabasesFailureNoChange() {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.xcluster.db_scoped.enabled", "true");
+    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", null);
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+
+    assertOk(result);
+    List<DrConfig> drConfigs =
         DrConfig.getBetweenUniverses(
             sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID());
     assertEquals(1, drConfigs.size());
-    drConfig = drConfigs.get(0);
+    DrConfig drConfig = drConfigs.get(0);
     assertNotNull(drConfig);
-    xClusterConfig = drConfig.getActiveXClusterConfig();
-    assertEquals(xClusterConfig.getType(), ConfigType.Db);
-    assertEquals(2, xClusterConfig.getNamespaces().size());
-
-    DrConfigSetDatabasesForm emptyDatabasesData = new DrConfigSetDatabasesForm();
-    emptyDatabasesData.databases = new HashSet<>();
-    // Trying to add an empty database set.
-    PlatformServiceException exception =
-        assertThrows(
-            PlatformServiceException.class,
-            () ->
-                doRequestWithAuthTokenAndBody(
-                    "PUT",
-                    "/api/customers/"
-                        + defaultCustomer.getUuid()
-                        + "/dr_configs/"
-                        + drConfigId
-                        + "/set_dbs",
-                    authToken,
-                    Json.toJson(emptyDatabasesData)));
-    assertThat(exception.getMessage(), containsString("required"));
+    UUID drConfigId = drConfig.getUuid();
+    DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
+    setDatabasesData.databases = new HashSet<>(Set.of("db1"));
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+    xClusterConfig.updateStatusForNamespace("db1", XClusterNamespaceConfig.Status.Running);
 
     // Trying to add the existing databases.
-    exception =
+    Exception exception =
         assertThrows(
             PlatformServiceException.class,
             () ->
@@ -212,7 +237,56 @@ public class DrConfigControllerTest extends FakeDBApplication {
                     authToken,
                     Json.toJson(setDatabasesData)));
     assertThat(
-        exception.getMessage(), containsString("The list of new databases to add is empty."));
+        exception.getMessage(),
+        containsString("The list of new databases to add/remove is empty."));
+  }
+
+  @Test
+  // Runtime config `yb.xcluster.db_scoped.enabled` = true with no parameter.
+  public void testSetDatabasesFailureNoDbs() {
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.xcluster.db_scoped.enabled", "true");
+    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", null);
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + defaultCustomer.getUuid() + "/dr_configs",
+            authToken,
+            Json.toJson(data));
+
+    assertOk(result);
+    List<DrConfig> drConfigs =
+        DrConfig.getBetweenUniverses(
+            sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID());
+    assertEquals(1, drConfigs.size());
+    DrConfig drConfig = drConfigs.get(0);
+    assertNotNull(drConfig);
+    UUID drConfigId = drConfig.getUuid();
+    DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+
+    // Try giving an empty list.
+    setDatabasesData.databases = new HashSet<>();
+    xClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
+    Exception exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT",
+                    "/api/customers/"
+                        + defaultCustomer.getUuid()
+                        + "/dr_configs/"
+                        + drConfigId
+                        + "/set_dbs",
+                    authToken,
+                    Json.toJson(setDatabasesData)));
+    assertThat(exception.getMessage(), containsString("error.required"));
   }
 
   @Test

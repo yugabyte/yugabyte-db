@@ -5,7 +5,7 @@ description: |
   Request payload to edit GFlags of a Universe.
 type: object
 allOf:
-  - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: ./SleepAfterRestartSchema.yaml
   - type: object
     properties:
       upgrade_option:
@@ -16,10 +16,10 @@ allOf:
           - Non-rolling
           - Non-restart
       kubernetes_resource_details:
-        $ref: "./KubernetesResourceDetails.yaml"
+        $ref: ./KubernetesResourceDetails.yaml
         x-yba-api-visibility: internal
       universe_gflags:
         description: GFlags for each cluster uuid of this universe
         type: object
         additionalProperties:
-          $ref: "./ClusterGFlags.yaml"
+          $ref: ./ClusterGFlags.yaml

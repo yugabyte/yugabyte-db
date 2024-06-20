@@ -743,6 +743,14 @@ public enum TaskType {
   AddNamespaceToXClusterReplication(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication.class),
 
+  XClusterRemoveNamespaceFromTargetUniverse(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse
+          .class),
+
+  XClusterRemoveNamespaceFromOutboundReplication(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
+          .XClusterRemoveNamespaceFromOutboundReplicationGroup.class),
+
   SetRestoreTime(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime.class),
 
   XClusterConfigSetup(

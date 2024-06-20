@@ -1,5 +1,6 @@
 package com.yugabyte.yw.controllers;
 
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
@@ -1127,20 +1128,23 @@ public class DrConfigController extends AuthenticatedController {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
     }
     DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
-    Set<String> existingDatabaseIds = xClusterConfig.getDbIds();
+    Set<String> existingDatabaseIds =
+        xClusterConfig.getNamespaceIdsInStatus(
+            xClusterConfig.getDbIds(),
+            XClusterConfigTaskBase.X_CLUSTER_NAMESPACE_CONFIG_RUNNING_STATUS_LIST);
     Set<String> newDatabaseIds = setDatabasesForm.databases;
-    Set<String> databaseIdsToAdd = new HashSet<>(newDatabaseIds);
-    databaseIdsToAdd.removeAll(existingDatabaseIds);
-    if (databaseIdsToAdd.isEmpty()) {
-      throw new PlatformServiceException(BAD_REQUEST, "The list of new databases to add is empty.");
+    Set<String> databaseIdsToAdd = Sets.difference(newDatabaseIds, existingDatabaseIds);
+    Set<String> databaseIdsToRemove = Sets.difference(existingDatabaseIds, newDatabaseIds);
+    if (databaseIdsToAdd.isEmpty() && databaseIdsToRemove.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The list of new databases to add/remove is empty.");
     }
-    xClusterConfig.addNamespaces(databaseIdsToAdd);
 
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
 
     XClusterConfigTaskParams taskParams =
-        XClusterConfigController.getSetDatabasesTaskParams(xClusterConfig, databaseIdsToAdd);
-
+        XClusterConfigController.getSetDatabasesTaskParams(
+            xClusterConfig, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
     UUID taskUUID = commissioner.submit(TaskType.SetDatabasesDrConfig, taskParams);
     CustomerTask.create(
         customer,
@@ -1150,6 +1154,7 @@ public class DrConfigController extends AuthenticatedController {
         CustomerTask.TaskType.Edit,
         drConfig.getName());
     log.info("Submitted set databases DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+
     auditService()
         .createAuditEntryWithReqBody(
             request,
