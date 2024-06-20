@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -33,7 +34,7 @@ import org.apache.commons.collections4.CollectionUtils;
 @Slf4j
 public class GFlagsUpgradeParams extends UpgradeWithGFlags {
 
-  protected RuntimeConfGetter runtimeConfGetter;
+  @JsonIgnore protected RuntimeConfGetter runtimeConfGetter;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
