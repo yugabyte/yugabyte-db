@@ -72,13 +72,14 @@ static bool parse_tables(
   return true;
 }
 
-static bool validate_tables(const char* flagname, const std::string& value) {
+static bool validate_tables(const char* flag_name, const std::string& value) {
   std::vector<QualifiedTable> tables;
 
   if (parse_tables(value, &tables)) {
     return true;
   }
-  printf("Invalid value for --%s: %s\n", flagname, value.c_str());
+  LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+      << "Table name must be of the format <keyspace>.<table> separated by semicolons";
   return false;
 }
 

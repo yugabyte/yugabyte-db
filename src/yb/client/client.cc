@@ -1940,11 +1940,12 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-    PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
+    PartitionsOnly partitions_only, GetTableLocationsCallback callback,
+    master::IncludeInactive include_inactive) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetTableLocations(
       this, table_id, max_tablets, require_tablets_running, partitions_only, deadline,
-      std::move(callback));
+      std::move(callback), include_inactive);
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
@@ -2704,16 +2705,18 @@ Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
 }
 
 Status YBClient::OpenTable(
-    const TableId& table_id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
-  return DoOpenTable(table_id, table, resp);
+    const TableId& table_id, YBTablePtr* table, master::IncludeInactive include_inactive,
+    master::GetTableSchemaResponsePB* resp) {
+  return DoOpenTable(table_id, table, include_inactive, resp);
 }
 
 template <class Id>
 Status YBClient::DoOpenTable(
-    const Id& id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
+    const Id& id, YBTablePtr* table, master::IncludeInactive include_inactive,
+    master::GetTableSchemaResponsePB* resp) {
   std::promise<Result<YBTablePtr>> result;
   DoOpenTableAsync(
-      id, [&result](const auto& res) { result.set_value(res); }, resp);
+      id, [&result](const auto& res) { result.set_value(res); }, include_inactive, resp);
   *table = VERIFY_RESULT(result.get_future().get());
   return Status::OK();
 }
@@ -2725,28 +2728,31 @@ void YBClient::OpenTableAsync(
 
 void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
                               master::GetTableSchemaResponsePB* resp) {
-  DoOpenTableAsync(table_id, callback, resp);
+  DoOpenTableAsync(table_id, callback, master::IncludeInactive::kFalse, resp);
 }
 
 template <class Id>
-void YBClient::DoOpenTableAsync(const Id& id,
-                                const OpenTableAsyncCallback& callback,
-                                master::GetTableSchemaResponsePB* resp) {
+void YBClient::DoOpenTableAsync(
+    const Id& id, const OpenTableAsyncCallback& callback, master::IncludeInactive include_inactive,
+    master::GetTableSchemaResponsePB* resp) {
   auto info = std::make_shared<YBTableInfo>();
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+
   auto s = data_->GetTableSchema(
       this, id, deadline, info,
-      Bind(&YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback),
-      resp);
+      Bind(
+          &YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback,
+          include_inactive),
+      include_inactive, resp);
   if (!s.ok()) {
     callback(s);
     return;
   }
 }
 
-void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
-                                      const OpenTableAsyncCallback& callback,
-                                      const Status& s) {
+void YBClient::GetTableSchemaCallback(
+    std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback,
+    master::IncludeInactive include_inactive, const Status& s) {
   if (!s.ok()) {
     callback(s);
     return;
@@ -2762,7 +2768,8 @@ void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
           auto table = std::make_shared<YBTable>(*info, *fetch_result);
           callback(table);
         }
-      });
+      },
+      include_inactive);
 }
 
 shared_ptr<YBSession> YBClient::NewSession(MonoDelta delta) {

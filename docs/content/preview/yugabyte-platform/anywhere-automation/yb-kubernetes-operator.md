@@ -4,7 +4,7 @@ headerTitle: Yugabyte Kubernetes Operator
 linkTitle: Kubernetes Operator
 description: Yugabyte Kubernetes Operator for YugabyteDB Anywhere.
 headcontent: Install YugabyteDB Anywhere and create universes using Yugabyte Kubernetes Operator
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 menu:
   preview_yugabyte-platform:
     parent: anywhere-automation

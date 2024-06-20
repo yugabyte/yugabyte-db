@@ -68,10 +68,11 @@
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
+#include "yb/server/html_print_helper.h"
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
-#include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -672,79 +673,71 @@ static void HandleGetVersionInfo(
 }
 
 static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  std::stringstream& output = resp->output;
 
   if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
-    (*output) << "track_stack_traces must be turned on to use this page.";
+    output << "track_stack_traces must be turned on to use this page.";
     return;
   }
 
   Tags tags(false /* as_text */);
+  HtmlPrintHelper html_print_helper(output);
 
   auto traces = GetTrackedStackTraces();
   std::sort(traces.begin(), traces.end(),
             [](const auto& left, const auto& right) { return left.weight > right.weight; });
 
-  (*output) << tags.header << "I/O stack traces" << tags.end_header;
+  output << tags.header << "I/O stack traces" << tags.end_header;
 
-  (*output) << tags.table << tags.row
-            << tags.table_header << "Type" << tags.end_table_header
-            << tags.table_header << "Count" << tags.end_table_header
-            << tags.table_header << "Bytes" << tags.end_table_header
-            << tags.table_header << "Stack Trace" << tags.end_table_header
-            << tags.end_row;
+  auto stack_traces = html_print_helper.CreateTablePrinter(
+      "stack_traces", {"Type", "Count", "Bytes", "Stack Trace"});
+
   for (const auto& entry : traces) {
     if (entry.count == 0 ||
         (entry.group != StackTraceTrackingGroup::kReadIO &&
          entry.group != StackTraceTrackingGroup::kWriteIO)) {
       continue;
     }
-    (*output) << tags.row
-              << tags.cell
-              << (entry.group == StackTraceTrackingGroup::kReadIO ? "Read" : "Write")
-              << tags.end_cell
-              << tags.cell << entry.count << tags.end_cell
-              << tags.cell << HumanReadableNumBytes::ToString(entry.weight) << tags.end_cell
-              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
-              << tags.end_pre_tag << tags.end_cell
-              << tags.end_row;
+    stack_traces.AddRow(
+        entry.group == StackTraceTrackingGroup::kReadIO ? "Read" : "Write",
+        entry.count,
+        HumanReadableNumBytes::ToString(entry.weight),
+        tags.pre_tag + EscapeForHtmlToString(entry.symbolized_trace) + tags.end_pre_tag);
   }
 
-  (*output) << tags.end_table;
+  stack_traces.Print();
 }
 
 static void DebugStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  std::stringstream& output = resp->output;
 
   if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
-    (*output) << "track_stack_traces must be turned on to use this page.";
+    output << "track_stack_traces must be turned on to use this page.";
     return;
   }
 
   Tags tags(false /* as_text */);
+  HtmlPrintHelper html_print_helper(output);
 
   auto traces = GetTrackedStackTraces();
   std::sort(traces.begin(), traces.end(),
             [](const auto& left, const auto& right) { return left.count > right.count; });
 
-  (*output) << tags.header << "Tracked stack traces" << tags.end_header;
+  output << tags.header << "Tracked stack traces" << tags.end_header;
 
-  (*output) << tags.table << tags.row
-            << tags.table_header << "Count" << tags.end_table_header
-            << tags.table_header << "Stack Trace" << tags.end_table_header
-            << tags.end_row;
+  auto stack_traces = html_print_helper.CreateTablePrinter(
+      "stack_traces", {"Count", "Stack Trace"});
+
   for (const auto& entry : traces) {
     if (entry.count == 0 || entry.group != StackTraceTrackingGroup::kDebugging) {
       continue;
     }
-    (*output) << tags.row
-              << tags.cell << entry.count << tags.end_cell
-              << tags.cell << tags.pre_tag << EscapeForHtmlToString(entry.symbolized_trace)
-              << tags.end_pre_tag << tags.end_cell
-              << tags.end_row;
+    stack_traces.AddRow(
+        entry.count,
+        tags.pre_tag + EscapeForHtmlToString(entry.symbolized_trace) + tags.end_pre_tag);
   }
 
-  (*output) << tags.end_table;
+  stack_traces.Print();
 }
 
 static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {

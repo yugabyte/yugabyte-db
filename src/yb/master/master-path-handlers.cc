@@ -940,6 +940,9 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("zone");
         jw.String(cloud_info.placement_zone());
 
+        jw.String("permanent_uuid");
+        jw.String(desc->permanent_uuid());
+
         jw.EndObject();
       }
     }

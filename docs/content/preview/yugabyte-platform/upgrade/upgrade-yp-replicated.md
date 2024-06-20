@@ -38,7 +38,7 @@ To perform the migration, you must first upgrade your installation to v2.20.1.3 
 
 {{< /note >}}
 
-If your installation was installed via [Replicated](https://www.replicated.com/), use Replicated to upgrade your YugabyteDB Anywhere to a newer version.
+If your installation was installed via [Replicated](https://www.replicated.com/), use Replicated to upgrade your YugabyteDB Anywhere (YBA) to a newer version.
 
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
 

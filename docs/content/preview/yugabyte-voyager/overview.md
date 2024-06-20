@@ -62,9 +62,9 @@ The following table shows the target database support for each migration type.
 
 | Migration type | Supported YugabyteDB Versions | Supported products |
 | :------------- | :--------------------------- | ------------------ |
-| Offline | v2.18.5 or later <br> v2.20.1 or later <br>v2.21 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live | v2.18.5 or later <br> v2.20.1 or later <br>v2.21| [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live with fall-forward <br> Live with fall-back | v2.18.8 or later <br> v2.20.4 or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
+| Offline | {{<release "2.18.5.0">}} or later <br> {{<release "2.20.1.0">}} or later <br> {{<release "2.21.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
+| Live | {{<release "2.18.7.0">}} or later <br> {{<release "2.20.3.0">}} or later <br>{{<release "2.21.1.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
+| Live with fall-forward/fall-back | {{<release "2.18.8.0">}} or later <br> {{<release "2.20.4.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
 
 ## Learn more
 

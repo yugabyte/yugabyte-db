@@ -97,7 +97,6 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
-lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
@@ -349,7 +348,7 @@ externalResolvers := {
     (Compile / compile),
     releaseModulesLocally
   ).value
-  buildUI.value
+  uIInstallDependency.value
   versionGenerate.value
   compileYbaCliBinary.value
   downloadThirdPartyDeps.value
@@ -404,12 +403,6 @@ buildVenv := {
     ybLog("buildVenv already done. Call 'cleanVenv' to force build again.")
     0
   }
-}
-
-buildUI := {
-  ybLog("Building UI...")
-  val status = Process("npm ci", baseDirectory.value / "ui").!
-  status
 }
 
 releaseModulesLocally := {
@@ -520,8 +513,7 @@ cleanV2ServerStubs := {
   ybLog("Cleaning Openapi v2 server stubs...")
   Process("rm -rf openapi", target.value) !
   val openapiDir = baseDirectory.value / "src/main/resources/openapi"
-  Process("rm -f paths/_index.yaml", openapiDir) #|
-      Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
+  Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
 }
 
 lazy val cleanClients = taskKey[Int]("Clean generated clients")
@@ -569,6 +561,19 @@ openApiLint := {
     throw new RuntimeException("openapi lint failed!!!")
   }
 }
+
+lazy val jsOpenApiStubs = taskKey[Unit]("Generating JS Api Stubs")
+jsOpenApiStubs := Def.taskDyn {
+   Def.sequential(
+    uIInstallDependency,
+    Def.task {
+      val rc = Process("npm run generateV2JSApiClient", baseDirectory.value / "ui").!
+      if (rc != 0) {
+        throw new RuntimeException("Generating JS Api Stubs failed")
+      }
+    }
+   )
+}.value
 
 lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
 Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
@@ -790,12 +795,14 @@ lazy val openApiProcessClients = taskKey[Unit]("Generate and compile openapi cli
 openApiProcessClients / fileInputs += baseDirectory.value.toGlob / "src/main/resources/openapi.yaml"
 openApiProcessClients := {
   if (openApiProcessClients.inputFileChanges.hasChanges |
-      !(baseDirectory.value / "client/java/v2/build.sbt").exists())
+      !(baseDirectory.value / "client/java/v2/build.sbt").exists() ||
+      !(baseDirectory.value / "ui/src/v2/api").exists)
     Def.sequential(
       ybLogTask.toTask(" openapi.yaml file has changed, so regenerating clients..."),
       cleanClients,
       openApiGenClients,
       openApiCompileClients,
+      jsOpenApiStubs
     ).value
   else
     ybLog("Generated Openapi clients are up to date. Run 'cleanClients' to force generation.")
@@ -1163,3 +1170,43 @@ grafanaGen := Def.taskDyn {
       .toTask(s" com.yugabyte.yw.controllers.GrafanaGenTest $file")
   )
 }.value
+
+/**
+  * UI Build Tasks like clean node modules, npm install and npm run build
+  */
+
+// Delete node_modules directory in the given path. Return 0 if success.
+def cleanNodeModules(implicit dir: File): Int = Process("rm -rf node_modules", dir)!
+
+// Execute `npm ci` command to install all node module dependencies. Return 0 if success.
+def runNpmInstall(implicit dir: File): Int =
+  if (cleanNodeModules != 0) throw new Exception("node_modules not cleaned up")
+  else {
+    println("node version: " + Process("node" :: "--version" :: Nil).lineStream_!.head)
+    println("npm version: " + Process("npm" :: "--version" :: Nil).lineStream_!.head)
+    println("npm config get: " + Process("npm" :: "config" :: "get" :: Nil).lineStream_!.head)
+    println("npm cache verify: " + Process("npm" :: "cache" :: "verify" :: Nil).lineStream_!.head)
+    Process("npm" :: "ci" :: Nil, dir).!
+  }
+
+// Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
+def runNpmBuild(implicit dir: File): Int =
+  Process("npm run build-and-copy", dir)!
+
+lazy val uIInstallDependency = taskKey[Unit]("Install NPM dependencies")
+lazy val uIBuild = taskKey[Unit]("Build production version of UI code.")
+uIInstallDependency := {
+  implicit val uiSource = baseDirectory.value / "ui"
+  if (runNpmInstall != 0) throw new Exception("npm install failed")
+}
+uIBuild := {
+  implicit val uiSource = baseDirectory.value / "ui"
+  if (runNpmBuild != 0) throw new Exception("UI Build crashed.")
+}
+
+uIBuild := (uIBuild dependsOn (buildDependentArtifacts)).value
+
+/**
+ *  Make SBT packaging depend on the UI build hook.
+ */
+Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(uIBuild).value

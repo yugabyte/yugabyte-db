@@ -306,28 +306,32 @@ string GetToolPath(const string& rel_path, const string& tool_name) {
 }
 
 bool UseYbController() {
+  bool value = false;
   if (FLAGS_TEST_use_yb_controller) {
-    return true;
+    value = true;
   }
   const char* env = getenv("YB_TEST_YB_CONTROLLER");
   if (env) {
     auto s = string(env);
     if (s == "1" || s == "true") {
-      return true;
+      value = true;
     }
   }
-  return false;
+  LOG(INFO) << "YB_TEST_YB_CONTROLLER = " << value;
+  return value;
 }
 
 bool DisableMiniClusterBackupTests() {
   const char* env = getenv("YB_DISABLE_MINICLUSTER_BACKUP_TESTS");
+  bool value = false;
   if (env) {
     auto s = string(env);
     if (s == "1" || s == "true") {
-      return true;
+      value = true;
     }
   }
-  return false;
+  LOG(INFO) << "YB_DISABLE_MINICLUSTER_BACKUP_TESTS = " << value;
+  return value;
 }
 
 void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest) {

@@ -35,8 +35,8 @@ bool ValidateAutoFlagClass(const char* flag_name, int32_t value) {
 
   auto result = yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(value);
   if (!result.ok()) {
-    LOG(ERROR) << "Invalid value for '" << flag_name << "'. Value should be in the range [0-3]. "
-               << result.status();
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "Value should be in the range [0-3]. " << result.status();
     return false;
   }
 

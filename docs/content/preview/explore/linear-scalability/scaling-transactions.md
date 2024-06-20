@@ -44,7 +44,7 @@ The performance metric measures the number of new orders that can be processed p
 The following shows the results for the TPC-C benchmark using the following configuration:
 
 - YugabyteDB version 2.18.0
-- AWS, us-west region, c5d.9xlarge instances
+- AWS, us-west region, {{<inst "c5d.9xlarge">}} instances
 - Replication factor 3
 
 ### 100K warehouse

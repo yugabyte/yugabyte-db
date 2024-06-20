@@ -27,9 +27,9 @@ DEFINE_NON_RUNTIME_string(csv_quote_character, "\"",
 DEFINE_NON_RUNTIME_string(skipped_cols, "", "Comma separated list of 0-indexed columns to skip");
 
 namespace {
-static bool CSVSeparatorValidator(const char* flagname, const string& value) {
+static bool CSVSeparatorValidator(const char* flag_name, const string& value) {
   if (value.size() != 1) {
-    LOG(INFO) << "Expect " << flagname << " to be 1 character long";
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 1 character long";
     return false;
   }
   return true;

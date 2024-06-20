@@ -91,4 +91,4 @@ The following table list the ANSI supported data types that can be mapped to Yug
 
 ## Learn more
 
-- [Data modeling](../data-modeling)
+- [Data modeling](../../../develop/data-modeling/)

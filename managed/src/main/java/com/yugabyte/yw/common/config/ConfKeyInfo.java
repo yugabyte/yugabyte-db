@@ -16,6 +16,7 @@ import lombok.Data;
 
 @Data
 public class ConfKeyInfo<T> {
+
   final String key;
 
   final ScopeType scope;

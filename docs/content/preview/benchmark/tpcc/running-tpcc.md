@@ -17,23 +17,23 @@ To run the TPC-C benchmark with an efficiency of around 99.7%, choose a cluster 
 
 You can use the following table for reference.
 
-|   Cluster   | Data set size (GB) | DB IOPS  | Recommended workload (warehouses) | <br>tpmC | Results<br>efficiency | <br>Latency |
-| ----------- | ------------------ | -------- | --------------------------------- | -------------- | -------------------- | ----------------- |
-| 3 x 2vCPUs  | 39.90              | 1875.77  | 500                               | 6415.7         | 99.78                | 64.08             |
-| 3 x 4vCPUs  | 75.46              | 3736.53  | 1000                              | 12829.93       | 99.77                | 73.97             |
-| 3 x 8vCPUs  | 141.40             | 7488.01  | 2000                              | 25646.4        | 99.71                | 54.21             |
-| 3&nbsp;x&nbsp;16vCPUs | 272.24             | 14987.79 | 4000                              | 51343.5        | 99.81                | 39.46             |
+|        Cluster        | Warehouses |   tpmC   | Efficiency | Latency | Data size (GB) | DB IOPS  |
+| --------------------- | ---------- | -------- | ---------- | ------- | -------------- | -------- |
+| 3 x 2vCPUs            | 500        | 6415.7   | 99.78      | 64.08   | 39.90          | 1875.77  |
+| 3 x 4vCPUs            | 1000       | 12829.93 | 99.77      | 73.97   | 75.46          | 3736.53  |
+| 3 x 8vCPUs            | 2000       | 25646.4  | 99.71      | 54.21   | 141.40         | 7488.01  |
+| 3&nbsp;x&nbsp;16vCPUs | 4000       | 51343.5  | 99.81      | 39.46   | 272.24         | 14987.79 |
 
 ## Instance types
 
 The following table lists the recommended instance types on different cloud providers based on vCPU count.
 
-| vCPU |     AWS     |       AZURE       |            GCP             |
-| ---- | ----------- | ----------------- | -------------------------- |
-| 2    | m6i.large   | Standard_D2ds_v5  | n2-standard-2              |
-| 4    | m6i.xlarge  | Standard_D4ds_v5  | n2-standard-4              |
-| 8    | m6i.2xlarge | Standard_D8ds_v5  | n2-standard-8              |
-| 16   | m6i.4xlarge | Standard_D16ds_v5 | n2&#8209;standard&#8209;16 |
+| vCPU |           AWS            |             AZURE              |             GCP             |
+| ---- | ------------------------ | ------------------------------ | --------------------------- |
+| 2    | {{<inst "m6i.large">}}   | {{<inst "Standard_D2ds_v5">}}  | {{<inst "n2-standard-2">}}  |
+| 4    | {{<inst "m6i.xlarge">}}  | {{<inst "Standard_D4ds_v5">}}  | {{<inst "n2-standard-4">}}  |
+| 8    | {{<inst "m6i.2xlarge">}} | {{<inst "Standard_D8ds_v5">}}  | {{<inst "n2-standard-8">}}  |
+| 16   | {{<inst "m6i.4xlarge">}} | {{<inst "Standard_D16ds_v5">}} | {{<inst "n2-standard-16">}} |
 
 After you have decided the instance type of the cluster that you need, use the following instructions to run the TPC-C workload.
 
@@ -51,9 +51,9 @@ $ cd tpcc
 
 The client machine is where the benchmark is run from. An 8vCPU machine with at least 16GB memory is recommended. The following instance types are recommended for the client machine.
 
-| vCPU |    AWS     |      AZURE      |     GCP      |
-| ---- | ---------- | --------------- | ------------ |
-| 8    | c5.2xlarge | Standard_F8s_v2 | n2-highcpu-8 |
+| vCPU |           AWS           |            AZURE             |            GCP            |
+| ---- | ----------------------- | ---------------------------- | ------------------------- |
+| 8    | {{<inst "c5.2xlarge">}} | {{<inst "Standard_F8s_v2">}} | {{<inst "n2-highcpu-8">}} |
 
 ## Cluster setup
 
@@ -234,14 +234,6 @@ As **initial-delay-secs** is specified, to ensure that the tests start together,
 {{<tabpane text=true >}}
 
 {{% tab header="3 x 2vCPUs" lang="2vcpu" %}}
-
-|                    Metric                    |  Value  |
-| -------------------------------------------- | :------ |
-| Efficiency                                   | 99.78   |
-| TPMC                                         | 6415.7  |
-| Average NewOrder Latency (ms)                | 64.08   |
-| Connection Acquisition NewOrder Latency (ms) | 1.86    |
-| Total YSQL Ops/sec                           | 1875.77 |
 
 On a 2vCPU cluster, 6,415 tpmC was achieved with 99.78% efficiency keeping the new order latency around 64ms.
 

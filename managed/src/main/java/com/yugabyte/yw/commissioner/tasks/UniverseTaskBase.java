@@ -80,6 +80,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
@@ -142,6 +143,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
@@ -324,7 +326,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
           TaskType.ThirdpartySoftwareUpgrade,
-          TaskType.CertsRotate);
+          TaskType.CertsRotate,
+          TaskType.MasterFailover,
+          TaskType.SyncMasterAddresses);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
@@ -850,11 +854,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (updaterConfig.isCheckSuccess()) {
         universeDetails.updateSucceeded = false;
       }
-      universe.setUniverseDetails(universeDetails);
       Consumer<Universe> callback = updaterConfig.getCallback();
       if (callback != null) {
         callback.accept(universe);
       }
+      universe.setUniverseDetails(universeDetails);
     }
   }
 
@@ -1270,6 +1274,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return createMarkUniverseUpdateSuccessTasks(taskParams().getUniverseUUID());
   }
 
+  /**
+   * Create a subtask that is finally invoked to mark the universe task has succeeded.
+   *
+   * @param universeUuid the universe UUID.
+   * @return the subtask group.
+   */
   public SubTaskGroup createMarkUniverseUpdateSuccessTasks(UUID universeUuid) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("FinalizeUniverseUpdate");
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
@@ -5749,4 +5759,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // --------------------------------------------------------------------------------
   // End of XCluster.
+
+  protected SubTaskGroup createRunNodeCommandTask(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      List<String> command,
+      BiConsumer<NodeDetails, ShellResponse> responseConsumer,
+      @Nullable ShellProcessContext shellContext) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(RunNodeCommand.class.getSimpleName());
+    nodes.stream()
+        .forEach(
+            n -> {
+              RunNodeCommand.Params params = new RunNodeCommand.Params();
+              params.setUniverseUUID(taskParams().getUniverseUUID());
+              params.nodeName = n.getNodeName();
+              params.command = command;
+              params.responseConsumer = response -> responseConsumer.accept(n, response);
+              params.shellContext = shellContext;
+              RunNodeCommand task = createTask(RunNodeCommand.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
 }

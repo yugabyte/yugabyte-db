@@ -45,13 +45,13 @@ To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super A
 
 ## Use OIDC groups with YBA roles
 
+This feature is {{<badge/ea>}}.
+
 If your OIDC provider is configured with user groups, you can map the groups to [YBA roles](../anywhere-rbac/). Users who are members of these groups can then sign in to YBA without needing to be added to YBA first. Users who are members of multiple groups are assigned the most privileged role.
 
 Currently, groups can only be mapped to [built-in](../anywhere-rbac/#built-in-roles) roles.
 
 Note that, if you use group mapping, you must manage users via your OIDC server. You can't add or change user roles in YBA.
-
-This feature is [Early Access](/preview/releases/versioning/#feature-availability).
 
 ### Prerequisites
 

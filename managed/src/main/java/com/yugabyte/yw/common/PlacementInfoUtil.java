@@ -1826,6 +1826,7 @@ public class PlacementInfoUtil {
     AtomicInteger numCandidates = new AtomicInteger(0);
     nodes.stream()
         .filter(NodeDetails::isActive)
+        .filter(n -> n.autoSyncMasterAddrs == false)
         .forEach(
             node -> {
               RegionWithAz zone = new RegionWithAz(node.cloudInfo.region, node.cloudInfo.az);
