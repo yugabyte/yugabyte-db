@@ -529,6 +529,9 @@ public class NodeUniverseManager extends DevopsBase {
     commandArgs.addAll(actionArgs);
     if (MapUtils.isNotEmpty(redactedVals)) {
       // Create a new context as a context is immutable.
+      if (MapUtils.isNotEmpty(context.getRedactedVals())) {
+        redactedVals.putAll(context.getRedactedVals());
+      }
       context = context.toBuilder().redactedVals(redactedVals).build();
     }
     Cluster curCluster = universe.getCluster(node.placementUuid);
