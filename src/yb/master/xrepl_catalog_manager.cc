@@ -1864,6 +1864,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
 bool CatalogManager::CanTableBeAddedToCDCSDKStream(
     const TableInfoPtr& table_info, const Schema& schema) const {
   bool has_pk = true;
+  bool has_invalid_pg_typeoid = false;
   for (const auto& col : schema.columns()) {
     if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
       // ybrowid column is added for tables that don't have user-specified primary key.
@@ -1872,8 +1873,11 @@ bool CatalogManager::CanTableBeAddedToCDCSDKStream(
       has_pk = false;
       break;
     }
+    if (col.pg_type_oid() == 0) {
+      has_invalid_pg_typeoid = true;
+    }
   }
-  if (!has_pk) {
+  if (!has_pk || has_invalid_pg_typeoid) {
     return false;
   }
 
