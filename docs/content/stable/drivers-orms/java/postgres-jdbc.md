@@ -146,7 +146,7 @@ String yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on [YugabyteDB Aeon](https://www.yugabyte.com/cloud/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 ### Step 3: Write your application
 
