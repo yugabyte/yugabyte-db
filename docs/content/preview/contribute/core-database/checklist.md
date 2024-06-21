@@ -20,7 +20,7 @@ type: docs
     git clone https://github.com/yugabyte/yugabyte-db.git
     ```
 
-* Next, [build the source code](../build-from-src).
+* Next, [build the source code](../build-from-src-almalinux).
 * Optionally, you may want to [run the unit tests](../build-and-test#test).
 
 ## Step 2. Start a local cluster

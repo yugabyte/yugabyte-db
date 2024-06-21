@@ -50,7 +50,7 @@ The main downside is in certain scenarios where concurrent transactions try to p
 
 YugabyteDB maintains data consistency internally using multi-version concurrency control (MVCC) without the need to lock rows. Each transaction works on a version of the data in the database as of some hybrid timestamp that is derived from [Hybrid Logical Clock](#hybrid-logical-clocks). This prevents transactions from reading the intermediate updates made by concurrently-running transactions, some of which may be updating the same rows. Each transaction, however, can see its own updates, thereby providing transaction isolation for each database session. Using MVCC minimizes lock contention during the execution of multiple concurrent transactions.
 
-YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
+YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/data-model). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
 
 ## Provisional records
 

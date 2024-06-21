@@ -4,6 +4,7 @@ headerTitle: Partition data by time
 linkTitle: Partition data by time
 description: Partition data for efficient data management
 headcontent: Partition data for efficient data management
+badges: ysql
 aliases:
    - /preview/common-patterns/timeseries/partitioning-by-time/
 menu:
@@ -19,7 +20,7 @@ Partitioning refers to splitting what is logically one large table into smaller 
 The following example describes the advantages of partitions in more detail.
 
 {{<note title="Note">}}
-Partitioning is only available in [YSQL](../../../../api/ysql/).
+Partitioning is only available in [YSQL](/{{<version>}}/api/ysql/).
 {{</note>}}
 
 ## Setup
@@ -142,4 +143,4 @@ Time: 103.214 ms
 
 ## Learn more
 
-- [Table partitioning](../../../../explore/ysql-language-features/advanced-features/partitions/)
+- [Table partitioning](/{{<version>}}/explore/ysql-language-features/advanced-features/partitions/)

@@ -4,6 +4,7 @@ headerTitle: Similarity search
 linkTitle: Similarity search
 headcontent: Learn how to do similarity search in YSQL
 description: Learn how to do similarity search in YSQL
+badges: ysql
 menu:
   preview:
     identifier: similarity-search
@@ -33,7 +34,7 @@ CREATE TABLE words (
  Load some sample words into the table as follows:
 
 ```sql
-INSERT INTO words(word) VALUES 
+INSERT INTO words(word) VALUES
   ('anopisthographic'),('ambassadorship'),('ambuscader'),('ambiguity'),('ampycides'),
   ('anapaestically'),('anapests'),('anapsidan'),('unpsychic'),('anapsid'),
   ('unpessimistic'),('unepistolary'),('inabstracted'),('anapaest'),('unobstinate'),
