@@ -34,9 +34,9 @@ public class TestPgRegressPgTransactions extends BasePgRegressTestSequentialYbro
 
   @Override
   protected Map<String, String> getTServerFlags() {
-    // TODO(savepoints) -- enable by default.
     Map<String, String> flags = super.getTServerFlags();
     flags.put("ysql_pg_conf", TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
+    flags.put("yb_enable_read_committed_isolation", "true");
     return flags;
   }
 
