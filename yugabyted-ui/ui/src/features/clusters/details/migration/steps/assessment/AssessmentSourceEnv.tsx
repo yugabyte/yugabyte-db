@@ -1,7 +1,6 @@
 import React, { FC } from "react";
-import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
+import { Box, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBTooltip } from "@app/components";
 import { MigrationSourceEnvSidePanel } from "./AssessmentSourceEnvSidePanel";
 
 const useStyles = makeStyles((theme) => ({
@@ -45,10 +44,10 @@ interface MigrationSourceEnvProps {
 }
 
 export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
-  vcpu,
+  /* vcpu,
   memory,
   disk,
-  connectionCount,
+  connectionCount, */
   tableSize,
   indexSize,
   totalSize,
@@ -64,7 +63,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
     <Paper>
       <Box px={2} py={3}>
         <Box display="flex">
-          <Box flex={1}>
+          {/* <Box flex={1}>
             <Box display="flex" alignItems="center" gridGap={theme.spacing(0.6)} mb={3}>
               <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.heading")}
@@ -110,7 +109,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
             </Grid>
           </Box>
 
-          <Divider orientation="vertical" className={classes.dividerVertical} flexItem />
+          <Divider orientation="vertical" className={classes.dividerVertical} flexItem /> */}
 
           <Box flex={1}>
             <Box
