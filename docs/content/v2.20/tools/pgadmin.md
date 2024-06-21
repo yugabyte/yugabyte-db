@@ -41,7 +41,7 @@ Add a pgAdmin server to connect to a cluster as follows:
 
 1. On the **Connection** tab, fill in the [connection parameters](../#connection-parameters).
 
-1. For YugabyteDB Managed clusters, on the **SSL** tab, set **Root certificate** to the cluster root certificate you downloaded.
+1. For YugabyteDB Aeon clusters, on the **SSL** tab, set **Root certificate** to the cluster root certificate you downloaded.
 
 1. Click **Save**. The new connection appears in the application.
 

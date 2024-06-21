@@ -1,8 +1,8 @@
 ---
-title: Synchronous multi region (3+ regions) in YugabyteDB Managed
+title: Synchronous multi region (3+ regions) in YugabyteDB Aeon
 headerTitle: Synchronous multi region (3+ regions)
 linkTitle: Synchronous (3+ regions)
-description: Global data distributed using synchronous replication across regions using YugabyteDB Managed.
+description: Global data distributed using synchronous replication across regions using YugabyteDB Aeon.
 headcontent: Distribute data synchronously across regions
 menu:
   v2.20:
@@ -29,7 +29,7 @@ This deployment provides the following advantages:
   <li>
     <a href="../synchronous-replication-cloud/" class="nav-link active">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
+      YugabyteDB Aeon
     </a>
   </li>
   <li>
@@ -42,7 +42,7 @@ This deployment provides the following advantages:
 
 ## Create a Replicate across regions cluster
 
-Before you can create a multi-region cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
+Before you can create a multi-region cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
 
 To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
 
@@ -50,7 +50,7 @@ To create a multi-region cluster with synchronous replication, refer to [Replica
 - Set up a [peering connection](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
 - Copy the YB Workload Simulator application to the peered VPC and run it from there.
 
-YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
 
 ## Start a workload
 
@@ -76,7 +76,7 @@ After you are connected, [start a workload](../../#start-a-read-and-write-worklo
 
 To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
-To view a table of per-node statistics for the cluster, in YugabyteDB Managed, do the following:
+To view a table of per-node statistics for the cluster, in YugabyteDB Aeon, do the following:
 
 1. On the **Clusters** page, select the cluster.
 
@@ -86,7 +86,7 @@ To view a table of per-node statistics for the cluster, in YugabyteDB Managed, d
 
 Note that read/write operations are roughly the same across all the nodes, indicating uniform load across the nodes.
 
-To view your cluster metrics such as YSQL Operations/Second and YSQL Average Latency, in YugabyteDB Managed, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
+To view your cluster metrics such as YSQL Operations/Second and YSQL Average Latency, in YugabyteDB Aeon, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
 
 ![Performance charts for 3 regions](/images/ce/multisync-managed-charts.png)
 
