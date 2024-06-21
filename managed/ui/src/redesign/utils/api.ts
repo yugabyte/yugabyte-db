@@ -167,6 +167,11 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/audit_log_config`;
     return axios.post<AxiosResponse>(requestUrl, data).then((resp) => resp.data);
   };
+
+  deleteTelemetryProvider = (tpID: string): Promise<AxiosResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider/${tpID}`;
+    return axios.delete<AxiosResponse>(requestUrl).then((resp) => resp.data);
+  };
 }
 
 export const api = new ApiService();
