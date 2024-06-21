@@ -1630,6 +1630,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
 
+  Result<bool> HasReplicationGroupErrors(
+      const xcluster::ReplicationGroupId& replication_group_id) const;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

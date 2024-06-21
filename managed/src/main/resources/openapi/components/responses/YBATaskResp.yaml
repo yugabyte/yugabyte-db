@@ -2,4 +2,4 @@ description: task accepted
 content:
   application/json:
     schema:
-      $ref: "../schemas/YBATask.yaml"
+      $ref: ../schemas/YBATask.yaml

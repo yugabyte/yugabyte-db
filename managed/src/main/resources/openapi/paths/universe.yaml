@@ -26,7 +26,7 @@
       - Universe
     responses:
       '200':
-        $ref: "../components/responses/UniverseResp.yaml"
+        $ref: ../components/responses/UniverseResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -52,10 +52,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/UniverseEditReq.yaml"
+      $ref: ../components/requestBodies/UniverseEditReq.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -84,10 +84,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/UniverseDeleteReq.yaml"
+      $ref: ../components/requestBodies/UniverseDeleteReq.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -127,10 +127,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/UniverseCreateReq.yaml"
+      $ref: ../components/requestBodies/UniverseCreateReq.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -179,10 +179,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/ClusterAddReq.yaml"
+      $ref: ../components/requestBodies/ClusterAddReq.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -248,7 +248,7 @@
       - Universe
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -297,10 +297,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/UniverseEditGFlagsReq.yaml"
+      $ref: ../components/requestBodies/UniverseEditGFlagsReq.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -350,10 +350,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/UniverseSoftwareUpgradeReq.yaml"
+      $ref: ../components/requestBodies/UniverseSoftwareUpgradeReq.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -402,10 +402,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/UniverseSoftwareUpgradeFinalize.yaml"
+      $ref: ../components/requestBodies/UniverseSoftwareUpgradeFinalize.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -435,7 +435,7 @@
       - Universe
     responses:
       '200':
-        $ref: "../components/responses/UniverseSoftwareUpgradeFinalizeResp.yaml"
+        $ref: ../components/responses/UniverseSoftwareUpgradeFinalizeResp.yaml
       '400':
         description: Invalid input
       '500':
@@ -481,10 +481,10 @@
     tags:
       - Universe
     requestBody:
-      $ref: "../components/requestBodies/UniverseThirdPartySoftwareUpgradeReq.yaml"
+      $ref: ../components/requestBodies/UniverseThirdPartySoftwareUpgradeReq.yaml
     responses:
       '202':
-        $ref: "../components/responses/YBATaskResp.yaml"
+        $ref: ../components/responses/YBATaskResp.yaml
       '400':
         description: Invalid input
       '500':

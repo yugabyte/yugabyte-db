@@ -8,8 +8,8 @@ image: /images/section_icons/architecture/distributed_acid.png
 menu:
   preview:
     identifier: common-patterns
-    parent: develop
-    weight: 400
+    parent: data-modeling
+    weight: 600
 type: indexpage
 showRightNav: true
 ---

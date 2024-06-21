@@ -2,15 +2,17 @@ import { FC, useState } from 'react';
 import { get, isEmpty } from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
-import { Box, Typography, Link, IconButton, Menu, MenuItem } from '@material-ui/core';
+import { Box, Typography, Link, Menu, MenuItem, IconButton } from '@material-ui/core';
 import { YBButton } from '../../components';
 import { YBLoading } from '../../../components/common/indicators';
 import { TableHeaderColumn } from 'react-bootstrap-table';
 import { YBTable } from '../../../components/common/YBTable';
 import { ExportLogModalForm } from './components/ExportLogModalForm';
+import { DeleteTelProviderModal } from './components/DeleteTelProviderModal';
 import { api, QUERY_KEY } from '../../utils/api';
 import { universeQueryKey } from '../../helpers/api';
 import { ExportLogResponse } from './utils/types';
+import { TelemetryProviderMin } from './components/DeleteTelProviderModal';
 import { getLinkedUniverses } from './utils/helpers';
 import { TP_FRIENDLY_NAMES } from './utils/constants';
 
@@ -30,6 +32,8 @@ export const ExportLog: FC<ExportLogProps> = () => {
   const { t } = useTranslation();
   const [anchorEl, setAnchorEl] = useState(null);
   const [openExportModal, setOpenExportModal] = useState(false);
+  const [openDeleteModal, setDeleteModal] = useState(false);
+  const [deleteModalProps, setDeleteModalProps] = useState<TelemetryProviderMin | null>(null);
 
   const { data, isLoading: logslistLoading, refetch } = useQuery<ExportLogResponse[]>(
     [QUERY_KEY.getAllTelemetryProviders],
@@ -86,28 +90,35 @@ export const ExportLog: FC<ExportLogProps> = () => {
     return (
       <div key={row.name}>
         <IconButton
-          aria-label="more"
-          aria-controls="long-menu"
+          aria-label="format-export-actions"
+          aria-controls="export-actions-menu"
           aria-haspopup="true"
           onClick={handleActionClick}
         >
           <EllipsisIcon />
         </IconButton>
         <Menu
-          id="long-menu"
+          id="export-actions-menu"
           anchorEl={anchorEl}
           keepMounted
           open={Boolean(anchorEl)}
           onClose={handleClose}
         >
-          <MenuItem key={row.name} disabled={isEmpty(row.linkedUniverses)} onClick={handleClose}>
+          <MenuItem
+            key={row.name}
+            // disabled={isEmpty(row.linkedUniverses)}
+            onClick={() => {
+              setDeleteModalProps({ name: row.name, uuid: row.uuid });
+              setDeleteModal(true);
+              handleClose();
+            }}
+          >
             {t('exportAuditLog.deleteConfiguration')}
           </MenuItem>
         </Menu>
       </div>
     );
   };
-
   return (
     <Box display="flex" flexDirection="column" width="100%" p={0.25}>
       <Box mb={4}>
@@ -115,7 +126,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
           {t('exportAuditLog.exportConfigForLogs')}
         </Typography>
       </Box>
-      {(finalData || []).length > 0 ? (
+      {!isEmpty(finalData) ? (
         <Box className={classes.exportListContainer}>
           <Box display={'flex'} flexDirection={'row'} justifyContent={'flex-end'}>
             <YBButton variant="primary" size="large" onClick={() => setOpenExportModal(true)}>
@@ -126,7 +137,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
           <Box mt={4} width="100%" height="100%">
             <YBTable data={finalData || []} hover={false}>
               <TableHeaderColumn
-                width="20%"
+                width="250"
                 dataField="name"
                 isKey
                 dataSort
@@ -135,14 +146,14 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 <span>{t('exportAuditLog.exportName')}</span>
               </TableHeaderColumn>
               <TableHeaderColumn
-                width="20%"
+                width="150"
                 dataField="type"
                 dataSort
                 dataFormat={(cell) => <span>{TP_FRIENDLY_NAMES[cell]}</span>}
               >
                 <span>{t('exportAuditLog.exportTo')}</span>
               </TableHeaderColumn>
-              <TableHeaderColumn dataFormat={formatUsage}>
+              <TableHeaderColumn dataFormat={formatUsage} width="150">
                 {t('exportAuditLog.usageHeader')}
               </TableHeaderColumn>
               <TableHeaderColumn dataFormat={formatUniverseList}>
@@ -189,6 +200,17 @@ export const ExportLog: FC<ExportLogProps> = () => {
             setOpenExportModal(false);
             refetch();
           }}
+        />
+      )}
+      {openDeleteModal && deleteModalProps && (
+        <DeleteTelProviderModal
+          open={openDeleteModal}
+          onClose={() => {
+            setDeleteModal(false);
+            setDeleteModalProps(null);
+            refetch();
+          }}
+          telemetryProviderProps={deleteModalProps}
         />
       )}
     </Box>

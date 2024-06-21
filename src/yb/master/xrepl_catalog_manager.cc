@@ -804,9 +804,10 @@ Status CatalogManager::CreateCDCStream(
       source_type_option_value = option.value();
     }
     if (option.key() == cdc::kRecordType ) {
-      if (FLAGS_ysql_yb_enable_replica_identity) {
-        LOG(WARNING) << " The value for Before Image RecordType will be ignored as "
-                        "ysql_yb_enable_replica_identity is enabled.";
+      if (FLAGS_ysql_yb_enable_replica_identity && req->has_cdcsdk_ysql_replication_slot_name()) {
+        LOG(WARNING) << " The value for Before Image RecordType will be ignored for replication "
+                        "slot consumption. The RecordType for each table will be determined by the "
+                        "replica identity of the table at the time of stream creation.";
       }
       record_type_option_value = option.value();
     }
@@ -978,7 +979,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   metadata->set_namespace_id(*namespace_id);
   for (const auto& table_id : table_ids) {
     metadata->add_table_id(table_id);
-    if (FLAGS_ysql_yb_enable_replica_identity) {
+    if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_name) {
       auto table = VERIFY_RESULT(FindTableById(table_id));
       Schema schema;
       RETURN_NOT_OK(table->GetSchema(&schema));
@@ -1084,7 +1085,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   uint64 consistent_snapshot_time = 0;
   bool record_type_option_all = false;
-  if (!FLAGS_ysql_yb_enable_replica_identity) {
+  if (!FLAGS_ysql_yb_enable_replica_identity || !has_replication_slot_name) {
     for (auto option : req.options()) {
       if (option.key() == cdc::kRecordType) {
         record_type_option_all = option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
@@ -1788,8 +1789,8 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
   // ysql_TEST_enable_replication_slot_consumption is true. This can only be done after we have
   // fully deprecated the yb-admin commands for CDC stream creation.
 
-  // No need to validate the record_type if replica identity support is enabled.
-  if (FLAGS_ysql_yb_enable_replica_identity) {
+  // No need to validate the record_type for replication slot consumption.
+  if (FLAGS_ysql_yb_enable_replica_identity && req.has_cdcsdk_ysql_replication_slot_name()) {
     return Status::OK();
   }
 
@@ -1942,7 +1943,19 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       continue;
     }
 
-    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+    // Since an entry is made to table_to_unprocessed_streams_map only when there exists a stream on
+    // the namespace of dynamically created table, each table in table_to_unprocessed_streams_map
+    // will have atleast one corresponding stream.
+    DCHECK(!streams.empty());
+
+    // Since for a given namespace all the streams on it can either belong to the replication slot
+    // consumption model or the older (YB connector) consumption model, we check the first stream
+    // for each table in table_to_unprocessed_streams_map to determine which replication model is
+    // active on namespace to which the table belongs.
+    bool has_replication_slot_consumption =
+        !streams.front()->GetCdcsdkYsqlReplicationSlotName().empty();
+
+    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || !has_replication_slot_consumption) {
       // Set the WAL retention for this new table
       // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
       AlterTableRequestPB alter_table_req;
@@ -1968,7 +1981,8 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       // INSERT the required cdc_state table entries. This is not requirred for replication slot
       // consumption since setting up of retention barriers and inserting state table entries is
       // done at the time of table creation.
-      if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+      if (!FLAGS_ysql_TEST_enable_replication_slot_consumption ||
+          !has_replication_slot_consumption) {
         const auto& tablets = resp.tablet_locations();
         std::vector<cdc::CDCStateTableEntry> entries;
         entries.reserve(tablets.size());
@@ -1997,8 +2011,9 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       }
       stream_lock.mutable_data()->pb.add_table_id(table_id);
 
-      // Store the replica identity information of the table in the stream metadata.
-      if (FLAGS_ysql_yb_enable_replica_identity) {
+      // Store the replica identity information of the table in the stream metadata for replication
+      // slot consumption.
+      if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_consumption) {
         auto table = VERIFY_RESULT(FindTableById(table_id));
         Schema schema;
         RETURN_NOT_OK(table->GetSchema(&schema));
@@ -5817,9 +5832,13 @@ void CatalogManager::SyncXClusterConsumerReplicationStatusMap(
     return;
   }
 
+  auto& replication_group_errors = xcluster_consumer_replication_error_map_[replication_group_id];
   auto& producer_entry = producer_map.at(replication_group_id.ToString());
 
+  std::unordered_set<TableId> all_consumer_table_ids;
   for (auto& [_, stream_map] : producer_entry.stream_map()) {
+    const auto& consumer_table_id = stream_map.consumer_table_id();
+
     std::unordered_set<TabletId> all_producer_tablet_ids;
     for (auto& [_, producer_tablet_ids] : stream_map.consumer_producer_tablet_map()) {
       all_producer_tablet_ids.insert(
@@ -5827,27 +5846,38 @@ void CatalogManager::SyncXClusterConsumerReplicationStatusMap(
     }
 
     if (all_producer_tablet_ids.empty()) {
-      if (xcluster_consumer_replication_error_map_.contains(replication_group_id)) {
-        xcluster_consumer_replication_error_map_.at(replication_group_id)
-            .erase(stream_map.consumer_table_id());
-      }
       continue;
     }
+    all_consumer_table_ids.insert(consumer_table_id);
 
-    auto& consumer_error_map =
-        xcluster_consumer_replication_error_map_[replication_group_id]
-                                                [stream_map.consumer_table_id()];
-    // Remove entries that are no longer part of replication.
-    std::erase_if(consumer_error_map, [&all_producer_tablet_ids](const auto& entry) {
+    auto& tablet_error_map = replication_group_errors[consumer_table_id];
+    // Remove tablets that are no longer part of replication.
+    std::erase_if(tablet_error_map, [&all_producer_tablet_ids](const auto& entry) {
       return !all_producer_tablet_ids.contains(entry.first);
     });
 
-    // Add new entries.
+    // Add new tablets.
     for (const auto& producer_tablet_id : all_producer_tablet_ids) {
-      if (!consumer_error_map.contains(producer_tablet_id)) {
+      if (!tablet_error_map.contains(producer_tablet_id)) {
         // Default to UNINITIALIZED error. Once the Pollers send the status, this will be updated.
-        consumer_error_map[producer_tablet_id].error =
+        tablet_error_map[producer_tablet_id].error =
             ReplicationErrorPb::REPLICATION_ERROR_UNINITIALIZED;
+      }
+    }
+  }
+
+  // Remove tables that are no longer part of replication.
+  std::erase_if(replication_group_errors, [&all_consumer_table_ids](const auto& entry) {
+    return !all_consumer_table_ids.contains(entry.first);
+  });
+
+  if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Synced xcluster_consumer_replication_error_map_ for replication group "
+              << replication_group_id;
+    for (const auto& [consumer_table_id, tablet_error_map] : replication_group_errors) {
+      LOG(INFO) << "Table: " << consumer_table_id;
+      for (const auto& [tablet_id, error] : tablet_error_map) {
+        LOG(INFO) << "Tablet: " << tablet_id << ", Error: " << ReplicationErrorPb_Name(error.error);
       }
     }
   }
@@ -6084,6 +6114,32 @@ Status CatalogManager::TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::str
   }
   return Status::OK();
 }
+Result<bool> CatalogManager::HasReplicationGroupErrors(
+    const xcluster::ReplicationGroupId& replication_group_id) const {
+  yb::SharedLock l(xcluster_consumer_replication_error_map_mutex_);
+
+  auto* replication_error_map =
+      FindOrNull(xcluster_consumer_replication_error_map_, replication_group_id);
+  SCHECK(
+      replication_error_map, NotFound, "Could not find replication group $0",
+      replication_group_id.ToString());
+
+  std::unordered_map<TableId, std::unordered_set<std::string>> table_errors;
+  for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
+    for (const auto& [_, error_info] : tablet_error_map) {
+      if (error_info.error != ReplicationErrorPb::REPLICATION_OK) {
+        table_errors[consumer_table_id].insert(ReplicationErrorPb_Name(error_info.error));
+      }
+    }
+  }
+
+  if (!table_errors.empty()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Replication group " << replication_group_id
+        << " has errors for the following tables:" << AsString(table_errors);
+  }
+  return !table_errors.empty();
+}
 
 Status CatalogManager::PopulateReplicationGroupErrors(
     const xcluster::ReplicationGroupId& replication_group_id,
@@ -6122,7 +6178,7 @@ Status CatalogManager::PopulateReplicationGroupErrors(
     resp_status->set_stream_id(stream_id.ToString());
     for (const auto& [error_pb, tablet_ids] : errors) {
       if (error_pb == ReplicationErrorPb::REPLICATION_OK) {
-        // Do not report healthy tablets.
+        // Do not add errors for healthy tablets.
         continue;
       }
 

@@ -284,5 +284,5 @@ A number of interactions across features are supported.
 - Tablet splitting is supported on both source and target universes.
 
 {{< tip title="Explore" >}}
-To better understand how xCluster replication works in practice, see [xCluster deployment](../../../deploy/multi-dc/async-replication/) and [Transactional xCluster deployment](../../../deploy/multi-dc/async-replication-transactional/) in Launch and Manage.
+To better understand how xCluster replication works in practice, see [xCluster deployment](../../../deploy/multi-dc/async-replication/) and [Transactional xCluster deployment](../../../deploy/multi-dc/async-replication/async-replication-transactional/) in Launch and Manage.
 {{< /tip >}}
