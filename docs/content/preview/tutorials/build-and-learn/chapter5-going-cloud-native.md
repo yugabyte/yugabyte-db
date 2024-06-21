@@ -38,27 +38,27 @@ Follow these steps to deploy a free YugabyteDB Aeon instance:
 
 1. Begin creating the free cluster by clicking on the **Create a Free cluster** button.
 
-    ![YugatebyDB Managed Create Cluster](/images/tutorials/build-and-learn/chapter5-create-free-cluster.png)
+    ![Create Cluster](/images/tutorials/build-and-learn/chapter5-create-free-cluster.png)
 
 1. Choose the **Sandbox** cluster option:
 
-    ![YugatebyDB Managed Sandbox Cluster](/images/tutorials/build-and-learn/chapter5-choose-sandbox.png)
+    ![Sandbox Cluster](/images/tutorials/build-and-learn/chapter5-choose-sandbox.png)
 
 1. Select a preferred cloud provider and region (note, Microsoft Azure is available only for paid clusters):
 
-    ![YugatebyDB Managed Select Cloud](/images/tutorials/build-and-learn/chapter5-select-cloud.png)
+    ![Select Cloud](/images/tutorials/build-and-learn/chapter5-select-cloud.png)
 
 1. Click on the **Add Current IP Address** button to add the address of your machine (where you run the YugaPlus application) to the IP Allow list:
 
-    ![YugatebyDB Managed Add Address](/images/tutorials/build-and-learn/chapter5-add-your-address.png)
+    ![Add Address](/images/tutorials/build-and-learn/chapter5-add-your-address.png)
 
 1. **Make sure to download** the file with your cluster credentials:
 
-    ![YugatebyDB Managed Download Credentials](/images/tutorials/build-and-learn/chapter5-download-credentials.png)
+    ![Download Credentials](/images/tutorials/build-and-learn/chapter5-download-credentials.png)
 
 1. Wait while the cluster is being created:
 
-    ![YugatebyDB Managed Cluster Creation](/images/tutorials/build-and-learn/chapter5-cluster-creation-process.png)
+    ![Cluster Creation](/images/tutorials/build-and-learn/chapter5-cluster-creation-process.png)
 
 Spinning up and configuring your sandbox instance can take up to 5 minutes. During this time, the system is preparing everything you need to get started with your YugabyteDB Aeon instance.
 
@@ -93,7 +93,7 @@ Next, start the application connecting to your YugabyteDB Aeon cluster:
 
 1. Go to the YugabyteDB Aeon **Settings** tab and copy the **public** address of your cluster instance:
 
-    ![YugatebyDB Managed Public Address](/images/tutorials/build-and-learn/chapter5-public-address.png)
+    ![Public Address](/images/tutorials/build-and-learn/chapter5-public-address.png)
 
 1. Open the`{yugaplus-project-dir}/docker-compose.yaml` file and update the following settings:
 
@@ -114,7 +114,7 @@ Next, start the application connecting to your YugabyteDB Aeon cluster:
 
 As soon as the `yugaplus-backend` container starts, it applies the database migration files to your cloud database instance. You can view the created tables in the **Tables** tab of the YugabyteDB Aeon dashboard.
 
-![YugatebyDB Managed Tables](/images/tutorials/build-and-learn/chapter5-movie-tables.png)
+![Tables](/images/tutorials/build-and-learn/chapter5-movie-tables.png)
 
 {{< note title="Can't connect to YugabyteDB Aeon?" >}}
 If the application fails to connect to YugabyteDB Aeon, ensure you've added your IP address to the [IP Allow list](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections).
@@ -157,7 +157,7 @@ With the YugaPlus backend operational and successfully connected to your Yugabyt
 {{< tip title="Need to troubleshoot slow queries?" >}}
 And, as one last hint, if it seems that some queries are running slow, navigate to the **Performance** -> **Slow Queries** dashboard of YugabyteDB Aeon to check if any require optimization.
 
-![YugatebyDB Managed Slow Queries](/images/tutorials/build-and-learn/chapter5-slow-queries.png)
+![Slow Queries](/images/tutorials/build-and-learn/chapter5-slow-queries.png)
 {{< /tip >}}
 
 Congratulations! You've completed Chapter 5, the final chapter of the tutorial. Throughout this tutorial, you've learned essential capabilities of YugabyteDB that set you up for the next stage of your development journey.

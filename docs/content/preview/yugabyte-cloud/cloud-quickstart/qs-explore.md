@@ -1,7 +1,7 @@
 ---
 title: Explore Yugabyte SQL
 linkTitle: Explore distributed SQL
-description: Use distributed SQL to explore core features of YugabteDB.
+description: Use distributed SQL to explore core features of YugabyteDB.
 headcontent:
 menu:
   preview_yugabyte-cloud:
