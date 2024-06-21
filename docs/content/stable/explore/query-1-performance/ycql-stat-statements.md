@@ -4,7 +4,7 @@ linkTitle: Get query statistics
 description: Track planning and execution statistics for all YCQL statements executed by a server.
 headerTitle: Get query statistics using ycql_stat_statements
 menu:
-  preview:
+  stable:
     identifier: ycql-stat-statements
     parent: query-tuning
     weight: 200
