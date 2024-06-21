@@ -42,9 +42,9 @@ type: docs
 
 The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a Node.js driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../smart-drivers/) features.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
 
 {{< /note >}}
 
@@ -109,9 +109,9 @@ Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-refer
 
 #### Use SSL with YugabyteDB Aeon
 
-If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
-With clusters in YugabyteDB Managed, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
+With clusters in YugabyteDB Aeon, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
 
 | Parameter | Description | Setting |
 | :-------- | :---------- | :------ |

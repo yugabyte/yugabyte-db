@@ -101,7 +101,7 @@ To configure racks as zones in YugabyteDB Anywhere, set the racks as zones in yo
 {{</note>}}
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-{{<warning>}} Currently, you can't configure racks as fault domains in YugabyteDB Managed {{</warning>}}
+{{<warning>}} Currently, you can't configure racks as fault domains in YugabyteDB Aeon {{</warning>}}
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->

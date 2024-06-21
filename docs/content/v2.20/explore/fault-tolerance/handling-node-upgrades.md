@@ -73,7 +73,7 @@ To take a node offline locally, you can just stop the node.
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in [YugabyteDB Managed](/preview/yugabyte-cloud/) for an upgrade. {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in [YugabyteDB Aeon](/preview/yugabyte-cloud/) for an upgrade. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -123,7 +123,7 @@ To simulate bringing back a node online locally, you can just start the stopped 
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to restart a node in [YugabyteDB Managed](/preview/yugabyte-cloud/).  {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to restart a node in [YugabyteDB Aeon](/preview/yugabyte-cloud/).  {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}

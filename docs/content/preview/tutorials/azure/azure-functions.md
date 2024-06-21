@@ -19,8 +19,8 @@ Serverless functions serve many use cases, including API endpoints, scheduled jo
 
 In the following sections, you will:
 
-1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, [YugabyteDB Managed](https://www.yugabyte.com/managed/).
-1. Deploy a database cluster to Azure on YugabyteDB Managed.
+1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, [YugabyteDB Aeon](https://www.yugabyte.com/managed/).
+1. Deploy a database cluster to Azure on YugabyteDB Aeon.
 1. Develop an Azure Function using an HTTP trigger.
 1. Deploy this serverless function to Azure.
 
@@ -34,24 +34,24 @@ We'll develop and deploy an HTTP trigger function, which connects to YugabyteDB 
 
 ### Prerequisites
 
-- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
+- A YugabyteDB Aeon account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - A [Microsoft Azure](http://azure.microsoft.com) subscription, with a resource group and storage account
 - Access to the [Azure Functions](https://azure.microsoft.com/en-us/products/functions) resource
 - [Node.js version](https://github.com/nodejs/release#release-schedule) v18+
 - [Azure Functions Core Tools](https://github.com/Azure/azure-functions-core-tools)
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/)
 
-## Get started on YugabyteDB Managed
+## Get started on YugabyteDB Aeon
 
-For steps on creating a cluster in YugabyteDB Managed, see the [Quick start](../../../yugabyte-cloud/cloud-quickstart/).
+For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](../../../yugabyte-cloud/cloud-quickstart/).
 
 For a configuration that provides fault tolerance across availability zones, deploy a [three-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region. However, you can start with an always-free single-node [Sandbox cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
 
-![Deploy a 3-node YugabyteDB Managed cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
+![Deploy a 3-node YugabyteDB Aeon cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
 
 Add your computer's IP address to the cluster [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/) so that you can run your serverless functions locally in development.
 
-Now that we have a working cluster in YugabyteDB Managed, let's add some data.
+Now that we have a working cluster in YugabyteDB Aeon, let's add some data.
 
 ## Add data to YugabyteDB
 
@@ -141,7 +141,7 @@ The Azure Functions Core Tools provide a command-line interface for developing f
 1. Update _local.settings.json_ with the configuration settings required to run the GetShoeInventory function locally.
 
     ```conf
-    # convert the downloaded CA certificate from YugabyteDB Managed to a single line string, then Base64 encode it
+    # convert the downloaded CA certificate from YugabyteDB Aeon to a single line string, then Base64 encode it
     # Azure Configuration Settings forbid special characters, so this ensures the cert can be passed properly to our application
     # Tip: Run this command to convert cert file to base64 encoded single line string:
     # cat /path/to/cert/file | base64

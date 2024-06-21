@@ -34,7 +34,7 @@ This deployment provides the following advantages:
   <li>
     <a href="../synchronous-replication-cloud/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
+      YugabyteDB Aeon
     </a>
   </li>
   <li>

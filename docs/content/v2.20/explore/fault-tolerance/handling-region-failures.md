@@ -73,7 +73,7 @@ To simulate the failure of the 3rd region locally, you can just stop the third n
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Managed. {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Aeon. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -107,7 +107,7 @@ To simulate the failure of the secondary region locally, you can just stop the s
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Managed. {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Aeon. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -141,7 +141,7 @@ To simulate the failure of the primary region locally, you can just stop the fir
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Managed. {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Aeon. {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}

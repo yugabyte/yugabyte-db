@@ -14,7 +14,7 @@ type: docs
 ## Quick notes
 
 * [File issues in GitHub](#file-tickets).
-  * Internal users: file YugabyteDB Anywhere and YugabyteDB Managed issues in Jira.
+  * Internal users: file YugabyteDB Anywhere and YugabyteDB Aeon issues in Jira.
 * Docs are written in Markdown and built using the Hugo static site generator.
 * For live previews as you work, install the command-line tools (macOS), Node.js, and Hugo. (See [How to build the docs](../docs-build/).)
 * Pull requests:
