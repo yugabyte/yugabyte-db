@@ -940,6 +940,9 @@ create table idxpart21 partition of idxpart2 for values from (10) to (15);
 create table idxpart22 partition of idxpart2 for values from (15) to (20);
 create table idxpart3 (b int not null, a int not null);
 alter table idxpart attach partition idxpart3 for values from (20, 20) to (30, 30);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
   order by conname;
@@ -1109,6 +1112,9 @@ create table idxpart1 (a int not null, b int);
 create unique index on idxpart1 (a);
 alter table idxpart add primary key (a);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
@@ -1144,6 +1150,9 @@ insert into idxpart2 (c, a, b) values (42, 572814, 'inserted first');
 alter table idxpart2 drop column c;
 create unique index on idxpart (a);
 alter table idxpart attach partition idxpart2 for values from (100000) to (1000000);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 insert into idxpart values (0, 'zero'), (42, 'life'), (2^16, 'sixteen');
 insert into idxpart select 2^g, format('two to power of %s', g) from generate_series(15, 17) g;
 ERROR:  duplicate key value violates unique constraint "idxpart1_a_idx"
