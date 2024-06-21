@@ -57,6 +57,16 @@ static void publication_invalidation_cb(Datum arg, int cacheid,
 							uint32 hashvalue);
 static void update_replication_progress(LogicalDecodingContext *ctx);
 
+/* 
+ * This indicates whether the plugin being used is yboutput or pgoutput. In
+ * yboutput mode, we also support yb-specific replica identity 
+ * (CHANGE for now).
+ */
+static bool yb_is_yboutput_mode;
+
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
+
 /* Entry in the map used to remember which relation schemas we sent. */
 typedef struct RelationSyncEntry
 {
@@ -92,7 +102,10 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->shutdown_cb = pgoutput_shutdown;
 
 	if (IsYugaByteEnabled())
+	{
 		cb->yb_schema_change_cb = yb_pgoutput_schema_change;
+		cb->yb_support_yb_specifc_replica_identity_cb = yb_support_yb_specific_replica_identity;
+	}
 }
 
 static void
@@ -370,7 +383,7 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 				bool		*yb_old_is_omitted = NULL;
 				bool		*yb_new_is_omitted = NULL;
-				if (IsYugaByteEnabled())
+				if (IsYugaByteEnabled() && yb_is_yboutput_mode)
 				{
 					yb_old_is_omitted =
 						(change->data.tp.oldtuple) ?
@@ -731,4 +744,10 @@ update_replication_progress(LogicalDecodingContext *ctx)
 		OutputPluginUpdateProgress(ctx);
 		changes_count = 0;
 	}
+}
+
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity)
+{
+	yb_is_yboutput_mode = support_yb_specific_replica_identity;
 }
