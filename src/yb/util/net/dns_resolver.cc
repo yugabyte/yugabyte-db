@@ -160,7 +160,12 @@ class DnsResolver::Impl {
                 const Resolver::results_type& entries) mutable {
           // Unfortunately there is no safe way to set promise value from 2 different threads, w/o
           // catching exception in case of concurrency.
-          SetResult(PickResolvedAddress(host, error, entries), promise.get());
+          if (error == boost::system::error_code()) {
+            //only cache successful record in case of udp packet lost
+            SetResult(PickResolvedAddress(host, error, entries), promise.get());
+          } else {
+            LOG(WARNING) << "resolve failed: host " << host << ", " <<  "err " << error.message();
+          }
         });
 
         if (io_service->stopped()) {
