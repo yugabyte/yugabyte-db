@@ -57,7 +57,7 @@ To simulate the failure of the 2nd zone locally, you can just stop the second no
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Please reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Managed {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
