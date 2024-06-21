@@ -882,11 +882,11 @@ DETAIL:  PRIMARY KEY constraint on table "idxpart" lacks column "b" which is par
 alter table idxpart add primary key (a, b);	-- this works
 \d idxpart
               Table "public.idxpart"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+ a      | integer |           | not null |
+ b      | integer |           | not null |
+ c      | text    |           |          |
 Partition key: RANGE (a, b)
 Indexes:
     "idxpart_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -895,11 +895,11 @@ Number of partitions: 0
 create table idxpart1 partition of idxpart for values from (0, 0) to (1000, 1000);
 \d idxpart1
               Table "public.idxpart1"
- Column |  Type   | Collation | Nullable | Default 
+ Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
- a      | integer |           | not null | 
- b      | integer |           | not null | 
- c      | text    |           |          | 
+ a      | integer |           | not null |
+ b      | integer |           | not null |
+ c      | text    |           |          |
 Partition of: idxpart FOR VALUES FROM (0, 0) TO (1000, 1000)
 Indexes:
     "idxpart1_pkey" PRIMARY KEY, lsm (a HASH, b ASC)
@@ -940,6 +940,9 @@ create table idxpart21 partition of idxpart2 for values from (10) to (15);
 create table idxpart22 partition of idxpart2 for values from (15) to (20);
 create table idxpart3 (b int not null, a int not null);
 alter table idxpart attach partition idxpart3 for values from (20, 20) to (30, 30);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select conname, contype, conrelid::regclass, conindid::regclass, conkey
   from pg_constraint where conrelid::regclass::text like 'idxpart%'
   order by conname;
@@ -1009,7 +1012,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart1 | idxpart1_pkey | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
@@ -1017,8 +1020,8 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
 (3 rows)
 
 drop index idxpart0_pkey;								-- fail
-ERROR:  cannot drop index idxpart0_pkey because index idxpart_pkey requires it
-HINT:  You can drop index idxpart_pkey instead.
+ERROR:  cannot drop index idxpart0_pkey because constraint idxpart0_pkey on table idxpart0 requires it
+HINT:  You can drop constraint idxpart0_pkey on table idxpart0 instead.
 drop index idxpart1_pkey;								-- fail
 ERROR:  cannot drop index idxpart1_pkey because index idxpart_pkey requires it
 HINT:  You can drop index idxpart_pkey instead.
@@ -1039,7 +1042,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid | indexrelid | inhparent | indisvalid | conname | conislocal | coninhcount | connoinherit | convalidated
 ----------+------------+-----------+------------+---------+------------+-------------+--------------+--------------
 (0 rows)
 
@@ -1082,7 +1085,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   | inhparent | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+-----------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey |           | t          | idxpart0_pkey | t          |           0 | t            | t
  idxpart  | idxpart_pkey  |           | f          | idxpart_pkey  | t          |           0 | t            | t
@@ -1095,7 +1098,7 @@ select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |  indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+---------------+--------------+------------+---------------+------------+-------------+--------------+--------------
  idxpart0 | idxpart0_pkey | idxpart_pkey | t          | idxpart0_pkey | f          |           1 | t            | t
  idxpart  | idxpart_pkey  |              | t          | idxpart_pkey  | t          |           0 | t            | t
@@ -1109,15 +1112,18 @@ create table idxpart1 (a int not null, b int);
 create unique index on idxpart1 (a);
 alter table idxpart add primary key (a);
 alter table idxpart attach partition idxpart1 for values from (1) to (1000);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select indrelid::regclass, indexrelid::regclass, inhparent::regclass, indisvalid,
   conname, conislocal, coninhcount, connoinherit, convalidated
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
   left join pg_constraint con on (idx.indexrelid = con.conindid)
   where indrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
- indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated 
+ indrelid |   indexrelid   |  inhparent   | indisvalid |    conname    | conislocal | coninhcount | connoinherit | convalidated
 ----------+----------------+--------------+------------+---------------+------------+-------------+--------------+--------------
- idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              | 
+ idxpart1 | idxpart1_a_idx |              | t          |               |            |             |              |
  idxpart1 | idxpart1_pkey  | idxpart_pkey | t          | idxpart1_pkey | f          |           1 | f            | t
  idxpart  | idxpart_pkey   |              | t          | idxpart_pkey  | t          |           0 | t            | t
 (3 rows)
@@ -1144,6 +1150,9 @@ insert into idxpart2 (c, a, b) values (42, 572814, 'inserted first');
 alter table idxpart2 drop column c;
 create unique index on idxpart (a);
 alter table idxpart attach partition idxpart2 for values from (100000) to (1000000);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 insert into idxpart values (0, 'zero'), (42, 'life'), (2^16, 'sixteen');
 insert into idxpart select 2^g, format('two to power of %s', g) from generate_series(15, 17) g;
 ERROR:  duplicate key value violates unique constraint "idxpart1_a_idx"
