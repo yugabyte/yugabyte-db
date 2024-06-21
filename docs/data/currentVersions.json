@@ -40,9 +40,9 @@
     {
       "series": "v2.18",
       "display": "v2.18 (STS)",
-      "version": "2.18.7.0",
-      "versionShort": "2.18.7",
-      "appVersion": "2.18.7.0-b30",
+      "version": "2.18.8.0",
+      "versionShort": "2.18.8",
+      "appVersion": "2.18.8.0-b42",
       "isStable": true,
       "isLTS": false,
       "isSTS": true,
