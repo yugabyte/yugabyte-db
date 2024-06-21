@@ -718,7 +718,7 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
 
 Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
     const StreamMetadata& metadata, const TableId& table_id) {
-  if (FLAGS_ysql_yb_enable_replica_identity) {
+  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(metadata)) {
     auto replica_identity_map = metadata.GetReplicaIdentities();
     if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
       PgReplicaIdentity replica_identity = metadata.GetReplicaIdentities().at(table_id);
@@ -2401,6 +2401,11 @@ Status HandleGetChangesForSnapshotRequest(
   }
 
   return Status::OK();
+}
+
+bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
+  return stream_metadata.GetReplicationSlotName().has_value() &&
+         !stream_metadata.GetReplicationSlotName()->empty();
 }
 
 // CDC get changes is different from xCluster as it doesn't need

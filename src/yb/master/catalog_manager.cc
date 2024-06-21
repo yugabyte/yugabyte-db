@@ -10964,7 +10964,10 @@ Status CatalogManager::SendCreateTabletRequests(
       SharedLock lock(mutex_);
       for (const auto& entry : cdc_stream_map_) {
         const auto stream = entry.second;
-        if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id) {
+        // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
+        // one stream with replication slot consumption exists on the namespace.
+        if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
+            !stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
           stream_exists_on_namespace =  true;
           break;
         }
@@ -10986,7 +10989,6 @@ Status CatalogManager::SendCreateTabletRequests(
       WARN_NOT_OK(ScheduleTask(task), "Failed to send new tablet request");
     }
   }
-
   return Status::OK();
 }
 

@@ -226,7 +226,9 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       const std::string& replication_slot_name,
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
-      bool verify_snapshot_name = false);
+      bool verify_snapshot_name = false,
+      std::string namespace_name = kNamespaceName);
+
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       bool verify_snapshot_name = false);

@@ -804,9 +804,10 @@ Status CatalogManager::CreateCDCStream(
       source_type_option_value = option.value();
     }
     if (option.key() == cdc::kRecordType ) {
-      if (FLAGS_ysql_yb_enable_replica_identity) {
-        LOG(WARNING) << " The value for Before Image RecordType will be ignored as "
-                        "ysql_yb_enable_replica_identity is enabled.";
+      if (FLAGS_ysql_yb_enable_replica_identity && req->has_cdcsdk_ysql_replication_slot_name()) {
+        LOG(WARNING) << " The value for Before Image RecordType will be ignored for replication "
+                        "slot consumption. The RecordType for each table will be determined by the "
+                        "replica identity of the table at the time of stream creation.";
       }
       record_type_option_value = option.value();
     }
@@ -978,7 +979,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   metadata->set_namespace_id(*namespace_id);
   for (const auto& table_id : table_ids) {
     metadata->add_table_id(table_id);
-    if (FLAGS_ysql_yb_enable_replica_identity) {
+    if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_name) {
       auto table = VERIFY_RESULT(FindTableById(table_id));
       Schema schema;
       RETURN_NOT_OK(table->GetSchema(&schema));
@@ -1084,7 +1085,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   uint64 consistent_snapshot_time = 0;
   bool record_type_option_all = false;
-  if (!FLAGS_ysql_yb_enable_replica_identity) {
+  if (!FLAGS_ysql_yb_enable_replica_identity || !has_replication_slot_name) {
     for (auto option : req.options()) {
       if (option.key() == cdc::kRecordType) {
         record_type_option_all = option.value() == CDCRecordType_Name(cdc::CDCRecordType::ALL);
@@ -1788,8 +1789,8 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
   // ysql_TEST_enable_replication_slot_consumption is true. This can only be done after we have
   // fully deprecated the yb-admin commands for CDC stream creation.
 
-  // No need to validate the record_type if replica identity support is enabled.
-  if (FLAGS_ysql_yb_enable_replica_identity) {
+  // No need to validate the record_type for replication slot consumption.
+  if (FLAGS_ysql_yb_enable_replica_identity && req.has_cdcsdk_ysql_replication_slot_name()) {
     return Status::OK();
   }
 
@@ -1942,7 +1943,19 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       continue;
     }
 
-    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+    // Since an entry is made to table_to_unprocessed_streams_map only when there exists a stream on
+    // the namespace of dynamically created table, each table in table_to_unprocessed_streams_map
+    // will have atleast one corresponding stream.
+    DCHECK(!streams.empty());
+
+    // Since for a given namespace all the streams on it can either belong to the replication slot
+    // consumption model or the older (YB connector) consumption model, we check the first stream
+    // for each table in table_to_unprocessed_streams_map to determine which replication model is
+    // active on namespace to which the table belongs.
+    bool has_replication_slot_consumption =
+        !streams.front()->GetCdcsdkYsqlReplicationSlotName().empty();
+
+    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || !has_replication_slot_consumption) {
       // Set the WAL retention for this new table
       // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
       AlterTableRequestPB alter_table_req;
@@ -1968,7 +1981,8 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       // INSERT the required cdc_state table entries. This is not requirred for replication slot
       // consumption since setting up of retention barriers and inserting state table entries is
       // done at the time of table creation.
-      if (!FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+      if (!FLAGS_ysql_TEST_enable_replication_slot_consumption ||
+          !has_replication_slot_consumption) {
         const auto& tablets = resp.tablet_locations();
         std::vector<cdc::CDCStateTableEntry> entries;
         entries.reserve(tablets.size());
@@ -1997,8 +2011,9 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       }
       stream_lock.mutable_data()->pb.add_table_id(table_id);
 
-      // Store the replica identity information of the table in the stream metadata.
-      if (FLAGS_ysql_yb_enable_replica_identity) {
+      // Store the replica identity information of the table in the stream metadata for replication
+      // slot consumption.
+      if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_consumption) {
         auto table = VERIFY_RESULT(FindTableById(table_id));
         Schema schema;
         RETURN_NOT_OK(table->GetSchema(&schema));
