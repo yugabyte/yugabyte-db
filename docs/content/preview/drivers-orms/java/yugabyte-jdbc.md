@@ -174,7 +174,7 @@ jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-ba
     ssl=true&sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-If you created a cluster on [YugabyteDB Aeon](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 To use load balancing and SSL mode verify-full with a cluster in YugabyteDB Aeon, you need to provide the additional `sslhostnameverifier` parameter, set to `com.yugabyte.ysql.YBManagedHostnameVerifier`. (Available in driver version 42.3.5-yb-2 or later. For previous versions of the driver, use `verify-ca`.)
 

@@ -158,9 +158,9 @@ Please do try our beta features and give feedback on them on our [Slack communit
 
 [YugabyteDB Anywhere](../../yugabyte-platform/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options, and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
 
-[YugabyteDB Aeon](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
+[YugabyteDB Aeon](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). [Sign up](https://cloud.yugabyte.com/) to get started.
 
-For a more detailed comparison between the above, see [Compare Products](https://www.yugabyte.com/compare-products/).
+For a more detailed comparison between the above, see [Compare Deployment Options](https://www.yugabyte.com/compare-products/).
 
 ### How do I report a security vulnerability?
 

@@ -19,7 +19,7 @@ Serverless functions serve many use cases, including API endpoints, scheduled jo
 
 In the following sections, you will:
 
-1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, [YugabyteDB Aeon](https://www.yugabyte.com/managed/).
+1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, YugabyteDB Aeon.
 1. Deploy a database cluster to Azure on YugabyteDB Aeon.
 1. Develop an Azure Function using an HTTP trigger.
 1. Deploy this serverless function to Azure.

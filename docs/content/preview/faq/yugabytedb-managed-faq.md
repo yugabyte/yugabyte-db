@@ -67,7 +67,7 @@ YugabyteDB Aeon is a fully managed YugabyteDB-as-a-Service that allows you to ru
 
 You access your YugabyteDB Aeon clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [YugabyteDB Aeon](https://cloud.yugabyte.com/login).
 
-See also [YugabyteDB Aeon](https://www.yugabyte.com/cloud/) at yugabyte.com.
+See also YugabyteDB Aeon at yugabyte.com.
 
 YugabyteDB Aeon runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 

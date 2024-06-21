@@ -16,8 +16,6 @@ resources:
     url: /preview/releases/yba-releases/
   - title: FAQ
     url: /preview/faq/yugabyte-platform/
-  - title: Free trial
-    url: https://www.yugabyte.com/anywhere/
 ---
 
 YugabyteDB Anywhere is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Anywhere UI is used in a highly-available mode, allowing you to create and manage YugabyteDB universes, or clusters, on one or more regions across public cloud and private on-premises data centers.

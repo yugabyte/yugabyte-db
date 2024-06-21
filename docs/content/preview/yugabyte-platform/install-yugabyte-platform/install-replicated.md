@@ -229,7 +229,7 @@ It is recommended that you start with using a self-signed certificate, and then 
 
 ## Upload the license file
 
-Upload the Yugabyte license file that you received from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form), as shown in the following illustration:
+Upload the Yugabyte license file that you received from Yugabyte Support, as shown in the following illustration:
 
 ![Replicated License Upload](/images/replicated/replicated-license-upload.png)
 

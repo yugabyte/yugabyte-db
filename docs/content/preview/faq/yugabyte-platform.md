@@ -98,7 +98,7 @@ YugabyteDB Anywhere also requires the following:
 - Connectivity to the Internet, either directly or via an HTTP proxy.
 - The following ports open on the platform host: 443 (HTTPS access to the YugabyteDB Anywhere UI), 9090 (Prometheus metrics); and the ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes.
 - Attached disk storage (such as persistent EBS volumes on AWS).
-- A YugabyteDB Anywhere license file from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
+- A YugabyteDB Anywhere license file from Yugabyte Support.
 
 For a complete list of networking requirements, refer to [Networking](../../yugabyte-platform/prepare/networking/).
 
