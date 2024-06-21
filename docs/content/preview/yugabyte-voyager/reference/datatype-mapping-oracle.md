@@ -25,7 +25,7 @@ type: docs
 
 The following table includes a list of supported data type mappings for migrating data from Oracle to YugabyteDB using YugabyteDB Voyager:
 
-| Oracle data type | Maps to YugabyeDB as | Comments |
+| Oracle data type | Maps to YugabyteDB as | Comments |
 | :--------------- | :------------------- | :------- |
 | CHAR | CHAR |
 | NCHAR | CHAR | Unsupported in [Live migration](../../migrate/live-migrate/), or [Live migration with fall-forward](../../migrate/live-fall-forward/) |
@@ -68,7 +68,7 @@ The following table includes a list of supported data type mappings for migratin
 
 The following table list the ANSI supported data types that can be mapped to YugabyteDB:
 
-| ANSI supported data type | Maps to YugabyeDB as |
+| ANSI supported data type | Maps to YugabyteDB as |
 | :----------------------- | :------------------- |
 | CHARACTER(n) | CHAR(n) |
 | CHAR(n) | CHAR(n) |

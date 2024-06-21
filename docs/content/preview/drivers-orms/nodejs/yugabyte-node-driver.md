@@ -107,7 +107,7 @@ postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true&ssl=true
 
 Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
-#### Use SSL with YugabyeDB Managed
+#### Use SSL with YugabyteDB Aeon
 
 If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
