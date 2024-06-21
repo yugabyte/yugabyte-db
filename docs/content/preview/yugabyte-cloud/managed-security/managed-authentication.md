@@ -182,7 +182,7 @@ You are redirected to sign in to your IdP to test the connection. After the test
 
   {{% /tab %}}
 
-  {{% tab header="Jumpcloud" lang="Jumpcloud" %}}
+  {{% tab header="JumpCloud" lang="jumpcloud" %}}
 
 **Create an application in Jumpcloud**
 
@@ -190,11 +190,13 @@ To use Jumpcloud for your IdP, do the following:
 
 1. Sign in to your Jumpcloud account and create an application.
 
-    - Log in to Jumpcloud with an administrator account.
+    - Sign in using an administrator account.
     - Under **SSO Applications**, click **Add New Application**.
     - Select **Custom Application**, and make sure the integration supports "SSO with OIDC" on the next page.
     - Under **Manage Single Sign-On (SSO)**, select **Configure SSO with OIDC**, and click **Next**.
-    - Under **Enter General Info**, add the application name (for **Display Label**), **Description** and logo (for **User Portal Image**), and select **Show this application in User Portal**; the information gets displayed as a tile when you log in the next time.
+    - Under **Enter General Info**, add the application name (for **Display Label**), **Description**, and logo (for **User Portal Image**), and select **Show this application in User Portal**.
+    
+    This information is displayed as a tile when users sign in to YugabyteDB Aeon.
     - Click **Save Application**.
 
 1. Configure your application.
@@ -207,17 +209,20 @@ To use Jumpcloud for your IdP, do the following:
 
     Under **Attribute Mapping**, for **Standard Scopes**, select **Email** and **Profile**.
 
-    Click **Activate** when you are done. You will get a pop up to save the **Client ID** and **Client Secret**.
+    Click **Activate** when you are done.
+    
+    You will be prompted in a pop up to save the **Client ID** and **Client Secret**. Save these in a secure location, you will need to provide these credentials in YugabyteDB Aeon.
 
 1. Configure Attributes and Identity Management as required.
 
 1. Integrate the user in Jumpcloud.
 
-    - Navigate to **User Groups**, select the user groups you want to access YugabyteDB Managed, and click **Save** when you are done.
+    - Navigate to **User Groups**, select the user groups you want to access YugabyteDB Aeon, and click **Save** when you are done.
 
 To configure Jumpcloud federated authentication in YugabyteDB Managed, you need the following application properties:
 
-- Client ID and secret of the application you created. Note that you will get a pop up to save the **Client ID** and **Client Secret** when you activate your application. Alternatively, the **Client ID** is provided on the **SSO** tab.
+- Client ID and secret of the application you created. Note that you will get a pop up to save the **Client ID** and **Client Secret** when you activate your application. The **Client ID** is also displayed on the **SSO** tab.
+- The Authorization URL for your application. [where is this displayed?]
 
 For more information, refer to the [Jumpcloud](https://jumpcloud.com/support/sso-with-oidc) documentation.
 
