@@ -20,8 +20,8 @@ rightNav:
 
 ##### YugabyteDB Aeon
 
-- [What is YugabyteDB Aeon?](#what-is-yugabytedb-managed)
-- [How is YugabyteDB Aeon priced?](#how-is-yugabytedb-managed-priced)
+- [What is YugabyteDB Aeon?](#what-is-yugabytedb-aeon)
+- [How is YugabyteDB Aeon priced?](#how-is-yugabytedb-aeon-priced)
 - [What regions are available?](#what-regions-are-available)
 
 ##### Clusters
@@ -40,7 +40,7 @@ rightNav:
 
 - [Is support included in the base price?](#is-support-included-in-the-base-price)
 - [Where can I find the support policy and SLA?](#where-can-i-find-the-support-policy-and-sla)
-- [How do I check the status of YugabyteDB Aeon?](#how-do-i-check-the-status-of-yugabytedb-managed)
+- [How do I check the status of YugabyteDB Aeon?](#how-do-i-check-the-status-of-yugabytedb-aeon)
 
 ##### Security
 
@@ -109,7 +109,7 @@ A YugabyteDB Aeon account is limited to a single Sandbox cluster; you can add as
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Innovation<br>Preview | Production<br>Innovation |
-| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-managed-priced)<br>[Free trial available](../../yugabyte-cloud/managed-freetrial/) |
+| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-aeon-priced)<br>[Free trial available](../../yugabyte-cloud/managed-freetrial/) |
 | Support | Slack Community | Enterprise Support |
 
 ### What can I do if I run out of resources on my Sandbox cluster?

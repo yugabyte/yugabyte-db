@@ -19,7 +19,7 @@ A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges
 - Peered application VPCs.
   - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/).
   - AWS and GCP only.
-  - Required for smart load balancing features of [YugabyteDB smart drivers](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+  - Required for smart load balancing features of [YugabyteDB smart drivers](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
   - You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/).
 - Privately linked services.
   - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
@@ -27,7 +27,7 @@ A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges
   - Smart load balancing features aren't supported. Smart driver falls back to upstream driver connection instead.
   - No need to add the IP address of your application to the cluster IP allow list.
 
-|  | Provider | Secure private network | [Add IPs to allow list](../../../cloud-secure-clusters/add-connections/) | [Smart driver load balancing](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed) |
+|  | Provider | Secure private network | [Add IPs to allow list](../../../cloud-secure-clusters/add-connections/) | [Smart driver load balancing](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon) |
 | :--- | :--- | :--- | :--- | :--- |
 | Peering | AWS, GCP | Yes | Yes | Yes |
 | Private link | AWS, Azure | Yes | No | No |

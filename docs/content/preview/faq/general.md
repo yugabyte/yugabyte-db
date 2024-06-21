@@ -30,7 +30,7 @@ rightNav:
 - [Can I deploy YugabyteDB to production?](#can-i-deploy-yugabytedb-to-production)
 - [Which companies are currently using YugabyteDB in production?](#which-companies-are-currently-using-yugabytedb-in-production)
 - [What is the definition of the "Beta" feature tag?](#what-is-the-definition-of-the-beta-feature-tag)
-- [How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Aeon differ from each other?](#how-do-yugabytedb-yugabytedb-anywhere-and-yugabytedb-managed-differ-from-each-other)
+- [How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Aeon differ from each other?](#how-do-yugabytedb-yugabytedb-anywhere-and-yugabytedb-aeon-differ-from-each-other)
 - [How do I report a security vulnerability?](#how-do-i-report-a-security-vulnerability)
 
 ##### Evaluating YugabyteDB
