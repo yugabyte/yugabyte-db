@@ -3,7 +3,7 @@ description: Networking specification that is used for nodes in this Universe. P
 type: object
 properties:
   communication_ports:
-    $ref: ./CommunicationPortsSpec.yaml
+    $ref: "./CommunicationPortsSpec.yaml"
   assign_public_ip:
     description: Whether to assign a public IP for nodes in this Universe.
     type: boolean

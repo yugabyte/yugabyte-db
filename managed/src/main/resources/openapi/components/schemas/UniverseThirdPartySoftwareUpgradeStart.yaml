@@ -5,7 +5,7 @@ description: |
   Payload to start a third party software upgrade on a Universe. Part of 
   UniverseThirdPartyUpgradeReq
 allOf:
-  - $ref: ./SleepAfterRestartSchema.yaml
+  - $ref: "./SleepAfterRestartSchema.yaml"
   - type: object
     properties:
       force_all:

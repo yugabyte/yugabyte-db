@@ -2,4 +2,4 @@ required: false
 content:
   application/json:
     schema:
-      $ref: ../schemas/UniverseThirdPartySoftwareUpgradeStart.yaml
+      $ref: "../schemas/UniverseThirdPartySoftwareUpgradeStart.yaml"

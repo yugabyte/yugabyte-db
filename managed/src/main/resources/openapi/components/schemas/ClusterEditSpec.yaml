@@ -21,13 +21,13 @@ properties:
     example: c5.xlarge
   custom_instance_spec:
     description: 'Used only for a k8s Universe and instance_type set to "custom", ignored otherwise. Custom instance spec is used to specify custom cpu and memory requests/limits for tserver and master pods of a cluster.'
-    $ref: ./ClusterCustomInstanceSpec.yaml
+    $ref: "./ClusterCustomInstanceSpec.yaml"
   storage_spec:
-    $ref: ./ClusterStorageSpec.yaml
+    $ref: "./ClusterStorageSpec.yaml"
   provider_spec:
-    $ref: ./ClusterProviderEditSpec.yaml
+    $ref: "./ClusterProviderEditSpec.yaml"
   placement_spec:
-    $ref: ./ClusterPlacementSpec.yaml
+    $ref: "./ClusterPlacementSpec.yaml"
   instance_tags:
     description: 'A map of strings representing a set of Tags and Values to apply on nodes in the aws/gcp/azu cloud. See https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/instance-tags/.'
     type: object

@@ -2,4 +2,4 @@ description: Software Upgrade Finalize information
 content:
   application/json:
     schema:
-      $ref: ../schemas/UniverseSoftwareUpgradeFinalizeInfo.yaml
+      $ref: "../schemas/UniverseSoftwareUpgradeFinalizeInfo.yaml"

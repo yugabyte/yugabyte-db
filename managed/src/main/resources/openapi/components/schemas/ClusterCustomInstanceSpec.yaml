@@ -6,6 +6,6 @@ description: |
 type: object
 properties:
   tserver:
-    $ref: ./K8SNodeResourceSpec.yaml
+    $ref: "./K8SNodeResourceSpec.yaml"
   master:
-    $ref: ./K8SNodeResourceSpec.yaml
+    $ref: "./K8SNodeResourceSpec.yaml"

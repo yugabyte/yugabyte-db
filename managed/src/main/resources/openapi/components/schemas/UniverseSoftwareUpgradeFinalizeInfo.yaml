@@ -10,4 +10,4 @@ properties:
     description: List of XCluster info that are impacted by software upgrade
     type: array
     items:
-      $ref: UniverseSoftwareFinalizeImpactedXCluster.yaml
+      $ref: "UniverseSoftwareFinalizeImpactedXCluster.yaml"

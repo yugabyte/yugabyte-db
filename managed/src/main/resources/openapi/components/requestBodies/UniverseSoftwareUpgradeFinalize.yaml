@@ -2,4 +2,4 @@ required: false
 content:
   application/json:
     schema:
-      $ref: ../schemas/UniverseSoftwareUpgradeFinalize.yaml
+      $ref: "../schemas/UniverseSoftwareUpgradeFinalize.yaml"
