@@ -6,3 +6,19 @@ description: |
 type: object
 allOf:
   - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: "./UniverseUpgradeOptionRolling.yaml"
+  - type: object
+    required:
+      - version
+    properties:
+      allow_rollback:
+        description: perform an upgrade where rollback is allowed
+        type: boolean
+        default: true
+      upgrade_system_catalog:
+        description: Upgrade the YugabyteDB Catalog
+        type: boolean
+        default: true
+      version:
+        description: The target release version to upgrade to.
+        type: string

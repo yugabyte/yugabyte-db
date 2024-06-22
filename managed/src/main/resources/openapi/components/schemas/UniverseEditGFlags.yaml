@@ -6,3 +6,14 @@ description: |
 type: object
 allOf:
   - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: "./UniverseUpgradeOptionsAll.yaml"
+  - type: object
+    properties:
+      kubernetes_resource_details:
+        $ref: "./KubernetesResourceDetails.yaml"
+        x-yba-api-visibility: internal
+      universe_gflags:
+        description: GFlags for each cluster uuid of this universe
+        type: object
+        additionalProperties:
+          $ref: "./ClusterGFlags.yaml"
