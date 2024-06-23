@@ -457,8 +457,8 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
 
 Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplicationSlot(
     const std::string& slot_name,
-    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name) {
-  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+    CDCSDKSnapshotOption snapshot_option, bool verify_snapshot_name, std::string namespace_name) {
+  auto repl_conn = VERIFY_RESULT(test_cluster_.ConnectToDBWithReplication(namespace_name));
 
   std::string snapshot_action;
   switch (snapshot_option) {

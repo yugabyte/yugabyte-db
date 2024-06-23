@@ -1541,7 +1541,8 @@ Status YBClient::GetCDCStream(
     std::optional<uint64_t>* consistent_snapshot_time,
     std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
     std::optional<uint64_t>* stream_creation_time,
-    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map) {
+    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map,
+    std::optional<std::string>* replication_slot_name) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1588,6 +1589,10 @@ Status YBClient::GetCDCStream(
   }
   if (stream_creation_time && resp.stream().has_stream_creation_time()) {
     *stream_creation_time = resp.stream().stream_creation_time();
+  }
+
+  if (replication_slot_name && resp.stream().has_cdcsdk_ysql_replication_slot_name()) {
+    *replication_slot_name = resp.stream().cdcsdk_ysql_replication_slot_name();
   }
 
   return Status::OK();

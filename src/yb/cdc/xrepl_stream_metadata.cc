@@ -115,15 +115,23 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
   std::optional<uint64> stream_creation_time;
   std::unordered_map<std::string, PgReplicaIdentity> replica_identity_map;
+  std::optional<std::string> replication_slot_name;
 
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
-      &consistent_snapshot_option, &stream_creation_time, &replica_identity_map));
+      &consistent_snapshot_option, &stream_creation_time, &replica_identity_map,
+      &replication_slot_name));
 
   AddDefaultOptionsIfMissing(&options);
 
   for (const auto& [key, value] : options) {
-    if (key == kRecordType && !FLAGS_ysql_yb_enable_replica_identity) {
+    if (key == kRecordType) {
+      // For replication slot consumption, the CDC RecordType Option is ignored. The replica
+      // identity present in the replica identity map determines the record type for each table.
+      if (FLAGS_ysql_yb_enable_replica_identity && replication_slot_name.has_value() &&
+          !replication_slot_name->empty()) {
+        continue;
+      }
       CDCRecordType record_type;
       SCHECK(
           CDCRecordType_Parse(value, &record_type), IllegalState, "CDC record type parsing error");
@@ -175,6 +183,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   consistent_snapshot_time_.store(consistent_snapshot_time, std::memory_order_release);
   stream_creation_time_.store(stream_creation_time, std::memory_order_release);
   consistent_snapshot_option_ = consistent_snapshot_option;
+  replication_slot_name_ = replication_slot_name;
 
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);

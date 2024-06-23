@@ -2461,7 +2461,7 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     const TabletId& tablet_id, const StreamMetadata& stream_metadata,
     const tablet::TabletPeerPtr& tablet_peer) {
   bool is_before_image_active = false;
-  if (FLAGS_ysql_yb_enable_replica_identity) {
+  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(stream_metadata)) {
     auto replica_identity_map = stream_metadata.GetReplicaIdentities();
     // If the tablet is colocated, we check the replica identities of all the tables residing in it.
     // If before image is active for any one of the tables then we should return true
@@ -2664,7 +2664,8 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     if ((is_before_image_active || entry.snapshot_key.has_value())) {
       // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
       // acknowledged commit time among all the slots on the namespace.
-      if (FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+      if (IsReplicationSlotStream(record) &&
+          FLAGS_ysql_TEST_enable_replication_slot_consumption) {
         if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
           // This is possible when Update Peers and Metrics thread comes into action before the slot
           // entry is added to the cdc_state table.
