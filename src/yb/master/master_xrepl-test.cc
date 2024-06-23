@@ -56,6 +56,12 @@ static const Schema kTableSchema({
     ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
     ColumnSchema("v1", DataType::UINT64),
     ColumnSchema("v2", DataType::STRING) });
+static const Schema kTableSchemaWithTypeOids({
+        ColumnSchema(
+         "key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST, Nullable::kFalse, false, false,
+         0, 23),
+        ColumnSchema(
+         "v1", DataType::INT32, ColumnKind::VALUE, Nullable::kFalse, false, false, 0, 23)});
 constexpr const char* kPgReplicationSlotPgOutput = "pgoutput";
 constexpr const char* kPgReplicationSlotTestDecoding = "test_decoding";
 
@@ -398,7 +404,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespace) {
   auto ns_id = create_namespace_resp.id();
 
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
 
   auto stream_id = ASSERT_RESULT(
@@ -890,7 +897,7 @@ TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStream) {
   CreateNamespaceResponsePB create_namespace_resp;
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
+  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchemaWithTypeOids));
 
   // Disable replication commands and replica identity and create a CDCSDK stream to simulate the
   // scenario of the stream being created on the older version.
@@ -1056,7 +1063,7 @@ TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStreamInvalid
   CreateNamespaceResponsePB create_namespace_resp;
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
+  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchemaWithTypeOids));
 
   // Disable replication commands and replica identity and create a CDCSDK stream to simulate the
   // scenario of the stream being created on the older version.
