@@ -14,7 +14,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../cloud-billing-costs/" class="nav-link">
-      Plan Pricing
+      Plan-Based Pricing
     </a>
   </li>
 

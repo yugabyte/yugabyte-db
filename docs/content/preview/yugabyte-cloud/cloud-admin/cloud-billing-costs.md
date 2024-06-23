@@ -2,7 +2,7 @@
 title: Cluster costs
 linkTitle: Cluster costs
 description: YugabyteDB Aeon cluster configuration costs.
-headcontent: Plan-based cluster pricing
+headcontent: Plan-based pricing
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-billing-costs-1
@@ -14,7 +14,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../cloud-billing-costs/" class="nav-link active">
-      Plan Pricing
+      Plan-Based Pricing
     </a>
   </li>
 
@@ -32,7 +32,7 @@ Your bill is calculated based on your usage of the following dimensions:
 - Backup storage
 - Data transfer
 
-The following calculations reflect the Standard plan rate card.
+The following calculations reflect the [Standard plan rate card](https://www.yugabyte.com/pricing).
 
 ## Instance vCPU capacity costs
 
