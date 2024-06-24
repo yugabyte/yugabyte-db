@@ -40,4 +40,4 @@ ERROR:  permission denied for table pg_shdepend
 DELETE from pg_shdepend WHERE dbid=0;
 ERROR:  permission denied for table pg_shdepend
 TRUNCATE pg_shdepend;
-ERROR:  permission denied for table pg_shdepend
+ERROR:  permission denied: "pg_shdepend" is a system catalog
