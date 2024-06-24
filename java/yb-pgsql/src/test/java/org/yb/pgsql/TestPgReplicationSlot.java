@@ -70,20 +70,18 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager()) {
       String preview_flags = "ysql_yb_enable_replication_commands," +
-        "yb_enable_cdc_consistent_snapshot_streams,enable_ysql_conn_mgr," +
+        "enable_ysql_conn_mgr," +
         "ysql_yb_enable_replica_identity,cdcsdk_enable_dynamic_table_support";
       flagMap.put("allowed_preview_flags_csv",preview_flags);
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     } else {
       flagMap.put("allowed_preview_flags_csv",
           "ysql_yb_enable_replication_commands," +
-          "yb_enable_cdc_consistent_snapshot_streams," +
           "ysql_yb_enable_replica_identity," +
           "cdcsdk_enable_dynamic_table_support");
     }
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
-    flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
@@ -98,11 +96,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_replication_commands,yb_enable_cdc_consistent_snapshot_streams," +
+        "ysql_yb_enable_replication_commands," +
         "ysql_yb_enable_replica_identity");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
-    flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
     return flagMap;
   }

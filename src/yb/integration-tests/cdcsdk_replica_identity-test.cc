@@ -103,24 +103,20 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestReplicaIdentityWit
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
-  xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // These alter replica identity will have no effect on records streamed for stream_id_1
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY CHANGE"));
 
   // stream_id_2 will have replica identity CHANGE for test_table
-  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   WriteUpdateDelete(kTableName);
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {10, 2, 2, 2, 0, 0};
-  const uint32_t expected_count_with_packed_row[] = {10, 4, 0, 2, 0, 0};
+  const uint32_t expected_count[] = {3, 2, 2, 2, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {3, 4, 0, 2, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records_1[] = {{1, 2}, {1, 3}, {1, 3}};

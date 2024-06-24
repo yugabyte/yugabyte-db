@@ -114,8 +114,9 @@ DEFINE_RUNTIME_int32(
     "tserver");
 TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
 
-DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
-                            "Enable support for CDC Consistent Snapshot Streams");
+DEFINE_RUNTIME_AUTO_bool(
+    yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
+    "Enable support for CDC Consistent Snapshot Streams");
 
 DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
                        "Enable consumption of changes via replication slots."

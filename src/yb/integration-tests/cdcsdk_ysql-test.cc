@@ -226,31 +226,18 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCDCLagMetric);
 
 // Begin transaction, perform some operations and abort transaction.
-// Expected records: 1 (DDL).
+// Expected records: 0. In case of non consistent snapshot streams we receive 1 DDL.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(AbortAllWriteOperations)) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
   ASSERT_OK(WriteRowsHelper(1 /* start */, 4 /* end */, &test_cluster_, false));
-
-  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {1, 0, 0, 0, 0, 0};
-  uint32_t count[] = {0, 0, 0, 0, 0, 0};
-
-  ExpectedRecord expected_records[] = {{0, 0}};
 
   GetChangesResponsePB change_resp;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 0));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
-  }
-  LOG(INFO) << "Got " << count[1] << " insert record and " << count[0] << " ddl record";
-  CheckCount(expected_count, count);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
 }
 
 // Insert one row, update the inserted row.
@@ -7337,8 +7324,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
-  const int expected_count_for_packed_row[] = {3, 7, 0, 1, 0, 0, 1, 1};
+  const int expected_count[] = {2, 6, 1, 1, 0, 0, 1, 1};
+  const int expected_count_for_packed_row[] = {2, 7, 0, 1, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -7526,7 +7513,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {3, 10, 0, 0, 0, 0, 4, 4};
+  const int expected_count[] = {2, 10, 0, 0, 0, 0, 4, 4};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
