@@ -23,6 +23,16 @@ YugabyteDB Aeon clusters include the following security features:
 | [Encryption at rest](managed-ear/) | Data at rest, including clusters and backups, is AES-256 encrypted using native cloud provider technologies: S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. For additional security, you can encrypt your clusters using keys that you manage yourself. |
 | [Auditing](cloud-activity/) | YugabyteDB Aeon provides detailed auditing of activity on your account, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, billing, access history, and more. |
 
+### Security profile
+
+YugabyteDB Managed clusters all feature essential security features, such as encryption at rest, encryption in transit, RBAC, and auditing.
+
+You can also create clusters using the **Advanced** security profile, which additionally enforces the following security features:
+
+- The cluster must be deployed in a VPC.
+- Public access can't be enabled; clusters can only be accessed from private addresses inside the VPC network.
+- Scheduled backups are required. (Scheduled backups are turned on by default, but for clusters with the Advanced security profile, they can't be turned off.)
+
 {{<index/block>}}
 
   {{<index/item
