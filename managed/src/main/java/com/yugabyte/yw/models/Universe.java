@@ -98,7 +98,6 @@ public class Universe extends Model {
 
   // Key to indicate if a universe cert is hot reloadable
   public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
-  public static final String USE_USER_LEVEL_NODE_EXPORTER = "use_user_level_node_exporter";
 
   public static Universe getOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
