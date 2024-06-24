@@ -37,6 +37,8 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
+    taskParams().azUuid = currentNode.azUuid;
+    taskParams().placementUuid = currentNode.placementUuid;
   }
 
   @Override
