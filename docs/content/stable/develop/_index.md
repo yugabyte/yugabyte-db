@@ -61,7 +61,7 @@ type: indexpage
   {{<index/item
     title="Tutorials"
     body="Try out sample applications built using AI, pg_vector, Kafka, and more."
-    href="../tutorials/"
+    href="/preview/tutorials/"
     icon="fa-sharp fa-light fa-chalkboard-user">}}
 
 {{</index/block>}}

@@ -35,6 +35,26 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
+## Connector compatibility
+
+The connector is compatible with the following versions of YugabyteDB.
+
+| YugabyteDB | Connector |
+| :--- | :--- |
+| 2.14 (EA) | 1.9.5.y.3 |
+| 2.16 | 1.9.5.y.24 |
+| 2.18.2 | 1.9.5.y.33.2 |
+| 2.20 | 1.9.5.y.220.2 |
+
+{{< note title="Note" >}}
+
+Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme *major.y.minor*, as follows:
+- *major* - Debezium release the connector is based on
+- *minor* - version of YugabyteDB the connector works with
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
+
+{{< /note >}}
+
 ## How the connector works
 
 To optimally configure and run a Debezium YugabyteDB connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
@@ -1021,7 +1041,7 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 
 * [Local deployments](../../../secure/tls-encryption/)
 * [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
-* [YugabyteDB Managed](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 

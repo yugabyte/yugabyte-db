@@ -297,13 +297,6 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
   const std::string& permanent_uuid() const override { return tablet_server_.permanent_uuid(); }
 
-  std::unique_ptr<client::AsyncClientInitializer> MakeClientInitializer(
-      const std::string& client_name, MonoDelta default_timeout) const override {
-    return std::make_unique<client::AsyncClientInitializer>(
-        client_name, default_timeout, tablet_server_.permanent_uuid(), &tablet_server_.options(),
-        tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
-  }
-
   Result<uint32> GetAutoFlagsConfigVersion() const override {
     return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
   }
@@ -580,7 +573,8 @@ Status TabletServer::RegisterServices() {
 #endif
 
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
-      std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry());
+      std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
+      client_future());
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,
@@ -1292,8 +1286,9 @@ Status TabletServer::CreateXClusterConsumer() {
   };
 
   xcluster_consumer_ = VERIFY_RESULT(tserver::CreateXClusterConsumer(
-      std::move(get_leader_term), std::move(connect_to_pg), std::move(get_namespace_info),
-      proxy_cache_.get(), this));
+      std::move(get_leader_term), permanent_uuid(), *client(), std::move(connect_to_pg),
+      std::move(get_namespace_info), GetXClusterContext(), metric_entity()));
+
   return Status::OK();
 }
 

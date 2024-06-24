@@ -57,7 +57,7 @@ This tutorial assumes that you have:
 From your Spark installation directory, use the following command to start `spark-shell`, and pass the YugabyteDB driver package with the `--packages` parameter. The command fetches the YugabyteDB driver from local cache (if present), or installs the driver from [maven central](https://search.maven.org/).
 
 ```sh
-./bin/spark-shell --packages com.yugabyte:jdbc-yugabytedb:42.3.0
+./bin/spark-shell --packages com.yugabyte:jdbc-yugabytedb:42.3.5-yb-5
 ```
 
 The Scala prompt should be available as follows:

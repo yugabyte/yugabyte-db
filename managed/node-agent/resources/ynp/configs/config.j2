@@ -4,25 +4,47 @@
 [DEFAULT]
 loglevel = DEBUG
 logfile = app.log
-is_airgap = "{{ ynp.is_airgap }}"
+is_airgap = {{ ynp.is_airgap }}
 
-[Hello]
-message = hello world
-
-[Chrony]
-message = chrony world
+[ConfigureChrony]
 chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
 
-[Yugabyte]
-message = YB world
-yb_home_dir = "{{ ynp.ybHomeDir }}"
+[CreateYugabyteUser]
+yb_home_dir = {{ ynp.yb_home_dir }}
+yb_user = {{ ynp.yb_user }}
+yb_user_id = {{ ynp.yb_user_id }}
+yb_user_password = {{ ynp.yb_user_password }}
+public_key_filepath = {{ ynp.public_key_filepath }}
 
-[OS]
-message = OS world
-{% for disk in ynp.dataDisk %}
-data_disk_deviceName_{{ loop.index }} = {{ disk.deviceName }}
-data_disk_mountPath_{{ loop.index }} = {{ disk.mountPath }}
-{% endfor %}
+[ConfigureSystemd]
+yb_home_dir = {{ ynp.yb_home_dir }}
+yb_user = {{ ynp.yb_user }}
+user_name = {{ ynp.yb_user }}
+use_system_level_systemd = {{ ynp.use_system_level_systemd }}
+service_files = "yb-tserver.service, yb-master.service, clock-sync.sh.j2, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer"
+
+[ConfigureOs]
+message = "Configure limits and sysctl parameters"
+fd_limit = 1048576
+nproc_limit = 12000
+vm_swappiness = 0
+kernel_core_pattern = {{ ynp.yb_home_dir }}/cores/core_%%p_%%t_%%E
+vm_max_map_count = 262144
+
+[ConfigureOs.limits]
+core = unlimited
+data = unlimited
+fsize = unlimited
+sigpending = 119934
+memlock = 64
+rss = unlimited
+nofile = 1048576
+msgqueue = 819200
+stack = 8192
+cpu = unlimited
+nproc = 12000
+locks = unlimited
+
 
 {% macro render_section(section, prefix="") %}
 {%- for key, value in section.items() if value != '' %}

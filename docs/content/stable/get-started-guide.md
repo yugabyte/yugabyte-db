@@ -52,7 +52,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Article**: [Distributed SQL vs NoSQL vs NewSQL](https://www.linkedin.com/pulse/distributed-sql-architecture-what-oracle-didnt-grasp-franck-pachot-ngghe)
 : Learn the difference between distributed SQL and other strategies for scaling.
 
-**Blog**: [How 7 Real-World Customers are Using YugabyteDB Managed](https://www.yugabyte.com/blog/customers-use-yugabytedb-managed/)
+**Blog**: [How 7 Real-World Customers are Using YugabyteDB Aeon](https://www.yugabyte.com/blog/customers-use-yugabytedb-managed/)
 : Real-world use cases for moving to a distributed database.
 
 **Video**: [Global Applications with YugabyteDB](https://www.youtube.com/watch?v=jqZxUydBaMQ)<br>
@@ -78,10 +78,10 @@ Find resources for getting started, migrating existing databases, using your dat
 **Video**: [How to Start YugabyteDB on Your Laptop](https://www.youtube.com/watch?v=ah_fPDpZjnc)
 : Try YugabyteDB out by running it on your laptop in five minutes.
 
-**Product Lab**: [Create Global Applications](../yugabyte-cloud/managed-labs/)
+**Product Lab**: [Create Global Applications](/preview/yugabyte-cloud/managed-labs/)
 : Test YugabyteDB features using a demo application in real time.
 
-**Documentation**: [Quick Start](../quick-start-yugabytedb-managed/)
+**Documentation**: [Quick Start](/preview/quick-start-yugabytedb-managed/)
 : Try it out for free, in the cloud or on your laptop.
 
 **Documentation**: [Start a multi-node cluster with Yugabyted](../reference/configuration/yugabyted/#create-a-local-multi-node-cluster)
@@ -101,7 +101,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Blog**: [Simplify Database Migration with New YugabyteDB Voyager](https://www.yugabyte.com/blog/simplify-database-migration-voyager/)
 : Use YugabyteDB Voyager to migrate from legacy and single-cloud databases.
 
-**Documentation**: [YugabyteDB Voyager](../yugabyte-voyager/)
+**Documentation**: [YugabyteDB Voyager](/preview/yugabyte-voyager/)
 : Simplify migration from legacy and cloud databases to YugabyteDB.
 
 **Blog**: [Improving PostgreSQL: How to Overcome the Tough Challenges with YugabyteDB](https://www.yugabyte.com/blog/improve-postgresql/)
@@ -126,11 +126,11 @@ Find resources for getting started, migrating existing databases, using your dat
 
 ## Develop
 
-**Documentation**: [Hello world](../tutorials/build-apps/)
+**Documentation**: [Hello world](/preview/tutorials/build-apps/)
 : Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 
 **Video**: [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)<br>
-**Documentation**: [Build and learn the essential capabilities of YugabyteDB](../tutorials/build-and-learn/)
+**Documentation**: [Build and learn the essential capabilities of YugabyteDB](/preview/tutorials/build-and-learn/)
 : Build a scalable and fault-tolerant movie recommendation service.
 
 **Documentation**: [Best practices](../drivers-orms/)

@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+{{<tip title="v2.20 and earlier">}}
+For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{</tip>}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../software-on-prem-auto/" class="nav-link">
@@ -180,7 +184,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     *          soft    nproc     12000
     ```
 
-1. If running on a virtual machine, execute the following to tune kernel settings:
+1. Execute the following to tune kernel settings:
 
     1. Configure the parameter `vm.swappiness` as follows:
 

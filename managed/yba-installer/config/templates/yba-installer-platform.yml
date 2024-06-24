@@ -204,8 +204,10 @@ services:
       After=network-online.target
 
       [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
       User={{ yamlPath "service_username" }}
       Group={{ yamlPath "service_username" }}
+      {{ end}}
       Type=simple
 
       Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
@@ -240,8 +242,10 @@ services:
       Restart=always
       RestartSec={{ yamlPath "platform.restartSeconds"}}
 
+      {{ if eq (yamlPath "as_root") "true" }}
       # allow platform to bind to port 443
       AmbientCapabilities=CAP_NET_BIND_SERVICE
+      {{ end }}
 
       # Sigterm causes exit status 143 for java
       SuccessExitStatus=143

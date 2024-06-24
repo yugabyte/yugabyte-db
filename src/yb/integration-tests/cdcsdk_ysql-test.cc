@@ -226,31 +226,18 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCDCLagMetric);
 
 // Begin transaction, perform some operations and abort transaction.
-// Expected records: 1 (DDL).
+// Expected records: 0. In case of non consistent snapshot streams we receive 1 DDL.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(AbortAllWriteOperations)) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
   ASSERT_OK(WriteRowsHelper(1 /* start */, 4 /* end */, &test_cluster_, false));
-
-  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {1, 0, 0, 0, 0, 0};
-  uint32_t count[] = {0, 0, 0, 0, 0, 0};
-
-  ExpectedRecord expected_records[] = {{0, 0}};
 
   GetChangesResponsePB change_resp;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 0));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
-  }
-  LOG(INFO) << "Got " << count[1] << " insert record and " << count[0] << " ddl record";
-  CheckCount(expected_count, count);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
 }
 
 // Insert one row, update the inserted row.
@@ -7337,8 +7324,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
-  const int expected_count_for_packed_row[] = {3, 7, 0, 1, 0, 0, 1, 1};
+  const int expected_count[] = {2, 6, 1, 1, 0, 0, 1, 1};
+  const int expected_count_for_packed_row[] = {2, 7, 0, 1, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -7526,7 +7513,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {3, 10, 0, 0, 0, 0, 4, 4};
+  const int expected_count[] = {2, 10, 0, 0, 0, 0, 4, 4};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -7986,7 +7973,10 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ASSERT_EQ(entry_1->last_decided_pub_refresh_time.value(), oss.str());
 
   // On a non-consistent snapshot stream, we should not see the entry for replication slot.
-  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
+  std::string kNamespaceName_2 = "test_namespace_2";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
+  auto stream_id_2 = ASSERT_RESULT(
+      CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName_2));
   auto entry_2 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {kCDCSDKSlotEntryTabletId, stream_id_2}, CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_FALSE(entry_2.has_value());
@@ -8517,6 +8507,119 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
     ASSERT_LT(resp_records_size, 75_KB);
   }
   ASSERT_TRUE(seen_resp_greater_than_limit);
+}
+
+void CDCSDKYsqlTest::TestNonUserTableShouldNotGetAddedToCDCStream(
+    bool create_consistent_snapshot_stream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
+      create_consistent_snapshot_stream;
+  ASSERT_OK(SetUpWithParams(
+      1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  const auto tableName1 = "test_table_1";
+  const auto tableName2 = "test_table_2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table1, 0, &table1_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table1_tablets.size(), 3);
+
+  // Create non-user tables like index, mat views BEFORE the stream has been created
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0(a ASC)", tableName1));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv1 AS SELECT COUNT(*) FROM $0", tableName1));
+
+  xrepl::StreamId stream_id =
+      create_consistent_snapshot_stream
+          ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
+          : ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+
+  // // Create non-user tables AFTER the stream has been created
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0(b ASC)", tableName1));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv2 AS SELECT COUNT(*) FROM $0", tableName1));
+  // Wait for the bg thread to complete finding out new tables added in the namespace and add
+  // them to CDC stream if relevant.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // Create a dynamic table and create non user tables on this dynamic table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName2));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table2, 0, &table2_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table2_tablets.size(), 3);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0 (b ASC)", tableName2));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", tableName2));
+  // Wait for the bg thread to complete finding out new tables added in the namespace and adding
+  // them to CDC stream if relevant.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // We expect only tablets of the two user tables i.e. test_table_1 & test_table_2.
+  std::unordered_set<TabletId> expected_tablets;
+  for (const auto& tablet : table1_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  for (const auto& tablet : table2_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  std::unordered_set<TabletId> actual_tablets;
+  CdcStateTableRow expected_row;
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  auto table_range =
+      ASSERT_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
+  for (auto row_result : table_range) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+
+    if (row.key.stream_id == stream_id) {
+      LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
+                << " stream_id: " << row.key.stream_id;
+      actual_tablets.insert(row.key.tablet_id);
+    }
+  }
+
+  LOG(INFO) << "Expected tablets: " << AsString(expected_tablets)
+            << ", Actual tablets: " << AsString(actual_tablets);
+  ASSERT_EQ(expected_tablets, actual_tablets);
+}
+
+TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToNonConsistentSnapshotCDCStream) {
+  TestNonUserTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToConsistentSnapshotCDCStream) {
+  TestNonUserTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ true);
+}
+
+TEST_F(CDCSDKYsqlTest, TestTablesWithEnumArrayColumnShouldNotGetAddedToStream) {
+  ASSERT_OK(SetUpWithParams(1, 1, false, false));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("CREATE TYPE \"enum_type\" AS ENUM('a', 'b', 'c');"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (a int primary key, b \"enum_type\"[])"));
+  auto stream_id = ASSERT_RESULT(CreateDBStream());
+
+  auto stream  = ASSERT_RESULT(GetCDCStream(stream_id));
+  // The table with enum array column will not be added to the stream.
+  ASSERT_EQ(stream.stream().table_id_size(), 0);
 }
 
 }  // namespace cdc

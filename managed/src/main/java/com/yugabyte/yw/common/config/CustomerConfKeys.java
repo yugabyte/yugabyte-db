@@ -143,6 +143,17 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> enableSkipBootstrapping =
+      new ConfKeyInfo<>(
+          "yb.ui.xcluster.enable_skip_bootstrapping",
+          ScopeType.CUSTOMER,
+          "Enable the option to skip creating a full copy for xCluster operations",
+          "Enabling this runtime config will expose an option in the create xCluster modal and"
+              + " select tables modal to skip creating a full copy for xCluster replication"
+              + " configs.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",
@@ -180,4 +191,12 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enables Troubleshooting for the Universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<Integer> backupGcNumberOfRetries =
+      new ConfKeyInfo<>(
+          "yb.backupGC.number_of_retries",
+          ScopeType.CUSTOMER,
+          "Backup Garbage Collector Number of Retries",
+          "Number of retries during backup deletion",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../../architecture/docdb/persistence/). Loosely speaking:
+In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../../architecture/docdb/). Loosely speaking:
 
 - A _table's_ internal key-value store maps primary keys to the remaining columns.
 - A _secondary index's_ internal key-value store maps index keys to primary keys.

@@ -139,7 +139,7 @@ String yburl = "jdbc:postgresql://hostname:port/database?user=yugabyte&password=
 Connection conn = DriverManager.getConnection(yburl);
 ```
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
 
 ### Step 3: Write your application
 
@@ -217,6 +217,6 @@ If there is no output or you get an error, verify that the connection string in 
 
 - [PostgreSQL JDBC driver reference](../../../reference/drivers/java/postgres-jdbc-reference/)
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../ebean/)

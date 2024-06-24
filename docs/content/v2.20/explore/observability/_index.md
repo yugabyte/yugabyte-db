@@ -38,7 +38,7 @@ YugabyteDB exports various [metrics](../../launch-and-manage/monitor-and-alert/m
 Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabyteDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/macos/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
 
 {{<tip>}}
-Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.
+Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.
 {{</tip>}}
 
 ## Visualization and analysis
@@ -48,7 +48,7 @@ YugabyteDB provides dashboards that include charts, graphs, and other visual rep
 You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/macos/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
 
 {{<tip>}}
-Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
+Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
 {{</tip>}}
 
 ## Logging

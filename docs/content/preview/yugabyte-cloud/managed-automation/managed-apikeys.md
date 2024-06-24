@@ -2,7 +2,7 @@
 title: API keys
 headerTitle: API keys
 linkTitle: API keys
-description: Manage API keys for use with YugabyteDB Managed automation tools including API, CLI, and Terraform provider.
+description: Manage API keys for use with YugabyteDB Aeon automation tools including API, CLI, and Terraform provider.
 headcontent: Use API keys to authenticate with automation tools
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/cloud-admin-apikeys/
@@ -14,9 +14,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key.
+YugabyteDB Aeon provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key.
 
-API keys are not stored in YugabyteDB Managed. Safeguard them by doing the following:
+API keys are not stored in YugabyteDB Aeon. Safeguard them by doing the following:
 
 - Store API keys in a secure location with strong encryption, such as a password manager.
 - Revoke keys that are lost or compromised.
@@ -48,7 +48,7 @@ To create an API key:
 
     {{< warning title="Important" >}}
 
-The key is only displayed one time; it is not available in YugabyteDB Managed after you click **Done**. Store keys in a secure location. If you lose a key, revoke it and create a new one.
+The key is only displayed one time; it is not available in YugabyteDB Aeon after you click **Done**. Store keys in a secure location. If you lose a key, revoke it and create a new one.
 
     {{< /warning >}}
 

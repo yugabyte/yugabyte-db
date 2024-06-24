@@ -356,8 +356,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  vector<shared_ptr<TSDescriptor> > descs;
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
 
   shared_ptr<TSDescriptor> ts_desc;
@@ -381,8 +380,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_TRUE(resp.has_tablet_report_limit());
   }
 
-  descs.clear();
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
   TSRegistrationPB reg = descs[0]->GetRegistration();
   ASSERT_EQ(fake_reg.DebugString(), reg.DebugString()) << "Master got different registration";
@@ -438,8 +436,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_FALSE(resp.needs_full_tablet_report());
   }
 
-  descs.clear();
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should still only have one TS registered";
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
@@ -506,9 +503,8 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
     ASSERT_TRUE(resp.needs_full_tablet_report());
   }
 
-  vector<shared_ptr<TSDescriptor> > descs;
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
-  ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
+  ASSERT_EQ(mini_master_->master()->ts_manager()->NumDescriptors(), 0)
+      << "Should not have registered anything";
 
   shared_ptr<TSDescriptor> ts_desc;
   for (auto& uuid : tsUUIDs) {
@@ -559,8 +555,8 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
     }
   }
 
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
-  ASSERT_EQ(expected_registration_uuids.size(), descs.size())
+  ASSERT_EQ(
+      mini_master_->master()->ts_manager()->NumDescriptors(), expected_registration_uuids.size())
       << "Should have registered the expected number of TServers";
 
   // Ensure that the ListTabletServers shows the faked servers.
@@ -621,9 +617,8 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   // master process can handle re-registering tservers with uuids it has previously removed.
   const std::string first_uuid = "uuid1";
   const std::string second_uuid = "uuid2";
-  vector<shared_ptr<TSDescriptor>> descs;
   int seqno = 1;
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  auto descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   EXPECT_EQ(descs.size(), 0);
   TSToMasterCommonPB original_common;
   TSRegistrationPB registration;
@@ -636,7 +631,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   auto resp = ASSERT_RESULT(SendHeartbeat(original_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
 
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(descs.size(), 1);
   auto original_desc = descs[0];
 
@@ -645,7 +640,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   new_common.mutable_ts_instance()->set_instance_seqno(seqno++);
   resp = ASSERT_RESULT(SendHeartbeat(new_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   // This function filters out descriptors of removed tservers so we still expect just 1 descriptor.
   ASSERT_EQ(descs.size(), 1);
   auto new_desc = descs[0];
@@ -657,7 +652,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
   resp = ASSERT_RESULT(SendHeartbeat(updated_original_common, registration));
   EXPECT_FALSE(resp.needs_reregister());
 
-  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(descs.size(), 1);
   EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
   EXPECT_TRUE(new_desc->IsRemoved());
@@ -933,7 +928,7 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
 
   auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
   for (const auto& table : tables) {
-    for (const auto& tablet : table->GetTablets(IncludeInactive::kTrue)) {
+    for (const auto& tablet : ASSERT_RESULT(table->GetTablets(IncludeInactive::kTrue))) {
       if (table->is_system() &&
           tablet->LockForRead().data().pb.hosted_tables_mapped_by_parent_id()) {
         FAIL() << Format(
@@ -957,14 +952,14 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
     return tablet_info->LockForRead().data().pb.hosted_tables_mapped_by_parent_id();
   };
 
-  const auto new_schema_tablets =
-      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  const auto new_schema_tablets = ASSERT_RESULT(
+      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue));
   EXPECT_TRUE(
       std::all_of(new_schema_tablets.begin(), new_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(new_schema_tablets.size(), 0);
 
-  auto old_schema_tablets =
-      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  auto old_schema_tablets = ASSERT_RESULT(
+      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue));
   EXPECT_TRUE(
       std::none_of(old_schema_tablets.begin(), old_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(old_schema_tablets.size(), 0);
@@ -1164,7 +1159,7 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
       table, &num_live_replicas, &num_read_replicas);
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
 
-  for (auto& tablet : table->GetTablets()) {
+  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
     num_live_replicas = 0, num_read_replicas = 0;
     ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
         tablet->id(), &num_live_replicas, &num_read_replicas));
@@ -1214,7 +1209,7 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
       table, &num_live_replicas, &num_read_replicas);
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
 
-  for (auto& tablet : table->GetTablets()) {
+  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
     num_live_replicas = 0, num_read_replicas = 0;
     ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
         tablet->id(), &num_live_replicas, &num_read_replicas));

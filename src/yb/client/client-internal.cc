@@ -1153,6 +1153,11 @@ Status YBClient::Data::IsCloneNamespaceInProgress(
   *create_in_progress =
       !(state == master::SysCloneStatePB::ABORTED || state == master::SysCloneStatePB::RESTORED);
 
+  if (state == master::SysCloneStatePB_State_ABORTED) {
+    return STATUS_FORMAT(
+        InternalError, "Clone operation aborted: $0", resp.entries(0).abort_message());
+  }
+
   return Status::OK();
 }
 
@@ -1351,12 +1356,14 @@ class GetTableSchemaRpc
                     StatusCallback user_cb,
                     const YBTableName& table_name,
                     YBTableInfo* info,
-                    CoarseTimePoint deadline);
+                    CoarseTimePoint deadline,
+                    master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     const TableId& table_id,
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
+                    master::IncludeInactive include_inactive,
                     master::GetTableSchemaResponsePB* resp_copy);
 
   std::string ToString() const override;
@@ -1369,6 +1376,7 @@ class GetTableSchemaRpc
                     const master::TableIdentifierPB& table_identifier,
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
+                    master::IncludeInactive include_inactive = master::IncludeInactive::kFalse,
                     master::GetTableSchemaResponsePB* resp_copy = nullptr);
 
   void CallRemoteMethod() override;
@@ -1511,9 +1519,10 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      const YBTableName& table_name,
                                      YBTableInfo* info,
-                                     CoarseTimePoint deadline)
+                                     CoarseTimePoint deadline,
+                                     master::IncludeInactive include_inactive)
     : GetTableSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_name), info, deadline) {
+          client, user_cb, ToTableIdentifierPB(table_name), info, deadline, include_inactive) {
 }
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
@@ -1521,15 +1530,18 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const TableId& table_id,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
+                                     master::IncludeInactive include_inactive,
                                      master::GetTableSchemaResponsePB* resp_copy)
     : GetTableSchemaRpc(
-          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, resp_copy) {}
+          client, user_cb, ToTableIdentifierPB(table_id), info, deadline, include_inactive,
+          resp_copy) {}
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      const master::TableIdentifierPB& table_identifier,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
+                                     master::IncludeInactive include_inactive,
                                      master::GetTableSchemaResponsePB* resp_copy)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
@@ -1537,6 +1549,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
       info_(DCHECK_NOTNULL(info)),
       resp_copy_(resp_copy) {
   req_.mutable_table()->CopyFrom(table_identifier_);
+  req_.set_include_inactive(include_inactive);
 }
 
 GetTableSchemaRpc::~GetTableSchemaRpc() {
@@ -2129,12 +2142,14 @@ class GetTableLocationsRpc
   GetTableLocationsRpc(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
       RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
-      GetTableLocationsCallback user_cb, CoarseTimePoint deadline)
+      master::IncludeInactive include_inactive, GetTableLocationsCallback user_cb,
+      CoarseTimePoint deadline)
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
     req_.mutable_table()->set_table_id(table_id);
     req_.set_max_returned_locations(max_tablets);
     req_.set_require_tablets_running(require_tablets_running);
     req_.set_partitions_only(partitions_only);
+    req_.set_include_inactive(include_inactive);
   }
 
   std::string ToString() const override {
@@ -2330,6 +2345,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const TableId& table_id,
                                       CoarseTimePoint deadline,
                                       YBTableInfo* info,
+                                      master::IncludeInactive include_inactive,
                                       master::GetTableSchemaResponsePB* resp) {
   Synchronizer sync;
   auto rpc = StartRpc<GetTableSchemaRpc>(
@@ -2338,6 +2354,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_id,
       info,
       deadline,
+      include_inactive,
       resp);
   return sync.Wait();
 }
@@ -2347,13 +2364,15 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       CoarseTimePoint deadline,
                                       std::shared_ptr<YBTableInfo> info,
                                       StatusCallback callback,
+                                      master::IncludeInactive include_inactive,
                                       master::GetTableSchemaResponsePB* resp_ignored) {
   auto rpc = StartRpc<GetTableSchemaRpc>(
       client,
       callback,
       table_name,
       info.get(),
-      deadline);
+      deadline,
+      include_inactive);
   return Status::OK();
 }
 
@@ -2362,6 +2381,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
                                       CoarseTimePoint deadline,
                                       std::shared_ptr<YBTableInfo> info,
                                       StatusCallback callback,
+                                      master::IncludeInactive include_inactive,
                                       master::GetTableSchemaResponsePB* resp) {
   auto rpc = StartRpc<GetTableSchemaRpc>(
       client,
@@ -2369,6 +2389,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       table_id,
       info.get(),
       deadline,
+      include_inactive,
       resp);
   return Status::OK();
 }
@@ -2583,9 +2604,11 @@ void YBClient::Data::DeleteNotServingTablet(
 void YBClient::Data::GetTableLocations(
     YBClient* client, const TableId& table_id, const int32_t max_tablets,
     const RequireTabletsRunning require_tablets_running, const PartitionsOnly partitions_only,
-    const CoarseTimePoint deadline, GetTableLocationsCallback callback) {
+    const CoarseTimePoint deadline, GetTableLocationsCallback callback,
+    master::IncludeInactive include_inactive) {
   auto rpc = StartRpc<internal::GetTableLocationsRpc>(
-      client, table_id, max_tablets, require_tablets_running, partitions_only, callback, deadline);
+      client, table_id, max_tablets, require_tablets_running, partitions_only, include_inactive,
+      callback, deadline);
 }
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,

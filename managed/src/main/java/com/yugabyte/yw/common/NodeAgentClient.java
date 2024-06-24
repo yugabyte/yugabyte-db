@@ -66,6 +66,7 @@ import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +78,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
@@ -579,20 +581,34 @@ public class NodeAgentClient {
     }
   }
 
+  public ShellResponse executeCommand(
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
+    return executeCommand(nodeAgent, command, context, false);
+  }
+
   public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, ShellProcessContext.DEFAULT);
+    // Use the user of the node-agent process by not setting a specific user.
+    return executeCommand(
+        nodeAgent,
+        command,
+        ShellProcessContext.DEFAULT.toBuilder().useDefaultUser(false).build(),
+        false);
   }
 
   public ShellResponse executeCommand(
-      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context, boolean useBash) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
     String id = String.format("%s-%s", nodeAgent.getUuid(), command.get(0));
     ExecuteCommandResponseObserver responseObserver =
         new ExecuteCommandResponseObserver(id, context.isLogCmdOutput());
     ExecuteCommandRequest.Builder builder =
-        ExecuteCommandRequest.newBuilder().addAllCommand(command);
-    builder.setUser(context.getSshUserOrDefault());
+        ExecuteCommandRequest.newBuilder()
+            .addAllCommand(useBash ? getBashCommand(command) : command);
+    String user = context.getSshUser();
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
     if (context.getTimeoutSecs() > 0L) {
       stub = stub.withDeadlineAfter(context.getTimeoutSecs(), TimeUnit.SECONDS);
     }
@@ -616,7 +632,7 @@ public class NodeAgentClient {
       response.setDescription(description);
       return response;
     } catch (Throwable e) {
-      log.error("Error in running command. Error: {}", responseObserver.stdErr);
+      log.error("Error in running command. Error: {}", e.getMessage());
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
   }
@@ -750,5 +766,17 @@ public class NodeAgentClient {
     } catch (RuntimeException e) {
       log.error("Client cache cleanup failed {}", e);
     }
+  }
+
+  private List<String> getBashCommand(List<String> command) {
+    List<String> shellCommand = new ArrayList<>();
+    // Same join as in rpc.py of node agent.
+    shellCommand.add("bash");
+    shellCommand.add("-c");
+    shellCommand.add(
+        command.stream()
+            .map(part -> part.contains(" ") ? "'" + part + "'" : part)
+            .collect(Collectors.joining(" ")));
+    return shellCommand;
   }
 }

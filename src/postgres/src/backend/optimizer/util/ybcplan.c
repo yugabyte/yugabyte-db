@@ -190,12 +190,16 @@ bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs)
 }
 
 /*
- * is_index_only_refs
- *		Check if all column references from the list are available from the
- *		index described by the indexinfo.
+ * is_index_only_attribute_nums
+ *		Check if all column attribute numbers from the list are available from
+ *		the index described by the indexinfo.
+ *
+ * 		It is necessary for the caller to validate that the colrefs are
+ *		referring to the same index as the indexinfo.
  */
 bool
-is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo, bool bitmapindex)
+is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
+							 bool bitmapindex)
 {
 	ListCell *lc;
 	foreach (lc, colrefs)
@@ -218,7 +222,7 @@ is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo, bool bitmapindex)
 				/*
 				 * Special case for LSM bitmap index scans: in Yugabyte, these
 				 * indexes claim they cannot return if they are a primary index.
-				 * Generally it is simpler for primay indexes to pushdown their
+				 * Generally it is simpler for primary indexes to pushdown their
 				 * conditions at the table level, rather than the index level.
 				 * Primary indexes don't need to first request ybctids, and then
 				 * request rows matching the ybctids.
@@ -309,7 +313,7 @@ extract_pushdown_clauses(List *restrictinfo_list,
 			 * necessary columns.
 			 */
 			if (indexinfo == NULL ||
-				!is_index_only_refs(colrefs, indexinfo, bitmapindex))
+				!is_index_only_attribute_nums(colrefs, indexinfo, bitmapindex))
 			{
 				*rel_colrefs = list_concat(*rel_colrefs, colrefs);
 				*rel_remote_quals = lappend(*rel_remote_quals, ri->clause);

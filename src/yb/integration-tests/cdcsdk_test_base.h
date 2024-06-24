@@ -159,9 +159,11 @@ class CDCSDKTestBase : public YBTest {
 
   Status InitPostgres(PostgresMiniCluster* cluster);
 
+  Status InitPostgres(PostgresMiniCluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
-      bool cdc_populate_safepoint_record = false);
+      bool cdc_populate_safepoint_record = false, bool set_pgsql_proxy_bind_address = false);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpWithOneTablet(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
@@ -212,7 +214,9 @@ class CDCSDKTestBase : public YBTest {
 
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
-      CDCRecordType record_type = CDCRecordType::CHANGE);
+      CDCRecordType record_type = CDCRecordType::CHANGE,
+      std::string namespace_name = kNamespaceName);
+
   // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
   // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
   // TODO(#19260): Support customizing the CDCRecordType.
@@ -224,7 +228,9 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       const std::string& replication_slot_name,
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
-      bool verify_snapshot_name = false);
+      bool verify_snapshot_name = false,
+      std::string namespace_name = kNamespaceName);
+
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       bool verify_snapshot_name = false);

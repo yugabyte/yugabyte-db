@@ -149,4 +149,25 @@ bool ValidatePercentageFlag(const char* flag_name, int value);
 // Check if SetUsageMessage() was called. Useful for tools.
 bool IsUsageMessageSet();
 
+// GLog sink that keeps an internal buffer of messages that have been logged from DEFINE_validator
+// flag macro.
+class FlagValidatorSink : public google::LogSink {
+ public:
+  void send(
+      google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
+      const struct ::tm* tm_time, const char* message, size_t message_len) override;
+
+  const std::vector<std::string> GetMessagesAndClear();
+
+ private:
+  std::mutex mutex_;
+  std::vector<std::string> logged_msgs_ GUARDED_BY(mutex_);
+};
+
+FlagValidatorSink& GetFlagValidatorSink();
+
+#define LOG_FLAG_VALIDATION_ERROR(flag_name, value) \
+  LOG_TO_SINK(&yb::GetFlagValidatorSink(), ERROR) \
+      << "Invalid value '" << value << "' for flag '" << flag_name << "': "
+
 } // namespace yb

@@ -510,11 +510,15 @@ public class NodeManager extends DevopsBase {
 
     if (params instanceof AnsibleSetupServer.Params) {
       Params setupServerParams = (Params) params;
+      Universe universe = Universe.getOrBadRequest(setupServerParams.getUniverseUUID());
+      boolean useUserLevelNodeExporter =
+          Boolean.parseBoolean(
+              universe.getConfig().getOrDefault(Universe.USE_USER_LEVEL_NODE_EXPORTER, "false"));
       if (providerDetails.airGapInstall) {
         subCommand.add("--air_gap");
       }
 
-      if (providerDetails.installNodeExporter) {
+      if (providerDetails.installNodeExporter && !useUserLevelNodeExporter) {
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
         subCommand.add(Integer.toString(setupServerParams.communicationPorts.nodeExporterPort));
@@ -554,8 +558,12 @@ public class NodeManager extends DevopsBase {
     } else if (params instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params configureServerParams =
           (AnsibleConfigureServers.Params) params;
+      Universe universe = Universe.getOrBadRequest(configureServerParams.getUniverseUUID());
+      boolean useUserLevelNodeExporter =
+          Boolean.parseBoolean(
+              universe.getConfig().getOrDefault(Universe.USE_USER_LEVEL_NODE_EXPORTER, "false"));
 
-      if (providerDetails.installNodeExporter) {
+      if (providerDetails.installNodeExporter && useUserLevelNodeExporter) {
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
         subCommand.add(Integer.toString(configureServerParams.communicationPorts.nodeExporterPort));

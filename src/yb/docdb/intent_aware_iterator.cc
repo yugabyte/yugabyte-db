@@ -152,7 +152,7 @@ inline size_t PrepareIntentSeekBackward(dockv::KeyBytes& key_bytes) {
 std::string DebugDumpKeyToStr(Slice key) {
   auto result = SubDocKey::DebugSliceToStringAsResult(key);
   if (!result.ok()) {
-    return key.ToDebugString();
+    return Format("$0 ($1)", key.ToDebugString(), result.status().ToString());
   }
   return Format("$0 ($1)", key.ToDebugString(), *result);
 }

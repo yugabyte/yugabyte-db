@@ -63,9 +63,10 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/mini_master.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -2024,10 +2025,10 @@ class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster>
     return STATUS(NotFound, "No tablets found");
   }
 
-  Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
+  Result<master::TabletInfoPtr> GetSingleTestTabletInfo(
       master::CatalogManagerIf* catalog_mgr) {
-    auto tablet_infos = catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets();
-
+    auto tablet_infos =
+        VERIFY_RESULT(catalog_mgr->GetTableInfo(table_handle_.table()->id())->GetTablets());
     SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
     return tablet_infos.front();
   }
@@ -2153,7 +2154,7 @@ TEST_F(PersistRetryableRequestsRBSITest, TestRetryableWrite) {
   // Rollover the log and should trigger flushing retryable requests.
   ASSERT_OK(leader_peer->log()->AllocateSegmentAndRollOver());
   ASSERT_OK(WaitFor([&] {
-    return leader_peer->TEST_HasRetryableRequestsOnDisk();
+    return leader_peer->TEST_HasBootstrapStateOnDisk();
   }, 10s, "retryable requests flushed to disk"));
 
   ASSERT_OK(leader_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));

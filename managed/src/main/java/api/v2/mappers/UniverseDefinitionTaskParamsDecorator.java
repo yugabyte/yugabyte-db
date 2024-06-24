@@ -66,13 +66,16 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParams(UniverseSpec universeSpec) {
     UniverseDefinitionTaskParams params = delegate.toV1UniverseDefinitionTaskParams(universeSpec);
 
+    // turn off version checking always
+    params.expectedUniverseVersion = -1;
     // set rootCA of encryptionInTransit into top-level of v1 universe
     if (universeSpec != null && universeSpec.getEncryptionInTransitSpec() != null) {
       EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();
       params.rootCA = source.getRootCa();
       params.setClientRootCA(source.getClientRootCa());
-      params.rootAndClientRootCASame =
-          source.getRootCa() != null && source.getRootCa().equals(source.getClientRootCa());
+      if (source.getRootCa() != null && !source.getRootCa().equals(source.getClientRootCa())) {
+        params.rootAndClientRootCASame = false;
+      }
     }
 
     // The generated mapper will only create v1 Cluster from corresponding v2Cluster. Copy

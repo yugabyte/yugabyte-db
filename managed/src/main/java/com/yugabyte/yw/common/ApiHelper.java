@@ -80,6 +80,10 @@ public class ApiHelper {
     return handleJSONPromise(jsonPromise);
   }
 
+  public JsonNode putRequest(String url, JsonNode data) {
+    return putRequest(url, data, new HashMap<>());
+  }
+
   public JsonNode putRequest(String url, JsonNode data, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers);
     CompletionStage<String> jsonPromise = request.put(data).thenApply(WSResponse::getBody);
@@ -148,6 +152,27 @@ public class ApiHelper {
       }
     }
     CompletionStage<String> jsonPromise = request.get().thenApply(WSResponse::getBody);
+    return handleJSONPromise(jsonPromise);
+  }
+
+  public JsonNode deleteRequest(String url) {
+    return deleteRequest(url, new HashMap<>());
+  }
+
+  public JsonNode deleteRequest(String url, Map<String, String> headers) {
+    return deleteRequest(url, headers, new HashMap<>());
+  }
+
+  public JsonNode deleteRequest(
+      String url, Map<String, String> headers, Map<String, String> params) {
+    WSRequest request = requestWithHeaders(url, headers);
+    request.setFollowRedirects(true);
+    if (!params.isEmpty()) {
+      for (Map.Entry<String, String> entry : params.entrySet()) {
+        request.setQueryParameter(entry.getKey(), entry.getValue());
+      }
+    }
+    CompletionStage<String> jsonPromise = request.delete().thenApply(WSResponse::getBody);
     return handleJSONPromise(jsonPromise);
   }
 

@@ -22,7 +22,7 @@ With these three simple functionalities, key-value stores have carved themselves
 
 YugabyteDB provides several advantages when used as a key-value store:
 
-- YugabyteDB internally [stores data](../../../architecture/docdb/persistence/) as a collection of key-value pairs and therefore automatically excels as a key-value store.
+- YugabyteDB internally [stores data](../../../architecture/docdb/) as a collection of key-value pairs and therefore automatically excels as a key-value store.
 - Being [distributed by design](../../../architecture/transactions/distributed-txns/), YugabyteDB also naturally acts as a distributed key-value store.
 - YugabyteDB inherently provides consistency of data because of Raft replication, which is typically not guaranteed by other key-value stores.
 

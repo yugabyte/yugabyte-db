@@ -54,7 +54,7 @@ To get the driver and HikariPool from Maven, add the following dependencies to t
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.3.0</version>
+  <version>42.3.5-yb-5</version>
 </dependency>
 
 <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
@@ -267,7 +267,7 @@ To access sample applications that use the YugabyteDB JDBC driver, visit [Yugaby
 
 To use the samples, complete the following steps:
 
-- Install YugabyteDB by following the instructions in [Quick start](../../../../quick-start/).
+- Install YugabyteDB by following the instructions in [Quick start](/preview/quick-start/).
 
 - Build the examples by running `mvn package`.
 

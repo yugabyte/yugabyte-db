@@ -9,7 +9,7 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 type: docs
 ---
 
@@ -66,7 +66,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
 - Review the [guidelines for your migration](../../known-issues/).
-- Review [data modeling](../../../develop/learn/data-modeling-ysql) strategies.
+- Review [data modeling](../../../develop/data-modeling) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -874,7 +874,7 @@ Fix all the issues listed in the generated schema analysis report by manually ed
 
 After making the manual changes, re-run the `yb-voyager analyze-schema` command. This generates a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
-To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../reference/data-modeling/).
+To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../../develop/data-modeling).
 
 {{< note title="Manual schema changes" >}}
 
@@ -1244,6 +1244,6 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-forward feature:
 
-- Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Managed](../../../yugabyte-cloud).
+- Fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Aeon](../../../yugabyte-cloud).
 - [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is unsupported for export or streaming events from YugabyteDB during `export data from target`.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

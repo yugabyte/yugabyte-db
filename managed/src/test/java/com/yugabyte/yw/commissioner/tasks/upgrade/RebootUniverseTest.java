@@ -164,11 +164,12 @@ public class RebootUniverseTest extends UpgradeTaskTest {
 
           nodeCreator.accept(az1, true); // 1
           nodeCreator.accept(az2, true); // 2
-          nodeCreator.accept(az3, true); // 3
-          nodeCreator.accept(az3, false); // 4
+          nodeCreator.accept(az1, true); // 3
+          nodeCreator.accept(az3, true); // 4
           nodeCreator.accept(az3, false); // 5
-          nodeCreator.accept(az2, false); // 6
-          nodeCreator.accept(az1, false); // 7
+          nodeCreator.accept(az3, false); // 6
+          nodeCreator.accept(az2, false); // 7
+          nodeCreator.accept(az1, false); // 8
 
           details.nodeDetailsSet = detailsSet;
           u.setUniverseDetails(details);
@@ -184,11 +185,12 @@ public class RebootUniverseTest extends UpgradeTaskTest {
             // masters first
             "host-n1",
             "host-n3",
-            "host-n2", // leader
-            "host-n6",
-            "host-n7",
             "host-n4",
-            "host-n5");
+            "host-n2", // leader
+            "host-n7",
+            "host-n8",
+            "host-n5",
+            "host-n6");
 
     List<String> nodeNames = new ArrayList<>();
     for (TaskInfo subTask : subTasks) {

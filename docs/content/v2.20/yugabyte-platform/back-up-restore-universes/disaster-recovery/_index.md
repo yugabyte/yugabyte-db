@@ -68,7 +68,7 @@ DR further allows for the role of each universe to switch during planned switcho
 
     To fix this, close any open SQL connections to the DR replica, delete the DR configuration, and perform the operation again.
 
-- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
+- Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/persistence/#limitations).
 
 ## Upgrading universes in DR
 

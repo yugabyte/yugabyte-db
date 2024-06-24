@@ -311,6 +311,12 @@ public class Audit extends Model {
     @EnumValue("Delete Troubleshooting Platform Config")
     DeleteTroubleshootingConfig,
 
+    @EnumValue("Register Universe with Troubleshooting Platform")
+    TroubleshootingPlatformRegister,
+
+    @EnumValue("Unregister Universe from Troubleshooting Platform")
+    TroubleshootingPlatformUnregister,
+
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,
 

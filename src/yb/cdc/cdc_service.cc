@@ -163,9 +163,6 @@ DEFINE_test_flag(bool, block_get_changes, false,
     "For testing only. When set to true, GetChanges will not send any new changes "
     "to the consumer.");
 
-DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
-    "Injects an error after updating a tablet's replication index entry");
-
 DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
     "Always bypass the cache and fetch the checkpoint from the cdc state table");
 
@@ -218,6 +215,32 @@ METRIC_DEFINE_entity(cdcsdk);
   RPC_VERIFY_RESULT( \
       xrepl::StreamId::FromString(stream_id_str), resp->mutable_error(), \
       CDCErrorPB::INVALID_REQUEST, context)
+
+// TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
+#define YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \
+  do { \
+    if (VLOG_IS_ON(verbose_level)) { \
+      switch (verbose_level) { \
+        case 1: \
+          VLOG(1) << (oss).str(); \
+          break; \
+        case 2: \
+          VLOG(2) << (oss).str(); \
+          break; \
+        case 3: \
+          VLOG(3) << (oss).str(); \
+          break; \
+        case 4: \
+          VLOG(4) << (oss).str(); \
+          break; \
+        default: \
+          LOG(INFO) << (oss).str(); \
+          break; \
+      } \
+    } else { \
+      YB_LOG_EVERY_N_SECS(INFO, n_secs) << (oss).str(); \
+    } \
+  } while (0)
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -366,12 +389,7 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
 
 class CDCServiceImpl::Impl {
  public:
-  explicit Impl(CDCServiceContext* context, rw_spinlock* mutex)
-      : async_client_init_(context->MakeClientInitializer(
-            "cdc_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms))),
-        mutex_(*mutex) {
-    async_client_init_->Start();
-  }
+  explicit Impl(CDCServiceContext* context, rw_spinlock* mutex) : mutex_(*mutex) {}
 
   void UpdateCDCStateMetadata(
       const TabletStreamInfo& producer_tablet, const uint64_t& timestamp,
@@ -742,8 +760,6 @@ class CDCServiceImpl::Impl {
     cdc_state_metadata_.clear();
   }
 
-  std::unique_ptr<client::AsyncClientInitializer> async_client_init_;
-
   // this will be used for the std::call_once call while caching the client
   std::once_flag is_client_cached_;
 
@@ -757,7 +773,8 @@ class CDCServiceImpl::Impl {
 
 CDCServiceImpl::CDCServiceImpl(
     std::unique_ptr<CDCServiceContext> context,
-    const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry)
+    const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
+    const std::shared_future<client::YBClient*>& client_future)
     : CDCServiceIf(metric_entity_server),
       context_(std::move(context)),
       metric_registry_(metric_registry),
@@ -766,9 +783,9 @@ CDCServiceImpl::CDCServiceImpl(
           1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
           GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
-      impl_(new Impl(context_.get(), &mutex_)) {
-  cdc_state_table_ =
-      std::make_unique<cdc::CDCStateTable>(impl_->async_client_init_->get_client_future());
+      impl_(new Impl(context_.get(), &mutex_)),
+      client_future_(client_future) {
+  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(client_future);
 
   CHECK_OK(Thread::Create(
       "cdc_service", "update_peers_and_metrics", &CDCServiceImpl::UpdatePeersAndMetrics, this,
@@ -781,7 +798,7 @@ CDCServiceImpl::CDCServiceImpl(
 
 CDCServiceImpl::~CDCServiceImpl() { Shutdown(); }
 
-client::YBClient* CDCServiceImpl::client() { return impl_->async_client_init_->client(); }
+client::YBClient* CDCServiceImpl::client() { return client_future_.get(); }
 
 namespace {
 
@@ -2385,7 +2402,7 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     const TabletId& tablet_id, const StreamMetadata& stream_metadata,
     const tablet::TabletPeerPtr& tablet_peer) {
   bool is_before_image_active = false;
-  if (FLAGS_ysql_yb_enable_replica_identity) {
+  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(stream_metadata)) {
     auto replica_identity_map = stream_metadata.GetReplicaIdentities();
     // If the tablet is colocated, we check the replica identities of all the tables residing in it.
     // If before image is active for any one of the tables then we should return true
@@ -2588,7 +2605,8 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     if ((is_before_image_active || entry.snapshot_key.has_value())) {
       // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
       // acknowledged commit time among all the slots on the namespace.
-      if (FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+      if (IsReplicationSlotStream(record) &&
+          FLAGS_ysql_TEST_enable_replication_slot_consumption) {
         if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
           // This is possible when Update Peers and Metrics thread comes into action before the slot
           // entry is added to the cdc_state table.
@@ -3438,10 +3456,6 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     }
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_cdc_inject_replication_index_update_failure)) {
-    return STATUS(InternalError, "Simulated error when setting the replication index");
-  }
-
   return Status::OK();
 }
 
@@ -3608,21 +3622,17 @@ void CDCServiceImpl::BootstrapProducer(
 }
 
 void CDCServiceImpl::Shutdown() {
-  if (impl_->async_client_init_) {
-    impl_->async_client_init_->Shutdown();
-    rpcs_.Shutdown();
-    {
-      std::lock_guard l(mutex_);
-      cdc_service_stopped_ = true;
-    }
-    if (update_peers_and_metrics_thread_) {
-      update_peers_and_metrics_thread_->Join();
-    }
-
-    cdc_state_table_.reset();
-    impl_->async_client_init_ = nullptr;
-    impl_->ClearCaches();
+  rpcs_.Shutdown();
+  {
+    std::lock_guard l(mutex_);
+    cdc_service_stopped_ = true;
   }
+  if (update_peers_and_metrics_thread_) {
+    update_peers_and_metrics_thread_->Join();
+  }
+
+  cdc_state_table_.reset();
+  impl_->ClearCaches();
 }
 
 Status CDCServiceImpl::CheckStreamActive(
@@ -4418,7 +4428,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     return;
   }
 
-  LOG(INFO) << "Received InitVirtualWALForCDC request: " << req->DebugString();
+  LOG(INFO) << "Received InitVirtualWALForCDC request: " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4462,8 +4472,10 @@ void CDCServiceImpl::InitVirtualWALForCDC(
       session_virtual_wal_.erase(session_id);
     }
 
-    std::string error_msg = Format("VirtualWAL initialisation failed for stream_id: $0", stream_id);
-    LOG(WARNING) << s.CloneAndPrepend(error_msg);
+    std::string error_msg = Format(
+        "VirtualWAL initialisation failed for stream_id: $0 & session_id: $1", stream_id,
+        session_id);
+    LOG(ERROR) << s.CloneAndPrepend(error_msg);
     RPC_STATUS_RETURN_ERROR(
         s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     return;
@@ -4481,7 +4493,9 @@ void CDCServiceImpl::GetConsistentChanges(
     return;
   }
 
-  VLOG(1) << "Received GetConsistentChanges request: " << req->DebugString();
+  std::ostringstream oss;
+  oss << "Received GetConsistentChanges request: " << req->ShortDebugString();
+  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4512,7 +4526,11 @@ void CDCServiceImpl::GetConsistentChanges(
   if (!s.ok()) {
     std::string msg =
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
-    LOG(WARNING) << msg;
+    if (!s.IsTryAgain()) {
+      LOG(WARNING) << msg;
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 300) << msg;
+    }
   }
 
   context.RespondSuccess();
@@ -4525,7 +4543,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
     return;
   }
 
-  LOG(INFO) << "Received DestroyVirtualWALForCDC request: " << req->DebugString();
+  LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALForCDC request: " << req->ShortDebugString();
 
   if (FLAGS_TEST_cdc_force_destroy_virtual_wal_failure) {
     LOG(WARNING)
@@ -4560,7 +4578,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
     session_virtual_wal_.erase(session_id);
   }
 
-  LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
+  LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << session_id;
   context.RespondSuccess();
 }
 
@@ -4570,6 +4588,8 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
   if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || session_ids.empty()) {
     return;
   }
+
+  LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request: " << AsString(session_ids);
 
   auto it = session_ids.begin();
   {
@@ -4594,7 +4614,7 @@ void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& s
 
     for (; it != session_ids.end(); ++it) {
       if (session_virtual_wal_.erase(*it)) {
-        LOG(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
+        LOG_WITH_FUNC(INFO) << "VirtualWAL instance successfully deleted for session_id: " << *it;
       }
     }
   }
@@ -4607,7 +4627,9 @@ void CDCServiceImpl::UpdateAndPersistLSN(
     return;
   }
 
-  VLOG(1) << "Received UpdateAndPersistLSN request: " << req->DebugString();
+  std::ostringstream oss;
+  oss << "Received UpdateAndPersistLSN request: " << req->ShortDebugString();
+  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),
@@ -4656,9 +4678,11 @@ void CDCServiceImpl::UpdateAndPersistLSN(
 
   resp->set_restart_lsn(*res);
 
-  VLOG(1) << "Succesfully persisted LSN values for stream_id: " << stream_id
-          << ", confirmed_flush_lsn = " << confirmed_flush_lsn
-          << ", restart_lsn = " << *res;
+  oss.clear();
+  oss << "Succesfully persisted LSN values for stream_id: " << stream_id
+      << ", confirmed_flush_lsn = " << confirmed_flush_lsn << ", restart_lsn = " << *res;
+  YB_CDC_LOG_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
+
   context.RespondSuccess();
 }
 
@@ -4669,7 +4693,7 @@ void CDCServiceImpl::UpdatePublicationTableList(
     return;
   }
 
-  VLOG(4) << "Received UpdatePublicationTableList request: " << req->DebugString();
+  LOG(INFO) << "Received UpdatePublicationTableList request: " << req->ShortDebugString();
 
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_session_id(),

@@ -39,7 +39,6 @@ class RaftConsensus;
 class ReplicateMsg;
 class ReplicateMsgsHolder;
 class RetryableRequests;
-class RetryableRequestsManager;
 class SafeOpIdWaiter;
 
 struct ConsensusOptions;

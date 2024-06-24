@@ -87,6 +87,15 @@ When you execute the start Master action, YugabyteDB Anywhere performs the follo
 
 4. Updates the Master addresses g-flag on all other nodes to inform them of the new Master.
 
+## Fix a lagging master process
+
+If a master process is down for more than its [WAL log retention period](../../../reference/configuration/yb-master/#log-min-seconds-to-retain) (defaults to 2 hrs) and then becomes healthy, it will be unable to catch up to its peers. In this scenario, the **Nodes** tab shows that the master is in a healthy state but YugabyteDB Anywhere generates an "under-replicated masters" alert. To fix this situation, do the following:
+
+1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric.
+1. On the **Nodes** page, click the [**Actions > Stop Processes**](#stop-a-process) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
+1. When the Stop Processes task completes, click [**Actions > Start Processes**](#start-a-process) on the same node.
+1. Verify that the cluster has a count of healthy masters equal to the replication factor.
+
 ## Release node instance
 
 To release the IP address associated with the **yb-15-aws-ys-n6** node, click its corresponding **Actions > Release Instance**. This changes the value in the **Status** column from **Removed** to **Decommissioned**.

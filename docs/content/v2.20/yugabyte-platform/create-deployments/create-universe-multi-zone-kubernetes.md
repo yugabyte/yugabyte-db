@@ -57,7 +57,7 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 Complete the **Instance Configuration** section as follows:
 
-- **Instance Type** - select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
+- **Instance Type** - select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
 - **Volume Info** - specify the number of volumes multiplied by size. The default is 1 x 100GB.
 
 ### Security Configurations

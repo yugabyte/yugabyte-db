@@ -249,7 +249,7 @@ If these defaults are used for both TServer and master, then a node's available 
 | Postgres % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Managed](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
 
@@ -813,7 +813,7 @@ Default: `100`
 
 ##### --ysql_yb_fetch_size_limit
 
-Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
+{{<badge/tp>}} Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
 
 You can also specify the value as a string. For example, you can set it to `'10MB'`.
 
@@ -827,7 +827,7 @@ Default: 0
 
 ##### --ysql_yb_fetch_row_limit
 
-Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{<badge/tp>}} Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 You should have at least one of row limit or size limit set.
 
@@ -1160,7 +1160,7 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 
 ## Packed row flags
 
-The packed row format for the YSQL API is [GA](/preview/releases/versioning/#feature-maturity) as of v2.20.0, and for the YCQL API is [TP](/preview/releases/versioning/#feature-maturity).
+The packed row format for the YSQL API is {{<badge/ga>}} as of v2.20.0, and for the YCQL API is {{<badge/tp>}}.
 
 To learn about the packed row feature, see [Packed rows in DocDB](../../../architecture/docdb/packed-rows) in the architecture section.
 
@@ -1275,12 +1275,6 @@ Default: `86400`
 Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
 
 Default: `102400`
-
-##### --enable_truncate_cdcsdk_table
-
-By default, TRUNCATE commands on tables on which CDCSDK stream is active will fail. Changing the value of this flag from `false` to `true` will enable truncating the tables part of the CDCSDK stream.
-
-Default: `false`
 
 ##### --cdc_intent_retention_ms
 
@@ -1398,7 +1392,7 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
-The catalog flags are in [Early Access](/preview/releases/versioning/#feature-maturity).
+Catalog flags are {{<badge/ea>}}.
 
 ##### ysql_catalog_preload_additional_table_list
 
@@ -1442,9 +1436,13 @@ To minimize performance impact when enabling this flag, set it to 2KB or higher.
 
 Default: -1 (disabled). Minimum: 128 bytes.
 
+## DDL concurrency flags
+
+DDL concurrency flags are {{<badge/tp>}}.
+
 ##### ysql_enable_db_catalog_version_mode
 
-{{<badge/ea>}} Enable the per database catalog version mode. A DDL statement that
+Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
 that database.
 
@@ -1490,7 +1488,7 @@ To re-enable the per database catalog version mode using the following steps:
 
 ##### enable_heartbeat_pg_catalog_versions_cache
 
-{{<badge/ea>}} Whether to enable the use of heartbeat catalog versions cache for the
+Whether to enable the use of heartbeat catalog versions cache for the
 `pg_yb_catalog_version` table which can help to reduce the number of reads
 from the table. This is beneficial when there are many databases and/or
 many yb-tservers in the cluster.
@@ -1511,6 +1509,8 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 {{< /note >}}
 
 ## DDL atomicity flags
+
+DDL atomicity flags are {{<badge/tp>}}.
 
 ##### ysql_yb_ddl_rollback_enabled
 
@@ -1697,7 +1697,7 @@ Default: false
 
 ##### yb_fetch_size_limit
 
-Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+{{<badge/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
@@ -1707,7 +1707,7 @@ Default: 0
 
 ##### yb_fetch_row_limit
 
-Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+{{<badge/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 

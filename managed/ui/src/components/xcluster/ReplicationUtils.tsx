@@ -13,7 +13,8 @@ import {
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigType,
   XClusterTableEligibility,
-  XClusterTableStatus
+  XClusterTableStatus,
+  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -26,6 +27,7 @@ import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 import { getTableUuid } from '../../utils/tableUtils';
+import { compareYBSoftwareVersions, getPrimaryCluster } from '../../utils/universeUtilsTyped';
 
 import {
   Metrics,
@@ -89,13 +91,13 @@ export const CurrentReplicationLag = ({
     api.fetchUniverse(sourceUniverseUuid)
   );
 
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
-    replicationUuid: xClusterConfigUuid
+    xClusterConfigUuid
   };
   const universeLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
@@ -169,14 +171,14 @@ export const CurrentTableReplicationLag = ({
   sourceUniverseUUID: string | undefined;
   xClusterConfigStatus: XClusterConfigStatus;
 }) => {
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix,
     streamId,
     tableId
   };
   const tableLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: queryEnabled
     }
@@ -382,7 +384,6 @@ export const getEnabledConfigActions = (
     case XClusterConfigStatus.RUNNING:
       return [
         replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
-        XClusterConfigAction.ADD_TABLE,
         XClusterConfigAction.MANAGE_TABLE,
         XClusterConfigAction.DB_SYNC,
         XClusterConfigAction.DELETE,
@@ -537,6 +538,29 @@ export const isTableToggleable = (
 
 export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig) =>
   xClusterConfig.type === XClusterConfigType.TXN || xClusterConfig.tableType !== 'YSQL';
+
+export const getIsTransactionalAtomicityEnabled = (
+  sourceUniverse: Universe,
+  targetUniverse?: Universe
+) => {
+  const ybSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
+    .ybSoftwareVersion;
+  const participatingUniverses = targetUniverse
+    ? [sourceUniverse, targetUniverse]
+    : [sourceUniverse];
+  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig(participatingUniverses);
+  return (
+    !!ybSoftwareVersion &&
+    compareYBSoftwareVersions({
+      versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+      versionB: ybSoftwareVersion,
+      options: {
+        suppressFormatError: true
+      }
+    }) < 0 &&
+    !participantsHaveLinkedXClusterConfig
+  );
+};
 
 /**
  * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.

@@ -270,10 +270,10 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   std::optional<OpId> min_synced_op_id;
   // Copy the retryable requests if it exists.
   if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
-    Status s = tablet_peer_->FlushRetryableRequests();
+    Status s = tablet_peer_->FlushBootstrapState();
     if (s.ok() || s.IsAlreadyPresent()) {
       retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
-      auto copy_result = tablet_peer_->CopyRetryableRequestsTo(*retryable_requests_filepath_);
+      auto copy_result = tablet_peer_->CopyBootstrapStateTo(*retryable_requests_filepath_);
       if (!copy_result.ok()) {
         LOG(WARNING) << "Copy retryable requests failed: " << s;
         retryable_requests_filepath_.reset();

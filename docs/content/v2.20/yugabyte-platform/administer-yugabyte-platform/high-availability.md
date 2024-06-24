@@ -67,7 +67,7 @@ You can configure the active instance as follows:
 
     - If you installed YBA using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), locate the CA certificate from the path `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on the YBA instance. You may need to replace `/opt/yugabyte` with the path to a custom install root if you configured yba installer using the [configuration options](../../install-yugabyte-platform/install-software/installer/#configuration-options).
 
-    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/replicated/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
+    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/default/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
 1. Add the active instance CA certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) of the active instance.
 
@@ -93,7 +93,7 @@ After the active instance has been configured, you can configure one or more sta
 
     - If you installed YBA using [YBA Installer](../../install-yugabyte-platform/install-software/installer/), locate the CA certificate from the path `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on the YBA instance. You may need to replace `/opt/yugabyte` with the path to a custom install root if you configured yba installer using the [configuration options](../../install-yugabyte-platform/install-software/installer/#configuration-options).
 
-    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/replicated/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
+    - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/default/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
 1. Switch to the active instance.
 
@@ -124,6 +124,12 @@ To confirm communication between the active and standby, you can do the followin
 - Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `https://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
 
     ![Verify Prometheus](/images/yp/high-availability/ha-prometheus.png)
+
+    {{<note title="Metrics availability on the standby">}}
+Metrics on the standby are only available from the time the standby was activated. The standby begins collecting metrics from the active instance when activated; no historical metrics are copied from the active instance at that time.
+
+For example, if your metrics retention is 14 days on your active instance, and you activated your standby 7 days ago, you will not see metrics for the 7 days prior to standby activation. After the standby has been active for 14 days, you will see the same metrics on both.
+    {{</note>}}
 
 - Navigate to **Profile > Releases** and verify that the standby has all the database releases that are in use by universes, and that the releases are listed as Active. To discover all the database releases that are in use by universes, you can view the **Dashboard** page.
 

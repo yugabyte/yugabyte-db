@@ -1,14 +1,15 @@
 ---
 title: YB Voyager Migration Assessment
+headerTitle: Migration assessment
 linkTitle: Assess migration
-headcontent: Steps to create a migration assessment report
+headcontent: Create a migration assessment report
 description: Steps to create a migration assessment report to ensure successful migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
     identifier: assess-migration
     parent: migration-types
     weight: 101
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 type: docs
 ---
 
@@ -16,31 +17,42 @@ The Voyager Migration Assessment feature is specifically designed to optimize th
 
 ## Overview
 
-Voyager collects various metadata or metrics from the source database, such as table columns metadata, sizes of tables/indexes, read/write IOPS for tables/indexes, and so on. With this data, an assessment report is prepared which covers the following key details:
+When you run an assessment, Voyager collects metadata or metrics from the source database. This includes table columns metadata, sizes of tables and indexes, read and write IOPS for tables and indexes, and so on. With this data, Voyager generates an assessment report with the following key details:
 
-- **Database compatibility**: Assesses the compatibility of the source database with YugabyteDB, identifying unsupported features and data types.
+- **Database compatibility**. An assessment of the compatibility of the source database with YugabyteDB, identifying unsupported features and data types.
 
-- **Cluster size evaluation**: Provides an estimation of the resource requirements for the target environment, helping in the planning and scaling of infrastructure needs. The sizing logic depends on various factors such as the size and number of tables in the source database, as well as the throughput requirements (read/write IOPS).
+- **Cluster size evaluation**. Estimated resource requirements for the target environment, to help with planning and scaling your infrastructure. The sizing logic depends on various factors such as the size and number of tables in the source database, as well as the throughput requirements (read/write IOPS).
 
-- **Schema evaluation**: Reviews the database schema, to suggest effective sharding strategies for tables and indexes.
+- **Schema evaluation**. Reviews the database schema to suggest effective sharding strategies for tables and indexes.
 
-- **Performance metrics**: Analyzes performance metrics to understand workload characteristics, and provides recommendations for optimization in YugabyteDB.
+- **Performance metrics**. Voyager analyzes performance metrics to understand workload characteristics and provide recommendations for optimization in YugabyteDB.
 
-- **Migration time estimation**: Offers a calculated estimate of the time needed to import data into YugabyteDB after export from the source database, helping with better migration planning. These estimates are calculated based on various experiments during data import to YugabyteDB.
+- **Migration time estimate**. An estimate of the time needed to import data into YugabyteDB after export from the source database. These estimates are calculated based on various experiments during data import to YugabyteDB.
 
-{{< warning title="Caveats" >}}
-Recommendations are based on experiments done on [RF3](../../../architecture/docdb-replication/replication/#replication-factor) setup on instance types with 4GiB memory/core against YugabyteDB v2024.1.
+{{< warning title="Caveat" >}}
+The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 {{< /warning >}}
 
-Note that for cases where it is not possible to provide database access to the client machine running voyager, you can gather the metadata from the source database using plain bash/psql scripts by voyager, and then use voyager to analyze the metadata directly.
+Note that for cases where it is not possible to provide database access to the client machine running Voyager, you can gather the metadata from the source database using plain bash/psql scripts provided with Voyager, and then use Voyager to analyze the metadata directly.
 
-### Sample Migration Assessment Report
+The following table describes the type of data that is collected during a migration assessment.
 
-A sample Migration Assessment Report is as follows:
+| Data | Collected | Details |
+| :--- | :-------- | :------ |
+| Application or user data  | No | No application or user data is collected. |
+| Passwords | No | The assessment does not store any passwords. |
+| Database metadata<br>schema,&nbsp;object,&nbsp;object&nbsp;names | Yes | Voyager collects the schema metadata including table IOPS, table size, and so on, and the actual schema. |
+| Database name | Yes | Voyager collects database and schema names to be used in the generated report. |
+| Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
+| Server or database credentials | No | No server or database credentials are collected. |
+
+### Sample Migration Assessment report
+
+A sample Migration Assessment report is as follows:
 
 ![Migration report](/images/migrate/assess-migration.jpg)
 
-## Generate a Migration Assessment Report
+## Generate a Migration Assessment report
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Prepare the source database.

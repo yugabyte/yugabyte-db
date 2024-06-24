@@ -52,7 +52,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Article**: [Distributed SQL vs NoSQL vs NewSQL](https://www.linkedin.com/pulse/distributed-sql-architecture-what-oracle-didnt-grasp-franck-pachot-ngghe)
 : Learn the difference between distributed SQL and other strategies for scaling.
 
-**Blog**: [How 7 Real-World Customers are Using YugabyteDB Managed](https://www.yugabyte.com/blog/customers-use-yugabytedb-managed/)
+**Blog**: [How 7 Real-World Customers are Using YugabyteDB Aeon](https://www.yugabyte.com/blog/customers-use-yugabytedb-managed/)
 : Real-world use cases for moving to a distributed database.
 
 **Video**: [Global Applications with YugabyteDB](https://www.youtube.com/watch?v=jqZxUydBaMQ)<br>

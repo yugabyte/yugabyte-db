@@ -35,9 +35,9 @@ type: docs
 
 [Yugabyte C++ Driver for YCQL](https://github.com/yugabyte/cassandra-cpp-driver) is based on [DataStax C++ Driver](https://github.com/datastax/cpp-driver) with additional [smart driver](../../smart-drivers-ycql/) features.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use the driver's partition-aware load balancing feature in a YugabyteDB Managed cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Managed](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-managed).
+To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Aeon](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 
@@ -46,7 +46,7 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Manag
 The tutorial assumes that you have:
 
 - installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell (`ycqlsh`). If
-  not, follow the steps in [Quick start](../../../quick-start/).
+  not, follow the steps in [Quick start](/preview/quick-start/).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2 or later, Clang 3.4 or later installed.
 

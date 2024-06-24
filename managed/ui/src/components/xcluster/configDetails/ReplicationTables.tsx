@@ -22,8 +22,8 @@ import {
   getStrictestReplicationLagAlertThreshold,
   shouldAutoIncludeIndexTables
 } from '../ReplicationUtils';
-import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
-import { TableLagGraphModal } from './TableLagGraphModal';
+import DeleteReplicationTableModal from './DeleteReplicationTableModal';
+import { TableReplicationLagGraphModal } from './TableReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import {
@@ -283,7 +283,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
             dataField="statusLabel"
             dataSort
             dataFormat={(_: XClusterTableStatus, xClusterTable: XClusterReplicationTable) => (
-              <XClusterTableStatusLabel status={xClusterTable.status} />
+              <XClusterTableStatusLabel
+                status={xClusterTable.status}
+                errors={xClusterTable.replicationStatusErrors}
+              />
             )}
           >
             Replication Status
@@ -398,17 +401,18 @@ export function ReplicationTables(props: ReplicationTablesProps) {
         </BootstrapTable>
       </div>
       {openTableLagGraphDetails && (
-        <TableLagGraphModal
-          tableDetails={openTableLagGraphDetails}
-          replicationUUID={xClusterConfig.uuid}
-          universeUUID={sourceUniverse.universeUUID}
+        <TableReplicationLagGraphModal
+          xClusterTable={openTableLagGraphDetails}
+          sourceUniverseUuid={sourceUniverse.universeUUID}
           nodePrefix={sourceUniverse.universeDetails.nodePrefix}
           queryEnabled={isActive}
-          visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
-          onHide={hideModal}
+          modalProps={{
+            open: visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH,
+            onClose: hideModal
+          }}
         />
       )}
-      <DeleteReplicactionTableModal
+      <DeleteReplicationTableModal
         deleteTableName={deleteTableDetails ? getTableName(deleteTableDetails) : ''}
         onConfirm={() => {
           removeTableFromXCluster.mutate({

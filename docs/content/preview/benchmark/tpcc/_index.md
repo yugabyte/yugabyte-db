@@ -19,7 +19,7 @@ type: indexpage
 [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity, and which are either executed online or queued for deferred execution. Developed by the Transaction Processing Performance Council (TPC), it simulates a complete computing environment where a population of users execute transactions against a database.
 
 {{<note>}}
-All benchmarks were run on a single-region YugabyteDB cluster running on {{<release "2.18.1">}}, except 150K warehouses, which was run on [v2.11](../../releases/ybdb-releases/end-of-life/v2.11/).
+All benchmarks were run on a single-region YugabyteDB cluster running on {{<release "2.18.1">}}, except 150K warehouses, which was run on [v2.11](/preview/releases/ybdb-releases/end-of-life/v2.11/).
 {{</note>}}
 
 ## Running the benchmark
@@ -29,7 +29,7 @@ Conducting an accurate TPC-C benchmark requires aligning your test environment w
 After you've identified a cluster specification that matches your needs, apply the TPC-C workload recommended for that particular setup. The goal is to validate that the cluster can sustain the expected transaction throughput—measured in tpmC with a high degree of efficiency, typically exceeding 99.5%. This high-efficiency rate ensures that the cluster meets the benchmark's demands with minimal resource overhead, indicating its readiness to handle your real-world, high-volume transactional workloads.
 
 {{<lead link="running-tpcc/">}}
-For information on cluster specification/workload and how to run the TPC-C against a local or a YugabyteDB Managed cluster, see [Running TPC-C](running-tpcc/).
+For information on cluster specification/workload and how to run the TPC-C against a local or a YugabyteDB Aeon cluster, see [Running TPC-C](running-tpcc/).
 {{</lead>}}
 
 ## Scale out
@@ -55,7 +55,7 @@ To see how well YugabyteDB handles extremely high workloads, see [Testing high s
 In our testing, YugabyteDB was able to process 1M tpmC with 150,000 warehouses at an efficiency of 99.8% on an RF3 cluster of 75 c5d.12xlarge machines with a total data size of 50TB.
 
 {{<note>}}
-The 150K warehouses benchmark was run on [v2.11](../../releases/ybdb-releases/end-of-life/v2.11/).
+The 150K warehouses benchmark was run on [v2.11](/preview/releases/ybdb-releases/end-of-life/v2.11/).
 {{</note>}}
 
 | Warehouses | TPMC | Efficiency(%) | Nodes | Connections | New Order Latency |  Machine Type (vCPUs)  |

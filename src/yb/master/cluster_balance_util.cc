@@ -894,7 +894,7 @@ Status PerTableLoadState::AddStartingTablet(
 }
 
 Status PerTableLoadState::AddLeaderTablet(
-    const TabletId& tablet_id, const TabletServerId& ts_uuid, const TabletServerId& ts_path) {
+    const TabletId& tablet_id, const TabletServerId& ts_uuid, const std::string& ts_path) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
          Format(uninitialized_ts_meta_format_msg_, ts_uuid, table_id_));
 

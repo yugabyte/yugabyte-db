@@ -94,7 +94,7 @@ postgresql://user:password@host:port/database?loadBalance=true&ssl=true& \
     sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 

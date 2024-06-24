@@ -109,19 +109,18 @@ TEST_F(MasterHeartbeatITest, PreventHeartbeatWrongCluster) {
   // TEST_master_universe_uuid.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
-  master::TSDescriptorVector ts_descs;
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
 
   // When the flag is unset, ensure that master leader can register tservers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = "";
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
 
   // Ensure that state for universe_uuid is persisted across restarts.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   for (int i = 0; i < 3; i++) {
     ASSERT_OK(mini_cluster_->mini_tablet_server(i)->Restart());
   }
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
 }
 
 
@@ -139,7 +138,7 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
 
   auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfo(table_->id());
-  auto tablet = table_info->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
 
   master::MasterClusterProxy master_proxy(
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
@@ -202,7 +201,7 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
   auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
       table.namespace_type(), table.namespace_name(), table.table_name());
-  auto tablet = table_info->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
   std::set<std::string> tservers_hosting_tablet;
   for (const auto& [ts, replica] : *tablet->GetReplicaLocations()) {
     tservers_hosting_tablet.insert(ts);
@@ -289,7 +288,7 @@ TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
   auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
       table.namespace_type(), table.namespace_name(), table.table_name());
-  auto tablet = table_info->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
   std::set<std::string> tss_hosting_tablet;
   for (const auto& [ts, replica] : *tablet->GetReplicaLocations()) {
     tss_hosting_tablet.insert(ts);
@@ -398,19 +397,18 @@ TEST_F(MasterHeartbeatITestWithUpgrade, ClearUniverseUuidToRecoverUniverse) {
   }, 60s, "Waiting for tservers to pick up new universe uuid"));
 
   // Verify servers are heartbeating correctly.
-  master::TSDescriptorVector ts_descs;
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
 
   // Artificially generate a fake universe uuid and propagate that by clearing the universe_uuid.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
 
   // Heartbeats should first fail due to universe_uuid mismatch.
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
 
   // Once t-server instance metadata is cleared, heartbeats should succeed again.
   ASSERT_OK(ClearUniverseUuid());
-  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, &ts_descs, true /* live_only */));
+  ASSERT_OK(mini_cluster_->WaitForTabletServerCount(3, true /* live_only */));
 }
 
 

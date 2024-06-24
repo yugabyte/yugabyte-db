@@ -55,7 +55,6 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
 #include "yb/rocksdb/db/db_impl.h"
@@ -731,29 +730,23 @@ Status MiniCluster::WaitForAllTabletServers() {
         tablet_server->WaitStarted(), Format("TabletServer $0 failed to start.", tablet_server));
   }
   // Wait till all tablet servers are registered with master.
-  return WaitForTabletServerCount(num_tablet_servers());
+  return ResultToStatus(WaitForTabletServerCount(num_tablet_servers()));
 }
 
-Status MiniCluster::WaitForTabletServerCount(size_t count) {
-  vector<shared_ptr<master::TSDescriptor> > descs;
-  return WaitForTabletServerCount(count, &descs, false);
-}
-
-Status MiniCluster::WaitForTabletServerCount(size_t count,
-                                             vector<shared_ptr<TSDescriptor> >* descs,
-                                             bool live_only) {
+Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForTabletServerCount(
+    size_t count, bool live_only) {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
-      (*leader)->ts_manager().GetAllDescriptors(descs);
-      if (live_only || descs->size() == count) {
+      auto descs = (*leader)->ts_manager().GetAllDescriptors();
+      if (live_only || descs.size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
         size_t match_count = 0;
-        for (const shared_ptr<TSDescriptor>& desc : *descs) {
+        for (const shared_ptr<TSDescriptor>& desc : descs) {
           for (auto mini_tablet_server : mini_tablet_servers_) {
             auto ts = mini_tablet_server->server();
             if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
@@ -769,11 +762,11 @@ Status MiniCluster::WaitForTabletServerCount(size_t count,
         if (match_count == count) {
           LOG(INFO) << count << " TS(s) registered with Master after "
                     << sw.elapsed().wall_seconds() << "s";
-          return Status::OK();
+          return descs;
         }
       }
 
-      YB_LOG_EVERY_N_SECS(INFO, 5) << "Registered: " << AsString(*descs);
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "Registered: " << AsString(descs);
     }
 
     SleepFor(MonoDelta::FromMilliseconds(1));

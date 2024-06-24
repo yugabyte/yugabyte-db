@@ -28,10 +28,10 @@ The following projects can be used to implement Java applications using the Yuga
 | Projects | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
 | Hibernate ORM | [Documentation](hibernate/)<br />[Hello World](../orms/java/ysql-hibernate/)<br />[Blog](https://www.yugabyte.com/blog/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/)<br /> | [Hibernate ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate/)
-| Spring Data JPA | [Documentation](../../integrations/spring-framework/sd-jpa/)<br />[Hello World](../orms/java/ysql-spring-data/)<br />[Blog](https://www.yugabyte.com/blog/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring Data JPA App](https://github.com/yugabyte/orm-examples/tree/master/java/spring/)
+| Spring Data JPA | [Documentation](/preview/integrations/spring-framework/sd-jpa/)<br />[Hello World](../orms/java/ysql-spring-data/)<br />[Blog](https://www.yugabyte.com/blog/run-the-rest-version-of-spring-petclinic-with-angular-and-distributed-sql-on-gke/) | [Spring Data JPA App](https://github.com/yugabyte/orm-examples/tree/master/java/spring/)
 | Ebean ORM | [Documentation](ebean/)<br /> [Hello World](../orms/java/ysql-ebean/)<br /> [Blog](https://www.yugabyte.com/blog/ebean-orm-yugabytedb/)| [Ebean ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/ebean/)
 | MyBatis ORM | [Documentation](mybatis/)<br /> [Hello World](../orms/java/ysql-mybatis/) | [MyBatis ORM App](https://github.com/yugabyte/orm-examples/tree/master/java/mybatis/)
-| Spring Data YugabyteDB | [Documentation](../../integrations/spring-framework/sdyb/)<br/>[Blog](https://www.yugabyte.com/blog/spring-data-yugabytedb-getting-started/) | [Spring Data YugabyteDB Sample App](https://github.com/yugabyte/spring-data-yugabytedb-example/)
+| Spring Data YugabyteDB | [Documentation](/preview/integrations/spring-framework/sdyb/)<br/>[Blog](https://www.yugabyte.com/blog/spring-data-yugabytedb-getting-started/) | [Spring Data YugabyteDB Sample App](https://github.com/yugabyte/spring-data-yugabytedb-example/)
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to [Connect an app](yugabyte-jdbc/) or [Use an ORM](hibernate/).
 
@@ -82,8 +82,8 @@ To develop Java driver applications for YugabyteDB, you need the following:
         ```
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
-  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](/preview/quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
+  - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](/preview/quick-start/).
 
 ## Next step
 

@@ -8,6 +8,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.Map;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @EqualsAndHashCode(
@@ -49,4 +50,29 @@ public class ImageBundleDetails {
   @ApiModelProperty private String sshUser;
   @ApiModelProperty private Integer sshPort;
   @ApiModelProperty public boolean useIMDSv2 = false;
+
+  public void setSshUser(String sshUser) {
+    this.sshUser = sshUser;
+    if (StringUtils.isEmpty(this.sshUser) && this.regions != null) {
+      this.sshUser =
+          this.regions.values().stream()
+              .map(BundleInfo::getSshUserOverride)
+              .filter(StringUtils::isNotEmpty)
+              .findFirst()
+              .orElse(null);
+      this.regions.values().forEach(bi -> bi.setSshUserOverride(null));
+    }
+  }
+
+  public void setSshPort(Integer sshPort) {
+    this.sshPort = sshPort;
+    if (this.sshPort == null && this.regions != null) {
+      this.sshPort =
+          this.regions.values().stream()
+              .map(BundleInfo::getSshPortOverride)
+              .findFirst()
+              .orElse(null);
+      this.regions.values().forEach(bi -> bi.setSshPortOverride(null));
+    }
+  }
 }

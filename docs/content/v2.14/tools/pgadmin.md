@@ -37,7 +37,7 @@ Add a pgAdmin server to connect to a cluster as follows:
 
 1. Under Quick Links, click **Add New Server** to display the **Register - Server** window.
 
-1. On the **General** tab, enter a name for your server, such as YBManaged.
+1. On the **General** tab, enter a name for your server, such as YugabyteDB.
 
 1. On the **Connection** tab, fill in the [connection parameters](../#connection-parameters).
 

@@ -240,6 +240,11 @@ export const XCLUSTER_UNIVERSE_TABLE_FILTERS = {
 };
 
 /**
+ * Standard input field width for all xCluster text fields and dropdowns.
+ */
+export const INPUT_FIELD_WIDTH_PX = 350;
+
+/**
  * The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '"' NULL])
  */
 export const XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN = /[\s_*<>?|"\0]/;
@@ -251,3 +256,5 @@ export const TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD = '2.17.3.0-b
 
 export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/';
+export const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';

@@ -58,7 +58,7 @@ std::string SnapshotIdToString(const std::string& snapshot_id) {
 AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(
     Master* master,
     ThreadPool* callback_pool,
-    const scoped_refptr<TabletInfo>& tablet,
+    const TabletInfoPtr& tablet,
     const string& snapshot_id,
     tserver::TabletSnapshotOpRequestPB::Operation op,
     LeaderEpoch epoch)

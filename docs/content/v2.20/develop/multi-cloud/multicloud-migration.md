@@ -99,7 +99,7 @@ Any data changes to the AWS universe are automatically applied to the GCP univer
 After the new universe has caught up with the data from the old universe, you can switch over to the new universe.
 
 {{<tip title="More Details">}}
-For detailed instructions on how to do planned switchover, see [Planned switchover](../../../deploy/multi-dc/async-replication-transactional/#switchover-planned-failover).
+For detailed instructions on how to do planned switchover, see [Planned switchover](../../../deploy/multi-dc/async-replication/async-replication-transactional/#switchover-planned-failover).
 {{</tip>}}
 
 The basic flow of switchover is as follows:

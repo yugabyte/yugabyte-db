@@ -5,7 +5,7 @@ linkTitle: Scaling writes
 description: Writes scale horizontally in YugabyteDB as you add more nodes
 headcontent: Write performance when scaling horizontally
 aliases:
-- /preview/architecture/core-functions/write-path
+  - /preview/architecture/core-functions/write-path
 menu:
   preview:
     identifier: scaling-writes
@@ -36,7 +36,7 @@ If multiple rows have to be fetched and are located in different tablets, variou
 
 ## Sysbench workload
 
-The following shows how writes scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic inserts. The cluster consisted of m6i.4xlarge instances and had 1024 connections. All requests had a latency of less than 10ms.
+The following shows how writes scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic inserts. The cluster consisted of {{<inst "m6i.4xlarge">}} instances and had 1024 connections. All requests had a latency of less than 10ms.
 
 ![Scaling with Sysbench](/images/explore/scalability/scaling-writes-sysbench.png)
 
@@ -60,6 +60,6 @@ The cluster configuration is shown in the following illustration.
 
 ## Learn more
 
-- [TPC-C benchmark](../../../benchmark/tpcc-ysql)
+- [TPC-C benchmark](../../../benchmark/tpcc/)
 - [YugabyteDB Benchmarks](../../../benchmark)
 - [Scaling: YugabyteDB vs Cockroach vs Aurora](https://www.yugabyte.com/blog/yugabytedb-vs-cockroachdb-vs-aurora/)

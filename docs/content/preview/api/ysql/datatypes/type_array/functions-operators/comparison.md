@@ -3,6 +3,8 @@ title: Array comparison
 linkTitle: Array comparison
 headerTitle: Operators for comparing two arrays
 description: Operators for comparing two arrays
+aliases:
+  - /preview/compare/ysql/
 menu:
   preview:
     identifier: array-comparison

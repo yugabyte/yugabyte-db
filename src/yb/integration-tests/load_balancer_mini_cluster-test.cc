@@ -106,9 +106,8 @@ void WaitForReplicaOnTS(yb::MiniCluster* mini_cluster,
           GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                     table_name.namespace_name(),
                                                     table_name.table_name());
-    auto tablets  = tbl_info->GetTablets();
     int count = min_expected_count;
-    for (const auto& tablet : tablets) {
+    for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
       auto replica_map = tablet->GetReplicaLocations();
       count -= replica_map->count(ts_uuid);
       if (count <= 0) {
@@ -143,9 +142,7 @@ Status GetTabletsDriveStats(DriveStats* stats,
       GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                 table_name.namespace_name(),
                                                 table_name.table_name());
-  auto tablets = tbl_info->GetTablets();
-
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       auto ts = stats->find(replica.first);
@@ -438,8 +435,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
           GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                     table_name().namespace_name(),
                                                     table_name().table_name());
-    auto tablets = tbl_info->GetTablets();
-    for (const auto& tablet : tablets) {
+    for (const auto& tablet : VERIFY_RESULT(tbl_info->GetTablets())) {
       auto replica_map = tablet->GetReplicaLocations();
       if (replica_map->find(ts3_uuid) != replica_map->end()) {
         return true;
@@ -551,10 +547,8 @@ TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
         GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                   table_name().namespace_name(),
                                                   table_name().table_name());
-  auto tablets = tbl_info->GetTablets();
-
   int updated = 0;
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       if (!replica.second.fs_data_dir.empty()) {
@@ -595,9 +589,7 @@ TEST_F_EX(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData,
         GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                   table_name().namespace_name(),
                                                   table_name().table_name());
-  auto tablets = tbl_info->GetTablets();
-
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       ASSERT_EQ(replica.second.drive_info.sst_files_size, 0);
@@ -723,9 +715,8 @@ TEST_F(LoadBalancerFailedDrive, CheckTabletSizeData) {
       GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                 table_name().namespace_name(),
                                                 table_name().table_name());
-  auto tablets = tbl_info->GetTablets();
   const auto ts1_uuid = mini_cluster_->mini_tablet_server(0)->server()->permanent_uuid();
-  for (const auto& tablet : tablets) {
+  for (const auto& tablet : ASSERT_RESULT(tbl_info->GetTablets())) {
     auto replica_map = tablet->GetReplicaLocations();
     for (const auto& replica : *replica_map.get()) {
       EXPECT_NE(ts1_uuid, replica.first);
