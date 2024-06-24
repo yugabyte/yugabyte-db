@@ -19,6 +19,14 @@ On this page:
 
 ## Change log
 
+### June 24, 2024
+
+**New Features**
+
+- YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/).
+- Support for new pricing plans. Existing customers continue to be billed using classic pricing. [Learn more](https://www.yugabyte.com/pricing/).
+- Support for enforcing security features on new clusters using the Advanced security profile option (Enterprise plan only).
+
 ### June 13, 2024
 
 **New Features**
