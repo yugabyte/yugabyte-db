@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { YBTooltip } from "@app/components";
 import { MigrationRecommendationSidePanel } from "./AssessmentRecommendationSidePanel";
 import type { Migration } from "../../MigrationOverview";
+import { convertBytesToGB } from "@app/helpers";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -191,7 +192,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {typeof colocatedTotalSize === "number"
-                    ? `${colocatedTotalSize} GB`
+                    ? `${convertBytesToGB(colocatedTotalSize)} GB`
                     : colocatedTotalSize}
                 </Typography>
               </Grid>
@@ -201,7 +202,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {typeof shardedTotalSize === "number"
-                    ? `${shardedTotalSize} GB`
+                    ? `${convertBytesToGB(shardedTotalSize)} GB`
                     : shardedTotalSize}
                 </Typography>
               </Grid>

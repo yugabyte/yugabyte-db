@@ -107,7 +107,11 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
           } else {
             // We have not reached the verify phase
             if (stepIndex === MigrationStep["Assessment"]) {
-              if ((migrationAssessmentData as MigrationAssesmentInfo)?.assesment_status === true) {
+              if (
+                (migrationAssessmentData as MigrationAssesmentInfo)?.assesment_status === true ||
+                (migration.migration_phase === MigrationPhase["Assess Migration"] &&
+                  migration.invocation_sequence === 2)
+              ) {
                 completed = true;
               } else {
                 notStarted = true;
