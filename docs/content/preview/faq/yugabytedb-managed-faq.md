@@ -65,7 +65,7 @@ rightNav:
 
 [YugabyteDB Aeon](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/) (previously known as YugabyteDB Managed) is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
-You access your YugabyteDB Aeon clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [YugabyteDB Aeon](https://cloud.yugabyte.com/login).
+You access your YugabyteDB Aeon clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using the [YugabyteDB Aeon UI](https://cloud.yugabyte.com/login).
 
 YugabyteDB Aeon runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 
