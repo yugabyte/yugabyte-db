@@ -669,8 +669,26 @@ BuildSingleFunctionQuery(Oid queryFunctionOid, List *queryArgs, bool isMultiRow)
 }
 
 
+/* build project to get schema validation information
+ *  {"validator": "$validator", "validationLevel":"$validation_level", "validationAction":"$validation_action"}
+ */
+static bson_value_t
+WriteConditionForSchemaValidation()
+{
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+
+	PgbsonWriterAppendUtf8(&writer, "validator", 9, "$validator");
+	PgbsonWriterAppendUtf8(&writer, "validationLevel", 15, "$validation_level");
+	PgbsonWriterAppendUtf8(&writer, "validationAction", 16, "$validation_action");
+
+	return ConvertPgbsonToBsonValue(PgbsonWriterGetPgbson(&writer));
+}
+
+
 /* writes the condition
  * path: { "$cond": [ { "$toBool": "$view_definition" }, value1, value2 ]}
+ * if view_definition is null and ignoreSchemaValidation is false, value2 should be an array as ["$validator", "$validation_level", "$validation_action"] to get schema validation information
  */
 static void
 WriteConditionWithIfViewsNull(pgbson_writer *writer,
@@ -725,9 +743,9 @@ HandleListCollectionsProjector(Query *query, AggregationPipelineBuildContext *co
 
 	if (!nameOnly)
 	{
-		/* "options": { "$cond": [ { "$toBool": "$view_definition" }, "$view_definition", {} ] } */
-		pgbson *doc = PgbsonInitEmpty();
-		bson_value_t collectionValue = ConvertPgbsonToBsonValue(doc);
+		/* "options": { "$cond": [ { "$toBool": "$view_definition" }, "$view_definition",  {"validator": "$validator", "validationLevel":"$validation_level", "validationAction":"$validation_action"} ] } */
+		bson_value_t collectionValue = WriteConditionForSchemaValidation();
+
 		bson_value_t viewValue = { 0 };
 		viewValue.value_type = BSON_TYPE_UTF8;
 		viewValue.value.v_utf8.str = "$view_definition";

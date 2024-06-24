@@ -50,6 +50,36 @@ typedef struct
 	char collectionName[MAX_COLLECTION_NAME_LENGTH];
 } MongoCollectionName;
 
+/*
+ * Validation Level enum used for schema validation of existing docs.
+ * Supported levels: "off", "strict", "moderate"
+ */
+typedef enum
+{
+	ValidationLevel_Invalid = 0,
+	ValidationLevel_Strict,
+	ValidationLevel_Moderate,
+	ValidationLevel_Off
+} ValidationLevels;
+
+/*
+ * Validation Action enum used for schema validation to specify how to handle invalid documents.
+ * Supported actions: "warn", "error"
+ */
+typedef enum
+{
+	ValidationAction_Invalid = 0,
+	ValidationAction_Warn,
+	ValidationAction_Error
+} ValidationActions;
+
+/* This struct stores Schema Validation options associated with a collection */
+typedef struct
+{
+	pgbson *validator;
+	ValidationLevels validationLevel;
+	ValidationActions validationAction;
+} SchemaValidatorInfo;
 
 /*
  * MongoCollection contains metadata of a single Mongo collection.
@@ -85,6 +115,9 @@ typedef struct
 	 * on the current node or empty string (Default) if unavailable.
 	 */
 	char shardTableName[NAMEDATALEN];
+
+	/* Schema Validator if applicable */
+	SchemaValidatorInfo schemaValidator;
 } MongoCollection;
 
 
@@ -106,6 +139,8 @@ typedef struct
 /* decomposes the viewSpec into a ViewDefinition struct */
 void DecomposeViewDefinition(pgbson *viewSpec, ViewDefinition *viewDefinition);
 pgbson * CreateViewDefinition(const ViewDefinition *viewDefinition);
+pgbson * CreateSchemaValidatorInfoDefinition(const
+											 SchemaValidatorInfo *schemaValidatorInfo);
 void ValidateViewDefinition(Datum databaseDatum, const char *viewName, const
 							ViewDefinition *definition);
 void ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum);
@@ -199,4 +234,18 @@ void OverWriteDataFromStagingToDest(Datum srcDbNameDatum, Datum srcCollectionNam
 void ResetCollectionsCache(void);
 void InvalidateCollectionByRelationId(Oid relationId);
 
+/* insert/update schema validation meta*/
+void UpsertSchemaValidation(Datum databaseDatum,
+							Datum collectionNameDatum,
+							const bson_value_t *validator,
+							char *validationLevel,
+							char *validationAction);
+
+const bson_value_t * ParseAndGetValidatorSpec(bson_iter_t *iter, const
+											  char *validatorName,
+											  bool *hasValue);
+char * ParseAndGetValidationLevelOption(bson_iter_t *iter, const
+										char *validationLevelName, bool *hasValue);
+char * ParseAndGetValidationActionOption(bson_iter_t *iter, const
+										 char *validationActionName, bool *hasValue);
 #endif

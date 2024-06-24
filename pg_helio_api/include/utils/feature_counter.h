@@ -15,7 +15,7 @@
 #include <port/atomics.h>
 
 #define MAX_FEATURE_NAME_LENGTH 255
-#define MAX_FEATURE_COUNT 219
+#define MAX_FEATURE_COUNT 221
 
 /*
  * IMP: Keep this alphabetically sorted while adding new feature types. Sorting is done for better reability.
@@ -182,6 +182,7 @@ typedef enum
 	FEATURE_COMMAND_COLLMOD,
 	FEATURE_COMMAND_COLLSTATS,
 	FEATURE_COMMAND_CREATE_COLLECTION,
+	FEATURE_COMMAND_CREATE_VALIDATION,
 	FEATURE_COMMAND_CREATE_VIEW,
 	FEATURE_COMMAND_CURRENTOP,
 	FEATURE_COMMAND_DBSTATS,
@@ -194,6 +195,7 @@ typedef enum
 	/* Feature collMod subfeatures */
 	FEATURE_COMMAND_COLLMOD_VIEW,
 	FEATURE_COMMAND_COLLMOD_COLOCATION,
+	FEATURE_COMMAND_COLLMOD_VALIDATION,
 
 	/* Feature counter region - Create index types */
 	FEATURE_CREATE_INDEX_2D,

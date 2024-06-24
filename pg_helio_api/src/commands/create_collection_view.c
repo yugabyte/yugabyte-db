@@ -25,6 +25,7 @@
 #include "utils/mongo_errors.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "utils/feature_counter.h"
+#include "utils/version_utils.h"
 
 /*
  * The parsed/processed specification for a
@@ -55,10 +56,13 @@ typedef struct CreateSpec
 	/* storageEngine */
 
 	/* validator */
+	const bson_value_t *validator;
 
 	/* validationLevel */
+	char *validationLevel;
 
 	/* validationAction */
+	char *validationAction;
 
 	/* indexOptionDefaults */
 
@@ -82,7 +86,8 @@ typedef struct CreateSpec
 
 static const StringView SystemPrefix = { .string = "system.", .length = 7 };
 
-static CreateSpec * ParseCreateSpec(Datum databaseDatum, pgbson *createSpec);
+static CreateSpec * ParseCreateSpec(Datum databaseDatum, pgbson *createSpec,
+									bool *hasSchemaValidationSpec);
 
 static void ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 												MongoCollection *collection);
@@ -110,7 +115,9 @@ command_create_collection_view(PG_FUNCTION_ARGS)
 	Datum databaseDatum = PG_GETARG_DATUM(0);
 	pgbson *createSpec = PG_GETARG_PGBSON(1);
 
-	CreateSpec *createDefinition = ParseCreateSpec(databaseDatum, createSpec);
+	bool hasSchemaValidationSpec = false;
+	CreateSpec *createDefinition = ParseCreateSpec(databaseDatum, createSpec,
+												   &hasSchemaValidationSpec);
 	Datum createDatum = CStringGetTextDatum(createDefinition->name);
 	ValidateDatabaseCollection(databaseDatum, createDatum);
 	MongoCollection *collection =
@@ -137,6 +144,14 @@ command_create_collection_view(PG_FUNCTION_ARGS)
 		/* It's a collection: create it */
 		ReportFeatureUsage(FEATURE_COMMAND_CREATE_COLLECTION);
 		CreateCollection(databaseDatum, createDatum);
+
+		if (hasSchemaValidationSpec && IsClusterVersionAtleastThis(1, 19, 0))
+		{
+			UpsertSchemaValidation(databaseDatum, createDatum,
+								   createDefinition->validator,
+								   createDefinition->validationLevel,
+								   createDefinition->validationAction);
+		}
 	}
 
 	/* If we got here we succeeded, just return { ok: 1 } */
@@ -245,12 +260,13 @@ ValidateIdIndexDocument(const bson_value_t *idIndexDocument)
  * collection or view.
  */
 static CreateSpec *
-ParseCreateSpec(Datum databaseDatum, pgbson *createSpec)
+ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidationSpec)
 {
 	bson_iter_t createIter;
 	PgbsonInitIterator(createSpec, &createIter);
 
 	CreateSpec *spec = palloc0(sizeof(CreateSpec));
+	bool hasReportedValidationFeature = false;
 	while (bson_iter_next(&createIter))
 	{
 		const char *key = bson_iter_key(&createIter);
@@ -360,13 +376,35 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec)
 		}
 		else if (strcmp(key, "validator") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("validator not supported yet")));
+			if (!hasReportedValidationFeature)
+			{
+				ReportFeatureUsage(FEATURE_COMMAND_CREATE_VALIDATION);
+				hasReportedValidationFeature = true;
+			}
+			spec->validator = ParseAndGetValidatorSpec(&createIter, "create.validator",
+													   hasSchemaValidationSpec);
 		}
-		else if (strcmp(key, "validationLevel") == 0 ||
-				 strcmp(key, "validationAction") == 0)
+		else if (strcmp(key, "validationLevel") == 0)
 		{
-			/* Ignore: Validator options */
+			if (!hasReportedValidationFeature)
+			{
+				ReportFeatureUsage(FEATURE_COMMAND_CREATE_VALIDATION);
+				hasReportedValidationFeature = true;
+			}
+			spec->validationLevel = ParseAndGetValidationLevelOption(&createIter,
+																	 "create.validationLevel",
+																	 hasSchemaValidationSpec);
+		}
+		else if (strcmp(key, "validationAction") == 0)
+		{
+			if (!hasReportedValidationFeature)
+			{
+				ReportFeatureUsage(FEATURE_COMMAND_CREATE_VALIDATION);
+				hasReportedValidationFeature = true;
+			}
+			spec->validationAction = ParseAndGetValidationActionOption(&createIter,
+																	   "create.validationAction",
+																	   hasSchemaValidationSpec);
 		}
 		else if (strcmp(key, "writeConcern") == 0)
 		{
@@ -407,6 +445,14 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec)
 	{
 		ereport(ERROR, (errcode(MongoInvalidOptions),
 						errmsg("'viewOn' and 'idIndex' cannot both be specified")));
+	}
+
+	if (*hasSchemaValidationSpec)
+	{
+		spec->validationAction = spec->validationAction == NULL ? "error" :
+								 spec->validationAction;
+		spec->validationLevel = spec->validationLevel == NULL ? "strict" :
+								spec->validationLevel;
 	}
 
 	return spec;
@@ -584,6 +630,106 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 		}
 	}
 
+	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	{
+		return;
+	}
+
+	/* schema validator/validationAction/Level */
+	if ((collection->schemaValidator.validator != NULL && createDefinition->validator ==
+		 NULL) ||
+		(collection->schemaValidator.validator == NULL && createDefinition->validator !=
+		 NULL) ||
+		(collection->schemaValidator.validationAction != ValidationAction_Invalid &&
+		 createDefinition->validationAction == NULL) ||
+		(collection->schemaValidator.validationAction == ValidationAction_Invalid &&
+		 createDefinition->validationAction != NULL) ||
+		(collection->schemaValidator.validationLevel != ValidationLevel_Invalid &&
+		 createDefinition->validationLevel == NULL) ||
+		(collection->schemaValidator.validationLevel == ValidationLevel_Invalid &&
+		 createDefinition->validationLevel != NULL))
+	{
+		pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
+			&collection->schemaValidator);
+
+		/* schema validation not match - error */
+		ereport(ERROR, (errcode(MongoNamespaceExists),
+						errmsg("ns: %s.%s already exists with different options: %s",
+							   collection->name.databaseName,
+							   collection->name.collectionName,
+							   PgbsonToJsonForLogging(createSchemaValidatorInfo))));
+	}
+
+	if (collection->schemaValidator.validator != NULL && createDefinition->validator !=
+		NULL)
+	{
+		/* schema validator not match - error */
+		pgbson *validatorSpec = PgbsonInitFromDocumentBsonValue(
+			createDefinition->validator);
+		if (!PgbsonEquals(collection->schemaValidator.validator,
+						  validatorSpec))
+		{
+			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
+				&collection->schemaValidator);
+			ereport(ERROR, (errcode(MongoNamespaceExists),
+							errmsg("ns: %s.%s already exists with different options: %s",
+								   collection->name.databaseName,
+								   collection->name.collectionName,
+								   PgbsonToJsonForLogging(
+									   createSchemaValidatorInfo))));
+		}
+	}
+
+	if (collection->schemaValidator.validationLevel != ValidationLevel_Invalid &&
+		createDefinition->validationLevel != NULL)
+	{
+		ValidationLevels validationLevelSpec = strcmp(createDefinition->validationLevel,
+													  "off") == 0 ? ValidationLevel_Off :
+											   strcmp(createDefinition->validationLevel,
+													  "strict") == 0 ?
+											   ValidationLevel_Strict :
+											   strcmp(createDefinition->validationLevel,
+													  "moderate") == 0 ?
+											   ValidationLevel_Moderate :
+											   ValidationLevel_Invalid;
+
+		/* schema validationLevel not match - error */
+		if (collection->schemaValidator.validationLevel != validationLevelSpec)
+		{
+			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
+				&collection->schemaValidator);
+			ereport(ERROR, (errcode(MongoNamespaceExists),
+							errmsg("ns: %s.%s already exists with different options: %s",
+								   collection->name.databaseName,
+								   collection->name.collectionName,
+								   PgbsonToJsonForLogging(createSchemaValidatorInfo))));
+		}
+	}
+
+	if (collection->schemaValidator.validationAction != ValidationAction_Invalid &&
+		createDefinition->validationAction != NULL)
+	{
+		ValidationActions validationActionSpec = strcmp(
+			createDefinition->validationAction, "warn") == 0 ? ValidationAction_Warn :
+												 strcmp(
+			createDefinition->validationAction, "error") == 0 ?
+												 ValidationAction_Error :
+												 ValidationAction_Invalid;
+
+		/* schema validationAction not match - error */
+		if (collection->schemaValidator.validationAction != validationActionSpec)
+		{
+			pgbson *createSchemaValidatorInfo = CreateSchemaValidatorInfoDefinition(
+				&collection->schemaValidator);
+			ereport(ERROR, (errcode(MongoNamespaceExists),
+							errmsg("ns: %s.%s already exists with different options: %s",
+								   collection->name.databaseName,
+								   collection->name.collectionName,
+								   PgbsonToJsonForLogging(createSchemaValidatorInfo))));
+		}
+	}
+
+
 	/* They are both collections, or both views with the same options - it's valid. */
 }
 
@@ -608,6 +754,44 @@ CreateViewDefinition(const ViewDefinition *viewDefinition)
 	}
 
 	return PgbsonWriterGetPgbson(&viewDefinitionWriter);
+}
+
+
+pgbson *
+CreateSchemaValidatorInfoDefinition(const SchemaValidatorInfo *schemaValidatorInfo)
+{
+	pgbson_writer schemaValidatorWriter;
+	PgbsonWriterInit(&schemaValidatorWriter);
+
+	if (schemaValidatorInfo->validator != NULL)
+	{
+		PgbsonWriterAppendDocument(&schemaValidatorWriter, "validator", 9,
+								   schemaValidatorInfo->validator);
+	}
+	if (schemaValidatorInfo->validationLevel != ValidationLevel_Invalid)
+	{
+		char *validationLevel = schemaValidatorInfo->validationLevel ==
+								ValidationLevel_Off ? "off" :
+								schemaValidatorInfo->validationLevel ==
+								ValidationLevel_Strict ? "strict" :
+								schemaValidatorInfo->validationLevel ==
+								ValidationLevel_Moderate ? "moderate" :
+								"";
+		PgbsonWriterAppendUtf8(&schemaValidatorWriter, "validationLevel", 15,
+							   validationLevel);
+	}
+	if (schemaValidatorInfo->validationAction != ValidationAction_Invalid)
+	{
+		char *validationAction = schemaValidatorInfo->validationAction ==
+								 ValidationAction_Warn ? "warn" :
+								 schemaValidatorInfo->validationAction ==
+								 ValidationAction_Error ? "error" :
+								 "";
+		PgbsonWriterAppendUtf8(&schemaValidatorWriter, "validationAction", 16,
+							   validationAction);
+	}
+
+	return PgbsonWriterGetPgbson(&schemaValidatorWriter);
 }
 
 

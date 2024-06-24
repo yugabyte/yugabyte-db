@@ -38,6 +38,8 @@
 #include "utils/guc_utils.h"
 #include "metadata/metadata_guc.h"
 #include "api_hooks.h"
+#include "commands/parse_error.h"
+#include "utils/feature_counter.h"
 
 #define CREATE_COLLECTION_FUNC_NARGS 2
 
@@ -100,6 +102,7 @@ static const uint32_t MaxDatabaseCollectionLength = 235;
 static const StringView SystemPrefix = { .length = 7, .string = "system." };
 
 extern bool UseLocalExecutionShardQueries;
+extern int MaxSchemaValidatorSize;
 
 /* user-defined functions */
 PG_FUNCTION_INFO_V1(command_collection_table);
@@ -280,6 +283,12 @@ CopyMongoCollection(const MongoCollection *collection)
 									   CopyPgbsonIntoMemoryContext(
 		copiedCollection->viewDefinition,
 		CurrentMemoryContext);
+
+	copiedCollection->schemaValidator.validator =
+		!copiedCollection->schemaValidator.validator ? NULL :
+		CopyPgbsonIntoMemoryContext(
+			copiedCollection->schemaValidator.validator,
+			CurrentMemoryContext);
 
 	return copiedCollection;
 }
@@ -644,6 +653,14 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 			GetMongoDataCreationTimeVarAttrNumber(collection.relationId);
 	}
 
+	/* get schema validation meta*/
+	if (collection.schemaValidator.validator != NULL)
+	{
+		collection.schemaValidator.validator = CopyPgbsonIntoMemoryContext(
+			collection.schemaValidator.validator,
+			CollectionsCacheContext);
+	}
+
 	/* collection exists, so write a name -> collection cache entry */
 	entryByName =
 		hash_search(NameToCollectionHash, &qualifiedName, HASH_ENTER, &foundInCache);
@@ -813,6 +830,49 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 			}
 		}
 
+		/* Attr 7,8,9 are for Schema Validation */
+		if (tupleDescriptor->natts >= 9)
+		{
+			/* validator stored as pgbson */
+			Datum validatorDatum = heap_getattr(tuple, 7, tupleDescriptor, &isNull);
+			if (!isNull)
+			{
+				pgbson *validator = (pgbson *) DatumGetPointer(validatorDatum);
+
+				/* The pgbson returned by DatumGetPointer doesn't have 4B VARHDR, add it with cloning func */
+				validator = PgbsonCloneFromPgbson(validator);
+				collection->schemaValidator.validator =
+					CopyPgbsonIntoMemoryContext(validator, CurrentMemoryContext);
+			}
+
+			/* validation level stored as text */
+			Datum validationLevelDatum = heap_getattr(tuple, 8, tupleDescriptor, &isNull);
+			if (!isNull)
+			{
+				const char *validationLevelText = TextDatumGetCString(
+					validationLevelDatum);
+				collection->schemaValidator.validationLevel =
+					strcmp(validationLevelText, "off") == 0 ? ValidationLevel_Off :
+					strcmp(validationLevelText, "strict") == 0 ? ValidationLevel_Strict :
+					strcmp(validationLevelText, "moderate") == 0 ?
+					ValidationLevel_Moderate :
+					ValidationLevel_Invalid;
+			}
+
+			/* validation action stored as text */
+			Datum validationActionDatum = heap_getattr(tuple, 9, tupleDescriptor,
+													   &isNull);
+			if (!isNull)
+			{
+				const char *validationActionText = TextDatumGetCString(
+					validationActionDatum);
+				collection->schemaValidator.validationAction =
+					strcmp(validationActionText, "warn") == 0 ? ValidationAction_Warn :
+					strcmp(validationActionText, "error") == 0 ? ValidationAction_Error :
+					ValidationAction_Invalid;
+			}
+		}
+
 		/* table name is: documents_<collection id> */
 		snprintf(collection->tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
 				 collection->collectionId);
@@ -931,6 +991,47 @@ GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 				pgbson *viewDefinition = (pgbson *) DatumGetPointer(viewDatum);
 				collection->viewDefinition =
 					CopyPgbsonIntoMemoryContext(viewDefinition, outerContext);
+			}
+		}
+
+		/* Attr 7,8,9 are for Schema Validation */
+		if (tupleDescriptor->natts >= 9)
+		{
+			/* validator stored as pgbson */
+			Datum validatorDatum = heap_getattr(tuple, 7, tupleDescriptor, &isNull);
+			if (!isNull)
+			{
+				pgbson *validator = (pgbson *) DatumGetPointer(validatorDatum);
+				validator = PgbsonCloneFromPgbson(validator);
+				collection->schemaValidator.validator =
+					CopyPgbsonIntoMemoryContext(validator, outerContext);
+			}
+
+			/* validation level stored as text */
+			Datum validationLevelDatum = heap_getattr(tuple, 8, tupleDescriptor, &isNull);
+			if (!isNull)
+			{
+				const char *validationLevelText = TextDatumGetCString(
+					validationLevelDatum);
+				collection->schemaValidator.validationLevel =
+					strcmp(validationLevelText, "off") == 0 ? ValidationLevel_Off :
+					strcmp(validationLevelText, "strict") == 0 ? ValidationLevel_Strict :
+					strcmp(validationLevelText, "moderate") == 0 ?
+					ValidationLevel_Moderate :
+					ValidationLevel_Invalid;
+			}
+
+			/* validation action stored as text */
+			Datum validationActionDatum = heap_getattr(tuple, 9, tupleDescriptor,
+													   &isNull);
+			if (!isNull)
+			{
+				const char *validationActionText = TextDatumGetCString(
+					validationActionDatum);
+				collection->schemaValidator.validationAction =
+					strcmp(validationActionText, "warn") == 0 ? ValidationAction_Warn :
+					strcmp(validationActionText, "error") == 0 ? ValidationAction_Error :
+					ValidationAction_Invalid;
 			}
 		}
 
@@ -1614,4 +1715,193 @@ validate_dbname(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_VOID();
+}
+
+
+/*
+ * Updates the schema validation information of an existing collection
+ */
+void
+UpsertSchemaValidation(Datum databaseDatum,
+					   Datum collectionNameDatum,
+					   const bson_value_t *validator, char *validationLevel,
+					   char *validationAction)
+{
+	StringInfo query = makeStringInfo();
+	appendStringInfo(query, "UPDATE %s.collections set ", ApiCatalogSchemaName);
+
+	Oid argsTypes[5] = { TEXTOID, TEXTOID };
+	Datum argValues[5] = {
+		databaseDatum, collectionNameDatum
+	};
+
+	int nargs = 5;
+	char argNulls[5] = { ' ', ' ', 'n', 'n', 'n' };
+	bool isNullIgnore = false;
+
+	bool isFirst = true;
+	if (validator != NULL)
+	{
+		appendStringInfo(query, "validator = $3 ");
+		argNulls[2] = ' ';
+		argsTypes[2] = BsonTypeId();
+		argValues[2] = PointerGetDatum(PgbsonInitFromDocumentBsonValue(
+										   validator));
+		isFirst = false;
+	}
+	if (!isFirst && validationLevel != NULL)
+	{
+		appendStringInfo(query, ", ");
+	}
+	if (validationLevel != NULL)
+	{
+		appendStringInfo(query, "validation_level = $4 ");
+		argNulls[3] = ' ';
+		argsTypes[3] = TEXTOID;
+		argValues[3] = CStringGetTextDatum(validationLevel);
+		isFirst = false;
+	}
+	if (!isFirst && validationAction != NULL)
+	{
+		appendStringInfo(query, ", ");
+	}
+	if (validationAction != NULL)
+	{
+		appendStringInfo(query, "validation_action = $5 ");
+		argNulls[4] = ' ';
+		argsTypes[4] = TEXTOID;
+		argValues[4] = CStringGetTextDatum(validationAction);
+	}
+
+	appendStringInfo(query, "WHERE database_name = $1 AND collection_name = $2");
+
+	RunQueryWithCommutativeWrites(query->data, nargs, argsTypes, argValues, argNulls,
+								  SPI_OK_UPDATE, &isNullIgnore);
+}
+
+
+/*
+ * This function parses and checks the bson value for "validator" option
+ * given in "create"/"collMod" command
+ */
+const bson_value_t *
+ParseAndGetValidatorSpec(bson_iter_t *iter, const char *validatorName, bool *hasValue)
+{
+	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("validator not supported yet")));
+	}
+
+	/* "validator" values of "null" and "undefined" are valid */
+	if (BSON_ITER_HOLDS_UNDEFINED(iter) ||
+		BSON_ITER_HOLDS_NULL(iter))
+	{
+		return NULL;
+	}
+
+	EnsureTopLevelFieldType(validatorName, iter, BSON_TYPE_DOCUMENT);
+	const bson_value_t *validator = bson_iter_value(iter);
+
+	/* Large and overly complex validation rules can impact database performance, especially during write operations. */
+	if (validator->value.v_doc.data_len > (uint32_t) MaxSchemaValidatorSize)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"validator of size > %dKB is not supported. Contact Azure Support if you need to increase this limit.",
+							MaxSchemaValidatorSize / 1024),
+						errmsg(
+							"validator of size > %dKB is not supported. Contact Azure Support if you need to increase this limit.",
+							MaxSchemaValidatorSize / 1024)));
+	}
+
+	*hasValue = true;
+	return validator;
+}
+
+
+/*
+ * This function parses and checks the bson value for "validationAction" option
+ * given in "create"/"collMod" command
+ */
+char *
+ParseAndGetValidationActionOption(bson_iter_t *iter, const char *validationActionName,
+								  bool *hasValue)
+{
+	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("validator not supported yet")));
+	}
+
+	/* "validationAction" values of "null" and "undefined" are valid. */
+	if (BSON_ITER_HOLDS_UNDEFINED(iter) ||
+		BSON_ITER_HOLDS_NULL(iter))
+	{
+		return NULL;
+	}
+
+	EnsureTopLevelFieldType(validationActionName, iter, BSON_TYPE_UTF8);
+	const char *validationAction = bson_iter_utf8(iter, NULL);
+	if (strcmp(validationAction, "warn") == 0 ||
+		strcmp(validationAction, "error") == 0
+		)
+	{
+		*hasValue = true;
+		return pstrdup(validationAction);
+	}
+	else
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"Enumeration value '%s' for field '%s' is not a valid value.",
+							validationAction, validationActionName),
+						errhint(
+							"Enumeration value '%s' for field '%s' is not a valid value.",
+							validationAction, validationActionName)));
+	}
+}
+
+
+/*
+ * This function parses and checks the bson value for "validationLevel" option
+ * given in "create"/"collMod" command
+ */
+char *
+ParseAndGetValidationLevelOption(bson_iter_t *iter, const char *validationLevelName,
+								 bool *hasValue)
+{
+	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("validator not supported yet")));
+	}
+
+	/* "validationLevel" values of "null" and "undefined" are valid. */
+	if (BSON_ITER_HOLDS_UNDEFINED(iter) ||
+		BSON_ITER_HOLDS_NULL(iter))
+	{
+		return NULL;
+	}
+
+	EnsureTopLevelFieldType(validationLevelName, iter, BSON_TYPE_UTF8);
+	const char *validationLevel = bson_iter_utf8(iter, NULL);
+	if (strcmp(validationLevel, "off") == 0 ||
+		strcmp(validationLevel, "strict") == 0 ||
+		strcmp(validationLevel, "moderate") == 0
+		)
+	{
+		*hasValue = true;
+		return pstrdup(validationLevel);
+	}
+	else
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"Enumeration value '%s' for field '%s' is not a valid value.",
+							validationLevel, validationLevelName),
+						errhint(
+							"Enumeration value '%s' for field '%s' is not a valid value.",
+							validationLevel, validationLevelName)));
+	}
 }

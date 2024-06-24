@@ -56,6 +56,15 @@ typedef struct
 	/* The name of the collection to colocate this collection with */
 	bson_value_t colocationOptions;
 
+	/* The validator for the collection */
+	const bson_value_t *validator;
+
+	/* The validation level for the collection */
+	char *validationLevel;
+
+	/* The validation action for the collection */
+	char *validationAction;
+
 	/* TODO: Add more options when they are supported e.g.: Validators etc */
 } CollModOptions;
 
@@ -73,9 +82,12 @@ typedef enum CollModSpecFlags
 	/* Views update */
 	HAS_VIEW_OPTION = 1 << 5,
 
-	HAS_COLOCATION = 1 << 6
+	HAS_COLOCATION = 1 << 6,
 
-	                 /* TODO: More OPTIONS to follow */
+	/* validation update */
+	HAS_VALIDATION_OPTION = 1 << 7,
+
+	/* TODO: More OPTIONS to follow */
 } CollModSpecFlags;
 
 
@@ -146,7 +158,10 @@ command_coll_mod(PG_FUNCTION_ARGS)
 	CollModOptions collModOptions = {
 		.collectionName = NULL,
 		.index = { 0 },
-		.viewDefinition = { 0 }
+		.viewDefinition = { 0 },
+		.validator = NULL,
+		.validationLevel = NULL,
+		.validationAction = NULL
 	};
 	CollModSpecFlags specFlags = ParseSpecSetCollModOptions(collModSpec,
 															&collModOptions);
@@ -224,6 +239,15 @@ command_coll_mod(PG_FUNCTION_ARGS)
 		HandleColocation(collection, &collModOptions.colocationOptions);
 	}
 
+	if (specFlags & HAS_VALIDATION_OPTION)
+	{
+		UpsertSchemaValidation(databaseDatum, CStringGetTextDatum(
+								   collModOptions.collectionName),
+							   collModOptions.validator,
+							   collModOptions.validationLevel,
+							   collModOptions.validationAction);
+	}
+
 	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
 }
 
@@ -239,6 +263,11 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 	Assert(collModSpec != NULL && collModOptions != NULL);
 
 	CollModSpecFlags specFlags = HAS_NO_OPTIONS;
+	bool hasSchemaValidation = false;
+	collModOptions->validationAction = "error";
+	collModOptions->validationLevel = "strict";
+	bool hasReportedValidationFeature = false;
+
 	bson_iter_t iter;
 	PgbsonInitIterator(collModSpec, &iter);
 	while (bson_iter_next(&iter))
@@ -277,6 +306,41 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 			collModOptions->colocationOptions = *value;
 			specFlags |= HAS_COLOCATION;
 		}
+		else if (strcmp(key, "validator") == 0)
+		{
+			if (!hasReportedValidationFeature)
+			{
+				ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VALIDATION);
+				hasReportedValidationFeature = true;
+			}
+			collModOptions->validator = ParseAndGetValidatorSpec(&iter,
+																 "collMod.validator",
+																 &hasSchemaValidation);
+		}
+		else if (strcmp(key, "validationLevel") == 0)
+		{
+			if (!hasReportedValidationFeature)
+			{
+				ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VALIDATION);
+				hasReportedValidationFeature = true;
+			}
+			collModOptions->validationLevel = ParseAndGetValidationLevelOption(&iter,
+																			   "collMod.validationLevel",
+																			   &
+																			   hasSchemaValidation);
+		}
+		else if (strcmp(key, "validationAction") == 0)
+		{
+			if (!hasReportedValidationFeature)
+			{
+				ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VALIDATION);
+				hasReportedValidationFeature = true;
+			}
+			collModOptions->validationAction = ParseAndGetValidationActionOption(&iter,
+																				 "collMod.validationAction",
+																				 &
+																				 hasSchemaValidation);
+		}
 		else if (IsCommonSpecIgnoredField(key))
 		{
 			/*
@@ -298,6 +362,11 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 	{
 		ereport(ERROR, (errcode(MongoInvalidOptions),
 						errmsg("collmod.pipeline requires collmod.viewOn")));
+	}
+
+	if (hasSchemaValidation)
+	{
+		specFlags |= HAS_VALIDATION_OPTION;
 	}
 
 	return specFlags;

@@ -200,6 +200,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_COMMAND_COLLMOD] = "command_collmod",
 	[FEATURE_COMMAND_COLLSTATS] = "command_collstats",
 	[FEATURE_COMMAND_CREATE_COLLECTION] = "command_create_collection",
+	[FEATURE_COMMAND_CREATE_VALIDATION] = "command_create_validation",
 	[FEATURE_COMMAND_CREATE_VIEW] = "command_create_view",
 	[FEATURE_COMMAND_CURRENTOP] = "command_current_op",
 	[FEATURE_COMMAND_DBSTATS] = "command_dbstats",
@@ -211,6 +212,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 
 	[FEATURE_COMMAND_COLLMOD_VIEW] = "collMod_view",
 	[FEATURE_COMMAND_COLLMOD_COLOCATION] = "collMod_colocation",
+	[FEATURE_COMMAND_COLLMOD_VALIDATION] = "collMod_validation",
 
 	/* Feature Mapping region - Create index types */
 	[FEATURE_CREATE_INDEX_2D] = "create_index_2d",
