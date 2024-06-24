@@ -2,7 +2,7 @@
 title: ybm CLI metrics-exporter resource
 headerTitle: ybm metrics-exporter
 linkTitle: metrics-exporter
-description: YugabyteDB Managed CLI reference metrics-exporter resource.
+description: YugabyteDB Aeon CLI reference metrics-exporter resource.
 headcontent: Manage metrics export configuration
 menu:
   preview_yugabyte-cloud:

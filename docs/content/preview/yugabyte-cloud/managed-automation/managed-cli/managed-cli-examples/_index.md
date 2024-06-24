@@ -2,7 +2,7 @@
 title: ybm CLI examples
 headerTitle: Example workflows
 linkTitle: Example workflows
-description: YugabyteDB Managed ybm CLI examples.
+description: YugabyteDB Aeon ybm CLI examples.
 headcontent: Working examples for ybm CLI
 menu:
   preview_yugabyte-cloud:

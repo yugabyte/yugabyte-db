@@ -93,7 +93,7 @@ export const CurrentReplicationLag = ({
 
   const replicationLagMetricRequestParams = {
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
-    replicationUuid: xClusterConfigUuid
+    xClusterConfigUuid
   };
   const universeLagQuery = useQuery(
     metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),

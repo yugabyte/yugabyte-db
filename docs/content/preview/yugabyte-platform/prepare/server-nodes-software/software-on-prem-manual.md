@@ -43,7 +43,7 @@ In this mode, you manually install each prerequisite software component. Use thi
 
 Your responsibility now (to meet prerequisites) is to provide a VM with the following pre-installed:
 
-- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YBA uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
+- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YugabyteDB Anywhere (YBA) uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
 - [Additional software](../#additional-software)
 - [Additional software for airgapped](../#additional-software-for-airgapped-deployment)
 

@@ -2,7 +2,7 @@
 title: ybm CLI cluster network resource
 headerTitle: ybm cluster network
 linkTitle: cluster network
-description: YugabyteDB Managed CLI reference Cluster network resource.
+description: YugabyteDB Aeon CLI reference Cluster network resource.
 headcontent: Manage cluster network resources
 menu:
   preview_yugabyte-cloud:

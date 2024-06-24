@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-You can use YugabyteDB Anywhere to back up your YugabyteDB universe data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
+You can use YugabyteDB Anywhere (YBA) to back up your YugabyteDB universe data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
 
 Before you can back up universes, you need to [configure a storage location](../configure-backup-storage/) for your backups.
 

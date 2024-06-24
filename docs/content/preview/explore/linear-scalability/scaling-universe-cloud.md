@@ -1,8 +1,8 @@
 ---
-title: Scale out a universe in YugabyteDB Managed
+title: Scale out a universe in YugabyteDB Aeon
 headerTitle: Scale out a universe
 linkTitle: Scale out a universe
-description: Scaling a universe in YugabyteDB Managed.
+description: Scaling a universe in YugabyteDB Aeon.
 headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
   preview:
@@ -19,11 +19,11 @@ YugabyteDB can scale seamlessly while running a read-write workload. You can see
 
 ## Set up a cluster
 
-Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a multi-node cluster in YugabyteDB Managed, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
+Follow the [setup instructions](../../#set-up-yugabytedb-universe) to start a multi-node cluster in YugabyteDB Aeon, connect the [YB Workload Simulator](../../#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the cluster network diagram and Latency and Throughput charts for the running workload.
 
 ## Observe IOPS per node
 
-To view a table of per-node statistics for the cluster, in YugabyteDB Managed, do the following:
+To view a table of per-node statistics for the cluster, in YugabyteDB Aeon, do the following:
 
 1. On the **Clusters** page, select the cluster.
 
@@ -43,7 +43,7 @@ To view a table of per-node statistics for the cluster, in YugabyteDB Managed, d
 
 ## Add a node
 
-You can add a node to the cluster in YugabyteDB Managed as follows:
+You can add a node to the cluster in YugabyteDB Aeon as follows:
 
 1. On the cluster **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
@@ -73,7 +73,7 @@ Alternatively, you can navigate to the [simulation application UI](http://127.0.
 
 ## Remove a node
 
-You can remove a node from the cluster in YugabyteDB Managed as follows:
+You can remove a node from the cluster in YugabyteDB Aeon as follows:
 
 1. On the cluster **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 

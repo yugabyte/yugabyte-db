@@ -52,8 +52,8 @@ Result<VTableDataPtr> YQLSizeEstimatesVTable::RetrieveData(const QLReadRequestPB
     }
 
     // Get tablets for table.
-    auto tablets = table->GetTablets();
-    for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+    auto tablets = VERIFY_RESULT(table->GetTablets());
+    for (const auto& tablet : tablets) {
       TabletLocationsPB tablet_locations_pb;
       Status s = catalog_manager->GetTabletLocations(tablet->id(), &tablet_locations_pb);
       // Skip not-found tablets: they might not be running yet or have been deleted.

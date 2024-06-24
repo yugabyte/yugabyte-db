@@ -1840,7 +1840,7 @@ class MasterFullCompactionMonitoringTest : public FullCompactionMonitoringTest {
     FullCompactionMonitoringTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-    test_tablets_ = catalog_manager.GetTableInfo(workload_table_id_)->GetTablets();
+    test_tablets_ = ASSERT_RESULT(catalog_manager.GetTableInfo(workload_table_id_)->GetTablets());
   }
 
  protected:

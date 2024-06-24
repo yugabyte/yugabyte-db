@@ -2,6 +2,7 @@
 package com.yugabyte.yw.api.v2;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -13,8 +14,11 @@ import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.UniverseRollbackUpgradeReq;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeFinalize;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeFinalizeInfo;
+import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradePrecheckReq;
+import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradePrecheckResp;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeStart;
 import com.yugabyte.yba.v2.client.models.UniverseThirdPartySoftwareUpgradeStart;
 import com.yugabyte.yba.v2.client.models.YBATask;
@@ -23,6 +27,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.models.Customer;
@@ -31,6 +36,7 @@ import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import java.util.ArrayList;
 import java.util.UUID;
 import org.junit.Before;
@@ -229,5 +235,81 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     ThirdpartySoftwareUpgradeParams params = captor.getValue();
     assertTrue(4321L == params.sleepAfterTServerRestartMillis);
     assertTrue(1234L == params.sleepAfterMasterRestartMillis);
+  }
+
+  @Test
+  public void testV2RollbackNoParams() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.rollbackUpgrade(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    YBATask resp =
+        apiClient.rollbackSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), null);
+    ArgumentCaptor<RollbackUpgradeParams> captor =
+        ArgumentCaptor.forClass(RollbackUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .rollbackUpgrade(captor.capture(), eq(customer), eq(universe));
+    RollbackUpgradeParams params = captor.getValue();
+    assertEquals(RollbackUpgradeParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
+    assertEquals(taskUUID, resp.getTaskUuid());
+  }
+
+  @Test
+  public void testV2RollbackTServerRestartParams() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.rollbackUpgrade(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseRollbackUpgradeReq req = new UniverseRollbackUpgradeReq();
+    req.setSleepAfterTserverRestartMillis(10000);
+    req.setRollingUpgrade(false);
+    YBATask resp =
+        apiClient.rollbackSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    ArgumentCaptor<RollbackUpgradeParams> captor =
+        ArgumentCaptor.forClass(RollbackUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .rollbackUpgrade(captor.capture(), eq(customer), eq(universe));
+    RollbackUpgradeParams params = captor.getValue();
+    assertTrue(10000 == params.sleepAfterTServerRestartMillis);
+    assertEquals(RollbackUpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE, params.upgradeOption);
+    assertEquals(taskUUID, resp.getTaskUuid());
+  }
+
+  @Test
+  public void testV2PrecheckBadRelease() throws ApiException {
+    UniverseSoftwareUpgradePrecheckReq req = new UniverseSoftwareUpgradePrecheckReq();
+    req.setYbSoftwareVersion("1.2.3.4-b76543");
+    try {
+      apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    } catch (ApiException e) {
+      assertEquals(400, e.getCode());
+      assertTrue(e.getResponseBody().contains("Invalid Release Version: 1.2.3.4-b76543"));
+    }
+  }
+
+  @Test
+  public void testV2PrecheckFinalize() throws ApiException {
+    SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
+    response.setFinalizeRequired(true);
+    when(mockUpgradeUniverseHandler.softwareUpgradeInfo(
+            eq(customer.getUuid()), eq(universe.getUniverseUUID()), any()))
+        .thenReturn(response);
+    UniverseSoftwareUpgradePrecheckReq req = new UniverseSoftwareUpgradePrecheckReq();
+    req.setYbSoftwareVersion(upgradeRelease.getVersion());
+    UniverseSoftwareUpgradePrecheckResp resp =
+        apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    assertTrue(resp.getFinalizeRequired());
+  }
+
+  @Test
+  public void testV2PrecheckNoFinalize() throws ApiException {
+    SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
+    response.setFinalizeRequired(false);
+    when(mockUpgradeUniverseHandler.softwareUpgradeInfo(
+            eq(customer.getUuid()), eq(universe.getUniverseUUID()), any()))
+        .thenReturn(response);
+    UniverseSoftwareUpgradePrecheckReq req = new UniverseSoftwareUpgradePrecheckReq();
+    req.setYbSoftwareVersion(upgradeRelease.getVersion());
+    UniverseSoftwareUpgradePrecheckResp resp =
+        apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    assertFalse(resp.getFinalizeRequired());
   }
 }

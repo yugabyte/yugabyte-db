@@ -547,6 +547,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--server_port=" + ybControllerPort,
         "--yb_master_webserver_port=" + masterWebPort,
         "--yb_tserver_webserver_port=" + tserverWebPort,
+        "--v=1",
         "--logtostderr");
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.YBCONTROLLER,

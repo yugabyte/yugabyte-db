@@ -513,8 +513,7 @@ cleanV2ServerStubs := {
   ybLog("Cleaning Openapi v2 server stubs...")
   Process("rm -rf openapi", target.value) !
   val openapiDir = baseDirectory.value / "src/main/resources/openapi"
-  Process("rm -f paths/_index.yaml", openapiDir) #|
-      Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
+  Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
 }
 
 lazy val cleanClients = taskKey[Int]("Clean generated clients")
@@ -925,7 +924,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.89-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.90-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 

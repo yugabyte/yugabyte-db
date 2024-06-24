@@ -134,7 +134,7 @@ string ReplicaMapToString(const TabletReplicaMap& replicas) {
 // ============================================================================
 //  Class PickLeaderReplica.
 // ============================================================================
-PickLeaderReplica::PickLeaderReplica(const scoped_refptr<TabletInfo>& tablet)
+PickLeaderReplica::PickLeaderReplica(const TabletInfoPtr& tablet)
     : tablet_(tablet) {
 }
 
@@ -673,7 +673,7 @@ void RetryingTSRpcTaskWithTable::UnregisterAsyncTaskCallbackInternal() {
 //  Class AsyncTabletLeaderTask.
 // ============================================================================
 AsyncTabletLeaderTask::AsyncTabletLeaderTask(
-    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     LeaderEpoch epoch)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
@@ -681,7 +681,7 @@ AsyncTabletLeaderTask::AsyncTabletLeaderTask(
       tablet_(tablet) {}
 
 AsyncTabletLeaderTask::AsyncTabletLeaderTask(
-    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const scoped_refptr<TableInfo>& table, LeaderEpoch epoch)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), table,
@@ -709,7 +709,7 @@ TabletServerId AsyncTabletLeaderTask::permanent_uuid() const {
 AsyncCreateReplica::AsyncCreateReplica(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
-                                       const scoped_refptr<TabletInfo>& tablet,
+                                       const TabletInfoPtr& tablet,
                                        const std::vector<SnapshotScheduleId>& snapshot_schedules,
                                        LeaderEpoch epoch,
                                        CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers)
@@ -882,7 +882,7 @@ bool AsyncTserverTabletHealthTask::SendRequest(int attempt) {
 AsyncStartElection::AsyncStartElection(Master *master,
                                        ThreadPool *callback_pool,
                                        const string& permanent_uuid,
-                                       const scoped_refptr<TabletInfo>& tablet,
+                                       const TabletInfoPtr& tablet,
                                        bool initial_election,
                                        LeaderEpoch epoch)
   : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid,
@@ -929,7 +929,7 @@ bool AsyncStartElection::SendRequest(int attempt) {
 // ============================================================================
 AsyncPrepareDeleteTransactionTablet::AsyncPrepareDeleteTransactionTablet(
     Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
-    const scoped_refptr<TableInfo>& table, const scoped_refptr<TabletInfo>& tablet,
+    const scoped_refptr<TableInfo>& table, const TabletInfoPtr& tablet,
     const std::string& msg, HideOnly hide_only, LeaderEpoch epoch)
     : RetrySpecificTSRpcTaskWithTable(master, callback_pool, permanent_uuid, table,
                              std::move(epoch), /* async_task_throttler */ nullptr),
@@ -1312,7 +1312,7 @@ bool AsyncTruncate::SendRequest(int attempt) {
 //  Class CommonInfoForRaftTask.
 // ============================================================================
 CommonInfoForRaftTask::CommonInfoForRaftTask(
-    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const consensus::ConsensusStatePB& cstate, const string& change_config_ts_uuid,
     LeaderEpoch epoch)
     : RetryingTSRpcTaskWithTable(
@@ -1578,7 +1578,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
 //  Class AsyncAddTableToTablet.
 // ============================================================================
 AsyncAddTableToTablet::AsyncAddTableToTablet(
-    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const scoped_refptr<TableInfo>& table, LeaderEpoch epoch)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
@@ -1628,7 +1628,16 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     return;
   }
 
-  DCHECK(table_->AreAllTabletsRunning());
+  auto tablets_running_result = table_->AreAllTabletsRunning();
+  if (!tablets_running_result.ok()) {
+    LOG(WARNING) << Format(
+        "Error when handling response for AddTableToTablet RPC, cannot determine if all tablets "
+        "are running for table $0",
+        table_->id());
+    TransitionToFailedState(MonitoredTaskState::kRunning, tablets_running_result.status());
+    return;
+  }
+  DCHECK(*tablets_running_result);
   VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
   Status s = master_->catalog_manager()->PromoteTableToRunningState(table_, epoch());
   if (!s.ok()) {
@@ -1656,7 +1665,7 @@ bool AsyncAddTableToTablet::SendRequest(int attempt) {
 //  Class AsyncRemoveTableFromTablet.
 // ============================================================================
 AsyncRemoveTableFromTablet::AsyncRemoveTableFromTablet(
-    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const scoped_refptr<TableInfo>& table, LeaderEpoch epoch)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
@@ -1718,7 +1727,7 @@ bool ShouldRetrySplitTabletRPC(const Status& s) {
 //  Class AsyncGetTabletSplitKey.
 // ============================================================================
 AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
-    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const ManualSplit is_manual_split, LeaderEpoch epoch, DataCallbackType result_cb)
   : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
@@ -1780,7 +1789,7 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 //  Class AsyncSplitTablet.
 // ============================================================================
 AsyncSplitTablet::AsyncSplitTablet(
-    Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
+    Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key,
                                    LeaderEpoch epoch)

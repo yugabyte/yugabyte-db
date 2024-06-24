@@ -60,9 +60,10 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
   const isTaskInProgress =
     universePendingTask?.type === MODIFY_AUDITLOG_TASK_TYPE &&
     universePendingTask?.status === 'Running';
-  const auditLogInfo = _.isEmpty(universePendingTask)
-    ? _.get(primaryCluster, 'userIntent.auditLogConfig', undefined)
-    : _.get(universePendingTask, 'details.auditLogConfig', undefined);
+  const auditLogInfo =
+    !_.isEmpty(universePendingTask) && universePendingTask?.type === MODIFY_AUDITLOG_TASK_TYPE
+      ? _.get(universePendingTask, 'details.auditLogConfig', undefined)
+      : _.get(primaryCluster, 'userIntent.auditLogConfig', undefined);
   const isAuditLogEnabled = auditLogInfo?.ysqlAuditConfig?.enabled;
   const isExportEnabled = auditLogInfo?.exportActive;
   const exporterID = _.get(auditLogInfo, 'universeLogsExporterConfig[0].exporterUuid');

@@ -174,6 +174,14 @@ public class Release extends Model {
     return release;
   }
 
+  public static Release getByVersionOrBadRequest(String version) {
+    Release release = getByVersion(version);
+    if (release == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Release Version: " + version);
+    }
+    return release;
+  }
+
   public static Release getByVersion(String version) {
     // We are currently only allowing 1 Release of a given version, even with a tag.
     // If that changes, we should go back to using the bellow line instead of the query statement.

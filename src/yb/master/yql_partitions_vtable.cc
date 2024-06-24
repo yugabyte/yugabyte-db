@@ -147,7 +147,7 @@ Result<VTableDataPtr> YQLPartitionsVTable::GenerateAndCacheData() const {
       continue;
     }
 
-    TabletInfos tablet_infos = table->GetTablets();
+    TabletInfos tablet_infos = VERIFY_RESULT(table->GetTablets());
     RETURN_NOT_OK(ProcessTablets(tablet_infos));
   }
 
@@ -201,7 +201,7 @@ Status YQLPartitionsVTable::ProcessTablets(const std::vector<TabletInfoPtr>& tab
 }
 
 Result<YQLPartitionsVTable::TabletData> YQLPartitionsVTable::GetTabletData(
-    const scoped_refptr<TabletInfo>& tablet,
+    const TabletInfoPtr& tablet,
     DnsLookupMap* dns_lookups,
     google::protobuf::Arena* arena) const {
   // Resolve namespace name - namespace name field was introduced in 2.3.0, therefore tables created
@@ -297,8 +297,8 @@ bool HasRelevantPbChanges(const SysTabletsEntryPB& old_pb, const SysTabletsEntry
   return false;
 }
 
-std::vector<TabletInfoPtr> YQLPartitionsVTable::FilterRelevantTablets(
-    const std::vector<TabletInfo*>& mutated_tablets) const {
+Result<std::vector<TabletInfoPtr>> YQLPartitionsVTable::FilterRelevantTablets(
+    const std::vector<TabletInfoPtr>& mutated_tablets) const {
   std::vector<TabletInfoPtr> tablets;
   if (!ShouldGeneratePartitionsVTableOnChanges()) {
     return tablets;

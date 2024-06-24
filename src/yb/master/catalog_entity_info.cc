@@ -530,26 +530,27 @@ bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& pb_txn_id, bool txn
          (l->is_being_deleted_by_ysql_ddl_txn() && txn_success);
 }
 
-void TableInfo::AddTablet(const TabletInfoPtr& tablet) {
+Status TableInfo::AddTablet(const TabletInfoPtr& tablet) {
   std::lock_guard l(lock_);
-  AddTabletUnlocked(tablet);
+  return AddTabletUnlocked(tablet);
 }
 
-void TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet) {
+Status TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet) {
   std::lock_guard l(lock_);
   auto it = partitions_.find(old_tablet->metadata().dirty().pb.partition().partition_key_start());
-  if (it != partitions_.end() && it->second == old_tablet.get()) {
+  if (it != partitions_.end() &&
+      VERIFY_RESULT(PromoteTabletPointer(it->second)) == old_tablet) {
     partitions_.erase(it);
   }
-  AddTabletUnlocked(new_tablet);
+  return AddTabletUnlocked(new_tablet);
 }
 
-
-void TableInfo::AddTablets(const TabletInfos& tablets) {
+Status TableInfo::AddTablets(const TabletInfos& tablets) {
   std::lock_guard l(lock_);
   for (const auto& tablet : tablets) {
-    AddTabletUnlocked(tablet);
+    RETURN_NOT_OK(AddTabletUnlocked(tablet));
   }
+  return Status::OK();
 }
 
 void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
@@ -563,8 +564,8 @@ void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
 Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatusTable() const {
   std::lock_guard l(lock_);
 
-  for (const auto& entry : partitions_) {
-    const auto& tablet = entry.second;
+  for (const auto& [_, tablet_weak_ptr] : partitions_) {
+    const auto& tablet = VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
     const auto& metadata = tablet->LockForRead();
     dockv::Partition partition;
     dockv::Partition::FromPB(metadata->pb.partition(), &partition);
@@ -591,80 +592,93 @@ void TableInfo::AddStatusTabletViaSplitPartition(
   partition.ToPB(old_partition);
   old_lock.Commit();
 
-  tablets_.emplace(new_tablet->id(), new_tablet.get());
+  tablets_.emplace(new_tablet->id(), new_tablet);
 
   if (!new_dirty.is_hidden()) {
     const auto& new_partition_key = new_dirty.pb.partition().partition_key_end();
-    partitions_.emplace(new_partition_key, new_tablet.get());
+    partitions_.emplace(new_partition_key, new_tablet);
   }
 }
 
-void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
+Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
   const auto& dirty = tablet->metadata().dirty();
   if (dirty.is_deleted()) {
-    return;
+    // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
+    // To avoid changing existing behaviour we return OK here.
+    // But silently passing over this case could cause bugs.
+    return Status::OK();
   }
   const auto& tablet_meta = dirty.pb;
-  tablets_.emplace(tablet->id(), tablet.get());
+  tablets_.emplace(tablet->id(), tablet);
 
   if (dirty.is_hidden()) {
-    return;
+    // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
+    // To avoid changing existing behaviour we return OK here.
+    // But silently passing over this case could cause bugs.
+    return Status::OK();
   }
 
   const auto& partition_key_start = tablet_meta.partition().partition_key_start();
-  auto p = partitions_.emplace(partition_key_start, tablet.get());
-  if (p.second) {
-    return;
+  auto [it, inserted] = partitions_.emplace(partition_key_start, tablet);
+  if (inserted) {
+    return Status::OK();
   }
 
-  auto it = p.first;
-  auto old_tablet_lock = it->second->LockForRead();
+  auto old_tablet = VERIFY_RESULT(PromoteTabletPointer(it->second));
+  auto old_tablet_lock = old_tablet->LockForRead();
   const auto old_split_depth = old_tablet_lock->pb.split_depth();
   if (tablet_meta.split_depth() > old_split_depth || old_tablet_lock->is_deleted()) {
-    VLOG(1) << "Replacing tablet " << it->second->tablet_id()
+    VLOG(1) << "Replacing tablet " << old_tablet->tablet_id()
             << " (split_depth = " << old_split_depth << ")"
             << " with tablet " << tablet->tablet_id()
             << " (split_depth = " << tablet_meta.split_depth() << ")";
-    it->second = tablet.get();
-    return;
+    it->second = tablet;
+    return Status::OK();
   }
 
-  LOG_IF(DFATAL, tablet_meta.split_depth() == old_split_depth)
-      << "Two tablets with the same partition key start and split depth: "
-      << tablet_meta.ShortDebugString() << " and " << old_tablet_lock->pb.ShortDebugString();
-
+  if (tablet_meta.split_depth() == old_split_depth) {
+    std::string msg = Format(
+        "Two tablets with the same partition key start and split depth: $0 and $1",
+        tablet_meta.ShortDebugString(), old_tablet_lock->pb.ShortDebugString());
+    LOG(DFATAL) << msg;
+    return STATUS(IllegalState, msg);
+  }
+  return Status::OK();
   // TODO: can we assert that the replaced tablet is not in Running state?
   // May be a little tricky since we don't know whether to look at its committed or
   // uncommitted state.
 }
 
-bool TableInfo::RemoveTablet(const TabletId& tablet_id, DeactivateOnly deactivate_only) {
+Result<bool> TableInfo::RemoveTablet(const TabletId& tablet_id, DeactivateOnly deactivate_only) {
   std::lock_guard l(lock_);
   return RemoveTabletUnlocked(tablet_id, deactivate_only);
 }
 
-bool TableInfo::RemoveTablets(const TabletInfos& tablets, DeactivateOnly deactivate_only) {
+Result<bool> TableInfo::RemoveTablets(const TabletInfos& tablets, DeactivateOnly deactivate_only) {
   std::lock_guard l(lock_);
   bool all_were_removed = true;
   for (const auto& tablet : tablets) {
-    if (!RemoveTabletUnlocked(tablet->id(), deactivate_only)) {
+    if (!VERIFY_RESULT(RemoveTabletUnlocked(tablet->id(), deactivate_only))) {
       all_were_removed = false;
     }
   }
   return all_were_removed;
 }
 
-bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, DeactivateOnly deactivate_only) {
+Result<bool> TableInfo::RemoveTabletUnlocked(
+    const TabletId& tablet_id, DeactivateOnly deactivate_only) {
   auto it = tablets_.find(tablet_id);
-  if (it == tablets_.end()) {
-    return false;
-  }
+  if (it == tablets_.end()) return false;
+  auto tablet = VERIFY_RESULT(PromoteTabletPointer(it->second));
   bool result = false;
   auto partitions_it = partitions_.find(
-      it->second->metadata().dirty().pb.partition().partition_key_start());
-  if (partitions_it != partitions_.end() && partitions_it->second == it->second) {
-    partitions_.erase(partitions_it);
-    result = true;
+      tablet->metadata().dirty().pb.partition().partition_key_start());
+  if (partitions_it != partitions_.end()) {
+    auto partitions_tablet = VERIFY_RESULT(PromoteTabletPointer(partitions_it->second));
+    if (partitions_tablet == tablet) {
+      partitions_.erase(partitions_it);
+      result = true;
+    }
   }
   if (!deactivate_only) {
     tablets_.erase(it);
@@ -672,7 +686,7 @@ bool TableInfo::RemoveTabletUnlocked(const TabletId& tablet_id, DeactivateOnly d
   return result;
 }
 
-TabletInfos TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req) const {
+Result<TabletInfos> TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req) const {
   if (req->has_include_inactive() && req->include_inactive()) {
     return GetInactiveTabletsInRange(
         req->partition_key_start(), req->partition_key_end(),
@@ -684,90 +698,82 @@ TabletInfos TableInfo::GetTabletsInRange(const GetTableLocationsRequestPB* req) 
   }
 }
 
-TabletInfos TableInfo::GetTabletsInRange(
+Result<TabletInfos> TableInfo::GetTabletsInRange(
     const std::string& partition_key_start, const std::string& partition_key_end,
-    const int32_t max_returned_locations) const {
+    const size_t max_returned_locations) const {
   TabletInfos ret;
   SharedLock<decltype(lock_)> l(lock_);
-  decltype(partitions_)::const_iterator it, it_end;
-  if (partition_key_start.empty()) {
-    it = partitions_.begin();
-  } else {
-    it = partitions_.upper_bound(partition_key_start);
-    if (it != partitions_.begin()) {
-      --it;
-    }
+  auto it = partition_key_start.empty() ? partitions_.begin()
+                                        : partitions_.upper_bound(partition_key_start);
+  if (it != partitions_.begin()) {
+    --it;
   }
-  if (partition_key_end.empty()) {
-    it_end = partitions_.end();
-  } else {
-    it_end = partitions_.upper_bound(partition_key_end);
-  }
-  ret.reserve(
-      std::min(static_cast<size_t>(std::max(max_returned_locations, 0)), partitions_.size()));
-  int32_t count = 0;
-  for (; it != it_end && count < max_returned_locations; ++it) {
-    ret.push_back(it->second);
-    count++;
+  auto it_end =
+      partition_key_end.empty() ? partitions_.end() : partitions_.upper_bound(partition_key_end);
+  ret.reserve(std::min(max_returned_locations, partitions_.size()));
+  for (; it != it_end && ret.size() < max_returned_locations; ++it) {
+    ret.push_back(VERIFY_RESULT(PromoteTabletPointer(it->second)));
   }
   return ret;
 }
 
-TabletInfos TableInfo::GetInactiveTabletsInRange(
+Result<TabletInfos> TableInfo::GetInactiveTabletsInRange(
     const std::string& partition_key_start, const std::string& partition_key_end,
-    const int32_t max_returned_locations) const {
+    const size_t max_returned_locations) const {
   TabletInfos ret;
   SharedLock<decltype(lock_)> l(lock_);
-  int32_t count = 0;
-  ret.reserve(std::min(static_cast<size_t>(std::max(max_returned_locations, 0)), tablets_.size()));
-  for (const auto& p : tablets_) {
-    if (count >= max_returned_locations) {
+  ret.reserve(std::min(max_returned_locations, tablets_.size()));
+  for (const auto& [_, weak_tablet_ptr] : tablets_) {
+    if (ret.size() >= max_returned_locations) {
       break;
     }
+    auto tablet = VERIFY_RESULT(PromoteTabletPointer(weak_tablet_ptr));
     if (!partition_key_start.empty() &&
-        p.second->metadata().dirty().pb.partition().partition_key_start() < partition_key_start) {
+        tablet->metadata().dirty().pb.partition().partition_key_start() < partition_key_start) {
       continue;
     }
     if (!partition_key_end.empty() &&
-        p.second->metadata().dirty().pb.partition().partition_key_start() > partition_key_end) {
+        tablet->metadata().dirty().pb.partition().partition_key_start() > partition_key_end) {
       continue;
     }
-    ret.push_back(p.second);
-    count++;
+    ret.push_back(std::move(tablet));
   }
   return ret;
 }
 
-bool TableInfo::IsAlterInProgress(uint32_t version) const {
+Result<bool> TableInfo::IsAlterInProgress(uint32_t version) const {
   SharedLock<decltype(lock_)> l(lock_);
-  for (const auto& e : partitions_) {
-    if (e.second->reported_schema_version(table_id_) < version) {
+  for (const auto& [_, tablet_weak_ptr] : partitions_) {
+    auto tablet = VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
+    if (tablet->reported_schema_version(table_id_) < version) {
       VLOG_WITH_PREFIX_AND_FUNC(3)
           << "ALTER in progress due to tablet "
-          << e.second->ToString() << " because reported schema "
-          << e.second->reported_schema_version(table_id_) << " < expected " << version;
+          << tablet->ToString() << " because reported schema "
+          << tablet->reported_schema_version(table_id_) << " < expected " << version;
       return true;
     }
   }
   return false;
 }
 
-bool TableInfo::AreAllTabletsHidden() const {
+Result<bool> TableInfo::AreAllTabletsHidden() const {
   SharedLock<decltype(lock_)> l(lock_);
-  for (const auto& e : tablets_) {
-    if (!e.second->LockForRead()->is_hidden()) {
-      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not hidden tablet: " << e.second->ToString();
+  for (const auto& [_, tablet_weak_ptr] : tablets_) {
+    auto tablet = VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
+    if (!tablet->LockForRead()->is_hidden()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not hidden tablet: " << tablet->ToString();
       return false;
     }
   }
   return true;
 }
 
-bool TableInfo::AreAllTabletsDeleted() const {
+Result<bool> TableInfo::AreAllTabletsDeleted() const {
   SharedLock<decltype(lock_)> l(lock_);
-  for (const auto& e : tablets_) {
-    if (!e.second->LockForRead()->is_deleted()) {
-      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not deleted tablet: " << e.second->ToString();
+  for (const auto& [_, tablet_weak_ptr] : tablets_) {
+    auto tablet = VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
+    if (!tablet->LockForRead()->is_deleted()) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Not deleted tablet: " << tablet->ToString();
       return false;
     }
   }
@@ -777,7 +783,7 @@ bool TableInfo::AreAllTabletsDeleted() const {
 Status TableInfo::CheckAllActiveTabletsRunning() const {
   SharedLock<decltype(lock_)> l(lock_);
   for (const auto& tablet_it : partitions_) {
-    const auto& tablet = tablet_it.second;
+    const auto& tablet = VERIFY_RESULT(PromoteTabletPointer(tablet_it.second));
     if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
       return STATUS_EC_FORMAT(IllegalState,
                               MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
@@ -793,9 +799,10 @@ bool TableInfo::IsCreateInProgress() const {
   return l->pb.state() == SysTablesEntryPB::PREPARING;
 }
 
-bool TableInfo::AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets) {
+Result<bool> TableInfo::AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets) {
   SharedLock l(lock_);
-  for (const auto& [key, tablet_info] : partitions_) {
+  for (const auto& [_, weak_tablet_info] : partitions_) {
+    auto tablet_info = VERIFY_RESULT(PromoteTabletPointer(weak_tablet_info.lock()));
     if (new_running_tablets.contains(tablet_info->id())) {
       continue;
     }
@@ -855,48 +862,55 @@ bool TableInfo::HasPartitions(const std::vector<PartitionKey> other) const {
   return true;
 }
 
-TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
+Result<TabletInfos> TableInfo::GetTablets(IncludeInactive include_inactive) const {
   TabletInfos result;
   SharedLock<decltype(lock_)> l(lock_);
   if (include_inactive) {
     result.reserve(tablets_.size());
-    for (const auto& p : tablets_) {
-      result.push_back(p.second);
+    for (const auto& [_, tablet_weak_ptr] : tablets_) {
+      result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
     }
   } else {
     result.reserve(partitions_.size());
-    for (const auto& p : partitions_) {
-      result.push_back(p.second);
+    for (const auto& [_, tablet_weak_ptr] : partitions_) {
+      result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
     }
   }
   return result;
 }
 
-bool TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) const {
+size_t TableInfo::TabletCount(IncludeInactive include_inactive) const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return include_inactive ? tablets_.size() : partitions_.size();
+}
+
+Result<bool> TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) const {
   SharedLock<decltype(lock_)> l(lock_);
   DCHECK(!colocated());
   std::unordered_set<TabletId> partitions_tablets;
-  for (const auto& p : partitions_) {
-    auto tablet_lock = p.second->LockForRead();
+  for (const auto& [_, tablet_weak_ptr] : partitions_) {
+    auto tablet = VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
+    auto tablet_lock = tablet->LockForRead();
     if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
-      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Child tablet " << p.second->tablet_id()
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Child tablet " << tablet->tablet_id()
                                    << " belonging to table " << id() << " is not yet running";
       return true;
     }
     if (wait_for_parent_deletion) {
-      partitions_tablets.insert(p.second->tablet_id());
+      partitions_tablets.insert(tablet->tablet_id());
     }
   }
   if (!wait_for_parent_deletion) {
     return false;
   }
 
-  for (const auto& p : tablets_) {
+  for (const auto& [_, tablet_weak_ptr] : tablets_) {
+    auto tablet = VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
     // If any parents have not been deleted yet, the split is not yet complete.
-    if (!partitions_tablets.contains(p.second->tablet_id())) {
-      auto tablet_lock = p.second->LockForRead();
+    if (!partitions_tablets.contains(tablet->tablet_id())) {
+      auto tablet_lock = tablet->LockForRead();
       if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
-        YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Parent tablet " << p.second->tablet_id()
+        YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Parent tablet " << tablet->tablet_id()
                                      << " belonging to table " << id()
                                      << " is not yet deleted or hidden";
         return true;
@@ -914,7 +928,7 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
   }
   SharedLock<decltype(lock_)> l(lock_);
   if (!tablets_.empty()) {
-    return tablets_.begin()->second;
+    return tablets_.begin()->second.lock();
   }
   LOG(INFO) << "Colocated Tablet not found for table " << name();
   return nullptr;
@@ -1055,6 +1069,17 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   return txns;
 }
 
+Result<TabletInfoPtr> TableInfo::PromoteTabletPointer(const std::weak_ptr<TabletInfo>& tablet) {
+  if (auto p = tablet.lock()) {
+    return p;
+  } else {
+    return STATUS(
+        IllegalState,
+        "Tablet objects backing this table have been freed. This table object is possibly stale, "
+        "from a previous load of the sys catalog.");
+  }
+}
+
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
   VLOG_WITH_FUNC(2) << "Setting state for " << name() << " to "
                     << SysTablesEntryPB::State_Name(state) << " reason: " << msg;
@@ -1100,46 +1125,6 @@ bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info) {
     return true;
   }
   return false;
-}
-
-// ================================================================================================
-// DeletedTableInfo
-// ================================================================================================
-
-DeletedTableInfo::DeletedTableInfo(const TableInfo* table) : table_id_(table->id()) {
-  auto tablets = table->GetTablets();
-
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto tablet_lock = tablet->LockForRead();
-    auto replica_locations = tablet->GetReplicaLocations();
-
-    for (const TabletReplicaMap::value_type& r : *replica_locations) {
-      tablet_set_.insert(TabletSet::value_type(
-          r.second.ts_desc->permanent_uuid(), tablet->id()));
-    }
-  }
-}
-
-std::size_t DeletedTableInfo::NumTablets() const {
-  std::lock_guard l(lock_);
-  return tablet_set_.size();
-}
-
-bool DeletedTableInfo::HasTablets() const {
-  std::lock_guard l(lock_);
-  return !tablet_set_.empty();
-}
-
-void DeletedTableInfo::DeleteTablet(const TabletKey& key) {
-  std::lock_guard l(lock_);
-  tablet_set_.erase(key);
-}
-
-void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
-  std::lock_guard l(lock_);
-  for (const TabletKey& key : tablet_set_) {
-    tablet_map->insert(DeletedTabletMap::value_type(key, this));
-  }
 }
 
 // ================================================================================================

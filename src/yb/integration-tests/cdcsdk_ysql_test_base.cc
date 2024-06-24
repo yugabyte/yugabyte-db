@@ -3855,6 +3855,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       case RowMessage::COMMIT:
         record_count[7]++;
         break;
+      case RowMessage::SAFEPOINT:
+        break;
       default:
         ASSERT_FALSE(true);
         break;

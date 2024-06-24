@@ -33,7 +33,7 @@ type: docs
 
 </ul>
 
-Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere using [YBA Installer](../../../install-yugabyte-platform/install-software/installer/).
+Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere (YBA) using [YBA Installer](../../../install-yugabyte-platform/install-software/installer/).
 
 If you have problems while troubleshooting, contact {{% support-platform %}}.
 

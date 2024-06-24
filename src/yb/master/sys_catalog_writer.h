@@ -101,6 +101,19 @@ class SysCatalogWriter {
     return MutateHelper<require_check>(item.get(), op_type, skip_if_clean);
   }
 
+  template <bool require_check, class Item>
+  Status MutateHelper(
+      const std::shared_ptr<Item>& item, QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
+    return MutateHelper<require_check>(item.get(), op_type, skip_if_clean);
+  }
+
+  template <bool require_check, class Item>
+  Status MutateHelper(
+      const std::reference_wrapper<Item> item,
+      QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
+    return MutateHelper<require_check>(item.get(), op_type, skip_if_clean);
+  }
+
   template <bool require_check, class Items>
   typename std::enable_if<IsCollection<Items>::value, Status>::type
   MutateHelper(

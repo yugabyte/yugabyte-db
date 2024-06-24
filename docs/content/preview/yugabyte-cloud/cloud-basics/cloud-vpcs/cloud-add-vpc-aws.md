@@ -32,9 +32,9 @@ type: docs
 
 </ul>
 
-YugabyteDB Managed supports peering virtual private cloud (VPC) networks on AWS and GCP.
+YugabyteDB Aeon supports peering virtual private cloud (VPC) networks on AWS and GCP.
 
-Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
+Using YugabyteDB Aeon, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
 
 To peer VPCs that reside in AWS, you need to complete the following tasks:
 
@@ -47,7 +47,7 @@ To peer VPCs that reside in AWS, you need to complete the following tasks:
 | **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list)** | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
-With the exception of accepting the peering request and adding the route table entry in AWS, these tasks are performed in YugabyteDB Managed.
+With the exception of accepting the peering request and adding the route table entry in AWS, these tasks are performed in YugabyteDB Aeon.
 
 For information on VPC peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html) in the AWS documentation.
 
@@ -76,11 +76,11 @@ To create a VPC, do the following:
     - for production clusters, use network sizes of /24 or /25.
 1. Click **Save**.
 
-YugabyteDB Managed adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
+YugabyteDB Aeon adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
 
 ## Create a peering connection
 
-After creating a VPC in YugabyteDB Managed that uses AWS, you can peer it with an AWS application VPC.
+After creating a VPC in YugabyteDB Aeon that uses AWS, you can peer it with an AWS application VPC.
 
 {{< tip title="What you need" >}}
 The following details for the AWS application VPC you are peering with:
@@ -93,13 +93,13 @@ The following details for the AWS application VPC you are peering with:
 **Where to find it**<br>Navigate to your AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region hosting the VPC you want to peer.
 {{< /tip >}}
 
-To create a peering connection, in YugabyteDB Managed do the following:
+To create a peering connection, in YugabyteDB Aeon do the following:
 
 1. On the **Networking** page, select **VPC Network**, then **Peering Connections**.
 1. Click **Add Peering Connection** to display the **Create Peering** sheet.
 1. Enter a name for the peering connection.
 1. Choose **AWS**.
-1. Choose the YugabyteDB Managed VPC you are peering. Only VPCs that use AWS are listed.
+1. Choose the YugabyteDB Aeon VPC you are peering. Only VPCs that use AWS are listed.
 1. Enter the AWS account ID, and the application VPC ID, region, and CIDR address.
 1. Click **Initiate Peering**.
 
@@ -110,7 +110,7 @@ The peering connection is created with a status of _Pending_.
 To complete a _Pending_ AWS peering connection, you need to sign in to AWS, where you accept the peering request. After accepting the request, you will add a route table entry for the application VPC.
 
 {{< tip title="What you need" >}}
-The CIDR address of the YugabyteDB Managed VPC you are peering with.
+The CIDR address of the YugabyteDB Aeon VPC you are peering with.
 
 **Where to find it**<br>The **VPC Details** sheet on the [VPCs page](../cloud-add-vpc/) or the **Peering Details** sheet on the [Peering Connections page](../cloud-add-peering/).
 {{< /tip >}}
@@ -119,7 +119,7 @@ Sign in to your AWS account and navigate to the region hosting the application V
 
 ### DNS settings
 
-Before accepting the request, ensure that the DNS hostnames and DNS resolution options are enabled for the application VPC. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the YugabyteDB Managed cluster is accessed from the application VPC.
+Before accepting the request, ensure that the DNS hostnames and DNS resolution options are enabled for the application VPC. This ensures that the cluster's hostnames in standard connection strings automatically resolve to private instead of public IP addresses when the YugabyteDB Aeon cluster is accessed from the application VPC.
 
 To set DNS settings:
 
@@ -142,7 +142,7 @@ To accept the peering request, do the following:
 
 On the **Peering connections** page, note the **Peering connection ID**; you will use it when adding the route table entry.
 
-When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
+When finished, the status of the peering connection in YugabyteDB Aeon changes to _Active_ if the connection is successful.
 
 ## Add the route table entry in AWS
 
@@ -158,7 +158,7 @@ To add a route table entry:
     ![Add routes in AWS](/images/yb-cloud/cloud-peer-aws-route.png)
 
 1. Click **Add route**.
-1. Add the YugabyteDB Managed VPC CIDR address to the **Destination** column, and the Peering connection ID to the **Target** column.
+1. Add the YugabyteDB Aeon VPC CIDR address to the **Destination** column, and the Peering connection ID to the **Target** column.
 1. Click **Save changes**.
 
 If your application runs in multiple subnets that use separate route tables, repeat these steps for all route tables associated with your application subnets.

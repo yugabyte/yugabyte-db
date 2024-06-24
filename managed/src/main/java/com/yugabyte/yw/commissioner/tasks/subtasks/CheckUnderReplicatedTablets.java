@@ -12,12 +12,9 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -25,7 +22,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -89,7 +85,8 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
     }
     if (CheckNodesAreSafeToTakeDown.isApiSupported(
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
-        && CheckNodesAreSafeToTakeDown.isApiSupported(softwareVersion)) {
+        && CheckNodesAreSafeToTakeDown.isApiSupported(softwareVersion)
+        && confGetter.getConfForScope(universe, UniverseConfKeys.useNodesAreSafeToTakeDown)) {
       log.debug("Skipping check, CheckNodesAreSafeToTakeDown should have been applied");
       return;
     }
@@ -131,25 +128,14 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
       return;
     }
 
-    boolean cloudEnabled =
-        confGetter.getConfForScope(
-            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
-    boolean useSecondaryIp = GFlagsUtil.isUseSecondaryIP(universe, currentNode, cloudEnabled);
-    Map<String, Integer> ipHttpPortMap =
-        universe.getNodes().stream()
-            .filter(n -> Util.getIpToUse(universe, n.getNodeName(), cloudEnabled) != null)
-            .collect(
-                Collectors.toMap(
-                    n -> Util.getIpToUse(universe, n.getNodeName(), cloudEnabled),
-                    n -> n.masterHttpPort));
-
-    // Find universe's master UI endpoints (may have custom https ports).
+    int masterHttpPort = currentNode.masterHttpPort;
+    // Find universe's master UI endpoints.
     List<HostAndPort> hp =
-        Arrays.stream(universe.getMasterAddresses(false, useSecondaryIp).split(","))
+        Arrays.stream(universe.getMasterAddresses().split(","))
             .map(HostAndPort::fromString)
             .map(HostAndPort::getHost)
-            .filter(host -> host != null && ipHttpPortMap.containsKey(host))
-            .map(host -> HostAndPort.fromParts(host, ipHttpPortMap.get(host)))
+            .filter(host -> host != null)
+            .map(host -> HostAndPort.fromParts(host, masterHttpPort))
             .collect(Collectors.toList());
 
     if (hp.size() == 0) {

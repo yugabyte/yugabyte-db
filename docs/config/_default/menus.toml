@@ -26,7 +26,7 @@
     classes = "primary-btn start-now-popup"
 
 [[start_now]]
-  name = "YugabyteDB Managed"
+  name = "YugabyteDB Aeon"
   weight = 1
   url = "https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup"
   [start_now.params]
@@ -88,7 +88,7 @@
     imageUrl = "/icons/server.svg"
 
 [[main]]
-  name = "YugabyteDB Managed"
+  name = "YugabyteDB Aeon"
   weight = 4
   parent = "products"
   url = "/preview/yugabyte-cloud/"
@@ -172,7 +172,7 @@
 #     newTab = true
 
 # [[main]]
-#   name = "YugabyteDB Managed API"
+#   name = "YugabyteDB Aeon API"
 #   weight = 6
 #   identifier = "yugabytedb-anaged-api"
 #   parent = "yugabyte-apis"
@@ -227,7 +227,7 @@
     imageUrl = "/icons/server.svg"
 
 [[main]]
-  name = "YugabyteDB Managed"
+  name = "YugabyteDB Aeon"
   weight = 3
   identifier = "yugabytedb-managed-releases"
   parent = "releases"
@@ -372,7 +372,7 @@
     showSection = true
 
 [[home]]
-  name = "YugabyteDB Managed"
+  name = "YugabyteDB Aeon"
   weight = 12
   identifier = "yugabytedb-managed"
   url = "/preview/yugabyte-cloud/"
@@ -692,7 +692,7 @@
 #     newTab = true
 
 # [[preview_api]]
-#   name = "YugabyteDB Managed API"
+#   name = "YugabyteDB Aeon API"
 #   weight = 5
 #   identifier = "yugabytedb-managed-api"
 #   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
@@ -761,7 +761,7 @@
     showSection = true
 
 [[preview_releases]]
-  name = "YugabyteDB Managed"
+  name = "YugabyteDB Aeon"
   weight = 7
   identifier = "ybm-releases"
   url = "/preview/yugabyte-cloud/release-notes/"
@@ -843,7 +843,7 @@
     showSection = true
 
 [[preview_yugabyte-cloud]]
-  name = "YugabyteDB Managed"
+  name = "YugabyteDB Aeon"
   weight = 2
   identifier = "yugabytedb-managed"
   [preview_yugabyte-cloud.params]
@@ -1098,7 +1098,7 @@
 #     newTab = true
 
 # [[stable_api]]
-#   name = "YugabyteDB Managed API"
+#   name = "YugabyteDB Aeon API"
 #   weight = 5
 #   identifier = "yugabytedb-managed-api"
 #   url = "https://api-docs.yugabyte.com/docs/managed-apis/"

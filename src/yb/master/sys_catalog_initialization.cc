@@ -231,11 +231,11 @@ Status MakeYsqlSysCatalogTablesTransactional(
     }
 
     {
-      TabletInfos tablet_infos = table_info.GetTablets();
+      TabletInfos tablet_infos = VERIFY_RESULT(table_info.GetTablets());
       if (tablet_infos.size() != 1 || tablet_infos.front()->tablet_id() != kSysCatalogTabletId) {
         continue;
       }
-     }
+    }
 
     auto table_lock = table_info.LockForWrite();
     auto& schema = *table_lock.mutable_data()->mutable_schema();

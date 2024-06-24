@@ -34,7 +34,7 @@ type: docs
 
 </ul>
 
-Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues.
+Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere (YBA) on Kubernetes. You can troubleshoot most of these issues.
 
 If you have problems while troubleshooting, contact {{% support-platform %}}.
 

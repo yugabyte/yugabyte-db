@@ -205,11 +205,11 @@ To do a PITR on a database:
 
 1. Select the **Date and Time** option and enter the safe time you obtained.
 
-    By default, YBA shows the time in local time, whereas yb-admin returns the time in UTC. Therefore, you need to convert the xCluster Safe time to local time when entering the date and time.
+    By default, YugabyteDB Anywhere shows the time in local time, whereas yb-admin returns the time in UTC. Therefore, you need to convert the xCluster Safe time to local time when entering the date and time.
 
-    Alternatively, you can configure YBA to use UTC time (always) by changing the Preferred Timezone to UTC in the **User > Profile** settings.
+    Alternatively, you can configure YugabyteDB Anywhere to use UTC time (always) by changing the Preferred Timezone to UTC in the **User > Profile** settings.
 
-    Note that YBA only supports minute-level granularity.
+    Note that YugabyteDB Anywhere only supports minute-level granularity.
 
 1. Click **Recover**.
 
