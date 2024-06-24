@@ -986,9 +986,9 @@ testOptions += Tests.Filter(s =>
   !s.contains("com.yugabyte.yw.commissioner.tasks.local")
 )
 
-lazy val testLocal = taskKey[Unit]("Runs local provider tests")
-lazy val testFast = taskKey[Unit]("Runs quick tests")
-lazy val testUpgradeRetry = taskKey[Unit]("Runs retry tests")
+lazy val testLocal = inputKey[Unit]("Runs local provider tests")
+lazy val testFast = inputKey[Unit]("Runs quick tests")
+lazy val testUpgradeRetry = inputKey[Unit]("Runs retry tests")
 
 def localTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.local")
 def quickTestSuiteFilter(name: String): Boolean =
