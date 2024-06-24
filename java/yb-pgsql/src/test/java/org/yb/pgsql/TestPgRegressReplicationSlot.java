@@ -33,10 +33,8 @@ public class TestPgRegressReplicationSlot extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("allowed_preview_flags_csv",
         "ysql_yb_enable_replication_commands," +
-        "yb_enable_cdc_consistent_snapshot_streams," +
         "ysql_yb_enable_replica_identity");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
-    flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
     flagMap.put(
@@ -49,10 +47,8 @@ public class TestPgRegressReplicationSlot extends BasePgSQLTest {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("allowed_preview_flags_csv",
         "ysql_yb_enable_replication_commands," +
-        "yb_enable_cdc_consistent_snapshot_streams," +
         "ysql_yb_enable_replica_identity");
     flagMap.put("ysql_yb_enable_replication_commands", "true");
-    flagMap.put("yb_enable_cdc_consistent_snapshot_streams", "true");
     flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
     flagMap.put("ysql_yb_enable_replica_identity", "true");
     return flagMap;
