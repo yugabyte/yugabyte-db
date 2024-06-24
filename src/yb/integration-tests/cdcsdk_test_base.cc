@@ -417,14 +417,14 @@ void CDCSDKTestBase::InitCreateStreamRequest(
 
 // This creates a DB stream on the database kNamespaceName by default.
 Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
-    CDCCheckpointType checkpoint_type, CDCRecordType record_type) {
+    CDCCheckpointType checkpoint_type, CDCRecordType record_type, std::string namespace_name) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
-  InitCreateStreamRequest(&req, checkpoint_type, record_type);
+  InitCreateStreamRequest(&req, checkpoint_type, record_type, namespace_name);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
   if (resp.has_error()) {

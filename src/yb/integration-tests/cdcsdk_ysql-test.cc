@@ -7997,7 +7997,10 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ASSERT_EQ(entry_1->last_decided_pub_refresh_time.value(), oss.str());
 
   // On a non-consistent snapshot stream, we should not see the entry for replication slot.
-  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
+  std::string kNamespaceName_2 = "test_namespace_2";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
+  auto stream_id_2 = ASSERT_RESULT(
+      CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName_2));
   auto entry_2 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {kCDCSDKSlotEntryTabletId, stream_id_2}, CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_FALSE(entry_2.has_value());
