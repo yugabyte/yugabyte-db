@@ -27,7 +27,8 @@ run_and_pushd_pg11() {
     "$prefix/yugabyte-$ybversion_pg11/bin/post_install.sh"
   fi
   pushd "$prefix/yugabyte-$ybversion_pg11"
-  yb_ctl_destroy_create --rf=3
+  yb_ctl_destroy_create --rf=3 \
+    --tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
 }
 
 # Restarts the masters in a mode that runs initdb and is aware of the PG11 to PG15 upgrade process.
@@ -55,12 +56,12 @@ upgrade_masters_run_initdb() {
 # Assumes node 2 is drained of all traffic before calling.
 ysql_upgrade_using_node_2() {
   # Restart tserver 2 to PG15 for the upgrade, with postgres binaries in binary_upgrade mode
-  yb_ctl restart_node 2 --tserver_flags="TEST_pg_binary_upgrade=true"
+  yb_ctl restart_node 2 --tserver_flags='TEST_pg_binary_upgrade=true,"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
 
   run_pg_upgrade
 
   # The upgrade is finished. Restart node 2 with postgres binaries *not* in binary upgrade mode
-  yb_ctl restart_node 2
+  yb_ctl restart_node 2 --tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
 }
 
 # Run pg_upgrade which calls ysql_dumpall, ysql_dump and pg_restore.
