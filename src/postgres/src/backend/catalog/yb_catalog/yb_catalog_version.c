@@ -625,24 +625,24 @@ Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 												Oid db_oid)
 {
 	/*
-	 * Construct HeapTuple (db_oid, null, null) for computing ybctid using
-	 * YBCGetYBTupleIdFromTuple which requires a tuple. Note that db_oid
-	 * is the primary key so we can use null for other columns for simplicity.
+	 * Construct virtual slot (db_oid, null, null) for computing ybctid using
+	 * YBCComputeYBTupleIdFromSlot. Note that db_oid is the primary key so we
+	 * can use null for other columns for simplicity.
 	 */
-	Datum		values[3];
-	bool		nulls[3];
+	TupleTableSlot *slot = MakeSingleTupleTableSlot(
+		RelationGetDescr(catalog_version_rel), &TTSOpsVirtual);
 
-	values[0] = db_oid;
-	nulls[0] = false;
-	values[1] = 0;
-	nulls[1] = true;
-	values[2] = 0;
-	nulls[2] = true;
+	slot->tts_values[0] = db_oid;
+	slot->tts_isnull[0] = false;
+	slot->tts_values[1] = 0;
+	slot->tts_isnull[1] = true;
+	slot->tts_values[2] = 0;
+	slot->tts_isnull[2] = true;
+	slot->tts_nvalid = 3;
 
-	HeapTuple tuple = heap_form_tuple(RelationGetDescr(catalog_version_rel),
-									  values, nulls);
-	return YBCGetYBTupleIdFromTuple(catalog_version_rel, tuple,
-									RelationGetDescr(catalog_version_rel));
+	Datum ybctid = YBCComputeYBTupleIdFromSlot(catalog_version_rel, slot);
+	ExecDropSingleTupleTableSlot(slot);
+	return ybctid;
 }
 
 Oid YbMasterCatalogVersionTableDBOid()

@@ -75,6 +75,13 @@ extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
 extern void YBCExecuteInsert(Relation rel,
 							 TupleTableSlot *slot,
 							 OnConflictAction onConflictAction);
+
+/* HeapTuple based wrapper on YBCExecuteInsertForDb. */
+extern void
+YBCExecuteInsertHeapTupleForDb(Oid dboid, Relation rel, HeapTuple tuple,
+							   OnConflictAction onConflictAction, Datum *ybctid,
+							   YBCPgTransactionSetting transaction_setting);
+
 extern void YBCExecuteInsertForDb(Oid dboid,
 								  Relation rel,
 								  TupleTableSlot *slot,
@@ -214,9 +221,7 @@ extern bool YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate);
 
 extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 
-extern Datum YBCGetYBTupleIdFromTuple(Relation rel,
-									  HeapTuple tuple,
-									  TupleDesc tupleDesc);
+extern Datum YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot);
 
 /*
  * Returns if a table has secondary indices.
