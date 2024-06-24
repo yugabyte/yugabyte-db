@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, Paper, Typography, makeStyles } from "@material-ui/core";
+import { Box, Paper, Typography, capitalize, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 
@@ -27,6 +27,10 @@ const ComplexityComponent = (complexity: string) => {
       : complexityL === "easy"
       ? BadgeVariant.Success
       : undefined;
+
+  if (!badgeVariant) {
+    return complexity ? capitalize(complexity.toLowerCase()) : "N/A";
+  }
 
   return <YBBadge variant={badgeVariant} text={complexity || "N/A"} icon={false} />;
 };

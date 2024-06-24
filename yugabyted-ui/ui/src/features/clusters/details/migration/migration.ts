@@ -2,6 +2,17 @@
  * Migration Phases (Statuses from Voyager)
  */
 export enum MigrationPhase {
+  "Assess Migration" = 1,
+  "Export Schema" = 2,
+  "Analyze Schema" = 3,
+  "Export Data" = 4,
+  "Import Schema" = 5,
+  "Import Data" = 6,
+  "Verify" = 7,
+}
+
+/*
+export enum MigrationPhase {
   "Export Schema" = 0,
   "Analyze Schema" = 1,
   "Export Data" = 2,
@@ -9,6 +20,8 @@ export enum MigrationPhase {
   "Import Data" = 4,
   "Verify" = 5,
 }
+*/
+
 export const migrationPhases = Object.keys(MigrationPhase)
   .map((key) => MigrationPhase[key as any])
   .filter((value) => typeof value === "string");

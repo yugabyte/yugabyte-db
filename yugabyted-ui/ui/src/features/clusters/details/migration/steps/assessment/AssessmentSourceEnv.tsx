@@ -2,6 +2,7 @@ import React, { FC } from "react";
 import { Box, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { MigrationSourceEnvSidePanel } from "./AssessmentSourceEnvSidePanel";
+import { convertBytesToGB } from "@app/helpers";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -51,7 +52,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
   tableSize,
   indexSize,
   totalSize,
-  rowCount,
+  /* rowCount, */
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -132,37 +133,37 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
             </Box>
 
             <Grid container spacing={4}>
-              <Grid item xs={6}>
+              <Grid item xs={4}>
                 <Typography variant="subtitle2" className={classes.label}>
                   {t("clusterDetail.voyager.planAndAssess.sourceEnv.tableSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {typeof tableSize === "number" ? `${tableSize} GB` : tableSize}
+                  {typeof tableSize === "number" ? `${convertBytesToGB(tableSize)} GB` : tableSize}
                 </Typography>
               </Grid>
-              <Grid item xs={6}>
+              {/* <Grid item xs={?}>
                 <Typography variant="subtitle2" className={classes.label}>
                   {t("clusterDetail.voyager.planAndAssess.sourceEnv.rowCount")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {rowCount}
                 </Typography>
-              </Grid>
+              </Grid> */}
 
-              <Grid item xs={6}>
+              <Grid item xs={4}>
                 <Typography variant="subtitle2" className={classes.label}>
                   {t("clusterDetail.voyager.planAndAssess.sourceEnv.totalSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {typeof totalSize === "number" ? `${totalSize} GB` : totalSize}
+                  {typeof totalSize === "number" ? `${convertBytesToGB(totalSize)} GB` : totalSize}
                 </Typography>
               </Grid>
-              <Grid item xs={6}>
+              <Grid item xs={4}>
                 <Typography variant="subtitle2" className={classes.label}>
                   {t("clusterDetail.voyager.planAndAssess.sourceEnv.indexSize")}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {typeof indexSize === "number" ? `${indexSize} GB` : indexSize}
+                  {typeof indexSize === "number" ? `${convertBytesToGB(indexSize)} GB` : indexSize}
                 </Typography>
               </Grid>
             </Grid>
