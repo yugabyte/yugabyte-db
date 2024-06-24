@@ -68,7 +68,8 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         objectType: key
           .replace(/^_+|_+$/g, "")
           .trim()
-          .toUpperCase(),
+          .toUpperCase()
+          .replaceAll("_", " "),
         automaticDDLImport: value?.automatic ?? 0,
         manualRefactoring: value?.manual ?? 0,
       };

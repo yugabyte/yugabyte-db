@@ -78,6 +78,9 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
+  const mAssessmentData = migrationAssessmentData as MigrationAssesmentInfo;
+  const mSchemaData = migrationSchemaData as MigrateSchemaTaskInfo;
+
   const getTooltip = (step: string) => {
     if (step === migrationSteps[MigrationStep["Assessment"]]) {
       return ""; // Tooltip for assessment
@@ -108,7 +111,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             // We have not reached the verify phase
             if (stepIndex === MigrationStep["Assessment"]) {
               if (
-                (migrationAssessmentData as MigrationAssesmentInfo)?.assesment_status === true ||
+                mAssessmentData?.assesment_status === true ||
                 (migration.migration_phase === MigrationPhase["Assess Migration"] &&
                   migration.invocation_sequence === 2)
               ) {
@@ -117,10 +120,12 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
                 notStarted = true;
               }
             } else if (stepIndex === MigrationStep["Schema Migration"]) {
-              if ((migrationSchemaData as MigrateSchemaTaskInfo)?.overall_status === "complete") {
+              if (mSchemaData?.overall_status === "complete") {
                 completed = true;
               } else if (
-                (migrationSchemaData as MigrateSchemaTaskInfo)?.overall_status === "in-progress"
+                mSchemaData?.export_schema !== "N/A" ||
+                mSchemaData?.analyze_schema !== "N/A" ||
+                mSchemaData?.import_schema !== "N/A"
               ) {
                 running = true;
               } else {
