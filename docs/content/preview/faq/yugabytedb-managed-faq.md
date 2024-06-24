@@ -73,7 +73,7 @@ YugabyteDB Aeon runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 
 Yugabyte bills for its services as follows:
 
-- Charges by the minute for your YugabyteDB Aeon clusters.
+- Charges by the minute for your YugabyteDB Aeon clusters, based on your pricing plan (Standard, Professional, or Enterprise).
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Usage & Billing** tab.
 
