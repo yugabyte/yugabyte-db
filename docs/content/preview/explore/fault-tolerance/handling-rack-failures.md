@@ -3,7 +3,7 @@ title: Handling rack failures
 headerTitle: Handling rack failures
 linkTitle: Rack failures
 description: Racks can be treated as fault zones
-headcontent: Server rack-awareness in YugabyeDB
+headcontent: Server rack-awareness in YugabyteDB
 menu:
   preview:
     identifier: handling-rack-failures
@@ -97,11 +97,11 @@ SELECT host, cloud, region, zone FROM yb_servers() ORDER BY host;
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<note>}}
-To configure racks as zones in YB Anywhere, set the racks as zones in your [on-prem provider settings](../../../yugabyte-platform/configure-yugabyte-platform/on-premises-provider/#provider-settings)
+To configure racks as zones in YugabyteDB Anywhere, set the racks as zones in your [on-prem provider settings](../../../yugabyte-platform/configure-yugabyte-platform/on-premises-provider/#provider-settings)
 {{</note>}}
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-{{<warning>}} Currently, you can't configure racks as fault domains in YugabyteDB Managed {{</warning>}}
+{{<warning>}} Currently, you can't configure racks as fault domains in YugabyteDB Aeon {{</warning>}}
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->

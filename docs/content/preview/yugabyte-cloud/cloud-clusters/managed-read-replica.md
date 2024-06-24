@@ -1,8 +1,8 @@
 ---
-title: Read replicas in YugabyteDB Managed
+title: Read replicas in YugabyteDB Aeon
 headerTitle: Read replicas
 linkTitle: Read replicas
-description: Add read replicas to YugabyteDB Managed clusters.
+description: Add read replicas to YugabyteDB Aeon clusters.
 headcontent: Reduce read latencies in remote regions
 menu:
   preview_yugabyte-cloud:
@@ -14,7 +14,7 @@ type: docs
 
 If your user base is geographically distributed, you can add [read replicas](../../cloud-basics/create-clusters-topology/#read-replicas) to improve read latency in regions that are far from your primary region.
 
-{{< youtube id="aar4vW6Z1Zg" title="Add read replicas to a cluster in YugabyteDB Managed" >}}
+{{< youtube id="aar4vW6Z1Zg" title="Add read replicas to a cluster in YugabyteDB Aeon" >}}
 
 Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to read replicas asynchronously. To read data from a read replica, you need to enable follower reads for the cluster.
 
@@ -72,7 +72,7 @@ To add or edit read-replicas:
 
     Memory per node depends on the [instance type](../../cloud-basics/create-clusters-overview/#instance-types) available for the selected region.
 
-    Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+    Monthly costs for the cluster are estimated automatically.
 
 1. To add a read replica, click **Add Region**. To delete a read replica, click the Trash icon.
 

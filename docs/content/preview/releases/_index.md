@@ -15,7 +15,7 @@ cascade:
 
 This section describes the release support policy, versioning, and feature availability for YugabyteDB and YugabyteDB Anywhere. You can also access releases and release notes for YugabyteDB and YugabyteDB Anywhere.
 
--> For information on YugabyteDB Managed releases, refer to the [YugabyteDB Managed Change log](../yugabyte-cloud/release-notes/).
+-> For information on YugabyteDB Aeon releases, refer to the [YugabyteDB Aeon Change log](../yugabyte-cloud/release-notes/).
 
 -> For information on YugabyteDB Voyager releases, refer to the [YugabyteDB Voyager release notes](../yugabyte-voyager/release-notes/).
 

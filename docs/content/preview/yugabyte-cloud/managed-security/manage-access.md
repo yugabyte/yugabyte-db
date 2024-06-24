@@ -2,8 +2,8 @@
 title: Manage account access
 headertitle: Manage account users
 linkTitle: Manage account users
-description: Manage access to your YugabyteDB Managed account and your clusters.
-headcontent: Invite team members to your YugabyteDB Managed account
+description: Manage access to your YugabyteDB Aeon account and your clusters.
+headcontent: Invite team members to your YugabyteDB Aeon account
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/manage-access/
 menu:
@@ -16,7 +16,7 @@ type: docs
 
 Invite team members to your account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
 
-Users can log in to YugabyteDB Managed using an email-based account, a social login, or federated authentication via an external identity provider (IdP). For information on using social logins and federated authentication, refer to [Authentication](../managed-authentication/).
+Users can log in to YugabyteDB Aeon using an email-based account, a social login, or federated authentication via an external identity provider (IdP). For information on using social logins and federated authentication, refer to [Authentication](../managed-authentication/).
 
 (To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).)
 
@@ -75,4 +75,4 @@ If you request a password reset for a non-existent user, the request fails silen
 
 To change your password or display name, click the Profile icon in the top right corner and choose **Profile** to display the **User Profile** page.
 
-You can edit your first and last name. Click **Change Password** to change your YugabyteDB Managed password.
+You can edit your first and last name. Click **Change Password** to change your YugabyteDB Aeon password.

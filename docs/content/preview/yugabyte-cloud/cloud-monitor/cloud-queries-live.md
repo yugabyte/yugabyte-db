@@ -1,5 +1,5 @@
 ---
-title: View live queries in YugabyteDB Managed
+title: View live queries in YugabyteDB Aeon
 headerTitle: View live queries
 linkTitle: Live queries
 description: View live queries running on your cluster.

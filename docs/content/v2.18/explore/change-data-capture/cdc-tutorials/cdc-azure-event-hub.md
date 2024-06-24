@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial describes the steps to sync CDC data from [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) to your Azure Synapse Analytics workspace using Azure offerings such as Azure Event Hubs and Azure Data Lake Storage (ADLS) Gen2.
+The following tutorial describes the steps to sync CDC data from YugabyteDB Anywhere to your Azure Synapse Analytics workspace using Azure offerings such as Azure Event Hubs and Azure Data Lake Storage (ADLS) Gen2.
 
 ## Reference architecture
 

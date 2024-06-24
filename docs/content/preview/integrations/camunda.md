@@ -22,7 +22,7 @@ Camunda supports PostgreSQL as a datasource. Because YugabyteDB is wire compatib
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/). Alternatively, you can use [YugabyteDB Managed](https://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
+- YugabyteDB is up and running. Download and install YugabyteDB by following the steps in [Quick start](../../quick-start/). Alternatively, you can use [YugabyteDB Aeon](https://cloud.yugabyte.com/) to get a fully managed database-as-a-service (DBaaS) for YugabyteDB.
 - Java JDK 1.8 or later is installed.
 - NodeJS v10 or later is installed.
 - Camunda Platform 7 and Modeler are installed following the instructions on Camunda's [quick-start page](https://docs.camunda.org/get-started/quick-start/install/).
