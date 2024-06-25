@@ -202,11 +202,11 @@ To use JumpCloud for your IdP, do the following:
     - Under **Enter General Info**, add the application name (for **Display Label**), **Description**, and logo (for **User Portal Image**), and select **Show this application in User Portal**.
 
     This information is displayed as a tile when users sign in to YugabyteDB Aeon.
-    - Click **Save Application**.
+    - Click **Configure Application**.
 
 1. Configure your application.
 
-    Under **Endpoint Configuration**, do the following:
+    Under **SSO > Endpoint Configuration**, do the following:
 
     - **Redirect URIs** - enter `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`.
     - **Client Authentication Type** - select **Client Secret Post**.
@@ -227,7 +227,6 @@ To use JumpCloud for your IdP, do the following:
 To configure JumpCloud federated authentication in YugabyteDB Managed, you need the following application properties:
 
 - Client ID and secret of the application you created. Note that you will get a pop up to save the **Client ID** and **Client Secret** when you activate your application. The **Client ID** is also displayed on the **SSO** tab.
-- The Authorization URL for your application. [where is this displayed?]
 
 For more information, refer to the [JumpCloud](https://jumpcloud.com/support/sso-with-oidc) documentation.
 
@@ -238,7 +237,6 @@ To configure federated authentication in YugabyteDB Managed, do the following:
 1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose JumpCloud identity provider.
 1. Enter the client ID and secret of the JumpCloud application you created.
-1. Enter the Authorization URL for your application.
 1. Click **Enable**.
 
 You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.
