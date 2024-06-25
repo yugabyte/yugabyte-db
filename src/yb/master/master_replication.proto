@@ -42,6 +42,11 @@ message CDCStreamInfoPB {
   map<string, PgReplicaIdentity> replica_identity_map = 10;
 
   optional string cdcsdk_ysql_replication_slot_plugin_name = 11;
+
+  // Dynamic tables are the tables which are created after the creation of the stream.
+  // This field controls if dynamic tables should automatically be added to the CDC stream or not.
+  // If set to true, dynamic table wont get added to the CDC stream.
+  optional bool cdcsdk_disable_dynamic_table_addition = 12;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -757,6 +762,32 @@ message GetUniverseReplicationInfoResponsePB {
   repeated DbScopedInfoPB db_scoped_infos = 5;
 }
 
+message DisableDynamicTableAdditionOnCDCSDKStreamRequestPB {
+  optional string stream_id = 1;
+}
+
+message DisableDynamicTableAdditionOnCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message RemoveUserTableFromCDCSDKStreamRequestPB {
+  optional string stream_id = 1;
+  optional string table_id = 2;
+}
+
+message RemoveUserTableFromCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB {
+  optional string stream_id = 1;
+}
+
+message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated string updated_tablet_entries = 2;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -873,4 +904,15 @@ service MasterReplication {
       returns (AddNamespaceToXClusterReplicationResponsePB);
   rpc IsAlterXClusterReplicationDone(IsAlterXClusterReplicationDoneRequestPB)
       returns (IsAlterXClusterReplicationDoneResponsePB);
+
+  // Introduced for bug (#22876, #22773)
+  rpc DisableDynamicTableAdditionOnCDCSDKStream (DisableDynamicTableAdditionOnCDCSDKStreamRequestPB)
+      returns (DisableDynamicTableAdditionOnCDCSDKStreamResponsePB);
+  // Introduced for bug (#22876, #22773)
+  rpc RemoveUserTableFromCDCSDKStream (RemoveUserTableFromCDCSDKStreamRequestPB)
+      returns (RemoveUserTableFromCDCSDKStreamResponsePB);
+  // Introduced for bug (#22876, #22773)
+  rpc ValidateAndSyncCDCStateEntriesForCDCSDKStream(
+      ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB)
+      returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
 }
