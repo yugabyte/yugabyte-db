@@ -366,6 +366,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             xClusterConfig,
             taskParams().getBootstrapParams(),
             dbToTablesInfoMapNeedBootstrap,
+            null /* sourceDbIds */,
             true /* isReplicationConfigCreated */,
             taskParams().getPitrParams());
 

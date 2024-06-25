@@ -225,6 +225,11 @@ public class Backup extends Model {
   }
 
   @JsonIgnore
+  @ApiModelProperty(value = "Whether to hide this backup on the UI", accessMode = READ_WRITE)
+  @Column(nullable = false)
+  private boolean hidden = false;
+
+  @JsonIgnore
   @ApiModelProperty(value = "Universe UUID that created this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
   private UUID universeUUID;
@@ -930,6 +935,9 @@ public class Backup extends Model {
     if (!CollectionUtils.isEmpty(filter.getStates())) {
       appendInClause(query, "state", filter.getStates());
     }
+    if (!filter.isShowHidden()) {
+      query.eq("hidden", false);
+    }
     if (!CollectionUtils.isEmpty(filter.getKeyspaceList())) {
       Junction<Backup> orExpr = query.or();
       String queryStringInner =
@@ -955,6 +963,7 @@ public class Backup extends Model {
           "t0.storage_config_uuid not in (select C.config_uuid from customer_config C)";
       query.raw(configNotExists);
     }
+
     return query;
   }
 
