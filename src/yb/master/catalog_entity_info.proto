@@ -519,6 +519,11 @@ message SysCDCStreamEntryPB {
   optional string cdcsdk_ysql_replication_slot_name = 6;
   optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
   optional uint64 stream_creation_time = 8;
+
+  // Dynamic tables are the tables which are created after the creation of the stream.
+  // This field controls if dynamic tables should automatically be added to the CDC stream or not.
+  // If set to true, dynamic table wont get added to the CDC stream.
+  optional bool cdcsdk_disable_dynamic_table_addition = 11;
 }
 
 

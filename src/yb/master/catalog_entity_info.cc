@@ -59,6 +59,7 @@ using std::string;
 using strings::Substitute;
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 
 DEFINE_RUNTIME_AUTO_bool(
     use_parent_table_id_field, kLocalPersisted, false, true,
@@ -1282,6 +1283,11 @@ const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
+bool CDCStreamInfo::IsCDCSDKStream() const {
+  auto l = LockForRead();
+  return l->pb.has_namespace_id() && !l->pb.namespace_id().empty();
+}
+
 const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
   auto l = LockForRead();
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
@@ -1291,6 +1297,16 @@ bool CDCStreamInfo::IsConsistentSnapshotStream() const {
   auto l = LockForRead();
   return l->pb.has_cdcsdk_stream_metadata() &&
          l->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option();
+}
+
+bool CDCStreamInfo::IsDynamicTableAdditionDisabled() const {
+  if (!FLAGS_cdcsdk_enable_dynamic_tables_disable_option) {
+    return false;
+  }
+
+  auto l = LockForRead();
+  return l->pb.has_cdcsdk_disable_dynamic_table_addition() &&
+         l->pb.cdcsdk_disable_dynamic_table_addition();
 }
 
 std::string CDCStreamInfo::ToString() const {

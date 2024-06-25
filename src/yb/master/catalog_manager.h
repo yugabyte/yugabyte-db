@@ -44,6 +44,7 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/internal/gtest-internal.h>
 
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
@@ -1311,6 +1312,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status UpdateCDCStream(
       const UpdateCDCStreamRequestPB* req, UpdateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
 
+  Status DisableDynamicTableAdditionOnCDCSDKStream(
+      const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
+      DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status RemoveUserTableFromCDCSDKStream(
+      const RemoveUserTableFromCDCSDKStreamRequestPB* req,
+      RemoveUserTableFromCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(
+      const ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB* req,
+      ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
+
   // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
   Status IsBootstrapRequired(
       const IsBootstrapRequiredRequestPB* req,
@@ -1439,7 +1452,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
-  bool CanTableBeAddedToCDCSDKStream(
+  bool IsTableEligibleForCDCSDKStream(
       const TableInfoPtr& table_info, const Schema& schema) const REQUIRES_SHARED(mutex_);
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
@@ -3102,6 +3115,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // is required to have more effective validation performance.
   void ValidateIndexTablesPostLoad(std::unordered_map<TableId, TableIdSet>&& indexes_map,
                                    TableIdSet* tables_to_persist) EXCLUDES(mutex_);
+
+  Result<std::vector<cdc::CDCStateTableEntry>> UpdateCheckpointForTabletEntriesInCDCState(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_set<TableId>& tables_in_stream_metadata,
+      const TableId& table_to_be_removed = "");
+
+  Status RemoveTableFromCDCStreamMetadataAndMaps(
+      const CDCStreamInfoPtr stream, const TableId table_id);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
