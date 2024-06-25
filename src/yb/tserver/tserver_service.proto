@@ -389,6 +389,10 @@ message ProbeTransactionDeadlockResponsePB {
   }
 
   repeated DeadlockedTxnInfo deadlock = 4;
+
+  // If set, it indicates that the blocking transaction/sub-transaction(s) info sent in
+  // ProbeTransactionDeadlockRequestPB has been resolved.
+  optional bool should_erase_probe = 5;
 }
 
 message GetTransactionStatusAtParticipantRequestPB {
