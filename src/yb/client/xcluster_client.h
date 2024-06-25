@@ -73,6 +73,11 @@ class XClusterClient {
       CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
       const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
+  // If source_table_ids is not provided, then all tables for the namespace are returned.
+  Status GetXClusterStreams(
+      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, const std::vector<TableName>& source_table_ids,
+      GetXClusterStreamsCallback callback);
 
   // Starts the creation of Db scoped inbound replication group from a outbound replication group.
   // IsCreateXClusterReplicationDone must be called in order to wait for the operation to complete.
@@ -205,6 +210,10 @@ class XClusterRemoteClient {
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
       BootstrapProducerCallback user_callback);
+
+  Status GetXClusterTableCheckpointInfos(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& table_ids, BootstrapProducerCallback user_callback);
 
   virtual Status AddNamespaceToDbScopedUniverseReplication(
       const xcluster::ReplicationGroupId& replication_group_id,

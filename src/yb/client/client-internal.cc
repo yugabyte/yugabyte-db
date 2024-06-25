@@ -2231,6 +2231,17 @@ class GetXClusterStreamsRpc
     return Status::OK();
   }
 
+  Status Init(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& source_table_ids) {
+    req_.set_replication_group_id(replication_group_id.ToString());
+    req_.set_namespace_id(namespace_id);
+    for (const auto& table_id : source_table_ids) {
+      req_.add_source_table_ids(table_id);
+    }
+    return Status::OK();
+  }
+
   string ToString() const override {
     return Format(
         "GetXClusterStreamsRpc(replication_group_id: $0, num_attempts: $1)",
@@ -3021,6 +3032,19 @@ Status YBClient::Data::GetXClusterStreams(
   auto rpc =
       std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
   RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, table_names, pg_schema_names));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
+  return Status::OK();
+}
+
+Status YBClient::Data::GetXClusterStreams(
+    YBClient* client, CoarseTimePoint deadline,
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableId>& source_table_ids,
+    std::function<void(Result<master::GetXClusterStreamsResponsePB>)> user_cb) {
+  auto rpc =
+      std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
+  RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, source_table_ids));
   rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
 
   return Status::OK();

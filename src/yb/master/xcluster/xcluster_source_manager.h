@@ -115,9 +115,15 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id) const;
 
+  // If opt_table_names is empty, all tables in the namespace are returned.
   Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreams(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const;
+      const std::vector<std::pair<TableName, PgSchemaName>>& opt_table_names) const;
+
+  // Expects source_table_ids to be non-empty.
+  Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreamsForTableIds(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& source_table_ids) const;
 
   Status CreateXClusterReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
