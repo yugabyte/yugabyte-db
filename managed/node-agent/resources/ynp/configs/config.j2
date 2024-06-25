@@ -5,6 +5,8 @@
 loglevel = DEBUG
 logfile = app.log
 is_airgap = {{ ynp.is_airgap }}
+ynp_dir = {{ ynp_dir }}
+execution_start_time = {{ start_time }}
 
 [ConfigureChrony]
 chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
@@ -45,16 +47,16 @@ cpu = unlimited
 nproc = 12000
 locks = unlimited
 
+{% macro render_section(section, prefix="") -%}
+{%- for key, value in section.items() if value != '' -%}
+    {%- if value is mapping -%}
+        {{ render_section(value, prefix + key + "_") -}}
+    {%- else -%}
+        {{- prefix + key }} = {{ value }}{{ "\n" -}}
+    {%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
 
-{% macro render_section(section, prefix="") %}
-{%- for key, value in section.items() if value != '' %}
-{%- if value is mapping %}
-{{ render_section(value, prefix + key + ".") }}
-{%- else %}
-{{ prefix }}{{ key }} = {{ value }}
-{%- endif %}
-{% endfor %}
-{% endmacro %}
-
-[YBA]
-{{ render_section(yba) }}
+[InstallNodeAgent]
+{{ render_section(yba) -}}
+yb_user = {{ ynp.yb_user }}
