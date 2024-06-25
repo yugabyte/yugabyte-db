@@ -258,6 +258,21 @@ public class CreateBackup extends UniverseTaskBase {
       schedule.updateIncrementBacklogStatus(false);
       log.debug("Schedule {} increment backlog status is set to false", schedule.getScheduleUUID());
     }
+    if (baseBackupUUID == null
+        && ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
+      // Update incremental backup task cycle while executing full backups.
+      long incrementalBackupFrequency = ScheduleUtil.getIncrementalBackupFrequency(schedule);
+      if (incrementalBackupFrequency != 0L) {
+        Date updatedNextIncrementalBackupTime =
+            new Date(new Date().getTime() + incrementalBackupFrequency);
+        log.debug(
+            "Updating next incremental backup task time for schedule {} to {} as full backup is"
+                + " preformed.",
+            schedule.getScheduleUUID(),
+            updatedNextIncrementalBackupTime);
+        schedule.updateNextIncrementScheduleTaskTime(updatedNextIncrementalBackupTime);
+      }
+    }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.",
         taskParams.getUniverseUUID(),
