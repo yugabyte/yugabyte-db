@@ -18,17 +18,23 @@
 
 
 # This is required to set locale to avoid bash warning message on GCP Ubuntu
-- name: Install Locale on GCP Ubuntu
+- name: Install Locale on Ubuntu
   hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
   gather_facts: yes
   vars:
     air_gapped: "{{ air_gap | default(false) }}"
   pre_tasks:
-    - name: Install Locale and generate en_US.UTF-8
-      raw: 'sudo apt-get update &&
-            sudo apt-get install -y locales &&
-            sudo locale-gen "en_US.UTF-8"'
-      when: not air_gapped and ansible_distribution == "Ubuntu" and cloud_type == "gcp"
+    - name: Update package cache
+      raw: sudo apt-get update
+      when: not air_gapped and ansible_distribution == "Ubuntu" and cloud_type != "onprem"
+
+    - name: Install locales package
+      raw: sudo apt-get install -y locales
+      when: not air_gapped and ansible_distribution == "Ubuntu" and cloud_type != "onprem"
+
+    - name: Generate en_US.UTF-8 locale
+      raw: sudo locale-gen "en_US.UTF-8"
+      when: not air_gapped and ansible_distribution == "Ubuntu" and cloud_type != "onprem"
   tags: yb-prebuilt-ami
 
 - name: Provision server
