@@ -63,17 +63,19 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       return [];
     }
 
-    return Object.entries(sqlObjects).map(([key, value]) => {
-      return {
-        objectType: key
-          .replace(/^_+|_+$/g, "")
-          .trim()
-          .toUpperCase()
-          .replaceAll("_", " "),
-        automaticDDLImport: value?.automatic ?? 0,
-        manualRefactoring: value?.manual ?? 0,
-      };
-    });
+    return Object.entries(sqlObjects)
+      .filter(([_, value]) => (value?.automatic ?? 0) + (value?.manual ?? 0) > 0)
+      .map(([key, value]) => {
+        return {
+          objectType: key
+            .replace(/^_+|_+$/g, "")
+            .trim()
+            .toUpperCase()
+            .replaceAll("_", " "),
+          automaticDDLImport: value?.automatic ?? 0,
+          manualRefactoring: value?.manual ?? 0,
+        };
+      });
   }, [sqlObjects]);
 
   return (
@@ -211,8 +213,12 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
         <Box mb={0.5}>
           <Typography>{label}</Typography>
         </Box>
-        <Box color={payload[0].color}>Automatic DDL Import: {payload[0].value}</Box>
-        <Box color={payload[1].color}>Manual Refactoring: {payload[1].value}</Box>
+        {payload[0]?.value ? (
+          <Box color={payload[0].color}>Automatic DDL Import: {payload[0].value}</Box>
+        ) : null}
+        {payload[1]?.value ? (
+          <Box color={payload[1].color}>Manual Refactoring: {payload[1].value}</Box>
+        ) : null}
       </Box>
     );
   }
