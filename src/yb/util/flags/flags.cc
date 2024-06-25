@@ -353,6 +353,50 @@ struct sort_flags_by_name {
     return a.size() < b.size();
   }
 };
+
+std::vector<std::string>& FlagsWithDelayedValidation() {
+  static std::vector<std::string> flags;
+  return flags;
+}
+
+bool& CommandLineFlagsParsed() {
+  static bool parsed = false;
+  return parsed;
+}
+
+// Check if the flag can be set to the new value. Does not actually set the flag.
+Status ValidateFlagValue(const std::string& flag_name, const std::string& value) {
+  auto flag_info = google::GetCommandLineFlagInfoOrDie(flag_name.c_str());
+
+  // Clear previous errors if any.
+  GetFlagValidatorSink().GetMessagesAndClear();
+
+  std::string error_msg;
+  if (google::ValidateCommandLineOption(
+          flag_name.c_str(), flag_info.current_value.c_str(), &error_msg)) {
+    return Status::OK();
+  }
+
+  auto validation_msgs = GetFlagValidatorSink().GetMessagesAndClear();
+
+  return STATUS_FORMAT(
+      InvalidArgument, "$0 : $1", error_msg,
+      validation_msgs.empty() ? "Bad value" : JoinStrings(validation_msgs, ";"));
+}
+
+Status ValidateFlagsRequiringDelayedValidation() {
+  CommandLineFlagsParsed() = true;
+
+  for (const auto& flag_name : FlagsWithDelayedValidation()) {
+    auto flag_info = google::GetCommandLineFlagInfoOrDie(flag_name.c_str());
+    // Flag was already set without any validation. Check if the current value is valid.
+    RETURN_NOT_OK(ValidateFlagValue(flag_name, flag_info.current_value));
+  }
+  FlagsWithDelayedValidation().clear();
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values) {
@@ -552,6 +596,9 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     SetFlagDefaultsToCurrent(flag_infos);
 
     google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
+
+    // Run validation that were previously ignored due to DELAY_FLAG_VALIDATION_ON_STARTUP.
+    CHECK_OK(ValidateFlagsRequiringDelayedValidation());
 
     // Ensure all preview flags overridden are in allow list before invoking any callbacks.
     string err_msg;
@@ -774,6 +821,14 @@ const std::vector<std::string> FlagValidatorSink::GetMessagesAndClear() {
 FlagValidatorSink& GetFlagValidatorSink() {
   static FlagValidatorSink sink;
   return sink;
+}
+
+bool RecordFlagForDelayedValidation(const std::string& flag_name) {
+  if (CommandLineFlagsParsed()) {
+    return false;
+  }
+  FlagsWithDelayedValidation().emplace_back(flag_name);
+  return true;
 }
 
 } // namespace yb
