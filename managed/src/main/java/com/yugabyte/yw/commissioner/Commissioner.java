@@ -346,6 +346,10 @@ public class Commissioner {
     return taskExecutor.isTaskRunning(taskUuid);
   }
 
+  public void waitForTask(UUID taskUuid) {
+    taskExecutor.waitForTask(taskUuid);
+  }
+
   public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     if (task == null) {

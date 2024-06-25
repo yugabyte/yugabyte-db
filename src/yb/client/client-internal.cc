@@ -1153,6 +1153,11 @@ Status YBClient::Data::IsCloneNamespaceInProgress(
   *create_in_progress =
       !(state == master::SysCloneStatePB::ABORTED || state == master::SysCloneStatePB::RESTORED);
 
+  if (state == master::SysCloneStatePB_State_ABORTED) {
+    return STATUS_FORMAT(
+        InternalError, "Clone operation aborted: $0", resp.entries(0).abort_message());
+  }
+
   return Status::OK();
 }
 

@@ -24,7 +24,7 @@ row            foo            {STRONG_READ,STRONG_WRITE}f              f        
 relation       foo            {WEAK_READ,WEAK_WRITE}t              f              f                                                                          t
 row            foo            {WEAK_READ,WEAK_WRITE}t              f              f              {2}                                                         f
 column         foo            {STRONG_READ,STRONG_WRITE}t              f              f              {2}                                          0              f
-column         foo            {STRONG_READ,STRONG_WRITE}t              f              f              {2}                           2              11             f
+column         foo            {STRONG_READ,STRONG_WRITE}t              f              f              {2}                           2              1              f
 step s1_commit: COMMIT;
 step s2_insert: <... completed>
 error in steps s1_commit s2_insert: ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)

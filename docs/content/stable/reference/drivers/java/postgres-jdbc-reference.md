@@ -268,7 +268,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 
 Steps for configuring the JDBC client for server authentication in a Kubernetes cluster are as follows:
 
-1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](../../../../quick-start/kubernetes/).
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](/preview/quick-start/kubernetes/).
 
    ```sh
    $ kubectl create namespace yb-demo

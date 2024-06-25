@@ -30,6 +30,9 @@
 /* YB includes. */
 #include "pg_yb_utils.h"
 #include "access/relscan.h"
+#include "access/yb_scan.h"
+
+static void yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node);
 
 /* ----------------------------------------------------------------
  *		ExecYbBitmapIndexScan
@@ -44,6 +47,37 @@ ExecYbBitmapIndexScan(PlanState *pstate)
 	return NULL;
 }
 
+/*
+ * yb_init_bitmap_index_scandesc
+ *
+ *		Initialize Yugabyte specific fields of the IndexScanDesc.
+ */
+static void
+yb_init_bitmap_index_scandesc(YbBitmapIndexScanState *node)
+{
+	EState	   *estate = node->ss.ps.state;
+	YbBitmapIndexScan *plan = (YbBitmapIndexScan *) node->ss.ps.plan;
+
+	IndexScanDesc scandesc = node->biss_ScanDesc;
+	scandesc->yb_exec_params = &estate->yb_exec_params;
+	scandesc->yb_scan_plan = (Scan *) plan;
+	scandesc->fetch_ybctids_only = true;
+	scandesc->heapRelation = node->ss.ss_currentRelation;
+
+	const bool is_colocated =
+		YbGetTableProperties(node->ss.ss_currentRelation)->is_colocated;
+	const bool is_primary =
+		scandesc->heapRelation->rd_pkindex == node->biss_RelationDesc->rd_id;
+
+	/* primary keys on colocated indexes don't have a secondary index in their request */
+	if (is_colocated && is_primary)
+		scandesc->yb_rel_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+	else
+		scandesc->yb_idx_pushdown =
+			YbInstantiatePushdownParams(&plan->yb_idx_pushdown, estate);
+}
+
 /* ----------------------------------------------------------------
  *		MultiExecYbBitmapIndexScan(node)
  * ----------------------------------------------------------------
@@ -55,10 +89,35 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	IndexScanDesc scandesc;
 	double		nTuples = 0;
 	bool		doscan;
+	bool		recheck;
+	YbScanDesc	ybscan;
+	EState	   *estate = node->ss.ps.state;
 
 	/* must provide our own instrumentation support */
 	if (node->ss.ps.instrument)
 		InstrStartNode(node->ss.ps.instrument);
+
+	if (node->biss_ScanDesc == NULL)
+	{
+		/*
+		* Initialize scan descriptor.
+		*/
+		node->biss_ScanDesc =
+			index_beginscan_bitmap(node->biss_RelationDesc,
+								estate->es_snapshot,
+								node->biss_NumScanKeys);
+
+		yb_init_bitmap_index_scandesc(node);
+
+		/*
+		* If no run-time keys to calculate, go ahead and pass the scankeys to the
+		* index AM.
+		*/
+		if (node->biss_NumRuntimeKeys == 0 && node->biss_NumArrayKeys == 0)
+			index_rescan(node->biss_ScanDesc,
+						node->biss_ScanKeys, node->biss_NumScanKeys,
+						NULL, 0);
+	}
 
 	/*
 	 * extract necessary information from index scan node
@@ -95,15 +154,22 @@ MultiExecYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	}
 	else
 	{
+		yb_init_bitmap_index_scandesc(node);
 		bitmap = yb_tbm_create(work_mem * 1024L);
 	}
+
+	ybscan = (YbScanDesc) scandesc->opaque;
+	recheck = YbPredetermineNeedsRecheck(ybscan->rs_base.rs_rd, ybscan->index,
+										 true /* xs_want_itup */,
+										 node->biss_ScanKeys,
+										 node->biss_NumScanKeys);
 
 	/*
 	 * Get TIDs from index and insert into bitmap
 	 */
 	while (doscan)
 	{
-		nTuples += (double) yb_index_getbitmap(scandesc, bitmap);
+		nTuples += (double) yb_index_getbitmap(scandesc, bitmap, recheck);
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -133,6 +199,7 @@ void
 ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 {
 	ExprContext *econtext = node->biss_RuntimeContext;
+	EState		*estate = node->ss.ps.state;
 
 	/*
 	 * Reset the runtime-key context so we don't leak memory as each outer
@@ -161,6 +228,14 @@ ExecReScanYbBitmapIndexScan(YbBitmapIndexScanState *node)
 								   node->biss_NumArrayKeys);
 	else
 		node->biss_RuntimeKeysReady = true;
+
+	if (node->biss_ScanDesc == NULL)
+	{
+		node->biss_ScanDesc = index_beginscan_bitmap(node->biss_RelationDesc,
+													 estate->es_snapshot,
+													 node->biss_NumScanKeys);
+		yb_init_bitmap_index_scandesc(node);
+	}
 
 	/* reset index scan */
 	if (node->biss_RuntimeKeysReady)
@@ -223,7 +298,6 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	YbBitmapIndexScanState *indexstate;
 	bool		relistarget;
 	Relation	index;
-	Relation	relation;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -282,7 +356,8 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	 */
 	relistarget = ExecRelationIsTargetRelation(estate, node->scan.scanrelid);
 	index = index_open(node->indexid, relistarget ? NoLock : AccessShareLock);
-	relation = ExecOpenScanRelation(estate, node->scan.scanrelid, eflags);
+	indexstate->ss.ss_currentRelation =
+		ExecOpenScanRelation(estate, node->scan.scanrelid, eflags);
 	Assert(IsYBRelation(index));
 
 	/*
@@ -326,41 +401,6 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	{
 		indexstate->biss_RuntimeContext = NULL;
 	}
-
-	/*
-	 * Initialize scan descriptor.
-	 */
-	indexstate->biss_ScanDesc =
-		index_beginscan_bitmap(index,
-							   estate->es_snapshot,
-							   indexstate->biss_NumScanKeys);
-
-
-	indexstate->ss.ss_currentRelation = relation;
-	indexstate->biss_ScanDesc->heapRelation = relation;
-	indexstate->biss_ScanDesc->yb_exec_params = &estate->yb_exec_params;
-	indexstate->biss_ScanDesc->fetch_ybctids_only = true;
-
-	const bool is_colocated = YbGetTableProperties(relation)->is_colocated;
-	const bool is_primary = relation->rd_pkindex == index->rd_id;
-
-	/* primary keys on colocated indexes don't have a secondary index in their request */
-	if (is_colocated && is_primary)
-		indexstate->biss_ScanDesc->yb_rel_pushdown =
-			YbInstantiatePushdownParams(&node->yb_idx_pushdown, estate);
-	else
-		indexstate->biss_ScanDesc->yb_idx_pushdown =
-			YbInstantiatePushdownParams(&node->yb_idx_pushdown, estate);
-
-	/*
-	 * If no run-time keys to calculate, go ahead and pass the scankeys to the
-	 * index AM.
-	 */
-	if (indexstate->biss_NumRuntimeKeys == 0 &&
-		indexstate->biss_NumArrayKeys == 0)
-		index_rescan(indexstate->biss_ScanDesc,
-					 indexstate->biss_ScanKeys, indexstate->biss_NumScanKeys,
-					 NULL, 0);
 
 	/*
 	 * all done.

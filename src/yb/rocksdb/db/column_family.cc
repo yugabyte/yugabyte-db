@@ -559,115 +559,123 @@ int GetL0ThresholdSpeedupCompaction(int level0_file_num_compaction_trigger,
 void ColumnFamilyData::RecalculateWriteStallConditions(
       const MutableCFOptions& mutable_cf_options) {
   Version* current_version = current();
-  if (current_version != nullptr) {
-    auto* vstorage = current_version ->storage_info();
-    auto write_controller = column_family_set_->write_controller_;
-    uint64_t compaction_needed_bytes =
-        vstorage->estimated_compaction_needed_bytes();
-
-    if (imm()->NumNotFlushed() >= mutable_cf_options.max_write_buffer_number) {
-      write_controller_token_ = write_controller->GetStopToken();
-      internal_stats_->AddCFStats(InternalStats::MEMTABLE_COMPACTION, 1);
-      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-          "[%s] Stopping writes because we have %d immutable memtables "
-          "(waiting for flush), max_write_buffer_number is set to %d",
-          name_.c_str(), imm()->NumNotFlushed(),
-          mutable_cf_options.max_write_buffer_number);
-    } else if (vstorage->l0_delay_trigger_count() >=
-               mutable_cf_options.level0_stop_writes_trigger) {
-      write_controller_token_ = write_controller->GetStopToken();
-      internal_stats_->AddCFStats(InternalStats::LEVEL0_NUM_FILES_TOTAL, 1);
-      if (compaction_picker_->IsLevel0CompactionInProgress()) {
-        internal_stats_->AddCFStats(
-            InternalStats::LEVEL0_NUM_FILES_WITH_COMPACTION, 1);
-      }
-      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-          "[%s] Stopping writes because we have %d level-0 files",
-          name_.c_str(), vstorage->l0_delay_trigger_count());
-    } else if (mutable_cf_options.hard_pending_compaction_bytes_limit > 0 &&
-               compaction_needed_bytes >=
-                   mutable_cf_options.hard_pending_compaction_bytes_limit) {
-      write_controller_token_ = write_controller->GetStopToken();
-      internal_stats_->AddCFStats(
-          InternalStats::HARD_PENDING_COMPACTION_BYTES_LIMIT, 1);
-      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-          "[%s] Stopping writes because of estimated pending compaction "
-          "bytes %" PRIu64,
-          name_.c_str(), compaction_needed_bytes);
-    } else if (mutable_cf_options.max_write_buffer_number > 3 &&
-               imm()->NumNotFlushed() >=
-                   mutable_cf_options.max_write_buffer_number - 1) {
-      write_controller_token_ =
-          SetupDelay(ioptions_.delayed_write_rate, write_controller,
-                     compaction_needed_bytes, prev_compaction_needed_bytes_,
-                     mutable_cf_options.disable_auto_compactions);
-      internal_stats_->AddCFStats(InternalStats::MEMTABLE_SLOWDOWN, 1);
-      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-          "[%s] Stalling writes because we have %d immutable memtables "
-          "(waiting for flush), max_write_buffer_number is set to %d "
-          "rate %" PRIu64,
-          name_.c_str(), imm()->NumNotFlushed(),
-          mutable_cf_options.max_write_buffer_number,
-          write_controller->delayed_write_rate());
-    } else if (mutable_cf_options.level0_slowdown_writes_trigger >= 0 &&
-               vstorage->l0_delay_trigger_count() >=
-                   mutable_cf_options.level0_slowdown_writes_trigger) {
-      write_controller_token_ =
-          SetupDelay(ioptions_.delayed_write_rate, write_controller,
-                     compaction_needed_bytes, prev_compaction_needed_bytes_,
-                     mutable_cf_options.disable_auto_compactions);
-      internal_stats_->AddCFStats(InternalStats::LEVEL0_SLOWDOWN_TOTAL, 1);
-      if (compaction_picker_->IsLevel0CompactionInProgress()) {
-        internal_stats_->AddCFStats(
-            InternalStats::LEVEL0_SLOWDOWN_WITH_COMPACTION, 1);
-      }
-      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-          "[%s] Stalling writes because we have %d level-0 files "
-          "rate %" PRIu64,
-          name_.c_str(), vstorage->l0_delay_trigger_count(),
-          write_controller->delayed_write_rate());
-    } else if (mutable_cf_options.soft_pending_compaction_bytes_limit > 0 &&
-               vstorage->estimated_compaction_needed_bytes() >=
-                   mutable_cf_options.soft_pending_compaction_bytes_limit) {
-      write_controller_token_ =
-          SetupDelay(ioptions_.delayed_write_rate, write_controller,
-                     compaction_needed_bytes, prev_compaction_needed_bytes_,
-                     mutable_cf_options.disable_auto_compactions);
-      internal_stats_->AddCFStats(
-          InternalStats::SOFT_PENDING_COMPACTION_BYTES_LIMIT, 1);
-      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-          "[%s] Stalling writes because of estimated pending compaction "
-          "bytes %" PRIu64 " rate %" PRIu64,
-          name_.c_str(), vstorage->estimated_compaction_needed_bytes(),
-          write_controller->delayed_write_rate());
-    } else if (vstorage->l0_delay_trigger_count() >=
-               GetL0ThresholdSpeedupCompaction(
-                   mutable_cf_options.level0_file_num_compaction_trigger,
-                   mutable_cf_options.level0_slowdown_writes_trigger)) {
-      write_controller_token_ = write_controller->GetCompactionPressureToken();
-      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-          "[%s] Increasing compaction threads because we have %d level-0 "
-          "files ",
-          name_.c_str(), vstorage->l0_delay_trigger_count());
-    } else if (vstorage->estimated_compaction_needed_bytes() >=
-               mutable_cf_options.soft_pending_compaction_bytes_limit / 4) {
-      // Increase compaction threads if bytes needed for compaction exceeds
-      // 1/4 of threshold for slowing down.
-      // If soft pending compaction byte limit is not set, always speed up
-      // compaction.
-      write_controller_token_ = write_controller->GetCompactionPressureToken();
-      if (mutable_cf_options.soft_pending_compaction_bytes_limit > 0) {
-        RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
-            "[%s] Increasing compaction threads because of estimated pending "
-            "compaction "
-            "bytes %" PRIu64,
-            name_.c_str(), vstorage->estimated_compaction_needed_bytes());
-      }
-    } else {
-      write_controller_token_.reset();
-    }
-    prev_compaction_needed_bytes_ = compaction_needed_bytes;
+  if (current_version == nullptr) {
+    return;
   }
+
+  auto* vstorage = current_version ->storage_info();
+  auto write_controller = column_family_set_->write_controller_;
+  uint64_t compaction_needed_bytes =
+      vstorage->estimated_compaction_needed_bytes();
+
+  if (imm()->TotalDataSize() >= mutable_cf_options.max_flushing_bytes) {
+    write_controller_token_ = write_controller->GetStopToken();
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Stopping writes because we have %" PRIu64 " bytes to flush, while % " PRIu64
+        "is allowed",
+        name_.c_str(), imm()->TotalDataSize(), mutable_cf_options.max_flushing_bytes);
+  } else if (imm()->NumNotFlushed() >= mutable_cf_options.max_write_buffer_number) {
+    write_controller_token_ = write_controller->GetStopToken();
+    internal_stats_->AddCFStats(InternalStats::MEMTABLE_COMPACTION, 1);
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Stopping writes because we have %d immutable memtables "
+        "(waiting for flush), max_write_buffer_number is set to %d",
+        name_.c_str(), imm()->NumNotFlushed(),
+        mutable_cf_options.max_write_buffer_number);
+  } else if (vstorage->l0_delay_trigger_count() >=
+             mutable_cf_options.level0_stop_writes_trigger) {
+    write_controller_token_ = write_controller->GetStopToken();
+    internal_stats_->AddCFStats(InternalStats::LEVEL0_NUM_FILES_TOTAL, 1);
+    if (compaction_picker_->IsLevel0CompactionInProgress()) {
+      internal_stats_->AddCFStats(
+          InternalStats::LEVEL0_NUM_FILES_WITH_COMPACTION, 1);
+    }
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Stopping writes because we have %d level-0 files",
+        name_.c_str(), vstorage->l0_delay_trigger_count());
+  } else if (mutable_cf_options.hard_pending_compaction_bytes_limit > 0 &&
+             compaction_needed_bytes >=
+                 mutable_cf_options.hard_pending_compaction_bytes_limit) {
+    write_controller_token_ = write_controller->GetStopToken();
+    internal_stats_->AddCFStats(
+        InternalStats::HARD_PENDING_COMPACTION_BYTES_LIMIT, 1);
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Stopping writes because of estimated pending compaction "
+        "bytes %" PRIu64,
+        name_.c_str(), compaction_needed_bytes);
+  } else if (mutable_cf_options.max_write_buffer_number > 3 &&
+             imm()->NumNotFlushed() >=
+                 mutable_cf_options.max_write_buffer_number - 1) {
+    write_controller_token_ =
+        SetupDelay(ioptions_.delayed_write_rate, write_controller,
+                   compaction_needed_bytes, prev_compaction_needed_bytes_,
+                   mutable_cf_options.disable_auto_compactions);
+    internal_stats_->AddCFStats(InternalStats::MEMTABLE_SLOWDOWN, 1);
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Stalling writes because we have %d immutable memtables "
+        "(waiting for flush), max_write_buffer_number is set to %d "
+        "rate %" PRIu64,
+        name_.c_str(), imm()->NumNotFlushed(),
+        mutable_cf_options.max_write_buffer_number,
+        write_controller->delayed_write_rate());
+  } else if (mutable_cf_options.level0_slowdown_writes_trigger >= 0 &&
+             vstorage->l0_delay_trigger_count() >=
+                 mutable_cf_options.level0_slowdown_writes_trigger) {
+    write_controller_token_ =
+        SetupDelay(ioptions_.delayed_write_rate, write_controller,
+                   compaction_needed_bytes, prev_compaction_needed_bytes_,
+                   mutable_cf_options.disable_auto_compactions);
+    internal_stats_->AddCFStats(InternalStats::LEVEL0_SLOWDOWN_TOTAL, 1);
+    if (compaction_picker_->IsLevel0CompactionInProgress()) {
+      internal_stats_->AddCFStats(
+          InternalStats::LEVEL0_SLOWDOWN_WITH_COMPACTION, 1);
+    }
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Stalling writes because we have %d level-0 files "
+        "rate %" PRIu64,
+        name_.c_str(), vstorage->l0_delay_trigger_count(),
+        write_controller->delayed_write_rate());
+  } else if (mutable_cf_options.soft_pending_compaction_bytes_limit > 0 &&
+             vstorage->estimated_compaction_needed_bytes() >=
+                 mutable_cf_options.soft_pending_compaction_bytes_limit) {
+    write_controller_token_ =
+        SetupDelay(ioptions_.delayed_write_rate, write_controller,
+                   compaction_needed_bytes, prev_compaction_needed_bytes_,
+                   mutable_cf_options.disable_auto_compactions);
+    internal_stats_->AddCFStats(
+        InternalStats::SOFT_PENDING_COMPACTION_BYTES_LIMIT, 1);
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Stalling writes because of estimated pending compaction "
+        "bytes %" PRIu64 " rate %" PRIu64,
+        name_.c_str(), vstorage->estimated_compaction_needed_bytes(),
+        write_controller->delayed_write_rate());
+  } else if (vstorage->l0_delay_trigger_count() >=
+             GetL0ThresholdSpeedupCompaction(
+                 mutable_cf_options.level0_file_num_compaction_trigger,
+                 mutable_cf_options.level0_slowdown_writes_trigger)) {
+    write_controller_token_ = write_controller->GetCompactionPressureToken();
+    RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+        "[%s] Increasing compaction threads because we have %d level-0 "
+        "files ",
+        name_.c_str(), vstorage->l0_delay_trigger_count());
+  } else if (vstorage->estimated_compaction_needed_bytes() >=
+             mutable_cf_options.soft_pending_compaction_bytes_limit / 4) {
+    // Increase compaction threads if bytes needed for compaction exceeds
+    // 1/4 of threshold for slowing down.
+    // If soft pending compaction byte limit is not set, always speed up
+    // compaction.
+    write_controller_token_ = write_controller->GetCompactionPressureToken();
+    if (mutable_cf_options.soft_pending_compaction_bytes_limit > 0) {
+      RLOG(InfoLogLevel::WARN_LEVEL, ioptions_.info_log,
+          "[%s] Increasing compaction threads because of estimated pending "
+          "compaction "
+          "bytes %" PRIu64,
+          name_.c_str(), vstorage->estimated_compaction_needed_bytes());
+    }
+  } else {
+    write_controller_token_.reset();
+  }
+  prev_compaction_needed_bytes_ = compaction_needed_bytes;
 }
 
 const EnvOptions* ColumnFamilyData::soptions() const {

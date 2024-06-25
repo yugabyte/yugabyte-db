@@ -15,6 +15,9 @@ CREATE TABLE test_2(h1 int NOT NULL,
                   h3 int NOT NULL,
                   v1 int);
 ALTER TABLE test ATTACH PARTITION test_2 FOR VALUES WITH (modulus 2, remainder 1);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d test_1;
                Table "public.test_1"
  Column |  Type   | Collation | Nullable | Default
@@ -81,6 +84,9 @@ CREATE TABLE person_apac (
     name  text,
     age int);
 ALTER TABLE person ATTACH PARTITION person_apac FOR VALUES IN ('India', 'Singapore');
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d person_americas;
             Table "public.person_americas"
   Column   |  Type   | Collation | Nullable | Default
@@ -167,6 +173,65 @@ ERROR:  multiple primary keys for table "part_a_15_20" are not allowed
 CREATE TABLE part_a_20_25 (a int, b text NOT NULL, PRIMARY KEY (a ASC));
 ALTER TABLE parted ATTACH PARTITION part_a_20_25 FOR VALUES FROM (20) TO (25);
 ERROR:  multiple primary keys for table "part_a_20_25" are not allowed
+-- Create a partition table without a primary key and attach it as a partition.
+CREATE TABLE part_a_25_40 (a int NOT NULL, b text NOT NULL) PARTITION BY range (a);
+CREATE TABLE part_a_25_35 PARTITION OF part_a_25_40 FOR VALUES FROM (25) TO (35) PARTITION BY range (a);
+CREATE TABLE part_a_25_30 PARTITION OF part_a_25_35 FOR VALUES FROM (25) TO (30);
+CREATE TABLE part_a_30_35 PARTITION OF part_a_25_35 FOR VALUES FROM (30) TO (35);
+CREATE TABLE part_a_35_40 PARTITION OF part_a_25_40 FOR VALUES FROM (35) TO (40);
+ALTER TABLE parted ATTACH PARTITION part_a_25_40 FOR VALUES FROM (25) TO (40);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\d part_a_25_40;
+      Partitioned table "public.part_a_25_40"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null |
+ b      | text    |           | not null |
+Partition of: parted FOR VALUES FROM (25) TO (40)
+Partition key: RANGE (a)
+Indexes:
+    "part_a_25_40_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
+Number of partitions: 2 (Use \d+ to list them.)
+
+\d part_a_25_35;
+      Partitioned table "public.part_a_25_35"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null |
+ b      | text    |           | not null |
+Partition of: part_a_25_40 FOR VALUES FROM (25) TO (35)
+Partition key: RANGE (a)
+Indexes:
+    "part_a_25_35_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
+Number of partitions: 2 (Use \d+ to list them.)
+
+\d part_a_25_30;
+            Table "public.part_a_25_30"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null |
+ b      | text    |           | not null |
+Partition of: part_a_25_35 FOR VALUES FROM (25) TO (30)
+Indexes:
+    "part_a_25_30_pkey" PRIMARY KEY, lsm (a ASC, b DESC)
+
+INSERT INTO parted VALUES (26, '26');
+INSERT INTO parted VALUES (26, '26'); -- should fail.
+ERROR:  duplicate key value violates unique constraint "part_a_25_30_pkey"
+INSERT INTO parted VALUES (31, '31');
+INSERT INTO parted VALUES (31, '31'); -- should fail.
+ERROR:  duplicate key value violates unique constraint "part_a_30_35_pkey"
+INSERT INTO parted VALUES (36, '36');
+INSERT INTO parted VALUES (36, '36'); -- should fail.
+ERROR:  duplicate key value violates unique constraint "part_a_35_40_pkey"
 -- Test a complicated situation where the attribute numbers of partition tables
 -- and partitioned tables are different.
 CREATE TABLE col_order_change (
@@ -183,6 +248,9 @@ ALTER TABLE col_order_change_part ADD COLUMN c numeric NOT NULL, ADD COLUMN e va
 ALTER TABLE col_order_change_part DROP COLUMN b;
 ALTER TABLE col_order_change_part ADD COLUMN b bigint NOT NULL;
 ALTER TABLE col_order_change ATTACH PARTITION col_order_change_part FOR VALUES FROM ('a', 10) TO ('a', 20);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d col_order_change_part;
             Table "public.col_order_change_part"
  Column |       Type        | Collation | Nullable | Default

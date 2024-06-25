@@ -613,15 +613,6 @@
     showSection = true
 
 [[preview_tutorials]]
-  name = "Key benefits"
-  weight = 2
-  identifier = "features"
-  url = "/preview/features/"
-  [preview_tutorials.params]
-    showSection = true
-    hideChildren = true
-
-[[preview_tutorials]]
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
@@ -942,15 +933,6 @@
     showSection = true
 
 [[stable]]
-  name = "Key benefits"
-  weight = 3
-  identifier = "features"
-  url = "/stable/features/"
-  [stable.params]
-    showSection = true
-    hideChildren = true
-
-[[stable]]
   name = "Quick Start"
   weight = 4
   identifier = "quick-start"
@@ -1070,6 +1052,15 @@
     showSection = true
     hideLink = true
 
+[[stable_yugabyte-platform]]
+  name = "Servers for nodes"
+  parent = "prepare"
+  weight = 40
+  identifier = "server-nodes"
+  [stable_yugabyte-platform.params]
+    showSection = true
+    hideLink = true
+
 ########## Menus (in stable) for APIs
 
 # [[stable_api]]
@@ -1114,6 +1105,160 @@
 #   [stable_api.params]
 #     showSection = true
 #     newTab = true
+
+
+########## Menus for 2.20
+
+[["v2.20"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  ["v2.20".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20"]]
+  name = "YugabyteDB"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2.20/"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
+  name = "Key benefits"
+  weight = 3
+  identifier = "features"
+  url = "/v2.20/features/"
+  ["v2.20".params]
+    showSection = true
+    hideChildren = true
+
+[["v2.20"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  ["v2.20".params]
+    showSection = true
+    hideChildren = true
+
+[["v2.20"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2.20/explore/"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
+  name = "Develop"
+  weight = 6
+  identifier = "develop"
+  url = "/v2.20/develop/"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2.20/secure/"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2.20/launch-and-manage/"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2.20"]]
+  name = "Benchmark"
+  weight = 10
+  identifier = "benchmark"
+  url = "/v2.20/benchmark/"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  ["v2.20".params]
+    showSection = true
+
+[["v2.20"]]
+  name = "Misc"
+  identifier = "misc"
+  parent = "reference"
+
+[["v2.20"]]
+  name = "YEDIS"
+  weight = 1
+  url = "/preview/yedis/"
+  parent = "misc"
+
+[["v2.20"]]
+  name = "Legal"
+  weight = 2
+  url = "/preview/legal/"
+  parent = "misc"
+
+[["v2.20"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2.20".params]
+    showSection = true
+
+########## Menus (in "v2.20") for YB Anywhere section
+
+[["v2.20_yugabyte-platform"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  ["v2.20_yugabyte-platform".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.20_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2.20_yugabyte-platform".params]
+    showSection = true
+    hideLink = true
+
+[["v2.20_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere API"
+  parent = "anywhere-automation"
+  weight = 3
+  identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  ["v2.20_yugabyte-platform".params]
+    showSection = true
+    newTab = true
+
+[["v2.20_yugabyte-platform"]]
+  name = "Terraform provider"
+  parent = "anywhere-automation"
+  weight = 30
+  identifier = "yba-terraform-provider"
+  url = "https://registry.terraform.io/providers/yugabyte/yba/latest/docs/"
+  ["v2.20_yugabyte-platform".params]
+    showSection = true
+    newTab = true
 
 ########## Menus for 2.18
 

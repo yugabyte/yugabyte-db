@@ -27,7 +27,6 @@ type ybdbDirectories struct {
 	ysqlBin             string
 	LogDir              string
 	LogFile             string
-	cronScript          string
 }
 
 func newYbdbDirectories() ybdbDirectories {
@@ -45,8 +44,7 @@ func newYbdbDirectories() ybdbDirectories {
 		ybdbInstallDir:   common.GetSoftwareRoot() + "/ybdb",
 		LogDir:           common.GetBaseInstall() + "/data/ybdb/logs",
 		LogFile:          common.GetBaseInstall() + "/data/ybdb/logs/yugabyted.log",
-		cronScript: filepath.Join(
-			common.GetInstallerSoftwareDir(), common.CronDir, "manageYbdb.sh")}
+	}
 }
 
 // YBDB component
@@ -254,11 +252,6 @@ func (ybdb Ybdb) Install() error {
 	if err := ybdb.createYugawareDatabase(); err != nil {
 		return err
 	}
-	if !common.HasSudoAccess() {
-		if err := ybdb.CreateCronJob(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -355,13 +348,6 @@ func (ybdb Ybdb) queryYsql(query string) (string, error) {
 	log.Debug("YSQL query succeeded.")
 	return out.StdoutString(), nil
 
-}
-
-// TODO: Create Cron Job for non-sudo sceanrios.
-func (ybdb Ybdb) CreateCronJob() error {
-	// TODO: Handle non-sudo case
-	log.Fatal("Cannot create cron job for YBDB.")
-	return nil
 }
 
 func (ybdb Ybdb) CreateBackup(backupPath ...string) {

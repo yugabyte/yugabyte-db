@@ -305,6 +305,10 @@ public class BackupHelper {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Invalid owner rename during restore operation");
           }
+          if (StringUtils.isBlank(bSI.keyspace)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Restore keyspace cannot be empty/blank");
+          }
           if (bSI.backupType != null) {
             if (bSI.backupType.equals(TableType.PGSQL_TABLE_TYPE)
                 && !primaryClusterUserIntent.enableYSQL) {

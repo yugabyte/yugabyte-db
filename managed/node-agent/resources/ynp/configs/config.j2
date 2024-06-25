@@ -4,22 +4,27 @@
 [DEFAULT]
 loglevel = DEBUG
 logfile = app.log
-is_airgap = "{{ ynp.is_airgap }}"
+is_airgap = {{ ynp.is_airgap }}
 
-[Hello]
-message = hello world
-
-[Chrony]
-message = chrony world
+[ConfigureChrony]
 chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
 
-[Yugabyte]
-message = YB world
-yb_home_dir = "{{ ynp.ybHomeDir }}"
+[CreateYugabyteUser]
+yb_home_dir = {{ ynp.yb_home_dir }}
+yb_user = {{ ynp.yb_user }}
+yb_user_id = {{ ynp.yb_user_id }}
+yb_user_password = {{ ynp.yb_user_password }}
+public_key_filepath = {{ ynp.public_key_filepath }}
+
+[ConfigureSystemd]
+yb_home_dir = {{ ynp.yb_home_dir }}
+yb_user = {{ ynp.yb_user }}
+user_name = {{ ynp.yb_user }}
+use_system_level_systemd = {{ ynp.use_system_level_systemd }}
+service_files = "yb-tserver.service, yb-master.service, clock-sync.sh.j2, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer"
 
 [OS]
-message = OS world
-{% for disk in ynp.dataDisk %}
+{% for disk in ynp.data_disk %}
 data_disk_deviceName_{{ loop.index }} = {{ disk.deviceName }}
 data_disk_mountPath_{{ loop.index }} = {{ disk.mountPath }}
 {% endfor %}

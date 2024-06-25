@@ -384,6 +384,11 @@ public enum TaskType {
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
+  SetDatabasesDrConfig(
+      com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
   CreateDrConfig(
       com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class,
       CustomerTask.TaskType.Create,
@@ -531,6 +536,16 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.RecommissionNodeInstance.class,
       CustomerTask.TaskType.Update,
       CustomerTask.TargetType.Node),
+
+  MasterFailover(
+      com.yugabyte.yw.commissioner.tasks.MasterFailover.class,
+      CustomerTask.TaskType.MasterFailover,
+      CustomerTask.TargetType.Universe),
+
+  SyncMasterAddresses(
+      com.yugabyte.yw.commissioner.tasks.SyncMasterAddresses.class,
+      CustomerTask.TaskType.SyncMasterAddresses,
+      CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
 
@@ -720,6 +735,13 @@ public enum TaskType {
   ChangeXClusterRole(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole.class),
 
   SetDrStates(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates.class),
+
+  XClusterAddNamespaceToOutboundReplicationGroup(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
+          .XClusterAddNamespaceToOutboundReplicationGroup.class),
+
+  AddNamespaceToXClusterReplication(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication.class),
 
   SetRestoreTime(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime.class),
 
@@ -955,7 +977,11 @@ public enum TaskType {
 
   WaitStartingFromTime(WaitStartingFromTime.class),
 
-  RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class);
+  RemoveNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveNodeAgent.class),
+
+  UpdateUniverseFields(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseFields.class),
+
+  RunNodeCommand(com.yugabyte.yw.commissioner.tasks.subtasks.RunNodeCommand.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1053,6 +1079,8 @@ public enum TaskType {
           .put(UpdateLoadBalancerConfig, 136)
           .put(LdapUniverseSync, 137)
           .put(UpgradeYbcGFlags, 138)
+          .put(MasterFailover, 139)
+          .put(SyncMasterAddresses, 140)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

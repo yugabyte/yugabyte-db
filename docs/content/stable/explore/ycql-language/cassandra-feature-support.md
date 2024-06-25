@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). The following table highlights the important differences in feature support between YCQL and Cassandra 3.4.2.
+Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). The following tables highlight the important differences in feature support between YCQL and Cassandra 3.4.2.
 
 ## Data types
 
@@ -87,7 +87,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Select columns                            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/yes>}} | Conditional select with `[NOT] IN` clause | [SELECT ... WHERE key IN ...](../../../api/ycql/dml_select#where-clause) |
 | {{<icon/yes>}} | Conditional select with `IF` clause       | [SELECT ... IF ...](../../../api/ycql/dml_select#if-clause)              |
-| {{<icon/yes>}} | Select using `CONTAINS [KEY]`             | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
+| {{<icon/yes>}}  | Select using `CONTAINS [KEY]`            | [SELECT * FROM ...](../../../api/ycql/dml_select/)                       |
 | {{<icon/no>}}  | `SELECT JSON`                             | [JSONB](../../../api/ycql/type_jsonb/) is supported as a native type     |
 | {{<icon/no>}}  | Select with `PER PARTITION LIMIT`         |                                                                          |
 | {{<icon/no>}}  | Grouping results with `GROUP BY`          |                                                                          |
@@ -149,7 +149,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |                    |          Component           |                                    Details                                     |
 | :----------------: | :--------------------------- | :----------------------------------------------------------------------------- |
 |   {{<icon/yes>}}   | Aggregates                   | [AVG, COUNT, MAX, MIN, SUM](../../../api/ycql/expr_fcall/#aggregate-functions) |
-|   {{<icon/yes>}}   | Built-in Functions           | [Now, DateOf, CurrentTime, ToTime, UUID ...](../../../api/ycql/expr_fcall/)   |
+|   {{<icon/yes>}}   | Built-in Functions           | [Now, DateOf, CurrentTime, ToTime, UUID ... ](../../../api/ycql/expr_fcall/)   |
 |   {{<icon/yes>}}   | Operators                    | [Binary, Unary, Null operators](../../../api/ycql/expr_ocall/)                 |
 | {{<icon/partial>}} | Batch                        | Only programmatically via [BatchStatement](../../../api/ycql/batch/)           |
 |   {{<icon/no>}}    | Materialized Views           |                                                                                |
@@ -160,5 +160,5 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 
 ## Learn more
 
-- [Comparison with Apache Cassandra](/preview/faq/comparisons/cassandra/)
+- [Comparison with Apache Cassandra](../../../faq/comparisons/cassandra)
 - [YCQL command reference](../../../api/ycql/)

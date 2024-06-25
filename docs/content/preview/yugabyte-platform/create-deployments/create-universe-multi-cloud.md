@@ -149,4 +149,4 @@ To run the TPC-C benchmark on your universe, use commands similar to the followi
     --warehouses 50
 ```
 
-Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc-ysql/) for details.
+Refer to [Running TPC-C on Yugabyte](../../../benchmark/tpcc/) for details.

@@ -500,7 +500,7 @@ ERROR:  Only REINDEX with VERBOSE option is supported
 REINDEX INDEX pg_database_datname_index; -- fail
 ERROR:  cannot reindex shared system indexes
 -- make sure index isn't broken after failure
-/*+IndexOnlyScan(pg_database_datname_index)*/
+/*+IndexOnlyScan(pg_database pg_database_datname_index)*/
 SELECT datname from pg_database WHERE datname LIKE 'template%';
   datname
 -----------

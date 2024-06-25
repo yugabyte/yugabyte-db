@@ -26,7 +26,6 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
-    google::SetVLOGLevel("cdcsdk_virtual_wal*", 3);
   }
 
   enum FeedbackType {

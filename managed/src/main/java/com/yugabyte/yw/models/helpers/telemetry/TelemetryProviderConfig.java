@@ -20,4 +20,8 @@ import lombok.Data;
 public class TelemetryProviderConfig {
   @ApiModelProperty(value = "Telemetry Provider Type", accessMode = AccessMode.READ_WRITE)
   private ProviderType type;
+
+  public void validate() {
+    // To be overridden in child classes if validation is required.
+  }
 }

@@ -65,6 +65,7 @@ Where
   them. Using a mix of statements where some have `USING TIMESTAMP` and others do not will lead to
   very confusing results.
 - Inserting rows with TTL is not supported on tables with [transactions enabled](./../ddl_create_table#table-properties-1).
+- `INSERT` is always done at `QUORUM` consistency level irrespective of setting.
 
 ### `VALUES` clause
 

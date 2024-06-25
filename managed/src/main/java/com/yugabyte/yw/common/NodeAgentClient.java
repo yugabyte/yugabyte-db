@@ -580,7 +580,9 @@ public class NodeAgentClient {
   }
 
   public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, ShellProcessContext.DEFAULT);
+    // Use the user of the node-agent process by not setting a specific user.
+    return executeCommand(
+        nodeAgent, command, ShellProcessContext.DEFAULT.toBuilder().useDefaultUser(false).build());
   }
 
   public ShellResponse executeCommand(
@@ -592,7 +594,10 @@ public class NodeAgentClient {
         new ExecuteCommandResponseObserver(id, context.isLogCmdOutput());
     ExecuteCommandRequest.Builder builder =
         ExecuteCommandRequest.newBuilder().addAllCommand(command);
-    builder.setUser(context.getSshUserOrDefault());
+    String user = context.getSshUser();
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
     if (context.getTimeoutSecs() > 0L) {
       stub = stub.withDeadlineAfter(context.getTimeoutSecs(), TimeUnit.SECONDS);
     }
@@ -616,7 +621,7 @@ public class NodeAgentClient {
       response.setDescription(description);
       return response;
     } catch (Throwable e) {
-      log.error("Error in running command. Error: {}", responseObserver.stdErr);
+      log.error("Error in running command. Error: {}", e.getMessage());
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
   }

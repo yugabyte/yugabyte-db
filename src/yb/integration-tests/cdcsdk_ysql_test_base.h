@@ -779,6 +779,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       std::unordered_set<std::string>* record_table_id);
 
   std::string GetPubRefreshTimesString(vector<uint64_t> pub_refresh_times);
+
+  void TestNonUserTableShouldNotGetAddedToCDCStream (bool create_consistent_snapshot_stream);
 };
 
 }  // namespace cdc

@@ -298,7 +298,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
   // TABLE and DROP COLUMN.
   auto& l = txn_data.write_lock;
   if (l->is_being_deleted_by_ysql_ddl_txn()) {
-    return YsqlDdlTxnDropTableHelper(txn_data);
+    return YsqlDdlTxnDropTableHelper(txn_data, true /* success */);
   }
 
   vector<string> cols_being_dropped;
@@ -334,7 +334,7 @@ Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_da
   const auto& ddl_state = mutable_pb.ysql_ddl_txn_verifier_state(0);
   if (ddl_state.contains_create_table_op()) {
     // This table was created in this aborted transaction. Drop this table.
-    return YsqlDdlTxnDropTableHelper(txn_data);
+    return YsqlDdlTxnDropTableHelper(txn_data, false /* success */);
   }
   if (ddl_state.contains_alter_table_op()) {
     std::vector<DdlLogEntry> ddl_log_entries;
@@ -402,7 +402,8 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   return SendAlterTableRequestInternal(table, TransactionId::Nil(), txn_data.epoch);
 }
 
-Status CatalogManager::YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data) {
+Status CatalogManager::YsqlDdlTxnDropTableHelper(
+    const YsqlTableDdlTxnState txn_data, bool success) {
   auto table = txn_data.table;
   txn_data.write_lock.Commit();
   DeleteTableRequestPB dtreq;
@@ -411,53 +412,9 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_
   dtreq.mutable_table()->set_table_name(table->name());
   dtreq.mutable_table()->set_table_id(table->id());
   dtreq.set_is_index_table(table->is_index());
+  auto action = success ? "roll forward" : "rollback";
+  LOG(INFO) << "Delete table " << table->id() << " as part of " << action;
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
-}
-
-Status CatalogManager::WaitForDdlVerificationToFinish(
-    const TableInfoPtr& table, const string& pb_txn_id) {
-
-  auto is_ddl_in_progress = [&] {
-    TRACE("Locking table");
-    auto l = table->LockForRead();
-    return l->has_ysql_ddl_txn_verifier_state() && l->pb_transaction_id() != pb_txn_id;
-  };
-
-  if (!FLAGS_retry_if_ddl_txn_verification_pending) {
-    // Simply check whether some other ddl is in progress, if so, return error.
-    return is_ddl_in_progress() ? STATUS_FORMAT(
-        TryAgain, "Table is undergoing DDL transaction verification: $0", table->ToString())
-        : Status::OK();
-  }
-
-  // Best effort wait for any previous DDL verification on this table to be complete. This is mostly
-  // to handle the case where a script calls multiple DDLs on the same table in sequential order in
-  // quick succession. In that case we do not want to fail the second DDL simply because background
-  // DDL transaction still did not finish for the previous DDL. Note that we release the lock at the
-  // end so it is still possible that by the time the caller acquires a lock later, some other DDL
-  // transaction started on this table and the caller fails. But this case is ok, because we only
-  // intend to make sequential DDLs work, not serialize concurrent DDL. If we didn't release the
-  // lock here, then we would effectively be blocking DDL verification itself, which needs a write
-  // lock.
-  Status s =
-      RetryFunc(CoarseMonoClock::Now() +
-                std::chrono::milliseconds(FLAGS_wait_for_ysql_ddl_verification_timeout_ms),
-      "Waiting for ddl transaction",
-      Format("Table is undergoing DDL transaction verification: $0", table->ToStringWithState()),
-      [&](CoarseTimePoint deadline, bool *ddl_verification_in_progress) -> Status {
-        *ddl_verification_in_progress = is_ddl_in_progress();
-        return Status::OK();
-      }
-  );
-
-  // The above function returns a timed out error if ddl verification is not complete yet. In that
-  // case do not return timeout to the client (which may handle an actual timeout differently and
-  // retry more often), instead return a TryAgain error.
-  if (s.IsTimedOut()) {
-    return STATUS_FORMAT(TryAgain, "Table is undergoing DDL transaction verification: $0",
-        table->ToStringWithState());
-  }
-  return s;
 }
 
 Status CatalogManager::IsYsqlDdlVerificationDone(

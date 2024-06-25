@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../../architecture/docdb/persistence/). Loosely speaking:
+In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../../architecture/docdb/). Loosely speaking:
 
 - A _table's_ internal key-value store maps primary keys to the remaining columns.
 - A _secondary index's_ internal key-value store maps index keys to primary keys.
@@ -274,7 +274,7 @@ while read -r tablet_id; do
   bin/sst_dump \
     --command=scan \
     --output_format=decoded_regulardb \
-    --file=$(find /tmp/ybd1/data/yb-data/tserver/data \
+    --file=$(find ${HOME}/var/node1/data/yb-data/tserver/data \
                -name tablet-"$tablet_id") \
   | grep -v filler
 done <<(!! \
@@ -284,7 +284,7 @@ done <<(!! \
 
 ```output
 from [] to []
-Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
+Process ${HOME}/var/node1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 73 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 73 }
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 315 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 142 }
@@ -297,7 +297,7 @@ SubDocKey(DocKey([], ["\x01not", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])])
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 74 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 74 }
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 321 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 148 }
 from [] to []
-Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
+Process ${HOME}/var/node1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 }
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 3 }]) -> null; intent doc ht: HT{ physical: 1636678107944604 }
@@ -308,7 +308,7 @@ SubDocKey(DocKey([], ["\x01where", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])
 SubDocKey(DocKey([], ["\x045", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 w: 2 }
 SubDocKey(DocKey([], ["\x05body", EncodedSubDocKey(DocKey(0xc0c4, [2], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 6 }]) -> null; intent doc ht: HT{ physical: 1636678107973196 w: 1 }
 from [] to []
-Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
+Process ${HOME}/var/node1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x05jsonb", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107944677 }
 SubDocKey(DocKey([], ["\x05one", EncodedSubDocKey(DocKey(0xfca0, [3], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107974363 }

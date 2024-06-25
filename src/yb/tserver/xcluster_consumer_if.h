@@ -45,6 +45,7 @@ class ProxyCache;
 namespace tserver {
 
 class TabletServer;
+class TserverXClusterContextIf;
 class XClusterPoller;
 
 class XClusterConsumerIf {
@@ -79,8 +80,10 @@ typedef std::function<Result<std::pair<NamespaceId, NamespaceName>>(const Tablet
     GetNamespaceInfoFunc;
 
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
-    std::function<int64_t(const TabletId&)> get_leader_term, ConnectToPostgresFunc connect_to_pg,
-    GetNamespaceInfoFunc get_namespace_info, rpc::ProxyCache* proxy_cache, TabletServer* tserver);
+    std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
+    client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
+    GetNamespaceInfoFunc get_namespace_info_func, const TserverXClusterContextIf& xcluster_context,
+    const scoped_refptr<MetricEntity>& server_metric_entity);
 
 }  // namespace tserver
 }  // namespace yb

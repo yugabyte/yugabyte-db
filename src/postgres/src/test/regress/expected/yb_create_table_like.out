@@ -190,7 +190,7 @@ UNION
 SELECT 'index' AS object_type, relname AS obj_name, obj_description(oid) AS comments FROM pg_class WHERE oid IN (SELECT indexrelid FROM pg_index WHERE indrelid=$1::regclass::oid)
 UNION
 SELECT 'constraint' AS object_type, conname AS obj_name, obj_description(oid) AS comments FROM pg_constraint WHERE conrelid=$1::regclass::oid
-ORDER BY obj_name
+ORDER BY obj_name, object_type
 $$ LANGUAGE SQL;
 -- Without specifying INCLUDING COMMENTS, comments are not copied.
 CREATE TABLE comments1 (LIKE liketest1 INCLUDING INDEXES, LIKE liketest2 INCLUDING CONSTRAINTS);
@@ -202,8 +202,8 @@ SELECT * FROM get_comments('comments1');
  column      | c                  |
  index       | comments1_b_idx    |
  index       | comments1_expr_idx |
- index       | comments1_pkey     |
  constraint  | comments1_pkey     |
+ index       | comments1_pkey     |
  column      | d                  |
  constraint  | liketest2_c_check  |
 (9 rows)
@@ -232,8 +232,8 @@ SELECT * FROM get_comments('comments3');
  column      | b                  | B
  index       | comments3_b_idx    | index b
  index       | comments3_expr_idx |
- index       | comments3_pkey     | index pkey
  constraint  | comments3_pkey     |
+ index       | comments3_pkey     | index pkey
  constraint  | liketest1_a_check  | a_check
 (7 rows)
 

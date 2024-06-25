@@ -1292,8 +1292,9 @@ Status TabletServer::CreateXClusterConsumer() {
   };
 
   xcluster_consumer_ = VERIFY_RESULT(tserver::CreateXClusterConsumer(
-      std::move(get_leader_term), std::move(connect_to_pg), std::move(get_namespace_info),
-      proxy_cache_.get(), this));
+      std::move(get_leader_term), permanent_uuid(), *client(), std::move(connect_to_pg),
+      std::move(get_namespace_info), GetXClusterContext(), metric_entity()));
+
   return Status::OK();
 }
 

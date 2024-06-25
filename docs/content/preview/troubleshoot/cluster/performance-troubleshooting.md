@@ -3,6 +3,8 @@ title: Troubleshoot performance issues
 headerTitle: Performance issues
 linkTitle: Performance issues
 description: Investigate and troubleshoot performance issues in YugabyteDB clusters
+aliases:
+  - /preview/benchmark/performance-troubleshooting/
 menu:
   preview:
     identifier: performance-troubleshooting

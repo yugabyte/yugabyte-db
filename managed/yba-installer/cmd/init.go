@@ -5,10 +5,10 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
+	osuser "os/user"
+	"strings"
 
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -34,29 +34,36 @@ var serviceOrder []string
 var ybaCtl *ybactl.YbaCtlComponent
 
 func initAfterFlagsParsed(cmdName string) {
-	if force {
-		common.DisableUserConfirm()
-	}
-
-	handleRootCheck(cmdName)
-
 	// init logging and set log level for stdout
 	log.Init(logLevel)
 
-	ybaCtl = ybactl.New()
-	ybaCtl.Setup()
-
-	// verify that we have a conf file
+	if force {
+		common.DisableUserConfirm()
+	}
+	// verify that we have a conf file, or create it if necessary
 	if common.Contains(cmdsRequireConfigInit(), cmdName) {
 		ensureInstallerConfFile()
 	}
 
+	// Load the config after confirming config file
 	common.InitViper()
 
-	log.AddOutputFile(common.YbactlLogFile())
-	log.Trace(fmt.Sprintf("yba-ctl started with cmd %s", cmdName))
+	// Replicated migration handles config and root checks on its own.
+	// License does not need any config, so skip for now
+	if !(strings.HasPrefix(cmdName, "yba-ctl replicated-migrate") ||
+		strings.HasPrefix(cmdName, "yba-ctl license")) {
+		handleRootCheck(cmdName)
+	}
 
+	// Finally, do basic yba-ctl setup
+	ybaCtl = ybactl.New()
+	ybaCtl.Setup()
 	initServices()
+
+	// Add logging now that yba-ctl directory is created
+	log.AddOutputFile(common.YbactlLogFile())
+
+	log.Trace(fmt.Sprintf("yba-ctl started with cmd %s", cmdName))
 }
 
 func ensureInstallerConfFile() {
@@ -105,23 +112,22 @@ func initServices() {
 }
 
 func handleRootCheck(cmdName string) {
-	switch cmdName {
-	// Install should typically be done as root, and will confirm if the user does not.
-	case "yba-ctl install":
-		if !common.HasSudoAccess() {
-			if !common.UserConfirm("Installing without root access is not recommend and should not be "+
-				"done for production use. Do you want to continue install as non-root?", common.DefaultNo) {
-				fmt.Println("Please run install as root")
-				os.Exit(1)
-			}
-		}
-	default:
-		if _, err := os.Stat(common.YbactlRootInstallDir); !errors.Is(err, fs.ErrNotExist) {
-			// If /opt/yba-ctl/yba-ctl.yml exists, it was put there be root?
-			if !common.HasSudoAccess() {
-				fmt.Println("Please run yba-ctl as root")
-				os.Exit(1)
-			}
+	user, err := osuser.Current()
+	if err != nil {
+		log.Fatal("Could not determine current user: " + err.Error())
+	}
+
+	// First, validate that the user (root access) matches the config 'as_root'
+	if user.Uid == "0" && !viper.GetBool("as_root") {
+		log.Fatal("running as root user with 'as_root' set to false is not supported")
+	} else if user.Uid != "0" &&
+		(viper.GetBool("as_root") || common.Exists(common.YbactlRootInstallDir)) {
+		// Allow running certain commands as non-root in root install mode
+		switch cmdName {
+			case "yba-ctl version", "yba-ctl status", "yba-ctl createBackup":
+				break
+			default:
+				log.Fatal("running as non-root user with 'as_root' set to true is not supported")
 		}
 	}
 }

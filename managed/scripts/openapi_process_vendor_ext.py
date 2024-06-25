@@ -96,6 +96,25 @@ def remove_internal_schemas_and_properties():
             for prop_name, prop in schema["properties"].items():
                 if is_internal(prop):
                     props_to_remove.append(prop_name)
+        elif "allOf" in schema:
+            allOf_to_remove = []
+            for ii, entry in enumerate(schema["allOf"]):
+                allOf_remove_props = []
+                for prop_name, prop in entry.get("properties", {}).items():
+                    if is_internal(prop):
+                        allOf_remove_props.append(prop_name)
+                for p in allOf_remove_props:
+                    entry.get("properties", {}).pop(p)
+                    logger.debug("removed allOf property " + p)
+                if "properties" in entry and entry["properties"] is None:
+                    allOf_to_remove.append(ii)
+            for allOf_remove in allOf_to_remove[::-1]:
+                schema["allOf"].pop(allOf_remove)
+            if len(schema["allOf"]) == 0:
+                schemas_to_remove = schema_name
+                logger.debug("allOf: removed internal schema " + schema_name)
+            continue
+
         # remove internal properties
         for prop_name in props_to_remove:
             schema["properties"].pop(prop_name)

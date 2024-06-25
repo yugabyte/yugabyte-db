@@ -2153,7 +2153,7 @@ TEST_F(PersistRetryableRequestsRBSITest, TestRetryableWrite) {
   // Rollover the log and should trigger flushing retryable requests.
   ASSERT_OK(leader_peer->log()->AllocateSegmentAndRollOver());
   ASSERT_OK(WaitFor([&] {
-    return leader_peer->TEST_HasRetryableRequestsOnDisk();
+    return leader_peer->TEST_HasBootstrapStateOnDisk();
   }, 10s, "retryable requests flushed to disk"));
 
   ASSERT_OK(leader_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));

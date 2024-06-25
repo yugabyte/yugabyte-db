@@ -11,7 +11,11 @@ export const YBInput: FC<YBInputProps> = ({ label, tooltip, trimWhitespace = tru
   <TextField
     {...props}
     onBlur={(e) => {
-      if (trimWhitespace) {
+      // Trim whitespace from the input value on blur
+      const trimmed = e.target.value.trim();
+      // we check if the value has changed before updating it
+      // Becuase we don't want to reset the form error unnecessarily
+      if (trimWhitespace && e.target.value !== trimmed) {
         e.target.value = e.target.value.trim();
         if (props.onBlur) {
           props.onBlur(e);

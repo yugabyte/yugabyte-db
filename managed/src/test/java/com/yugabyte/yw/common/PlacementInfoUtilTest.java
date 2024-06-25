@@ -12,6 +12,7 @@ import static com.yugabyte.yw.common.ModelFactory.getOrCreatePlacementAZ;
 import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UpdateOptions.*;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopped;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeAdded;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -73,23 +75,29 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -99,6 +107,7 @@ import org.yb.client.YBClient;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
+@Slf4j
 public class PlacementInfoUtilTest extends FakeDBApplication {
   private static final int REPLICATION_FACTOR = 3;
   private static final int INITIAL_NUM_NODES = REPLICATION_FACTOR * 3;
@@ -553,7 +562,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       }
 
       PlacementInfoUtil.updateUniverseDefinition(
-          udtp, t.customer.getId(), primaryCluster.uuid, CREATE);
+          udtp, t.customer.getId(), primaryCluster.uuid, EDIT);
       Set<NodeDetails> nodes = udtp.nodeDetailsSet;
       assertEquals(REPLICATION_FACTOR, PlacementInfoUtil.getMastersToBeRemoved(nodes).size());
       assertEquals(INITIAL_NUM_NODES, PlacementInfoUtil.getTserversToBeRemoved(nodes).size());
@@ -1081,102 +1090,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       PlacementInfoUtil.updateUniverseDefinition(
           udtp, t.customer.getId(), primaryCluster.uuid, EDIT);
     }
-  }
-
-  @Parameters({
-    "aws, 0, 10, m3.medium, m3.medium, true",
-    "gcp, 0, 10, m3.medium, m3.medium, true",
-    "aws, 0, 10, m3.medium, c4.medium, true",
-    "aws, 0, -10, m3.medium, m3.medium, true", // decrease volume still true (not checked here)
-    "aws, 1, 10, m3.medium, m3.medium, false", // change num of volumes
-    "aws, 0, 10, m3.medium, fake_type, false", // unknown instance type
-    "aws, 0, 10, i3.instance, m3.medium, false", // ephemeral instance type
-    "aws, 0, 10, c5d.instance, m3.medium, false", // ephemeral instance type
-    "gcp, 0, 10, scratch, m3.medium, false", // ephemeral instance type
-    "aws, 0, 10, m3.medium, c5d.instance, true", // changing to ephemeral is OK
-    "aws, -1, 0, m3.medium, m3.medium, false", // decrease num of volumes
-  })
-  @Test
-  public void testResizeNodeAvailable(
-      String cloudType,
-      int numOfVolumesDiff,
-      int volumeSizeDiff,
-      String curInstanceTypeCode,
-      String targetInstanceTypeCode,
-      boolean expected) {
-    TestData t = new TestData(CloudType.valueOf(cloudType));
-    Universe universe = t.universe;
-    UUID univUuid = t.univUuid;
-    UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
-    Cluster primaryCluster = udtp.getPrimaryCluster();
-    UUID providerId = UUID.fromString(primaryCluster.userIntent.provider);
-    udtp.setUniverseUUID(univUuid);
-    Universe.saveDetails(univUuid, t.setAzUUIDs());
-    Universe.saveDetails(
-        univUuid,
-        un -> {
-          if (curInstanceTypeCode.equals("scratch")) {
-            un.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.storageType =
-                PublicCloudConstants.StorageType.Scratch;
-          } else {
-            un.getUniverseDetails().getPrimaryCluster().userIntent.instanceType =
-                curInstanceTypeCode;
-            createInstanceType(providerId, curInstanceTypeCode);
-          }
-        });
-
-    if (!targetInstanceTypeCode.startsWith("fake")) {
-      createInstanceType(providerId, targetInstanceTypeCode);
-    }
-
-    primaryCluster.userIntent.deviceInfo.volumeSize += volumeSizeDiff;
-    primaryCluster.userIntent.deviceInfo.numVolumes += numOfVolumesDiff;
-    primaryCluster.userIntent.instanceType = targetInstanceTypeCode;
-    PlacementInfoUtil.updateUniverseDefinition(udtp, t.customer.getId(), primaryCluster.uuid, EDIT);
-    assertEquals(expected, udtp.nodesResizeAvailable);
-  }
-
-  @Test
-  public void testResizeNodeChangePlacement() {
-    TestData t = new TestData(CloudType.aws);
-    Universe universe = t.universe;
-    Universe.saveDetails(universe.getUniverseUUID(), t.setAzUUIDs());
-    UniverseDefinitionTaskParams udtp = universe.getUniverseDetails();
-    udtp.setUniverseUUID(universe.getUniverseUUID());
-    Cluster primaryCluster = udtp.getPrimaryCluster();
-    UUID providerId = UUID.fromString(primaryCluster.userIntent.provider);
-    String newInstType = "c4.medium";
-    createInstanceType(providerId, newInstType);
-    primaryCluster.userIntent.instanceType = newInstType;
-    PlacementInfoUtil.updateUniverseDefinition(
-        udtp, t.customer.getId(), udtp.getPrimaryCluster().uuid, EDIT);
-    assertTrue(udtp.nodesResizeAvailable); // checking initially available
-    udtp.getPrimaryCluster().userIntent.numNodes++;
-    PlacementInfoUtil.updateUniverseDefinition(
-        udtp, t.customer.getId(), udtp.getPrimaryCluster().uuid, EDIT);
-    assertEquals(false, udtp.nodesResizeAvailable); // number of nodes changed
-    udtp.getPrimaryCluster().userIntent.numNodes--;
-    PlacementAZ az = udtp.getPrimaryCluster().placementInfo.azStream().findFirst().get();
-    az.isAffinitized = !az.isAffinitized;
-    assertEquals(false, udtp.nodesResizeAvailable); // placement changed
-
-    // Reset to original.
-    udtp = Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
-    udtp.setUniverseUUID(universe.getUniverseUUID());
-    // Adding a node that will be eventually removed due to numNodes > actual count.
-    NodeDetails firstNode = udtp.nodeDetailsSet.iterator().next();
-    NodeDetails nodeToAdd = new NodeDetails();
-    nodeToAdd.nodeIdx = udtp.nodeDetailsSet.size();
-    nodeToAdd.state = ToBeAdded;
-    nodeToAdd.placementUuid = firstNode.placementUuid;
-    nodeToAdd.cloudInfo = firstNode.cloudInfo;
-    nodeToAdd.azUuid = firstNode.azUuid;
-    nodeToAdd.isTserver = true;
-    udtp.nodeDetailsSet.add(nodeToAdd);
-    udtp.getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
-    PlacementInfoUtil.updateUniverseDefinition(
-        udtp, t.customer.getId(), udtp.getPrimaryCluster().uuid, EDIT);
-    assertTrue(udtp.nodesResizeAvailable);
   }
 
   private void createInstanceType(UUID providerId, String type) {
@@ -2827,6 +2740,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     // All zones in one region.
     "2, r1, 1, 3, r1, 1, 3, r1, 1, 3,,",
     "2, r1, 1, 3, r1, 1, 3, r1, 1, 3, r1,",
+    // Special case rf3 1-1
+    "2, r1, 1, 3, r1, 1, 0, r1, 0, 3,,",
   })
   // @formatter:on
   public void testSetPerAZRF(
@@ -2862,11 +2777,15 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi);
     PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi);
-    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi);
+    if (numNodesInAZ3 > 0) {
+      PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi);
+    }
 
     getPlacementAZ(pi, r1.getUuid(), az1.getUuid()).numNodesInAZ = numNodesInAZ1;
     getPlacementAZ(pi, r2.getUuid(), az2.getUuid()).numNodesInAZ = numNodesInAZ2;
-    getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).numNodesInAZ = numNodesInAZ3;
+    if (numNodesInAZ3 > 0) {
+      getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).numNodesInAZ = numNodesInAZ3;
+    }
 
     Region defaultRegion = Region.getByCode(provider, defaultRegionCode);
     UUID defaultRegionUUID = defaultRegion == null ? null : defaultRegion.getUuid();
@@ -2890,10 +2809,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         "AZ2 rf differs from expected one",
         expectedRFAZ2,
         getPlacementAZ(pi, r2.getUuid(), az2.getUuid()).replicationFactor);
-    assertEquals(
-        "AZ3 rf differs from expected one",
-        expectedRFAZ3,
-        getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).replicationFactor);
+    if (numNodesInAZ3 > 0) {
+      assertEquals(
+          "AZ3 rf differs from expected one",
+          expectedRFAZ3,
+          getPlacementAZ(pi, r3.getUuid(), az3.getUuid()).replicationFactor);
+    }
   }
 
   /**
@@ -4012,6 +3933,519 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(2, azUuidToNumNodes.get(azUUID.get()).intValue());
   }
 
+  @Test
+  public void testModifyDeviceAndRevert() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        u -> {
+          u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.numVolumes = 2;
+        },
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.CHANGE_DEVICE_DETAILS, 1), // inc volume size
+            new Pair(UserAction.CHANGE_DEVICE_DETAILS, 3), // inc num volumes
+            new Pair(UserAction.CHANGE_DEVICE_DETAILS, 2), // dec num volumes
+            new Pair(UserAction.CHANGE_DEVICE_DETAILS, 0) // dec volume size
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(
+                  Set.of(SMART_RESIZE_NON_RESTART, FULL_MOVE),
+                  UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(
+                  Collections.singleton(FULL_MOVE),
+                  UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+            case 2:
+              // Same as 0 (we reverted prev change)
+              assertEquals(
+                  Set.of(SMART_RESIZE_NON_RESTART, FULL_MOVE),
+                  UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+            case 3:
+              assertEquals(
+                  Collections.emptySet(), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // No changes in nodes.
+              assertEquals(3, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
+  @Test
+  public void testConfigureModifyPlacementAndDevice() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.MODIFY_AZ_COUNT, 1),
+            new Pair(UserAction.CHANGE_DEVICE_DETAILS, 1) // inc volume size
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // 1 new nodes (ToBeAdded), 3 old nodes (Live).
+              assertEquals(4, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // 4 new nodes (ToBeAdded), 3 old nodes (ToBeRemoved).
+              assertEquals(7, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
+  @Test
+  public void testDedicatedModifyInstanceType() {
+    // 4 tservers and 3 masters.
+    setupAndApplyActions(
+        "r1-z1r1-2-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        u -> {
+          ApiUtils.mockUniverseUpdaterSetDedicated().run(u);
+          u.getUniverseDetails().getPrimaryCluster().userIntent.masterInstanceType =
+              u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+          u.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo =
+              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.clone();
+        },
+        Collections.emptyMap(),
+        Collections.singletonList("c5.2xlarge"),
+        Arrays.asList(
+            new Pair(UserAction.CHANGE_DEVICE_DETAILS, 1), // Inc volume size.
+            new Pair(UserAction.CHANGE_MASTER_DEVICE_DETAILS, 1), // Inc volume size.
+            new Pair(UserAction.CHANGE_MASTER_INSTANCE_TYPE, 0),
+            new Pair(UserAction.CHANGE_INSTANCE_TYPE, 0),
+            new Pair(UserAction.CHANGE_DEVICE_DETAILS, 3) // Inc num of volumes.
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(
+                  Set.of(SMART_RESIZE_NON_RESTART, UPDATE),
+                  UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // 4 old tserver 4 new tserver 3 old masters.
+              assertEquals(11, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(
+                  Set.of(SMART_RESIZE_NON_RESTART, FULL_MOVE),
+                  UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // All 7 nodes are removed and 7 new are added.
+              assertEquals(14, params.nodeDetailsSet.size());
+              break;
+            case 2:
+              assertEquals(
+                  Set.of(SMART_RESIZE, FULL_MOVE),
+                  UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // All 7 nodes are removed and 7 new are added.
+              assertEquals(14, params.nodeDetailsSet.size());
+              break;
+            case 3:
+              assertEquals(
+                  Set.of(SMART_RESIZE, FULL_MOVE),
+                  UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // All 7 nodes are removed and 7 new are added.
+              assertEquals(14, params.nodeDetailsSet.size());
+              break;
+            case 4:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // All 7 nodes are removed and 7 new are added.
+              assertEquals(14, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
+  @Test
+  public void testConfigureModifyCommPorts() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 0), // -> 7001
+            new Pair(UserAction.MODIFY_AZ_COUNT, 1), // inc az
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 1) // port -> 7000
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(Set.of(FULL_MOVE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // full move + one more node
+              assertEquals(7, params.nodeDetailsSet.size());
+              break;
+            case 2:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // one more added node
+              assertEquals(4, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
+  @Test
+  public void testChaosConfigureEdit() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing =
+        createFromConfig(provider, "Existing", "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1");
+    existing =
+        Universe.saveDetails(
+            existing.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.deviceInfo.storageType =
+                  PublicCloudConstants.StorageType.GP3;
+              details.getPrimaryCluster().userIntent.deviceInfo.throughput = 500;
+              details.getPrimaryCluster().userIntent.deviceInfo.diskIops = 5000;
+              u.setUniverseDetails(details);
+            });
+
+    Region r1 = getOrCreate(provider, "r1");
+    AvailabilityZone z1r1 = AvailabilityZone.getByCode(provider, "z1r1");
+    AvailabilityZone z2r1 = AvailabilityZone.getByCode(provider, "z2r1");
+    AvailabilityZone z3r1 = AvailabilityZone.getByCode(provider, "z3r1");
+    AvailabilityZone z4r1 = AvailabilityZone.createOrThrow(r1, "z4r1", "z4r1", "subnet-4");
+
+    Region r2 = getOrCreate(provider, "r2");
+    AvailabilityZone z1r2 = AvailabilityZone.createOrThrow(r2, "z1r2", "z1r2", "subnet-1");
+    AvailabilityZone z2r2 = AvailabilityZone.createOrThrow(r2, "z2r2", "z2r2", "subnet-2");
+
+    Region r3 = getOrCreate(provider, "r3");
+    AvailabilityZone z1r3 = AvailabilityZone.createOrThrow(r3, "z1r3", "z1r3", "subnet-1");
+
+    List<String> allInstanceTypes = new ArrayList<>();
+    allInstanceTypes.add(existing.getUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+    InstanceType.upsert(
+        provider.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    InstanceType.upsert(
+        provider.getUuid(), "c4.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    allInstanceTypes.add("c3.xlarge");
+    allInstanceTypes.add("c4.xlarge");
+
+    int seed = new Random().nextInt();
+    log.debug("Random seed is {}", seed);
+    Random random = new Random(seed);
+    int maxInStack = 5;
+    // Applying random actions to
+    for (int totalCases = 0; totalCases < 1000; totalCases++) {
+      log.debug("Starting new case");
+      existing = Universe.getOrBadRequest(existing.getUniverseUUID());
+      UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+      params.setUniverseUUID(existing.getUniverseUUID());
+      params.currentClusterType = ClusterType.PRIMARY;
+      params.clusters = existing.getUniverseDetails().clusters;
+      params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+      Cluster cluster = params.getPrimaryCluster();
+
+      List<Pair<UserAction, String>> stack = new ArrayList<>();
+      for (int i = 0; i < maxInStack; i++) {
+        int tries = 0;
+
+        while (tries++ < 30) {
+          List<UserAction> userActions;
+          if (existing.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes) {
+            userActions = Arrays.asList(UserAction.values());
+          } else {
+            userActions =
+                Arrays.stream(UserAction.values())
+                    .filter(ua -> ua.forDedicated == false)
+                    .collect(Collectors.toList());
+          }
+          UserAction chaosAction = userActions.get(random.nextInt(userActions.size()));
+          int var = random.nextInt(20);
+
+          String applied =
+              applyAction(
+                  chaosAction,
+                  var,
+                  params,
+                  cluster,
+                  Arrays.asList(z1r1, z2r1, z3r1, z4r1, z1r2, z2r2, z1r3),
+                  Arrays.asList(r1, r2, r3),
+                  allInstanceTypes);
+          if (applied != null) {
+            log.debug("Applied {}:{}", chaosAction, applied);
+            stack.add(new Pair(chaosAction, applied));
+            String stackVals =
+                stack.stream()
+                    .map(s -> s.getFirst().name() + ":" + s.getSecond())
+                    .collect(Collectors.joining(","));
+            try {
+              PlacementInfoUtil.updateUniverseDefinition(
+                  params, customer.getId(), cluster.uuid, EDIT);
+            } catch (Exception e) {
+              throw new AssertionError(
+                  "Seed " + seed + ". Failed during call, cur config " + stackVals, e);
+            }
+            try {
+              verifyConfigureResult(params);
+            } catch (AssertionError ae) {
+              throw new AssertionError("Seed " + seed + ". Failed with config " + stackVals, ae);
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  private void setupAndApplyActions(
+      String universeConfiguration,
+      Consumer<Universe> mutator,
+      Map<String, List<String>> additionalRegions,
+      Collection<String> additionalInstanceTypes,
+      List<Pair<UserAction, Integer>> steps,
+      BiConsumer<Integer, UniverseDefinitionTaskParams> verification) {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing = createFromConfig(provider, "Existing", universeConfiguration);
+
+    existing =
+        Universe.saveDetails(
+            existing.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.deviceInfo.storageType =
+                  PublicCloudConstants.StorageType.GP3;
+              details.getPrimaryCluster().userIntent.deviceInfo.throughput = 500;
+              details.getPrimaryCluster().userIntent.deviceInfo.diskIops = 5000;
+              details.communicationPorts.masterHttpPort = 7000;
+              u.setUniverseDetails(details);
+              if (mutator != null) {
+                mutator.accept(u);
+              }
+            });
+
+    List<AvailabilityZone> allZones = new ArrayList<>();
+    Map<UUID, Region> allRegionsMap = new HashMap<>();
+    existing
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .placementInfo
+        .azStream()
+        .forEach(
+            az -> {
+              AvailabilityZone zone = AvailabilityZone.getOrBadRequest(az.uuid);
+              allZones.add(zone);
+              allRegionsMap.put(zone.getRegion().getUuid(), zone.getRegion());
+            });
+    for (String regionCode : additionalRegions.keySet()) {
+      Region reg = getOrCreate(provider, regionCode);
+      allRegionsMap.put(reg.getUuid(), reg);
+      for (String azCode : additionalRegions.get(regionCode)) {
+        AvailabilityZone az =
+            AvailabilityZone.createOrThrow(reg, azCode, azCode, "subnet-" + azCode);
+        allZones.add(az);
+      }
+    }
+    Set<String> instanceTypes = new HashSet<>();
+    instanceTypes.add(existing.getUniverseDetails().getPrimaryCluster().userIntent.instanceType);
+    for (String instanceType : additionalInstanceTypes) {
+      InstanceType.upsert(
+          provider.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
+      instanceTypes.add(instanceType);
+    }
+
+    boolean originalOrder = true;
+    for (Map<Integer, Pair<UserAction, Integer>> permutation : possiblePermutations(steps)) {
+      // Reset universe
+      existing = Universe.getOrBadRequest(existing.getUniverseUUID());
+
+      UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+      params.setUniverseUUID(existing.getUniverseUUID());
+      params.currentClusterType = ClusterType.PRIMARY;
+      params.clusters = existing.getUniverseDetails().clusters;
+      params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+      StringBuilder sb = new StringBuilder();
+      int stepNum = 0;
+      for (Pair<UserAction, Integer> step : permutation.values()) {
+        String res =
+            applyAction(
+                step.getFirst(),
+                step.getSecond(),
+                params,
+                params.getPrimaryCluster(),
+                allZones,
+                allRegionsMap.values(),
+                instanceTypes);
+        if (res == null) {
+          throw new IllegalArgumentException(
+              "Failed to apply action " + step + " already applied (" + sb + ")");
+        }
+        PlacementInfoUtil.updateUniverseDefinition(
+            params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+        verifyConfigureResult(params);
+        sb.append(step.getFirst() + ":" + res).append(",");
+        // Verify only for original order.
+        if (originalOrder && stepNum < steps.size() - 1) {
+          verification.accept(stepNum, params);
+        }
+        stepNum++;
+      }
+      log.debug("Applied these steps: {}", sb.toString());
+      log.debug("Result is {} {}", params.getPrimaryCluster().placementInfo, params.nodeDetailsSet);
+      log.debug("Update options are {}", UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+      // Verify that for all permutations we still have the same result.
+      verification.accept(stepNum - 1, params);
+      originalOrder = false;
+    }
+  }
+
+  private void verifyConfigureResult(UniverseDefinitionTaskParams params) {
+    Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
+    Cluster oldCluster = universe.getUniverseDetails().getPrimaryCluster();
+    Cluster cluster = params.getPrimaryCluster();
+
+    boolean placementIsSame =
+        PlacementInfoUtil.isSamePlacement(oldCluster.placementInfo, cluster.placementInfo);
+    boolean rfTheSame =
+        cluster.userIntent.replicationFactor == oldCluster.userIntent.replicationFactor;
+    boolean instanceTypesUnchanged =
+        Objects.equals(oldCluster.userIntent.instanceType, cluster.userIntent.instanceType)
+            && Objects.equals(
+                oldCluster.userIntent.masterInstanceType, cluster.userIntent.masterInstanceType);
+    boolean devicesUnchanged =
+        Objects.equals(oldCluster.userIntent.deviceInfo, cluster.userIntent.deviceInfo)
+            && Objects.equals(
+                oldCluster.userIntent.masterDeviceInfo, cluster.userIntent.masterDeviceInfo);
+
+    List<NodeDetails> toBeRemoved =
+        params.nodeDetailsSet.stream()
+            .filter(n -> n.state == ToBeRemoved)
+            .collect(Collectors.toList());
+    List<NodeDetails> liveOrAdded =
+        params.nodeDetailsSet.stream()
+            .filter(n -> n.state != ToBeRemoved)
+            .collect(Collectors.toList());
+
+    assertEquals(cluster.getExpectedNumberOfNodes(), liveOrAdded.size());
+
+    Set<String> oldNodes =
+        universe.getNodes().stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    Set<String> currentNonNewNodes =
+        params.nodeDetailsSet.stream()
+            .map(n -> n.nodeName)
+            .filter(name -> name != null)
+            .collect(Collectors.toSet());
+
+    // Verify that no nodes are absent
+    assertEquals(oldNodes, currentNonNewNodes);
+
+    Set<UUID> curAZs =
+        cluster.placementInfo.azStream().map(az -> az.uuid).collect(Collectors.toSet());
+
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        UniverseCRUDHandler.getUpdateOptions(params, EDIT);
+
+    for (NodeDetails nodeDetails : toBeRemoved) {
+      boolean absentInPlacement = !curAZs.contains(nodeDetails.azUuid);
+
+      DeviceInfo oldDevice = oldCluster.userIntent.getDeviceInfoForNode(nodeDetails);
+      DeviceInfo newDevice = cluster.userIntent.getDeviceInfoForNode(nodeDetails);
+      boolean sameDevice = oldDevice.equals(newDevice);
+
+      String oldInstanceType = oldCluster.userIntent.getInstanceTypeForNode(nodeDetails);
+      String newInstanceType = cluster.userIntent.getInstanceTypeForNode(nodeDetails);
+      boolean sameInstanceType = oldInstanceType.equals(newInstanceType);
+      boolean instanceConfChanges =
+          UniverseCRUDHandler.isAwsArnChanged(cluster, oldCluster)
+              || UniverseCRUDHandler.areCommunicationPortsChanged(params, universe)
+              || oldCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
+
+      String recap =
+          String.format(
+              "absentInPlacement %s, sameInstanceType %s, sameDevice %s, instanceConfChanges %s",
+              absentInPlacement, sameInstanceType, sameDevice, instanceConfChanges);
+
+      // Should be either removed from placement or modified something related to instance.
+      // For instance change we do remove nodes but update option will return SMART_RESIZE.
+      assertTrue(
+          "Assert " + nodeDetails.nodeName + " removal reason (" + recap + ")",
+          absentInPlacement || !sameInstanceType || !sameDevice || instanceConfChanges);
+    }
+
+    String overall =
+        String.format(
+            "Placement the same %s, rf the same %s, device unchanged %s, instance type unchanged"
+                + " %s",
+            placementIsSame, rfTheSame, devicesUnchanged, instanceTypesUnchanged);
+
+    if (updateOptions.isEmpty()) {
+      assertTrue(
+          "Verify no changes if no update options: " + overall,
+          placementIsSame && rfTheSame && instanceTypesUnchanged && devicesUnchanged);
+    } else if (updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE)) {
+      assertTrue(
+          "Assert smart resize: " + overall,
+          placementIsSame && rfTheSame && !instanceTypesUnchanged);
+    } else if (updateOptions.contains(SMART_RESIZE_NON_RESTART)) {
+      assertTrue(
+          "Assert smart resize non-restart: " + overall,
+          placementIsSame && rfTheSame && instanceTypesUnchanged && !devicesUnchanged);
+    } else if (updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE)) {
+      assertEquals(
+          "Assert all nodes removed if full move",
+          oldCluster.getExpectedNumberOfNodes(),
+          toBeRemoved.size());
+    }
+  }
+
+  @Test
+  public void testChangeEphemeralDevice() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, aws);
+    createInstanceType(provider.getUuid(), "i3.instance");
+    createInstanceType(provider.getUuid(), "c3.large");
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1");
+    existing =
+        Universe.saveDetails(
+            existing.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.deviceInfo = new DeviceInfo();
+              userIntent.deviceInfo.volumeSize = 100;
+              userIntent.deviceInfo.numVolumes = 1;
+              userIntent.deviceInfo.storageClass = "standart";
+              userIntent.instanceType = "i3.instance";
+              u.setUniverseDetails(details);
+            });
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params.userAZSelected = false;
+    params.getPrimaryCluster().userIntent.instanceType = "c3.large";
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    assertEquals(6, params.nodeDetailsSet.size());
+  }
+
   private void markNodeInstancesAsOccupied(Map<UUID, Integer> azUuidToNumNodes) {
     Map<UUID, Integer> counts = new HashMap<>(azUuidToNumNodes);
     for (NodeInstance nodeInstance : NodeInstance.getAll()) {
@@ -4049,5 +4483,296 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     nodes.forEach(node -> node.placementUuid = cluster.uuid);
     return PlacementInfoUtil.selectMasters(
         masterLeader, nodes, defaultRegion, applySelection, Collections.singletonList(cluster));
+  }
+
+  private enum UserAction {
+    UPD_RF,
+    UPD_TOTAL,
+    ADD_AZ,
+    REMOVE_AZ,
+    REPLACE_AZ,
+    MODIFY_AZ_COUNT,
+    ADD_REGION,
+    REMOVE_REGION,
+    CHANGE_INSTANCE_TYPE,
+    CHANGE_MASTER_INSTANCE_TYPE(true),
+    CHANGE_DEVICE_DETAILS,
+    CHANGE_MASTER_DEVICE_DETAILS(true),
+    MODIFY_AFFINITIZED,
+    MODIFY_COMMUNICATION_PORTS;
+
+    UserAction() {
+      this(false);
+    }
+
+    UserAction(boolean forDedicated) {
+      this.forDedicated = forDedicated;
+    }
+
+    private final boolean forDedicated;
+  }
+
+  private String applyAction(
+      UserAction action,
+      int var,
+      UniverseDefinitionTaskParams taskParams,
+      Cluster cluster,
+      Collection<AvailabilityZone> allZones,
+      Collection<Region> allRegions,
+      Collection<String> allInstanceTypes) {
+    List<Integer> rfs =
+        cluster.clusterType == ClusterType.PRIMARY
+            ? List.of(1, 3, 5, 7)
+            : List.of(1, 2, 3, 4, 5, 6, 7);
+    taskParams.userAZSelected = false;
+    UserIntent userIntent = cluster.userIntent;
+    Set<UUID> curZones =
+        cluster.placementInfo.azStream().map(az -> az.uuid).collect(Collectors.toSet());
+    Set<UUID> curRegions =
+        cluster.placementInfo.cloudList.get(0).regionList.stream()
+            .map(r -> r.uuid)
+            .collect(Collectors.toSet());
+    List<AvailabilityZone> notAddedZones =
+        allZones.stream()
+            .filter(
+                az ->
+                    !curZones.contains(az.getUuid())
+                        && curRegions.contains(az.getRegion().getUuid()))
+            .collect(Collectors.toList());
+    boolean rfUpdatePossible = false;
+    switch (action) {
+      case UPD_RF:
+        if (!rfUpdatePossible) {
+          return null;
+        }
+        int rfIdx = rfs.indexOf(userIntent.replicationFactor);
+        if (var % 2 == 0) { // decrease
+          if (rfIdx == 0) {
+            return null;
+          }
+          userIntent.replicationFactor = rfs.get(rfIdx - 1);
+          return "--";
+        } else {
+          if (rfIdx == rfs.size() - 1) {
+            return null;
+          }
+          userIntent.replicationFactor = rfs.get(rfIdx + 1);
+          return "++";
+        }
+      case UPD_TOTAL:
+        if (var % 2 == 0) { // decrease
+          if (userIntent.numNodes == userIntent.replicationFactor) {
+            return null;
+          }
+          userIntent.numNodes--;
+          return "--";
+        } else {
+          userIntent.numNodes++;
+          return "++";
+        }
+      case ADD_AZ:
+        if (curZones.size() == userIntent.replicationFactor) {
+          return null;
+        }
+        if (notAddedZones.isEmpty()) {
+          return null;
+        }
+        AvailabilityZone zoneToAdd = getFromList(notAddedZones, var);
+        PlacementInfoUtil.addPlacementZone(zoneToAdd.getUuid(), cluster.placementInfo);
+        taskParams.userAZSelected = true;
+        return zoneToAdd.getCode();
+      case REMOVE_AZ:
+        if (curZones.size() == 1) {
+          return null;
+        }
+        List<PlacementAZ> availableToRemove =
+            cluster
+                .placementInfo
+                .azStream()
+                .filter(az -> userIntent.numNodes - az.numNodesInAZ >= userIntent.replicationFactor)
+                .collect(Collectors.toList());
+        if (availableToRemove.isEmpty()) {
+          return null;
+        }
+        PlacementAZ toRemove = getFromList(availableToRemove, var);
+        toRemove.numNodesInAZ = 0;
+        PlacementInfoUtil.removeUnusedPlacementAZs(cluster.placementInfo);
+        taskParams.userAZSelected = true;
+        return toRemove.name;
+      case REPLACE_AZ:
+        if (notAddedZones.size() == 0) {
+          return null;
+        }
+        AvailabilityZone toReplaceWith = getFromList(notAddedZones, var);
+        UUID toReplace = getFromList(curZones, var);
+        AvailabilityZone toReplaceAZ =
+            allZones.stream().filter(az -> az.getUuid().equals(toReplace)).findFirst().get();
+        replaceZone(cluster.placementInfo, toReplace, toReplaceWith.getUuid());
+        taskParams.userAZSelected = true;
+        return toReplaceAZ.getCode() + " -> " + toReplaceWith.getCode();
+      case MODIFY_AZ_COUNT:
+        int sign = var % 2;
+        int idx = var / 2;
+        taskParams.userAZSelected = true;
+        if (sign == 0) {
+          // Decrement.
+          if (cluster.userIntent.numNodes == cluster.userIntent.replicationFactor) {
+            return null;
+          }
+          List<PlacementAZ> available =
+              cluster
+                  .placementInfo
+                  .azStream()
+                  .filter(az -> az.numNodesInAZ > 1)
+                  .collect(Collectors.toList());
+          if (available.isEmpty()) {
+            return null;
+          }
+          PlacementAZ placementAZ = getFromList(available, idx);
+          placementAZ.numNodesInAZ--;
+          return placementAZ.name + "--";
+        } else {
+          UUID zoneUUID = getFromList(curZones, idx);
+          PlacementAZ placementAZ = cluster.placementInfo.findByAZUUID(zoneUUID);
+          placementAZ.numNodesInAZ++;
+          return placementAZ.name + "++";
+        }
+      case ADD_REGION:
+        List<Region> possibleRegions =
+            allRegions.stream()
+                .filter(r -> !curRegions.contains(r.getUuid()))
+                .collect(Collectors.toList());
+        if (possibleRegions.size() == 0) {
+          return null;
+        }
+        Region toAdd = getFromList(possibleRegions, var);
+        userIntent.regionList.add(toAdd.getUuid());
+        return toAdd.getCode();
+      case REMOVE_REGION:
+        if (curRegions.size() == 1) {
+          return null;
+        }
+        UUID toRemoveRegion = getFromList(curRegions, var);
+        Region r =
+            allRegions.stream()
+                .filter(reg -> reg.getUuid().equals(toRemoveRegion))
+                .findFirst()
+                .get();
+        userIntent.regionList.remove(toRemoveRegion);
+        return r.getCode();
+      case CHANGE_MASTER_INSTANCE_TYPE:
+      case CHANGE_INSTANCE_TYPE:
+        String curInstanceType;
+        if (action == UserAction.CHANGE_MASTER_INSTANCE_TYPE) {
+          curInstanceType = userIntent.masterInstanceType;
+        } else {
+          curInstanceType = userIntent.instanceType;
+        }
+        Set<String> notUsed =
+            allInstanceTypes.stream()
+                .filter(it -> !curInstanceType.equals(it))
+                .collect(Collectors.toSet());
+        String newType = getFromList(notUsed, var);
+        if (action == UserAction.CHANGE_MASTER_INSTANCE_TYPE) {
+          userIntent.masterInstanceType = newType;
+        } else {
+          userIntent.instanceType = newType;
+        }
+        return newType;
+      case CHANGE_DEVICE_DETAILS:
+      case CHANGE_MASTER_DEVICE_DETAILS:
+        DeviceInfo deviceInfo =
+            action == UserAction.CHANGE_DEVICE_DETAILS
+                ? userIntent.deviceInfo
+                : userIntent.masterDeviceInfo;
+        int p = var % 6;
+        if (p == 0) {
+          // dec volume size
+          deviceInfo.volumeSize--;
+          return "volumeSize--";
+        } else if (p == 1) {
+          // inc volume size
+          deviceInfo.volumeSize++;
+          return "volumeSize++";
+        } else if (p == 2) {
+          // dec num volumes
+          if (deviceInfo.numVolumes == 1) {
+            return null;
+          }
+          deviceInfo.numVolumes--;
+          return "numVolumes--";
+        } else if (p == 3) {
+          // inc num volumes
+          deviceInfo.numVolumes++;
+          return "numVolumes++";
+        } else if (p == 4) {
+          // dec iops
+          deviceInfo.diskIops--;
+          return "diskIops--";
+        } else if (p == 5) {
+          // inc iops
+          deviceInfo.diskIops++;
+          return "diskIops++";
+        } else if (p == 6) {
+          // dec  throughput
+          deviceInfo.throughput--;
+          return "throughput--";
+        } else if (p == 7) {
+          // inc  throughput
+          deviceInfo.throughput++;
+          return "throughput++";
+        }
+        break;
+      case MODIFY_AFFINITIZED:
+        UUID toSwitch = getFromList(curZones, var);
+        PlacementAZ placementAZtoSwitch = cluster.placementInfo.findByAZUUID(toSwitch);
+        placementAZtoSwitch.isAffinitized = !placementAZtoSwitch.isAffinitized;
+
+        taskParams.userAZSelected = true;
+        return placementAZtoSwitch.name + "->" + placementAZtoSwitch.isAffinitized;
+      case MODIFY_COMMUNICATION_PORTS:
+        int targetVal = 7001 - taskParams.communicationPorts.masterHttpPort;
+        taskParams.communicationPorts.masterHttpPort = targetVal;
+        return "masterHttpPort -> " + targetVal;
+    }
+    return null;
+  }
+
+  private <T> T getFromList(Collection<T> l, int idx) {
+    return new ArrayList<>(l).get(idx % l.size());
+  }
+
+  private <T> List<Map<Integer, T>> possiblePermutations(List<T> list) {
+    return IntStream.range(0, list.size())
+        // represent each list element as a list of permutation maps
+        .mapToObj(
+            i ->
+                IntStream.range(0, list.size())
+                    // key - element position, value - element itself
+                    .mapToObj(j -> Collections.singletonMap(j, list.get(j)))
+                    // Stream<List<Map<Integer,E>>>
+                    .collect(Collectors.toList()))
+        // reduce a stream of lists to a single list
+        .reduce(
+            (list1, list2) ->
+                list1.stream()
+                    .flatMap(
+                        map1 ->
+                            list2.stream()
+                                // filter out those keys that are already present
+                                .filter(map2 -> map2.keySet().stream().noneMatch(map1::containsKey))
+                                // concatenate entries of two maps, order matters
+                                .map(
+                                    map2 ->
+                                        new LinkedHashMap<Integer, T>() {
+                                          {
+                                            putAll(map1);
+                                            putAll(map2);
+                                          }
+                                        }))
+                    // list of combinations
+                    .collect(Collectors.toList()))
+        // otherwise an empty collection
+        .orElse(Collections.emptyList());
   }
 }

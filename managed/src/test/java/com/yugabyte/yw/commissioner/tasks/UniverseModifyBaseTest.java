@@ -83,6 +83,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     onPremUniverse = createUniverseForProvider("Test onPrem Universe", onPremProvider);
     dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
+    dummyShellResponse.code = ShellResponse.ERROR_CODE_SUCCESS;
     preflightResponse = new ShellResponse();
     preflightResponse.message = "{\"test\": true}";
     AtomicInteger masterIpCnt = new AtomicInteger();

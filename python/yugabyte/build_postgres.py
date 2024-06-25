@@ -804,6 +804,8 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'contrib/isn'),
             os.path.join(self.pg_build_root, 'contrib/pg_stat_statements'),
             os.path.join(self.pg_build_root, 'contrib/test_decoding'),
+            # wal2json should be moved to third-party-extensions
+            os.path.join(self.pg_build_root, 'contrib/wal2json'),
             # YB_TODO: end
         ] + external_extension_dirs
 

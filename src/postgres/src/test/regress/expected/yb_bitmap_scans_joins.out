@@ -1003,15 +1003,19 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 --
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
-                                   QUERY PLAN
----------------------------------------------------------------------------------
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)
    ->  Seq Scan on pg_class c (actual rows=1 loops=1)
          Storage Filter: (relname = 'pg_class'::name)
-   ->  YB Bitmap Table Scan on pg_namespace ns (actual rows=1 loops=1)
-         ->  Bitmap Index Scan on pg_namespace_oid_index (actual rows=1 loops=1)
-               Index Cond: (oid = c.relnamespace)
-(6 rows)
+   ->  Memoize (actual rows=1 loops=1)
+         Cache Key: c.relnamespace
+         Cache Mode: logical
+         Hits: 0  Misses: 1  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+         ->  YB Bitmap Table Scan on pg_namespace ns (actual rows=1 loops=1)
+               ->  Bitmap Index Scan on pg_namespace_oid_index (actual rows=1 loops=1)
+                     Index Cond: (oid = c.relnamespace)
+(10 rows)
 
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';

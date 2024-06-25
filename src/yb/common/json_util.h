@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include <rapidjson/document.h>
 
 #include "yb/util/status.h"
@@ -28,7 +31,7 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
                                    rapidjson::Document::AllocatorType* alloc);
 
 inline Status ConvertQLValuePBToRapidJson(const QLValuePB& value_pb,
-                                                  rapidjson::Document* document) {
+                                          rapidjson::Document* document) {
   return ConvertQLValuePBToRapidJson(value_pb, document, &document->GetAllocator());
 }
 
@@ -44,6 +47,13 @@ void AddMember(
       string_val.c_str(), static_cast<rapidjson::SizeType>(string_val.length()), *allocator);
   object->AddMember(name, val, *allocator);
 }
+
+Result<rapidjson::Document> ParseJson(const std::string_view& raw);
+
+Result<const rapidjson::Value&> GetMember(const rapidjson::Value& root, const char* name);
+Result<std::string_view> GetMemberAsStr(const rapidjson::Value& root, const char* name);
+Result<rapidjson::Value::ConstArray> GetMemberAsArray(
+    const rapidjson::Value& root, const char* name);
 
 } // namespace common
 } // namespace yb
