@@ -117,6 +117,8 @@ DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
 DECLARE_bool(cdcsdk_enable_dynamic_table_support);
 DECLARE_bool(enable_cdcsdk_setting_get_changes_response_byte_limit);
 DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
+DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
+DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
 
 namespace yb {
 
@@ -781,6 +783,22 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   std::string GetPubRefreshTimesString(vector<uint64_t> pub_refresh_times);
 
   void TestNonUserTableShouldNotGetAddedToCDCStream (bool create_consistent_snapshot_stream);
+
+  Status ExecuteYBAdminCommand(
+      const std::string& command_name, const std::vector<string>& command_args);
+
+  Status DisableDynamicTableAdditionOnCDCSDKStream(const xrepl::StreamId& stream_id);
+
+  void TestDisableOfDynamicTableAdditionOnCDCStream(bool use_consistent_snapshot_stream);
+
+  Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
+
+  void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
+
+  Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const xrepl::StreamId& stream_id);
+
+  void TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
+      bool use_consistent_snapshot_stream);
 };
 
 }  // namespace cdc
