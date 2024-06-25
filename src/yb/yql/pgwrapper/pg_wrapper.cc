@@ -237,11 +237,10 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false, true,
     "Push supported scalar array operations from ysql down to DocDB for evaluation.");
 
-// TODO(#19211): Convert this to an auto-flag.
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersisted, false, true,
     "Enable logical replication commands for Publication and Replication Slots");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replica_identity, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, false, true,
     "Enable replica identity command for Alter Table query");
 
 DEFINE_RUNTIME_PG_FLAG(

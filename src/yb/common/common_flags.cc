@@ -118,11 +118,10 @@ DEFINE_RUNTIME_AUTO_bool(
     yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
     "Enable support for CDC Consistent Snapshot Streams");
 
-DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
-                       "Enable consumption of changes via replication slots."
-                       "Requires yb_enable_replication_commands to be true.");
-TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, unsafe);
-TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, hidden);
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_enable_replication_slot_consumption, kLocalPersisted, false, true,
+    "Enable consumption of changes via replication slots."
+    "Requires yb_enable_replication_commands to be true.");
 
 DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
                         "Hide catalog version increment log messages.");

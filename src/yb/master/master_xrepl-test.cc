@@ -56,12 +56,16 @@ static const Schema kTableSchema({
     ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
     ColumnSchema("v1", DataType::UINT64),
     ColumnSchema("v2", DataType::STRING) });
-static const Schema kTableSchemaWithTypeOids({
-        ColumnSchema(
+static const Schema kTableSchemaWithTypeOids(
+    {ColumnSchema(
          "key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST, Nullable::kFalse, false, false,
          0, 23),
-        ColumnSchema(
-         "v1", DataType::INT32, ColumnKind::VALUE, Nullable::kFalse, false, false, 0, 23)});
+     ColumnSchema("v1", DataType::INT32, ColumnKind::VALUE, Nullable::kFalse, false, false, 0, 23)},
+    []() {
+      TableProperties props;
+      props.SetReplicaIdentity(PgReplicaIdentity::CHANGE);
+      return props;
+    }());
 constexpr const char* kPgReplicationSlotPgOutput = "pgoutput";
 constexpr const char* kPgReplicationSlotTestDecoding = "test_decoding";
 
@@ -520,7 +524,6 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithNewReco
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
   req.set_namespace_id(ns_id);
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
