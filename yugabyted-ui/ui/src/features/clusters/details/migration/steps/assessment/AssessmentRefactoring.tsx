@@ -78,6 +78,10 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       });
   }, [sqlObjects]);
 
+  const barCategoryGap = 34;
+  const barSize = 22;
+  const graphHeight = graphData.length * 60 + barCategoryGap + barSize;
+
   return (
     <Paper>
       <Box px={2} py={3}>
@@ -93,7 +97,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
         </Box>
 
         <Box my={4}>
-          <ResponsiveContainer width="100%" height={graphData.length * 60}>
+          <ResponsiveContainer width="100%" height={graphHeight}>
             <BarChart
               data={graphData}
               layout="vertical"
@@ -101,7 +105,8 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                 right: 30,
                 left: 50,
               }}
-              barCategoryGap={34}
+              barCategoryGap={barCategoryGap}
+              barSize={barSize}
             >
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis type="number" />
