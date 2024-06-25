@@ -71,7 +71,7 @@ ysql_colocate_database_by_default = true
 
 You can also set this flag after creating the cluster, but you will need to restart the YB-Masters and YB-TServers.
 
-Note: For YugabyteDB Managed, you currently cannot enable colocation for a cluster. Enable colocation for [individual databases](#databases).
+Note: For YugabyteDB Aeon, you currently cannot enable colocation for a cluster. Enable colocation for [individual databases](#databases).
 
 ### Databases
 

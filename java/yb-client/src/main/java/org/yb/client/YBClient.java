@@ -2309,6 +2309,30 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * @see AsyncYBClient#xClusterRemoveNamespaceFromOutboundReplicationGroup(String, String)
+   */
+  public XClusterRemoveNamespaceFromOutboundReplicationGroupResponse
+      xClusterRemoveNamespaceFromOutboundReplicationGroup(
+        String replicationGroupId, String namespaceId)
+          throws Exception {
+    Deferred<XClusterRemoveNamespaceFromOutboundReplicationGroupResponse> d =
+        asyncClient.xClusterRemoveNamespaceFromOutboundReplicationGroup(
+          replicationGroupId, namespaceId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#alterUniverseReplication(String, String)
+   */
+  public AlterUniverseReplicationResponse
+      alterUniverseReplicationRemoveNamespace(String replicationGroupId, String namespaceId)
+          throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+        asyncClient.alterUniverseReplicationRemoveNamespace(replicationGroupId, namespaceId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * @see AsyncYBClient#addNamespaceToXClusterReplication(String, Set<CommonNet.HostPortPB>, String)
    */
   public AddNamespaceToXClusterReplicationResponse addNamespaceToXClusterReplication(

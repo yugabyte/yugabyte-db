@@ -103,6 +103,10 @@ ReplicationSlot *MyReplicationSlot = NULL;
 int			max_replication_slots = 0;	/* the maximum number of replication
 										 * slots */
 
+/* Constants for plugin names */
+const char* YB_OUTPUT_PLUGIN = "yboutput";
+const char* PG_OUTPUT_PLUGIN = "pgoutput";
+
 static void ReplicationSlotDropAcquired(void);
 static void ReplicationSlotDropPtr(ReplicationSlot *slot);
 

@@ -30,6 +30,28 @@
 
 namespace yb::tablet {
 
+class TabletBootstrapState {
+ public:
+  TabletBootstrapState() = default;
+  ~TabletBootstrapState() = default;
+
+  TabletBootstrapState(const TabletBootstrapState& rhs);
+
+  TabletBootstrapState(TabletBootstrapState&& rhs);
+  void operator=(TabletBootstrapState&& rhs);
+
+  void CopyFrom(const TabletBootstrapState& rhs);
+
+  void SetMinRunningHybridTime(HybridTime min_running_ht) { min_running_ht_.store(min_running_ht); }
+  HybridTime GetMinRunningHybridTime() const { return min_running_ht_.load(); }
+
+  void ToPB(consensus::TabletBootstrapStatePB* pb) const;
+  void FromPB(const consensus::TabletBootstrapStatePB& pb);
+
+ private:
+  std::atomic<HybridTime> min_running_ht_{HybridTime::kInvalid};
+};
+
 class TabletBootstrapStateManager {
  public:
   TabletBootstrapStateManager();
@@ -40,6 +62,8 @@ class TabletBootstrapStateManager {
   Status Init();
 
   FsManager* fs_manager() const { return fs_manager_; }
+  const TabletBootstrapState& bootstrap_state() const { return bootstrap_state_; }
+  TabletBootstrapState& bootstrap_state() { return bootstrap_state_; }
 
   static std::string FilePath(const std::string& path) {
     return JoinPathSegments(path, FileName());
@@ -84,6 +108,7 @@ class TabletBootstrapStateManager {
   bool has_file_on_disk_ = false;
   FsManager* fs_manager_ = nullptr;
   std::string dir_;
+  TabletBootstrapState bootstrap_state_;
 
   static constexpr char kSuffixNew[] = ".NEW";
   static constexpr char kTabletBootstrapStateFileName[] = "retryable_requests";

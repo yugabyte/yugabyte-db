@@ -1,8 +1,8 @@
 ---
 title: ybm CLI
-headerTitle: YugabyteDB Managed CLI
+headerTitle: YugabyteDB Aeon CLI
 linkTitle: ybm CLI
-description: Use YugabyteDB Managed CLI to create and manage YugabyteDB clusters.
+description: Use YugabyteDB Aeon CLI to create and manage YugabyteDB clusters.
 headcontent: Manage cluster and account resources from the command line
 menu:
   preview_yugabyte-cloud:
@@ -15,9 +15,9 @@ rightNav:
   hideH4: true
 ---
 
-The [YugabyteDB Managed Command Line Interface](https://github.com/yugabyte/ybm-cli) (ybm) is an open source tool that enables you to interact with YugabyteDB Managed accounts using commands in your command-line shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YugabyteDB Managed interface.
+The [YugabyteDB Aeon Command Line Interface](https://github.com/yugabyte/ybm-cli) (ybm) is an open source tool that enables you to interact with YugabyteDB Aeon accounts using commands in your command-line shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YugabyteDB Aeon interface.
 
-{{< youtube id="wAtP7qzYhgU" title="Use the ybm CLI to manage clusters in YugabyteDB Managed" >}}
+{{< youtube id="wAtP7qzYhgU" title="Use the ybm CLI to manage clusters in YugabyteDB Aeon" >}}
 
 <div class="row">
 

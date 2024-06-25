@@ -4,6 +4,7 @@ headerTitle: Automatic data expiration
 linkTitle: Automatic data expiration
 description: Expire data using the `USING TTL` operator
 headcontent: Expire data using time-to-live
+badges: ycql
 menu:
   preview:
     identifier: timeseries-automatic-expiration
@@ -15,7 +16,7 @@ type: docs
 Consider a scenario where you only need the last few values and the older data is not of any value and can be purged. Typically, this requires setting up a separate background job. Using YugabyteDB however, you can set an expiration value for columns using the `USING TTL` operator.
 
 {{<note title="Note">}}
-TTL-based expiration is only available in [YCQL](../../../../api/ycql/).
+TTL-based expiration is only available in [YCQL](/{{<version>}}/api/ycql/).
 {{</note>}}
 
 ## Setup
@@ -99,8 +100,8 @@ Note that the row is present but the value for the `speed` column is `null`.
 
 Instead of explicitly setting the TTL at the row or column level, you can set a TTL on the table. This also has the benefit of saving space as the TTL value is stored in only one place and not per row or column.
 
-Define table-level TTL using the [default_time_to_live property](../../../../api/ycql/ddl_create_table/#table-properties-1).
+Define table-level TTL using the [default_time_to_live property](/{{<version>}}/api/ycql/ddl_create_table/#table-properties-1).
 
 ## Learn more
 
-- [TTL for data expiration](../../../learn/ttl-data-expiration-ycql/)
+- [TTL for data expiration](/{{<version>}}/develop/learn/ttl-data-expiration-ycql/)

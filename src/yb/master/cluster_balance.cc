@@ -1730,7 +1730,7 @@ void ClusterLoadBalancer::GetPendingTasks(const TableId& table_uuid,
 }
 
 Status ClusterLoadBalancer::SendReplicaChanges(
-    scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid, const bool is_add,
+    const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const bool is_add,
     const bool should_remove_leader, const TabletServerId& new_leader_ts_uuid) {
   auto l = tablet->LockForRead();
   if (is_add) {

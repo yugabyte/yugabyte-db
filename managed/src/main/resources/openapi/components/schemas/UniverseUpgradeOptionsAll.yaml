@@ -1,0 +1,20 @@
+title: UniverseUpgradeOptionsAll
+description: |
+  UniverseUpgradeOptionsAll
+
+  Option on how to handle node reboots:
+    Rolling     - Apply upgrade to each node one at a time (Default)
+    Non-rolling - Apply upgrade to all nodes at the same time, so has client downtime
+    Non-restart - Apply upgrade without restarting nodes or processes. 
+                  Applicable to only certain supported Upgrades and GFlags.
+properties:
+  upgrade_option:
+    description: |
+      Option for an upgrade to be rolling (one node at a time) or non-rolling (all nodes at once, with
+      downtime)
+    type: string
+    default: Rolling
+    enum:
+      - Rolling
+      - Non-rolling
+      - Non-restart

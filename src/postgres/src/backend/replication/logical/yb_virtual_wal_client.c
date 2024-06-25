@@ -208,6 +208,25 @@ InitVirtualWal(List *publication_names)
 	tables = YBCGetTables(publication_names);
 	table_oids = YBCGetTableOids(tables);
 
+	/* 
+	 * Throw an error if the plugin being used is pgoutput and there exist a
+	 * table in publication with YB specific replica identity (CHANGE).
+	 */
+	if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0)
+	{
+		for (int i = 0; i < list_length(tables); i++)
+		{
+			YBCPgReplicaIdentityDescriptor *value =
+				hash_search(MyReplicationSlot->data.yb_replica_identities,
+							&table_oids[i], HASH_FIND, NULL);
+			Assert(value);
+			if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
+				ereport(ERROR,
+						(errmsg("Replica identity CHANGE is not supported for output "
+						"plugin pgoutput. Consider using output plugin yboutput instead.")));
+		}		
+	}
+
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
 							list_length(tables));
 
@@ -578,6 +597,16 @@ YBCRefreshReplicaIdentities()
 	{
 		YBCPgReplicaIdentityDescriptor *desc =
 			&yb_replication_slot->replica_identities[replica_identity_idx];
+
+		/* 
+		 * Throw an error if the plugin being used is pgoutput and there exist a
+		 * table with YB specific replica identity (CHANGE).
+		 */
+		if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0 
+			&& desc->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
+			ereport(ERROR,
+						(errmsg("Replica identity CHANGE is not supported for output "
+						"plugin pgoutput. Consider using output plugin yboutput instead.")));
 
 		YBCPgReplicaIdentityDescriptor *value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,

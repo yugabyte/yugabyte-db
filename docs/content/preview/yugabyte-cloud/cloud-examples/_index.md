@@ -1,8 +1,8 @@
 ---
 title: Example applications
 linkTitle: Example applications
-description: Example applications for YugabyteDB Managed.
-headcontent: Example applications for YugabyteDB Managed
+description: Example applications for YugabyteDB Aeon.
+headcontent: Example applications for YugabyteDB Aeon
 image: /images/section_icons/index/develop.png
 menu:
   preview_yugabyte-cloud:
@@ -12,9 +12,9 @@ menu:
 type: indexpage
 ---
 
-The sample applications in this section provide advanced examples of connecting Spring, GraphQL, and YCQL Java applications to a YugabyteDB Managed cluster.
+The sample applications in this section provide advanced examples of connecting Spring, GraphQL, and YCQL Java applications to a YugabyteDB Aeon cluster.
 
-To get started building applications for YugabyteDB Managed, refer to [Build an application](../../tutorials/build-apps/).
+To get started building applications for YugabyteDB Aeon, refer to [Build an application](../../tutorials/build-apps/).
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. For information on available drivers, refer to [Drivers](../../reference/drivers/).
 
@@ -51,7 +51,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
         <div class="title">Connect to Hasura Cloud</div>
       </div>
       <div class="body">
-        Connect a YugabyteDB Managed cluster to a Hasura Cloud project.
+        Connect a YugabyteDB Aeon cluster to a Hasura Cloud project.
       </div>
     </a>
   </div>
@@ -63,7 +63,7 @@ Applications connect to and interact with YugabyteDB using API client libraries 
         <div class="title">Deploy a GraphQL application</div>
       </div>
       <div class="body">
-        Deploy a real-time polling application connected to YugabyteDB Managed on Hasura Cloud.
+        Deploy a real-time polling application connected to YugabyteDB Aeon on Hasura Cloud.
       </div>
     </a>
   </div>

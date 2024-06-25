@@ -45,7 +45,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl create namespace yb-platform
     ```
 
-1. Apply the YugabyteDB Anywhere secret that you obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
+1. Apply the YugabyteDB Anywhere secret that you obtained from Yugabyte Support by running the following `kubectl create` command:
 
     ```sh
     kubectl create -f yugabyte-k8s-secret.yml -n yb-platform

@@ -53,7 +53,7 @@ type: docs
 <div class="tab-content">
   <div id="onprem" class="tab-pane fade show active" role="tabpanel" aria-labelledby="onprem-tab">
 
-When installing YugabyteDB Anywhere on a server for on-premises providers, no cloud permissions are required.
+When installing YugabyteDB Anywhere (YBA) on a server for on-premises providers, no cloud permissions are required.
 
 Linux OS root permissions are required for the server, see [Servers for YBA](../../server-yba/).
 

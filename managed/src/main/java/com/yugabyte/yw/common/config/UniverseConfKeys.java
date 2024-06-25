@@ -887,6 +887,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow editing GFlags for a universe in pre-finalize state",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> pitrCreatePollDelay =
+      new ConfKeyInfo<>(
+          "yb.pitr.create_poll_delay",
+          ScopeType.UNIVERSE,
+          "The delay before the next poll of the PITR config creation status",
+          "It is the delay after which the create PITR config subtask rechecks the status of the"
+              + " PITR config creation in each iteration",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> pitrCreateTimeout =
+      new ConfKeyInfo<>(
+          "yb.pitr.create_timeout",
+          ScopeType.UNIVERSE,
+          "The timeout for creating a PITR config",
+          "It is the maximum time that the create PITR config subtask waits for the PITR config "
+              + "to be created; otherwise, it will fail the operation",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",

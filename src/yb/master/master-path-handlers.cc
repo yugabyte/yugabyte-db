@@ -747,7 +747,12 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 
   // Get user and system tablet leader and follower counts for each TabletServer
   TabletCountMap tablet_map;
-  CalculateTabletMap(&tablet_map);
+  auto s = CalculateTabletMap(&tablet_map);
+  if (!s.ok()) {
+    *output << "<div class=\"alert alert-warning\">"
+            << EscapeForHtmlToString(s.ToString()) << "</div>";
+    return;
+  }
 
   std::unordered_set<string> read_replica_uuids;
   for (auto desc : descs) {
@@ -820,7 +825,12 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   auto descs = master_->ts_manager()->GetAllDescriptors();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
-  CalculateTabletMap(&tablet_map);
+  auto s = CalculateTabletMap(&tablet_map);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(Format("Couldn't get tablets: $0", s));
+  }
 
   std::unordered_set<string> cluster_uuids;
   auto primary_uuid = cluster_config_result->replication_info().live_replicas().placement_uuid();
@@ -982,6 +992,7 @@ void MasterPathHandlers::HandleHealthCheck(
   uint64_t most_recent_uptime = std::numeric_limits<uint64_t>::max();
 
   jw.StartObject();
+  std::vector<TableId> skipped_tables;
   {
     // Iterate TabletServers, looking for health anomalies.
     for (const auto & desc : descs) {
@@ -1032,7 +1043,12 @@ void MasterPathHandlers::HandleHealthCheck(
         continue;
       }
 
-      TabletInfos tablets = table->GetTablets();
+      auto tablets_result = table->GetTablets();
+      if (!tablets_result) {
+        skipped_tables.push_back(table->id());
+        continue;
+      }
+      auto tablets = *tablets_result;
 
       for (const auto& tablet : tablets) {
         auto replication_locations = tablet->GetReplicaLocations();
@@ -1073,6 +1089,17 @@ void MasterPathHandlers::HandleHealthCheck(
                                               IsLoadBalancerIdleResponsePB* resp);
      */
     // 5. do any of the TS have tablets they were not able to start up
+  }
+  if (!skipped_tables.empty()) {
+    jw.String("error");
+    jw.StartObject();
+    jw.String("skipped tables");
+    jw.StartArray();
+    for (const auto& table : skipped_tables) {
+      jw.String(table);
+    }
+    jw.EndArray();
+    jw.EndObject();
   }
   jw.EndObject();
 }
@@ -1187,9 +1214,10 @@ void MasterPathHandlers::HandleAllTables(
     // System tables and colocated user tables do not have size info
     if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
-      auto tablets = table->GetTablets();
+      auto tablets_result = table->GetTablets();
+      if (!tablets_result) continue;
       bool table_has_missing_size = false;
-      for (const auto& tablet : tablets) {
+      for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
           aggregated_drive_info.wal_files_size += drive_info.get().wal_files_size;
@@ -1369,9 +1397,10 @@ void MasterPathHandlers::HandleAllTablesJSON(
     // System tables and colocated user tables do not have size info.
     if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
-      auto tablets = table->GetTablets();
+      auto tablets_result = table->GetTablets();
+      if (!tablets_result) continue;
       bool table_has_missing_size = false;
-      for (const auto& tablet : tablets) {
+      for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
           aggregated_drive_info.wal_files_size += drive_info.get().wal_files_size;
@@ -1733,7 +1762,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << EscapeForHtmlToString(s.ToString());
       return;
     }
-    tablets = table->GetTablets(IncludeInactive::kTrue);
+    Result<TabletInfos> tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    if (!tablets_result) {
+      *output << "Unable to fetch tablets for table: " << EscapeForHtmlToString(s.ToString());
+      return;
+    }
+    tablets = *tablets_result;
   }
 
   server::HtmlOutputSchemaTable(schema, output);
@@ -1761,7 +1795,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
              "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
       continue;
     }
@@ -2026,18 +2060,26 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
       s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
+      jw.String("error");
       jw.String("Unable to decode partition schema: " + s.ToString());
       jw.EndObject();
       return;
     }
-    tablets = table->GetTablets(IncludeInactive::kTrue);
+    auto tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    if (!tablets_result) {
+      jw.String("error");
+      jw.String("Unable to fetch tablets: " + s.ToString());
+      jw.EndObject();
+      return;
+    }
+    tablets = *tablets_result;
   }
 
   JsonOutputSchemaTable(schema, &jw);
 
   jw.String("tablets");
   jw.StartArray();
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const TabletInfoPtr& tablet : tablets) {
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
     AppendValuesFromMap(*locations, &sorted_locations);
@@ -2126,7 +2168,7 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 }
 
-std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
+Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetNonSystemTablets() {
   std::vector<TabletInfoPtr> nonsystem_tablets;
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
@@ -2137,19 +2179,20 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
       continue;
     }
-    TabletInfos ts = table->GetTablets(IncludeInactive::kTrue);
-
-    for (TabletInfoPtr t : ts) {
-      nonsystem_tablets.push_back(t);
-    }
+    TabletInfos ts = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    nonsystem_tablets.insert(
+        nonsystem_tablets.end(), std::make_move_iterator(ts.begin()),
+        std::make_move_iterator(ts.end()));
   }
   return nonsystem_tablets;
 }
 
-std::vector<std::pair<TabletInfoPtr, std::string>> MasterPathHandlers::GetLeaderlessTablets() {
+Result<std::vector<std::pair<TabletInfoPtr, std::string>>>
+MasterPathHandlers::GetLeaderlessTablets() {
   std::vector<std::pair<TabletInfoPtr, std::string>> leaderless_tablets;
 
-  auto nonsystem_tablets = GetNonSystemTablets();
+  auto nonsystem_tablets = VERIFY_RESULT(GetNonSystemTablets());
+
   for (TabletInfoPtr t : nonsystem_tablets) {
     if (t.get()->LockForRead()->is_deleted()) {
       continue;
@@ -2260,7 +2303,7 @@ Result<vector<pair<TabletInfoPtr, vector<string>>>>
       continue;
     }
     auto replication_info = VERIFY_RESULT(catalog_mgr->GetTableReplicationInfo(table));
-    for (TabletInfoPtr tablet : table->GetTablets()) {
+    for (TabletInfoPtr tablet : VERIFY_RESULT(table->GetTablets())) {
       auto underreplicated_placements =
           GetTabletUnderReplicatedPlacements(tablet, replication_info);
       if (!underreplicated_placements.empty()) {
@@ -2279,12 +2322,17 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   auto leaderless_tablets = GetLeaderlessTablets();
   auto underreplicated_tablets = GetUnderReplicatedTablets();
 
+  if (!leaderless_tablets || !underreplicated_tablets) {
+    *output << "<h2>Cannot calculate tablet replicas. Try again.</h2>\n";
+    return;
+  }
+
   *output << "<h3>Leaderless Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
              "<th>Leaderless Reason</th></tr>\n";
 
-  for (const std::pair<TabletInfoPtr, string>& t : leaderless_tablets) {
+  for (const std::pair<TabletInfoPtr, string>& t : *leaderless_tablets) {
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         UrlEncodeToString(t.first->table()->id()),
@@ -2293,7 +2341,6 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
         EscapeForHtmlToString(t.first.get()->tablet_id()),
         EscapeForHtmlToString(t.second));
   }
-
   *output << "</table>\n";
 
   if (!underreplicated_tablets.ok()) {
@@ -2334,12 +2381,19 @@ void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest&
   JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto leaderless_ts = GetLeaderlessTablets();
+  if (!leaderless_ts) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(leaderless_ts.status().ToString());
+    jw.EndObject();
+    return;
+  }
 
   jw.StartObject();
   jw.String("leaderless_tablets");
   jw.StartArray();
 
-  for (const std::pair<TabletInfoPtr, std::string>& t : leaderless_ts) {
+  for (const std::pair<TabletInfoPtr, std::string>& t : *leaderless_ts) {
     jw.StartObject();
     jw.String("table_uuid");
     jw.String(t.first->table()->id());
@@ -2363,7 +2417,7 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
 
   if (!underreplicated_tablets.ok()) {
     jw.StartObject();
-    jw.String("Error");
+    jw.String("error");
     jw.String(underreplicated_tablets.status().ToString());
     jw.EndObject();
     return;
@@ -3495,7 +3549,7 @@ string MasterPathHandlers::RegistrationToHtml(
   return link_html.str();
 }
 
-void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
+Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
     if (table->IsColocatedUserTable()) {
@@ -3503,7 +3557,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
+    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
@@ -3528,6 +3582,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       }
     }
   }
+  return Status::OK();
 }
 
 Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree(
@@ -3558,7 +3613,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
+    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
 
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();
@@ -3620,7 +3675,7 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
     }
     const string& table_name = table_locked->name();
     const string& table_id = table->id();
-    auto tablet_count = table->GetTablets(IncludeInactive::kTrue).size();
+    auto tablet_count = table->TabletCount(IncludeInactive::kTrue);
 
     *output << Format(
         "<tr>"

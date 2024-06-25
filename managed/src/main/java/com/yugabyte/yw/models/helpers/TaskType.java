@@ -128,9 +128,6 @@ public enum TaskType {
       CustomerTask.TaskType.CreatePitrConfig,
       CustomerTask.TargetType.Universe),
 
-  // TODO There is no reference for this task.
-  RestorePitrConfig(com.yugabyte.yw.commissioner.tasks.RestorePitrConfig.class),
-
   DeletePitrConfig(
       com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class,
       CustomerTask.TaskType.DeletePitrConfig,
@@ -742,6 +739,14 @@ public enum TaskType {
 
   AddNamespaceToXClusterReplication(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication.class),
+
+  XClusterRemoveNamespaceFromTargetUniverse(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse
+          .class),
+
+  XClusterRemoveNamespaceFromOutboundReplication(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
+          .XClusterRemoveNamespaceFromOutboundReplicationGroup.class),
 
   SetRestoreTime(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime.class),
 

@@ -189,9 +189,9 @@ class CloneStateManagerTest : public YBTest {
     // Set up tablets.
     for (int i = 0; i < kNumTablets; ++i) {
       auto source_tablet =
-          make_scoped_refptr<TabletInfo>(source_table_, GetTestTabletId(true /* source */, i));
+          std::make_shared<TabletInfo>(source_table_, GetTestTabletId(true /* source */, i));
       auto target_tablet =
-          make_scoped_refptr<TabletInfo>(target_table_, GetTestTabletId(false /* source */, i));
+          std::make_shared<TabletInfo>(target_table_, GetTestTabletId(false /* source */, i));
 
       source_tablets_.push_back(source_tablet);
       target_tablets_.push_back(target_tablet);

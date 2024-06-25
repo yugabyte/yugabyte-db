@@ -29,7 +29,7 @@ Conducting an accurate TPC-C benchmark requires aligning your test environment w
 After you've identified a cluster specification that matches your needs, apply the TPC-C workload recommended for that particular setup. The goal is to validate that the cluster can sustain the expected transaction throughput—measured in tpmC with a high degree of efficiency, typically exceeding 99.5%. This high-efficiency rate ensures that the cluster meets the benchmark's demands with minimal resource overhead, indicating its readiness to handle your real-world, high-volume transactional workloads.
 
 {{<lead link="running-tpcc/">}}
-For information on cluster specification/workload and how to run the TPC-C against a local or a YugabyteDB Managed cluster, see [Running TPC-C](running-tpcc/).
+For information on cluster specification/workload and how to run the TPC-C against a local or a YugabyteDB Aeon cluster, see [Running TPC-C](running-tpcc/).
 {{</lead>}}
 
 ## Scale out
