@@ -231,25 +231,3 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameT
 
   return null;
 };
-
-const BarLabel = (props: any) => {
-  const { payload, textAnchor, fill, x, y, width, height } = props;
-
-  if (payload.value > 0) {
-    return (
-      <text
-        textAnchor={textAnchor}
-        fill="hsla(0, 100%, 100%, 0.8)"
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        className="recharts-bar-label"
-      >
-        {payload.value}
-      </text>
-    );
-  } else {
-    return <text></text>;
-  }
-};
