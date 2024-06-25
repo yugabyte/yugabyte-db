@@ -42,6 +42,17 @@ If you have set these features independent of Enhanced Postgres Compatibility Mo
 Conversely, if you are using Enhanced Postgres Compatibility Mode on a universe, you cannot set any of the features independently.
 {{</note>}}
 
+| PG Feature | 2.20 | 2024.1 | 2024.2 | 2025.1 |
+| :--- | :--- | :--- | :--- | :--- |
+| feature | {{<badge/ga>}} | {{<badge/ga>}} | {{<badge/ga>}} | {{<badge/ga>}} |
+| Read-Committed isolation | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
+| Wait-on-Conflict concurrency for predictable P99 latencies | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
+| Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
+| Use range sharding (ascending) by default | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
+| feature |  | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} |
+| feature |  | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} |
+| feature |  |  | {{<badge/tp>}} | {{<badge/ea>}} |
+
 ### v2024.1
 
 | EA Feature | Flag |
