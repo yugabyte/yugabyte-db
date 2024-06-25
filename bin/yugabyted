@@ -71,9 +71,6 @@ OS_NAME = OS_DETAILS[0]
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-YUGABYTE_JENKINS_BUILD_DIR = os.getenv("BUILD_ROOT",
-                                       os.path.dirname(
-                                           os.path.dirname(os.path.realpath(__file__))))
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
@@ -425,15 +422,6 @@ def find_binary_location(binary_name):
     # Development environment for UI
     dir_candidates += [
         os.path.join(YUGABYTE_DIR, "build", "latest", "gobin"),
-    ]
-
-    # Jenkins Test Environment
-    dir_candidates += [
-        os.path.join(YUGABYTE_JENKINS_BUILD_DIR, "bin")
-    ]
-
-    dir_candidates += [
-        os.path.join(YUGABYTE_JENKINS_BUILD_DIR, "gobin")
     ]
 
     return search_file_in_paths(dir_candidates, binary_name)

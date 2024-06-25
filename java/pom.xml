@@ -139,7 +139,6 @@
     <module>yb-multiapi</module>
     <module>yb-sample</module>
     <module>yb-ysql-conn-mgr</module>
-    <module>yb-yugabyted</module>
   </modules>
 
   <build>
