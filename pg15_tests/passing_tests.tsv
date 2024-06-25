@@ -90,6 +90,7 @@ JAVA	org.yb.pgsql.TestPgRegressTransactions
 JAVA	org.yb.pgsql.TestPgRegressTrigger
 JAVA	org.yb.pgsql.TestPgRegressTypesGeo
 JAVA	org.yb.pgsql.TestPgRegressTypesMisc
+JAVA	org.yb.pgsql.TestPgRegressTypesUDT
 JAVA	org.yb.pgsql.TestPgRegressWindow
 JAVA	org.yb.pgsql.TestPgRegressYbExtensionsYbXclusterDdlReplication
 JAVA	org.yb.pgsql.TestPgRegressYbScanTarget
