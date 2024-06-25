@@ -196,7 +196,7 @@ DECLARE_int64(cdc_intent_retention_ms);
 
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
-DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
+DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -2565,7 +2565,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
   // Get the minimum record_id_commit_time for each namespace by looking at all the slot entries.
   std::unordered_map<NamespaceId, uint64_t> namespace_to_min_record_id_commit_time;
   StreamIdSet streams_with_tablet_entries_to_be_deleted;
-  if (FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+  if (FLAGS_ysql_yb_enable_replication_slot_consumption) {
     namespace_to_min_record_id_commit_time = VERIFY_RESULT(GetNamespaceMinRecordIdCommitTimeMap(
         table_range, &iteration_status, slot_entries_to_be_deleted));
   }
@@ -2665,7 +2665,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
       // acknowledged commit time among all the slots on the namespace.
       if (IsReplicationSlotStream(record) &&
-          FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+          FLAGS_ysql_yb_enable_replication_slot_consumption) {
         if (slot_entries_to_be_deleted && !slot_entries_to_be_deleted->contains(stream_id)) {
           // This is possible when Update Peers and Metrics thread comes into action before the slot
           // entry is added to the cdc_state table.
@@ -4657,7 +4657,7 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
 void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
   // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
   // or there are no sessions to be cleaned up.
-  if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || session_ids.empty()) {
+  if (!FLAGS_ysql_yb_enable_replication_slot_consumption || session_ids.empty()) {
     return;
   }
 

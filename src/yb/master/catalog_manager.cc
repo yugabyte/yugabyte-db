@@ -11821,7 +11821,7 @@ Status CatalogManager::SendCreateTabletRequests(
 
     for (const RaftPeerPB& peer : config.peers()) {
       shared_ptr<AsyncCreateReplica> task;
-      if (stream_exists_on_namespace && FLAGS_ysql_TEST_enable_replication_slot_consumption) {
+      if (stream_exists_on_namespace && FLAGS_ysql_yb_enable_replication_slot_consumption) {
         task = std::make_shared<AsyncCreateReplica>(
             master_, AsyncTaskPool(), peer.permanent_uuid(), tablet, schedules, epoch,
               CDCSDKSetRetentionBarriers::kTrue /* cdc_sdk_set_retention_barriers */);

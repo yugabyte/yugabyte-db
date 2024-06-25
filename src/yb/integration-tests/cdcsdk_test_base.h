@@ -51,6 +51,7 @@ DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 
 namespace yb {
 using client::YBClient;
@@ -135,6 +136,9 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+    // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
 
     google::SetVLOGLevel("cdc*", 4);
     google::SetVLOGLevel("tablet*", 1);

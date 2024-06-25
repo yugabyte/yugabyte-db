@@ -1296,7 +1296,7 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
   //
   // If these values are changed here, also update the consistent point sent as part of the
   // creation of logical replication slot in walsender.c and slotfuncs.c.
-  if (FLAGS_ysql_TEST_enable_replication_slot_consumption && has_consistent_snapshot_option &&
+  if (FLAGS_ysql_yb_enable_replication_slot_consumption && has_consistent_snapshot_option &&
       has_replication_slot_name) {
     cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
     std::ostringstream oss;
@@ -1802,7 +1802,7 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
   }
 
   // TODO: Validate that the replication slot output plugin name is provided if
-  // ysql_TEST_enable_replication_slot_consumption is true. This can only be done after we have
+  // ysql_yb_enable_replication_slot_consumption is true. This can only be done after we have
   // fully deprecated the yb-admin commands for CDC stream creation.
 
   // No need to validate the record_type for replication slot consumption.
@@ -1975,7 +1975,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     bool has_replication_slot_consumption =
         !streams.front()->GetCdcsdkYsqlReplicationSlotName().empty();
 
-    if (!FLAGS_ysql_TEST_enable_replication_slot_consumption || !has_replication_slot_consumption) {
+    if (!FLAGS_ysql_yb_enable_replication_slot_consumption || !has_replication_slot_consumption) {
       // Set the WAL retention for this new table
       // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
       AlterTableRequestPB alter_table_req;
@@ -2001,7 +2001,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       // INSERT the required cdc_state table entries. This is not requirred for replication slot
       // consumption since setting up of retention barriers and inserting state table entries is
       // done at the time of table creation.
-      if (!FLAGS_ysql_TEST_enable_replication_slot_consumption ||
+      if (!FLAGS_ysql_yb_enable_replication_slot_consumption ||
           !has_replication_slot_consumption) {
         const auto& tablets = resp.tablet_locations();
         std::vector<cdc::CDCStateTableEntry> entries;

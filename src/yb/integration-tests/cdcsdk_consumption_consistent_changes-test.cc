@@ -23,7 +23,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
   }
@@ -3189,7 +3189,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // Keep the flags for consistent snapshot streams and replication slot consumption disabled,
   // simulating a cluster before upgrade.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = false;
 
   // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
   // that order.
@@ -3214,7 +3214,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // Enable the flags for consistent snapshot streams and replication slot consumption, simulating
   // an upgrade.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
 
   // Create a new DB and a replication slot stream.
   std::string kNamespaceName_2 = "upgraded_test_namespace";

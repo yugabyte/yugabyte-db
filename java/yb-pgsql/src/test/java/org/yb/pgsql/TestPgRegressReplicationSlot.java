@@ -31,26 +31,8 @@ public class TestPgRegressReplicationSlot extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_replication_commands," +
-        "ysql_yb_enable_replica_identity");
-    flagMap.put("ysql_yb_enable_replication_commands", "true");
-    flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
-    flagMap.put("ysql_yb_enable_replica_identity", "true");
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    return flagMap;
-  }
-
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_replication_commands," +
-        "ysql_yb_enable_replica_identity");
-    flagMap.put("ysql_yb_enable_replication_commands", "true");
-    flagMap.put("ysql_TEST_enable_replication_slot_consumption", "true");
-    flagMap.put("ysql_yb_enable_replica_identity", "true");
     return flagMap;
   }
 

@@ -1318,12 +1318,8 @@ TEST_F_EX(
 TEST_F_EX(
     YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestReplicaIdentityAfterRestore),
     YBBackupTestOneTablet) {
-  ASSERT_OK(
-      cluster_->SetFlagOnTServers("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_replica_identity", "true"));
 
-  ASSERT_OK(
-      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
 
   const string table_name = "mytbl";

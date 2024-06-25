@@ -36,22 +36,6 @@ import java.util.Set;
 public class TestPgAlterTable extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAlterTable.class);
 
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
-    flagMap.put("ysql_yb_enable_replica_identity", "true");
-    return flagMap;
-  }
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity");
-    flagMap.put("ysql_yb_enable_replica_identity", "true");
-    return flagMap;
-  }
-
   @Test
   public void testAddColumnIfNotExists() throws Exception {
     testAddColumnIfNotExistsInternal(true);

@@ -24,14 +24,6 @@ import org.yb.YBTestRunner;
 @RunWith(value = YBTestRunner.class)
 public class TestPgRegressPublication extends BasePgSQLTest {
   @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
-    flagMap.put("ysql_yb_enable_replication_commands", "true");
-    return flagMap;
-  }
-
-  @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
