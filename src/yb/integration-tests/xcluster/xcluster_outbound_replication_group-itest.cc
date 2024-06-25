@@ -603,5 +603,44 @@ TEST_F(XClusterOutboundReplicationGroupTest, TestListAPIs) {
   }
 }
 
+// Make sure we cleanup the streams of the failed table create.
+TEST_F(XClusterOutboundReplicationGroupTest, CleanupStreamsOfFailedTableCreate) {
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(kReplicationGroupId, {namespace_id_}));
+  int expected_stream_count = 1;
+
+  auto check_streams = [&]() -> Status {
+    auto resp = VERIFY_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+    SCHECK_EQ(
+        resp.table_infos_size(), expected_stream_count, IllegalState,
+        Format("Unexpected table infos: $0", resp.ShortDebugString()));
+    return Status::OK();
+  };
+
+  ASSERT_OK(check_streams());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
+
+  // This fails due to GUC yb_test_fail_next_ddl.
+  ASSERT_NOK(conn.Execute("SET yb_test_fail_next_ddl=true; CREATE TABLE tbl1 (a int)"));
+  ASSERT_OK(check_streams());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE moneyp (a money) PARTITION BY LIST (a);"));
+  ++expected_stream_count;
+  ASSERT_OK(check_streams());
+  // This fails due to invalid cast but still creates (and drops) a new table.
+  ASSERT_NOK(conn.Execute("CREATE TABLE moneyp_10 PARTITION OF moneyp FOR VALUES IN (10);"));
+  ASSERT_OK(check_streams());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bigintp (a bigint) PARTITION BY LIST (a);"));
+  ++expected_stream_count;
+  ASSERT_OK(conn.Execute("CREATE TABLE bigintp_10 PARTITION OF bigintp FOR VALUES IN (10);"));
+  ++expected_stream_count;
+  ASSERT_OK(check_streams());
+  // This fails due to overlap.
+  ASSERT_NOK(conn.Execute("CREATE TABLE bigintp_10_2 PARTITION OF bigintp FOR VALUES IN ('10');"));
+  ASSERT_OK(check_streams());
+}
+
 }  // namespace master
 }  // namespace yb
