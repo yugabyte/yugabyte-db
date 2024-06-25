@@ -1171,6 +1171,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
 
+  bool IsDynamicTableAdditionDisabled() const;
+
   std::string ToString() const override;
 
   bool IsXClusterStream() const;
