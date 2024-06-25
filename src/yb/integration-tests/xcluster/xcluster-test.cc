@@ -3957,6 +3957,61 @@ TEST_F_EX(XClusterTest, ReplicationErrorAfterMasterFailover, XClusterTestNoParam
   ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
 }
 
+// Make sure we get SOURCE_UNREACHABLE when the source universe is not reachable.
+TEST_F_EX(XClusterTest, NetworkReplicationError, XClusterTestNoParam) {
+  // Send metrics report including the xCluster status in every heartbeat.
+  const auto short_metric_report_interval_ms = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = short_metric_report_interval_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
+
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 1, /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = 5 * 1000;
+
+  producer_cluster()->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SOURCE_UNREACHABLE,
+      kRpcTimeout));
+
+  ASSERT_OK(producer_cluster()->mini_tablet_server(0)->Start());
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
+// Make sure we get SYSTEM_ERROR when apply fails.
+TEST_F_EX(XClusterTest, ApplyReplicationError, XClusterTestNoParam) {
+  // Send metrics report including the xCluster status in every heartbeat.
+  const auto short_metric_report_interval_ms = 250;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = short_metric_report_interval_ms * 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) =
+      short_metric_report_interval_ms;
+
+  ASSERT_OK(SetUpWithParams(
+      {1}, {1}, /* replication_factor */ 1, /* num_masters */ 1, /* num_tservers */ 1));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(1));
+  const auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 1;
+
+  ASSERT_OK(VerifyReplicationError(
+      consumer_table_->id(), stream_id, ReplicationErrorPb::REPLICATION_SYSTEM_ERROR));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulate_random_failure_after_apply) = 0;
+
+  ASSERT_OK(VerifyReplicationError(consumer_table_->id(), stream_id, std::nullopt));
+}
+
 // Test deleting inbound replication group without performing source stream cleanup.
 TEST_F_EX(XClusterTest, DeleteWithoutStreamCleanup, XClusterTestNoParam) {
   constexpr int kNTabletsPerTable = 1;
