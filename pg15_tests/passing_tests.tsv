@@ -93,6 +93,7 @@ JAVA	org.yb.pgsql.TestPgRegressTypesMisc
 JAVA	org.yb.pgsql.TestPgRegressTypesUDT
 JAVA	org.yb.pgsql.TestPgRegressWindow
 JAVA	org.yb.pgsql.TestPgRegressYbExtensionsYbXclusterDdlReplication
+JAVA	org.yb.pgsql.TestPgRegressYbFetchLimits
 JAVA	org.yb.pgsql.TestPgRegressYbScanTarget
 JAVA	org.yb.pgsql.TestPgReplicationSlot
 JAVA	org.yb.pgsql.TestPgSelect#testAggregatePushdowns

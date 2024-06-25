@@ -245,7 +245,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT
          Storage Table Read Requests: 6
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 4096 (originally 1024)  Original Batches: 1
+         Buckets: 8192 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 6
                Storage Table Rows Scanned: 5000
@@ -286,7 +286,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT
          Storage Table Read Requests: 3
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 4096 (originally 1024)  Original Batches: 1
+         Buckets: 8192 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 12
                Storage Table Rows Scanned: 5000
@@ -325,7 +325,7 @@ EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) /*+ HashJoin(t_small t_large) */ SELECT
          Storage Table Read Requests: 6
          Storage Table Rows Scanned: 5000
    ->  Hash (actual rows=5000 loops=1)
-         Buckets: 4096 (originally 1024)  Original Batches: 1
+         Buckets: 8192 (originally 1024)  Original Batches: 1
          ->  Seq Scan on t_large (actual rows=5000 loops=1)
                Storage Table Read Requests: 99
                Storage Table Rows Scanned: 5000
