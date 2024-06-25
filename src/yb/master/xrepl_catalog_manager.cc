@@ -126,8 +126,9 @@ DEFINE_test_flag(
     bool, allow_ycql_transactional_xcluster, false,
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
 
-DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
-                            "Enable support for CDC Consistent Snapshot Streams");
+DEFINE_RUNTIME_AUTO_bool(
+    yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
+    "Enable support for CDC Consistent Snapshot Streams");
 
 DEFINE_test_flag(bool, fail_universe_replication_merge, false, "Causes MergeUniverseReplication to "
     "fail with an error.");
