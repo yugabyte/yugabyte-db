@@ -349,11 +349,21 @@ Result<std::optional<bool>> XClusterSourceManager::IsBootstrapRequired(
 
 Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreams(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const {
+    const std::vector<std::pair<TableName, PgSchemaName>>& opt_table_names) const {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
   return outbound_replication_group->GetNamespaceCheckpointInfo(namespace_id, opt_table_names);
+}
+
+Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreamsForTableIds(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableId>& source_table_ids) const {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  return outbound_replication_group->GetNamespaceCheckpointInfoForTableIds(
+      namespace_id, source_table_ids);
 }
 
 Status XClusterSourceManager::CreateXClusterReplication(

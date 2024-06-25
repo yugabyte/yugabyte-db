@@ -316,13 +316,28 @@ Status XClusterManager::GetXClusterStreams(
   LOG_FUNC_AND_RPC;
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id, namespace_id);
 
-  std::vector<std::pair<TableName, PgSchemaName>> table_names;
-  for (const auto& table_name : req->table_infos()) {
-    table_names.emplace_back(table_name.table_name(), table_name.pg_schema_name());
-  }
+  // Only one of these fields should be set (or neither).
+  SCHECK(
+      req->table_infos().empty() || req->source_table_ids().empty(), InvalidArgument,
+      "Only one of table_infos or table_ids should be set");
 
-  auto ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreams(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_names));
+  std::optional<yb::master::NamespaceCheckpointInfo> ns_info;
+  if (!req->source_table_ids().empty()) {
+    // Handle the table_ids case.
+    std::vector<TableId> table_ids(req->source_table_ids().begin(), req->source_table_ids().end());
+    ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreamsForTableIds(
+        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_ids));
+  } else {
+    // Handle the table_info case and the empty (all tables) case.
+    std::vector<std::pair<TableName, PgSchemaName>> table_names;
+    for (const auto& table_name : req->table_infos()) {
+      table_names.emplace_back(table_name.table_name(), table_name.pg_schema_name());
+    }
+
+    ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreams(
+        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(),
+        table_names));
+  }
 
   if (!ns_info.has_value()) {
     resp->set_not_ready(true);

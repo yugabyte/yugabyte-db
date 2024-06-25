@@ -229,6 +229,18 @@ Status XClusterClient::GetXClusterStreams(
       std::move(callback));
 }
 
+Status XClusterClient::GetXClusterStreams(
+    CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+    const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids,
+    GetXClusterStreamsCallback callback) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication group Id");
+  SCHECK(!namespace_id.empty(), InvalidArgument, "Invalid Namespace Id");
+
+  return yb_client_.data_->GetXClusterStreams(
+      &yb_client_, deadline, replication_group_id, namespace_id, source_table_ids,
+      std::move(callback));
+}
+
 Status XClusterClient::AddNamespaceToOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Invalid Replication Group Id");
@@ -569,12 +581,9 @@ Result<IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseReplicationDo
   return IsOperationDoneResult::Done();
 }
 
-Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
-    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
-    BootstrapProducerCallback user_callback) {
-  auto callback =
-      [cb = std::move(user_callback)](Result<master::GetXClusterStreamsResponsePB> result) -> void {
+GetXClusterStreamsCallback CreateXClusterStreamsCallback(BootstrapProducerCallback user_callback) {
+  return [cb = std::move(user_callback)](
+             Result<master::GetXClusterStreamsResponsePB> result) -> void {
     Status status;
     if (!result) {
       status = std::move(result.status());
@@ -599,12 +608,32 @@ Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
     // AddTableToXClusterTargetTask::BootstrapTableCallback.
     cb(std::make_tuple(std::move(producer_table_ids), std::move(stream_ids), HybridTime::kInvalid));
   };
+}
+
+Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+    BootstrapProducerCallback user_callback) {
+  auto callback = CreateXClusterStreamsCallback(user_callback);
 
   RETURN_NOT_OK(XClusterClient(*yb_client_)
                     .GetXClusterStreams(
                         CoarseMonoClock::Now() + yb_client_->default_admin_operation_timeout(),
                         replication_group_id, namespace_id, table_names, pg_schema_names,
                         std::move(callback)));
+
+  return Status::OK();
+}
+
+Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableName>& table_ids, BootstrapProducerCallback user_callback) {
+  auto callback = CreateXClusterStreamsCallback(user_callback);
+
+  RETURN_NOT_OK(XClusterClient(*yb_client_)
+                    .GetXClusterStreams(
+                        CoarseMonoClock::Now() + yb_client_->default_admin_operation_timeout(),
+                        replication_group_id, namespace_id, table_ids, std::move(callback)));
 
   return Status::OK();
 }

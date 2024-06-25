@@ -101,6 +101,11 @@ class XClusterOutboundReplicationGroup
       const NamespaceId& namespace_id,
       const std::vector<TableSchemaNamePair>& table_names = {}) const EXCLUDES(mutex_);
 
+  // Returns std::nullopt if the namespace is not yet ready.
+  Result<std::optional<NamespaceCheckpointInfo>> GetNamespaceCheckpointInfoForTableIds(
+      const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids) const
+      EXCLUDES(mutex_);
+
   Status CreateXClusterReplication(
       const std::vector<HostPort>& source_master_addresses,
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch)
