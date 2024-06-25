@@ -180,6 +180,16 @@ VoyagerAssesmentResponse:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/MigrationAssesmentInfo'
+VoyagerAssessmentResponseV2:
+  description: Response for migration assessment page
+  content:
+    application/json:
+      schema:
+        title: API for migration assessment page
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/MigrationAssessmentReport'
 ConnectionsResponse:
   description: YSQL connection manager stats
   content:

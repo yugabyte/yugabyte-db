@@ -6,6 +6,7 @@ models/model_alerts_info.go
 models/model_alerts_response.go
 models/model_api_error.go
 models/model_api_error_error.go
+models/model_api_for_migration_assessment_page.go
 models/model_api_for_plan_and_asses_page.go
 models/model_assesment_complexity_info.go
 models/model_cloud_enum.go
@@ -45,6 +46,7 @@ models/model_metric_data.go
 models/model_metric_response.go
 models/model_migrate_schema_task_info.go
 models/model_migration_assesment_info.go
+models/model_migration_assessment_report.go
 models/model_node_data.go
 models/model_node_data_cloud_info.go
 models/model_node_data_metrics.go
@@ -57,11 +59,17 @@ models/model_slow_query_response_data.go
 models/model_slow_query_response_schema.go
 models/model_slow_query_response_ysql_data.go
 models/model_slow_query_response_ysql_query_item.go
+models/model_source_database_info.go
+models/model_source_environment_info.go
 models/model_sql_objects_details.go
 models/model_table_info.go
 models/model_table_info_table_replication_info.go
 models/model_table_replication_info.go
 models/model_tablet_info.go
+models/model_target_cluster_recommendation_details.go
+models/model_target_cluster_spec.go
+models/model_target_schema_recommendations.go
+models/model_unsupported_sql_info.go
 models/model_version_info.go
 models/model_voyager_migrate_data_metrics.go
 models/model_voyager_migrate_data_metrics_details.go
