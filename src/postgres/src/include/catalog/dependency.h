@@ -204,6 +204,8 @@ extern void recordDependencyOn(const ObjectAddress *depender,
 
 extern bool tablegroupHasDependents(Oid tablegroupId);
 
+extern bool ybIsTablegroupDependent(Oid relOid, Oid tablegroupId);
+
 extern void recordMultipleDependencies(const ObjectAddress *depender,
 									   const ObjectAddress *referenced,
 									   int nreferenced,

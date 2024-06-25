@@ -18,12 +18,15 @@
 #include <thread>
 #include <unordered_map>
 
+#include "yb/common/json_util.h"
+
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -54,10 +57,16 @@ DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
 DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
+DECLARE_int32(pgsql_proxy_webserver_port);
 
 using namespace std::literals;
 
+using yb::common::GetMemberAsStr;
+using yb::common::GetMemberAsArray;
+using yb::common::ParseJson;
+
 namespace yb::pgwrapper {
+
 namespace {
 
 Status EnableCatCacheEventLogging(PGConn* conn) {
@@ -312,6 +321,48 @@ constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
 constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 6;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
+
+// Helper class to fetch number of client connection via pgsql proxy webserver.
+class ClientConnectionsCountFetcher {
+ public:
+  explicit ClientConnectionsCountFetcher(const HostPort& pg_host_port, MonoDelta initial_delay)
+      : url_(Format("http://$0:$1/rpcz", pg_host_port.host(), FLAGS_pgsql_proxy_webserver_port)),
+        initial_delay_(initial_delay) {}
+
+  Result<size_t> operator()() {
+    // Webserver start processing requests with some delay after cluster start.
+    // To solve this WaitFor is used.
+    faststring buf;
+    RETURN_NOT_OK(WaitFor(
+        [this, &buf]() -> Result<bool> {
+          return curl_.FetchURL(url_, &buf).ok();
+        },
+        5s, "Requesting /rpcz", initial_delay_));
+    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.c_str(), buf.size())));
+    size_t result = 0;
+    for (const auto& conn : VERIFY_RESULT(GetMemberAsArray(doc, "connections"))) {
+      if (VERIFY_RESULT(GetMemberAsStr(conn, "backend_type")) == "client backend") {
+        ++result;
+      }
+    }
+    return result;
+  }
+
+ private:
+  EasyCurl curl_;
+  const std::string url_;
+  const MonoDelta initial_delay_;
+};
+
+Status WaitForAllClientConnectionsClosure(const HostPort& pg_host_port) {
+  static constexpr auto kInitialDelay = 100ms;
+  ClientConnectionsCountFetcher connection_count_fetcher(pg_host_port, kInitialDelay);
+
+  return WaitFor(
+      [&connection_count_fetcher]() -> Result<bool> {
+        return !VERIFY_RESULT(connection_count_fetcher());
+      }, 30s, "Client connections closure", kInitialDelay);
+}
 
 } // namespace
 
@@ -611,16 +662,14 @@ TEST_F_EX(PgCatalogPerfTest,
           ResponseCacheInvalidationOnConnectionWithTempTableClosure,
           PgCatalogWithUnlimitedCachePerfTest) {
   constexpr auto* kDBName = "aux_db";
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
 
   {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
     auto conn_with_temp_table = ASSERT_RESULT(ConnectToDB(kDBName));
     ASSERT_OK(conn_with_temp_table.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
   }
-
-  // Wait for cleanup completion of all closed connections.
-  std::this_thread::sleep_for(RegularBuildVsDebugVsSanitizers(3s, 5s, 5s));
+  ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
 
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
@@ -677,8 +726,8 @@ TEST_F_EX(PgCatalogPerfTest,
     auto aux_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(aux_conn.Fetch("SELECT 1"));
   }
-  // Wait for cleanup completion of all closed connections.
-  std::this_thread::sleep_for(RegularBuildVsDebugVsSanitizers(3s, 5s, 5s));
+  ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
+
   auto conn = ASSERT_RESULT(Connect());
   const auto disable_calls = ASSERT_RESULT(metrics_->Delta([&conn, &temp_table_creator] {
     return temp_table_creator(&conn);

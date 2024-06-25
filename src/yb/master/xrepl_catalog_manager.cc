@@ -136,6 +136,8 @@ DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
 DEFINE_test_flag(bool, fail_universe_replication_merge, false, "Causes MergeUniverseReplication to "
     "fail with an error.");
 
+DEFINE_test_flag(bool, xcluster_fail_setup_stream_update, false, "Fail UpdateCDCStream RPC call");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
@@ -1710,19 +1712,9 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table->name();
           continue;
         }
-        bool has_pk = true;
-        for (const auto& col : schema.columns()) {
-          if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
-            // ybrowid column is added for tables that don't have user-specified primary key.
-            RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
-            VLOG(1)
-                << "Table: " << unprocessed_table_id
-                << ", will not be added to CDCSDK stream, since it does not have a primary key ";
-            has_pk = false;
-            break;
-          }
-        }
-        if (!has_pk) {
+
+        if (!CanTableBeAddedToCDCSDKStream(table, schema)) {
+          RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
           continue;
         }
 
@@ -1841,6 +1833,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
   std::vector<TableInfoPtr> tables;
 
   for (const auto& table_info : tables_->GetAllTables()) {
+    Schema schema;
     {
       auto ltm = table_info->LockForRead();
       if (!ltm->visible_to_client()) {
@@ -1850,25 +1843,14 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
         continue;
       }
 
-      bool has_pk = true;
-      for (const auto& col : ltm->schema().columns()) {
-        if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
-          // ybrowid column is added for tables that don't have user-specified primary key.
-          VLOG(1) << "Table: " << table_info->id()
-                  << ", will not be added to CDCSDK stream, since it does not have a primary key";
-          has_pk = false;
-          break;
-        }
-      }
-      if (!has_pk) {
+      auto status = SchemaFromPB(ltm->schema(), &schema);
+      if (!status.ok()) {
+        LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table_info->name();
         continue;
       }
     }
 
-    if (IsMatviewTable(*table_info)) {
-      continue;
-    }
-    if (!IsUserTableUnlocked(*table_info)) {
+    if (!CanTableBeAddedToCDCSDKStream(table_info.get(), schema)) {
       continue;
     }
 
@@ -1876,6 +1858,36 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
   }
 
   return tables;
+}
+
+bool CatalogManager::CanTableBeAddedToCDCSDKStream(
+    const TableInfoPtr& table_info, const Schema& schema) const {
+  bool has_pk = true;
+  for (const auto& col : schema.columns()) {
+    if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
+      // ybrowid column is added for tables that don't have user-specified primary key.
+      VLOG(1) << "Table: " << table_info->id()
+              << ", will not be added to CDCSDK stream, since it does not have a primary key";
+      has_pk = false;
+      break;
+    }
+  }
+  if (!has_pk) {
+    return false;
+  }
+
+  if (IsMatviewTable(*table_info)) {
+    // Materialized view should not be added as they are not supported for streaming.
+    return false;
+  }
+
+  if (!IsUserTableUnlocked(*table_info)) {
+    // Non-user tables like indexes, system tables etc should not be added as they are not
+    // supported for streaming.
+    return false;
+  }
+
+  return true;
 }
 
 /*
@@ -2637,6 +2649,10 @@ Status CatalogManager::UpdateCDCStreams(
 Status CatalogManager::UpdateCDCStream(
     const UpdateCDCStreamRequestPB* req, UpdateCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
   LOG(INFO) << "UpdateCDCStream from " << RequestorString(rpc) << ": " << req->DebugString();
+
+  SCHECK(
+      !FLAGS_TEST_xcluster_fail_setup_stream_update, IllegalState,
+      "Test flag to fail setup stream update is set");
 
   std::vector<xrepl::StreamId> stream_ids;
   std::vector<yb::master::SysCDCStreamEntryPB> update_entries;
@@ -4010,45 +4026,56 @@ void CatalogManager::GetCDCStreamCallback(
     stream_update_infos->push_back({bootstrap_id, *table_id, *options});
   }
 
-  AddCDCStreamToUniverseAndInitConsumer(replication_group_id, table, bootstrap_id, [&]() {
+  const auto update_xrepl_stream_func = [&]() -> Status {
     // Extra callback on universe setup success - update the producer to let it know that
     // the bootstrapping is complete. This callback will only be called once among all
     // the GetCDCStreamCallback calls, and we update all streams in batch at once.
-    std::lock_guard lock(*update_infos_lock);
 
     std::vector<xrepl::StreamId> update_bootstrap_ids;
     std::vector<SysCDCStreamEntryPB> update_entries;
+    {
+      std::lock_guard lock(*update_infos_lock);
 
-    for (const auto& [update_bootstrap_id, update_table_id, update_options] :
-         *stream_update_infos) {
-      SysCDCStreamEntryPB new_entry;
-      new_entry.add_table_id(update_table_id);
-      new_entry.mutable_options()->Reserve(narrow_cast<int>(update_options.size()));
-      for (const auto& [key, value] : update_options) {
-        if (key == cdc::kStreamState) {
-          // We will set state explicitly.
-          continue;
+      for (const auto& [update_bootstrap_id, update_table_id, update_options] :
+           *stream_update_infos) {
+        SysCDCStreamEntryPB new_entry;
+        new_entry.add_table_id(update_table_id);
+        new_entry.mutable_options()->Reserve(narrow_cast<int>(update_options.size()));
+        for (const auto& [key, value] : update_options) {
+          if (key == cdc::kStreamState) {
+            // We will set state explicitly.
+            continue;
+          }
+          auto new_option = new_entry.add_options();
+          new_option->set_key(key);
+          new_option->set_value(value);
         }
-        auto new_option = new_entry.add_options();
-        new_option->set_key(key);
-        new_option->set_value(value);
-      }
-      new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
-      new_entry.set_transactional(transactional);
+        new_entry.set_state(master::SysCDCStreamEntryPB::ACTIVE);
+        new_entry.set_transactional(transactional);
 
-      update_bootstrap_ids.push_back(update_bootstrap_id);
-      update_entries.push_back(new_entry);
+        update_bootstrap_ids.push_back(update_bootstrap_id);
+        update_entries.push_back(new_entry);
+      }
     }
-    WARN_NOT_OK(
+
+    RETURN_NOT_OK_PREPEND(
         xcluster_rpc->client()->UpdateCDCStream(update_bootstrap_ids, update_entries),
-        "Unable to update CDC stream options");
-    stream_update_infos->clear();
-  });
+        "Unable to update xrepl stream options on source universe");
+
+    {
+      std::lock_guard lock(*update_infos_lock);
+      stream_update_infos->clear();
+    }
+    return Status::OK();
+  };
+
+  AddCDCStreamToUniverseAndInitConsumer(
+      replication_group_id, table, bootstrap_id, update_xrepl_stream_func);
 }
 
 void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
     const xcluster::ReplicationGroupId& replication_group_id, const TableId& table_id,
-    const Result<xrepl::StreamId>& stream_id, std::function<void()> on_success_cb) {
+    const Result<xrepl::StreamId>& stream_id, std::function<Status()> on_success_cb) {
   scoped_refptr<UniverseReplicationInfo> universe;
   {
     SharedLock lock(mutex_);
@@ -4076,7 +4103,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
 
 Status CatalogManager::AddCDCStreamToUniverseAndInitConsumerInternal(
     scoped_refptr<UniverseReplicationInfo> universe, const TableId& table_id,
-    const xrepl::StreamId& stream_id, std::function<void()> on_success_cb) {
+    const xrepl::StreamId& stream_id, std::function<Status()> on_success_cb) {
   bool merge_alter = false;
   bool validated_all_tables = false;
   std::vector<XClusterConsumerStreamInfo> consumer_info;
@@ -4127,37 +4154,38 @@ Status CatalogManager::AddCDCStreamToUniverseAndInitConsumerInternal(
 
       if (xcluster::IsAlterReplicationGroupId(universe->ReplicationGroupId())) {
         // Don't enable ALTER universes, merge them into the main universe instead.
+        // on_success_cb will be invoked in MergeUniverseReplication.
         merge_alter = true;
       } else {
         l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);
+        if (on_success_cb) {
+          // Before updating, run any callbacks on success.
+          RETURN_NOT_OK(on_success_cb());
+        }
       }
     }
 
     // Update sys_catalog with new producer table id info.
-    Status status = sys_catalog_->Upsert(leader_ready_term(), universe);
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), universe));
 
-    // Before committing, run any callbacks on success.
-    if (status.ok() && on_success_cb &&
-        (l.mutable_data()->pb.state() == SysUniverseReplicationEntryPB::ACTIVE || merge_alter)) {
-      on_success_cb();
-    }
-
-    l.CommitOrWarn(status, "updating universe replication info in sys-catalog");
+    l.Commit();
   }
 
-  if (validated_all_tables) {
-    auto final_id = xcluster::GetOriginalReplicationGroupId(universe->ReplicationGroupId());
-    // If this is an 'alter', merge back into primary command now that setup is a success.
-    if (merge_alter) {
-      MergeUniverseReplication(universe, final_id);
-    }
-    // Update the in-memory cache of consumer tables.
-    LockGuard lock(mutex_);
-    for (const auto& info : consumer_info) {
-      const auto& c_table_id = info.consumer_table_id;
-      const auto& c_stream_id = info.stream_id;
-      xcluster_consumer_table_stream_ids_map_[c_table_id].emplace(final_id, c_stream_id);
-    }
+  if (!validated_all_tables) {
+    return Status::OK();
+  }
+
+  auto final_id = xcluster::GetOriginalReplicationGroupId(universe->ReplicationGroupId());
+  // If this is an 'alter', merge back into primary command now that setup is a success.
+  if (merge_alter) {
+    RETURN_NOT_OK(MergeUniverseReplication(universe, final_id, std::move(on_success_cb)));
+  }
+  // Update the in-memory cache of consumer tables.
+  LockGuard lock(mutex_);
+  for (const auto& info : consumer_info) {
+    const auto& c_table_id = info.consumer_table_id;
+    const auto& c_stream_id = info.stream_id;
+    xcluster_consumer_table_stream_ids_map_[c_table_id].emplace(final_id, c_stream_id);
   }
 
   return Status::OK();
@@ -4391,16 +4419,15 @@ Status CatalogManager::InitXClusterConsumer(
   return Status::OK();
 }
 
-void CatalogManager::MergeUniverseReplication(
-    scoped_refptr<UniverseReplicationInfo> universe, xcluster::ReplicationGroupId original_id) {
+Status CatalogManager::MergeUniverseReplication(
+    scoped_refptr<UniverseReplicationInfo> universe, xcluster::ReplicationGroupId original_id,
+    std::function<Status()> on_success_cb) {
   // Merge back into primary command now that setup is a success.
   LOG(INFO) << "Merging CDC universe: " << universe->id() << " into " << original_id;
 
-  if (FLAGS_TEST_fail_universe_replication_merge) {
-    MarkUniverseReplicationFailed(
-        universe, STATUS(IllegalState, "TEST_fail_universe_replication_merge"));
-    return;
-  }
+  SCHECK(
+      !FLAGS_TEST_fail_universe_replication_merge, IllegalState,
+      "TEST_fail_universe_replication_merge");
 
   scoped_refptr<UniverseReplicationInfo> original_universe;
   {
@@ -4410,7 +4437,7 @@ void CatalogManager::MergeUniverseReplication(
     original_universe = FindPtrOrNull(universe_replication_map_, original_id);
     if (original_universe == nullptr) {
       LOG(ERROR) << "Universe not found: " << original_id;
-      return;
+      return Status::OK();
     }
   }
 
@@ -4463,8 +4490,11 @@ void CatalogManager::MergeUniverseReplication(
     alter_pb.set_state(SysUniverseReplicationEntryPB::DELETED);
 
     if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_merging)) {
-      // Exit for texting services
-      return;
+      return Status::OK();
+    }
+
+    if (on_success_cb) {
+      RETURN_NOT_OK(on_success_cb());
     }
 
     {
@@ -4494,6 +4524,8 @@ void CatalogManager::MergeUniverseReplication(
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
 
   xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
+
+  return Status::OK();
 }
 
 Status CatalogManager::DeleteUniverseReplication(

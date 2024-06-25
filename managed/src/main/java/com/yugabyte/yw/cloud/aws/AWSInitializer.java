@@ -616,9 +616,10 @@ public class AWSInitializer extends AbstractInitializer {
 
       if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
         // Persist the architecture in instance details.
-        if (productAttrs.get("physicalProcessor").contains("Intel")) {
+        String physicalProcessor = productAttrs.get("physicalProcessor");
+        if (physicalProcessor.contains("Intel") || physicalProcessor.contains("AMD")) {
           details.arch = Architecture.x86_64;
-        } else if (productAttrs.get("physicalProcessor").contains("Graviton")) {
+        } else if (physicalProcessor.contains("Graviton")) {
           details.arch = Architecture.aarch64;
         }
       }

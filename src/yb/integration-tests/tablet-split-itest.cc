@@ -2559,7 +2559,7 @@ void TabletSplitSingleServerITest::TestRetryableWrite() {
   if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
     // Wait retryable requests flushed to disk.
     ASSERT_OK(WaitFor([&] {
-      return peer->TEST_HasRetryableRequestsOnDisk();
+      return peer->TEST_HasBootstrapStateOnDisk();
     }, 10s, "retryable requests flushed to disk"));
   }
 

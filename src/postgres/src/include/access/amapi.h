@@ -217,7 +217,8 @@ typedef int64 (*amgetbitmap_function) (IndexScanDesc scan,
 
 /* YB: fetch all valid tuples */
 typedef int64 (*yb_amgetbitmap_function) (IndexScanDesc scan,
-										  YbTIDBitmap *ybtbm);
+										  YbTIDBitmap *ybtbm,
+										  bool recheck);
 
 typedef void (*yb_ambindschema_function) (YBCPgStatement handle,
 										  struct IndexInfo *indexInfo,

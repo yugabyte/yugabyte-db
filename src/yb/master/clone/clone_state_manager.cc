@@ -21,9 +21,11 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/clone/clone_state_entity.h"
@@ -35,8 +37,10 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
@@ -46,6 +50,7 @@
 
 DEFINE_RUNTIME_PREVIEW_bool(enable_db_clone, false, "Enable DB cloning.");
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
+DEFINE_test_flag(bool, fail_clone_pg_schema, false, "Fail clone pg schema operation for testing");
 
 namespace yb {
 namespace master {
@@ -118,10 +123,11 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
     return catalog_manager_->DoCreateSnapshot(req, resp, deadline, epoch);
   }
 
-  Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>> GenerateSnapshotInfoFromSchedule(
+  Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+  GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) override {
-    return catalog_manager_->GenerateSnapshotInfoFromSchedule(
+    return catalog_manager_->GenerateSnapshotInfoFromScheduleForClone(
         snapshot_schedule_id, export_time, deadline);
   }
 
@@ -282,7 +288,7 @@ Status CloneStateManager::StartTabletsCloning(
     const LeaderEpoch& epoch) {
   // Export snapshot info.
   auto [snapshot_info, not_snapshotted_tablets] = VERIFY_RESULT(
-      external_funcs_->GenerateSnapshotInfoFromSchedule(
+      external_funcs_->GenerateSnapshotInfoFromScheduleForClone(
           snapshot_schedule_id, HybridTime(clone_state->LockForRead()->pb.restore_time()),
           deadline));
   auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
@@ -338,6 +344,10 @@ Status CloneStateManager::ClonePgSchemaObjects(
     const std::string& target_db_name,
     const SnapshotScheduleId& snapshot_schedule_id,
     const LeaderEpoch& epoch) {
+  if (FLAGS_TEST_fail_clone_pg_schema) {
+    return STATUS_FORMAT(RuntimeError, "Failing clone due to test flag fail_clone_pg_schema");
+  }
+
   // Pick one of the live tservers to send ysql_dump and ysqlsh requests to.
   auto ts = external_funcs_->PickTserver();
   auto ts_permanent_uuid = ts->permanent_uuid();

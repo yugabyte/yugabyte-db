@@ -362,8 +362,14 @@ public class CustomerTask extends Model {
     @EnumValue("Install")
     Install,
 
+    @EnumValue("MasterFailover")
+    MasterFailover,
+
     @EnumValue("UpdateProxyConfig")
-    UpdateProxyConfig;
+    UpdateProxyConfig,
+
+    @EnumValue("SyncMasterAddresses")
+    SyncMasterAddresses;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -526,6 +532,10 @@ public class CustomerTask extends Model {
           return completed ? "Installed" : "Installing";
         case UpdateProxyConfig:
           return completed ? "Updated Proxy Config" : "Updating Proxy Config";
+        case MasterFailover:
+          return completed ? "Started master on new node" : "Starting master on new node";
+        case SyncMasterAddresses:
+          return completed ? "Synced master addresses" : "Syncing master addresses";
         default:
           return null;
       }

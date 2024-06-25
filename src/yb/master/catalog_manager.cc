@@ -1462,8 +1462,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   xcluster_manager_->Clear();
 
-  std::vector<std::shared_ptr<TSDescriptor>> descs;
-  master_->ts_manager()->GetAllDescriptors(&descs);
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   for (const auto& ts_desc : descs) {
     ts_desc->set_has_tablet_report(false);
   }
@@ -6835,6 +6834,7 @@ void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
       if (!res.ok() || res.get() == TransactionId::Nil()) {
         continue;
       }
+      VLOG(3) << "Cleanup deleted table " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
     }
     // TODO: Check if we want to delete the totally deleted table from the sys_catalog here.
@@ -6892,8 +6892,7 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id " << req->table_id()
               << ((!table->IsColocatedUserTable()) ? ": deleting tablets" : "");
 
-    std::vector<std::shared_ptr<TSDescriptor>> descs;
-    master_->ts_manager()->GetAllDescriptors(&descs);
+    auto descs = master_->ts_manager()->GetAllDescriptors();
     for (auto& ts_desc : descs) {
       LOG(INFO) << "Deleting on " << ts_desc->permanent_uuid() << ": "
                 << ts_desc->PendingTabletDeleteToString();
@@ -7227,14 +7226,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   // Check if there has been any changes to the placement policies for this table.
   if (req->has_replication_info()) {
-    // If this is a colocated table, it does not make sense to set placement
-    // policy for this table, as the tablet associated with it is shared by
-    // multiple tables.
-    if (table->colocated()) {
-      const Status s = STATUS(InvalidArgument,
-          "Placement policy cannot be altered for a colocated table");
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
-    }
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       const Status s = STATUS(InvalidArgument,
             "Placement policy cannot be altered for YSQL tables, use Tablespaces");
@@ -8984,6 +8975,7 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (table->namespace_id() != database->id()) {
         continue;
       }
+      // todo(zdrudi): we're acquiring table locks out of order here.
       auto l = table->LockForWrite();
       if (l->started_deleting()) {
         continue;
@@ -11647,14 +11639,11 @@ void CatalogManager::ReportMetrics() {
   load_balance_policy_->ReportMetrics();
 
   // Report metrics on how many tservers are alive.
-  TSDescriptorVector ts_descs;
-  master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
-  const auto num_live_servers = ts_descs.size();
+  auto num_live_servers = master_->ts_manager()->NumLiveDescriptors();
   metric_num_tablet_servers_live_->set_value(narrow_cast<uint32_t>(num_live_servers));
-
-  master_->ts_manager()->GetAllDescriptors(&ts_descs);
+  auto num_servers = master_->ts_manager()->NumDescriptors();
   metric_num_tablet_servers_dead_->set_value(
-      narrow_cast<uint32_t>(ts_descs.size() - num_live_servers));
+      narrow_cast<uint32_t>(num_servers - num_live_servers));
 }
 
 void CatalogManager::ResetMetrics() {
@@ -12222,6 +12211,37 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     WARN_NOT_OK(
         res, "Failed to get current DDL transaction for table " + table->ToString());
     if (res.ok() && res.get() != TransactionId::Nil()) {
+      // When deleting an index, we also need to update the indexed table
+      // to remove this index from it. Updating the indexed table involves
+      // setting up a fully_applied_schema and incrementing its schema version.
+      // Then the indexed table is altered with the new schema asynchronously.
+      // It is possible that the next statement after this drop index statement
+      // starts too soon and reads the fully_applied_schema_version which is
+      // the old schema version of the indexed table and later fails with
+      // "schema version mismatch" error. To mitigate this error, we wait
+      // for the indexed table's fully_applied_schema to be cleared or until
+      // a maximum number of iterations.
+      // Note that if res.get() == TransactionId::Nil() it means DDL atomicity
+      // is disabled, in this case PgClientSession::DropTable will call
+      // WaitUntilIndexPermissionsAtLeast which takes care of the purpose of
+      // doing this wait. Therefore this wait only applies when DDL atomicity
+      // is enabled.
+      if (table->is_index()) {
+        auto table_id = table->indexed_table_id();
+        WARN_NOT_OK(
+          WaitFor(
+              [this, &table_id]() -> Result<bool> {
+                auto indexed_table = GetTableInfo(table_id);
+                return !indexed_table ||
+                       !indexed_table->LockForRead()->pb.has_fully_applied_schema();
+              },
+              20s,
+              Format("Waiting for fully_applied_schema of $0 to clear", table_id),
+              500ms /* initial_delay */,
+              1.0 /* delay_multiplier */),
+          Format("fully_applied_schema of $0 fail to clear", table_id));
+      }
+      VLOG(3) << "Check table deleted " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
     }
   }), "Failed to submit update table task");

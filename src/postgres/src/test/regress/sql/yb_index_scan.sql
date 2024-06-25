@@ -544,3 +544,15 @@ insert into sample values (0);
 select * from sample where a = x'8000000000000000'::bigint;
 select * from sample where a = x'80000000'::int;
 drop table sample;
+
+-- GHI 22832 possible fetch of a dropped column
+create table t1(k1 int, k2 int, v0 int, v1 int, v2 int, primary key ((k1, k2) hash));
+alter table t1 drop column v0;
+create index on t1(k1, k2, v1);
+-- prevents "all_ordinary_keys_bound"
+set yb_pushdown_is_not_null to false;
+-- inequality prevents PK usage, IN sets a scan key flag that makes v1 wanted for rechecks
+explain (costs off) select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2);
+select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2);
+drop table t1;
+

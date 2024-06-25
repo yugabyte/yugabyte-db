@@ -83,7 +83,7 @@ UNION
 SELECT 'index' AS object_type, relname AS obj_name, obj_description(oid) AS comments FROM pg_class WHERE oid IN (SELECT indexrelid FROM pg_index WHERE indrelid=$1::regclass::oid)
 UNION
 SELECT 'constraint' AS object_type, conname AS obj_name, obj_description(oid) AS comments FROM pg_constraint WHERE conrelid=$1::regclass::oid
-ORDER BY obj_name
+ORDER BY obj_name, object_type
 $$ LANGUAGE SQL;
 
 -- Without specifying INCLUDING COMMENTS, comments are not copied.

@@ -1,44 +1,16 @@
 ---
 title: Install YugabyteDB Anywhere software - OpenShift
-headerTitle: Install YugabyteDB Anywhere
-linkTitle: Install YBA software
+headerTitle: Install YugabyteDB Anywhere on OpenShift
+linkTitle: OpenShift
 description: Install YugabyteDB Anywhere software in your OpenShift environment
-headContent: Install YBA software in an OpenShift environment
 menu:
   stable_yugabyte-platform:
-    parent: install-yugabyte-platform
+    parent: install-software-2-kubernetes
     identifier: install-software-2-openshift
     weight: 81
 type: docs
+private: true
 ---
-
-Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
-
-Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
-
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
-  </li>
-
-  <li>
-    <a href="../kubernetes/" class="nav-link">
-      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
-  </li>
-
-  <li>
-    <a href="../openshift/" class="nav-link active">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
-</ul>
 
 To install YugabyteDB Anywhere on an OpenShift cluster, you can use the Helm tool. Red Hat certified Helm charts are also available.
 
@@ -50,7 +22,7 @@ As YugabyteDB Anywhere was formerly called Yugabyte Platform, you might see the 
 
 ## Prerequisites
 
-Before you install YugabyteDB Anywhere on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
+Before you install YugabyteDB Anywhere on an OpenShift cluster, you need to prepare the environment. Refer to [Software requirements for Kubernetes](../../../prepare/server-yba-kubernetes/).
 
 Configure the OpenShift command-line interface (CLI) `oc` by logging in to the OpenShift Container Platform (OCP) web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.13/cli_reference/openshift_cli/getting-started-cli.html) in the Red Hat documentation.
 
@@ -263,7 +235,7 @@ helm delete yw-test -n yb-platform
 
 ## Find the availability zone labels
 
-You need to find the region name and availability zone codes where the cluster is running. This information is required by YugabyteDB Anywhere (see [Create a Provider in YugabyteDB Anywhere](../../../configure-yugabyte-platform/set-up-cloud-provider/openshift#create-a-provider-in-yugabyte-platform/)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
+You need to find the region name and availability zone codes where the cluster is running. This information is required by YugabyteDB Anywhere (see [Create a Provider in YugabyteDB Anywhere](../../../configure-yugabyte-platform/openshift#create-a-provider-in-yugabyte-platform/)). For example, if your OCP cluster is in the US East, then the cloud provider's zone labels can be us-east4-a, us-east4-b, and so on.
 
 You can use the OpenShift web console or the command line to search for the availability zone codes.
 

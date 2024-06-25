@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
@@ -157,6 +158,30 @@ public class GFlagsValidation {
         return result;
       }
       return data.flags;
+    } finally {
+      if (flagStream != null) {
+        flagStream.close();
+      }
+    }
+  }
+
+  public List<GFlagGroup> extractGFlagGroups(String version) throws IOException {
+    InputStream flagStream = null;
+    try {
+      String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
+      flagStream =
+          environment.resourceAsStream(
+              "gflag_groups/" + majorVersion + "/" + Util.GFLAG_GROUPS_FILENAME);
+      if (flagStream == null) {
+        LOG.error("GFlag groups metadata file for " + majorVersion + " is not present");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "GFlag groups metadata file for " + majorVersion + " is not present");
+      }
+      ObjectMapper mapper = new ObjectMapper();
+      List<GFlagGroup> data =
+          mapper.readValue(flagStream, new TypeReference<List<GFlagGroup>>() {});
+      return data;
     } finally {
       if (flagStream != null) {
         flagStream.close();

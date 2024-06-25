@@ -78,9 +78,9 @@ struct XClusterClient {
 class XClusterConsumer : public XClusterConsumerIf {
  public:
   XClusterConsumer(
-      std::function<int64_t(const TabletId&)> get_leader_term, rpc::ProxyCache* proxy_cache,
-      const std::string& ts_uuid, std::unique_ptr<XClusterClient> local_client,
-      ConnectToPostgresFunc connect_to_pg_func, GetNamespaceInfoFunc get_namespace_info_func,
+      std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
+      client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
+      GetNamespaceInfoFunc get_namespace_info_func,
       const TserverXClusterContextIf& xcluster_context,
       const scoped_refptr<MetricEntity>& server_metric_entity);
 
@@ -232,7 +232,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::unique_ptr<rpc::Rpcs> rpcs_;
 
   std::string log_prefix_;
-  std::shared_ptr<XClusterClient> local_client_;
+  client::YBClient& local_client_;
 
   // map: {replication_group_id : ...}.
   std::unordered_map<xcluster::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_

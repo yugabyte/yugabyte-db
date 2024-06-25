@@ -148,13 +148,14 @@ class VersionBuilder::Rep {
         auto f1 = level_files[i - 1];
         auto f2 = level_files[i];
         if (level == 0) {
-          assert(level_zero_cmp_(f1, f2));
-          assert(f1->largest.seqno > f2->largest.seqno ||
+          DCHECK(level_zero_cmp_(f1, f2));
+          DCHECK(f1->largest.seqno > f2->largest.seqno ||
                  // We can have multiple files with seqno = 0 as a result of
                  // using DB::AddFile()
-                 (f1->largest.seqno == 0 && f2->largest.seqno == 0));
+                 (f1->largest.seqno == 0 && f2->largest.seqno == 0))
+            << "files: " << yb::AsString(level_files);
         } else {
-          assert(level_nonzero_cmp_(f1, f2));
+          DCHECK(level_nonzero_cmp_(f1, f2));
 
           // Make sure there is no overlap in levels > 0
           if (vstorage->InternalComparator()->Compare(f1->largest.key,

@@ -863,6 +863,53 @@ NOTICE:  exceeded work_mem, switching to full table scan
                            Index Cond: ((b > 0) AND (c > 15000))
 (14 rows)
 
+-- check aggregates
+SET yb_enable_expression_pushdown = true;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on multi (actual rows=9990 loops=1)
+         Storage Filter: (a > 10)
+         Exceeded work_mem: true
+         ->  Bitmap Index Scan on multi_pkey (actual rows=0 loops=1)
+               Index Cond: (a > 10)
+(6 rows)
+
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+ count
+-------
+  9990
+(1 row)
+
+SET yb_enable_expression_pushdown = false;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  YB Bitmap Table Scan on multi (actual rows=9990 loops=1)
+         Filter: (a > 10)
+         Rows Removed by Filter: 10
+         Exceeded work_mem: true
+         ->  Bitmap Index Scan on multi_pkey (actual rows=0 loops=1)
+               Index Cond: (a > 10)
+(7 rows)
+
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+NOTICE:  exceeded work_mem, switching to full table scan
+ count
+-------
+  9990
+(1 row)
+
+RESET yb_enable_expression_pushdown;
 RESET work_mem;
 --
 -- test limits
@@ -1057,6 +1104,33 @@ INSERT INTO test_false VALUES (1, 1), (2, 2);
 (12 rows)
 
 --
+-- #21930: test recheck conditions on text columns
+--
+CREATE TABLE test_recheck_text(a TEXT);
+INSERT INTO test_recheck_text(a) VALUES ('i');
+CREATE INDEX ON test_recheck_text(a ASC);
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF)
+SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_recheck_text t (actual rows=1 loops=1)
+   Storage Recheck Cond: ((a < 'j'::text) AND (a = 'i'::text))
+   Storage Table Read Requests: 1
+   Storage Table Rows Scanned: 1
+   ->  Bitmap Index Scan on test_recheck_text_a_idx (actual rows=1 loops=1)
+         Index Cond: ((a < 'j'::text) AND (a = 'i'::text))
+         Storage Index Read Requests: 1
+         Storage Index Rows Scanned: 1
+(8 rows)
+
+/*+ BitmapScan(t) */
+SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
+ a
+---
+ i
+(1 row)
+
+--
 -- test recheck index conditions
 --
 create table recheck_test (col int);
@@ -1101,6 +1175,63 @@ SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
    ->  Bitmap Index Scan on recheck_test_col_idx (actual rows=1 loops=1)
          Index Cond: ((col < 3) AND (col = 5))
 (4 rows)
+
+--
+-- #22065: test pushdowns on Subplans
+--
+CREATE TABLE text_pushdown_test (a text, b text);
+CREATE INDEX ON text_pushdown_test (a ASC);
+CREATE INDEX ON text_pushdown_test (b ASC);
+INSERT INTO text_pushdown_test VALUES ('hi', 'hello');
+/*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+ a | b
+---+---
+(0 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+                                           QUERY PLAN
+-------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on text_pushdown_test (actual rows=0 loops=1)
+   InitPlan 1 (returns $0)
+     ->  YB Bitmap Table Scan on text_pushdown_test text_pushdown_test_1 (actual rows=1 loops=1)
+           ->  Bitmap Index Scan on text_pushdown_test_b_idx (actual rows=1 loops=1)
+                 Index Cond: (b = 'hello'::text)
+   ->  Bitmap Index Scan on text_pushdown_test_a_idx (actual rows=0 loops=1)
+         Index Cond: (a = 'hi'::text)
+         Storage Index Filter: (a <> $0)
+(8 rows)
+
+--
+-- #22622: test local recheck of condition for a column that is not a target
+--
+create table local_recheck_test (k1 character(10), k2 character(10));
+insert into local_recheck_test values ('a', 'a');
+create index on local_recheck_test(k1 ASC);
+create index on local_recheck_test(k2 ASC);
+/*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+                                           QUERY PLAN
+-------------------------------------------------------------------------------------------------
+ Index Scan using local_recheck_test_k2_idx on local_recheck_test t (actual rows=1 loops=1)
+   Index Cond: ((k2 >= 'a'::bpchar) AND (k2 < 'b'::bpchar) AND (k2 = ANY ('{a,b,c}'::bpchar[])))
+   Storage Index Filter: (k2 ~~ 'a%'::text)
+(3 rows)
+
+-- the second condition is necessary to force a recheck
+-- the first condition is rechecked locally, so k2 must be fetched.
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+                                              QUERY PLAN
+-------------------------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on local_recheck_test t (actual rows=1 loops=1)
+   Storage Recheck Cond: (k2 = ANY ('{a,b,c}'::bpchar[]))
+   Recheck Cond: ((k2 >= 'a'::bpchar) AND (k2 < 'b'::bpchar))
+   ->  Bitmap Index Scan on local_recheck_test_k2_idx (actual rows=1 loops=1)
+         Index Cond: ((k2 >= 'a'::bpchar) AND (k2 < 'b'::bpchar) AND (k2 = ANY ('{a,b,c}'::bpchar[])))
+         Storage Index Filter: (k2 ~~ 'a%'::text)
+(6 rows)
 
 --
 -- test pk of different types
@@ -1400,6 +1531,52 @@ SELECT COUNT(*) FROM pk_text WHERE v_int = 2000 OR k_text = 'nonexistent';
 -------
      0
 (1 row)
+
+--
+-- #21793: test row compare expressions
+--
+CREATE TABLE test_crash_row_comp (a integer);
+INSERT INTO test_crash_row_comp VALUES (1);
+CREATE INDEX on test_crash_row_comp(a ASC);
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ YB Bitmap Table Scan on test_crash_row_comp t (actual rows=1 loops=1)
+   Recheck Cond: ((ROW(a, a) <= ROW(10, 1)) OR (a IS NULL))
+   ->  BitmapOr (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on test_crash_row_comp_a_idx (actual rows=1 loops=1)
+               Index Cond: (ROW(a, a) <= ROW(10, 1))
+         ->  Bitmap Index Scan on test_crash_row_comp_a_idx (actual rows=0 loops=1)
+               Index Cond: (a IS NULL)
+(7 rows)
+
+/*+ BitmapScan(t) */
+SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
+ a
+---
+ 1
+(1 row)
+
+--
+-- #22062: variable not found in subplan target list
+--
+CREATE TABLE t2 (k1 INT, k2 INT);
+CREATE INDEX ON t2 (k1 ASC);
+CREATE INDEX ON t2 (k2 ASC);
+EXPLAIN (COSTS OFF) /*+ BitmapScan(t2) */ SELECT * FROM t2 AS a JOIN t2 AS b ON a.k1 = b.k1 OR (a.k2 = b.k1 AND a.k1 = 1);
+                          QUERY PLAN
+---------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2 a
+   ->  YB Bitmap Table Scan on t2 b
+         Filter: ((a.k1 = k1) OR ((a.k2 = k1) AND (a.k1 = 1)))
+         ->  BitmapOr
+               ->  Bitmap Index Scan on t2_k1_idx
+                     Index Cond: (k1 = a.k1)
+               ->  Bitmap Index Scan on t2_k1_idx
+                     Index Cond: (k1 = a.k2)
+(9 rows)
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

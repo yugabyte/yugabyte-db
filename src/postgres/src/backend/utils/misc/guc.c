@@ -3109,6 +3109,19 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_reorderbuffer_max_changes_in_memory", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum number of changes kept in memory per transaction "
+						 "in reorder buffer, which is used in streaming changes via "
+						 "logical replication. After that, changes are spooled to disk."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_reorderbuffer_max_changes_in_memory,
+		4096, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_locks_txn_locks_per_tablet", PGC_USERSET, LOCK_MANAGEMENT,
 		 gettext_noop("Sets the maximum number of rows per transaction per tablet to return in pg_locks."),
 		 NULL

@@ -118,7 +118,7 @@ You will see an output similar to the following:
 One row matching ID 9 was fetched with just one request (`Storage Table Read Requests : 1`), as the system knows exactly where to look for that row. Also, only one row was scanned. But if you do a range scan for items across 2 tablets as follows:
 
 ```sql
-explain (analyze, dist, costs off) select * from census where id>=9 and id<=10;
+explain (analyze, dist, costs off) select * from census where id>=5 and id<=15;
 ```
 
 You will see an output similar to:

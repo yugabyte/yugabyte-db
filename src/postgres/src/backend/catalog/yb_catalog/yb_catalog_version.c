@@ -140,7 +140,7 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	PG_END_TRY();
 }
 
-static Oid
+Oid
 YbGetSQLIncrementCatalogVersionsFunctionOid() {
 	List* names =
 		list_make2(makeString("pg_catalog"),

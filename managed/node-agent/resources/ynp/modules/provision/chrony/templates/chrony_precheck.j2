@@ -1,2 +1,9 @@
-echo "chrony precheck"
-echo "{{ message }}"
+chronyc makestep
+
+# Check the exit status of the command
+if [ $? -eq 0 ]; then
+    echo "System clock synchronized"
+else
+    echo "Error: chronyc makestep command failed"
+    exit 1
+fi

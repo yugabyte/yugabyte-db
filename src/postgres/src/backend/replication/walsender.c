@@ -271,7 +271,7 @@ static void ProcessStandbyMessage(void);
 static void ProcessStandbyReplyMessage(void);
 static void ProcessStandbyHSFeedbackMessage(void);
 static void ProcessRepliesIfAny(void);
-static void ProcessPendingWrites(TimestampTz yb_start_time);
+static void ProcessPendingWrites(void);
 static void WalSndKeepalive(bool requestReply, XLogRecPtr writePtr);
 static void WalSndKeepaliveIfNecessary(void);
 static void WalSndCheckTimeOut(void);
@@ -1603,7 +1603,11 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
 	}
 
 	/* If we have pending write here, go to slow path */
-	ProcessPendingWrites(yb_start_time);
+	ProcessPendingWrites();
+
+	if (IsYugaByteEnabled())
+		YbWalSndTotalTimeInSendingMicros +=
+			YbCalculateTimeDifferenceInMicros(yb_start_time);
 }
 
 /*
@@ -1611,7 +1615,7 @@ WalSndWriteData(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId xid,
  * side and check timeouts during that.
  */
 static void
-ProcessPendingWrites(TimestampTz yb_start_time)
+ProcessPendingWrites(void)
 {
 	for (;;)
 	{
@@ -1652,10 +1656,6 @@ ProcessPendingWrites(TimestampTz yb_start_time)
 		if (pq_flush_if_writable() != 0)
 			WalSndShutdown();
 	}
-
-	if (IsYugaByteEnabled())
-		YbWalSndTotalTimeInSendingMicros +=
-			YbCalculateTimeDifferenceInMicros(yb_start_time);
 
 	/* reactivate latch so WalSndLoop knows to continue */
 	SetLatch(MyLatch);
@@ -1726,7 +1726,7 @@ WalSndUpdateProgress(LogicalDecodingContext *ctx, XLogRecPtr lsn, TransactionId 
 	if (pending_writes || (!end_xact &&
 						   now >= TimestampTzPlusMilliseconds(last_reply_timestamp,
 															  wal_sender_timeout / 2)))
-		ProcessPendingWrites(now);
+		ProcessPendingWrites();
 }
 
 /*

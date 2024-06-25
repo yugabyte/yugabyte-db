@@ -569,7 +569,11 @@ public class MiniYBCluster implements AutoCloseable {
       default:
         throw new IllegalArgumentException("Unknown snapshot version: " + ver);
     }
-    filename = filename + "_" + (BuildTypeUtil.isRelease() ? "release" : "debug");
+    // In the version of YugabyteDB where the EARLIEST snapshot was generated, the debug build had
+    // a column representation now used only in ASAN and TSAN builds. See src/yb/common/column_id.h
+    // file history for details.
+    filename =
+        filename + "_" + (BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN() ? "debug" : "release");
     File file = new File(YSQL_SNAPSHOTS_DIR, filename);
     Preconditions.checkState(file.exists(),
         "Snapshot %s is not found in %s, should've been downloaded by the build script!",

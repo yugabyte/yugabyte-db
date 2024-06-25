@@ -252,7 +252,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         return "ALTER TABLE " + tableName + " ALTER COLUMN c DROP IDENTITY";
       }
       case ATTACH_PARTITION: {
-        return "ALTER TABLE " + tableName + " ATTACH PARTITION " +
+        return rewriteTestFlag + "ALTER TABLE " + tableName + " ATTACH PARTITION " +
             tableName + "_p2 FOR VALUES IN (2)";
       }
       case DETACH_PARTITION: {

@@ -1,8 +1,10 @@
-import { TS_SERVER_IP } from '@yugabytedb/troubleshoot-ui';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Box, makeStyles } from '@material-ui/core';
-import { YBInput, YBLabel } from '../../components';
+import { YBButton, YBInput, YBLabel } from '../../components';
 import { YBPanelItem } from '../../../components/panels';
-import { IN_DEVELOPMENT_MODE, ROOT_URL } from '../../../config';
+import { DeleteTPConfigDialog } from './TroubleshootingDialog/DeleteTPConfigDialog';
+import { EditTPConfigDialog } from './TroubleshootingDialog/EditTPConfigDialog';
 
 const useStyles = makeStyles((theme) => ({
   infoBox: {
@@ -12,43 +14,124 @@ const useStyles = makeStyles((theme) => ({
   },
   textBox: {
     width: '400px'
+  },
+  buttonBox: {
+    marginTop: theme.spacing(6)
+  },
+  button: {
+    marginLeft: theme.spacing(2)
   }
 }));
 
-export const TroubleshootingConfigInfo = () => {
+interface TroubleshootingConfigInfoProps {
+  tpUrl: string;
+  ybaUrl: string;
+  metricsUrl: string;
+  inUseStatus: boolean;
+  tpUuid: string;
+  customerUUID: string;
+  onRefetchConfig: () => void;
+}
+
+export const TroubleshootingConfigInfo = ({
+  tpUrl,
+  ybaUrl,
+  metricsUrl,
+  tpUuid,
+  customerUUID,
+  inUseStatus,
+  onRefetchConfig
+}: TroubleshootingConfigInfoProps) => {
+  const { t } = useTranslation();
   const helperClasses = useStyles();
-  const baseUrlSplit = ROOT_URL.split('/api/');
-  const baseUrl = baseUrlSplit[0];
+  const [showEditTPConfigDialog, setShowEditTPConfigDialog] = useState<boolean>(false);
+  const [showDeleteTPConfigDialog, setShowDeleteTPConfigDialog] = useState<boolean>(false);
+
+  const onEditTPConfigButtonClick = () => {
+    setShowEditTPConfigDialog(true);
+  };
+
+  const onEditTPConfigDialogClose = () => {
+    setShowEditTPConfigDialog(false);
+  };
+
+  const onDeleteTPConfigButtonClick = () => {
+    setShowDeleteTPConfigDialog(true);
+  };
+
+  const onDeleteTPConfigDialogClose = () => {
+    setShowDeleteTPConfigDialog(false);
+  };
+
+  const configData = {
+    customerUUID,
+    tpUrl,
+    ybaUrl,
+    metricsUrl,
+    tpUuid,
+    inUseStatus
+  };
 
   return (
     <YBPanelItem
       body={
-        <>
+        <Box>
           <Box className={helperClasses.infoBox}>
-            <YBLabel dataTestId="UniverseNameField-Label">{'Troubleshoot URL'}</YBLabel>
+            <YBLabel dataTestId="TroubleshootConfigInfo-TpUrlLabel" width="300px">
+              {t('clusterDetail.troubleshoot.tpServiceUrlLabel')}
+            </YBLabel>
             <YBInput
               name="id"
               type="text"
-              value={TS_SERVER_IP}
+              value={tpUrl}
               disabled
               className={helperClasses.textBox}
             />
           </Box>
           <Box className={helperClasses.infoBox}>
-            <YBLabel dataTestId="UniverseNameField-Label">{'Platform URL'}</YBLabel>
-            <YBInput type="text" disabled value={baseUrl} className={helperClasses.textBox} />
+            <YBLabel dataTestId="TroubleshootConfigInfo-ybaUrlLabel" width="300px">
+              {t('clusterDetail.troubleshoot.ybPlatformServiceUrlLabel')}
+            </YBLabel>
+            <YBInput type="text" disabled value={ybaUrl} className={helperClasses.textBox} />
           </Box>
           <Box className={helperClasses.infoBox}>
-            <YBLabel dataTestId="UniverseNameField-Label">{'Metrics URL'}</YBLabel>
-            <YBInput
-              type="text"
-              disabled
-              value={IN_DEVELOPMENT_MODE ? 'http://localhost:9090/' : `${baseUrl}:9090`}
-              className={helperClasses.textBox}
-            />
+            <YBLabel dataTestId="TroubleshootConfigInfo-metricsUrlLabel" width="300px">
+              {t('clusterDetail.troubleshoot.ybPlatformMetricsUrlLabel')}
+            </YBLabel>
+            <YBInput type="text" disabled value={metricsUrl} className={helperClasses.textBox} />
           </Box>
-        </>
+          <Box className={helperClasses.buttonBox}>
+            <YBButton variant="primary" size="large" onClick={onEditTPConfigButtonClick}>
+              {t('common.edit')}
+            </YBButton>
+            <YBButton
+              variant="primary"
+              size="large"
+              className={helperClasses.button}
+              onClick={onDeleteTPConfigButtonClick}
+            >
+              {t('common.delete')}
+            </YBButton>
+          </Box>
+          {showEditTPConfigDialog && (
+            <EditTPConfigDialog
+              open={showEditTPConfigDialog}
+              onRefetchConfig={onRefetchConfig}
+              onClose={onEditTPConfigDialogClose}
+              data={configData}
+            />
+          )}
+          {showDeleteTPConfigDialog && (
+            <DeleteTPConfigDialog
+              open={showDeleteTPConfigDialog}
+              onRefetchConfig={onRefetchConfig}
+              onClose={onDeleteTPConfigDialogClose}
+              data={configData}
+            />
+          )}
+        </Box>
       }
+      noBackground
     />
   );
 };

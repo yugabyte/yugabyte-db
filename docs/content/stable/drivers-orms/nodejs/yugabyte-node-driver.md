@@ -109,7 +109,7 @@ Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-refer
 
 #### Use SSL with YugabyeDB Managed
 
-If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 With clusters in YugabyteDB Managed, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
 

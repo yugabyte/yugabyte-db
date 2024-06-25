@@ -15,8 +15,11 @@ import api.v2.models.YCQLSpec;
 import api.v2.models.YSQLSpec;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -68,6 +71,31 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "addOnClusters", ignore = true)
   @Mapping(target = "nonPrimaryClusters", ignore = true)
   public KubernetesGFlagsUpgradeParams toKubernetesGFlagsUpgradeParams(
+      UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public SoftwareUpgradeParams toSoftwareUpgradeParams(UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public FinalizeUpgradeParams toFinalizeUpgradeParams(UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public ThirdpartySoftwareUpgradeParams toThirdpartySoftwareUpgradeParams(
       UniverseDefinitionTaskParams source);
 
   @Mapping(target = "spec", source = ".")

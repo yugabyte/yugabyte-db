@@ -380,7 +380,7 @@ Returns tables in the following format, depending on the flags used:
 <db_type>.<namespace>.<table_name> table_id table_type
 ```
 
-* *db_type*: The type of database. Valid values include `ysql`, `ycql`, `yedis`, and `unknown`.
+* *db_type*: The type of database. Valid values include `ysql`, `ycql`, and `unknown`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table_name*: The name of the table.
 * *table_type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
@@ -430,7 +430,7 @@ Triggers manual compaction on a table.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <master_addresses> \
     compact_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
@@ -457,7 +457,7 @@ Compacted [yugabyte.table_name] tables.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    -master_addresses <master_addresses> \
     compact_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
@@ -586,7 +586,7 @@ yb-admin \
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *table_id*: The unique UUID associated with the table.
+* *table_id*: The unique UUID associated with the table to be compacted.
 
 **Example**
 
@@ -701,7 +701,6 @@ The following backup and snapshot commands are available:
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
-
 
 {{< note title="YugabyteDB Anywhere" >}}
 
@@ -864,7 +863,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The name of the database or keyspace formatted as <ycql|ysql|yedis>.<keyspace>.
+* *keyspace*: The name of the database or keyspace formatted as <ycql|ysql>.<keyspace>.
 * *table_name*: The name of the table name.
 * *table_id*: The unique UUID associated with the table.
 * *flush_timeout_in_seconds*: Specifies duration (in seconds) before flushing snapshot. Default value is `60`. To skip flushing, set the value to `0`.
@@ -1725,7 +1724,6 @@ For example:
     create_change_data_stream ysql.yugabyte EXPLICIT CHANGE USE_SNAPSHOT
 ```
 
-
 ##### Enabling before image
 
 To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use the following command.
@@ -2374,7 +2372,7 @@ If specified, `des_ts_uuid` becomes the new leader. If the argument is empty (`"
 
 ### Rebalancing commands
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/concepts/yb-master/#data-placement-and-load-balancing)
+For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/yb-master/#tablet-assignments).
 
 For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
 
@@ -2487,9 +2485,62 @@ yb-admin \
 
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
+For information on AutoFlags and how it secures upgrades with new data formats, refer to [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
+
+#### get_auto_flags_config
+
+Returns the current AutoFlags configuration of the universe.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    get_auto_flags_config
+```
+
+**Example**
+
+```sh
+./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
+```
+
+If the operation is successful you should see output similar to the following:
+
+```output
+AutoFlags config:
+config_version: 1
+promoted_flags {
+  process_name: "yb-master"
+  flags: "enable_automatic_tablet_splitting"
+  flags: "master_enable_universe_uuid_heartbeat_check"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+promoted_flags {
+  process_name: "yb-tserver"
+  flags: "regular_tablets_data_block_key_value_encoding"
+  flags: "remote_bootstrap_from_leader_only"
+  flags: "ysql_yb_enable_expression_pushdown"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+```
+
 #### promote_auto_flags
 
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
 **Syntax**
 
@@ -2501,7 +2552,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted`, `kExternal`, `kNewInstallsOnly`. Default value is `kExternal`.
+* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted` and `kExternal`. Default value is `kExternal`.
 * *promote_non_runtime_flags*: Weather to promote non-runtime flags. Allowed values are `true` and `false`. Default value is `true`.
 * *force*: Forces the generation of a new AutoFlag configuration and sends it to all YugabyteDB processes even if there are no new AutoFlags to promote.
 

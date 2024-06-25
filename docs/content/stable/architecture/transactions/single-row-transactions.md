@@ -7,11 +7,11 @@ menu:
   stable:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
-    weight: 60
+    weight: 400
 type: docs
 ---
 
-YugabyteDB offers atomicity, consistency, isolation, durability (ACID) semantics for mutations involving a single row or rows that fall in the same shard (partition, tablet). These mutations incur only one network roundtrip between the distributed consensus peers.
+YugabyteDB offers [ACID](../../key-concepts/#acid) semantics for mutations involving a single row or rows that fall in the same shard (partition, tablet). These mutations incur only one network roundtrip between the distributed consensus peers.
 
 Even read-modify-write operations in a single row or single shard, such as the following, incur only one round trip in YugabyteDB:
 
@@ -81,3 +81,48 @@ Note that when reading from a single tablet, there is no need to wait for the ch
 YugabyteDB supports reads from followers to satisfy use cases that require an extremely low read latency that can only be achieved by serving read requests in the data center closest to the client. This comes at the expense of potentially slightly stale results, and this is a trade-off that you have to make. Similarly to strongly-consistent leader-side reads, follower-side read operations also have to pick a safe read timestamp.
 
 As stated previously, "safe time to read at" means that no future writes are supposed to change the view of the data as of the read timestamp. However, only the leader is able to compute the safe read time using the algorithm described previously. Therefore, the latest safe time is propagated from leaders to followers on `AppendEntries` RPCs. For example, follower-side reads handled by a partitioned-away follower will see a frozen snapshot of the data, including values with TTL specified not timing out. When the partition is healed, the follower starts receiving updates from the leader and can return read results that would be very close to being up-to-date.
+
+## Single shard transactions
+
+When a transaction requires to modify rows with keys `k1` and `k2` belonging to the same tablet (shard), the transaction is executed as a single-shard transaction, in which case atomicity would be ensured by the fact that both updates would be replicated as part of the same [Raft](../../docdb-replication/raft) log record. However, in the most general case, these keys would belong to different tablets, and that is the working assumption.
+
+## CRUD Examples
+
+As single-row transactions do not have to update the transaction status table, their performance is much higher than [distributed transactions](../distributed-txns).
+
+`INSERT`, `UPDATE`, and `DELETE` single-row SQL statements map to single row transactions.
+
+### INSERT
+
+All single-row `INSERT` statements:
+
+```sql
+INSERT INTO table (columns) VALUES (values);
+```
+
+### UPDATE
+
+Single-row `UPDATE` statements that specify all primary keys:
+
+```sql
+UPDATE table SET column = <new_value> WHERE <all_primary_key_values_are_specified>;
+```
+
+Single-row upsert statements using `UPDATE` .. `ON CONFLICT`:
+
+```sql
+INSERT INTO table (columns) VALUES (values)
+    ON CONFLICT DO UPDATE
+    SET <values>;
+```
+
+If updates are performed on an existing row, they should match the set of values specified in the `INSERT` clause.
+
+### DELETE
+
+Single-row `DELETE` statements that specify all primary keys:
+
+```sql
+DELETE FROM table WHERE <all_primary_key_values_are_specified>;
+```
+

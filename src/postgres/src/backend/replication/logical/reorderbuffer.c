@@ -208,6 +208,8 @@ typedef struct ReorderBufferDiskChange
  * At some point in the future it probably makes sense to have a more elaborate
  * resource management here, but it's not entirely clear what that would look
  * like.
+ *
+ * YB NOTE: This is overridden by yb_reorderbuffer_max_changes_in_memory GUC.
  */
 int			logical_decoding_work_mem;
 static const Size max_changes_in_memory = 4096; /* XXX for restore only */
@@ -4247,7 +4249,9 @@ ReorderBufferRestoreChanges(ReorderBuffer *rb, ReorderBufferTXN *txn,
 
 	XLByteToSeg(txn->final_lsn, last_segno, wal_segment_size);
 
-	while (restored < max_changes_in_memory && *segno <= last_segno)
+	while ((restored < 
+			(IsYugaByteEnabled() ? yb_reorderbuffer_max_changes_in_memory : max_changes_in_memory))
+		  && (*segno <= last_segno))
 	{
 		int			readBytes;
 		ReorderBufferDiskChange *ondisk;
