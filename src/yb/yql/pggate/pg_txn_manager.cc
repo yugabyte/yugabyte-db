@@ -153,6 +153,36 @@ tserver::ReadTimeManipulation GetActualReadTimeManipulator(
 
 DEPRECATE_FLAG(int32, pg_yb_session_timeout_ms, "02_2024");
 
+PgTxnManager::SerialNo::SerialNo()
+    : SerialNo(0, 0) {}
+
+PgTxnManager::SerialNo::SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no)
+    : txn_(txn_serial_no),
+      read_time_(read_time_serial_no),
+      min_read_time_(read_time_),
+      max_read_time_(read_time_) {
+}
+
+void PgTxnManager::SerialNo::IncTxn() {
+  VLOG_WITH_FUNC(4) << "old txn_: " << txn_;
+  ++txn_;
+  IncReadTime();
+  min_read_time_ = read_time_;
+}
+
+void PgTxnManager::SerialNo::IncReadTime() {
+  read_time_ = ++max_read_time_;
+}
+
+Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
+  RSTATUS_DCHECK(
+      read_time_serial_no <= max_read_time_ && read_time_serial_no >= min_read_time_,
+      IllegalState, "Bad read time serial no $0 while [$1, $2] is expected",
+      read_time_serial_no, min_read_time_, max_read_time_);
+  read_time_ = read_time_serial_no;
+  return Status::OK();
+}
+
 PgTxnManager::PgTxnManager(
     PgClient* client,
     scoped_refptr<ClockBase> clock,
@@ -354,7 +384,7 @@ Status PgTxnManager::RestartTransaction() {
 Status PgTxnManager::ResetTransactionReadPoint() {
   RSTATUS_DCHECK(
       !IsDdlMode(), IllegalState, "READ COMMITTED semantics don't apply to DDL transactions");
-  ++read_time_serial_no_;
+  serial_no_.IncReadTime();
   const auto& pick_read_time_alias = FLAGS_ysql_rc_force_pick_read_time_on_pg_client;
   read_time_manipulation_ =
       PREDICT_FALSE(pick_read_time_alias) ? tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET
@@ -509,8 +539,8 @@ void PgTxnManager::SetupPerformOptions(
   options->set_ddl_mode(IsDdlMode());
   options->set_yb_non_ddl_txn_for_sys_tables_allowed(yb_non_ddl_txn_for_sys_tables_allowed);
   options->set_trace_requested(enable_tracing_);
-  options->set_txn_serial_no(txn_serial_no_);
-  options->set_read_time_serial_no(read_time_serial_no_);
+  options->set_txn_serial_no(serial_no_.txn());
+  options->set_read_time_serial_no(serial_no_.read_time());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
 
   if (use_saved_priority_) {
@@ -578,17 +608,23 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 }
 
 void PgTxnManager::IncTxnSerialNo() {
-  VLOG_WITH_FUNC(4) << "old txn_serial_no_: " << txn_serial_no_;
-  ++txn_serial_no_;
+  serial_no_.IncTxn();
   active_sub_transaction_id_ = kMinSubTransactionId;
-  ++read_time_serial_no_;
 }
 
-void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
-  txn_serial_no_ = session_data->txn_serial_no;
-  read_time_serial_no_ = session_data->read_time_serial_no;
-  active_sub_transaction_id_ = session_data->active_sub_transaction_id;
+void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData& data) {
+  serial_no_ =
+      SerialNo(data.txn_serial_no, data.read_time_serial_no);
+  active_sub_transaction_id_ = data.active_sub_transaction_id;
   VLOG_TXN_STATE(2);
+}
+
+uint64_t PgTxnManager::GetCurrentReadTimePoint() const {
+  return serial_no_.read_time();
+}
+
+Status PgTxnManager::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+  return serial_no_.RestoreReadTime(read_time_point_handle);
 }
 
 }  // namespace yb::pggate

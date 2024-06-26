@@ -1409,6 +1409,9 @@ ParallelWorkerMain(Datum main_arg)
 		shm_toc_lookup(toc, PARALLEL_KEY_SESSION_DSM, false);
 	AttachSession(*(dsm_handle *) session_dsm_handle_space);
 
+	if (fps->parallel_master_is_yb_session)
+		YBCRestorePgSessionParallelData(&fps->parallel_master_yb_session_data);
+
 	/*
 	 * If the transaction isolation level is REPEATABLE READ or SERIALIZABLE,
 	 * the leader has serialized the transaction snapshot and we must restore
@@ -1463,8 +1466,6 @@ ParallelWorkerMain(Datum main_arg)
 	{
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 		YBCPgResetCatalogReadTime();
-		if (fps->parallel_master_is_yb_session)
-			YBCRestorePgSessionParallelData(&fps->parallel_master_yb_session_data);
 	}
 
 	/*

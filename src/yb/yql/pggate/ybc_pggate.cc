@@ -510,7 +510,7 @@ bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data) 
 void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data) {
   CHECK_NOTNULL(pgapi);
   DCHECK_EQ(pgapi->GetSessionId(), session_data->session_id);
-  pgapi->RestoreSessionParallelData(session_data);
+  pgapi->RestoreSessionParallelData(*session_data);
 }
 
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
@@ -2603,6 +2603,14 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
 }
 
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+
+uint64_t YBCPgGetCurrentReadTimePoint() {
+  return pgapi->GetCurrentReadTimePoint();
+}
+
+YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
+  return ToYBCStatus(pgapi->RestoreReadTimePoint(read_time_point_handle));
+}
 
 } // extern "C"
 

@@ -40,8 +40,7 @@ DECLARE_string(time_source);
 DECLARE_int32(replication_factor);
 DECLARE_bool(TEST_running_test);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 
 class PgTxnTest : public PgMiniTestBase {
 
@@ -346,7 +345,7 @@ TEST_F(PgTxnTest, ReadRecentSet) {
 //
 // Important note -- sync point only works in debug mode. Non-debug test runs may not catch these
 // issues as reliably.
-TEST_F_EX( PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
+TEST_F_EX(PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
   // Note -- we disable wait-on-conflict behavior here because this regression test is specifically
   // targeting a bug in fail-on-conflict behavior.
   constexpr int kNumThreads = 10;
@@ -930,5 +929,117 @@ TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeDmlHidden) {
   ASSERT_EQ(error_code, YBPgErrorCode::YB_PG_UNIQUE_VIOLATION);
 }
 
-} // namespace pgwrapper
-} // namespace yb
+class PgReadCommittedTxnTest : public PgTxnRF1Test {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    PgTxnRF1Test::SetUp();
+  }
+};
+
+// The test check that read committed transaction detects conflict while reading at multiple
+// timestamps. The UPDATE statement and nested function slow_down uses different read timestamps.
+// And the UPDATE statement are able to detect conflict when nested function returns control.
+TEST_F_EX(PgTxnTest, ReadAtMultipleTimestampsWithConflict, PgReadCommittedTxnTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT, v INT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute("CREATE TABLE aux_t (k INT, v INT, PRIMARY KEY(k ASC))"));
+  ASSERT_OK(conn.Execute("INSERT INTO aux_t VALUES(1, 1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION slow_down(n INT) RETURNS INT AS '"
+      "  DECLARE"
+      "    vvv INT;"
+      "  BEGIN "
+      "    PERFORM pg_sleep(1);"
+      "    SELECT v FROM aux_t WHERE k = 1 INTO vvv;"
+      "    RETURN n + vvv / vvv - 1;"
+      "  END;' language plpgsql"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)"));
+  {
+    CountDownLatch latch(1);
+    auto aux_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+        Connect(), IsolationLevel::READ_COMMITTED));
+    TestThreadHolder holder;
+    holder.AddThreadFunctor([&aux_conn, &latch]{
+        latch.CountDown();
+        ASSERT_OK(aux_conn.Execute("UPDATE t SET v = v + 10 WHERE slow_down(k) = k"));
+    });
+    latch.Wait();
+    SleepFor(NonTsanVsTsan(2s, 4s));
+    ASSERT_OK(conn.Execute("UPDATE t SET v = v + 1000 WHERE k = 5"));
+  }
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>("SELECT * FROM t")));
+  ASSERT_EQ(rows, (decltype(rows){{1, 11}, {2, 12}, {3, 13}, {4, 14}, {5, 1015}}));
+}
+
+// The test check that statement in read committed transaction may use different read timestamps.
+// In current test statement initiate the read and when perform a long sleep. After some delay
+// another transaction updates all records in the table. Statement continues reading from the table
+// and returns data prior to modification.
+// Note: There is no read restart after the data modification, because modification is performed
+// after delay and DB can detect that it was performed after the read start.
+TEST_F_EX(PgTxnTest, ReadAtMultipleTimestamps, PgReadCommittedTxnTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_fetch_row_limit = 1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (pk INT, v INT, PRIMARY KEY(pk ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION fresh_v(k INT) RETURNS INT AS '"
+      "  DECLARE"
+      "    v INT;"
+      "  BEGIN "
+      "    SELECT t.v FROM t WHERE t.pk = k INTO v;"
+      "    RETURN v;"
+      "  END;' language plpgsql"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION same_value_with_sleep(k INT) RETURNS INT AS '"
+      "  DECLARE"
+      "    v INT;"
+      "  BEGIN "
+      "    IF k = 1 THEN "
+      "      PERFORM pg_sleep(10); "
+      "      v := fresh_v(k); "
+      "      IF v <> 1010 THEN "
+      "        RAISE EXCEPTION ''Bad value %'', v; "
+      "      END IF;"
+      "    END IF;"
+      "    RETURN k;"
+      "  END;' language plpgsql"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION same_value(k INT) RETURNS INT AS 'BEGIN RETURN k; END;' language plpgsql"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i, i * 10 FROM generate_series(1, 10) AS i"));
+  {
+    CountDownLatch latch(2);
+    auto aux_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+        Connect(), IsolationLevel::READ_COMMITTED));
+    TestThreadHolder holder;
+    holder.AddThreadFunctor([&aux_conn, &latch]{
+        latch.CountDown();
+        latch.Wait();
+        SleepFor(NonTsanVsTsan(2s, 4s));
+        ASSERT_OK(aux_conn.Execute("UPDATE t SET v = v + 1000"));
+    });
+    latch.CountDown();
+    latch.Wait();
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t, int32_t, int32_t>(
+        "SELECT t_1.pk, t_1.v, t_2.v, fresh_v(t_1.pk)"
+        "  FROM t AS t_1 INNER JOIN t AS t_2 ON (t_1.pk = same_value(t_2.pk))"
+        "  WHERE t_1.pk = same_value_with_sleep(t_1.pk)"
+        "  ORDER BY t_1.pk")));
+    // Check that only last column (i.e. fresh_v(t_1.pk)) reads data with modification
+    ASSERT_EQ(
+        rows,
+        (decltype(rows){
+            {1, 10, 10, 1010},
+            {2, 20, 20, 1020},
+            {3, 30, 30, 1030},
+            {4, 40, 40, 1040},
+            {5, 50, 50, 1050},
+            {6, 60, 60, 1060},
+            {7, 70, 70, 1070},
+            {8, 80, 80, 1080},
+            {9, 90, 90, 1090},
+            {10, 100, 100, 1100}}));
+  }
+}
+
+} // namespace yb::pgwrapper

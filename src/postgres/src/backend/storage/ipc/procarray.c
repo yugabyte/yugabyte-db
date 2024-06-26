@@ -1827,6 +1827,7 @@ GetSnapshotData(Snapshot snapshot)
 		MaintainOldSnapshotTimeMapping(snapshot->whenTaken, xmin);
 	}
 
+	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
 	return snapshot;
 }
 
