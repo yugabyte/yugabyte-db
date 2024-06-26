@@ -15,7 +15,7 @@
 #include <port/atomics.h>
 
 #define MAX_FEATURE_NAME_LENGTH 255
-#define MAX_FEATURE_COUNT 221
+#define MAX_FEATURE_COUNT 230
 
 /*
  * IMP: Keep this alphabetically sorted while adding new feature types. Sorting is done for better reability.
@@ -238,6 +238,7 @@ typedef enum
 	FEATURE_STAGE_LIMIT,
 	FEATURE_STAGE_LOOKUP,
 	FEATURE_STAGE_MATCH,
+	FEATURE_STAGE_MERGE,
 	FEATURE_STAGE_PROJECT,
 	FEATURE_STAGE_PROJECT_FIND,
 	FEATURE_STAGE_REPLACE_ROOT,

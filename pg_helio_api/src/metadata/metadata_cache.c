@@ -549,8 +549,23 @@ typedef struct HelioApiOidCacheData
 	/* OID OF the bson_dollar_merge_documents function */
 	Oid ApiInternalSchemaBsonDollarMergeDocumentsFunctionOid;
 
+	/* OID of the bson_dollar_merge_handle_when_matched function */
+	Oid ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId;
+
+	/* OID of the bson_dollar_merge_join function */
+	Oid ApiInternalBsonDollarMergeJoinFunctionId;
+
+	/* OID of the bson_dollar_merge_add_object_id function */
+	Oid ApiInternalBsonDollarMergeAddObjectIdFunctionId;
+
+	/* OID of the bson_dollar_merge_fail_when_not_matched function */
+	Oid ApiInternalBsonDollarMergeFailWhenNotMathchedFunctionId;
+
 	/* OID of the bson_dollar_project function */
 	Oid ApiCatalogBsonDollarProjectFunctionOid;
+
+	/* OID of the command_bson_get_value function */
+	Oid ApiCatalogBsonGetValueFunctionId;
 
 	/* OID of the bson_dollar_project_find function */
 	Oid ApiCatalogBsonDollarProjectFindFunctionOid;
@@ -2745,6 +2760,89 @@ BsonDollarProjectFindFunctionOid(void)
 	}
 
 	return Cache.ApiCatalogBsonDollarProjectFindFunctionOid;
+}
+
+
+Oid
+BsonDollarMergeHandleWhenMatchedFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString(
+												"bson_dollar_merge_handle_when_matched"));
+		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), INT4OID };
+		bool missingOK = false;
+
+		Cache.ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.ApiInternalBsonDollarMergeHandleWhenMatchedFunctionId;
+}
+
+
+Oid
+BsonDollarMergeAddObjectIdFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString(
+												"bson_dollar_merge_add_object_id"));
+		Oid paramOids[1] = { BsonTypeId() };
+		bool missingOK = false;
+
+		Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId =
+			LookupFuncName(functionNameList, 1, paramOids, missingOK);
+	}
+
+	return Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId;
+}
+
+
+Oid
+BsonDollarMergeFailWhenNotMatchedFunctionOid(void)
+{
+	bool missingOk = false;
+	return GetHelioInternalBinaryOperatorFunctionId(
+		&Cache.ApiInternalBsonDollarMergeFailWhenNotMathchedFunctionId,
+		"bson_dollar_merge_fail_when_not_matched",
+		BsonTypeId(),
+		TEXTOID, missingOk);
+}
+
+
+Oid
+BsonDollarMergeJoinFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiInternalBsonDollarMergeJoinFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString(
+												"bson_dollar_merge_join"));
+		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), TEXTOID };
+		bool missingOK = false;
+
+		Cache.ApiInternalBsonDollarMergeJoinFunctionId =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.ApiInternalBsonDollarMergeJoinFunctionId;
+}
+
+
+Oid
+BsonGetValueFunctionOid(void)
+{
+	return GetBinaryOperatorFunctionId(&Cache.ApiCatalogBsonGetValueFunctionId,
+									   "bson_get_value", BsonTypeId(), TEXTOID);
 }
 
 

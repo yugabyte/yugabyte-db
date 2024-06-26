@@ -645,10 +645,19 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 	queryPortal->visible = true;
 	queryPortal->cursorOptions = cursorOptions;
 
-	/* Since this could be holdable, copy the query plan to the portal context  */
-	MemoryContextSwitchTo(queryPortal->portalContext);
-	queryPlan = copyObject(queryPlan);
-	MemoryContextSwitchTo(currentContext);
+
+	if (query->commandType == CMD_MERGE)
+	{
+		/* In order to use a portal & SPI in Merge Command we need to set it to true */
+		queryPlan->hasReturning = true;
+	}
+	else
+	{
+		/* Since this could be holdable, copy the query plan to the portal context  */
+		MemoryContextSwitchTo(queryPortal->portalContext);
+		queryPlan = copyObject(queryPlan);
+		MemoryContextSwitchTo(currentContext);
+	}
 
 	/* Set the plan into the portal  */
 	PortalDefineQuery(queryPortal, NULL, "",

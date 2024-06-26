@@ -620,8 +620,8 @@ ConvertPgbsonToBsonValue(pgbson *document)
 {
 	bson_value_t value = {
 		.value_type = BSON_TYPE_DOCUMENT,
-		.value.v_doc.data = (uint8_t *) VARDATA(document),
-		.value.v_doc.data_len = (uint32_t) VARSIZE(document) - VARHDRSZ
+		.value.v_doc.data = (uint8_t *) VARDATA_ANY(document),
+		.value.v_doc.data_len = (uint32_t) VARSIZE_ANY_EXHDR(document)
 	};
 
 	return value;

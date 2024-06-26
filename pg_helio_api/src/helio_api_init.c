@@ -239,6 +239,12 @@ bool EnableGroupMergeObjectsSupport = DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT;
 #define DEFAULT_ENABLE_RUM_INDEX_SCAN false
 bool EnableRumIndexScan = DEFAULT_ENABLE_RUM_INDEX_SCAN;
 
+#define DEFAULT_ENABLE_MERGE_STAGE false
+bool EnableMergeStage = DEFAULT_ENABLE_MERGE_STAGE;
+
+#define DEFAULT_ENABLE_MERGE_TARGET_CREATION false
+bool EnableMergeTargetCreation = DEFAULT_ENABLE_MERGE_TARGET_CREATION;
+
 #define DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE false
 bool EnableCursorsOnAggregationQueryRewrite =
 	DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE;
@@ -654,6 +660,20 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableMergeStage",
+		gettext_noop(
+			"Enables support for merge stage in pg_helio_api."),
+		NULL, &EnableMergeStage, DEFAULT_ENABLE_MERGE_STAGE,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableMergeTargetCreation",
+		gettext_noop(
+			"Enables support for target collection creation in pg_helio_api."),
+		NULL, &EnableMergeTargetCreation, DEFAULT_ENABLE_MERGE_TARGET_CREATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		"helio_api.enableCursorsOnAggregationQueryRewrite",

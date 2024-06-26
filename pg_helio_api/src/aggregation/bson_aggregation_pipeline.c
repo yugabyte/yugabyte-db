@@ -112,6 +112,9 @@ typedef struct
 	 * i.e. whether or not the stage is purely a projection transform of its input.
 	 */
 	bool isProjectTransform;
+
+	/* Whether or not the stage is an output stage. $merge and $out are output stages */
+	bool isOutputStage;
 } AggregationStageDefinition;
 
 
@@ -202,6 +205,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -212,6 +216,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -222,6 +227,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -232,6 +238,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -242,6 +249,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -252,6 +260,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -266,6 +275,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -281,6 +291,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -291,6 +302,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -301,6 +313,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -315,6 +328,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -325,6 +339,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -335,6 +350,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -345,6 +361,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -360,6 +377,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -370,6 +388,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -384,6 +403,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -398,6 +418,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -408,6 +429,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -418,6 +440,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -430,6 +453,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -444,16 +468,18 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = &ValidateQueryTreeForMatchStage,
 	},
 	{
 		.stage = "$merge",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleMerge,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = true,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -464,6 +490,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = true,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -476,6 +503,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -486,6 +514,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -498,6 +527,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -510,6 +540,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -524,6 +555,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -536,6 +568,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -546,6 +579,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -556,6 +590,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -566,6 +601,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -580,6 +616,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -594,6 +631,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -604,6 +642,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -614,6 +653,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -624,6 +664,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -634,6 +675,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = true,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	},
 	{
@@ -646,6 +688,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
+		.isOutputStage = false,
 		.validateQueryTree = NULL,
 	}
 };
@@ -970,6 +1013,10 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 {
 	bson_iter_t pipelineIterator;
 	BsonValueInitIterator(pipelineValue, &pipelineIterator);
+
+	/* $merge and $out are output stage must be last stage of pipeline */
+	const char *lastEncounteredOutputStage = NULL;
+
 	while (bson_iter_next(&pipelineIterator))
 	{
 		bson_iter_t documentIterator;
@@ -987,6 +1034,17 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 			ereport(ERROR, (errcode(MongoLocation40323),
 							errmsg(
 								"A pipeline stage specification object must contain exactly one field.")));
+		}
+
+		/* If lastEncounteredOutputStage isn't NULL, it means we've seen an output stage like $out or $merge before this.
+		 * Since the output stage was expected to be last, encountering it earlier leads to failure. */
+		if (lastEncounteredOutputStage != NULL)
+		{
+			ereport(ERROR, (errcode(MongoLocation40601),
+							errmsg("%s can only be the final stage in the pipeline",
+								   lastEncounteredOutputStage),
+							errhint("%s can only be the final stage in the pipeline",
+									lastEncounteredOutputStage)));
 		}
 
 		/* Now handle each stage */
@@ -1013,6 +1071,11 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 								definition->stage),
 							errhint("Stage %s is not supported yet in native pipeline",
 									definition->stage)));
+		}
+
+		if (definition->isOutputStage)
+		{
+			lastEncounteredOutputStage = definition->stage;
 		}
 
 		/* If we're an agnostic query (we're not selecting from anything),
@@ -1200,6 +1263,12 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	queryData->isStreamableCursor = !context.requiresPersistentCursor &&
 									!isCollectionAgnosticQuery;
+
+	/* CMD_MERGE is case when pipeline has output stage ($merge or $out) result will be always single batch. */
+	if (query->commandType == CMD_MERGE)
+	{
+		queryData->isSingleBatch = true;
+	}
 	queryData->namespaceName = context.namespaceName;
 
 	/* This is validated *after* the pipeline parsing happens */

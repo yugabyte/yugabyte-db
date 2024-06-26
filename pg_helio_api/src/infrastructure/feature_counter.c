@@ -255,6 +255,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_LIMIT] = "limit",
 	[FEATURE_STAGE_LOOKUP] = "lookup",
 	[FEATURE_STAGE_MATCH] = "match",
+	[FEATURE_STAGE_MERGE] = "merge",
 	[FEATURE_STAGE_PROJECT] = "project",
 	[FEATURE_STAGE_PROJECT_FIND] = "project_find",
 	[FEATURE_STAGE_REPLACE_ROOT] = "replace_root",
