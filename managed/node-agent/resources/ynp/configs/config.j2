@@ -60,3 +60,7 @@ locks = unlimited
 [InstallNodeAgent]
 {{ render_section(yba) -}}
 yb_user = {{ ynp.yb_user }}
+
+[ConfigureNodeExporter]
+prometheus_user = prometheus
+yb_home_dir = {{ ynp.yb_home_dir }}
