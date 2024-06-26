@@ -382,3 +382,15 @@ SELECT DISTINCT k, v1, v2 FROM kv ORDER BY k;
 (10 rows)
 
 DROP TABLE kv;
+-- Test #22923
+CREATE TABLE demo(k INT, x INT, v INT, a INT, d DATE, PRIMARY KEY(k,x,v,d));
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT v FROM (SELECT DISTINCT v FROM demo WHERE k=1 AND x=1) foo;
+                 QUERY PLAN
+---------------------------------------------
+ Distinct Index Scan using demo_pkey on demo
+   Index Cond: ((k = 1) AND (x = 1))
+   Distinct Keys: demo.k, demo.x, demo.v
+(3 rows)
+
+DROP TABLE demo;
