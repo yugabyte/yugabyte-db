@@ -2283,7 +2283,7 @@ namespace cdc {
 
           return (tablets_after_split.size() == expected_num_tablets);
         },
-        MonoDelta::FromSeconds(120), "Tabelt Split not succesful"));
+        MonoDelta::FromSeconds(120), "Tablet Split not succesful"));
   }
 
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
