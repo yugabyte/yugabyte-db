@@ -70,6 +70,8 @@ export const TroubleshootingDetails = ({ activeTab }: TroubleshootingDetailsProp
               ybaUrl={TpData[0].ybaUrl}
               tpUrl={TpData[0].tpUrl}
               tpUuid={TpData[0].uuid}
+              apiToken={TpData[0].apiToken}
+              metricsScrapePeriodSecs={TpData[0].metricsScrapePeriodSecs}
               customerUUID={TpData[0].customerUUID}
               inUseStatus={TpData[0].inUseStatus === 'IN_USE'}
               onRefetchConfig={onRefetchConfig}
