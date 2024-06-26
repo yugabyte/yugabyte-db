@@ -300,8 +300,9 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 
     // For CDCSDK Streams, we scan all the tables in the namespace, and compare it with all the
     // tables associated with the stream.
-    if (metadata.state() == SysCDCStreamEntryPB::ACTIVE && ns &&
-        ns->state() == SysNamespaceEntryPB::RUNNING) {
+    if ((metadata.state() == SysCDCStreamEntryPB::ACTIVE ||
+         metadata.state() == SysCDCStreamEntryPB::DELETING_METADATA) &&
+        ns && ns->state() == SysNamespaceEntryPB::RUNNING) {
       catalog_manager_->FindAllTablesMissingInCDCSDKStream(
           stream_id, metadata.table_id(), metadata.namespace_id());
     }
@@ -1571,7 +1572,8 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     }
 
     auto ltm = stream_info->LockForRead();
-    if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE) {
+    if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE ||
+        ltm->pb.state() == SysCDCStreamEntryPB::DELETING_METADATA) {
       for (const auto& unprocessed_table_id : *unprocessed_tables) {
         auto table = tables_->FindTableOrNull(unprocessed_table_id);
         if (!table) {
