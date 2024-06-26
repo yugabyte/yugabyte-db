@@ -421,7 +421,7 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Disk can be resized after a cooldown period of 6 hours"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
       },
       "securityConfig": {
         "title": "Security Configurations",
