@@ -36,7 +36,7 @@ To view the certificate details, navigate to **Configs > Security > Encryption i
 
 YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
 
-If you are using YugabyteDB Anywhere version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
+If you are using YugabyteDB Anywhere version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
 
 Note that, for the change to take effect, you need to set the flag _before_ you run a workflow that generates a self-signed certificate.
 
