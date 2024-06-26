@@ -2216,6 +2216,7 @@ GetSnapshotDataReuse(Snapshot snapshot)
 
 	GetSnapshotDataInitOldSnapshot(snapshot);
 
+	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
 	return true;
 }
 
@@ -2602,6 +2603,7 @@ GetSnapshotData(Snapshot snapshot)
 
 	GetSnapshotDataInitOldSnapshot(snapshot);
 
+	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
 	return snapshot;
 }
 

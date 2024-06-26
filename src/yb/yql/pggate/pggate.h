@@ -760,13 +760,16 @@ class PgApiImpl {
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
 
-  uint64_t GetReadTimeSerialNo();
+  // DEPRECATED, will be removed
+  [[nodiscard]] uint64_t GetReadTimeSerialNo() const;
 
-  uint64_t GetTxnSerialNo();
+  // DEPRECATED, will be removed
+  [[nodiscard]] uint64_t GetTxnSerialNo() const;
 
-  SubTransactionId GetActiveSubTransactionId();
+  // DEPRECATED, will be removed
+  [[nodiscard]] SubTransactionId GetActiveSubTransactionId() const;
 
-  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
+  void RestoreSessionParallelData(const YBCPgSessionParallelData& session_data);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
@@ -810,6 +813,9 @@ class PgApiImpl {
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
   bool IsCronLeader() const;
+
+  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
+  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
  private:
   void ClearSessionState();

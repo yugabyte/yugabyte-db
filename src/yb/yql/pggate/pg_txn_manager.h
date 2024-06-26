@@ -87,15 +87,42 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
-  uint64_t GetReadTimeSerialNo() { return read_time_serial_no_; }
-  uint64_t GetTxnSerialNo() { return txn_serial_no_; }
-  SubTransactionId GetActiveSubTransactionId() { return active_sub_transaction_id_; }
-  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
+  [[nodiscard]] uint64_t GetReadTimeSerialNo() const { return serial_no_.read_time(); }
+  [[nodiscard]] uint64_t GetTxnSerialNo() const { return serial_no_.txn(); }
+  [[nodiscard]] SubTransactionId GetActiveSubTransactionId() const {
+      return active_sub_transaction_id_;
+  }
+
+  void RestoreSessionParallelData(const YBCPgSessionParallelData& data);
+
+  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
+  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
  private:
   struct DdlCommitInfo {
     uint32_t db_oid;
     bool is_silent_altering;
+  };
+
+  class SerialNo {
+   public:
+    SerialNo();
+    SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
+    void IncTxn();
+    void IncReadTime();
+    Status RestoreReadTime(uint64_t read_time_serial_no);
+    [[nodiscard]] uint64_t txn() const { return txn_; }
+    [[nodiscard]] uint64_t read_time() const { return read_time_; }
+
+   private:
+    uint64_t txn_;
+    uint64_t read_time_;
+    // Txn may have multiple valid read time values (i.e. multiple read times inside
+    // same transaction). The [min_read_time_, max_read_time_] segment describes the set of
+    // valid values for read_time_ for current txn_. The RestoreReadTime method checks that
+    // read_time_serial_no has a valid value in context of current txn_.
+    uint64_t min_read_time_;
+    uint64_t max_read_time_;
   };
 
   YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
@@ -123,8 +150,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
-  uint64_t txn_serial_no_ = 0;
-  uint64_t read_time_serial_no_ = 0;
+  SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
