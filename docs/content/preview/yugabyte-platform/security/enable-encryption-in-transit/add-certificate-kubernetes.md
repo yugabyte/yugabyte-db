@@ -3,7 +3,7 @@ title: Add cert-manager certificates to YugabyteDB Anywhere
 headerTitle: Add certificates
 linkTitle: Add certificates
 description: Add cert-manager certificates to YugabyteDB Anywhere.
-headcontent: Add cert-manager certificates to YugabyteDB Anywhere
+headcontent: Use your own certificates for encryption in transit
 menu:
   preview_yugabyte-platform:
     parent: enable-encryption-in-transit
@@ -28,28 +28,33 @@ The following criteria must be met:
 - The cert-manager is running in the Kubernetes cluster.
 - A root or intermediate CA (either self-signed or external) is already configured on the cert-manager. The same root certificate file must be prepared for upload to YugabyteDB Anywhere.
 - An Issuer or ClusterIssuer Kind is configured on the cert-manager and is ready to issue certificates using the previously-mentioned root or intermediate certificate.
+- Prepare the root certificate in a file (for example, `root.crt`).
 
 ## Add certificates using cert-manager
 
 Add TLS certificates issued by the cert-manager as follows:
 
-1. Upload the root certificate to YugabyteDB Anywhere:
+1. Navigate to **Configs > Security > Encryption in Transit**.
 
-    - Prepare the root certificate in a file (for example, `root.crt`).
-    - Navigate to **Configs > Security > Encryption in Transit** and click **Add Certificate**.
-    - On the **Add Certificate** dialog shown in the following illustration, select **K8S cert-manager**:
+1. Click **Add Certificate** to open the **Add Certificate** dialog.
 
-    ![Add Certificate](/images/yp/security/kubernetes-cert-manager.png)
+1. Select **K8S cert-manager**.
 
-    - In the **Certificate Name** field, enter a meaningful name for your certificate configuration.
-    - Click **Upload Root Certificate** and select the root certificate file that you prepared.
-    - Click **Add** to make the certificate available.
+    ![Add Kubernetes Certificate](/images/yp/encryption-in-transit/add-k8s-cert.png)
 
-1. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
+1. In the **Certificate Name** field, enter a meaningful name for your certificate.
 
-    In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+1. Click **Upload Root Certificate** and select the root certificate file that you prepared.
 
-    ![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
+1. Click **Add** to make the certificate available.
+
+## Configure the provider
+
+After the certificate is added to YugabyteDB Anywhere, configure the Kubernetes provider configuration by following instructions provided in [Configure region and zones](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
+
+In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected.
+
+![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
 
 ## Troubleshoot
 

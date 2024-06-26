@@ -3,7 +3,7 @@ title: Add Hashicorp Vault certificates to YugabyteDB Anywhere
 headerTitle: Add certificates
 linkTitle: Add certificates
 description: Add Hashicorp Vault certificates to YugabyteDB Anywhere.
-headcontent: Add Hashicorp Vault certificates to YugabyteDB Anywhere
+headcontent: Use your own certificates for encryption in transit
 menu:
   preview_yugabyte-platform:
     parent: enable-encryption-in-transit
@@ -170,11 +170,21 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 When you create a universe, you can enable TLS using certificates provided by HashiCorp Vault, as follows:
 
 1. Navigate to **Configs > Security > Encryption in Transit**.
+
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
+
 1. Select **Hashicorp**.
+
+    ![Add Hashicorp certificate](/images/yp/encryption-in-transit/add-hashicorp-cert.png)
+
 1. In the **Config Name** field, enter a meaningful name for your configuration.
+
 1. In the **Vault Address** field, specify a valid URL that includes the port number. The format is `http://0.0.0.0:0000`, which corresponds to `VAULT_HOSTNAME:0000`
+
 1. In the **Secret Token** field, specify the secret token for the vault.
+
 1. In the **Role** field, specify the role used for creating certificates.
+
 1. Optionally, provide the secret engine path on which the PKI is mounted. If you do not supply this information, `pki/` will be used.
+
 1. Click **Add** to make the certificate available.

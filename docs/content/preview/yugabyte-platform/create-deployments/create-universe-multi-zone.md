@@ -84,13 +84,32 @@ Specify the instance to use for the universe nodes:
 
 ### Security Configurations
 
+#### IP Settings
+
 To enable public access to the universe, select the **Assign Public IP** option.
+
+#### Authentication Settings
 
 Enable the YSQL and YCQL endpoints and database authentication. You can also enable and disable authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
 
 Enter the password to use for the default database admin superuser (yugabyte for YSQL, and cassandra for YCQL). For more information, refer to [Database authorization](../../security/authorization-platform/).
 
-Enable encryption in transit to encrypt universe traffic. Refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/).
+#### Encryption Settings
+
+Enable encryption in transit to encrypt universe traffic. You can enable the following:
+
+- **Node-to-Node TLS** to encrypt traffic between universe nodes.
+- **Client-to-Node TLS** to encrypt traffic between universe nodes and external clients.
+
+    Note that if you want to enable Client-to-Node encryption, you first must enable Node-to-Node encryption.
+
+Encryption requires a certificate. YugabyteDB Anywhere can generate a self-signed certificate automatically, or you can use your own certificate.
+
+To use your own, you must first add it to YugabyteDB Anywhere; refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-self/).
+
+To have YugabyteDB Anywhere generate a certificate for the universe, use the default **Root Certificate** setting of **Create New Certificate**. To use a certificate you added or a previously generated certificate, select it from the **Root Certificate** menu.
+
+For more information on using and managing certificates, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
 
 Enable encryption at rest to encrypt the universe data. Refer to [Enable encryption at rest](../../security/enable-encryption-at-rest/).
 

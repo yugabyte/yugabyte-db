@@ -3,7 +3,7 @@ title: Add self-signed certificates to YugabyteDB Anywhere
 headerTitle: Add certificates
 linkTitle: Add certificates
 description: Add self-signed certificates to YugabyteDB Anywhere.
-headcontent: Add self-signed certificates to YugabyteDB Anywhere
+headcontent: Use your own certificates for encryption in transit
 menu:
   preview_yugabyte-platform:
     parent: enable-encryption-in-transit
@@ -87,10 +87,19 @@ The client certificates and keys are required only if you intend to use [Postgre
 To add self-signed certificates to YugabyteDB Anywhere:
 
 1. Navigate to **Configs > Security > Encryption in Transit**.
+
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
+
 1. Select **Self Signed**.
-1. Click **Upload Root Certificate**, then browse to the root certificate file (`<file-name>.crt`) and upload it.
-1. Click **Upload Key**, then browse to the root certificate file (`<file-name>.key`) and upload it.
+
+    ![Add Self Signed certificate](/images/yp/encryption-in-transit/add-self-cert.png)
+
 1. In the **Certificate Name** field, enter a meaningful name for your certificate.
+
+1. Click **Upload Root Certificate**, then browse to the root certificate file (`<file-name>.crt`) and upload it.
+
+1. Click **Upload Key**, then browse to the root certificate file (`<file-name>.key`) and upload it.
+
 1. In the **Expiration Date** field, specify the expiration date of the root certificate. To find this information, execute the `openssl x509 -in <root-crt-file-path> -text -noout` command and note the **Validity Not After** date.
+
 1. Click **Add** to make the certificate available.

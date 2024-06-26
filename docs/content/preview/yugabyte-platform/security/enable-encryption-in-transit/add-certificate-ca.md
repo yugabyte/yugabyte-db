@@ -3,7 +3,7 @@ title: Add CA-signed certificates to YugabyteDB Anywhere
 headerTitle: Add certificates
 linkTitle: Add certificates
 description: Add CA-signed certificates to YugabyteDB Anywhere.
-headcontent: Add CA-signed certificates to YugabyteDB Anywhere
+headcontent: Use your own certificates for encryption in transit
 menu:
   preview_yugabyte-platform:
     parent: enable-encryption-in-transit
@@ -60,15 +60,15 @@ Add a CA-signed certificate in YugabyteDB Anywhere, as follows:
 
 1. Select **CA Signed**, as per the following illustration:
 
-    ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
+    ![Add CA certificate](/images/yp/encryption-in-transit/add-cert.png)
+
+1. In the **Certificate Name** field, enter a meaningful name for your certificate.
 
 1. Upload the custom CA root certificate as the root certificate.
 
     If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
 
 1. Enter the file paths for each of the certificates on the nodes. These are the paths from the previous step.
-
-1. In the **Certificate Name** field, enter a meaningful name for your certificate.
 
 1. Use the **Expiration Date** field to specify the expiration date of the certificate. To find this information, execute the `openssl x509 -in <root_crt_file_path> -text -noout` command and note the **Validity Not After** date.
 
