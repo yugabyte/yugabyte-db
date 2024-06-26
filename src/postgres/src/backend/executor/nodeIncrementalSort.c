@@ -191,7 +191,7 @@ preparePresortedCols(IncrementalSortState *node)
 			elog(ERROR, "missing function for operator %u", equalityOp);
 
 		/* Lookup the comparison function */
-		fmgr_info_cxt(equalityFunc, &key->flinfo, CurrentMemoryContext);
+		fmgr_info_cxt(equalityFunc, &key->flinfo, GetCurrentMemoryContext());
 
 		/* We can initialize the callinfo just once and re-use it */
 		key->fcinfo = palloc0(SizeForFunctionCallInfo(2));

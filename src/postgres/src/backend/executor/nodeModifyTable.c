@@ -5004,7 +5004,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 		hash_ctl.keysize = sizeof(Oid);
 		hash_ctl.entrysize = sizeof(MTTargetRelLookup);
-		hash_ctl.hcxt = CurrentMemoryContext;
+		hash_ctl.hcxt = GetCurrentMemoryContext();
 		mtstate->mt_resultOidHash =
 			hash_create("ModifyTable target hash",
 						nrels, &hash_ctl,

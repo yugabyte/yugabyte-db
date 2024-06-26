@@ -4780,7 +4780,7 @@ text_to_array(PG_FUNCTION_ARGS)
 		PG_RETURN_ARRAYTYPE_P(construct_empty_array(TEXTOID));
 
 	PG_RETURN_ARRAYTYPE_P(makeArrayResult(tstate.astate,
-										  CurrentMemoryContext));
+										  GetCurrentMemoryContext()));
 }
 
 /*

@@ -167,7 +167,7 @@ test_pattern(const test_spec *spec)
 	 * own, too, but we don't have direct access to it, so we cannot call
 	 * MemoryContextStats() on it directly).
 	 */
-	intset_ctx = AllocSetContextCreate(CurrentMemoryContext,
+	intset_ctx = AllocSetContextCreate(GetCurrentMemoryContext(),
 									   "intset test",
 									   ALLOCSET_SMALL_SIZES);
 	MemoryContextSetIdentifier(intset_ctx, spec->test_name);
