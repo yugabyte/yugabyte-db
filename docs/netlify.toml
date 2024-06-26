@@ -385,6 +385,12 @@
   from = "/preview/deploy/reference/configuration/yb-tserver/"
   to = "/preview/reference/configuration/yb-tserver/"
 
+## develop
+
+[[redirects]]
+  from = "/preview/develop/common-patterns/*"
+  to = "/preview/develop/data-modeling/common-patterns/:splat"
+
 [[redirects]]
   from = "/preview/develop/learn/acid-transactions/"
   to = "/preview/develop/learn/acid-transactions-ysql/"
@@ -605,41 +611,41 @@
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
   to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
-#   to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
-#   to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
-#   to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
   to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
-#   to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
   to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
-# [[redirects]]
-#   from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
-#   to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+[[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
 [[redirects]]
    from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
@@ -667,6 +673,10 @@
 
 [[redirects]]
   from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/stable/develop/realworld-apps/*"
   to = "/preview/tutorials/"
 
 [[redirects]]

@@ -54,7 +54,8 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
       AlertConfiguration.Severity severity,
       AlertTemplateSettings templateSettings) {
     Map<String, String> definitionLabels =
-        getLabels(templateDescription, configuration, templateSettings, definition, severity);
+        getLabels(
+            templateDescription, configuration, templateSettings, definition, severity, confGetter);
 
     if (configuration.getTemplate() == AlertTemplate.NODE_DISK_USAGE) {
       UUID universeUuid = UUID.fromString(definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
@@ -84,7 +85,8 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
             templateSettings,
             definition,
             severity,
-            substitutor);
+            substitutor,
+            confGetter);
 
     String affectedNodeNamesLabel = labels.get(AFFECTED_NODE_NAMES);
     if (StringUtils.isNoneEmpty(affectedNodeNamesLabel)) {
@@ -117,7 +119,7 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
                   return configuration.getName();
                 case DEFINITION_EXPR:
                   return templateDescription.getQueryWithThreshold(
-                      definition, configuration.getThresholds().get(severity));
+                      configuration, definition, severity, confGetter);
                 case DURATION:
                   return configuration.getDurationSec() + "s";
                 case LABELS:
@@ -163,9 +165,11 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
       AlertConfiguration configuration,
       AlertTemplateSettings templateSettings,
       AlertDefinition definition,
-      AlertConfiguration.Severity severity) {
+      AlertConfiguration.Severity severity,
+      RuntimeConfGetter confGetter) {
     return definition
-        .getEffectiveLabels(templateDescription, configuration, templateSettings, severity)
+        .getEffectiveLabels(
+            templateDescription, configuration, templateSettings, severity, confGetter)
         .stream()
         .collect(Collectors.toMap(AlertDefinitionLabel::getName, AlertDefinitionLabel::getValue));
   }
@@ -176,10 +180,17 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
       AlertTemplateSettings templateSettings,
       AlertDefinition definition,
       AlertConfiguration.Severity severity,
-      AlertTemplateSubstitutor<AlertConfigurationLabelProvider> substitutor) {
+      AlertTemplateSubstitutor<AlertConfigurationLabelProvider> substitutor,
+      RuntimeConfGetter confGetter) {
     Map<String, String> labels =
         new HashMap<>(
-            getLabels(templateDescription, configuration, templateSettings, definition, severity));
+            getLabels(
+                templateDescription,
+                configuration,
+                templateSettings,
+                definition,
+                severity,
+                confGetter));
     if (MapUtils.isNotEmpty(templateDescription.getLabels())) {
       Map<String, String> templateLabels =
           templateDescription.getLabels().entrySet().stream()
@@ -188,7 +199,12 @@ public class AlertRuleTemplateSubstitutor implements PlaceholderSubstitutorIF {
                       Map.Entry::getKey,
                       entry ->
                           AlertTemplateDescription.replaceThresholdAndCondition(
-                              entry.getValue(), configuration.getThresholds().get(severity))));
+                              templateDescription,
+                              configuration,
+                              definition,
+                              severity,
+                              entry.getValue(),
+                              confGetter)));
       labels.putAll(
           templateLabels.entrySet().stream()
               .collect(

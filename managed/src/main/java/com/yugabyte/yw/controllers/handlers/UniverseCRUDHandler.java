@@ -944,10 +944,6 @@ public class UniverseCRUDHandler {
               Universe.TAKE_BACKUPS, "true",
               Universe.KEY_CERT_HOT_RELOADABLE, "true"));
 
-      if (!cloudEnabled) {
-        universe.updateConfig(ImmutableMap.of(Universe.USE_USER_LEVEL_NODE_EXPORTER, "true"));
-      }
-
       // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
       // non legacy cluster for proper operations.
       if (cloudEnabled) {

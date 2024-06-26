@@ -106,8 +106,8 @@ class CDCServiceImpl : public CDCServiceIf {
  public:
   CDCServiceImpl(
       std::unique_ptr<CDCServiceContext> context,
-      const scoped_refptr<MetricEntity>& metric_entity_server,
-      MetricRegistry* metric_registry);
+      const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
+      const std::shared_future<client::YBClient*>& client_future);
 
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
@@ -507,6 +507,8 @@ class CDCServiceImpl : public CDCServiceIf {
   std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
 
   std::unique_ptr<Impl> impl_;
+
+  const std::shared_future<client::YBClient*>& client_future_;
 
   std::unique_ptr<CDCStateTable> cdc_state_table_;
 

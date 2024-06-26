@@ -18,21 +18,26 @@ import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
+import org.mapstruct.BeanMapping;
 import org.mapstruct.DecoratedWith;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.NullValueMappingStrategy;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 import org.mapstruct.control.DeepClone;
@@ -87,6 +92,14 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "readOnlyClusters", ignore = true)
   @Mapping(target = "addOnClusters", ignore = true)
   @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public RollbackUpgradeParams toRollbackUpgradeParams(UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
   public FinalizeUpgradeParams toFinalizeUpgradeParams(UniverseDefinitionTaskParams source);
 
   @Mapping(target = "existingLBs", ignore = true)
@@ -97,6 +110,22 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "nonPrimaryClusters", ignore = true)
   public ThirdpartySoftwareUpgradeParams toThirdpartySoftwareUpgradeParams(
       UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public UpgradeTaskParams toUpgradeTaskParams(UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public RestartTaskParams toRestartTaskParams(UniverseDefinitionTaskParams source);
 
   @Mapping(target = "spec", source = ".")
   UniverseCreateSpec toV2UniverseCreateSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);
@@ -156,7 +185,8 @@ public interface UniverseDefinitionTaskParamsMapper {
       expression =
           "java(v2EncryptionAtRestSpec.getKmsConfigUuid() != null ?"
               + " com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType.ENABLE :"
-              + " com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType.DISABLE)")
+              + " com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType.UNDEFINED)")
+  @BeanMapping(nullValueMappingStrategy = NullValueMappingStrategy.RETURN_DEFAULT)
   EncryptionAtRestConfig toV1EncryptionAtRestConfig(EncryptionAtRestSpec v2EncryptionAtRestSpec);
 
   @Mapping(target = "encryptionAtRestStatus", source = "encryptionAtRestEnabled")

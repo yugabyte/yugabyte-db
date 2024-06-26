@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -174,7 +175,10 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
 
   private Set<String> extractIps(
       Universe universe, Collection<NodeDetails> nodes, boolean cloudEnabled) {
-    return nodes.stream().map(n -> getIp(universe, n, cloudEnabled)).collect(Collectors.toSet());
+    return nodes.stream()
+        .map(n -> Util.getIpToUse(universe, n.getNodeName(), cloudEnabled))
+        .filter(ip -> ip != null)
+        .collect(Collectors.toSet());
   }
 
   private String getIp(Universe universe, NodeDetails nodeDetails, boolean cloudEnabled) {

@@ -226,31 +226,18 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCDCLagMetric);
 
 // Begin transaction, perform some operations and abort transaction.
-// Expected records: 1 (DDL).
+// Expected records: 0. In case of non consistent snapshot streams we receive 1 DDL.
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(AbortAllWriteOperations)) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
   ASSERT_OK(WriteRowsHelper(1 /* start */, 4 /* end */, &test_cluster_, false));
-
-  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {1, 0, 0, 0, 0, 0};
-  uint32_t count[] = {0, 0, 0, 0, 0, 0};
-
-  ExpectedRecord expected_records[] = {{0, 0}};
 
   GetChangesResponsePB change_resp;
   ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 0));
 
-  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
-  }
-  LOG(INFO) << "Got " << count[1] << " insert record and " << count[0] << " ddl record";
-  CheckCount(expected_count, count);
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
 }
 
 // Insert one row, update the inserted row.
@@ -1113,7 +1100,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddTableAfterDropTableAndMast
         kTableName));
     idx += 1;
   }
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   SleepFor(MonoDelta::FromSeconds(2));
   DropTable(&test_cluster_, "test_table_1");
 
@@ -1260,7 +1247,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
   ASSERT_EQ(tablets.size(), num_tablets);
 
   auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto stream_id = ASSERT_RESULT(CreateDBStream());
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
@@ -1288,7 +1275,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserv
   ASSERT_EQ(tablets.size(), num_tablets);
 
   auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto stream_id = ASSERT_RESULT(CreateDBStream());
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
@@ -1318,8 +1305,8 @@ TEST_F(
   ASSERT_EQ(tablets.size(), num_tablets);
 
   auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  auto stream_id_1 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto stream_id_2 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto stream_id_1 = ASSERT_RESULT(CreateDBStream());
+  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
 
   auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
   ASSERT_FALSE(resp_1.has_error());
@@ -1351,8 +1338,8 @@ TEST_F(
   ASSERT_EQ(tablets.size(), num_tablets);
 
   auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  auto stream_id_1 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto stream_id_2 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto stream_id_1 = ASSERT_RESULT(CreateDBStream());
+  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
 
   auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
   ASSERT_FALSE(resp_1.has_error());
@@ -1384,8 +1371,8 @@ TEST_F(
   ASSERT_EQ(tablets.size(), num_tablets);
 
   auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  auto stream_id_1 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto stream_id_2 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto stream_id_1 = ASSERT_RESULT(CreateDBStream());
+  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
 
   auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
   ASSERT_FALSE(resp_1.has_error());
@@ -1419,8 +1406,8 @@ TEST_F(
   ASSERT_EQ(tablets.size(), num_tablets);
 
   auto table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  auto stream_id_1 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto stream_id_2 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto stream_id_1 = ASSERT_RESULT(CreateDBStream());
+  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
 
   auto resp_1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
   ASSERT_FALSE(resp_1.has_error());
@@ -7326,6 +7313,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7337,8 +7325,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLRollback)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {3, 6, 1, 1, 0, 0, 1, 1};
-  const int expected_count_for_packed_row[] = {3, 7, 0, 1, 0, 0, 1, 1};
+  const int expected_count[] = {2, 6, 1, 1, 0, 0, 1, 1};
+  const int expected_count_for_packed_row[] = {2, 7, 0, 1, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -7514,6 +7502,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
 
@@ -7526,7 +7515,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {3, 10, 0, 0, 0, 0, 4, 4};
+  const int expected_count[] = {2, 10, 0, 0, 0, 0, 4, 4};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -7719,7 +7708,7 @@ TEST_F(CDCSDKYsqlTest, TestReplicationSlotDropWithActiveInvalid) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) =
       10000 * yb::kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table =
@@ -7958,7 +7947,7 @@ TEST_F(CDCSDKYsqlTest, TestNoUpdateSafeTimeWithoutSnapshotTime) {
 
 TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false, true));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7986,7 +7975,10 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   ASSERT_EQ(entry_1->last_decided_pub_refresh_time.value(), oss.str());
 
   // On a non-consistent snapshot stream, we should not see the entry for replication slot.
-  auto stream_id_2 = ASSERT_RESULT(CreateDBStream());
+  std::string kNamespaceName_2 = "test_namespace_2";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2));
+  auto stream_id_2 = ASSERT_RESULT(
+      CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName_2));
   auto entry_2 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {kCDCSDKSlotEntryTabletId, stream_id_2}, CDCStateTableEntrySelector().IncludeAll()));
   ASSERT_FALSE(entry_2.has_value());
@@ -8548,8 +8540,8 @@ void CDCSDKYsqlTest::TestNonUserTableShouldNotGetAddedToCDCStream(
 
   xrepl::StreamId stream_id =
       create_consistent_snapshot_stream
-          ? ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot())
-          : ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+          ? ASSERT_RESULT(CreateConsistentSnapshotStream())
+          : ASSERT_RESULT(CreateDBStream());
 
   // // Create non-user tables AFTER the stream has been created
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0(b ASC)", tableName1));
@@ -8617,6 +8609,19 @@ TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToNonConsistentSnapshotC
 
 TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToConsistentSnapshotCDCStream) {
   TestNonUserTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ true);
+}
+
+TEST_F(CDCSDKYsqlTest, TestTablesWithEnumArrayColumnShouldNotGetAddedToStream) {
+  ASSERT_OK(SetUpWithParams(1, 1, false, false));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("CREATE TYPE \"enum_type\" AS ENUM('a', 'b', 'c');"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (a int primary key, b \"enum_type\"[])"));
+  auto stream_id = ASSERT_RESULT(CreateDBStream());
+
+  auto stream  = ASSERT_RESULT(GetCDCStream(stream_id));
+  // The table with enum array column will not be added to the stream.
+  ASSERT_EQ(stream.stream().table_id_size(), 0);
 }
 
 }  // namespace cdc

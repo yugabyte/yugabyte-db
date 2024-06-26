@@ -4,7 +4,7 @@ headerTitle: Built-in connection pooling
 linkTitle: Built-in connection pooling
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 aliases:
    - /preview/explore/connection-manager/connection-mgr-ysql/
    - /preview/explore/connection-manager/
@@ -29,7 +29,7 @@ To provide the advantages of connection pooling, but without the limitations, Yu
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
 {{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Managed](../../../yugabyte-cloud/).
+YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](../../../yugabyte-cloud/).
 {{< /note >}}
 
 ## Key features

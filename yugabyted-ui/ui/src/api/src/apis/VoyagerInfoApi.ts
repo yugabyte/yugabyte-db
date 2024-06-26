@@ -19,12 +19,16 @@ import type { AxiosInstance } from 'axios';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import type {
+  APIForMigrationAssessmentPage,
   APIForPlanAndAssesPage,
   ApiError,
   IndividualMigrationTaskInfo,
   VoyagerMigrationsInfo,
 } from '../models';
 
+export interface GetMigrationAssessmentInfoForQuery {
+  uuid: string;
+}
 export interface GetVoyagerMigrateSchemaTasksForQuery {
   uuid: string;
 }
@@ -35,6 +39,87 @@ export interface GetVoyagerMigrationTasksForQuery {
   uuid?: string;
   migration_phase?: number;
 }
+
+/**
+ * Get the Database assessment details
+ * Get the Database assessment details
+ */
+
+export const getMigrationAssessmentInfoAxiosRequest = (
+  requestParameters: GetMigrationAssessmentInfoForQuery,
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<APIForMigrationAssessmentPage>(
+    {
+      url: '/migration_assessment_v2',
+      method: 'GET',
+      params: {
+        uuid: requestParameters['uuid'],
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getMigrationAssessmentInfoQueryKey = (
+  requestParametersQuery: GetMigrationAssessmentInfoForQuery,
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/migration_assessment_v2`,
+  pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
+];
+
+
+export const useGetMigrationAssessmentInfoInfiniteQuery = <T = APIForMigrationAssessmentPage, Error = ApiError>(
+  params: GetMigrationAssessmentInfoForQuery,
+  options?: {
+    query?: UseInfiniteQueryOptions<APIForMigrationAssessmentPage, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getMigrationAssessmentInfoQueryKey(params, pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<APIForMigrationAssessmentPage, Error, T>(
+    queryKey,
+    () => getMigrationAssessmentInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetMigrationAssessmentInfoQuery = <T = APIForMigrationAssessmentPage, Error = ApiError>(
+  params: GetMigrationAssessmentInfoForQuery,
+  options?: {
+    query?: UseQueryOptions<APIForMigrationAssessmentPage, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getMigrationAssessmentInfoQueryKey(params,  version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<APIForMigrationAssessmentPage, Error, T>(
+    queryKey,
+    () => getMigrationAssessmentInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
 
 /**
  * Get Voyager data migration metrics

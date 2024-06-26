@@ -1,8 +1,8 @@
 ---
-title: Change log for YugabyteDB Managed
-headerTitle: What's new in YugabyteDB Managed
+title: Change log for YugabyteDB Aeon
+headerTitle: What's new in YugabyteDB Aeon
 linkTitle: Change log
-description: YugabyteDB Managed Change Log and known issues.
+description: YugabyteDB Aeon Change Log and known issues.
 headcontent: New features and known issues
 menu:
   preview_yugabyte-cloud:
@@ -18,6 +18,14 @@ On this page:
 [Known issues](#known-issues)
 
 ## Change log
+
+### June 24, 2024
+
+**New Features**
+
+- YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/).
+- Support for new pricing plans. Existing customers continue to be billed using classic pricing. [Learn more](https://www.yugabyte.com/pricing/).
+- Support for enforcing security features on new clusters using the Advanced security profile option (Enterprise plan only).
 
 ### June 13, 2024
 
@@ -74,13 +82,13 @@ On this page:
 
 **New Features**
 
-- Support for enhanced [fault tolerance](../cloud-basics/create-clusters-overview/#fault-tolerance). YugabyteDB Managed clusters are fault tolerant, meaning they continue to serve reads and writes even with the loss of a node, availability zone, or region. You can now configure clusters with node- or region-level fault tolerance to be resilient to up to three domain outages. For example, you can create a cluster with region-level fault tolerance that can continue to serve reads and writes without interruption even if two of its regions become unavailable.
+- Support for enhanced [fault tolerance](../cloud-basics/create-clusters-overview/#fault-tolerance). Clusters are fault tolerant, meaning they continue to serve reads and writes even with the loss of a node, availability zone, or region. You can now configure clusters with node- or region-level fault tolerance to be resilient to up to three domain outages. For example, you can create a cluster with region-level fault tolerance that can continue to serve reads and writes without interruption even if two of its regions become unavailable.
 
 ### December 4, 2023
 
 **New Features**
 
-- Support for [federated authentication](../managed-security/managed-authentication/), which allows you to use an identity provider to manage access to your YugabyteDB Managed account. Initial support includes the Microsoft Entra ID (Azure AD) platform, providing single sign-on access for your account users using their Microsoft identities.
+- Support for [federated authentication](../managed-security/managed-authentication/), which allows you to use an identity provider to manage access to your account. Initial support includes the Microsoft Entra ID (Azure AD) platform, providing single sign-on access for your account users using their Microsoft identities.
 - Added ability to [audit account login activity](../cloud-secure-clusters/cloud-activity/). Navigate to **Security > Activity > Access History** to review the access history, including the client IP address, activity type, number of attempts, timestamp, and result.
 - Added ability to use different instance types and node sizes for different [read replica regions](../cloud-clusters/managed-read-replica/) in a cluster. Specify higher vCPU and disk size per node for replicas in high traffic regions, and vice-versa for lower traffic regions.
 - Support for Azure Key Vault for enabling and disabling YugabyteDB [encryption at rest](../cloud-secure-clusters/managed-ear/) using a customer managed key.
@@ -116,7 +124,7 @@ On this page:
 
 **New Features**
 
-- Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Managed UI (this feature was previously only available using the YBM CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
+- Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Aeon UI (this feature was previously only available using the YugabyteDB Aeon CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
 - Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to Grafana Cloud.
 
 ### September 22, 2023
@@ -172,7 +180,7 @@ On this page:
 
 - Support for deploying clusters on Microsoft Azure, including:
   - Global availability - deploy in 20 Azure regions worldwide.
-  - Azure Private Link - establish secure private network connectivity between your Azure Virtual Networks and YugabyteDB Managed clusters for greater data privacy and compliance.
+  - Azure Private Link - establish secure private network connectivity between your Azure Virtual Networks and YugabyteDB Aeon clusters for greater data privacy and compliance.
   - Horizontal and vertical scaling.
   - Availability zone fault tolerance - deploy single region, multi-zone clusters to ensure high availability and fault tolerance in the same region.
 
@@ -220,8 +228,8 @@ On this page:
 
 **New Features**
 
-- [YugabyteDB Managed CLI](../../yugabyte-cloud/managed-automation/managed-cli/). Use the YugabyteDB Managed command line interface (ybm CLI) to deploy and manage your YugabyteDB Managed database clusters from your terminal or IDE.
-- Support for AWS PrivateLink (preview release). Connect YugabyteDB Managed clusters on AWS with other AWS resources via private endpoints. Currently only configurable via ybm CLI.
+- [YugabyteDB Aeon CLI](../../yugabyte-cloud/managed-automation/managed-cli/). Use the YugabyteDB Aeon command line interface (ybm CLI) to deploy and manage your YugabyteDB Aeon database clusters from your terminal or IDE.
+- Support for AWS PrivateLink (preview release). Connect YugabyteDB Aeon clusters on AWS with other AWS resources via private endpoints. Currently only configurable via ybm CLI.
 
 **Enhancements**
 
@@ -253,7 +261,7 @@ On this page:
 
 **New Features**
 
-- Users can now request a [time-limited free trial](../managed-freetrial/) to explore all the YugabyteDB Managed features.
+- Users can now request a [time-limited free trial](../managed-freetrial/) to explore all the YugabyteDB Aeon features.
 
 **Database**
 
@@ -263,7 +271,7 @@ On this page:
 
 **New Features**
 
-- [YugabyteDB Managed Terraform Provider](https://registry.terraform.io/providers/yugabyte/ybm/latest) generally available. Use the provider to deploy and manage your database clusters in YugabyteDB Managed.
+- [YugabyteDB Aeon Terraform Provider](https://registry.terraform.io/providers/yugabyte/ybm/latest) generally available. Use the provider to deploy and manage your database clusters in YugabyteDB Aeon.
 
 ### January 18, 2023
 
@@ -296,7 +304,7 @@ On this page:
 
 **New Features**
 
-- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- [YugabyteDB Aeon REST API](https://yugabyte.stoplight.io/docs/managed-apis/) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Aeon programmatically.
 
 ### November 28, 2022
 
@@ -314,7 +322,7 @@ On this page:
 
 **New Features**
 
-- Ability to view cluster health. YugabyteDB Managed monitors the health of your clusters based on cluster alert conditions and displays the health as either Healthy, Needs Attention, or Unhealthy.
+- Ability to view cluster health. YugabyteDB Aeon monitors the health of your clusters based on cluster alert conditions and displays the health as either Healthy, Needs Attention, or Unhealthy.
 - Ability to set alerts for failed nodes. Get notified when the number of failed nodes exceeds the threshold.
 
 ### November 4, 2022
@@ -366,8 +374,8 @@ On this page:
 **New Features**
 
 - Performance Optimizer for scanning clusters for optimizations (preview release). Provides recommendations on index and schema improvements, and detects connection, query, and CPU skew to identify potentially hot nodes.
-- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
-- API key management for creating and managing bearer tokens for use with the YugabyteDB Managed REST API.
+- [YugabyteDB Aeon REST API](https://yugabyte.stoplight.io/docs/managed-apis/) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Aeon programmatically.
+- API key management for creating and managing bearer tokens for use with the YugabyteDB Aeon REST API.
 
 ### June 22, 2022
 
@@ -387,7 +395,7 @@ On this page:
 
 **New Features**
 
-- Support for social logins. Sign up and log in to YugabyteDB Managed using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Authentication** tab on the **Security** page.
+- Support for social logins. Sign up and log in to YugabyteDB Aeon using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Authentication** tab on the **Security** page.
 
 **Database**
 
@@ -430,7 +438,7 @@ On this page:
 **New Features**
 
 - Ability to select the [version](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating Dedicated clusters](../cloud-basics/create-clusters/).
-- Automated notifications of upcoming database maintenance. The notification email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. Start an upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**.
+- Automated notifications of upcoming database maintenance. The notification email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. Start an upgrade any time by signing in to YugabyteDB Aeon, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**.
 
 **Infrastructure**
 
@@ -446,8 +454,8 @@ On this page:
 
 **New Features**
 
-- Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, YugabyteDB Managed sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your account.
-- Sandbox clusters are now [paused](../../faq/yugabytedb-managed-faq/#why-is-my-sandbox-cluster-paused) after 21 days of inactivity. YugabyteDB Managed sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../../faq/yugabytedb-managed-faq/#what-qualifies-as-activity-on-a-cluster) Sandbox clusters are deleted after 30 days of inactivity.
+- Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, YugabyteDB Aeon sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your account.
+- Sandbox clusters are now [paused](../../faq/yugabytedb-managed-faq/#why-is-my-sandbox-cluster-paused) after 21 days of inactivity. YugabyteDB Aeon sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../../faq/yugabytedb-managed-faq/#what-qualifies-as-activity-on-a-cluster) Sandbox clusters are deleted after 30 days of inactivity.
 - Ability to see the [version](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB that your cluster is running on.
 
 **Fixes**
@@ -497,14 +505,14 @@ On this page:
 
 **New Features**
 
-- The [YugabyteDB Managed Status](https://status.yugabyte.cloud/) page shows the current uptime status of YugabyteDB Managed and the [Yugabyte Support Portal](https://support.yugabyte.com/), along with maintenance notices and incident reports.
+- The [YugabyteDB Aeon Status](https://status.yugabyte.cloud/) page shows the current uptime status of YugabyteDB Aeon and the [Yugabyte Support Portal](https://support.yugabyte.com/), along with maintenance notices and incident reports.
 - Ability to review cluster activity using the new cluster **Activity** tab.
 
 ### September 15, 2021
 
 **New Features**
 
-- Ability to [create clusters](../cloud-basics/create-clusters/) suitable for production workloads. YugabyteDB Managed clusters support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
+- Ability to [create clusters](../cloud-basics/create-clusters/) suitable for production workloads. YugabyteDB Aeon clusters support horizontal and vertical scaling, VPC peering, and scheduled and manual backups.
 - Billing support. Set up a billing profile, manage payment methods, and review invoices on the [Billing](../cloud-admin/cloud-billing-profile) tab. (You must create a billing profile and add a payment method before you can create any clusters apart from your Sandbox cluster.)
 
 ### September 8, 2021

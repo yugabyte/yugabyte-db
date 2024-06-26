@@ -220,12 +220,12 @@ namespace docdb {
 
 namespace {
 
-bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
+bool CompressionTypeValidator(const char* flag_name, const std::string& flag_compression_type) {
   auto res = yb::GetConfiguredCompressionType(flag_compression_type);
   if (!res.ok()) {
     // Below we CHECK_RESULT on the same value returned here, and validating the result here ensures
     // that CHECK_RESULT will never fail once the process is running.
-    LOG(ERROR) << res.status().ToString();
+    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_compression_type) << res.status().ToString();
     return false;
   }
   return true;
@@ -235,7 +235,7 @@ bool KeyValueEncodingFormatValidator(const char* flag_name, const std::string& f
   auto res = yb::docdb::GetConfiguredKeyValueEncodingFormat(flag_value);
   bool ok = res.ok();
   if (!ok) {
-    LOG(ERROR) << flag_name << ": " << res.status();
+    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_value) << res.status();
   }
   return ok;
 }

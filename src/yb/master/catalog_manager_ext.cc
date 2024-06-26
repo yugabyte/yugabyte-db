@@ -268,7 +268,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
     snapshot_id = GenerateIdUnlocked(SysRowEntryType::SNAPSHOT);
   }
 
-  vector<scoped_refptr<TabletInfo>> all_tablets;
+  vector<TabletInfoPtr> all_tablets;
 
   // Create in memory snapshot data descriptor.
   scoped_refptr<SnapshotInfo> snapshot(new SnapshotInfo(snapshot_id));
@@ -309,7 +309,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   }
 
   // Send CreateSnapshot requests to all TServers (one tablet - one request).
-  for (const scoped_refptr<TabletInfo>& tablet : all_tablets) {
+  for (const TabletInfoPtr& tablet : all_tablets) {
     TRACE("Locking tablet");
     auto l = tablet->LockForRead();
 
@@ -398,7 +398,7 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
     const vector<TableDescription>& tables,
     google::protobuf::RepeatedPtrField<SysRowEntry>* out,
     google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_snapshot_info,
-    vector<scoped_refptr<TabletInfo>>* all_tablets) {
+    vector<TabletInfoPtr>* all_tablets) {
   unordered_set<TabletId> added_tablets;
   for (const TableDescription& table : tables) {
     // Add table entry.
@@ -406,7 +406,7 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
     AddInfoEntryToPB(table.table_info.get(), out);
 
     // Add tablet entries.
-    for (const scoped_refptr<TabletInfo>& tablet : table.tablet_infos) {
+    for (const TabletInfoPtr& tablet : table.tablet_infos) {
       // For colocated tables there could be duplicate tablets, so insert them only once.
       if (added_tablets.insert(tablet->id()).second) {
         TRACE("Locking tablet");
@@ -773,7 +773,7 @@ Status CatalogManager::RestoreEntry(
     }
     case SysRowEntryType::TABLET: { // Restore TABLETS.
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
+      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         // Restore Tablet.
         // TODO: implement
@@ -877,7 +877,7 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
     if (entry.type() == SysRowEntryType::TABLET) {
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
+      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         LOG(WARNING) << "Deleting tablet not found " << entry.id();
       } else {
@@ -1954,8 +1954,8 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Change TableInfo to point to the new tablets.
   string deletion_msg;
-  vector<scoped_refptr<TabletInfo>> new_tablets;
-  vector<scoped_refptr<TabletInfo>> old_tablets;
+  vector<TabletInfoPtr> new_tablets;
+  vector<TabletInfoPtr> old_tablets;
   {
     // Acquire the TableInfo pb write lock. Although it is not required for some of the individual
     // steps, we want to hold it through so that we guarantee the state does not change during the
@@ -2020,7 +2020,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     ScopedInfoCommitter<TabletInfo> unlocker_new(&new_tablets);
 
     // Mark old tablets for deletion.
-    old_tablets = table->GetTablets(IncludeInactive::kTrue);
+    old_tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     // Sort so that locking can be done in a deterministic order.
     std::sort(old_tablets.begin(), old_tablets.end(), [](const auto& lhs, const auto& rhs) {
       return lhs->tablet_id() < rhs->tablet_id();
@@ -2045,10 +2045,10 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
     // Remove old tablets from TableInfo.
-    table->RemoveTablets(old_tablets);
+    VERIFY_RESULT(table->RemoveTablets(old_tablets));
     // Add new tablets to TableInfo. This must be done after removing tablets because
     // TableInfo::partitions_ has key PartitionKey, which old and new tablets may conflict on.
-    table->AddTablets(new_tablets);
+    RETURN_NOT_OK(table->AddTablets(new_tablets));
     // Since we have added a new set of tablets move the table back to a PREPARING state. It will
     // get marked to RUNNING once all the new tablets have been created.
     table_pb.set_state(SysTablesEntryPB::PREPARING);
@@ -2070,7 +2070,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
+    DeleteTabletReplicas(old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();
@@ -2507,10 +2507,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   {
     TRACE("Locking table");
     auto table_lock = table->LockForRead();
-    new_tablets = table->GetTablets();
+    new_tablets = VERIFY_RESULT(table->GetTablets());
   }
 
-  for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
+  for (const TabletInfoPtr& tablet : new_tablets) {
     auto tablet_lock = tablet->LockForRead();
     const PartitionPB& partition_pb = tablet->metadata().state().pb.partition();
     const ExternalTableSnapshotData::PartitionKeys key(
@@ -2618,9 +2618,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
     SharedLock lock(mutex_);
-    scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
-
-    if (tablet != nullptr) {
+    if (tablet_map_->contains(entry.id())) {
       IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());
@@ -2669,10 +2667,10 @@ Result<std::map<std::string, KeyRange>> CatalogManager::GetTableKeyRanges(const 
   auto lock = table->LockForRead();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(lock));
 
-  auto tablets = table->GetTablets();
+  auto tablets = VERIFY_RESULT(table->GetTablets());
 
   std::map<std::string, KeyRange> result;
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     auto tablet_lock = tablet->LockForRead();
     const auto& partition = tablet_lock->pb.partition();
     result[tablet->tablet_id()].start_key = partition.partition_key_start();
@@ -3031,8 +3029,12 @@ void CatalogManager::CleanupHiddenTables(
       // tablet's metadata first.
       RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
     }
-    if (table->IsHiddenButNotDeleting() && table->AreAllTabletsDeleted()) {
-      expired_tables.push_back(std::move(table));
+
+    if (table->IsHiddenButNotDeleting()) {
+      auto tablets_deleted_result = table->AreAllTabletsDeleted();
+      if (tablets_deleted_result.ok() && *tablets_deleted_result) {
+        expired_tables.push_back(std::move(table));
+      }
     }
   }
   // Sort the expired tables so we acquire write locks in id order. This is the required lock

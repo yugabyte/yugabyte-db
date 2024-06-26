@@ -22,7 +22,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -86,7 +85,8 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
     }
     if (CheckNodesAreSafeToTakeDown.isApiSupported(
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
-        && CheckNodesAreSafeToTakeDown.isApiSupported(softwareVersion)) {
+        && CheckNodesAreSafeToTakeDown.isApiSupported(softwareVersion)
+        && confGetter.getConfForScope(universe, UniverseConfKeys.useNodesAreSafeToTakeDown)) {
       log.debug("Skipping check, CheckNodesAreSafeToTakeDown should have been applied");
       return;
     }
@@ -128,18 +128,14 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
       return;
     }
 
-    Map<String, Integer> ipHttpPortMap =
-        universe.getNodes().stream()
-            .collect(
-                Collectors.toMap(node -> node.cloudInfo.private_ip, node -> node.masterHttpPort));
-
-    // Find universe's master UI endpoints (may have custom https ports).
+    int masterHttpPort = currentNode.masterHttpPort;
+    // Find universe's master UI endpoints.
     List<HostAndPort> hp =
         Arrays.stream(universe.getMasterAddresses().split(","))
             .map(HostAndPort::fromString)
             .map(HostAndPort::getHost)
-            .filter(host -> ipHttpPortMap.containsKey(host))
-            .map(host -> HostAndPort.fromParts(host, ipHttpPortMap.get(host)))
+            .filter(host -> host != null)
+            .map(host -> HostAndPort.fromParts(host, masterHttpPort))
             .collect(Collectors.toList());
 
     if (hp.size() == 0) {

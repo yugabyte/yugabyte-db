@@ -51,14 +51,14 @@ using strings::Substitute;
 TEST(TableInfoTest, TestAssignmentRanges) {
   const string table_id = CURRENT_TEST_NAME();
   scoped_refptr<TableInfo> table(new TableInfo(table_id, /* colocated */ false));
-  vector<scoped_refptr<TabletInfo>> tablets;
+  vector<TabletInfoPtr> tablets;
 
   // Define & create the splits.
   vector<string> split_keys = {"a", "b", "c"};  // The keys we split on.
   const size_t kNumSplits = split_keys.size();
   const int kNumReplicas = 1;
 
-  CreateTable(split_keys, kNumReplicas, true, table.get(), &tablets);
+  ASSERT_OK(CreateTable(split_keys, kNumReplicas, true, table.get(), &tablets));
 
   ASSERT_EQ(table->LockForRead()->pb.replication_info().live_replicas().num_replicas(),
             kNumReplicas) << "Invalid replicas for created table.";
@@ -75,7 +75,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
     req.set_max_returned_locations(1);
     req.mutable_table()->mutable_table_name()->assign(table_id);
     req.mutable_partition_key_start()->assign(start_key);
-    vector<scoped_refptr<TabletInfo>> tablets_in_range = table->GetTabletsInRange(&req);
+    vector<TabletInfoPtr> tablets_in_range = ASSERT_RESULT(table->GetTabletsInRange(&req));
 
     // Only one tablet should own this key.
     ASSERT_EQ(1, tablets_in_range.size());
@@ -86,7 +86,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
 
   for (const TabletInfoPtr& tablet : tablets) {
     auto lock = tablet->LockForWrite();
-    ASSERT_TRUE(table->RemoveTablet(tablet->id()));
+    ASSERT_TRUE(ASSERT_RESULT(table->RemoveTablet(tablet->id())));
   }
 }
 
@@ -263,27 +263,28 @@ const std::string GetSplitKey(const std::string& start_key, const std::string& e
   return split_key;
 }
 
-std::array<scoped_refptr<TabletInfo>, kNumSplitParts> SplitTablet(
-    const scoped_refptr<TabletInfo>& source_tablet) {
+Result<std::array<TabletInfoPtr, kNumSplitParts>> SplitTablet(
+    const TabletInfoPtr& source_tablet) {
   auto lock = source_tablet->LockForRead();
   const auto partition = lock->pb.partition();
 
   const auto split_key =
       GetSplitKey(partition.partition_key_start(), partition.partition_key_end());
 
-  auto child1 = CreateTablet(
+  auto child1 = VERIFY_RESULT(CreateTablet(
       source_tablet->table(), source_tablet->tablet_id() + ".1", partition.partition_key_start(),
-      split_key, lock->pb.split_depth() + 1);
-  auto child2 = CreateTablet(
+      split_key, lock->pb.split_depth() + 1));
+  auto child2 = VERIFY_RESULT(CreateTablet(
       source_tablet->table(), source_tablet->tablet_id() + ".2", split_key,
-      partition.partition_key_end(), lock->pb.split_depth() + 1);
-  return { child1, child2 };
+      partition.partition_key_end(), lock->pb.split_depth() + 1));
+  std::array<TabletInfoPtr, kNumSplitParts> result = { child1, child2 };
+  return result;
 }
 
 void SplitAndDeleteTablets(const TabletInfos& tablets_to_split, TabletInfos* post_split_tablets) {
   for (const auto& source_tablet : tablets_to_split) {
     ASSERT_NOK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(source_tablet));
-    auto child_tablets = SplitTablet(source_tablet);
+    auto child_tablets = ASSERT_RESULT(SplitTablet(source_tablet));
     for (const auto& child : child_tablets) {
       LOG(INFO) << "Child tablet " << child->tablet_id()
                 << " partition: " << AsString(child->LockForRead()->pb.partition())
@@ -311,7 +312,7 @@ TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
   const std::vector<std::string> pre_split_keys = {"a", "b", "c"};
   const int kNumReplicas = 1;
 
-  CreateTable(pre_split_keys, kNumReplicas, true, table.get(), &pre_split_tablets);
+  ASSERT_OK(CreateTable(pre_split_keys, kNumReplicas, true, table.get(), &pre_split_tablets));
 
   for (const auto& tablet : pre_split_tablets) {
     ASSERT_NOK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(tablet));
@@ -519,8 +520,9 @@ TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedAffinitizedLeaders) {
 
   scoped_refptr<TableInfo> table(
       new TableInfo(CURRENT_TEST_NAME() /* table_id */, false /* colocated */));
-  std::vector<scoped_refptr<TabletInfo>> tablets;
-  CreateTable(az_list, 1 /* num_replicas */, false /* setup_placement */, table.get(), &tablets);
+  std::vector<TabletInfoPtr> tablets;
+  ASSERT_OK(CreateTable(
+      az_list, 1 /* num_replicas */, false /* setup_placement */, table.get(), &tablets));
 
   SimulateSetLeaderReplicas(tablets, {2, 1, 1, 0, 0} /* leader_counts */, ts_descs);
 
@@ -560,8 +562,9 @@ TEST(TestCatalogManagerEnterprise, TestLeaderLoadBalancedReadOnly) {
 
   scoped_refptr<TableInfo> table(
       new TableInfo(CURRENT_TEST_NAME() /* table_id */, false /* colocated */));
-  std::vector<scoped_refptr<TabletInfo>> tablets;
-  CreateTable(az_list, 1 /* num_replicas */, false /* setup_placement */, table.get(), &tablets);
+  std::vector<TabletInfoPtr> tablets;
+  ASSERT_OK(CreateTable(
+      az_list, 1 /* num_replicas */, false /* setup_placement */, table.get(), &tablets));
 
   SimulateSetLeaderReplicas(tablets, {2, 1, 1, 0} /* leader_counts */, ts_descs);
 

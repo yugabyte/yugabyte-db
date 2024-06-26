@@ -2,7 +2,7 @@
 title: ybm CLI command reference
 headerTitle: Reference
 linkTitle: Reference
-description: YugabyteDB Managed CLI resource and command reference.
+description: YugabyteDB Aeon CLI resource and command reference.
 headcontent: ybm syntax and commands
 menu:
   preview_yugabyte-cloud:
@@ -90,14 +90,14 @@ Use the following commands to configure ybm:
 | :--- | :--- |
 | [auth](managed-cli-auth/) | Write API key to a configuration file. |
 | [completion](../managed-cli-overview/#autocompletion) | Configure autocompletion for Bash, Fish, PowerShell, and Zsh |
-| [signup](../managed-cli-overview/#install-ybm) | Navigate to the YugabyteDB Managed signup page. |
+| [signup](../managed-cli-overview/#install-ybm) | Navigate to the YugabyteDB Aeon sign up page. |
 
 ### Global flags
 
 The following flags can be passed in with any command. These flags can also be added to your configuration file (see [Configure ybm](../managed-cli-overview/#configure-ybm)).
 
 -a, --apiKey string
-: YugabyteDB Managed account API Key.
+: YugabyteDB Aeon account API Key.
 
 --config string
 : Configuration file (default is `$HOME/.ybm-cli.yaml`).
@@ -107,7 +107,7 @@ The following flags can be passed in with any command. These flags can also be a
 
 <!--
 --host string
-: Host address of YugabyteDB Managed (this should always be cloud.yugabyte.com). -->
+: Host address of YugabyteDB Aeon (this should always be cloud.yugabyte.com). -->
 
 -l, --logLevel string
 : Specify the desired level of logging. `debug` or `info` (default).

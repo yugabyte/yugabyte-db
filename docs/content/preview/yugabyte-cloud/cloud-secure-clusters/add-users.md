@@ -1,7 +1,7 @@
 ---
 title: Add database users
 linkTitle: Add database users
-description: Add users to YugabyteDB Managed clusters
+description: Add users to YugabyteDB Aeon clusters
 headcontent: Grant team members and applications access to your database
 menu:
   preview_yugabyte-cloud:
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-When you create a cluster in YugabyteDB Managed, you set up the database admin credentials, which you use to access the YugabyteDB database installed on your cluster. Use this account to:
+When you create a cluster in YugabyteDB Aeon, you set up the database admin credentials, which you use to access the YugabyteDB database installed on your cluster. Use this account to:
 
 - add more database users
 - assign privileges to users
@@ -63,7 +63,7 @@ yugabyte=# GRANT <rolename> TO <username>;
 ```
 
 {{< note title="Note" >}}
-You can't create YSQL superusers in YugabyteDB Managed. To create another database administrator, grant the `yb_superuser` role. Refer to [Database authorization in YugabyteDB Managed clusters](../cloud-users/).
+You can't create YSQL superusers in YugabyteDB Aeon. To create another database administrator, grant the `yb_superuser` role. Refer to [Database authorization in YugabyteDB Aeon clusters](../cloud-users/).
 {{< /note >}}
 
 #### YCQL
@@ -99,7 +99,7 @@ cassandra@ycqlsh> ALTER ROLE <username> WITH PASSWORD = 'new-password';
 ## Learn more
 
 - [Manage users and roles in YugabyteDB](../../../secure/authorization/create-roles/)
-- [Database authorization in YugabyteDB Managed clusters](../cloud-users/)
+- [Database authorization in YugabyteDB Aeon clusters](../cloud-users/)
 
 ## Next steps
 

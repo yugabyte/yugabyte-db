@@ -123,6 +123,10 @@ class StreamMetadata {
     SharedLock l(table_ids_mutex_);
     return replica_identitity_map_;
   }
+  std::optional<std::string> GetReplicationSlotName() const {
+    DCHECK(loaded_);
+    return replication_slot_name_;
+  }
 
 
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
@@ -150,6 +154,7 @@ class StreamMetadata {
   std::atomic<StreamModeTransactional> transactional_{StreamModeTransactional::kFalse};
   std::atomic<std::optional<uint64_t>> consistent_snapshot_time_;
   std::atomic<std::optional<uint64_t>> stream_creation_time_;
+  std::optional<std::string> replication_slot_name_;
 
   std::mutex load_mutex_;  // Used to ensure only a single thread performs InitOrReload.
   std::atomic<bool> loaded_ = false;

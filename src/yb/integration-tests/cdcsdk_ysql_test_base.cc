@@ -2246,7 +2246,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(checkpoint_type));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -3854,6 +3854,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         break;
       case RowMessage::COMMIT:
         record_count[7]++;
+        break;
+      case RowMessage::SAFEPOINT:
         break;
       default:
         ASSERT_FALSE(true);

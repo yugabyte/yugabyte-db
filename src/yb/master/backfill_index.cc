@@ -820,13 +820,13 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
   // the time that was picked on the source side. Since the table is created on the source universe
   // before the target this is always guaranteed to be true.
 
-  auto tablets = indexed_table_->GetTablets();
+  auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   auto min_cutoff = master()->clock()->Now();
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     auto get_safetime =
-        std::make_shared<GetSafeTimeForTablet>(shared_from_this(), tablet, min_cutoff, epoch());
+      std::make_shared<GetSafeTimeForTablet>(shared_from_this(), tablet, min_cutoff, epoch());
     RETURN_NOT_OK(get_safetime->Launch());
   }
   return Status::OK();
@@ -974,13 +974,6 @@ Status BackfillTable::DoLaunchBackfill() {
 }
 
 Status BackfillTable::DoBackfill() {
-  // There's a use-after-free bug here. Exposed by using the flag FLAGS_TEST_block_do_backfill to do
-  // a PITR when a backfill is in progress. The issue is catalog reload frees all tablets, but
-  // TableInfo has raw pointers to TabletInfos.  For now, this GetTablets call must be above the
-  // wait loop to ensure we bump the ref count of the backing tablets before the catalog reload so
-  // the TabletInfo objects aren't freed.
-  // todo: https://github.com/yugabyte/yugabyte-db/issues/18257
-  auto tablets = indexed_table_->GetTablets();
   while (FLAGS_TEST_block_do_backfill) {
     constexpr auto kSpinWait = 100ms;
     LOG(INFO) << Format("Blocking $0 for $1", __func__, kSpinWait);
@@ -990,11 +983,11 @@ Status BackfillTable::DoBackfill() {
     std::lock_guard l(mutex_);
     VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill_;
   }
-
+  auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto backfill_tablet = std::make_shared<BackfillTablet>(shared_from_this(), tablet);
+  for (auto& tablet : tablets) {
+    auto backfill_tablet = std::make_shared<BackfillTablet>(shared_from_this(), std::move(tablet));
     RETURN_NOT_OK(backfill_tablet->Launch());
   }
   return Status::OK();
@@ -1161,10 +1154,8 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 }
 
 Status BackfillTable::ClearCheckpointStateInTablets() {
-  auto tablets = indexed_table_->GetTablets();
-  std::vector<TabletInfo*> tablet_ptrs;
-  for (scoped_refptr<TabletInfo>& tablet : tablets) {
-    tablet_ptrs.push_back(tablet.get());
+  auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
+  for (const auto& tablet : tablets) {
     tablet->mutable_metadata()->StartMutation();
     auto& pb = tablet->mutable_metadata()->mutable_dirty()->pb;
     for (const auto& idx : requested_index_ids_) {
@@ -1172,9 +1163,9 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
     }
   }
   RETURN_NOT_OK_PREPEND(
-      master()->catalog_manager()->sys_catalog()->Upsert(epoch_, tablet_ptrs),
+      master()->catalog_manager()->sys_catalog()->Upsert(epoch_, tablets),
       "Could not persist that the table is done backfilling.");
-  for (scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     VLOG(2) << "Done backfilling the table. " << yb::ToString(tablet)
             << " clearing backfilled_until";
     tablet->mutable_metadata()->CommitMutation();
@@ -1275,17 +1266,17 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
 }
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
-    const scoped_refptr<TableInfo> &table) {
-  auto tablets = table->GetTablets();
+    const scoped_refptr<TableInfo>& table) {
+  auto tablets = VERIFY_RESULT(table->GetTablets());
 
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(tablet, table->id()));
   }
   return Status::OK();
 }
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
-    const scoped_refptr<TabletInfo> &tablet, const std::string &table_id) {
+    const TabletInfoPtr& tablet, const std::string& table_id) {
   auto call =
       std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet, table_id, epoch_);
   tablet->table()->AddTask(call);
@@ -1299,7 +1290,7 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
 // BackfillTablet
 // -----------------------------------------------------------------------------------------------
 BackfillTablet::BackfillTablet(
-    std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet)
+    std::shared_ptr<BackfillTable> backfill_table, TabletInfoPtr&& tablet)
     : backfill_table_(backfill_table), tablet_(tablet) {
   const auto& index_ids = backfill_table->indexes_to_build();
   {
@@ -1507,7 +1498,7 @@ Status BackfillChunk::Launch() {
   RETURN_NOT_OK_PREPEND(
       status, Substitute(
                   "Failed to send backfill Chunk request for $0",
-                  backfill_tablet_->tablet().get()->ToString()));
+                  backfill_tablet_->tablet()->ToString()));
 
   // Need to print this after Run() because that's where it picks the TS which description()
   // needs.

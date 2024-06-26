@@ -62,8 +62,8 @@ The following table shows the target database support for each migration type.
 
 | Migration type | Supported YugabyteDB Versions | Supported products |
 | :------------- | :--------------------------- | ------------------ |
-| Offline | {{<release "2.18.5.0">}} or later <br> {{<release "2.20.1.0">}} or later <br> {{<release "2.21.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live | {{<release "2.18.7.0">}} or later <br> {{<release "2.20.3.0">}} or later <br>{{<release "2.21.1.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
+| Offline | {{<release "2.18.5.0">}} or later <br> {{<release "2.20.1.0">}} or later <br> {{<release "2.21.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
+| Live | {{<release "2.18.7.0">}} or later <br> {{<release "2.20.3.0">}} or later <br>{{<release "2.21.1.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
 | Live with fall-forward/fall-back | {{<release "2.18.8.0">}} or later <br> {{<release "2.20.4.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
 
 ## Learn more

@@ -74,7 +74,7 @@ public class XClusterAddNamespaceToOutboundReplicationGroup extends XClusterConf
       if (createResponse.hasError()) {
         throw new RuntimeException(
             String.format(
-                "AddNamespaceToOutboundReplicationGroup rpc failed with error: %s",
+                "XClusterAddNamespaceToOutboundReplicationGroup rpc failed with error: %s",
                 createResponse.errorMessage()));
       }
 

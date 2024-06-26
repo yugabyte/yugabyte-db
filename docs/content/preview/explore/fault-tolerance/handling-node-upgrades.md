@@ -64,7 +64,7 @@ To take a node offline locally, you can just stop the node.
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -108,7 +108,7 @@ To simulate bringing back a node online locally, you can just start the stopped 
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To restart a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To restart a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}

@@ -2480,12 +2480,12 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replication_commands,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
 	{
-		{"TEST_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"yb_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable consumption of changes via replication slots. "
 						 "This feature is currently in active development and "
 						 "should not be enabled."),
@@ -2493,7 +2493,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE,
 		},
 		&yb_enable_replication_slot_consumption,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2504,7 +2504,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replica_identity,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

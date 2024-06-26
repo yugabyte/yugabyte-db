@@ -535,7 +535,7 @@ ERROR:  duplicate key value violates unique constraint "koju_a_key"
 	CREATE TABLE koju (a INT UNIQUE);
 \set VERBOSITY terse \\ -- YB: suppress "expired or aborted by a conflict" message because it prints a file line number
 	INSERT INTO koju VALUES (1); -- YB: TODO(#22949): fix output
-ERROR:  current transaction is expired or aborted
+ERROR:  current transaction is expired or aborted (query layer retry isn't possible, READ COMMITTED transaction was aborted  and some data was already sent to the user)
 \set VERBOSITY default \\ -- YB
 	INSERT INTO koju VALUES (1);
 ERROR:  current transaction is aborted, commands ignored until end of transaction block

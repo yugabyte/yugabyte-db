@@ -1680,6 +1680,44 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Removes the namespace from the outbound replication group.
+   *
+   * @param replicationGroupId name of the replication group
+   * @param namespaceId namespace id to add to the replication group
+   * @return A deferred object that yields a {@link
+   *     XClusterRemoveNamespaceFromOutboundReplicationGroupResponse}
+   */
+  public Deferred<XClusterRemoveNamespaceFromOutboundReplicationGroupResponse>
+      xClusterRemoveNamespaceFromOutboundReplicationGroup(
+          String replicationGroupId, String namespaceId) {
+    checkIsClosed();
+    XClusterRemoveNamespaceFromOutboundReplicationGroupRequest request =
+        new XClusterRemoveNamespaceFromOutboundReplicationGroupRequest(
+            this.masterTable, replicationGroupId, namespaceId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+   /**
+   * Used to remove namespace from replication group on ther target.
+   *
+   * @param replicationGroupId name of the replication group
+   * @param namespaceId namespace id to add to the replication group
+   * @return A deferred object that yields a {@link
+   *     AlterUniverseReplicationResponse}
+   */
+  public Deferred<AlterUniverseReplicationResponse>
+      alterUniverseReplicationRemoveNamespace(
+          String replicationGroupId, String namespaceId) {
+    checkIsClosed();
+    AlterUniverseReplicationRequest request =
+        new AlterUniverseReplicationRequest(
+            this.masterTable, replicationGroupId, namespaceId);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * Adds the namespace to the xcluster replication.
    *
    * @param replicationGroupId name of the replication group

@@ -51,9 +51,9 @@ The [YugabyteDB PGX smart driver](https://pkg.go.dev/github.com/yugabyte/pgx) is
 
 The driver makes an initial connection to the first contact point provided by the application to discover all the nodes in the cluster. If the driver discovers stale information (by default, older than 5 minutes), it refreshes the list of live endpoints with every new connection attempt.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 
@@ -178,7 +178,7 @@ The hosts are only used during the initial connection attempt. If the first host
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -383,10 +383,10 @@ func printAZInfo() {
 }
 ```
 
-The **const** values are set to the defaults for a local installation of YugabyteDB. If you're using YugabyteDB Managed, replace the values as follows:
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you're using YugabyteDB Aeon, replace the values as follows:
 
 - **host** - The host address of your cluster. The host address is displayed on the cluster **Settings** tab.
-- **user** - Your YugabyteDB database username. In YugabyteDB Managed, the default user is **admin**.
+- **user** - Your YugabyteDB database username. In YugabyteDB Aeon, the default user is **admin**.
 - **password** - Your YugabyteDB database password.
 - **dbname** - The name of the YugabyteDB database. The default name is **yugabyte**.
 - **port** is set to 5433, which is the default port for the YSQL API.
@@ -629,7 +629,7 @@ func printAZInfo() {
 }
 ```
 
-The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Managed, replace the **const** values in the file as mentioned in [pgx.Connect()](#step-3-write-your-application-with-pgx-connect).
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Aeon, replace the **const** values in the file as mentioned in [pgx.Connect()](#step-3-write-your-application-with-pgx-connect).
 
 ## Run the application
 

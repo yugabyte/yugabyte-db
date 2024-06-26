@@ -23,66 +23,83 @@ namespace {
 const char* const kSortAndFilterTableScript = R"(
 <script>
 function castIfNumber(elem) {
- return elem.length ?
-          (elem.length > 14 || isNaN(Number(elem)) ?
-            elem.toLowerCase() :
-            Number(elem)) :
-          "~";
+  const byte_units = "BKMGTPE";
+
+  // Put empty strings at end of number column.
+  if (!elem.length) {
+    return Infinity;
+  }
+
+  if (elem.length <= 15) {
+    const num = Number(elem);
+    if (!isNaN(num)) {
+      return num;
+    }
+
+    // Sorting for HumanReadableNumBytes::ToString.
+    const byte_unit = byte_units.indexOf(elem[elem.length - 1]);
+    if (byte_unit !== -1) {
+      const byte_num = Number(elem.substring(0, elem.length - 1));
+      if (!isNaN(byte_num)) {
+        return byte_num * Math.pow(2, 10 * byte_unit);
+      }
+    }
+  }
+
+  return elem;
+}
+
+function normalizeString(elem) {
+  return elem.toLowerCase();
 }
 
 function sortTable(table_id, n) {
-  var asc_symb = ' <span style="color: grey">\u25B2</span>';
-  var desc_symb = ' <span style="color: grey">\u25BC</span>';
-  var i, swapCount = 0;
-  var table = document.getElementById(table_id);
+  const asc_symb = ' <span style="color: grey">\u25B2</span>';
+  const desc_symb = ' <span style="color: grey">\u25BC</span>';
+  const table = document.getElementById(table_id);
   if (table.rows.length < 3) {
     return;
   }
-  var switching = true;
-  var asc = true;
-  if (table.rows[0].getElementsByTagName("TH")[n].innerHTML.includes(asc_symb)) {
-    asc = false;
-  }
 
-  for(var j = 0; j < table.rows[0].getElementsByTagName("TH").length; j++) {
-   table.rows[0].getElementsByTagName("TH")[j].innerHTML =
-    table.rows[0].getElementsByTagName("TH")[j].innerHTML.replace(asc_symb, "").replace(desc_symb,
-      "");
+  const tbody = table.tBodies[0];
+  const rows = new Array(...tbody.children);
+  const header_row = rows.shift();
+
+  const asc = !header_row.getElementsByTagName("TH")[n].innerHTML.includes(asc_symb);
+
+  for (let j = 0; j < header_row.children.length; ++j) {
+    const header = header_row.children[j];
+    let contents = header.innerHTML;
+    contents = contents.replace(asc_symb, "").replace(desc_symb, "");
     if (j == n) {
       sort_symb = asc ? asc_symb : desc_symb;
-      table.rows[0].getElementsByTagName("TH")[j].innerHTML =
-        table.rows[0].getElementsByTagName("TH")[j].innerHTML.concat(sort_symb);
+      contents += sort_symb;
     }
+    header.innerHTML = contents;
   }
 
-  while (switching) {
-    switching = false;
-    // Ignore header row.
-    for (i = 1; i < (table.rows.length - 1); i++) {
-      var swap = false;
-      var x = table.rows[i].getElementsByTagName("TD")[n];
-      var y = table.rows[i + 1].getElementsByTagName("TD")[n];
-      var cmpX = castIfNumber(x.innerHTML);
-      var cmpY = castIfNumber(y.innerHTML);
-
-      if (asc) {
-        if (cmpX > cmpY) {
-          swap= true;
-          break;
-        }
-      } else {
-        if (cmpX < cmpY) {
-          swap = true;
-          break;
-        }
-      }
-    }
-
-    if (swap) {
-      table.rows[i].parentNode.insertBefore(table.rows[i + 1], table.rows[i]);
-      switching = true;
-    }
+  let all_number = true;
+  for (const row of rows) {
+    all_number = all_number && typeof castIfNumber(row.children[n].innerText) == 'number';
   }
+
+  if (all_number) {
+    rows.sort((x, y) => {
+      const cmpX = castIfNumber(x.children[n].innerText);
+      const cmpY = castIfNumber(y.children[n].innerText);
+
+      return asc ? cmpX - cmpY : cmpY - cmpX;
+    });
+  } else {
+    rows.sort((x, y) => {
+      const cmpX = normalizeString(x.children[n].innerText);
+      const cmpY = normalizeString(y.children[n].innerText);
+
+      return (asc ? 1 : -1) * cmpX.localeCompare(cmpY);
+    });
+  }
+
+  tbody.replaceChildren(header_row, ...rows);
 }
 
 function filterTableFunction(input_id, table_id) {

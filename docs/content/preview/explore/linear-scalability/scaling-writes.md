@@ -36,7 +36,7 @@ If multiple rows have to be fetched and are located in different tablets, variou
 
 ## Sysbench workload
 
-The following shows how writes scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic inserts. The cluster consisted of m6i.4xlarge instances and had 1024 connections. All requests had a latency of less than 10ms.
+The following shows how writes scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic inserts. The cluster consisted of {{<inst "m6i.4xlarge">}} instances and had 1024 connections. All requests had a latency of less than 10ms.
 
 ![Scaling with Sysbench](/images/explore/scalability/scaling-writes-sysbench.png)
 

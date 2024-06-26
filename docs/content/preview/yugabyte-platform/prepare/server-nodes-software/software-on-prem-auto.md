@@ -39,7 +39,7 @@ For instructions on preparing nodes for on-premises configurations in v2.20 and 
   </li>
 </ul>
 
-When YBA has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
+When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
 
 ## With Internet or Yum connectivity
 

@@ -18,7 +18,7 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 ## Review major changes in previous YugabyteDB releases
 
-{{< warning title="For YugabyteDB upgrades in YBA" >}}
+{{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
 You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
 {{< /warning >}}
 
@@ -26,7 +26,7 @@ Before starting the upgrade, review the following major changes in previous Yuga
 
 ### Upgrading from versions earlier than v2.16.0
 
-The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for YBA 2.16.0 and later.
+The YB Controller (YBC) service was introduced in v2.16.0 for all universes (except Kubernetes), and is required for YugabyteDB Anywhere v2.16.0 and later.
 
 YBC is used to manage backup and restore, providing faster full backups, and introduces support for incremental backups.
 
@@ -48,7 +48,7 @@ YBC was introduced for Kubernetes clusters in v2.18.0. Refer to [Upgrading from 
 
 ### Upgrading from versions earlier than v2.18.2
 
-The Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YBA and the nodes in universes. Except for Day 0 tasks during initial installation, YBA no longer uses SSH and SCP to manage nodes; instead, YBA connects to the Node agent process listening on port 9070, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](../../../faq/yugabyte-platform/#node-agent).
+The Node Agent was introduced for all universes in v2.18.2. Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the nodes in universes. Except for Day 0 tasks during initial installation, YugabyteDB Anywhere no longer uses SSH and SCP to manage nodes; instead, YugabyteDB Anywhere connects to the Node agent process listening on port 9070, and performs all its management via this secure connection. For more information, refer to the [Node agent FAQ](../../../faq/yugabyte-platform/#node-agent).
 
 **Impacts**
 

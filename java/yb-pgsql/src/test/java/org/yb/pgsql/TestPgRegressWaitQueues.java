@@ -13,7 +13,6 @@
 
 package org.yb.pgsql;
 
-import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
