@@ -23,7 +23,7 @@ YugabyteDB Anywhere can create and manage new self-signed certificates for encry
 
 You can enable encryption in transit (TLS) during universe creation and change these settings for an existing universe.
 
-Enabling encryption-in-transit requires the following steps:
+Enabling encryption in transit requires the following steps:
 
 1. If you are using a certificate that you provide, add your self- or CA-signed certificate to YugabyteDB Anywhere.
 1. Enable encryption in transit on your universe. You can do this when creating the universe and on an existing universe.

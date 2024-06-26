@@ -40,13 +40,13 @@ type: indexpage
     icon="/images/section_icons/secure/authorization.png">}}
 
   {{<index/item
-    title="Enable encryption in transit (TLS)"
-    body="Enable encryption in transit using TLS to secure data in transit."
+    title="Encryption in transit (TLS)"
+    body="Use encryption in transit to secure data in transit."
     href="enable-encryption-in-transit/"
     icon="/images/section_icons/secure/tls-encryption.png">}}
 
   {{<index/item
-    title="Enable encryption at rest"
+    title="Encryption at rest"
     body="Enable encryption at rest to protect data in storage."
     href="enable-encryption-at-rest/"
     icon="/images/section_icons/secure/tls-encryption.png">}}

@@ -71,8 +71,8 @@ Complete the **Security Configurations** section as follows:
 - **Enable YSQL Auth** - specify whether or not to enable the YSQL password authentication.
 - **Enable YCQL** - specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
 - **Enable YCQL Auth** - specify whether or not to enable the YCQL password authentication.
-- **Enable Node-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
-- **Enable Client-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
+- **Enable Node-to-Node TLS** - specify whether or not to enable encryption in transit for communication between the database servers. This setting is enabled by default.
+- **Enable Client-to-Node TLS** - specify whether or not to enable encryption in transit for communication between clients and the database servers. This setting is enabled by default.
 - **Root Certificate** - select an existing security certificate or create a new one.
 - **Enable Encryption at Rest** - specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
 

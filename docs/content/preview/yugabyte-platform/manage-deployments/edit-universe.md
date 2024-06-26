@@ -40,7 +40,7 @@ YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../
 
 Note that you can't change the replication factor of a universe.
 
-To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, follow the instructions in [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
+To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/).
 
 ### Smart resize
 
