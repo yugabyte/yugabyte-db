@@ -2,8 +2,11 @@
 .npmignore
 README.md
 package.json
+src/apis/BackupInfoApi.ts
 src/apis/ClusterApi.ts
 src/apis/ClusterInfoApi.ts
+src/apis/PitrInfoApi.ts
+src/apis/RestoreInfoApi.ts
 src/apis/VoyagerInfoApi.ts
 src/apis/VoyagerMetricsApi.ts
 src/apis/index.ts
@@ -45,6 +48,9 @@ src/models/GflagsInfo.ts
 src/models/HealthCheckInfo.ts
 src/models/HealthCheckResponse.ts
 src/models/IndividualMigrationTaskInfo.ts
+src/models/InlineResponse200.ts
+src/models/InlineResponse2001.ts
+src/models/InlineResponse2002.ts
 src/models/IsLoadBalancerIdle.ts
 src/models/LiveQueryResponseData.ts
 src/models/LiveQueryResponseSchema.ts
