@@ -82,6 +82,7 @@ DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
+DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
 
 namespace yb {
 namespace master {
@@ -294,6 +295,31 @@ void CatalogManagerBgTasks::Run() {
         } else {
           LOG(INFO) << "Skipping processing of dynamic table addition due to "
                        "cdcsdk_skip_processing_dynamic_table_addition being true";
+        }
+      }
+
+      {
+        if (FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) {
+          // Find if there are any non eligible tables (indexes, mat views) present in cdcsdk
+          // stream that are not associated with a replication slot.
+          TableStreamIdsMap non_user_tables_to_streams_map;
+          // In case of master leader restart or leadership changes, we would have scanned all
+          // streams (without replication slot) in ACTIVE/DELETING METADATA state for non eligible
+          // tables and marked such tables for removal in
+          // namespace_to_cdcsdk_non_eligible_table_map_.
+          Status s = catalog_manager_->FindCDCSDKStreamsForNonEligibleTables(
+              &non_user_tables_to_streams_map);
+
+          if (s.ok() && !non_user_tables_to_streams_map.empty()) {
+            s = catalog_manager_->RemoveNonEligibleTablesFromCDCSDKStreams(
+                non_user_tables_to_streams_map, l.epoch());
+          }
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to remove non eligible "
+                   "tables from cdc_state table: "
+                << s.ToString();
+          }
         }
       }
 

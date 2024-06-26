@@ -4063,7 +4063,7 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   req.set_stream_id(stream_id);
 
   RpcController rpc;
-  rpc.set_timeout(timeout_);
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
   RETURN_NOT_OK(
       master_replication_proxy_->ValidateAndSyncCDCStateEntriesForCDCSDKStream(req, &resp, &rpc));
 
