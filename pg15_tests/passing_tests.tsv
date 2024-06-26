@@ -64,6 +64,7 @@ JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
 JAVA	org.yb.pgsql.TestPgRegressHashIndex
 JAVA	org.yb.pgsql.TestPgRegressJson
+JAVA	org.yb.pgsql.TestPgRegressLegacyColocation
 JAVA	org.yb.pgsql.TestPgRegressMatview
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy

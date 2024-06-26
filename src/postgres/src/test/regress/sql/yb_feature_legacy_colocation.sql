@@ -300,4 +300,4 @@ SELECT num_tablets, num_hash_key_columns, is_colocated FROM
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;
-\c colocation_test
+SELECT count(*) FROM pg_database WHERE datname = 'colocation_test';
