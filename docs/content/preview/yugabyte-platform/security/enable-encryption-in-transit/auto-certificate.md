@@ -32,7 +32,7 @@ YugabyteDB Anywhere retains the root certificate and the root private key for al
 
 To view the certificate details, navigate to **Configs > Security > Encryption in Transit** and click **Show details**.
 
-### Customize the organization name in self-signed certificates
+## Customize the organization name in self-signed certificates
 
 YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
 
@@ -49,7 +49,7 @@ Customize the organization name as follows:
 
 1. Click **Actions** > **Edit Configuration**, enter a new Config Value, and click **Save**.
 
-### Validate custom organization name
+## Validate custom organization name
 
 You can verify the organization name by running the following `openssl x509` command:
 

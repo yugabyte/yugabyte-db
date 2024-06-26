@@ -1,5 +1,5 @@
 ---
-title: Enable encryption in transit
+title: Encryption in transit in YugabyteDB Anywhere
 headerTitle: Encryption in transit
 linkTitle: Encryption in transit
 description: Use encryption in transit (TLS) to secure data traffic.
@@ -23,7 +23,30 @@ YugabyteDB Anywhere can create and manage new self-signed certificates for encry
 
 You can enable encryption in transit (TLS) during universe creation and change these settings for an existing universe.
 
-Enabling encryption in transit requires the following steps:
+{{<index/block>}}
 
-1. If you are using a certificate that you provide, add your self- or CA-signed certificate to YugabyteDB Anywhere. Refer to [Add certificates](./add-certificate-self/).
-1. Enable encryption in transit on your universe. You can do this when creating the universe and on an existing universe. Refer to [Create a universe](../../create-deployments/create-universe-multi-zone/).
+  {{<index/item
+    title="Auto-generated certificates"
+    body="YugabyteDB Anywhere can create and manage universe certificates."
+    href="auto-certificate/"
+    icon="fa-thin fa-certificate">}}
+
+  {{<index/item
+    title="Add certificates"
+    body="Upload your own certificates to secure data transfer on your universes."
+    href="add-certificate-ca/"
+    icon="fa-thin fa-file-certificate">}}
+
+  {{<index/item
+    title="Rotate certificates"
+    body="Update the certificates on universes when they expire."
+    href="rotate-certificates/"
+    icon="fa-thin fa-rotate">}}
+
+  {{<index/item
+    title="Trust Store"
+    body="Add certificates to the YugabyteDB Anywhere trust store for connecting from services such as LDAP, OIDC, Webhook, S3 backup storage, and Hashicorp Vault."
+    href="trust-store/"
+    icon="fa-thin fa-shop-lock">}}
+
+{{</index/block>}}
