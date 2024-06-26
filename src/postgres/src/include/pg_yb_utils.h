@@ -1143,4 +1143,8 @@ static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
 
 extern Oid YbGetSQLIncrementCatalogVersionsFunctionOid();
 
+extern bool YbIsReadCommittedTxn();
+
+extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
+
 #endif /* PG_YB_UTILS_H */

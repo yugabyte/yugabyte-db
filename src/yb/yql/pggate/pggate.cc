@@ -2328,20 +2328,20 @@ Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
       max_key_length);
 }
 
-uint64_t PgApiImpl::GetReadTimeSerialNo() {
+uint64_t PgApiImpl::GetReadTimeSerialNo() const {
   return pg_txn_manager_->GetReadTimeSerialNo();
 }
 
-uint64_t PgApiImpl::GetTxnSerialNo() {
+uint64_t PgApiImpl::GetTxnSerialNo() const {
   return pg_txn_manager_->GetTxnSerialNo();
 }
 
-SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
+SubTransactionId PgApiImpl::GetActiveSubTransactionId() const {
   return pg_txn_manager_->GetActiveSubTransactionId();
 }
 
-void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
-  pg_txn_manager_->RestoreSessionParallelData(session_data);
+void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData& data) {
+  pg_txn_manager_->RestoreSessionParallelData(data);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2426,6 +2426,15 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistor
 
 Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
   return pg_session_->TabletsMetadata();
+}
+
+uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
+  return pg_txn_manager_->GetCurrentReadTimePoint();
+}
+
+Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
 }
 
 } // namespace pggate

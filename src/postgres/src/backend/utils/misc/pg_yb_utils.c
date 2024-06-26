@@ -95,6 +95,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
@@ -3157,7 +3158,7 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	 *
 	 * For YB backup, if an error is thrown from a PG backend, ysql_dump will
 	 * exit, generate an empty YSQLDUMP file, and block YB backup workflow.
-	 * Currently, we don't have the functionality to adjust options used for 
+	 * Currently, we don't have the functionality to adjust options used for
 	 * ysql_dump on YBA and YBM, so we don't have a way to to turn on/off
 	 * a backup-related feature used in ysql_dump.
 	 * There are known cases which caused decoding of split points to fail in
@@ -4850,7 +4851,7 @@ Relation
 YbGetRelationWithOverwrittenReplicaIdentity(Oid relid, char replident)
 {
 	Relation relation;
-	
+
 	relation = RelationIdGetRelation(relid);
 	if (!RelationIsValid(relation))
 		elog(ERROR, "could not open relation with OID %u", relid);
@@ -4882,4 +4883,18 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
 						&microsecs);
 	return secs * USECS_PER_SEC + microsecs;
+}
+
+bool YbIsReadCommittedTxn()
+{
+	return IsYBReadCommitted() &&
+		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
+}
+
+YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
+{
+	return YbIsReadCommittedTxn()
+		? (YbReadTimePointHandle){
+			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
+		: (YbReadTimePointHandle){};
 }
