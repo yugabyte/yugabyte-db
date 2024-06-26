@@ -1176,7 +1176,7 @@ ConnectionStatsItem:
     queued_logical_connections:
       type: integer
       format: int64
-    idle_or_pending_logical_connections:
+    waiting_logical_connections:
       type: integer
       format: int64
     active_physical_connections:
@@ -1197,7 +1197,7 @@ ConnectionStatsItem:
   required:
     - active_logical_connections
     - queued_logical_connections
-    - idle_or_pending_logical_connections
+    - waiting_logical_connections
     - active_physical_connections
     - idle_physical_connections
     - avg_wait_time_ns

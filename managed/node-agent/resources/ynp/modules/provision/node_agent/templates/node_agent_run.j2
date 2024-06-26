@@ -1,0 +1,13 @@
+# Call out the node_agent installer script with the desired parameters
+
+{% if is_airgap == 'True' %}
+airgap_flag="--airgap"
+{% else %}
+airgap_flag=""
+{% endif %}
+
+installer_dir="{{ ynp_dir }}/../../bin"
+su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install -u {{ url }} -t {{ api_key }} --provider_id {{ provider_id }}  --instance_type {{ instance_type_name }} --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} --node_ip {{ node_ip }} --silent --skip_verify_cert $airgap_flag"
+
+# install node_agent service
+"$installer_dir/node-agent-installer.sh" -c install_service --user yugabyte

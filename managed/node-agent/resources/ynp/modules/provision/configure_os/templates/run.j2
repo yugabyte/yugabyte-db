@@ -8,6 +8,13 @@ if ! grep -qP "^\*\s+-\s+{{ key }}\s+{{ value }}$" /etc/security/limits.conf; th
 fi
 {% endfor %}
 
+if test ! -f /etc/security/limits.d/20-nproc.conf; then
+  touch /etc/security/limits.d/20-nproc.conf
+  echo "File /etc/security/limits.d/20-nproc.conf created."
+else
+  echo "File /etc/security/limits.d/20-nproc.conf already exists."
+fi
+
 sed -i 's/*          soft    nproc     4096/*          soft    nproc     \
 {{ nproc_limit }}/' /etc/security/limits.d/20-nproc.conf
 
@@ -77,9 +84,18 @@ volumes=$(lsblk -lnpo NAME,MOUNTPOINT | awk '$2 == "" {print $1}' | grep -vE 'NA
 # Prepare and mount each volume
 index=1
 for volume in $volumes; do
-  mount_point="/d${index}"
+  if [[ $volume =~ /dev/nvme[0-9]n[0-9]p[0-9]+ ]]; then
+    echo "Skipping volume $volume"
+    continue
+  fi
+  mount_point="/mnt/d${index}"
 
   mkdir -p ${mount_point}
+
+  if mount | grep -qE "^${volume}|^${volume}[0-9]"; then
+    echo "${volume} or one of its partitions is currently mounted. Skipping..."
+    continue
+  fi
 
   # Check if filesystem already exists
   if ! blkid ${volume} | grep -q "TYPE=\"xfs\""; then

@@ -244,40 +244,48 @@ uint16_t GetPostgresPort() {
   return postgres_address.port();
 }
 
-void PostgresAndYsqlConnMgrPortValidator() {
+bool PostgresAndYsqlConnMgrPortValidator(const char* flag_name, uint32 value) {
+  // This validation depends on the value of other flag(s): enable_ysql_conn_mgr,
+  // pgsql_proxy_bind_address.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
   if (!FLAGS_enable_ysql_conn_mgr) {
-    return;
+    return true;
   }
   const auto pg_port = GetPostgresPort();
-  if (FLAGS_ysql_conn_mgr_port == pg_port) {
+  if (value == pg_port) {
     if (pg_port != pgwrapper::PgProcessConf::kDefaultPort) {
-      LOG(FATAL) << "Postgres port (pgsql_proxy_bind_address: " << pg_port
-                 << ") and Ysql Connection Manager port (ysql_conn_mgr_port:"
-                 << FLAGS_ysql_conn_mgr_port << ") cannot be the same.";
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "Must be different from the Postgres port pgsql_proxy_bind_address (" << pg_port
+          << ")";
+      return false;
     } else {
       // Ignore. t-server will resolve the conflict in SetProxyAddresses.
     }
   }
+
+  return true;
 }
 
-// Normally we would have used DEFINE_validator. But this validation depends on the value of another
-// flag (pgsql_proxy_bind_address). On process startup flag validations are run as each flag
-// gets parsed from the command line parameter. So this would impose a restriction on the user to
-// pass the flags in a particular obscure order via command line. YBA has no guarantees on the order
-// it uses as well. So, instead we use a Callback with LOG(FATAL) since at startup Callbacks are run
-// after all the flags have been parsed.
-REGISTER_CALLBACK(ysql_conn_mgr_port, "PostgresAndYsqlConnMgrPortValidator",
-    &PostgresAndYsqlConnMgrPortValidator);
+DEFINE_validator(ysql_conn_mgr_port, &PostgresAndYsqlConnMgrPortValidator);
 
-void ValidateEnableYsqlConnMgr() {
-  if (FLAGS_enable_ysql_conn_mgr && !(FLAGS_start_pgsql_proxy || FLAGS_enable_ysql)) {
-    LOG(FATAL) << "Cannot start Ysql Connection Manager (YSQL is not enabled)";
-    return;
+bool ValidateEnableYsqlConnMgr(const char* flag_name, bool value) {
+  if (!value) {
+    return true;
   }
-  return;
+
+  // This validation depends on the value of other flag(s): start_pgsql_proxy, enable_ysql.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
+  if (!FLAGS_start_pgsql_proxy && !FLAGS_enable_ysql) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "YSQL must be enabled to start the YSQL connection manager.";
+    return false;
+  }
+  return true;
 }
 
-REGISTER_CALLBACK(enable_ysql_conn_mgr, "ValidateEnableYsqlConnMgr", &ValidateEnableYsqlConnMgr);
+DEFINE_validator(enable_ysql_conn_mgr, &ValidateEnableYsqlConnMgr);
 
 class CDCServiceContextImpl : public cdc::CDCServiceContext {
  public:

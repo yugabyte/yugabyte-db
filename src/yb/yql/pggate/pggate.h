@@ -241,10 +241,9 @@ class PgApiImpl {
   Status NewCreateDatabase(const char *database_name,
                            PgOid database_oid,
                            PgOid source_database_oid,
-                           const char *source_database_name,
                            PgOid next_oid,
                            const bool colocated,
-                           const int64_t clone_time,
+                           YbCloneInfo *yb_clone_info,
                            PgStatement **handle);
   Status ExecCreateDatabase(PgStatement *handle);
 

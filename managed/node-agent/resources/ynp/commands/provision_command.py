@@ -81,7 +81,9 @@ class ProvisionCommand(Command):
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
             logger.info(context)
             module_instance = module[0]()
-            all_templates[key] = module_instance.render_templates(context)
+            rendered_template = module_instance.render_templates(context)
+            if rendered_template is not None:
+                all_templates[key] = rendered_template
 
         precheck_combined_script = self._build_script(all_templates, "precheck")
         run_combined_script = self._build_script(all_templates, "run")
@@ -102,19 +104,25 @@ class ProvisionCommand(Command):
             logger.info(f"{package_name} is not installed.")
 
     def _validate_required_packages(self):
+        package_manager = None
         try:
             subprocess.run(['rpm', '--version'], check=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             package_manager = 'rpm'
-        except subprocess.CalledProcessError:
+        except FileNotFoundError:
             try:
                 subprocess.run(['dpkg', '--version'], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 package_manager = 'deb'
-            except subprocess.CalledProcessError:
-                logger.info("Unsupported package manager."
-                            "Cannot determine package installation status.")
+            except FileNotFoundError:
+                logger.info(
+                    "Unsupported package manager. Cannot determine package installation status.")
                 sys.exit(1)
+
+        if package_manager is None:
+            logger.info(
+                "Unsupported package manager. Cannot determine package installation status.")
+            sys.exit(1)
 
         packages = ['openssl', 'policycoreutils']
         for package in packages:

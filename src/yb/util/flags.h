@@ -170,4 +170,18 @@ FlagValidatorSink& GetFlagValidatorSink();
   LOG_TO_SINK(&yb::GetFlagValidatorSink(), ERROR) \
       << "Invalid value '" << value << "' for flag '" << flag_name << "': "
 
+// Returns true if the flag was recorded for delayed validation, and the validation can be skipped.
+bool RecordFlagForDelayedValidation(const std::string& flag_name);
+
+// Some flag validation may depend on the value of another flag. Flags are parsed, validated and set
+// in order they are passed in via the command line, or flags file. In order to not impose a
+// restriction on the user to pass the flags in a particular obscure order, this macro delays
+// the validation until all flags have been set.
+#define DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name) \
+  do { \
+    if (yb::RecordFlagForDelayedValidation(flag_name)) { \
+      return true; \
+    } \
+  } while (false)
+
 } // namespace yb

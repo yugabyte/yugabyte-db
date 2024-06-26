@@ -748,11 +748,11 @@ YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
 
 YBCStatus YBCPgNewCreateDatabase(
     const char* database_name, const YBCPgOid database_oid, const YBCPgOid source_database_oid,
-    const char* source_database_name, const YBCPgOid next_oid, const bool colocated,
-    const int64_t clone_time, YBCPgStatement* handle) {
+    const YBCPgOid next_oid, const bool colocated, YbCloneInfo *yb_clone_info,
+    YBCPgStatement* handle) {
   return ToYBCStatus(pgapi->NewCreateDatabase(
-      database_name, database_oid, source_database_oid, source_database_name, next_oid, colocated,
-      clone_time, handle));
+      database_name, database_oid, source_database_oid, next_oid, colocated,
+      yb_clone_info, handle));
 }
 
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {

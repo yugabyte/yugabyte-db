@@ -32,6 +32,10 @@ YugabyteDB Aeon is a fully managed YugabyteDB-as-a-Service that allows you to ru
 YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yugabytedb-managed-service-level-agreement/#:~:text=a%20minimum%20of-,99.99,-%25%20of%20the%20time). For the current status of the service, see [Status](https://status.yugabyte.cloud/).
 {{</tip>}}
 
+{{<note>}}
+YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/).
+{{</note>}}
+
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Sign up to create a Sandbox cluster"

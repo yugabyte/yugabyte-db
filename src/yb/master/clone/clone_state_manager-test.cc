@@ -108,7 +108,8 @@ class CloneStateManagerTest : public YBTest {
     MOCK_METHOD(
         Status, ScheduleClonePgSchemaTask,
         (const std::string& permanent_uuid, const std::string& source_db_name,
-         const std::string& target_db_name, HybridTime restore_ht,
+         const std::string& target_db_name, const std::string& source_owner,
+         const std::string& target_owner, HybridTime restore_ht,
          AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline), (override));
 
     MOCK_METHOD(
@@ -296,7 +297,8 @@ class CloneStateManagerTest : public YBTest {
       CoarseTimePoint deadline,
       const LeaderEpoch& epoch) {
     return clone_state_manager_->CloneNamespace(
-        source_namespace_identifier, restore_time, target_namespace_name, deadline, epoch);
+        source_namespace_identifier, restore_time, target_namespace_name, "" /* pg_source_owner */,
+        "" /* pg_target_owner */, deadline, epoch);
   }
 
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(

@@ -218,8 +218,7 @@ void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
       db_name.c_str(), db_oid, 0 /* source_database_oid */,
-      kDefaultTemplateDatabaseName /* source_database_name */, 0 /* next_oid */,
-      false /* colocated */, 0 /* clone_time*/, &pg_stmt));
+      0 /* next_oid */, false /* colocated */, NULL /* yb_clone_info */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
 }
 

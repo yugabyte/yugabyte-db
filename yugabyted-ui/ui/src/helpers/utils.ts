@@ -20,6 +20,8 @@ export const convertMBtoGB = (value: string | number, round = true): number => {
   return round ? Math.round(result) : result;
 };
 
+export const convertBytesToGB = (bytes: number) => (bytes / 1024 / 1024 / 1024).toFixed(2);
+
 // generate a random password that meets password strength regex
 export const generatePassword = (length: number): string => {
   if (length < PASSWORD_MIN_LENGTH) throw Error('Password length is too short');
@@ -377,5 +379,5 @@ const regionCountryCodes: { [k: string]: string } = {
   'us-gov-west-1':  'us',
 }
 
-export const getRegionCode = ({ region, zone }: { region?: string, zone?: string }) => 
+export const getRegionCode = ({ region, zone }: { region?: string, zone?: string }) =>
   Object.entries(regionCountryCodes).find(([key]) => zone?.startsWith(key) || (region && key.startsWith(region)))?.[1]

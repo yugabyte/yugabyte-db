@@ -593,15 +593,12 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
   ASSERT_OK(SetFlagOnAllTServers("ysql_yb_locks_txn_locks_per_tablet", "500"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_txn_locks_per_tablet", "500"));
 
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "false"));
-  ASSERT_OK(SetFlagOnAllTServers(
-      "allowed_preview_flags_csv",
-      "ysql_yb_enable_replication_commands,ysql_yb_enable_replica_identity"));
-  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replication_commands", "true"));
-  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replica_identity", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "true"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replication_commands", "false"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replica_identity", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "false"));
 
   // Verify changing non-runtime flag fails
   ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
@@ -619,9 +616,6 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_min_txn_age=100");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_max_transactions=3");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_txn_locks_per_tablet=1000");
-    options->extra_tserver_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_replication_commands,ysql_yb_enable_replica_"
-        "identity");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
   }

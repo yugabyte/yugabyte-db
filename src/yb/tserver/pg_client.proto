@@ -224,6 +224,8 @@ message PgCreateDatabaseRequestPB {
   bool colocated = 7;
   fixed64 clone_time = 8;
   string source_database_name = 9;
+  string source_owner = 10;
+  string target_owner = 11;
 }
 
 message PgCreateDatabaseResponsePB {

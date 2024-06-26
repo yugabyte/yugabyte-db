@@ -934,12 +934,12 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const TransactionMetadata* txn,
                                  const bool colocated,
                                  CoarseTimePoint deadline,
-                                 const std::optional<std::string> source_namespace_name,
-                                 std::optional<HybridTime> clone_time) {
-  // If source_namespace_name is template0 or template1 or not set, then initiate the typical create
-  // namespace request. Otherwise, initiate the clone request.
-  if (!source_namespace_name.has_value() || *source_namespace_name == "template0" ||
-      *source_namespace_name == "template1") {
+                                 std::optional<YbCloneInfo> yb_clone_info) {
+  if (yb_clone_info) {
+    RETURN_NOT_OK(CloneNamespace(
+        namespace_name, database_type ? database_type.value() : YQL_DATABASE_PGSQL,
+        *yb_clone_info));
+  } else {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;
     req.set_name(namespace_name);
@@ -971,33 +971,32 @@ Status YBClient::CreateNamespace(const std::string& namespace_name,
     // the client can send operations without receiving a "namespace not found" error.
     RETURN_NOT_OK(data_->WaitForCreateNamespaceToFinish(
         this, namespace_name, database_type, cur_id, deadline));
-  } else {
-    RETURN_NOT_OK(CloneNamespace(
-        namespace_name, source_namespace_name.value(),
-        database_type ? database_type.value() : YQL_DATABASE_PGSQL, clone_time));
   }
   return Status::OK();
 }
 
 Status YBClient::CloneNamespace(const std::string& target_namespace_name,
-                                const std::string& source_namespace_name,
                                 const YQLDatabase& database_type,
-                                std::optional<HybridTime> clone_time) {
+                                YbCloneInfo& yb_clone_info) {
   LOG(INFO) << Format(
-      "Creating database $0 as clone of database $1", target_namespace_name, source_namespace_name);
+      "Creating database $0 as clone of database $1",
+      target_namespace_name, yb_clone_info.src_db_name);
   auto clone_deadline = ToCoarse(MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms);
   master::CloneNamespaceRequestPB req;
   master::CloneNamespaceResponsePB resp;
   master::NamespaceIdentifierPB source_namespace;
-  source_namespace.set_name(source_namespace_name);
+  source_namespace.set_name(yb_clone_info.src_db_name);
   source_namespace.set_database_type(database_type);
   *req.mutable_source_namespace() = source_namespace;
-  if (!clone_time) {
-    // Clone as of current time
-    clone_time = HybridTime::FromMicros(VERIFY_RESULT(WallClock()->Now()).time_point);
+  if (yb_clone_info.clone_time == 0) {
+    // Clone as of current time.
+    yb_clone_info.clone_time = VERIFY_RESULT(WallClock()->Now()).time_point;
   }
-  req.set_restore_ht(clone_time->ToUint64());
+  req.set_restore_ht(HybridTime::FromMicros(yb_clone_info.clone_time).ToUint64());
   req.set_target_namespace_name(target_namespace_name);
+  req.set_pg_source_owner(yb_clone_info.src_owner);
+  req.set_pg_target_owner(yb_clone_info.tgt_owner);
+
   // Set clone_deadline to ysql_clone_pg_schema_rpc_timeout_ms to give time to clone pg schema
   // operation.
   RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
