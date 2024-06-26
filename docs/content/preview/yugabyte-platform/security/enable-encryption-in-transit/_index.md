@@ -25,15 +25,5 @@ You can enable encryption in transit (TLS) during universe creation and change t
 
 Enabling encryption in transit requires the following steps:
 
-1. If you are using a certificate that you provide, add your self- or CA-signed certificate to YugabyteDB Anywhere.
-1. Enable encryption in transit on your universe. You can do this when creating the universe and on an existing universe.
-
-
-### Expand a universe
-
-You can expand universes configured with custom CA-signed certificates.
-
-Before adding new nodes to expand an existing universe, you need to prepare those nodes by repeating Step 2 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) for each of the new nodes you plan to add to the universe. You need to ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
-
-When the universe is ready for expansion, complete the **Edit Universe** dialog to add new nodes.
-
+1. If you are using a certificate that you provide, add your self- or CA-signed certificate to YugabyteDB Anywhere. Refer to [Add certificates](./add-certificate-self/).
+1. Enable encryption in transit on your universe. You can do this when creating the universe and on an existing universe. Refer to [Create a universe](../../create-deployments/create-universe-multi-zone/).
