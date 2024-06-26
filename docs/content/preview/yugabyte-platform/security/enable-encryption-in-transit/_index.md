@@ -17,11 +17,11 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 - Node-to-Node TLS to encrypt intra-node communication between YB-Master and YB-TServer nodes.
 - Client-to-Node TLS to encrypt communication between a universe and clients. This includes applications, shells (ysqlsh, ycqlsh, psql, and so on), and other tools, using the YSQL and YCQL APIs.
-- Certificates added to the YugabyteDB Anywhere trust store to encrypt communication between YugabyteDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage.
+- Client to YugabyteDB Anywhere TLS to encrypt communication between YugabyteDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage.
 
-YugabyteDB Anywhere can create and manage new self-signed certificates for encrypting data in transit. Alternatively, you can use your own self-signed certificates. You can also upload a third-party CA-signed certificate from external providers, such as Venafi or DigiCert. (CA-signed certificates can only be used with on-premises provider configurations.)
+YugabyteDB Anywhere can create and manage new self-signed certificates for encrypting data in transit for universes. Alternatively, you can use your own self-signed certificates. You can also upload third-party certificate authority (CA) certificates from external providers, such as Venafi or DigiCert. (CA-signed certificates can only be used with on-premises provider configurations.)
 
-You can enable encryption in transit (TLS) during universe creation and change these settings for an existing universe.
+You enable encryption in transit (TLS) during universe creation and can change these settings for an existing universe.
 
 {{<index/block>}}
 
