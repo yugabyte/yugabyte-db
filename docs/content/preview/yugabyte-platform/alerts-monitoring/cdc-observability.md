@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere (YBA) supports monitoring [YSQL](../../../api/ysql/) replication slots in YugabyteDB.
+YugabyteDB Anywhere supports monitoring [YSQL](../../../api/ysql/) replication slots in YugabyteDB.
 You can view all the replications that are present in a universe along with the following metrics associated with each CDC replication slot:
 
 - Current lag
