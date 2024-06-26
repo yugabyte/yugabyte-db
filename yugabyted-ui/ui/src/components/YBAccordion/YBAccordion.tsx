@@ -25,8 +25,15 @@ const useAccordionStyles = makeStyles((theme: Theme) => ({
     border: `1px solid ${theme.palette.grey[200]}`
   },
   summary: {
-    minHeight: theme.spacing(8),
+    minHeight: theme.spacing(6),
+    '&.Mui-expanded': {
+      minHeight: theme.spacing(2),
+      margin: 0
+    },
     padding: theme.spacing(0, 2),
+  },
+  graySummaryBg: {
+    background: theme.palette.info[400]
   },
   title: {
     display: 'flex',
@@ -41,15 +48,23 @@ const useAccordionStyles = makeStyles((theme: Theme) => ({
 interface YBAccordionProps extends AccordionProps {
   titleContent: ReactNode;
   renderChips?: () => ReactNode;
+  graySummaryBg?: boolean;
 }
 
-export const YBAccordion: FC<YBAccordionProps> = ({ titleContent, renderChips, children, ...rest }) => {
+export const YBAccordion: FC<YBAccordionProps> = ({
+  titleContent,
+  renderChips,
+  graySummaryBg,
+  children,
+  ...rest
+}) => {
   const classes = useAccordionStyles();
 
   return (
     <Box className={classes.container}>
       <Accordion {...rest} className={classes.primary}>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} className={clsx(classes.summary, classes.container)}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}
+          className={clsx(classes.summary, classes.container, graySummaryBg && classes.graySummaryBg)}>
           <Box className={classes.title}>{titleContent}</Box>
           {renderChips && <Box className={classes.shrinkContainer}>{renderChips()}</Box>}
         </AccordionSummary>

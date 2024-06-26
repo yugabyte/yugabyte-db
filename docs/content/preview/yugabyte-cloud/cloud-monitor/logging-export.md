@@ -1,9 +1,9 @@
 ---
-title: Export PostgreSQL logs from YugabyteDB Managed clusters
+title: Export PostgreSQL logs from YugabyteDB Aeon clusters
 headerTitle: Export logs
 linkTitle: Export logs
 description: Export cluster metrics to third-party tools.
-headcontent: Export PostgreSQL logs from YugabyteDB Managed clusters
+headcontent: Export PostgreSQL logs from YugabyteDB Aeon clusters
 menu:
   preview_yugabyte-cloud:
     identifier: export-logs
@@ -29,7 +29,7 @@ Create an integration configuration. A configuration defines the sign in credent
 
 - Configuring logging [requires a restart](../../cloud-clusters/#locking-operations) of your cluster. Configure logging when the cluster isn't experiencing heavy traffic.
 - Configuring logging blocks other cluster operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
-- To limit performance impact and control costs, log and export only what you need. The default settings are based on best practices from open source PostgreSQL, the broader community, and YugabyteDB Managed testing to ensure the impact is bounded and insignificant.
+- To limit performance impact and control costs, log and export only what you need. The default settings are based on best practices from open source PostgreSQL, the broader community, and YugabyteDB Aeon testing to ensure the impact is bounded and insignificant.
 
 ## Database Query Logging
 
@@ -41,7 +41,7 @@ To enable database query logging for a cluster, do the following:
 1. Select the [Log export configuration](../managed-integrations/) for the tool you want to export to.
 1. Click **Enable YSQL Query Logging**.
 
-YugabyteDB Managed begins the (rolling) restart.
+YugabyteDB Aeon begins the (rolling) restart.
 
 Logs are exported to the third-party tool in near real time. After the setup is complete and YSQL database queries are submitted, verify that the YSQL database query logs are visible in the tool; they should be available in minutes. Logs are exported with preset tags and a [log line prefix](#include-in-the-log-prefix-log_line_prefix) so that you can filter them further by cloud, region, availability zone, cluster_id, node-type, and node-name. Depending on your tool, you can also perform text searches of the logs.
 
@@ -151,7 +151,7 @@ To enable database audit logging for a cluster, do the following:
 
 1. Click **Enable Database Audit Logging**.
 
-YugabyteDB Managed begins the rolling restart.
+YugabyteDB Aeon begins the rolling restart.
 
 ### YSQL audit log settings
 

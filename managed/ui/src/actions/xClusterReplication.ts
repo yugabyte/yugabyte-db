@@ -243,7 +243,7 @@ interface TableReplicationLagQueryParams {
 }
 interface ConfigReplicationLagQueryParms {
   nodePrefix: string | undefined;
-  replicationUuid: string;
+  xClusterConfigUuid: string;
 
   start?: string;
   end?: string;

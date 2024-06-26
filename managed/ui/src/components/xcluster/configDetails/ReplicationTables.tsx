@@ -23,7 +23,7 @@ import {
   shouldAutoIncludeIndexTables
 } from '../ReplicationUtils';
 import DeleteReplicationTableModal from './DeleteReplicationTableModal';
-import { TableLagGraphModal } from './TableLagGraphModal';
+import { TableReplicationLagGraphModal } from './TableReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import {
@@ -401,14 +401,15 @@ export function ReplicationTables(props: ReplicationTablesProps) {
         </BootstrapTable>
       </div>
       {openTableLagGraphDetails && (
-        <TableLagGraphModal
-          tableDetails={openTableLagGraphDetails}
-          replicationUUID={xClusterConfig.uuid}
-          universeUUID={sourceUniverse.universeUUID}
+        <TableReplicationLagGraphModal
+          xClusterTable={openTableLagGraphDetails}
+          sourceUniverseUuid={sourceUniverse.universeUUID}
           nodePrefix={sourceUniverse.universeDetails.nodePrefix}
           queryEnabled={isActive}
-          visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
-          onHide={hideModal}
+          modalProps={{
+            open: visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH,
+            onClose: hideModal
+          }}
         />
       )}
       <DeleteReplicationTableModal

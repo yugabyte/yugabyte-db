@@ -1,8 +1,8 @@
 ---
 title: Connect via client shells
 linkTitle: Client shell
-description: Connect to YugabyteDB Managed clusters from your desktop using a client shell
-headcontent: Connect to YugabyteDB Managed databases from your desktop
+description: Connect to YugabyteDB Aeon clusters from your desktop using a client shell
+headcontent: Connect to YugabyteDB Aeon databases from your desktop
 menu:
   preview_yugabyte-cloud:
     identifier: connect-client-shell
@@ -17,7 +17,7 @@ When connecting via a Yugabyte client shell, ensure you are running the latest v
 
 ## Prerequisites
 
-Before you can connect a desktop client to a YugabyteDB Managed cluster, you need to do the following:
+Before you can connect a desktop client to a YugabyteDB Aeon cluster, you need to do the following:
 
 - Configure network access
 - Download the cluster certificate
@@ -32,9 +32,9 @@ For more information, refer to [IP allow list](../../cloud-secure-clusters/add-c
 
 ### Cluster certificate
 
-YugabyteDB Managed clusters have TLS/SSL (encryption in-transit) enabled. You need to download the cluster certificate to your computer.
+YugabyteDB Aeon clusters have TLS/SSL (encryption in-transit) enabled. You need to download the cluster certificate to your computer.
 
-For information on SSL in YugabyteDB Managed, refer to [Encryption in transit](../../cloud-secure-clusters/cloud-authentication/).
+For information on SSL in YugabyteDB Aeon, refer to [Encryption in transit](../../cloud-secure-clusters/cloud-authentication/).
 
 ## Connect using a client shell
 
@@ -87,7 +87,7 @@ For information on using other SSL modes, refer to [SSL modes in YSQL](../../clo
 
 ## Connect using third party clients
 
-Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Aeon.
 
 To connect, follow the client's configuration steps for PostgreSQL or Cassandra, and use the following values:
 

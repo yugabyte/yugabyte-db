@@ -928,7 +928,7 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
 
   auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
   for (const auto& table : tables) {
-    for (const auto& tablet : table->GetTablets(IncludeInactive::kTrue)) {
+    for (const auto& tablet : ASSERT_RESULT(table->GetTablets(IncludeInactive::kTrue))) {
       if (table->is_system() &&
           tablet->LockForRead().data().pb.hosted_tables_mapped_by_parent_id()) {
         FAIL() << Format(
@@ -952,14 +952,14 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
     return tablet_info->LockForRead().data().pb.hosted_tables_mapped_by_parent_id();
   };
 
-  const auto new_schema_tablets =
-      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  const auto new_schema_tablets = ASSERT_RESULT(
+      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue));
   EXPECT_TRUE(
       std::all_of(new_schema_tablets.begin(), new_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(new_schema_tablets.size(), 0);
 
-  auto old_schema_tablets =
-      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  auto old_schema_tablets = ASSERT_RESULT(
+      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue));
   EXPECT_TRUE(
       std::none_of(old_schema_tablets.begin(), old_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(old_schema_tablets.size(), 0);
@@ -1159,7 +1159,7 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
       table, &num_live_replicas, &num_read_replicas);
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
 
-  for (auto& tablet : table->GetTablets()) {
+  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
     num_live_replicas = 0, num_read_replicas = 0;
     ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
         tablet->id(), &num_live_replicas, &num_read_replicas));
@@ -1209,7 +1209,7 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
       table, &num_live_replicas, &num_read_replicas);
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
 
-  for (auto& tablet : table->GetTablets()) {
+  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
     num_live_replicas = 0, num_read_replicas = 0;
     ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
         tablet->id(), &num_live_replicas, &num_read_replicas));

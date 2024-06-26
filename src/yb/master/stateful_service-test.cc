@@ -44,7 +44,7 @@ TEST_F(StatefulServiceTest, TestCreateStatefulService) {
   ASSERT_EQ(service_table->GetHostedStatefulServices()[0], kTestEchoServiceKind);
 
   // Validate the tablet is created with the correct service kind.
-  auto tablets = service_table->GetTablets();
+  auto tablets = ASSERT_RESULT(service_table->GetTablets());
   ASSERT_EQ(tablets.size(), 1);
 
   // Validate the tablet cannot be split.

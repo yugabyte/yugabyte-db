@@ -87,9 +87,9 @@ DEFINE_RUNTIME_int32(xcluster_safe_time_update_interval_secs, 1,
 DEFINE_RUNTIME_int32(apply_changes_max_send_rate_mbps, 100,
     "Server-wide max apply rate for xcluster traffic.");
 
-static bool ValidateXClusterSafeTimeUpdateInterval(const char* flagname, int32 value) {
+static bool ValidateXClusterSafeTimeUpdateInterval(const char* flag_name, int32 value) {
   if (value <= 0) {
-    fprintf(stderr, "Invalid value for --%s: %d, must be greater than 0\n", flagname, value);
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be greater than 0";
     return false;
   }
   return true;

@@ -213,7 +213,7 @@ Replace the following:
 
 ### Connect using third party clients
 
-Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Aeon.
 
 To connect, follow the client's configuration steps for PostgreSQL or Cassandra, and use the following values:
 

@@ -243,7 +243,6 @@ unsigned int YBCStatusRelationOid(YBCStatus s);
 const char** YBCStatusArguments(YBCStatus s, size_t* nargs);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
-
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);

@@ -217,7 +217,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   bool tablet_deleted;
   bool listed_as_hidden;
   bool needs_async_write_to_sys_catalog = false;
-  TabletInfoPtr tablet(new TabletInfo(first_table, tablet_id));
+  TabletInfoPtr tablet = std::make_shared<TabletInfo>(first_table, tablet_id);
   {
     auto l = tablet->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
@@ -295,7 +295,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
         if (tablet_id == kSysCatalogTabletId) {
           table->set_is_system();
         }
-        table->AddTablet(tablet.get());
+        RETURN_NOT_OK_PREPEND(table->AddTablet(tablet), "TabletInfo object freed during load");
       }
 
       auto tl = table->LockForRead();

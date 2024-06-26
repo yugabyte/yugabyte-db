@@ -273,11 +273,17 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
 
     if (req->return_dump_as_string()) {
       std::ostringstream ss;
-      server_->catalog_manager_impl()->DumpState(&ss, req->on_disk());
+      auto s = server_->catalog_manager_impl()->DumpState(&ss, req->on_disk());
+      CheckRespErrorOrSetUnknown(s, resp);
+      if (!s.ok())
+        return;
       resp->set_dump(title + ":\n" + ss.str());
     } else {
       LOG(INFO) << title;
-      server_->catalog_manager_impl()->DumpState(&LOG(INFO), req->on_disk());
+      auto s = server_->catalog_manager_impl()->DumpState(&LOG(INFO), req->on_disk());
+      CheckRespErrorOrSetUnknown(s, resp);
+      if (!s.ok())
+        return;
     }
 
     if (req->has_peers_also() && req->peers_also()) {

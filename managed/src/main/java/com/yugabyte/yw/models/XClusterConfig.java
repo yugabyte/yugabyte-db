@@ -637,7 +637,7 @@ public class XClusterConfig extends Model {
 
   @Transactional
   public void removeTables(Set<String> tableIds) {
-    if (this.getTables() == null) {
+    if (this.getTableIds() == null) {
       log.debug("No tables is set for xCluster config {}", this.getUuid());
       return;
     }
@@ -646,6 +646,30 @@ public class XClusterConfig extends Model {
         log.debug(
             "Table with id {} was not found to delete in xCluster config {}",
             tableId,
+            this.getUuid());
+      }
+    }
+    update();
+  }
+
+  /**
+   * Removes any namespaces from the xCluster config that are in the provided set of namespace IDs.
+   *
+   * @param namespaceIds The set of namespace IDs to keep in the xCluster config.
+   */
+  @Transactional
+  public void removeNamespaces(Set<String> namespaceIds) {
+    if (this.getDbIds() == null) {
+      log.debug("No namespaces is set for xCluster config {}", this.getUuid());
+      return;
+    }
+    for (String namespaceId : namespaceIds) {
+      if (!this.getNamespaces()
+          .removeIf(
+              namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(namespaceId))) {
+        log.debug(
+            "Namespace with id {} was not found to delete in xCluster config {}",
+            namespaceId,
             this.getUuid());
       }
     }
@@ -1113,7 +1137,7 @@ public class XClusterConfig extends Model {
           if (!namespaceIdsInXClusterConfig.contains(namespaceId)) {
             throw new RuntimeException(
                 String.format(
-                    "Could not find tableId (%s) in the xCluster config with uuid (%s)",
+                    "Could not find namespaceId (%s) in the xCluster config with uuid (%s)",
                     namespaceId, this.getUuid()));
           }
         });

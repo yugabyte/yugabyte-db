@@ -67,7 +67,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     }
   }
 
-  Status SendReplicaChanges(scoped_refptr<TabletInfo> tablet, const TabletServerId& ts_uuid,
+  Status SendReplicaChanges(const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
                           const bool is_add, const bool should_remove,
                           const TabletServerId& new_leader_uuid) override {
     // Do nothing.

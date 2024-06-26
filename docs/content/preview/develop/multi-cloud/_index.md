@@ -34,7 +34,7 @@ The main objective of adopting a multi-cloud strategy is to provide you with the
 
 While a multi-cloud approach offers numerous advantages, heightened management complexity and achieving consistent performance and reliability across multiple clouds present big challenges.
 
-YugabyteDB is designed to address these challenges. Multi-cloud management capabilities have been integrated directly into [YugabyteDB](../../), [YugabyteDB Anywhere](../../yugabyte-platform/), and [YugabyteDB Managed](../../yugabyte-cloud/). This integration provides comprehensive visibility of your database across all your cloud environments, allowing you to monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads.
+YugabyteDB is designed to address these challenges. Multi-cloud management capabilities have been integrated directly into [YugabyteDB](../../), [YugabyteDB Anywhere](../../yugabyte-platform/), and [YugabyteDB Aeon](../../yugabyte-cloud/). This integration provides comprehensive visibility of your database across all your cloud environments, allowing you to monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads.
 
 After you set up your multi-cloud, you need to choose a suitable design pattern for your applications, depending on your needs for availability and data access. See [Global applications](../build-global-apps/) for more details.
 

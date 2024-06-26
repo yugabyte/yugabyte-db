@@ -1,5 +1,5 @@
 ---
-title: Audit YugabyteDB Managed cluster activity
+title: Audit YugabyteDB Aeon cluster activity
 headerTitle: Monitor cluster activity
 linkTitle: Cluster activity
 description: View the activity on your cluster.

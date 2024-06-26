@@ -353,6 +353,50 @@ struct sort_flags_by_name {
     return a.size() < b.size();
   }
 };
+
+std::vector<std::string>& FlagsWithDelayedValidation() {
+  static std::vector<std::string> flags;
+  return flags;
+}
+
+bool& CommandLineFlagsParsed() {
+  static bool parsed = false;
+  return parsed;
+}
+
+// Check if the flag can be set to the new value. Does not actually set the flag.
+Status ValidateFlagValue(const std::string& flag_name, const std::string& value) {
+  auto flag_info = google::GetCommandLineFlagInfoOrDie(flag_name.c_str());
+
+  // Clear previous errors if any.
+  GetFlagValidatorSink().GetMessagesAndClear();
+
+  std::string error_msg;
+  if (google::ValidateCommandLineOption(
+          flag_name.c_str(), flag_info.current_value.c_str(), &error_msg)) {
+    return Status::OK();
+  }
+
+  auto validation_msgs = GetFlagValidatorSink().GetMessagesAndClear();
+
+  return STATUS_FORMAT(
+      InvalidArgument, "$0 : $1", error_msg,
+      validation_msgs.empty() ? "Bad value" : JoinStrings(validation_msgs, ";"));
+}
+
+Status ValidateFlagsRequiringDelayedValidation() {
+  CommandLineFlagsParsed() = true;
+
+  for (const auto& flag_name : FlagsWithDelayedValidation()) {
+    auto flag_info = google::GetCommandLineFlagInfoOrDie(flag_name.c_str());
+    // Flag was already set without any validation. Check if the current value is valid.
+    RETURN_NOT_OK(ValidateFlagValue(flag_name, flag_info.current_value));
+  }
+  FlagsWithDelayedValidation().clear();
+
+  return Status::OK();
+}
+
 }  // namespace
 
 void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values) {
@@ -428,7 +472,7 @@ bool ValidateAllPreviewFlags(string* err_msg, const string& allowed_flags_csv) {
       if (!ContainsKey(allowed_flags, flag.name)) {
         (*err_msg) = Format(
             "Flag '$0' protects a feature that is currently in preview. In order for it to be "
-            "modified '$0' must be set in '--allowed_preview_flags_csv'",
+            "modified, '$0' must be set in flag 'allowed_preview_flags_csv'",
             flag.name);
         return false;
       }
@@ -552,6 +596,9 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     SetFlagDefaultsToCurrent(flag_infos);
 
     google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
+
+    // Run validation that were previously ignored due to DELAY_FLAG_VALIDATION_ON_STARTUP.
+    CHECK_OK(ValidateFlagsRequiringDelayedValidation());
 
     // Ensure all preview flags overridden are in allow list before invoking any callbacks.
     string err_msg;
@@ -706,17 +753,24 @@ SetFlagResult SetFlag(
   } else if (ContainsKey(tags, FlagTag::kPreview)) {
     if (!IsPreviewFlagAllowed(flag_info, new_value)) {
       *output_msg =
-          "Cannot modify Preview flags unless you acknowledge the risks "
-          "by adding their name to allowed_preview_flags_csv flag.";
+          "Cannot modify Preview flag unless you acknowledge the risks by adding it to flag "
+          "'allowed_preview_flags_csv'";
       return SetFlagResult::BAD_VALUE;
     }
   }
 
+  // Clear previous errors if any.
+  GetFlagValidatorSink().GetMessagesAndClear();
+
   string ret = flags_internal::SetFlagInternal(
       flag_info.flag_ptr, flag_name.c_str(), new_value, google::SET_FLAGS_VALUE);
+  auto validation_msgs = GetFlagValidatorSink().GetMessagesAndClear();
 
   if (ret.empty()) {
-    *output_msg = "Unable to set flag: bad value. Check stderr for more information.";
+    *output_msg = Format(
+        "Unable to set flag: $0",
+        validation_msgs.empty() ? "Bad value" : JoinStrings(validation_msgs, ";"));
+
     return SetFlagResult::BAD_VALUE;
   }
 
@@ -726,7 +780,7 @@ SetFlagResult SetFlag(
   CHECK(google::GetCommandLineOption(flag_name.c_str(), &final_value));
 
   bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
-  LOG(INFO) << "Changed flag: " << flag_name << " from '" << (is_sensitive ? "***" : old_val)
+  LOG(INFO) << "Changed flag '" << flag_name << "' from '" << (is_sensitive ? "***" : old_val)
             << "' to '" << (is_sensitive ? "***" : final_value) << "'";
 
   *output_msg = ret;
@@ -740,13 +794,41 @@ bool ValidatePercentageFlag(const char* flag_name, int value) {
   if (value >= 0 && value <= 100) {
     return true;
   }
-  LOG(WARNING) << flag_name << " must be a percentage (0 to 100), value " << value << " is invalid";
+  LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be a percentage (0 to 100)";
   return false;
 }
 
 bool IsUsageMessageSet() {
   // If it's not initialized it returns: "Warning: SetUsageMessage() never called".
   return !StringStartsWithOrEquals(google::ProgramUsage(), "Warning:");
+}
+
+void FlagValidatorSink::send(
+    google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
+    const struct ::tm* tm_time, const char* message, size_t message_len) {
+  std::lock_guard l(mutex_);
+  logged_msgs_.push_back(
+      Format("$0:$1] $2", base_filename, line, std::string(message, message_len)));
+}
+
+const std::vector<std::string> FlagValidatorSink::GetMessagesAndClear() {
+  std::lock_guard l(mutex_);
+  auto result = std::move(logged_msgs_);
+  logged_msgs_.clear();
+  return result;
+}
+
+FlagValidatorSink& GetFlagValidatorSink() {
+  static FlagValidatorSink sink;
+  return sink;
+}
+
+bool RecordFlagForDelayedValidation(const std::string& flag_name) {
+  if (CommandLineFlagsParsed()) {
+    return false;
+  }
+  FlagsWithDelayedValidation().emplace_back(flag_name);
+  return true;
 }
 
 } // namespace yb

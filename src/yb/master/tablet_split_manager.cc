@@ -804,7 +804,9 @@ void TabletSplitManager::DoSplitting(
                                        << THROTTLE_MSG;
       continue;
     }
-    for (const auto& tablet : table->GetTablets()) {
+    auto tablets_result = table->GetTablets();
+    if (!tablets_result) continue;
+    for (const auto& tablet : *tablets_result) {
       VLOG(4) << Format("Processing tablet $0 for split", tablet->id());
       if (!state.CanSplitMoreGlobal()) {
         break;
@@ -853,7 +855,7 @@ void TabletSplitManager::DoSplitting(
         if (!drive_info_opt.ok()) {
           return drive_info_opt.status();
         }
-        scoped_refptr<TabletInfo> parent = nullptr;
+        std::shared_ptr<TabletInfo> parent = nullptr;
         if (!parent_id.empty()) {
           parent = FindPtrOrNull(tablet_info_map, parent_id);
         }
@@ -926,7 +928,8 @@ bool TabletSplitManager::IsTabletSplittingComplete(
     }
   }
 
-  return !table.HasOutstandingSplits(wait_for_parent_deletion);
+  auto result = table.HasOutstandingSplits(wait_for_parent_deletion);
+  return result.ok() && !*result;
 }
 
 void TabletSplitManager::MaybeDoSplitting(

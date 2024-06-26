@@ -30,7 +30,7 @@ rightNav:
 - [Can I deploy YugabyteDB to production?](#can-i-deploy-yugabytedb-to-production)
 - [Which companies are currently using YugabyteDB in production?](#which-companies-are-currently-using-yugabytedb-in-production)
 - [What is the definition of the "Beta" feature tag?](#what-is-the-definition-of-the-beta-feature-tag)
-- [How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Managed differ from each other?](#how-do-yugabytedb-yugabytedb-anywhere-and-yugabytedb-managed-differ-from-each-other)
+- [How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Aeon differ from each other?](#how-do-yugabytedb-yugabytedb-anywhere-and-yugabytedb-aeon-differ-from-each-other)
 - [How do I report a security vulnerability?](#how-do-i-report-a-security-vulnerability)
 
 ##### Evaluating YugabyteDB
@@ -152,15 +152,15 @@ Some features are marked Beta in every release. Following are the points to cons
 
 Please do try our beta features and give feedback on them on our [Slack community]({{<slack-invite>}}) or by filing a [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues).
 
-### How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Managed differ from each other?
+### How do YugabyteDB, YugabyteDB Anywhere, and YugabyteDB Aeon differ from each other?
 
 [YugabyteDB](../../) is the 100% open source core database. It is the best choice for the startup organizations with strong technical operations expertise looking to deploy to production with traditional DevOps tools.
 
 [YugabyteDB Anywhere](../../yugabyte-platform/) is commercial software for running a self-managed YugabyteDB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options, and world-class support. It is the simplest way to run YugabyteDB in mission-critical production environments with one or more regions (across both public cloud and on-premises data centers).
 
-[YugabyteDB Managed](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). [Sign up](https://www.yugabyte.com/cloud/) to get started.
+[YugabyteDB Aeon](../../yugabyte-cloud/) is Yugabyte's fully-managed cloud service on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). [Sign up](https://cloud.yugabyte.com/) to get started.
 
-For a more detailed comparison between the above, see [Compare Products](https://www.yugabyte.com/compare-products/).
+For a more detailed comparison between the above, see [Compare Deployment Options](https://www.yugabyte.com/compare-products/).
 
 ### How do I report a security vulnerability?
 

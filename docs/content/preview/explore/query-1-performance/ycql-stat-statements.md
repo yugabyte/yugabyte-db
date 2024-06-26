@@ -38,7 +38,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% setup/local %}}
 
 Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
 
