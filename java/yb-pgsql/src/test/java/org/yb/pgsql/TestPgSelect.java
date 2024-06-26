@@ -442,8 +442,8 @@ public class TestPgSelect extends BasePgSQLTest {
 
       // Test reverse scan with prefix bounds: r1[2, 4], r2(1,4).
       String select_stmt = "SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
-                                          "AND r1 >= 2 AND r1 <= 4 AND r2 > 1 and r2 < 4" +
-                                          "ORDER BY r1 DESC, r2 DESC, r3 DESC";
+          " AND r1 >= 2 AND r1 <= 4 AND r2 > 1 and r2 < 4" +
+          " ORDER BY r1 DESC, r2 DESC, r3 DESC";
       ResultSet rs = statement.executeQuery(select_stmt);
 
       for (int r1 = 4; r1 >= 2; r1--) {
@@ -461,8 +461,8 @@ public class TestPgSelect extends BasePgSQLTest {
       // Test reverse scan with non-prefix bounds and LIMIT: r1[2, 4], r3[2, 3].
       // Total 3 * 5 * 2 = 30 rows but set LIMIT to 25.
       select_stmt = "SELECT * FROM test_reverse_scan_multicol WHERE h = 1" +
-              "AND r1 >= 2 AND r1 <= 4 AND r3 > 1 and r3 < 4" +
-              "ORDER BY r1 DESC, r2 DESC, r3 DESC LIMIT 25";
+          " AND r1 >= 2 AND r1 <= 4 AND r3 > 1 and r3 < 4" +
+          " ORDER BY r1 DESC, r2 DESC, r3 DESC LIMIT 25";
       rs = statement.executeQuery(select_stmt);
 
       int idx = 0;

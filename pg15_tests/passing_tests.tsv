@@ -96,6 +96,7 @@ JAVA	org.yb.pgsql.TestPgRegressYbScanTarget
 JAVA	org.yb.pgsql.TestPgReplicationSlot
 JAVA	org.yb.pgsql.TestPgSelect#testAggregatePushdowns
 JAVA	org.yb.pgsql.TestPgSelect#testNullPushdown
+JAVA	org.yb.pgsql.TestPgSelect#testReverseScanMultiRangeCol
 JAVA	org.yb.pgsql.TestPgSequences
 JAVA	org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
 JAVA	org.yb.pgsql.TestPgTransparentRestarts#testUpdateLong
