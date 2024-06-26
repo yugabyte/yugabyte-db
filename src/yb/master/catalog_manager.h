@@ -45,7 +45,6 @@
 #include <gtest/internal/gtest-internal.h>
 
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
@@ -141,6 +140,7 @@ enum RaftGroupStatePB;
 
 namespace cdc {
 class CDCStateTable;
+struct CDCStateTableEntry;
 }  // namespace cdc
 
 namespace master {
@@ -1495,15 +1495,27 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
+  // Find all CDCSDK streams that contain non eligible tables like indexes, mat views etc. in
+  // their metadata.
+  Status FindCDCSDKStreamsForNonEligibleTables(TableStreamIdsMap* non_user_tables_to_streams_map);
+
   bool IsTableEligibleForCDCSDKStream(
-      const TableInfoPtr& table_info, const Schema& schema) const REQUIRES_SHARED(mutex_);
+      const TableInfoPtr& table_info, const std::optional<Schema>& schema) const
+      REQUIRES_SHARED(mutex_);
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
   void FindAllTablesMissingInCDCSDKStream(
       const xrepl::StreamId& stream_id,
-      const google::protobuf::RepeatedPtrField<std::string>& table_ids, const NamespaceId& ns_id)
-      REQUIRES(mutex_);
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids,
+      const std::vector<TableInfoPtr>& eligible_tables_info) REQUIRES(mutex_);
+
+  // This method compares all tables in the namespace eligible for a CDCSDK stream to all the tables
+  // added to a CDCSDK stream, to find indexes / mat views that are part of the CDCSDK streams.
+  void FindAllNonEligibleTablesInCDCSDKStream(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids,
+      const std::vector<TableInfoPtr>& eligible_tables_info) REQUIRES(mutex_);
 
   Status ValidateCDCSDKRequestProperties(
       const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
@@ -1515,6 +1527,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
       const TableStreamIdsMap& table_to_unprocessed_streams_map, const LeaderEpoch& epoch);
+
+  Status RemoveNonEligibleTablesFromCDCSDKStreams(
+      const TableStreamIdsMap& non_user_tables_to_streams_map, const LeaderEpoch& epoch);
 
   // Find all the CDC streams that have been marked as provided state.
   Result<std::vector<CDCStreamInfoPtr>> FindXReplStreamsMarkedForDeletion(
@@ -3034,6 +3049,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void RemoveTableFromCDCSDKUnprocessedMap(const TableId& table_id, const NamespaceId& ns_id);
 
+  void RemoveTableFromCDCSDKNonEligibleTableMap(const TableId& table_id, const NamespaceId& ns_id);
+
   void ClearXReplState() REQUIRES(mutex_);
   Status LoadXReplStream() REQUIRES(mutex_);
   Status LoadUniverseReplication() REQUIRES(mutex_);
@@ -3202,6 +3219,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // 'FindAllTablesMissingInCDCSDKStream'.
   std::unordered_map<NamespaceId, std::unordered_set<TableId>>
       namespace_to_cdcsdk_unprocessed_table_map_ GUARDED_BY(cdcsdk_unprocessed_table_mutex_);
+
+  mutable MutexType cdcsdk_non_eligible_table_mutex_;
+  // In-memory map containing non-eligble tables like indexes/ materialized views which got added to
+  // CDCSDK stream's metadata. Will be refreshed on master restart / leadership change through the
+  // function: 'FindAllNonEligibleTablesInCDCSDKStream'.
+  std::unordered_map<NamespaceId, std::unordered_set<TableId>>
+      namespace_to_cdcsdk_non_eligible_table_map_ GUARDED_BY(cdcsdk_non_eligible_table_mutex_);
 
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, XClusterConsumerTableStreamIds>
