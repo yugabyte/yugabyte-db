@@ -107,7 +107,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
       fetchTablesInUniverse(
         xClusterConfig.sourceUniverseUUID,
         XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((respone) => respone.data)
+      ).then((response) => response.data)
   );
 
   const sourceUniverseQuery = useQuery(
@@ -128,7 +128,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     nodeAggregation: NodeAggregation.MAX,
     splitType: SplitType.TABLE
   };
-  const replciationLagMetricRequestParams: MetricsQueryParams = {
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     xClusterConfigUuid: xClusterConfig.uuid,
@@ -137,11 +137,11 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   };
   const tableReplicationLagQuery = useQuery(
     metricQueryKey.live(
-      replciationLagMetricRequestParams,
+      replicationLagMetricRequestParams,
       liveMetricTimeRangeValue,
       liveMetricTimeRangeUnit
     ),
-    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
@@ -165,7 +165,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
               toast.success(
                 deleteTableDetails
-                  ? `"${getTableName(deleteTableDetails)}" table removed successully.`
+                  ? `"${getTableName(deleteTableDetails)}" table removed successfully.`
                   : 'Table removed successfully.'
               );
             } else {
