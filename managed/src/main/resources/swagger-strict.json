@@ -24295,6 +24295,12 @@
           "required" : false,
           "type" : "string"
         }, {
+          "default" : false,
+          "in" : "query",
+          "name" : "includeDetails",
+          "required" : false,
+          "type" : "boolean"
+        }, {
           "in" : "query",
           "name" : "request",
           "required" : false
