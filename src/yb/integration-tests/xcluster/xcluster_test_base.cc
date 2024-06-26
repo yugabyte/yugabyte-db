@@ -822,7 +822,7 @@ Status XClusterTestBase::WaitForReplicationDrain(
 
 Status XClusterTestBase::VerifyReplicationError(
     const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
-    const std::optional<ReplicationErrorPb> expected_replication_error) {
+    const std::optional<ReplicationErrorPb> expected_replication_error, int timeout_secs) {
   // 1. Verify that the RPC contains the expected error.
   master::GetReplicationStatusRequestPB req;
   master::GetReplicationStatusResponsePB resp;
@@ -858,7 +858,7 @@ Status XClusterTestBase::VerifyReplicationError(
           return resp.statuses()[0].errors_size() == 0;
         }
       },
-      MonoDelta::FromSeconds(30), "Waiting for replication error"));
+      MonoDelta::FromSeconds(timeout_secs), "Waiting for replication error"));
 
   // 2. Verify that the yb-admin output contains the expected error.
   auto admin_out =

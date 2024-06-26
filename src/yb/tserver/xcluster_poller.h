@@ -106,6 +106,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
   void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
   void StoreReplicationError(ReplicationErrorPb error) EXCLUDES(replication_error_mutex_);
+  // Stores a non OK replication error if one has not already been set.
+  void StoreNOKReplicationError() EXCLUDES(replication_error_mutex_);
   void ClearReplicationError() EXCLUDES(replication_error_mutex_);
   void TEST_IncrementNumSuccessfulWriteRpcs();
   void ApplyChangesCallback(XClusterOutputClientResponse&& response);

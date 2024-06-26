@@ -329,7 +329,7 @@ class XClusterTestBase : public YBTest {
 
   Status VerifyReplicationError(
       const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
-      const std::optional<ReplicationErrorPb> expected_replication_error);
+      const std::optional<ReplicationErrorPb> expected_replication_error, int timeout_secs = 30);
 
   Result<xrepl::StreamId> GetCDCStreamID(const TableId& producer_table_id);
 

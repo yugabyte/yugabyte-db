@@ -410,6 +410,12 @@ void XClusterPoller::HandleGetChangesResponse(
     if (!status.ok()) {
       LOG_WITH_PREFIX(WARNING) << "XClusterPoller GetChanges failure: " << status.ToString();
 
+      if (status.IsTimedOut() || status.IsNetworkError()) {
+        StoreReplicationError(ReplicationErrorPb::REPLICATION_SOURCE_UNREACHABLE);
+      } else {
+        StoreNOKReplicationError();
+      }
+
       if (FLAGS_enable_xcluster_stat_collection) {
         poll_stats_history_.SetError(std::move(status));
       }
@@ -479,6 +485,8 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
       RandomActWithProbability(FLAGS_TEST_xcluster_simulate_random_failure_after_apply)) {
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
 
+    StoreNOKReplicationError();
+
     if (FLAGS_enable_xcluster_stat_collection) {
       poll_stats_history_.SetError(std::move(response.status));
     }
@@ -502,6 +510,9 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
     if (!s.ok()) {
       // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
       YB_LOG_EVERY_N(WARNING, 30) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+
+      StoreNOKReplicationError();
+
       if (FLAGS_enable_xcluster_stat_collection) {
         poll_stats_history_.SetError(std::move(s));
       }
@@ -657,6 +668,17 @@ void XClusterPoller::StoreReplicationError(ReplicationErrorPb error) {
     xcluster_consumer_->StoreReplicationError(GetPollerId(), error);
     previous_replication_error_ = error;
   }
+}
+
+void XClusterPoller::StoreNOKReplicationError() {
+  {
+    std::lock_guard l(replication_error_mutex_);
+    if (previous_replication_error_ != ReplicationErrorPb::REPLICATION_OK) {
+      return;
+    }
+  }
+
+  StoreReplicationError(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR);
 }
 
 void XClusterPoller::ClearReplicationError() {
