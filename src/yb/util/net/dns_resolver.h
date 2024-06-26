@@ -42,6 +42,7 @@
 namespace yb {
 
 class Histogram;
+class MetricEntity;
 class HostPort;
 class ThreadPool;
 
@@ -53,7 +54,7 @@ class DnsResolver {
   DnsResolver(const DnsResolver&) = delete;
   void operator=(const DnsResolver&) = delete;
 
-  explicit DnsResolver(IoService* io_service);
+  explicit DnsResolver(IoService* io_service, const scoped_refptr<MetricEntity>& metric_entity);
   ~DnsResolver();
 
   std::shared_future<Result<IpAddress>> ResolveFuture(const std::string& host);
