@@ -569,7 +569,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
         .name = name_,
         .max_workers = bld.workers_limit_,
       })),
-      resolver_(new DnsResolver(&io_thread_pool_.io_service())),
+      resolver_(new DnsResolver(&io_thread_pool_.io_service(), metric_entity_)),
       rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
       num_connections_to_server_(bld.num_connections_to_server_) {
 #ifndef NDEBUG
