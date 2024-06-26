@@ -1358,7 +1358,8 @@ class PTBindVar : public PTExpr {
 
   std::string QLName(
       qlexpr::QLNameOption option = qlexpr::QLNameOption::kUserOriginalName) const override {
-    std::string qlname = (user_pos_) ? user_pos_->ToString() : name()->c_str();
+    std::string qlname = (user_pos_) ? user_pos_->ToString()
+                                     : (name() ? name()->c_str() : default_bindvar_name().c_str());
     return ":" +  qlname;
   }
 

@@ -146,6 +146,17 @@ public class TestBindVariable extends BaseCQLTest {
       assertNull(row);
     }
 
+    {
+      // Ensure that this doesn't crash the tserver
+      String selectStmt = "SELECT ? FROM test_bind;";
+      try {
+        ResultSet rs = session.execute(selectStmt, new Integer(1));
+        fail("Statement \"" + selectStmt + "\" did not fail undefined bind variable name");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Expected exception ", e);
+      }
+    }
+
     LOG.info("End test");
   }
 
