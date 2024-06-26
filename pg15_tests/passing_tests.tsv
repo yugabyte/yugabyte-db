@@ -77,6 +77,7 @@ JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressProfile
 JAVA	org.yb.pgsql.TestPgRegressPublication
 JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
+JAVA	org.yb.pgsql.TestPgRegressPushdownKey
 JAVA	org.yb.pgsql.TestPgRegressReplicaIdentity
 JAVA	org.yb.pgsql.TestPgRegressReplicationSlot#testPgRegressReplicationSlot
 JAVA	org.yb.pgsql.TestPgRegressTable

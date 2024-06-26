@@ -49,26 +49,26 @@ EXPLAIN (COSTS OFF) SELECT classid, objid, objsubid, refclassid, refobjid, depty
 --
 -- Existing db oid (template1).
 SELECT * FROM pg_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 1);
-  datname  | datdba | encoding | datcollate |  datctype   | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace |               datacl
------------+--------+----------+------------+-------------+---------------+--------------+--------------+---------------+--------------+------------+---------------+-------------------------------------
- template1 |     10 |        6 | C          | en_US.UTF-8 | t             | t            |           -1 |             0 |            0 |          1 |          1663 | {=c/postgres,postgres=CTc/postgres}
+ oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | daticulocale | datcollversion |               datacl
+-----+-----------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+-------------+--------------+----------------+-------------------------------------
+   1 | template1 |     10 |        6 | c              | t             | t            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
 (1 row)
 
 SELECT * FROM pg_database WHERE datname IN (SELECT datname FROM pg_database WHERE oid = 1);
-  datname  | datdba | encoding | datcollate |  datctype   | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace |               datacl
------------+--------+----------+------------+-------------+---------------+--------------+--------------+---------------+--------------+------------+---------------+-------------------------------------
- template1 |     10 |        6 | C          | en_US.UTF-8 | t             | t            |           -1 |             0 |            0 |          1 |          1663 | {=c/postgres,postgres=CTc/postgres}
+ oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | daticulocale | datcollversion |               datacl
+-----+-----------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+-------------+--------------+----------------+-------------------------------------
+   1 | template1 |     10 |        6 | c              | t             | t            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
 (1 row)
 
 -- Invalid (non-existing) db.
 SELECT * FROM pg_database WHERE datname = (SELECT datname FROM pg_database WHERE oid = 0);
- datname | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace | datacl
----------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl
+-----+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
 (0 rows)
 
 SELECT * FROM pg_database WHERE datname IN (SELECT datname FROM pg_database WHERE oid = 0);
- datname | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace | datacl
----------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl
+-----+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
 (0 rows)
 
 -- This is a query done by the pg_admin dashboard, testing compatiblity here.
@@ -89,7 +89,7 @@ FROM (SELECT
   chart_name   |                  chart_data
 ---------------+----------------------------------------------
  session_stats | {"Total":0,"Active":0,"Idle":0}
- tps_stats     | {"Transactions":0,"Commits":0,"Rollbacks":0}
+ tps_stats     | {"Transactions":1,"Commits":1,"Rollbacks":0}
 (2 rows)
 
 -- Invalid (non-existing) db.
@@ -121,49 +121,49 @@ return null;
 END;
 $$ LANGUAGE plpgsql STABLE;
 -- Expect pushdown in all cases.
-EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
- Index Scan using pg_database_datname_index on pg_database  (cost=0.00..4.37 rows=1 width=254)
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
+                        QUERY PLAN
+-----------------------------------------------------------
+ Index Scan using pg_database_datname_index on pg_database
    Index Cond: (datname = test_null_pushdown())
 (2 rows)
 
-EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
-                                          QUERY PLAN
------------------------------------------------------------------------------------------------
- Index Scan using pg_database_datname_index on pg_database  (cost=0.00..4.37 rows=1 width=254)
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
+                        QUERY PLAN
+-----------------------------------------------------------
+ Index Scan using pg_database_datname_index on pg_database
    Index Cond: (datname = test_null_pushdown())
 (2 rows)
 
-EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
                                             QUERY PLAN
 ---------------------------------------------------------------------------------------------------
- Index Scan using pg_database_datname_index on pg_database  (cost=0.00..4.37 rows=1 width=254)
+ Index Scan using pg_database_datname_index on pg_database
    Index Cond: (datname = ANY (ARRAY['template1'::name, test_null_pushdown(), 'template0'::name]))
 (2 rows)
 
 -- Test execution.
 /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
- datname | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace | datacl
----------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl
+-----+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
 (0 rows)
 
 /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
- datname | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace | datacl
----------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl
+-----+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
 (0 rows)
 
 -- Test null mixed with valid (existing) options.
 /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
-  datname  | datdba | encoding | datcollate |  datctype   | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace |               datacl
------------+--------+----------+------------+-------------+---------------+--------------+--------------+---------------+--------------+------------+---------------+-------------------------------------
- template0 |     10 |        6 | C          | en_US.UTF-8 | t             | f            |           -1 |             0 |            0 |          1 |          1663 | {=c/postgres,postgres=CTc/postgres}
- template1 |     10 |        6 | C          | en_US.UTF-8 | t             | t            |           -1 |             0 |            0 |          1 |          1663 | {=c/postgres,postgres=CTc/postgres}
+ oid |  datname  | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate |  datctype   | daticulocale | datcollversion |               datacl
+-----+-----------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+-------------+--------------+----------------+-------------------------------------
+   4 | template0 |     10 |        6 | c              | t             | f            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
+   1 | template1 |     10 |        6 | c              | t             | t            |           -1 |            0 |          1 |          1663 | C          | en_US.UTF-8 |              |                | {=c/postgres,postgres=CTc/postgres}
 (2 rows)
 
 -- Test null(s) mixed with invalid (existing) options.
 SELECT * FROM pg_database WHERE datname IN ('non_existing_db1', test_null_pushdown(), 'non_existing_db2', test_null_pushdown());
- datname | datdba | encoding | datcollate | datctype | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace | datacl
----------+--------+----------+------------+----------+---------------+--------------+--------------+---------------+--------------+------------+---------------+--------
+ oid | datname | datdba | encoding | datlocprovider | datistemplate | datallowconn | datconnlimit | datfrozenxid | datminmxid | dattablespace | datcollate | datctype | daticulocale | datcollversion | datacl
+-----+---------+--------+----------+----------------+---------------+--------------+--------------+--------------+------------+---------------+------------+----------+--------------+----------------+--------
 (0 rows)
 

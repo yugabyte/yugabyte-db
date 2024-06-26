@@ -89,9 +89,9 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- Expect pushdown in all cases.
-EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
-EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
-EXPLAIN /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
 
 -- Test execution.
 /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
