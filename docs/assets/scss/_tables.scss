@@ -9,19 +9,20 @@ main {
       margin: 20px 0;
       max-width: 828px;
 
-      > table{
+      > table {
         margin: 0 !important;
         border: none;
         box-shadow: none;
-    @media(max-width:900px){
-      min-width:650px;
-    }
-        tbody{
+
+        @media (max-width:900px) {
+          min-width:650px;
+        }
+
+        tbody {
           border-bottom:0;
 
-          tr:last-child{
-            //background: red;
-            td{
+          tr:last-child {
+            td {
               border-bottom:0px;
             }
           }
@@ -70,7 +71,8 @@ main {
       }
 
       &.sno-last {
-        tr th:last-child, tr td:last-child {
+        tr th:last-child,
+        tr td:last-child {
           width: 1%;
         }
       }
@@ -93,6 +95,46 @@ main {
         tr {
           &:nth-of-type(odd) {
             background-color: #fbfcfd;
+          }
+        }
+      }
+
+      &.sortable tr {
+        th {
+          position: relative;
+
+          &.empty-th .sort-btn {
+            display: none;
+          }
+
+          .sort-btn {
+            font-size: 0;
+            width: 5px;
+            height: 20px;
+            display: inline-block;
+            vertical-align: middle;
+            text-align: center;
+            cursor: pointer;
+            position: absolute;
+
+            &::after {
+              color: #97a5b0;
+              display: inline-block;
+              font-size: 14px;
+              width: 0;
+              height: 0;
+              background-size: contain;
+              border-radius: 4px;
+              margin-top: 0;
+              margin-left: 5px;
+              transition: all 300ms linear;
+              content: "\f0d7";
+              font-family: "Font Awesome 6 Pro";
+            }
+
+            &.sorted::after {
+              content: "\f0d8";
+            }
           }
         }
       }
@@ -130,8 +172,6 @@ main {
     }
   }
 }
-
-
 
 @media (min-width: 1024px) {
   main {

@@ -377,7 +377,7 @@ Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::Ta
     if (strcmp(stat.database_name, "control_connection") != 0) {
       total_logical_connections += stat.active_clients +
                                    stat.queued_clients +
-                                   stat.idle_or_pending_clients;
+                                   stat.waiting_clients;
       total_physical_connections += stat.active_servers + stat.idle_servers;
     }
   }

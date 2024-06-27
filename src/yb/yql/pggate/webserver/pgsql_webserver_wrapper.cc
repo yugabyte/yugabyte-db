@@ -202,8 +202,8 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   for (ConnectionStats stats : stats_list) {
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_clients", stats.active_clients});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_queued_clients", stats.queued_clients});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_or_pending_clients",
-            stats.idle_or_pending_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_waiting_clients",
+            stats.waiting_clients});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_servers", stats.active_servers});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_servers", stats.idle_servers});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
@@ -422,8 +422,8 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 
     // Number of logical connections which are either idle (i.e. no ongoing transaction) or waiting
     // for the worker thread to be processed (i.e. waiting for od_router_attach to be called).
-    writer.String("idle_or_pending_logical_connections");
-    writer.Int64(stat.idle_or_pending_clients);
+    writer.String("waiting_logical_connections");
+    writer.Int64(stat.waiting_clients);
 
     // Number of physical connections which currently attached to a logical connection.
     writer.String("active_physical_connections");

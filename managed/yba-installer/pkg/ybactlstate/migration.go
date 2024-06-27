@@ -19,9 +19,13 @@ const ymlTypeFixMV = 4
 const promOomConfgMV = 5
 const promTLSCipherSuites = 6
 const asRoot = 7
+const ybaWait = 8
+
+// Please do not use this in ybactlstate package, only use getSchemaVersion()
+var schemaVersionCache = -1
 
 func handleMigration(state *State) error {
-	for state._internalFields.SchemaVersion < schemaVersion {
+	for state._internalFields.SchemaVersion < getSchemaVersion() {
 		nextSchema := state._internalFields.SchemaVersion + 1
 		migrate := getMigrationHandler(nextSchema)
 		if err := migrate(state); err != nil {
@@ -183,7 +187,24 @@ func migrateAsRootConfig(state *State) error {
 	return nil
 }
 
-// TODO: Also need to remember to update schemaVersion when adding migration! (automate testing?)
+func migrateYbaWait(state *State) error {
+	if !viper.IsSet("wait_for_yba_ready_secs") {
+		log.Info("wait for ready not set")
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		log.Info(fmt.Sprintf("setting to %d", viper.GetInt("wait_for_yba_ready_secs")))
+		err := common.SetYamlValue(common.InputFile(), "wait_for_yba_ready_secs",
+			viper.GetInt("wait_for_yba_ready_secs"))
+		if err != nil {
+			return fmt.Errorf("Error migrating yb_wait config: %s", err.Error())
+		}
+	} else {
+		log.Info("wait for ready set")
+	}
+
+	common.InitViper()
+	return nil
+}
+
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
 	promConfigMV:         migratePrometheus,
@@ -192,6 +213,7 @@ var migrations map[int]migrator = map[int]migrator{
 	promOomConfgMV:       migratePrometheusOOMConfig,
 	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
 	asRoot:               migrateAsRootConfig,
+	ybaWait:              migrateYbaWait,
 }
 
 func getMigrationHandler(toSchema int) migrator {
@@ -200,4 +222,15 @@ func getMigrationHandler(toSchema int) migrator {
 		m = migrations[defaultMigratorValue]
 	}
 	return m
+}
+
+func getSchemaVersion() int {
+	if schemaVersionCache == -1 {
+		for k := range migrations {
+			if k > schemaVersionCache {
+				schemaVersionCache = k
+			}
+		}
+	}
+	return schemaVersionCache
 }
