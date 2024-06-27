@@ -665,7 +665,14 @@ static void HandleGetVersionInfo(
   jw.EndObject();
 }
 
-static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+template<typename WeightFormatter = std::identity>
+static void StackTraceTrackerHandler(
+    const Webserver::WebRequest& req,
+    Webserver::WebResponse* resp,
+    std::string_view title,
+    const std::unordered_map<StackTraceTrackingGroup, std::string>& groups,
+    std::string_view weight_header,
+    WeightFormatter format_weight = {}) {
   std::stringstream& output = resp->output;
 
   if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
@@ -680,62 +687,65 @@ static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::Web
   std::sort(traces.begin(), traces.end(),
             [](const auto& left, const auto& right) { return left.weight > right.weight; });
 
-  output << tags.header << "I/O stack traces" << tags.end_header;
+  output << tags.header << title << tags.end_header;
 
-  auto stack_traces = html_print_helper.CreateTablePrinter(
-      "stack_traces", {"Type", "Count", "Bytes", "Stack Trace"});
+  auto tracking_start = GetLastStackTraceTrackerResetTime();
+  auto tracking_end = MonoTime::Now();
+  output << "Tracking Period: "
+         << tracking_start.ToFormattedString() << " to " << tracking_end.ToFormattedString()
+         << " (" << (tracking_end - tracking_start).ToString() << ")" << tags.line_break;
+  output << "<a href=\"/reset-stack-traces\">Reset Tracking</a>" << tags.line_break;
+
+  std::vector<std::string> column_names;
+  if (groups.size() > 1) {
+    column_names.emplace_back("Type");
+  }
+  column_names.emplace_back("Count");
+  column_names.emplace_back(weight_header);
+  column_names.emplace_back("Stack Trace");
+
+  auto stack_traces = html_print_helper.CreateTablePrinter("stack_traces", column_names);
 
   for (const auto& entry : traces) {
-    if (entry.count == 0 ||
-        (entry.group != StackTraceTrackingGroup::kReadIO &&
-         entry.group != StackTraceTrackingGroup::kWriteIO)) {
+    auto group_itr = groups.find(entry.group);
+    if (entry.count == 0 || group_itr == groups.end()) {
       continue;
     }
-    stack_traces.AddRow(
-        entry.group == StackTraceTrackingGroup::kReadIO ? "Read" : "Write",
-        entry.count,
-        HumanReadableNumBytes::ToString(entry.weight),
-        tags.pre_tag + EscapeForHtmlToString(entry.symbolized_trace) + tags.end_pre_tag);
+
+    auto count = entry.count;
+    auto weight = format_weight(entry.weight);
+    auto stack = tags.pre_tag + EscapeForHtmlToString(entry.symbolized_trace) + tags.end_pre_tag;
+
+    if (groups.size() > 1) {
+      stack_traces.AddRow(group_itr->second, count, weight, stack);
+    } else {
+      stack_traces.AddRow(count, weight, stack);
+    }
   }
 
   stack_traces.Print();
 }
 
+static void IOStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  StackTraceTrackerHandler(
+      req, resp, "I/O stack traces",
+      {{StackTraceTrackingGroup::kReadIO, "Read"}, {StackTraceTrackingGroup::kWriteIO, "Write"}},
+      "Bytes", &HumanReadableNumBytes::ToString);
+}
+
 static void DebugStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream& output = resp->output;
-
-  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
-    output << "track_stack_traces must be turned on to use this page.";
-    return;
-  }
-
-  Tags tags(false /* as_text */);
-  HtmlPrintHelper html_print_helper(output);
-
-  auto traces = GetTrackedStackTraces();
-  std::sort(traces.begin(), traces.end(),
-            [](const auto& left, const auto& right) { return left.count > right.count; });
-
-  output << tags.header << "Tracked stack traces" << tags.end_header;
-
-  auto stack_traces = html_print_helper.CreateTablePrinter(
-      "stack_traces", {"Count", "Stack Trace"});
-
-  for (const auto& entry : traces) {
-    if (entry.count == 0 || entry.group != StackTraceTrackingGroup::kDebugging) {
-      continue;
-    }
-    stack_traces.AddRow(
-        entry.count,
-        tags.pre_tag + EscapeForHtmlToString(entry.symbolized_trace) + tags.end_pre_tag);
-  }
-
-  stack_traces.Print();
+  StackTraceTrackerHandler(
+      req, resp, "Tracked stack traces",
+      {{StackTraceTrackingGroup::kDebugging, "Debugging"}},
+      "Weight");
 }
 
 static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   ResetTrackedStackTraces();
-  resp->output << "Tracked stack traces reset.";
+
+  Tags tags(false /* as_text */);
+  resp->output << "Tracked stack traces reset." << tags.line_break
+               << "<a href=\"javascript:window.location=document.referrer\">Back</a>";
 }
 
 } // anonymous namespace

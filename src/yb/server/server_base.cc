@@ -660,6 +660,7 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.
   DisplayIconTile(output, "fa-hdd-o", "Drives", "/drives");
+  DisplayIconTile(output, "fa-pencil-square-o", "I/O Stack Traces", "/io-stack-traces");
   // TLS.
   DisplayIconTile(output, "fa-lock", "TLS", "/tls");
   DisplayIconTile(output, "fa-times", "xCluster", "/xcluster");
