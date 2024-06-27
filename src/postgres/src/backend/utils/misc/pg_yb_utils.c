@@ -4968,3 +4968,9 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
 		: (YbReadTimePointHandle){};
 }
+
+// TODO(#22370): the method will be used to make Const Based Optimizer to be aware of
+// fast backward scan capability.
+bool YbUseFastBackwardScan() {
+  return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
+}
