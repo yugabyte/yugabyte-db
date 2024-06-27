@@ -1706,6 +1706,14 @@ YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
 
+YBCStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
+  return ToYBCStatus(pgapi->SetInTxnBlock(in_txn_blk));
+}
+
+YBCStatus YBCPgSetReadOnlyStmt(bool read_only_stmt) {
+  return ToYBCStatus(pgapi->SetReadOnlyStmt(read_only_stmt));
+}
+
 YBCStatus YBCPgEnterSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }

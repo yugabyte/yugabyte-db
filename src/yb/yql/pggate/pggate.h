@@ -651,6 +651,8 @@ class PgApiImpl {
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
+  Status SetInTxnBlock(bool in_txn_blk);
+  Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();

@@ -73,6 +73,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status ExitSeparateDdlTxnModeWithAbort();
   Status ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_silent_altering);
   void SetDdlHasSyscatalogChanges();
+  Status SetInTxnBlock(bool in_txn_blk);
+  Status SetReadOnlyStmt(bool read_only_stmt);
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
@@ -127,6 +129,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  bool in_txn_blk_ = false;
+  bool read_only_stmt_ = false;
 
   // Postgres transaction characteristics.
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;

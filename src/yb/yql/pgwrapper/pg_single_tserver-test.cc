@@ -912,6 +912,26 @@ TEST_F(PgSingleTServerTest, PagingSelectWithDelayedIntentsApply) {
   }
 }
 
+// YB picks read time as safe time when the read time is picked on DocDB.
+// Safe time is potentially a time point in the past and we should not ignore
+// the uncertainty window for that reason.
+// This test guards against SELECTs not seeing prior INSERTs from same session
+// in relaxed read-after-commit-visibility for the above mentioned reason.
+TEST_F(PgSingleTServerTest, NoSafeTimeClampingInRelaxedReadAfterCommit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = 100;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility ='relaxed'"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (v INT) SPLIT INTO 2 TABLETS"));
+  for (int i = 0; i != 20; ++i) {
+    LOG(INFO) << "Delete iteration " << i;
+    ASSERT_OK(conn.Execute("DELETE FROM t"));
+    LOG(INFO) << "Insert iteration " << i;
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+    LOG(INFO) << "Reading iteration " << i;
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM t")), 1);
+  }
+}
+
 TEST_F(PgSingleTServerTest, BoundedRangeScanWithLargeTransaction) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (r1 INT, r2 INT, PRIMARY KEY (r1 ASC, r2 ASC))"));

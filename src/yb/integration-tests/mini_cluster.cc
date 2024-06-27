@@ -874,6 +874,11 @@ server::SkewedClockDeltaChanger JumpClock(
   return server::SkewedClockDeltaChanger(delta, skewed_clock);
 }
 
+server::SkewedClockDeltaChanger JumpClock(
+    tserver::MiniTabletServer* server, std::chrono::milliseconds delta) {
+  return JumpClock(server->server(), delta);
+}
+
 std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew) {
   std::vector<server::SkewedClockDeltaChanger> delta_changers;

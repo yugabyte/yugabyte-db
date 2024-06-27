@@ -661,6 +661,8 @@ YBCStatus YBCPgAbortPlainTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
+YBCStatus YBCPgSetInTxnBlock(bool in_txn_blk);
+YBCStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YBCStatus YBCPgSetEnableTracing(bool tracing);
 YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();

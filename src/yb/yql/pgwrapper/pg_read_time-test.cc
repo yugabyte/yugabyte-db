@@ -445,4 +445,139 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   ASSERT_STR_EQ(ground_truth, dump_as_of_time);
 }
 
+// Mimics the CheckReadTimePickingLocation test for the relaxed
+// yb_read_after_commit_visibility case.
+//
+// There are two primary effects of relaxed yb_read_after_commit_visibility:
+// - SELECTs now always pick their read time on local proxy.
+// - The read time is clamped whenever it is picked this way (not relevant).
+//
+// This implies the following changes compared to the vanilla test
+// - Case 1: no pipeline, single operation in first batch, no distributed txn.
+//           Read time is picked on proxy for SELECTs and not DMLs.
+// - Case 3: no pipeline, multiple operations to the same tablet in first batch, no distributed txn.
+//           Read time is picked on proxy.
+TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET DEFAULT_TRANSACTION_ISOLATION TO \"REPEATABLE READ\""));
+  constexpr auto kTable = "test"sv;
+  constexpr auto kSingleTabletTable = "test_with_single_tablet"sv;
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", kSingleTabletTable));
+
+  for (const auto& table_name : {kTable, kSingleTabletTable}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT generate_series(1, 100), 0", table_name));
+    ASSERT_OK(conn.ExecuteFormat(
+      "CREATE OR REPLACE PROCEDURE insert_rows_$0(first integer, last integer) "
+      "LANGUAGE plpgsql "
+      "as $$body$$ "
+      "BEGIN "
+      "  FOR i in first..last LOOP "
+      "    INSERT INTO $0 VALUES (i, i); "
+      "  END LOOP; "
+      "END; "
+      "$$body$$", table_name));
+  }
+
+  // Relax read-after-commit-visiblity guarantee.
+  ASSERT_OK(conn.Execute("SET yb_read_after_commit_visibility TO relaxed"));
+
+  // 1. no pipeline, single operation in first batch, no distributed txn
+  //
+  // relaxed yb_read_after_commit_visibility does not affect DML queries.
+  for (const auto& table_name : {kTable, kSingleTabletTable}) {
+    CheckReadTimeProvidedToDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000, 1000)", table_name));
+        });
+
+    CheckReadTimePickedOnDocdb(
+        [&conn, table_name]() {
+          ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE k=1000", table_name));
+        });
+  }
+
+  // 2. no pipeline, multiple operations to various tablets in first batch, no distributed txn
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kTable));
+      });
+
+  // 3. no pipeline, multiple operations to the same tablet in first batch, no distributed txn
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kSingleTabletTable));
+      });
+
+  // 4. no pipeline, single operation in first batch, starts a distributed transation
+  //
+  // expected_num_picked_read_time_on_doc_db_metric is set because in case of a SELECT FOR UPDATE,
+  // a read time is picked in read_query.cc, but an extra picking is done in write_query.cc just
+  // after conflict resolution is done (see DoTransactionalConflictsResolved()).
+  //
+  // relaxed yb_read_after_commit_visibility does not affect FOR UDPATE queries.
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
+        ASSERT_OK(conn.CommitTransaction());
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+
+  // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetHighMaxBatchSize(&conn));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(101, 110)", kTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 6. no pipeline, multiple operations to the same tablet in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetHighMaxBatchSize(&conn));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(101, 110)", kSingleTabletTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 7. Pipeline, single operation in first batch, starts a distributed transation
+  ASSERT_OK(SetMaxBatchSize(&conn, 1));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(111, 120)", kTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 8. Pipeline, multiple operations to various tablets in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetMaxBatchSize(&conn, 10));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // 9. Pipeline, multiple operations to the same tablet in first batch, starts a distributed
+  //    transation
+  ASSERT_OK(SetMaxBatchSize(&conn, 10));
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kSingleTabletTable));
+      });
+  ASSERT_OK(ResetMaxBatchSize(&conn));
+}
+
 } // namespace yb::pgwrapper

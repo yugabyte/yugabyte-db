@@ -176,6 +176,8 @@ extern int yb_reorderbuffer_max_changes_in_memory;
  */
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
+extern int yb_read_after_commit_visibility;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

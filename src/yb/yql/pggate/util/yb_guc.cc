@@ -73,3 +73,5 @@ int yb_reorderbuffer_max_changes_in_memory = 4096;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
+
+int yb_read_after_commit_visibility = 0;
