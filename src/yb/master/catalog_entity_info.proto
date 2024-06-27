@@ -684,10 +684,8 @@ message SysUniverseReplicationEntryPB {
   // producer table ID -> producer CDC stream ID map.
   map<string, string> table_streams = 6;
 
-  // Namespace-level replication setup.
-  optional bool is_ns_replication = 7 [default = false];
-  optional NamespaceIdentifierPB producer_namespace = 8;
-  optional NamespaceIdentifierPB consumer_namespace = 9;
+  // 7, 8, and 9 were used by Namespace-level replication but never populated in
+  // production so they are valid for reuse.
 
   // Mapping from Producer Table ID to Producer->Consumer schema version mappings
   map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
