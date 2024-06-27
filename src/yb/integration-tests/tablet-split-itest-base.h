@@ -109,7 +109,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   Result<docdb::DocKeyHash> WriteRowsAndGetMiddleHashCode(
       uint32_t num_rows, bool wait_for_intents = true);
 
-  Result<scoped_refptr<master::TabletInfo>> GetSingleTestTabletInfo(
+  Result<std::shared_ptr<master::TabletInfo>> GetSingleTestTabletInfo(
       master::CatalogManagerIf* catalog_manager);
 
   void CreateSingleTablet() {

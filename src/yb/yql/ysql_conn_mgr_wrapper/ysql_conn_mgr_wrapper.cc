@@ -73,9 +73,9 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
 
 namespace {
 
-bool ValidateMaxClientConn(const char* flagname, uint32_t value) {
+bool ValidateMaxClientConn(const char* flag_name, uint32_t value) {
   if (value < 1) {
-    LOG(ERROR) << flagname << "(" << value << ") can not be less than 1";
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be greater than 1";
     return false;
   }
   return true;

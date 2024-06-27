@@ -1,0 +1,78 @@
+check_ulimit() {
+    local resource=$1
+    local expected_value=$2
+    local current_value
+
+    # Get the current ulimit value for the resource
+    current_value=$(ulimit -a | grep "$resource" | awk '{print $NF}')
+
+    # Use a large number for comparison if the value is 'unlimited'
+    local unlimited_value=1000000000
+
+    if [ "$expected_value" == "unlimited" ]; then
+        expected_value=$unlimited_value
+    fi
+
+    if [ "$current_value" == "unlimited" ]; then
+        current_value=$unlimited_value
+    fi
+
+    # Check if current value is greater than or equal to the expected value
+    if [ "$current_value" -ge "$expected_value" ]; then
+        echo "[PASS] $resource is set to $current_value (expected: $expected_value or higher)"
+    else
+        echo "[FAIL] $resource is set to $current_value (expected: $expected_value or higher)"
+        return 1
+    fi
+}
+
+
+verify_systemd_conf() {
+    local file=$1
+    local setting=$2
+    if grep -q "$setting" $file; then
+        echo "[PASS] $setting is set in $file"
+    else
+        echo "[FAIL] $setting is not set in $file"
+        return 1
+    fi
+}
+
+
+verify_sysctl() {
+    local param=$1
+    local expected_value=$2
+    local current_value
+
+    current_value=$(sysctl -n $param)
+
+    if [ "$current_value" -eq "$expected_value" ]; then
+        echo "[PASS] $param is set to $current_value (expected: $expected_value)"
+    else
+        echo "[FAIL] $param is set to $current_value (expected: $expected_value)"
+        return 1
+    fi
+}
+
+# Verify ulimit settings
+{% for key, value in limits.items() %}
+check_ulimit "{{ key.replace('_', ' ') }}" "{{ value }}" || exit 1
+{%- endfor -%}
+
+# Verify DefaultLimitNOFILE in systemd configuration files
+verify_systemd_conf /etc/systemd/system.conf "DefaultLimitNOFILE={{ fd_limit }}" || exit 1
+verify_systemd_conf /etc/systemd/user.conf "DefaultLimitNOFILE={{ fd_limit }}" || exit 1
+
+# Verify sysctl settings
+verify_sysctl "vm.swappiness" "{{ vm_swappiness }}" || exit 1
+verify_sysctl "vm.max_map_count" "{{ vm_max_map_count }}" || exit 1
+
+# Verify kernel core pattern
+kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
+if [ "$kernel_core_pattern_value" == "{{ kernel_core_pattern }}" ]; then
+    echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
+else
+    echo "[FAIL] kernel.core_pattern is set to $kernel_core_pattern_value \
+          (expected: {{ kernel_core_pattern }})"
+    exit 1
+fi

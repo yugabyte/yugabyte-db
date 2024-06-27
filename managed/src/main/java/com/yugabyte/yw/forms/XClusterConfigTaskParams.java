@@ -33,6 +33,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   protected DrConfigCreateForm.PitrParams pitrParams;
   protected boolean isForceBootstrap = false;
   public Set<String> dbs;
+  protected Set<String> databaseIdsToAdd;
+  protected Set<String> databaseIdsToRemove;
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -111,10 +113,15 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   }
 
   public XClusterConfigTaskParams(
-      XClusterConfig xClusterConfig, XClusterConfigEditFormData editFormData) {
+      XClusterConfig xClusterConfig,
+      XClusterConfigEditFormData editFormData,
+      Set<String> databaseIdsToAdd,
+      Set<String> databaseIdsToRemove) {
     this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
     this.editFormData = editFormData;
+    this.databaseIdsToAdd = databaseIdsToAdd;
+    this.databaseIdsToRemove = databaseIdsToRemove;
   }
 
   /** It is used in the restart method. */

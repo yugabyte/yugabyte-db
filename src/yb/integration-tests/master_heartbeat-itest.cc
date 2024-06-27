@@ -138,7 +138,7 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
 
   auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfo(table_->id());
-  auto tablet = table_info->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
 
   master::MasterClusterProxy master_proxy(
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
@@ -201,7 +201,7 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
   auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
       table.namespace_type(), table.namespace_name(), table.table_name());
-  auto tablet = table_info->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
   std::set<std::string> tservers_hosting_tablet;
   for (const auto& [ts, replica] : *tablet->GetReplicaLocations()) {
     tservers_hosting_tablet.insert(ts);
@@ -288,7 +288,7 @@ TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
   auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
       table.namespace_type(), table.namespace_name(), table.table_name());
-  auto tablet = table_info->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(table_info->GetTablets())[0];
   std::set<std::string> tss_hosting_tablet;
   for (const auto& [ts, replica] : *tablet->GetReplicaLocations()) {
     tss_hosting_tablet.insert(ts);

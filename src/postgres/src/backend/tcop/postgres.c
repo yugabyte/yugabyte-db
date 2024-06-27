@@ -4203,13 +4203,16 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
 	bool is_deadlock_error	   = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
+	bool is_aborted_error      = YBCIsTxnAbortedError(edata->yb_txn_errcode);
+
 	/*
 	 * Note that 'is_dml' could be set for a Select operation on a pg_catalog
 	 * table. Even if it fails due to conflict, a retry is expected to succeed
 	 * without refreshing the cache (as the schema of a PG catalog table cannot
 	 * change).
 	 */
-	if (is_dml && (is_read_restart_error || is_conflict_error || is_deadlock_error))
+	if (is_dml && (is_read_restart_error || is_conflict_error || is_deadlock_error
+			|| is_aborted_error))
 	{
 		return;
 	}
@@ -4512,8 +4515,9 @@ yb_is_retry_possible(
 	CommandTag command_tag;
 
 	if (yb_debug_log_internal_restarts)
-		elog(LOG, "Error details: edata->message=%s, edata->filename=%s, edata->lineno=%d",
-				 edata->message, edata->filename, edata->lineno);
+		elog(LOG, "Error details: edata->message=%s, edata->filename=%s, "
+				 "edata->lineno=%d, edata->yb_txn_errcode=%d", edata->message, edata->filename, edata->lineno,
+				 edata->yb_txn_errcode);
 
 	if (!IsYugaByteEnabled())
 	{
@@ -4522,16 +4526,24 @@ yb_is_retry_possible(
 		return false;
 	}
 
+	// kConflict and kReadRestartRequired are retried by restarting the whole
+	// transaction in case of Repeatable Read and Serializable isolation levels. In case of
+	// Read Committed isolation, these are retried by undoing and retrying just the statement that
+	// failed.
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error = YBCIsTxnConflictError(edata->yb_txn_errcode);
-	bool is_deadlock_error = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
 
-	if (!is_read_restart_error && !is_conflict_error && !is_deadlock_error)
+	// Retrying kDeadlock and kAborted errors require restart of the whole transaction. They can't be
+	// retried by just retrying the statement that failed.
+	bool is_deadlock_error = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
+	bool is_aborted_error = YBCIsTxnAbortedError(edata->yb_txn_errcode);
+
+	if (!is_read_restart_error && !is_conflict_error && !is_deadlock_error && !is_aborted_error)
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(
 					LOG, "query layer retry isn't possible, txn error %s isn't one of "
-					"kConflict/kReadRestart/kDeadlock", YBCTxnErrCodeToString(edata->yb_txn_errcode));
+					"kConflict/kReadRestart/kDeadlock/kAborted", YBCTxnErrCodeToString(edata->yb_txn_errcode));
 		return false;
 	}
 
@@ -4546,30 +4558,31 @@ yb_is_retry_possible(
 	}
 
 	/*
-	 * TODO (#18616): Retry read committed transactions with best-effort in case of deadlock errors in
-	 * Wait on Conflict concurrency control mode.
-	 *
-	 * Note that we can't rollback and retry just the current statement as we do in read committed for
-	 * kReadRestart and kConflict errors (see yb_attempt_to_restart_on_error()). There are 2 reasons
+	 * When retrying read committed transactions with best-effort in case of deadlock/ abort errors,
+	 * note that we can't rollback and retry just the current statement as we do in read committed for
+	 * kReadRestart and kConflict errors (see yb_attempt_to_retry_on_error()). There are 2 reasons
 	 * for this:
 	 *
-	 * 1) The txn has already been aborted for breaking the deadlock.
-	 * 2) Even if we were to somehow ensure in docdb that the transaction is not aborted but just
-	 *    removed from the wait queue to avoid (1), we can't differentiate if locks acquired by this
-	 *    transaction that are part of the deadlock cycle were acquired in a previous statement or the
-	 *    current statement. If acquired in a previous statement, restarting the current statement is
-	 *    of no use. If acquired in the current statement, a restart could help in resolving the
-	 *    deadlock since the acquired locks would be released in the retry.
+	 * 1) The txn has already been aborted (directly or for breaking the deadlock).
+	 * 2) For deadlock errors, even if we were to somehow ensure in docdb that the transaction is not
+	 *    aborted but just removed from the wait queue to avoid (1), we can't differentiate if locks
+	 *    acquired by this transaction that are part of the deadlock cycle were acquired in a previous
+	 *    statement or the current statement. If acquired in a previous statement, retrying the
+	 *    current statement is of no use. If acquired in the current statement, a restart could help
+	 *    in resolving the deadlock since the acquired locks would be released in the retry.
 	 *
-	 * When addressing this TODO, we should restart the whole transaction only if YBIsDataSent() is
-	 * false. YBIsDataSent() == false is needed because we can't retry the transaction if some data
-	 * has already been sent to the external client as part of this transaction. Plus, we can't just
-	 * use YBIsDataSentForCurrQuery() == false because we also want to ensure that we retry only if no
-	 * previous statement had executed.
+	 * So, we need to restart the whole transaction if we want to retry kDeadlock/kAborted errors.
+	 * And we can only do that if YBIsDataSent() is false because we can't retry the transaction if
+	 * some data has already been sent to the external client as part of this transaction.
 	 */
-	if (IsYBReadCommitted() && is_deadlock_error) {
-		const char* retry_err = "query layer retries are not supported for deadlock errors in "
-				"READ COMMITTED isolation, upvote github issue #18616 if you want this";
+	if (IsYBReadCommitted() && (is_deadlock_error || is_aborted_error) && YBIsDataSent())
+	{
+		const char* retry_err = "";
+		retry_err = psprintf("%s %s %s",
+				"query layer retry isn't possible, READ COMMITTED transaction was aborted",
+				(is_deadlock_error ? "to break a deadlock cycle" : ""),
+				"and some data was already sent to the user");
+
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "%s", retry_err);
@@ -4691,7 +4704,7 @@ yb_is_retry_possible(
 }
 
 /*
- * Collect data necessary for yb_attempt_to_restart_on_error invocation.
+ * Collect data necessary for yb_attempt_to_retry_on_error invocation.
  */
 static YBQueryRetryData *
 yb_collect_portal_restart_data(const char *portal_name)
@@ -4924,7 +4937,8 @@ static void
 yb_restart_current_stmt(int attempt, bool is_read_restart)
 {
 	if (yb_debug_log_internal_restarts)
-		elog(LOG, "Rolling back and retrying current statement");
+		elog(LOG, "Rolling back and retrying current statement. Sub-txn id: %d to %d"
+			, GetCurrentSubTransactionId(), GetCurrentSubTransactionId() + 1);
 
 	// TODO(Piyush): Perform pg_session_->InvalidateForeignKeyReferenceCache()
 	// and create tests that would fail without this.
@@ -4971,24 +4985,58 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 	else
 	{
 		/*
-		 * Recreate the YB state for the transaction. This call preserves
-		 * the priority of the current YB transaction so that when we retry,
-		 * we re-use the same priority.
+		 * Retry the transaction by recreating the YB state for the transaction without
+		 * changing/ resetting the Pg-side transaction. This call preserves the priority of the current
+		 * YB transaction so that when we retry, we re-use the same priority for the new YB transaction.
+		 * Note that priorities are only used for Fail-on-Conflict concurrency control mode.
 		 */
 		YBCRecreateTransaction();
+
+		if (IsTransactionBlock() && IsYBReadCommitted()) {
+			/*
+			 * Each statement in a read committed transaction block (i.e., after BEGIN) registers an
+			 * internal sub-transaction to be able to undo and retry the statement for kConflict and
+			 * kReadRestart errors (see yb_restart_current_stmt()). This registration is done in
+			 * StartTransactionCommandInternal(). However, since we are retrying by surgically resetting
+			 * just the YB-side transaction state without resetting and retriggering the Pg-side
+			 * transaction state machine changes, we should explicitly make the sub-transaction changes
+			 * on Pg side i.e., by registsring a new internal sub transaction.
+			 */
+
+			// TODO(read committed): remove the below check once the feature is GA
+			Assert(!strcmp(
+				GetCurrentTransactionName(), YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME));
+			RollbackAndReleaseCurrentSubTransaction();
+
+			/*
+			 * This creates a new PG side sub-txn and increments the sub-txn id.
+			 *
+			 * NOTE: this will result in a situation where the new YB side distributed transaction will
+			 * start with a sub transaction id that isn't 2 (which is the intial id for the internal
+			 * savepoint registered before the first statement in any RC transaction block). The id could
+			 * be much higher depending on how many statement level retries have already been done so far
+			 * using the same YB transaction (i.e., via yb_restart_current_stmt()).
+			 */
+			BeginInternalSubTransactionForReadCommittedStatement();
+		}
+
 		yb_maybe_sleep_on_txn_conflict(attempt);
 	}
 }
 
 static void
-yb_prepare_transaction_for_retry(int attempt, bool is_read_restart)
+yb_prepare_transaction_for_retry(int attempt, bool is_read_restart, bool statement_retry_possible)
 {
-	if (IsYBReadCommitted() && IsInTransactionBlock(true /* isTopLevel */))
+	if (IsYBReadCommitted() && IsTransactionBlock() && statement_retry_possible)
 	{
 		/*
-		 * In this case the txn is not retried, just the statement is retried
-		 * after rolling back to the internal savepoint registered at start of
-		 * the statement.
+		 * If using RC, we can retry the failed statement by just undoing it
+		 * instead of restarting the whole transaction. This is not possible if the
+		 * transaction is already aborted which happens in case of a
+		 * kAbort/kDeadlock error.
+		 *
+		 * The undo is done by rolling back to the internal savepoint registered
+		 * before executing any statement in a RC transaction block.
 		 */
 		yb_restart_current_stmt(attempt, is_read_restart);
 	}
@@ -5010,11 +5058,11 @@ yb_perform_retry_on_error(
 	if (yb_debug_log_internal_restarts)
 		ereport(LOG, (errmsg("Performing query layer retry with attempt number: %d", attempt)));
 
-
 	const bool is_read_restart = YBCIsRestartReadError(txn_errcode);
-	if (!(is_read_restart ||
-		  YBCIsTxnConflictError(txn_errcode) ||
-		  YBCIsTxnDeadlockError(txn_errcode)))
+	const bool is_conflict_error = YBCIsTxnConflictError(txn_errcode);
+	const bool is_deadlock_error = YBCIsTxnDeadlockError(txn_errcode);
+	const bool is_aborted_error = YBCIsTxnAbortedError(txn_errcode);
+	if (!(is_read_restart || is_conflict_error || is_deadlock_error || is_aborted_error))
 	{
 		Assert(false);
 		elog(ERROR, "unexpected txn error code: %d", txn_errcode);
@@ -5033,7 +5081,8 @@ yb_perform_retry_on_error(
 
 	PG_TRY();
 	{
-		yb_prepare_transaction_for_retry(attempt, is_read_restart);
+		yb_prepare_transaction_for_retry(attempt, is_read_restart,
+				is_conflict_error || is_read_restart /* statement_retry_possible */);
 	}
 	PG_CATCH();
 	{

@@ -113,38 +113,6 @@ public class PublicCloudConstants {
       this.throughputRange = throughputRange;
     }
 
-    public static StorageType fromString(String value) {
-      StorageType retValue;
-      switch (value) {
-        case "IO1":
-          retValue = IO1;
-          break;
-        case "GP2":
-          retValue = GP2;
-          break;
-        case "GP3":
-          retValue = GP3;
-          break;
-        case "Scratch":
-          retValue = Scratch;
-          break;
-        case "Persistent":
-          retValue = Persistent;
-        case "StandardSSD_LRS":
-          retValue = StandardSSD_LRS;
-          break;
-        case "Premium_LRS":
-          retValue = Premium_LRS;
-          break;
-        case "UltraSSD_LRS":
-          retValue = UltraSSD_LRS;
-          break;
-        default:
-          throw new RuntimeException("invalid storagetype " + value);
-      }
-      return retValue;
-    }
-
     public boolean isIopsProvisioning() {
       return iopsRange != null;
     }

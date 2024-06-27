@@ -1426,7 +1426,7 @@ StartLogicalReplication(StartReplicationCmd *cmd)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("StartReplication is unavailable"),
 				 errdetail("StartReplication can only be called with "
-						   "ysql_TEST_enable_replication_slot_consumption "
+						   "ysql_yb_enable_replication_slot_consumption "
 						   "and ysql_yb_enable_replica_identity set to "
 						   "true.")));
 

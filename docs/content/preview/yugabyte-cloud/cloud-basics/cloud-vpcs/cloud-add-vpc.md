@@ -2,8 +2,8 @@
 title: VPCs
 headerTitle:
 linkTitle: VPCs
-description: Manage your YugabyteDB Managed VPCs.
-headcontent: Manage your YugabyteDB Managed VPCs
+description: Manage your YugabyteDB Aeon VPCs.
+headcontent: Manage your YugabyteDB Aeon VPCs
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-vpc
@@ -14,7 +14,7 @@ type: docs
 
 A virtual private cloud (VPC) is a virtual network where you can deploy clusters that you want to connect with services hosted with the same provider. The VPC reserves a range of IP addresses with the cloud provider you select.
 
-- To learn about VPCs in YugabyteDB Managed, refer to [VPC overview](../cloud-vpc-intro/).
+- To learn about VPCs in YugabyteDB Aeon, refer to [VPC overview](../cloud-vpc-intro/).
 - To learn how to peer VPCs, refer to [Peering connections](../cloud-add-peering/).
 - To learn how to configure a private service endpoint to use with a private link service, refer to [Private service endpoints](../cloud-add-endpoint/).
 
@@ -67,7 +67,7 @@ To create a VPC, do the following:
 1. Enter a name for the VPC.
 1. Choose the provider (GCP).
 1. Choose one of the following options:
-    - **Automated** - VPCs are created globally and GCP assigns network blocks to each region supported by YugabyteDB Managed. (Not recommended for production, refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations) in the GCP documentation.)
+    - **Automated** - VPCs are created globally and GCP assigns network blocks to each region supported by YugabyteDB Aeon. (Not recommended for production, refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations) in the GCP documentation.)
     - **Custom** - Select a region. Click **Add Region** to add additional regions. If the VPC is to be used for a multi-region cluster, add a region for each of the regions in the cluster.
 1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). CIDR addresses in different regions can't overlap.
     - For Automated, use network sizes of /16, /17, or /18.
@@ -81,7 +81,7 @@ To create a VPC, do the following:
 
 {{< /tabpane >}}
 
-YugabyteDB Managed adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
+YugabyteDB Aeon adds the VPC to the VPCs list with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
 
 ## Limitations
 

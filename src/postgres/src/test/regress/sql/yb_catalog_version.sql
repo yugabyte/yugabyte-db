@@ -9,11 +9,20 @@
 --
 --
 \set template1_db_oid 1
+\set db_oid 'CASE WHEN (select count(*) from pg_yb_catalog_version) = 1 THEN :template1_db_oid ELSE (SELECT oid FROM pg_database WHERE datname = \'yugabyte\') END'
+-- Set the catalog versions to known, fixed values before running the test.
+-- This is done so that the test output isn't affected by queries that run
+-- run during test setup.
+SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
+UPDATE pg_yb_catalog_version SET current_version = 10000,
+    last_breaking_version = 10000 WHERE db_oid = :db_oid;
+RESET yb_non_ddl_txn_for_sys_tables_allowed;
 -- Build a SQL query that works with per-database catalog version mode enabled
 -- or disabled.
-\set display_catalog_version 'SELECT current_version, last_breaking_version FROM pg_yb_catalog_version WHERE db_oid = CASE WHEN (select count(*) from pg_yb_catalog_version) = 1 THEN :template1_db_oid ELSE (SELECT oid FROM pg_database WHERE datname = \'yugabyte\') END'
-
+\set display_catalog_version 'SELECT current_version, last_breaking_version FROM pg_yb_catalog_version WHERE db_oid = :db_oid'
 -- Display the initial catalog version.
+-- YB_TODO(fizaa): the following select will retry after encountering a version mismatch error,
+-- and it will result in double output for now. This is a known issue.
 :display_catalog_version;
 
 -- The next CREATE ROLE will not increment current_version.

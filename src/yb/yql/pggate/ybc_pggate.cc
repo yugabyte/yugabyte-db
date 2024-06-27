@@ -123,7 +123,7 @@ namespace {
 bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
   for (const char& c : flag_val) {
     if (c != '_' && c != ',' && !islower(c)) {
-      LOG(ERROR) << "Found invalid character " << c << " in flag " << flag_name;
+      LOG_FLAG_VALIDATION_ERROR(flag_name, flag_val) << "Found invalid character '" << c << "'";
       return false;
     }
   }

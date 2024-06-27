@@ -670,5 +670,34 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fail_clone_pg_schema");
 }
 
+// The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
+// inherited from pg_dump.
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
+  // Clone to a time before a drop table and check that the table exists with correct data.
+  // 1. Create a table and load some data.
+  // 2. Mark time t.
+  // 3. Drop table.
+  // 4. Clone the database as of time t.
+  // 5. Check the table exists in the clone with the correct data.
+  const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}};
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
+
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  // Drop table t1
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP TABLE t1"));
+
+  // Perform the clone operation to ht
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
+
+  // Verify table t1 exists in the clone database and rows are as of ht1.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(row, kRows[0]);
+}
+
 }  // namespace master
 }  // namespace yb

@@ -88,13 +88,13 @@ When a client application starts, the driver attempts to create a control connec
 
 You can configure the size of the connection pool. For example, in the Java driver, you can define different pool sizes for nodes in a local datacenter, and for those in other (remote) datacenters. If the number of connections in a pool go lower than the defined size for any reason, the driver immediately tries to fill the gap in the background.
 
-## Using YCQL drivers with YugabyteDB Managed
+## Using YCQL drivers with YugabyteDB Aeon
 
-[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use load balancing provided by the cloud provider where the cluster is provisioned. The nodes are not directly accessible to the outside world. This is in contrast to the desired setup of YCQL drivers, which need direct access to all the nodes in a cluster.
+[YugabyteDB Aeon](../../yugabyte-cloud/) clusters automatically use load balancing provided by the cloud provider where the cluster is provisioned. The nodes are not directly accessible to the outside world. This is in contrast to the desired setup of YCQL drivers, which need direct access to all the nodes in a cluster.
 
 The drivers still work in this situation, but the client applications lose some of the benefits of the driver, including [partition-aware query routing](#partition-aware-load-balance-policy) and the default [retry policy](#retry-policy).
 
-To take advantage of the driver's partition-aware load balancing feature when connecting to clusters in YugabyteDB Managed, the applications must be deployed in a VPC that has been peered with the cluster VPC; VPC peering enables the client application to access all nodes of the cluster. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To take advantage of the driver's partition-aware load balancing feature when connecting to clusters in YugabyteDB Aeon, the applications must be deployed in a VPC that has been peered with the cluster VPC; VPC peering enables the client application to access all nodes of the cluster. For information on VPC peering in YugabyteDB Aeon, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 If VPC peering is not possible, you can attempt to restore the retry capability by increasing the size of the connection pool (the Java driver default size is 1) and providing a custom retry policy to retry the failed operation on the same node.
 

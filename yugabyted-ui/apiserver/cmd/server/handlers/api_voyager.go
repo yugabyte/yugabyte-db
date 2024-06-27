@@ -11,6 +11,7 @@ import (
     "net/http"
     "strings"
     "time"
+    "math"
 
     "github.com/jackc/pgtype"
     "github.com/jackc/pgx/v4/pgxpool"
@@ -45,9 +46,18 @@ const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
     "WHERE migration_UUID=$1" +
     "ORDER BY schema_name"
 
+const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
+    "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
+    "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED'"
+
 type VoyagerMigrationsQueryFuture struct {
     Migrations []models.VoyagerMigrationDetails
     Error      error
+}
+
+type AssessmentReportQueryFuture struct {
+    Report helpers.AssessmentVisualisationMetadata
+    Error error
 }
 
 type VoyagerDataMigrationMetricsFuture struct {
@@ -194,7 +204,7 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
         var migrationPhaseToBeUsed int
         var migrationInvocationSqToBeUsed int
         if allVoygaerMigration.migrationPhase >= 1 {
-            migrationPhaseToBeUsed = 0
+            migrationPhaseToBeUsed = 1
             migrationInvocationSqToBeUsed = 2
         } else {
             migrationPhaseToBeUsed = allVoygaerMigration.migrationPhase
@@ -364,13 +374,7 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
     migrateSchemaTaskInfo.OverallStatus = "in-progress"
     for _, phaseInfo := range *schemaPhaseInfoList {
         switch phaseInfo.migrationPhase {
-        case 0:
-            if phaseInfo.invocationSeq%2 == 0 {
-                migrateSchemaTaskInfo.ExportSchema = "complete"
-            } else {
-                migrateSchemaTaskInfo.ExportSchema = "in-progress"
-            }
-        case 1:
+        case 2:
             if phaseInfo.invocationSeq >= 2 {
                 var invocationSqToBeUsed int
                 if phaseInfo.invocationSeq%2 == 0 {
@@ -552,6 +556,24 @@ func (c *Container) GetVoyagerAssesmentDetails(ctx echo.Context) error {
 
 func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
 
+    migrationUuid := ctx.QueryParam("uuid")
+
+    conn, err := c.GetConnection("yugabyte")
+    if err != nil {
+        return ctx.String(http.StatusInternalServerError, err.Error())
+    }
+
+    future := make(chan AssessmentReportQueryFuture)
+    go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
+
+    assessmentReportVisualisationData := <- future
+
+    if assessmentReportVisualisationData.Error == nil {
+        fmt.Println(assessmentReportVisualisationData.Report)
+    }
+
+    assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
+
     voyagerAssessmentReportResponse := models.MigrationAssessmentReport{
         Summary:                models.AssessmentReportSummary{},
         SourceEnvironment:      models.SourceEnvironmentInfo{},
@@ -563,66 +585,174 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         UnsupportedFeatures:    []models.UnsupportedSqlInfo{},
     }
 
-    voyagerAssessmentReportResponse.Summary.EstimatedMigrationTime = "2 hrs 30 mins"
-    voyagerAssessmentReportResponse.Summary.MigrationComplexity = "Easy"
-    voyagerAssessmentReportResponse.Summary.Summary = "Recommended instance type with" +
-        "2 vCPU and 8 GiB memory could fit 1769 object(s) with 104.0740 GB size and throughput " +
-        "requirement of 52 reads/sec and 0 writes/sec as colocated. Rest 63 object(s) with " +
-        "479.0547 GB size and throughput requirement of 0 reads/sec and 0 writes/sec  need to " +
-        "be migrated as range partitioned tables"
+    estimatedTime := int64(math.Round(
+        assessmentReport.Sizing.SizingRecommendation.EstimatedTimeInMinForImport))
+    voyagerAssessmentReportResponse.Summary.EstimatedMigrationTime =
+        fmt.Sprintf("%v Minutes", estimatedTime)
+    voyagerAssessmentReportResponse.Summary.MigrationComplexity =
+        assessmentReportVisualisationData.Report.MigrationComplexity
+    voyagerAssessmentReportResponse.Summary.Summary =
+        assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
 
-    voyagerAssessmentReportResponse.SourceEnvironment.TotalVcpu = "240"
-    voyagerAssessmentReportResponse.SourceEnvironment.TotalMemory = "480 GB"
-    voyagerAssessmentReportResponse.SourceEnvironment.TotalDiskSize = "960 GB"
-    voyagerAssessmentReportResponse.SourceEnvironment.NoOfConnections = "16"
+    voyagerAssessmentReportResponse.SourceEnvironment.TotalVcpu = ""
+    voyagerAssessmentReportResponse.SourceEnvironment.TotalMemory = ""
+    voyagerAssessmentReportResponse.SourceEnvironment.TotalDiskSize = ""
+    voyagerAssessmentReportResponse.SourceEnvironment.NoOfConnections = ""
 
-    voyagerAssessmentReportResponse.SourceDatabase.TableSize = 240
-    voyagerAssessmentReportResponse.SourceDatabase.TableRowCount = 120392668
-    voyagerAssessmentReportResponse.SourceDatabase.TotalTableSize = 270
-    voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize = 30
+    voyagerAssessmentReportResponse.SourceDatabase.TableSize =
+        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize)
+    voyagerAssessmentReportResponse.SourceDatabase.TableRowCount =
+        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount)
+    voyagerAssessmentReportResponse.SourceDatabase.TotalTableSize =
+        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize)
+    voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize =
+        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize)
 
-    voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary = "Recommended " +
-        "instance type with" +
-        "2 vCPU and 8 GiB memory could fit 1769 object(s) with 104.0740 GB size and throughput " +
-        "requirement of 52 reads/sec and 0 writes/sec as colocated. Rest 63 object(s) with " +
-        "479.0547 GB size and throughput requirement of 0 reads/sec and 0 writes/sec  need to " +
-        "be migrated as range partitioned tables"
+
+    voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary =
+        assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetClusterRecommendation.NumNodes = 3
+        TargetClusterRecommendation.NumNodes =
+        int32(assessmentReport.Sizing.SizingRecommendation.NumNodes)
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetClusterRecommendation.VcpuPerNode = 2
+        TargetClusterRecommendation.VcpuPerNode =
+        int32(assessmentReport.Sizing.SizingRecommendation.VCPUsPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetClusterRecommendation.MemoryPerNode = 8
+        TargetClusterRecommendation.MemoryPerNode =
+        int32(assessmentReport.Sizing.SizingRecommendation.MemoryPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetClusterRecommendation.InsertsPerNode = 6
+        TargetClusterRecommendation.InsertsPerNode =
+        int32(assessmentReport.Sizing.SizingRecommendation.OptimalInsertConnectionsPerNode)
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetClusterRecommendation.ConnectionsPerNode = 5
+        TargetClusterRecommendation.ConnectionsPerNode =
+        int32(assessmentReport.Sizing.SizingRecommendation.OptimalSelectConnectionsPerNode)
 
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetSchemaRecommendation.NoOfColocatedTables = 150
+        TargetSchemaRecommendation.NoOfColocatedTables =
+            int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetSchemaRecommendation.NoOfShardedTables = 40
+        TargetSchemaRecommendation.NoOfShardedTables =
+            int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetSchemaRecommendation.TotalSizeColocatedTables = 104
+        TargetSchemaRecommendation.TotalSizeColocatedTables =
+            int32(assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalColocatedSize)
     voyagerAssessmentReportResponse.TargetRecommendations.
-        TargetSchemaRecommendation.TotalSizeShardedTables = 479
+        TargetSchemaRecommendation.TotalSizeShardedTables =
+            int32(assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalShardedSize)
 
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Automatic = 22
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Manual = 9
-    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Automatic = 25
-    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Manual = 3
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Automatic = 72
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Manual = 5
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Automatic = 23
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Manual = 5
-    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Automatic = 27
-    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Manual = 3
+    dbObjectsMap := map[string]int{}
+    for _, dbObject := range assessmentReport.SchemaSummary.DBObjects {
+       dbObjectsMap[dbObject.ObjectType] = dbObject.TotalCount
+    }
 
-    unsupportedDataType1 := models.UnsupportedSqlInfo{}
-    unsupportedDataType1.Count = 5
-    unsupportedDataType1.UnsupportedType = "JSONB"
-    voyagerAssessmentReportResponse.UnsupportedDataTypes =
-        []models.UnsupportedSqlInfo{unsupportedDataType1}
+    dbObjectConversionIssuesMap := map[string]int{}
+    for _, conversionIssue := range assessmentReportVisualisationData.Report.ConversionIssues {
+        count, ok := dbObjectConversionIssuesMap[conversionIssue.ObjectType]
+        if ok {
+            count++
+            dbObjectConversionIssuesMap[conversionIssue.ObjectType] = count
+        } else {
+            dbObjectConversionIssuesMap[conversionIssue.ObjectType] = 1
+        }
+    }
+
+    for dbObjectType, count := range dbObjectConversionIssuesMap {
+        _, ok := dbObjectsMap[dbObjectType]
+        if ok {
+            dbObjectsMap[dbObjectType] = dbObjectsMap[dbObjectType] - count
+        }
+    }
+
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Automatic =
+        int32(dbObjectsMap["FUNCTION"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Manual =
+        int32(dbObjectConversionIssuesMap["FUNCTION"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Automatic =
+        int32(dbObjectsMap["TYPE"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Manual =
+        int32(dbObjectConversionIssuesMap["TYPE"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Automatic =
+        int32(dbObjectsMap["TABLE"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Manual =
+        int32(dbObjectConversionIssuesMap["TABLE"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Automatic =
+        int32(dbObjectsMap["TRIGGER"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Manual =
+        int32(dbObjectConversionIssuesMap["TRIGGER"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Automatic =
+        int32(dbObjectsMap["VIEW"])
+    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Manual =
+        int32(dbObjectConversionIssuesMap["VIEW"])
+
+    // Convert the backend model []UnsupportedDataTypes into UX model []UnsupportedSqlInfo
+    unsupportedDataTypeMap := make(map[string]models.UnsupportedSqlInfo)
+    for _, unsupportedDataType := range assessmentReport.UnsupportedDataTypes {
+
+        unsupportedSqlInfo, ok := unsupportedDataTypeMap[unsupportedDataType.DataType]
+        if ok {
+            unsupportedSqlInfo.Count++
+            unsupportedDataTypeMap[unsupportedDataType.DataType] = unsupportedSqlInfo
+        } else {
+            unsupportedSqlInfoTmp := models.UnsupportedSqlInfo{}
+            unsupportedSqlInfoTmp.Count = 1
+            unsupportedSqlInfoTmp.UnsupportedType = unsupportedDataType.DataType
+            unsupportedDataTypeMap[unsupportedDataType.DataType] = models.UnsupportedSqlInfo{}
+        }
+    }
+    var unsupportedDataTypesList []models.UnsupportedSqlInfo
+    for _, value := range unsupportedDataTypeMap {
+        unsupportedDataTypesList = append(unsupportedDataTypesList, value)
+    }
+    voyagerAssessmentReportResponse.UnsupportedDataTypes = unsupportedDataTypesList
+
+    // Convert the backend model []UnsupportedFeatures into UX model []UnsupportedSqlInfo
+    // to-do: Need to confirm with Voyager team on mapping
+    var unsupportedFeaturesList []models.UnsupportedSqlInfo
+    for _, unsupportedFeatureType := range assessmentReport.UnsupportedFeatures{
+        unsupportedFeature := models.UnsupportedSqlInfo{}
+        unsupportedFeature.UnsupportedType = unsupportedFeatureType.FeatureName
+        unsupportedFeature.Count = int32(len(unsupportedFeatureType.ObjectNames))
+        if (unsupportedFeature.Count == 0) {
+            unsupportedFeature.Count = 1
+        }
+        unsupportedFeaturesList = append(unsupportedFeaturesList, unsupportedFeature)
+    }
+    voyagerAssessmentReportResponse.UnsupportedFeatures = unsupportedFeaturesList
 
     return ctx.JSON(http.StatusOK, voyagerAssessmentReportResponse)
 }
+
+func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string, conn *pgxpool.Pool,
+    future chan AssessmentReportQueryFuture) {
+
+        MigrationAsessmentReportResponse := AssessmentReportQueryFuture{
+            Report: helpers.AssessmentVisualisationMetadata{},
+            Error: nil,
+        }
+        log.Infof(fmt.Sprintf("migration uuid: %s", migrationUuid))
+        var assessmentReportPayload string
+        row := conn.QueryRow(context.Background(), RETRIEVE_ASSESSMENT_REPORT, migrationUuid)
+        err := row.Scan(&assessmentReportPayload)
+        log.Infof(fmt.Sprintf("assessment payload: [%s]", assessmentReportPayload))
+        if err != nil {
+            log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
+                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+            log.Errorf(err.Error())
+            MigrationAsessmentReportResponse.Error = err
+            future <- MigrationAsessmentReportResponse
+            return
+        }
+
+        var assessmentVisualisationData helpers.AssessmentVisualisationMetadata
+        err = json.Unmarshal([]byte(assessmentReportPayload), &assessmentVisualisationData)
+        if err != nil {
+            log.Errorf(fmt.Sprintf("[%s] Error while JSON Unmarshal of the assessment report.",
+                    LOGGER_FILE_NAME))
+            log.Errorf(err.Error())
+        }
+
+        MigrationAsessmentReportResponse.Report = assessmentVisualisationData
+        future <- MigrationAsessmentReportResponse
+    }

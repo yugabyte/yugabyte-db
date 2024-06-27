@@ -28,6 +28,6 @@ To connect to YugabyteDB, create a new PostgreSQL resource in Retool as follows:
 1. Provide the password for your YugabyteDB instance.
 1. Optionally, to connect via SSL, provide the CA certificate.
 
-If your cluster is in YugabteDB Managed, be sure to add the listed IP addresses to the cluster [IP Allow List](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
+If your cluster is in YugabyteDB Aeon, be sure to add the listed IP addresses to the cluster [IP Allow List](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
 
 With a valid PostgreSQL resource, you can now query your YugabyteDB instance in Retool.

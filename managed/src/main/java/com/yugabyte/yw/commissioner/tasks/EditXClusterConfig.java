@@ -154,7 +154,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             throw new IllegalArgumentException(
                 "The databases must be provided only for DB scoped replication");
           }
-          addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, editFormData.databases);
+          Set<String> databaseIdsToAdd = taskParams().getDatabaseIdsToAdd();
+          Set<String> databaseIdsToRemove = taskParams().getDatabaseIdsToRemove();
+          log.info("The databases to remove are {}", databaseIdsToRemove);
+          if (!databaseIdsToAdd.isEmpty()) {
+            addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, databaseIdsToAdd);
+          }
+          if (!databaseIdsToRemove.isEmpty()) {
+            addSubtasksToRemoveDatabasesFromXClusterConfig(xClusterConfig, databaseIdsToRemove);
+          }
+
         } else {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
@@ -379,9 +388,31 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       XClusterConfig xClusterConfig, Set<String> databases) {
 
     for (String dbId : databases) {
+      if (!xClusterConfig.getDbIds().contains(dbId)) {
+        xClusterConfig.addNamespaces(Set.of(dbId));
+      }
       xClusterConfig.updateStatusForNamespace(dbId, XClusterNamespaceConfig.Status.Updating);
       createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, dbId);
       createAddNamespaceToXClusterReplicationTask(xClusterConfig, dbId);
+    }
+
+    if (xClusterConfig.isUsedForDr()) {
+      createSetDrStatesTask(
+              xClusterConfig,
+              State.Replicating,
+              SourceUniverseState.ReplicatingData,
+              TargetUniverseState.ReceivingData,
+              null /* keyspacePending */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    }
+  }
+
+  protected void addSubtasksToRemoveDatabasesFromXClusterConfig(
+      XClusterConfig xClusterConfig, Set<String> databases) {
+
+    for (String dbId : databases) {
+      createXClusterRemoveNamespaceFromTargetUniverseTask(xClusterConfig, dbId);
+      createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(xClusterConfig, dbId);
     }
 
     if (xClusterConfig.isUsedForDr()) {

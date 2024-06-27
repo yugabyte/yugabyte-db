@@ -27,7 +27,7 @@ You upgrade a universe in the following phases:
 
 ## Perform the upgrade
 
-{{< warning title="For YugabyteDB upgrades in YBA" >}}
+{{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
 You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
 {{< /warning >}}
 
@@ -74,9 +74,9 @@ curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes
      --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
 ```
 
-To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YBA window.
+To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
 
-You can view your Universe ID from your YBA universe URL, as follows:
+You can view your Universe ID from your YugabyteDB Anywhere universe URL, as follows:
 
 ```sh
 https://<YB-Anywhere-IP-address>/universes/<universe-ID>

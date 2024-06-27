@@ -165,9 +165,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   scoped_refptr<TableInfo> table(
       master_->catalog_manager()->NewTableInfo("abc", /* colocated */ false));
   // This leaves all three in StartMutation.
-  scoped_refptr<TabletInfo> tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
-  scoped_refptr<TabletInfo> tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
-  scoped_refptr<TabletInfo> tablet3(CreateUncommittedTablet(table.get(), "789", "c", "d"));
+  TabletInfoPtr tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
+  TabletInfoPtr tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
+  TabletInfoPtr tablet3(CreateUncommittedTablet(table.get(), "789", "c", "d"));
 
   unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
@@ -187,8 +187,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(2 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()]);
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
+    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()].get());
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
   }
 
   // Update tablet1
@@ -204,8 +204,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     loader->Reset();
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(2 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()]);
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
+    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()].get());
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
   }
 
   // Add tablet3 and Update tablet1 and tablet2
@@ -232,9 +232,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(3 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()]);
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
-    ASSERT_METADATA_EQ(tablet3.get(), loader->tablets[tablet3->id()]);
+    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()].get());
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
+    ASSERT_METADATA_EQ(tablet3.get(), loader->tablets[tablet3->id()].get());
   }
 
   // Delete tablet1 and tablet3 tablets
@@ -247,7 +247,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
   }
 }
 
@@ -708,7 +708,7 @@ TEST_F(SysCatalogTest, TestOrphanedTabletsDeleted) {
     for (auto& p : state_to_id) {
       auto in_mem_tablet =
           VERIFY_RESULT(master_->catalog_manager()->GetTabletInfo(p.second /* tablet_id */));
-      auto* persisted_tablet = loader.tablets[p.second /* tablet_id */];
+      const auto& persisted_tablet = loader.tablets[p.second /* tablet_id */];
 
       if ((in_mem_tablet->LockForRead()->pb.state() != SysTabletsEntryPB_State_DELETED) ||
           (persisted_tablet->LockForRead()->pb.state() != SysTabletsEntryPB_State_DELETED)) {
@@ -739,7 +739,7 @@ TEST_F(SysCatalogTest, TestTableIdsHasAtLeastOneTable) {
     TestTabletLoader loader;
     RETURN_NOT_OK(sys_catalog_->Visit(&loader));
     auto in_mem_tablet = VERIFY_RESULT(master_->catalog_manager()->GetTabletInfo(tablet_id));
-    auto* persisted_tablet = loader.tablets[tablet_id];
+    const auto& persisted_tablet = loader.tablets[tablet_id];
 
     if ((in_mem_tablet->LockForRead()->pb.table_ids_size() != 1) ||
         (in_mem_tablet->LockForRead()->pb.table_ids(0) != table_id) ||
@@ -778,7 +778,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
 
   // Add tasks to the table (more than can fit in the cbuf).
   for (int task_id = 0; task_id < FLAGS_tasks_tracker_num_tasks + 10; ++task_id) {
-    scoped_refptr<TabletInfo> tablet(new TabletInfo(table, kSysCatalogTableId));
+    auto tablet = std::make_shared<TabletInfo>(table, kSysCatalogTableId);
     auto task = std::make_shared<AsyncTruncate>(
         master_, master_->catalog_manager()->AsyncTaskPool(), tablet, epoch);
     table->AddTask(task);

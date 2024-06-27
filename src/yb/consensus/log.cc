@@ -236,12 +236,11 @@ DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_aggressive_check_mb, 18 * 102
     "than 'disk throughput rate' * 'reject_writes_min_disk_space_check_interval_sec'");
 
 // Validate that log_min_segments_to_retain >= 1
-static bool ValidateLogsToRetain(const char* flagname, int value) {
+static bool ValidateLogsToRetain(const char* flag_name, int value) {
   if (value >= 1) {
     return true;
   }
-  LOG(ERROR) << strings::Substitute("$0 must be at least 1, value $1 is invalid",
-                                    flagname, value);
+  LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be at least 1";
   return false;
 }
 DEFINE_validator(log_min_segments_to_retain, &ValidateLogsToRetain);

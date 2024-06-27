@@ -152,8 +152,15 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
     const auto& table_info = *table_info_result;
     // Get schema version.
     uint32_t version = table_info->LockForRead()->pb.version();
-    const auto& tablets = table_info->GetTablets();
-    for (const auto& tablet : tablets) {
+    const auto tablets_result = table_info->GetTablets();
+    if (!tablets_result) {
+      LOG(WARNING) << Format(
+          "PITR: Cannot resume backfill for table, backing TabletInfo objects have been freed. "
+          "Table id: $0",
+          table_info->id());
+      return;
+    }
+    for (const auto& tablet : *tablets_result) {
       LOG(INFO) << "PITR: Try resuming backfill for tablet " << tablet->id()
                 << ". If it is not a table for which backfill needs to be resumed"
                 << " then this is a NO-OP";
@@ -216,20 +223,22 @@ void CatalogManagerBgTasks::Run() {
       if (!to_process.empty()) {
         // For those tablets which need to be created in this round, assign replicas.
         TSDescriptorVector ts_descs = catalog_manager_->GetAllLiveNotBlacklistedTServers();
-        CMGlobalLoadState global_load_state;
-        catalog_manager_->InitializeGlobalLoadState(ts_descs, &global_load_state);
-        // Transition tablet assignment state from preparing to creating, send
-        // and schedule creation / deletion RPC messages, etc.
-        // This is done table by table.
-        for (const auto& entries : to_process) {
-          LOG(INFO) << "Processing pending assignments for table: " << entries.first;
-          Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
-              entries.first, entries.second, l.epoch(), &global_load_state);
-          WARN_NOT_OK(s, "Assignment failed");
-          // Set processed_tablets as true if the call succeeds for at least one table.
-          processed_tablets = processed_tablets || s.ok();
-          // TODO Add tests for this in the revision that makes
-          // create/alter fault tolerant.
+        auto global_load_state_result = catalog_manager_->InitializeGlobalLoadState(ts_descs);
+        if (global_load_state_result.ok()) {
+          auto global_load_state = *global_load_state_result;
+          // Transition tablet assignment state from preparing to creating, send
+          // and schedule creation / deletion RPC messages, etc.
+          // This is done table by table.
+          for (const auto& [table_id, tablets] : to_process) {
+            LOG(INFO) << "Processing pending assignments for table: " << table_id;
+            Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
+                table_id, tablets, l.epoch(), &global_load_state);
+            WARN_NOT_OK(s, "Assignment failed");
+            // Set processed_tablets as true if the call succeeds for at least one table.
+            processed_tablets = processed_tablets || s.ok();
+            // TODO Add tests for this in the revision that makes
+            // create/alter fault tolerant.
+          }
         }
       }
 

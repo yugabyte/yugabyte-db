@@ -2,7 +2,7 @@
 title: Connect a YCQL Java application
 headerTitle: Connect a YCQL Java application
 linkTitle: Connect a YCQL Java application
-description: Build a sample Java application for YugabyteDB Managed with the Yugabyte Java Driver for YCQL v4.6.
+description: Build a sample Java application for YugabyteDB Aeon with the Yugabyte Java Driver for YCQL v4.6.
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
 menu:
@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The following instructions show how you can build a Java application connected to YugabyteDB Managed using the Yugabyte Java Driver for YCQL v4.6.
+The following instructions show how you can build a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL v4.6.
 
 ## Maven
 
@@ -33,15 +33,15 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have the following:
 
-- A YugabyteDB Managed cluster, with your database credentials (username and password)
+- A YugabyteDB Aeon cluster, with your database credentials (username and password)
 - JDK version 1.8 or later
 - Maven 3.3 or later
 
 Add your computer to the cluster IP allow list. Refer to [Assign IP allow lists](../../cloud-secure-clusters/add-connections).
 
-You also need to download and install your YugabyteDB Managed cluster CA certificate and obtain the cluster connection parameters as follows:
+You also need to download and install your YugabyteDB Aeon cluster CA certificate and obtain the cluster connection parameters as follows:
 
-1. Sign in to YugabyteDB Managed, select your cluster, and click **Connect**.
+1. Sign in to YugabyteDB Aeon, select your cluster, and click **Connect**.
 
 1. Click **Connect to your Application**.
 
@@ -219,7 +219,7 @@ public class YBCqlHelloWorld {
 
 Edit the `.withLocalDatacenter` line by replacing "datacenter1" with the LocalDatacenter from your cluster connection parameters.
 
-You can also find the local data center name by running the following YCQL query from YugabyteDB Managed Shell:
+You can also find the local data center name by running the following YCQL query from YugabyteDB Aeon Shell:
 
 ```sql
 admin@ycqlsh:yugabyte> SELECT * FROM system.local;
@@ -259,7 +259,7 @@ Replace the following command line variables with the appropriate connection par
 
 | Variable | Description |
 | :------- | :---------- |
-| YUGABYTE_CLOUD_HOSTNAME | The hostname of your YugabyteDB Managed cluster |
+| YUGABYTE_CLOUD_HOSTNAME | The hostname of your YugabyteDB Aeon cluster |
 | ROOT_CERT_PATH | The path to root.crt |
 | YCQL_USER | Your Yugabyte database username |
 | YCQL_PASSWORD | Your Yugabyte database password |

@@ -62,4 +62,4 @@ To apply operating system patch or upgrade, do the following:
 1. Specify the delay (in seconds) between restarting servers for the rolling upgrade.
 1. Click **Upgrade**.
 
-When finished, you can confirm all nodes in the universe are running correctly in YBA by navigating to the universe **Nodes** tab.
+When finished, you can confirm all nodes in the universe are running correctly in YugabyteDB Anywhere by navigating to the universe **Nodes** tab.
