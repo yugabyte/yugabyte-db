@@ -63,6 +63,7 @@ func New() *State {
 		_internalFields: internalFields{
 			ChangeID:      0,
 			SchemaVersion: getSchemaVersion(),
+			RunSchemas:    allSchemaSlice(),
 		},
 	}
 }
@@ -72,8 +73,9 @@ type YbdbState struct {
 }
 
 type internalFields struct {
-	ChangeID      int `json:"change_id"`
-	SchemaVersion int `json:"schema"`
+	ChangeID      int   `json:"change_id"`
+	SchemaVersion int   `json:"schema"` // Deprecated
+	RunSchemas    []int `json:"run_schemas"`
 }
 
 // TransitionStatus will move the state from CurrentStatus to next, after first Validating the
@@ -91,4 +93,14 @@ func (s *State) TransitionStatus(next status) error {
 			next.String(), err)
 	}
 	return nil
+}
+
+func allSchemaSlice() []int {
+	ret := make([]int, getSchemaVersion())
+	start := 1
+	for i := range getSchemaVersion() {
+		ret[i] = start
+		start++
+	}
+	return ret
 }
