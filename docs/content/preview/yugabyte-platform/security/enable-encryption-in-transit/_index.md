@@ -17,11 +17,12 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 - Node-to-Node TLS to encrypt intra-node communication between YB-Master and YB-TServer nodes.
 - Client-to-Node TLS to encrypt communication between a universe and clients. This includes applications, shells (ysqlsh, ycqlsh, psql, and so on), and other tools, using the YSQL and YCQL APIs.
-- Client to YugabyteDB Anywhere TLS to encrypt communication between YugabyteDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage.
+
+YugabyteDB Anywhere also uses certificates to validate connections between YugabyteDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage. To validate connections to these services, you add their certificates to the YugabyteDB Anywhere Trust Store.
 
 YugabyteDB Anywhere can create and manage new self-signed certificates for encrypting data in transit for universes. Alternatively, you can use your own self-signed certificates. You can also upload third-party certificate authority (CA) certificates from external providers, such as Venafi or DigiCert. (CA-signed certificates can only be used with on-premises provider configurations.)
 
-You enable encryption in transit (TLS) during universe creation and can change these settings for an existing universe.
+You enable encryption in transit (TLS) during [universe creation](../../create-deployments/create-universe-multi-zone/) and can [change these settings](rotate-certificates/) for an existing universe.
 
 {{<index/block>}}
 
@@ -34,7 +35,7 @@ You enable encryption in transit (TLS) during universe creation and can change t
   {{<index/item
     title="Add certificates"
     body="Upload your own certificates to secure data transfer on your universes."
-    href="add-certificate-ca/"
+    href="add-certificate-self/"
     icon="fa-thin fa-file-certificate">}}
 
   {{<index/item
@@ -45,7 +46,7 @@ You enable encryption in transit (TLS) during universe creation and can change t
 
   {{<index/item
     title="Trust Store"
-    body="Add certificates to the YugabyteDB Anywhere trust store for connecting from services such as LDAP, OIDC, Webhook, S3 backup storage, and Hashicorp Vault."
+    body="Add certificates to the YugabyteDB Anywhere Trust Store for connecting from services such as LDAP, OIDC, Webhook, S3 backup storage, and Hashicorp Vault."
     href="trust-store/"
     icon="fa-thin fa-shop-lock">}}
 
