@@ -1990,11 +1990,14 @@ bool AsyncCloneTablet::SendRequest(int attempt) {
 AsyncClonePgSchema::AsyncClonePgSchema(
     Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
     const std::string& source_db_name, const std::string& target_db_name, HybridTime restore_ht,
+    const std::string& source_owner, const std::string& target_owner,
     ClonePgSchemaCallbackType callback, MonoTime deadline)
     : RetrySpecificTSRpcTask(
           master, callback_pool, std::move(permanent_uuid), /* async_task_throttler */ nullptr),
       source_db_name_(source_db_name),
-      target_db_name(target_db_name),
+      target_db_name_(target_db_name),
+      source_owner_(source_owner),
+      target_owner_(target_owner),
       restore_ht_(restore_ht),
       callback_(callback) {
   deadline_ = deadline;  // Time out according to earliest(deadline_,
@@ -2020,7 +2023,9 @@ void AsyncClonePgSchema::HandleResponse(int attempt) {
 bool AsyncClonePgSchema::SendRequest(int attempt) {
   tserver::ClonePgSchemaRequestPB req;
   req.set_source_db_name(source_db_name_);
-  req.set_target_db_name(target_db_name);
+  req.set_target_db_name(target_db_name_);
+  req.set_source_owner(source_owner_);
+  req.set_target_owner(target_owner_);
   req.set_restore_ht(restore_ht_.ToUint64());
   ts_admin_proxy_->ClonePgSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Sent clone tablets request to " << tablet_id();

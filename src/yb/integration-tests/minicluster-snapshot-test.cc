@@ -699,5 +699,21 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
   ASSERT_EQ(row, kRows[0]);
 }
 
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(UserIsSet)) {
+  // Test that the user is set to the user running the clone operation.
+  ASSERT_OK(source_conn_->Execute("CREATE ROLE test_user WITH LOGIN PASSWORD 'test'"));
+  ASSERT_OK(source_conn_->Execute("ALTER ROLE test_user SUPERUSER"));
+  ASSERT_OK(source_conn_->Execute("SET ROLE test_user"));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  auto owner_query = Format(
+      "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '$0'",
+      kTargetNamespaceName1);
+  auto owner = ASSERT_RESULT(source_conn_->FetchRows<std::string>(owner_query));
+  ASSERT_EQ(owner.size(), 1);
+  ASSERT_EQ(owner[0], "test_user");
+}
+
 }  // namespace master
 }  // namespace yb

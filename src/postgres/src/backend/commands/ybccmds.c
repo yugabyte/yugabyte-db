@@ -105,8 +105,8 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, const char *src_dbname, Oid next_oid, bool colocated,
-				  bool *retry_on_oid_collision, int64 clone_time)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+				  bool *retry_on_oid_collision, YbCloneInfo *yb_clone_info)
 {
 	if (YBIsDBCatalogVersionMode())
 	{
@@ -128,10 +128,9 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, const char *src_
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
 										  dboid,
 										  src_dboid,
-										  src_dbname,
 										  next_oid,
 										  colocated,
-										  clone_time,
+										  yb_clone_info,
 										  &handle));
 
 	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);

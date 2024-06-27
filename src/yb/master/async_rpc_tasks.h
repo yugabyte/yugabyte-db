@@ -1068,6 +1068,7 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
   AsyncClonePgSchema(
       Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
       const std::string& source_db_name, const std::string& target_db_name, HybridTime restore_time,
+      const std::string& source_owner, const std::string& target_owner,
       ClonePgSchemaCallbackType callback, MonoTime deadline);
 
   server::MonitoredTaskType type() const override {
@@ -1087,7 +1088,9 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
 
  private:
   std::string source_db_name_;
-  std::string target_db_name;
+  std::string target_db_name_;
+  std::string source_owner_;
+  std::string target_owner_;
   HybridTime restore_ht_;
   tserver::ClonePgSchemaResponsePB resp_;
   ClonePgSchemaCallbackType callback_;

@@ -109,11 +109,12 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
 
   Status ScheduleClonePgSchemaTask(
       const TabletServerId& ts_uuid, const std::string& source_db_name,
-      const std::string& target_db_name, HybridTime restore_ht,
+      const std::string& target_db_name, const std::string& pg_source_owner,
+      const std::string& pg_target_owner, HybridTime restore_ht,
       AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline) override {
     auto task = std::make_shared<AsyncClonePgSchema>(
         master_, catalog_manager_->AsyncTaskPool(), ts_uuid, source_db_name,
-        target_db_name, restore_ht, callback, deadline);
+        target_db_name, restore_ht, pg_source_owner, pg_target_owner, callback, deadline);
     return catalog_manager_->ScheduleTask(task);
   }
 
@@ -212,7 +213,12 @@ Status CloneStateManager::CloneNamespace(
   LOG(INFO) << "Servicing CloneNamespace request: " << req->ShortDebugString();
   auto restore_time = HybridTime(req->restore_ht());
   auto [source_namespace_id, seq_no] = VERIFY_RESULT(CloneNamespace(
-      req->source_namespace(), restore_time, req->target_namespace_name(), rpc->GetClientDeadline(),
+      req->source_namespace(),
+      restore_time,
+      req->target_namespace_name(),
+      req->pg_source_owner(),
+      req->pg_target_owner(),
+      rpc->GetClientDeadline(),
       epoch));
   resp->set_source_namespace_id(source_namespace_id);
   resp->set_seq_no(seq_no);
@@ -223,6 +229,8 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
     const NamespaceIdentifierPB& source_namespace_identifier,
     const HybridTime& restore_time,
     const std::string& target_namespace_name,
+    const std::string& pg_source_owner,
+    const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch) {
   if (!FLAGS_enable_db_clone) {
@@ -266,8 +274,8 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
   Status status;
   if (source_namespace->database_type() == YQL_DATABASE_PGSQL) {
     status = ClonePgSchemaObjects(
-        clone_state, source_namespace->name(), target_namespace_name, snapshot_schedule_id,
-        epoch);
+        clone_state, source_namespace->name(), target_namespace_name, pg_source_owner,
+        pg_target_owner, snapshot_schedule_id, epoch);
   } else {
     // For YCQL, start tablets cloning directly.
     status = StartTabletsCloning(
@@ -342,6 +350,8 @@ Status CloneStateManager::ClonePgSchemaObjects(
     CloneStateInfoPtr clone_state,
     const std::string& source_db_name,
     const std::string& target_db_name,
+    const std::string& pg_source_owner,
+    const std::string& pg_target_owner,
     const SnapshotScheduleId& snapshot_schedule_id,
     const LeaderEpoch& epoch) {
   if (FLAGS_TEST_fail_clone_pg_schema) {
@@ -354,7 +364,7 @@ Status CloneStateManager::ClonePgSchemaObjects(
   // Deadline passed to the ClonePgSchemaTask (including rpc time and callback execution deadline)
   auto deadline = MonoTime::Now() + FLAGS_ysql_clone_pg_schema_rpc_timeout_ms * 1ms;
   RETURN_NOT_OK(external_funcs_->ScheduleClonePgSchemaTask(
-      ts_permanent_uuid, source_db_name, target_db_name,
+      ts_permanent_uuid, source_db_name, target_db_name, pg_source_owner, pg_target_owner,
       HybridTime(clone_state->LockForRead()->pb.restore_time()),
       MakeDoneClonePgSchemaCallback(
           clone_state, snapshot_schedule_id, target_db_name, ToCoarse(deadline),
