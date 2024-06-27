@@ -102,6 +102,7 @@ JAVA	org.yb.pgsql.TestPgSelect#testAggregatePushdowns
 JAVA	org.yb.pgsql.TestPgSelect#testNullPushdown
 JAVA	org.yb.pgsql.TestPgSelect#testReverseScanMultiRangeCol
 JAVA	org.yb.pgsql.TestPgSequences
+JAVA	org.yb.pgsql.TestPgSortNumeric
 JAVA	org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
 JAVA	org.yb.pgsql.TestPgTransparentRestarts#testUpdateLong
 JAVA	org.yb.pgsql.TestPgTruncate

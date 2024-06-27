@@ -43,6 +43,9 @@
 #include "utils/pg_lsn.h"
 #include "utils/sortsupport.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /* ----------
  * Uncomment the following to enable compilation of dump_numeric()
  * and dump_var() and to get a dump of any result produced by make_result().
@@ -647,6 +650,7 @@ numeric_in(PG_FUNCTION_ARGS)
 		res = make_result(&const_nan);
 		cp += 3;
 	}
+	#ifdef YB_TODO /* support infinity */
 	else if (pg_strncasecmp(cp, "Infinity", 8) == 0)
 	{
 		res = make_result(&const_pinf);
@@ -677,6 +681,7 @@ numeric_in(PG_FUNCTION_ARGS)
 		res = make_result(&const_ninf);
 		cp += 4;
 	}
+	#endif
 	else
 	{
 		/*
