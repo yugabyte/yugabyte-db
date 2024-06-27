@@ -71,9 +71,25 @@ To create a GCP provider:
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+1. Click **Validate and Save Configuration** option to proceeds with validation of the fields and save the provider if the validation succeeds. In case of errors, the respective fields will be highlighted with an error message. Validation can be retried after fixing the errant fields.
 
-This process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
+If you want to skip validation, choose **Ignore and save provider configuration anyway** option, which will ignore the validation errors and save the provider anyway.
+
+As part of validation, the following checks are performed for the given fields.
+
+| Field category | Field name | Check |
+| :------------- | :--------- | :---- |
+| Cloud Info | Credential Type, Service Account | Validate credentials and verify role bindings (if the Service Account has required permissions to manage VMs). |
+| | Shared VPC Project, VPC Setup | Validate existence in the specified GCP project (if existing VPC option is selected). Validate permissions to create new VPC (if new VPC option is selected). |
+| Regions | Subnet | Validate existence in the specified project, region, and VPC. |
+| | Instance Template | Validate existence in the specified GCP project. |
+| Linux Version Catalog | Machine Image ID | Validate existence in the specified GCP project. |
+| SSH Key Pairs | SSH Port | Verify if the SSH port is open. |
+| | Key Pair Management | Validate that it is an RSA key pair. |
+| Advanced | Firewall Tags | Verify the existence of the tag to any of the firewall rules for the given VPC. |
+| | NTP Servers | Verify NTP server is a valid IP/hostname. |
+
+The create provider process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
 
 Now you are ready to create a YugabyteDB universe on GCP.
 
