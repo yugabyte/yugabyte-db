@@ -12,7 +12,8 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere supports monitoring [YSQL](../../../api/ysql/) replication slots in YugabyteDB.
+YugabyteDB Anywhere supports monitoring [YSQL](../../../api/ysql/) replication slots in YugabyteDB. A replication slot is a PostgreSQL feature which ensures that a stream of changes stored in a WAL log file is replicated to the destination in the correct order.
+
 You can view all the replications that are present in a universe along with the following metrics associated with each CDC replication slot:
 
 - Current lag
@@ -46,4 +47,3 @@ To view your universe's replication slots, navigate to your universe and select 
 - Explore [Change data capture](../../../explore/change-data-capture/)
 - Change data capture [architecture](../../../architecture/docdb-replication/change-data-capture/)
 - [CDC Tutorials](/preview/tutorials/cdc-tutorials/)
-
