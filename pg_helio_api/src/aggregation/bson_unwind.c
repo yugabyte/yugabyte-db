@@ -33,8 +33,9 @@ typedef struct DistinctTraverseState
 static pgbson * BsonUnwindElement(pgbson *document, char *path, char *indexFieldName,
 								  long index, const bson_value_t *element);
 static pgbson * BsonUnwindEmptyArray(pgbson *document, char *path, char *indexFieldName);
-static Datum BsonUnwindArray(Tuplestorestate *tupleState, TupleDesc *tupleDescriptor,
-							 pgbson *document, char *path, char *indexFieldName, bool
+static Datum BsonUnwindArray(PG_FUNCTION_ARGS, Tuplestorestate *tupleState,
+							 TupleDesc *tupleDescriptor,
+							 char *path, char *indexFieldName, bool
 							 preserveNullAndEmpty);
 static bool DistinctContinueProcessIntermediateArray(void *state, const
 													 bson_value_t *value);
@@ -67,7 +68,7 @@ PG_FUNCTION_INFO_V1(bson_lookup_unwind);
 Datum
 bson_dollar_unwind_with_options(PG_FUNCTION_ARGS)
 {
-	pgbson *spec = PG_GETARG_PGBSON(1);
+	pgbson *spec = PG_GETARG_PGBSON_PACKED(1);
 
 	char *path = NULL;
 	bool preserveNullAndEmpty = false;
@@ -124,8 +125,8 @@ bson_dollar_unwind_with_options(PG_FUNCTION_ARGS)
 	TupleDesc descriptor;
 	Tuplestorestate *tupleStore = SetupBsonTuplestore(fcinfo, &descriptor);
 
-	return BsonUnwindArray(tupleStore, &descriptor, PG_GETARG_PGBSON(0), path,
-						   indexFieldName, preserveNullAndEmpty);
+	return BsonUnwindArray(fcinfo, tupleStore, &descriptor, path, indexFieldName,
+						   preserveNullAndEmpty);
 }
 
 
@@ -139,13 +140,14 @@ bson_dollar_unwind_with_options(PG_FUNCTION_ARGS)
 Datum
 bson_dollar_unwind(PG_FUNCTION_ARGS)
 {
+	char *indexFieldName = NULL;
+	bool preserveNullAndEmpty = false;
+
 	TupleDesc descriptor;
 	Tuplestorestate *tupleStore = SetupBsonTuplestore(fcinfo, &descriptor);
 
-	char *indexFieldName = NULL;
-	bool preserveNullAndEmpty = false;
-	return BsonUnwindArray(tupleStore, &descriptor, PG_GETARG_PGBSON(0), text_to_cstring(
-							   PG_GETARG_TEXT_P(1)), indexFieldName,
+	return BsonUnwindArray(fcinfo, tupleStore, &descriptor, text_to_cstring(
+							   PG_GETARG_TEXT_PP(1)), indexFieldName,
 						   preserveNullAndEmpty);
 }
 
@@ -248,10 +250,12 @@ bson_lookup_unwind(PG_FUNCTION_ARGS)
  *  PG_FUNCTION_ARGS contains the document
  */
 static Datum
-BsonUnwindArray(Tuplestorestate *tupleStore, TupleDesc *tupleDescriptor, pgbson *document,
+BsonUnwindArray(PG_FUNCTION_ARGS, Tuplestorestate *tupleStore, TupleDesc *tupleDescriptor,
 				char *path, char *indexFieldName, bool
 				preserveNullAndEmpty)
 {
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
+
 	/* Strip the $ prefix from the path */
 	if (strlen(path) <= 1)
 	{
@@ -287,6 +291,7 @@ BsonUnwindArray(Tuplestorestate *tupleStore, TupleDesc *tupleDescriptor, pgbson 
 			tuplestore_putvalues(tupleStore, *tupleDescriptor, values, &isNull);
 		}
 
+		PG_FREE_IF_COPY(document, 0);
 		PG_RETURN_VOID();
 	}
 
@@ -295,15 +300,24 @@ BsonUnwindArray(Tuplestorestate *tupleStore, TupleDesc *tupleDescriptor, pgbson 
 		if (!BSON_ITER_HOLDS_NULL(&documentIterator))
 		{
 			/* Single non-null elements are always preserved */
-			const bson_value_t *element = bson_iter_value(&documentIterator);
 			Datum values[1];
 			bool nulls[1];
 
-			values[0] = PointerGetDatum(BsonUnwindElement(document,
-														  path,
-														  indexFieldName,
-														  -1,
-														  element));
+			if (indexFieldName == NULL)
+			{
+				/* This is just the source doc */
+				values[0] = PG_GETARG_DATUM(0);
+			}
+			else
+			{
+				const bson_value_t *element = bson_iter_value(&documentIterator);
+				values[0] = PointerGetDatum(BsonUnwindElement(document,
+															  path,
+															  indexFieldName,
+															  -1,
+															  element));
+			}
+
 			nulls[0] = false;
 
 			tuplestore_putvalues(tupleStore, *tupleDescriptor, values, nulls);
@@ -324,6 +338,7 @@ BsonUnwindArray(Tuplestorestate *tupleStore, TupleDesc *tupleDescriptor, pgbson 
 			tuplestore_putvalues(tupleStore, *tupleDescriptor, values, &isNull);
 		}
 
+		PG_FREE_IF_COPY(document, 0);
 		PG_RETURN_VOID();
 	}
 
@@ -363,6 +378,7 @@ BsonUnwindArray(Tuplestorestate *tupleStore, TupleDesc *tupleDescriptor, pgbson 
 		tuplestore_putvalues(tupleStore, *tupleDescriptor, values, &isNull);
 	}
 
+	PG_FREE_IF_COPY(document, 0);
 	PG_RETURN_VOID();
 }
 
