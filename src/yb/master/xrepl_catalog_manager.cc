@@ -12,7 +12,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"

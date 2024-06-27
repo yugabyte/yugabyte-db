@@ -1131,14 +1131,12 @@ void TabletServer::SetYsqlDBCatalogVersions(
 
 void TabletServer::WriteServerMetaCacheAsJson(JsonWriter* writer) {
   writer->StartObject();
+
   DbServerBase::WriteMainMetaCacheAsJson(writer);
   if (auto xcluster_consumer = GetXClusterConsumer()) {
-    auto clients = xcluster_consumer->GetYbClientsList();
-    for (auto client : clients) {
-      writer->String(client->client_name());
-      client->AddMetaCacheInfo(writer);
-    }
+    xcluster_consumer->WriteServerMetaCacheAsJson(*writer);
   }
+
   writer->EndObject();
 }
 

@@ -38,7 +38,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"

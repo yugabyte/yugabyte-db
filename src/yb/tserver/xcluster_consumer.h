@@ -43,37 +43,24 @@ class RateLimiter;
 }  // namespace rocksdb
 
 namespace yb {
+class HostPort;
 class Thread;
 class ThreadPool;
 
 namespace rpc {
 class Messenger;
 class Rpcs;
-class SecureContext;
 }  // namespace rpc
 
-namespace cdc {
-class ConsumerRegistryPB;
-}  // namespace cdc
-
-namespace master {
-class TSHeartbeatRequestPB;
-}  // namespace master
+namespace client {
+class XClusterRemoteClientHolder;
+}  // namespace client
 
 namespace tserver {
 class AutoFlagsVersionHandler;
 class XClusterPoller;
 class TabletServer;
 class TserverXClusterContextIf;
-
-struct XClusterClient {
-  std::unique_ptr<rpc::Messenger> messenger;
-  std::unique_ptr<rpc::SecureContext> secure_context;
-  std::shared_ptr<client::YBClient> client;
-
-  ~XClusterClient();
-  void Shutdown();
-};
 
 class XClusterConsumer : public XClusterConsumerIf {
  public:
@@ -110,7 +97,7 @@ class XClusterConsumer : public XClusterConsumerIf {
     return TEST_num_successful_write_rpcs_.load(std::memory_order_acquire);
   }
 
-  std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const override;
+  void WriteServerMetaCacheAsJson(JsonWriter& writer) const override;
 
   Status ReloadCertificates() override;
 
@@ -235,9 +222,10 @@ class XClusterConsumer : public XClusterConsumerIf {
   client::YBClient& local_client_;
 
   // map: {replication_group_id : ...}.
-  std::unordered_map<xcluster::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
-      GUARDED_BY(pollers_map_mutex_);
-  std::unordered_map<xcluster::ReplicationGroupId, std::string> uuid_master_addrs_
+  std::unordered_map<
+      xcluster::ReplicationGroupId, std::shared_ptr<client::XClusterRemoteClientHolder>>
+      remote_clients_ GUARDED_BY(pollers_map_mutex_);
+  std::unordered_map<xcluster::ReplicationGroupId, std::vector<HostPort>> uuid_master_addrs_
       GUARDED_BY(master_data_mutex_);
   std::unordered_set<xcluster::ReplicationGroupId> changed_master_addrs_
       GUARDED_BY(master_data_mutex_);

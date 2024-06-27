@@ -11,12 +11,11 @@
 // under the License.
 //
 
-#include <chrono>
-
 #include "yb/cdc/xcluster_types.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -25,9 +24,7 @@
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/secure_stream.h"
 #include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
@@ -36,18 +33,15 @@
 
 #include "yb/cdc/cdc_consumer.pb.h"
 
-#include "yb/client/error.h"
 #include "yb/client/client.h"
 
 #include "yb/rocksdb/rate_limiter.h"
 
 #include "yb/gutil/map-util.h"
-#include "yb/rpc/secure.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/path_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
@@ -103,11 +97,6 @@ DEFINE_test_flag(bool, xcluster_disable_delete_old_pollers, false,
 DEFINE_test_flag(bool, xcluster_enable_ddl_replication, false,
     "Enables xCluster automatic DDL replication.");
 
-DECLARE_int32(cdc_read_rpc_timeout_ms);
-DECLARE_int32(cdc_write_rpc_timeout_ms);
-DECLARE_bool(use_node_to_node_encryption);
-DECLARE_string(certs_for_cdc_dir);
-
 using namespace std::chrono_literals;
 
 #define ACQUIRE_SHARED_LOCK_IF_ONLINE \
@@ -121,21 +110,6 @@ using namespace std::chrono_literals;
 namespace yb {
 
 namespace tserver {
-
-XClusterClient::~XClusterClient() {
-  if (messenger) {
-    messenger->Shutdown();
-  }
-}
-
-void XClusterClient::Shutdown() {
-  if (client) {
-    client->Shutdown();
-  }
-  if (messenger) {
-    messenger->Shutdown();
-  }
-}
 
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
     std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
@@ -192,15 +166,14 @@ XClusterConsumer::~XClusterConsumer() {
 }
 
 Status XClusterConsumer::Init() {
-  // TODO(NIC): Unify xcluster_consumer thread_pool & remote_client_ threadpools
   RETURN_NOT_OK(yb::Thread::Create(
       "XClusterConsumer", "Poll", &XClusterConsumer::RunThread, this, &run_trigger_poll_thread_));
-  ThreadPoolBuilder cdc_consumer_thread_pool_builder("XClusterConsumerHandler");
+  ThreadPoolBuilder thread_pool_builder("XClusterConsumerHandler");
   if (FLAGS_xcluster_consumer_thread_pool_size > 0) {
-    cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_xcluster_consumer_thread_pool_size);
+    thread_pool_builder.set_max_threads(FLAGS_xcluster_consumer_thread_pool_size);
   }
 
-  return cdc_consumer_thread_pool_builder.Build(&thread_pool_);
+  return thread_pool_builder.Build(&thread_pool_);
 }
 
 void XClusterConsumer::Shutdown() {
@@ -352,13 +325,12 @@ void XClusterConsumer::HandleMasterHeartbeatResponse(
 
     std::vector<HostPort> hp;
     HostPortsFromPBs(producer_entry_pb.master_addrs(), &hp);
-    auto master_addrs = HostPort::ToCommaSeparatedString(std::move(hp));
     if (ContainsKey(old_uuid_master_addrs, replication_group_id) &&
-        old_uuid_master_addrs[replication_group_id] != master_addrs) {
+        old_uuid_master_addrs[replication_group_id] != hp) {
       // If master addresses changed, mark for YBClient update.
       changed_master_addrs_.insert(replication_group_id);
     }
-    uuid_master_addrs_[replication_group_id] = std::move(master_addrs);
+    uuid_master_addrs_[replication_group_id] = std::move(hp);
 
     UpdateReplicationGroupInMemState(replication_group_id, producer_entry_pb);
   }
@@ -495,7 +467,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
       // Update the Master Addresses, if altered after setup.
       if (ContainsKey(remote_clients_, replication_group_id) &&
           changed_master_addrs_.count(replication_group_id) > 0) {
-        auto status = remote_clients_[replication_group_id]->client->SetMasterAddresses(
+        auto status = remote_clients_[replication_group_id]->SetMasterAddresses(
             uuid_master_addrs_[replication_group_id]);
         if (status.ok()) {
           changed_master_addrs_.erase(replication_group_id);
@@ -515,53 +487,20 @@ void XClusterConsumer::TriggerPollForNewTablets() {
       if (start_polling) {
         // This is a new tablet, trigger a poll.
         // See if we need to create a new client connection
-        if (!ContainsKey(remote_clients_, replication_group_id)) {
-          CHECK(ContainsKey(uuid_master_addrs_, replication_group_id));
-
-          auto remote_client = std::make_unique<XClusterClient>();
-          std::string dir;
-          if (FLAGS_use_node_to_node_encryption) {
-            rpc::MessengerBuilder messenger_builder("xcluster-consumer");
-            if (!FLAGS_certs_for_cdc_dir.empty()) {
-              dir = JoinPathSegments(
-                  FLAGS_certs_for_cdc_dir,
-                  xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
-            }
-
-            auto secure_context_result = rpc::SetupSecureContext(
-                dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
-                &messenger_builder);
-            if (!secure_context_result.ok()) {
-              LOG(WARNING) << "Could not create secure context for " << replication_group_id << ": "
-                           << secure_context_result.status().ToString();
-              return;  // Don't finish creation.  Try again on the next heartbeat.
-            }
-            remote_client->secure_context = std::move(*secure_context_result);
-
-            auto messenger_result = messenger_builder.Build();
-            if (!messenger_result.ok()) {
-              LOG(WARNING) << "Could not build messenger for " << replication_group_id << ": "
-                           << secure_context_result.status().ToString();
-              return;  // Don't finish creation.  Try again on the next heartbeat.
-            }
-            remote_client->messenger = std::move(*messenger_result);
-          }
-
-          auto client_result =
-              yb::client::YBClientBuilder()
-                  .set_client_name("XClusterConsumerRemote")
-                  .add_master_server_addr(uuid_master_addrs_[replication_group_id])
-                  .skip_master_flagfile()
-                  .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
-                  .Build(remote_client->messenger.get());
-          if (!client_result.ok()) {
-            LOG(WARNING) << "Could not create a new YBClient for " << replication_group_id << ": "
-                         << client_result.status().ToString();
+        if (!remote_clients_.contains(replication_group_id)) {
+          if (!uuid_master_addrs_.contains(replication_group_id)) {
+            LOG(DFATAL) << "Master address not found for " << replication_group_id;
             return;  // Don't finish creation.  Try again on the next heartbeat.
           }
 
-          remote_client->client = std::move(*client_result);
-          remote_clients_[replication_group_id] = std::move(remote_client);
+          auto remote_client = client::XClusterRemoteClientHolder::Create(
+              replication_group_id, uuid_master_addrs_[replication_group_id]);
+          if (!remote_client) {
+            LOG(WARNING) << "Could not build messenger for " << replication_group_id << ": "
+                         << remote_client.status();
+            return;  // Don't finish creation.  Try again on the next heartbeat.
+          }
+          remote_clients_[replication_group_id] = std::move(*remote_client);
         }
 
         SchemaVersion last_compatible_consumer_schema_version = cdc::kInvalidSchemaVersion;
@@ -644,7 +583,7 @@ void XClusterConsumer::UpdatePollerSchemaVersionMaps(
 
 void XClusterConsumer::TriggerDeletionOfOldPollers() {
   // Shutdown outside of master_data_mutex_ lock, to not block any heartbeats.
-  std::vector<std::shared_ptr<XClusterClient>> clients_to_delete;
+  std::vector<std::shared_ptr<client::XClusterRemoteClientHolder>> clients_to_delete;
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
   {
     ACQUIRE_SHARED_LOCK_IF_ONLINE;
@@ -736,19 +675,8 @@ int32_t XClusterConsumer::cluster_config_version() const {
 
 Status XClusterConsumer::ReloadCertificates() {
   SharedLock read_lock(pollers_map_mutex_);
-  for (const auto& [replication_group_id, client] : remote_clients_) {
-    if (!client->secure_context) {
-      continue;
-    }
-
-    std::string cert_dir;
-    if (!FLAGS_certs_for_cdc_dir.empty()) {
-      cert_dir = JoinPathSegments(
-          FLAGS_certs_for_cdc_dir,
-          xcluster::GetOriginalReplicationGroupId(replication_group_id).ToString());
-    }
-    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
-        client->secure_context.get(), cert_dir, "" /* node_name */));
+  for (const auto& [_, client] : remote_clients_) {
+    RETURN_NOT_OK(client->ReloadCertificates());
   }
 
   return Status::OK();
@@ -870,17 +798,17 @@ Status XClusterConsumer::ReportNewAutoFlagConfigVersion(
 void XClusterConsumer::ClearAllClientMetaCaches() const {
   std::lock_guard write_lock_pollers(pollers_map_mutex_);
   for (auto& [group_id, xcluster_client] : remote_clients_) {
-    xcluster_client->client->ClearAllMetaCachesOnServer();
+    xcluster_client->GetYbClient().ClearAllMetaCachesOnServer();
   }
 }
 
-std::vector<std::shared_ptr<client::YBClient>> XClusterConsumer::GetYbClientsList() const {
+void XClusterConsumer::WriteServerMetaCacheAsJson(JsonWriter& writer) const {
   SharedLock read_lock(pollers_map_mutex_);
-  std::vector<std::shared_ptr<client::YBClient>> result;
-  for (auto& [_, remote_client] : remote_clients_) {
-    result.push_back(remote_client->client);
+  for (const auto& [_, remote_client] : remote_clients_) {
+    const auto& client = remote_client->GetYbClient();
+    writer.String(client.client_name());
+    client.AddMetaCacheInfo(&writer);
   }
-  return result;
 }
 
 }  // namespace tserver

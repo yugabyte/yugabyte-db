@@ -67,7 +67,7 @@ class XClusterConsumerIf {
   virtual std::vector<TabletId> TEST_producer_tablets_running() const = 0;
   virtual uint32_t TEST_GetNumSuccessfulWriteRpcs() = 0;
   virtual std::vector<std::shared_ptr<XClusterPoller>> TEST_ListPollers() const = 0;
-  virtual std::vector<std::shared_ptr<client::YBClient>> GetYbClientsList() const = 0;
+  virtual void WriteServerMetaCacheAsJson(JsonWriter& writer) const = 0;
   virtual void ClearAllClientMetaCaches() const = 0;
   virtual scoped_refptr<Counter> TEST_metric_replication_error_count() const = 0;
   virtual scoped_refptr<Counter> TEST_metric_apply_failure_count() const = 0;

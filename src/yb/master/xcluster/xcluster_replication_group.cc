@@ -24,13 +24,10 @@
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/result.h"
-
-DECLARE_int32(cdc_read_rpc_timeout_ms);
-DECLARE_string(certs_for_cdc_dir);
 
 DEFINE_RUNTIME_bool(xcluster_skip_health_check_on_replication_setup, false,
     "Skip health check on xCluster replication setup");
@@ -398,16 +395,13 @@ bool IncludesConsumerNamespace(
   return opt_namespace_id.has_value();
 }
 
-Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
+Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetXClusterRemoteClientHolder(
     UniverseReplicationInfo& universe) {
   auto master_addresses = universe.LockForRead()->pb.producer_master_addresses();
   std::vector<HostPort> hp;
   HostPortsFromPBs(master_addresses, &hp);
-  auto xcluster_client = std::make_shared<client::XClusterRemoteClient>(
-      FLAGS_certs_for_cdc_dir, MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms));
-  RETURN_NOT_OK(xcluster_client->Init(universe.ReplicationGroupId(), hp));
 
-  return xcluster_client;
+  return client::XClusterRemoteClientHolder::Create(universe.ReplicationGroupId(), hp);
 }
 
 Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
