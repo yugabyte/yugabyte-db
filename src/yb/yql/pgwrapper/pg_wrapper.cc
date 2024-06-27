@@ -99,18 +99,37 @@ DEFINE_UNKNOWN_bool(ysql_enable_auth, false,
               "True to enforce password authentication for all connections");
 
 // Catch-all postgres configuration flags.
-DEFINE_UNKNOWN_string(ysql_pg_conf_csv, "",
-              "CSV formatted line represented list of postgres setting assignments");
-DEFINE_UNKNOWN_string(ysql_hba_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
+    "List of postgres configuration parameters separated with comma (,). "
+    "Parameters should be of format: <name> [=] <value>. The equal sign between name and value is "
+    "optional. "
+    "Whitespace is insignificant (except within a single-quoted (') parameter value) and blank "
+    "parameters are ignored. "
+    "Hash marks (#) designate the remainder of the parameter as a comment. "
+    "Parameter values that are not simple identifiers or numbers must be single-quoted ('). "
+    "To embed a single quote (') in a parameter value, write either two quotes('') (preferred) or "
+    "backslash-quote (\\'). "
+    "If the parameter contains a comma (,) or double-quote (\") then the entire parameter must be "
+    "quoted with double-quote (\"): \"<name> [=] <value>\". "
+    "Two double-quotes (\"\") in a double-quoted (\") parameter represents a single double-quote "
+    "(\"). "
+    "If the list contains multiple entries for the same parameter, all but the last one are "
+    "ignored. "
+    "NOTE: Not all parameters take effect at runtime. When changed at runtime, the postgresql.conf "
+    "file is updated and a SIGHUP signal is used to notify the postmaster. "
+    "Check https://www.postgresql.org/docs/current/view-pg-settings.html for information about "
+    "which parameters take effect at runtime.");
+
+DEFINE_NON_RUNTIME_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
 DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
-DEFINE_UNKNOWN_string(ysql_pg_conf, "",
-              "Deprecated, use the `ysql_pg_conf_csv` flag instead. " \
-              "Comma separated list of postgres setting assignments");
-DEFINE_UNKNOWN_string(ysql_hba_conf, "",
+DEFINE_NON_RUNTIME_string(ysql_pg_conf, "",
+    "Deprecated, use the `ysql_pg_conf_csv` flag instead. "
+    "Comma separated list of postgres setting assignments");
+DEFINE_NON_RUNTIME_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
@@ -400,6 +419,42 @@ Status ReadCSVValues(const string& csv, vector<string>* lines) {
   }
   return Status::OK();
 }
+
+// Make sure that the parameter values do not contain '\n' since each line is a separate parameter.
+Status ValidateConfValuesBasic(const vector<string>& lines) {
+  for (const string& parameter : lines) {
+    SCHECK_EQ(
+        parameter.find('\n'), string::npos, InvalidArgument,
+        Format("Parameter should not contain newline: '$0'", parameter));
+  }
+  return Status::OK();
+}
+
+bool ValidateConfCsv(const char* flag_name, const std::string& value) {
+  if (value.empty()) {
+    return true;
+  }
+
+  vector<string> user_configs;
+  auto status = ReadCSVValues(value, &user_configs);
+  if (status.ok()) {
+    status = ValidateConfValuesBasic(user_configs);
+  }
+
+  if (!status.ok()) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << status;
+    return false;
+  }
+  return true;
+}
+
+// Perform basic validation of the postgres parameter values. Postgres validates this via
+// `ParseConfigFp` function in `guc-file.c` using a lexer, which is very complicated to mimic
+// using a regex.
+DEFINE_validator(ysql_pg_conf_csv, &ValidateConfCsv);
+
+DEFINE_validator(ysql_hba_conf_csv, &ValidateConfCsv);
+DEFINE_validator(ysql_ident_conf_csv, &ValidateConfCsv);
 
 namespace {
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag
