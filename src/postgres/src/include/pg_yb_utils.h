@@ -1180,4 +1180,6 @@ extern bool YbIsReadCommittedTxn();
 
 extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
 
+extern bool YbUseFastBackwardScan();
+
 #endif /* PG_YB_UTILS_H */

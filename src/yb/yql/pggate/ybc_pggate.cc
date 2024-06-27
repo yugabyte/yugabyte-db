@@ -118,6 +118,8 @@ DEFINE_NON_RUNTIME_bool(
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
+DECLARE_bool(use_fast_backward_scan);
+
 namespace {
 
 bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
@@ -1924,6 +1926,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
       .TEST_generate_ybrowid_sequentially =
           &FLAGS_TEST_generate_ybrowid_sequentially,
+      .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
   };
   // clang-format on
   return &accessor;
