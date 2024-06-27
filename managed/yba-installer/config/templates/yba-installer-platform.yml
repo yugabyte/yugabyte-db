@@ -84,10 +84,10 @@ services:
         swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
         {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
         metrics.protocol = https
-        metrics.url = "https://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        metrics.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "prometheus.port" }}/api/v1"
         {{ else }}
         metrics.protocol = http
-        metrics.url = "http://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        metrics.url = "http://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "prometheus.port" }}/api/v1"
         {{ end }}
         {{ if eq (yamlPath "prometheus.enableAuth") "true" }}
         metrics.auth = true
@@ -174,8 +174,14 @@ services:
         cors {
           pathPrefixes = ["/"]
           allowedOrigins =  [
-            "https://{{ yamlPath "host" }}",
-            "{{ yamlPath "platform.support_origin_url"}}"
+            {{- range $index, $hostname := splitInput (yamlPath "host") }}
+            {{ if $index }},{{ end -}}
+            "{{ $hostname }}"
+            {{- end }},
+            {{- range $index, $hostname := splitInput (yamlPath "platform.support_origin_url") }}
+            {{ if $index }},{{ end -}}
+            "{{ $hostname }}"
+            {{- end }}
           ]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]

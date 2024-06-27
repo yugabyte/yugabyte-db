@@ -490,41 +490,47 @@ func WaitForYBAReady(version string) {
 	// Needed to access https URL without x509: certificate signed by unknown authority error
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
-	url := fmt.Sprintf("https://%s:%s/api/v1/app_version",
-		viper.GetString("host"),
-		viper.GetString("platform.port"))
+	hostnames := SplitInput(viper.GetString("host"))
 
-	var resp *http.Response
-	var err error
-	// Check YBA version every 10 seconds
-	retriesCount := 20
+	for _, host := range hostnames {
 
-	for i := 0; i < retriesCount; i++ {
-		resp, err = http.Get(url)
-		if err != nil {
-			log.Info(fmt.Sprintf("YBA at %s not ready. Checking again in 10 seconds.", url))
-			time.Sleep(10 * time.Second)
-		} else {
-			break
-		}
-	}
+		url := fmt.Sprintf("https://%s:%s/api/v1/app_version",
+			host,
+			viper.GetString("platform.port"))
 
-	if resp != nil {
-		defer resp.Body.Close()
-	}
+		var resp *http.Response
+		var err error
+		// Check YBA version every 10 seconds
+		retriesCount := 20
 
-	// Validate version in prod
-	if os.Getenv("YBA_MODE") != "dev" {
-		if err == nil {
-			var result map[string]string
-			json.NewDecoder(resp.Body).Decode(&result)
-			if result["version"] != version {
-				log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
-					result["version"], version))
+		for i := 0; i < retriesCount; i++ {
+			resp, err = http.Get(url)
+			if err != nil {
+				log.Info(fmt.Sprintf("YBA at %s not ready. Checking again in 10 seconds.", url))
+				time.Sleep(10 * time.Second)
+			} else {
+				break
 			}
-		} else {
-			log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))
 		}
+
+		if resp != nil {
+			defer resp.Body.Close()
+		}
+
+		// Validate version in prod
+		if os.Getenv("YBA_MODE") != "dev" {
+			if err == nil {
+				var result map[string]string
+				json.NewDecoder(resp.Body).Decode(&result)
+				if result["version"] != version {
+					log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
+						result["version"], version))
+				}
+			} else {
+				log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))
+			}
+		}
+
 	}
 
 }

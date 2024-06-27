@@ -59,6 +59,7 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		"installVersionDir": common.GetInstallerSoftwareDir,
 		"baseInstall":       common.GetBaseInstall,
 		"removeQuotes":		 common.RemoveQuotes,
+		"splitInput": 	 		 common.SplitInput,
 	}
 
 	tmpl, err := template.New(configYmlFileName).

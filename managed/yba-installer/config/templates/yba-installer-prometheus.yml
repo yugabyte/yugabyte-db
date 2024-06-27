@@ -36,7 +36,7 @@
           password: {{ yamlPath "prometheus.authPassword" }}
         {{ end }}
         static_configs:
-          - targets: ['{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}']
+          - targets: ['{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "prometheus.port" }}']
 
       - job_name: 'platform'
         scheme: https
@@ -45,7 +45,7 @@
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:
-          - targets: ['{{ yamlPath "host" }}:{{ yamlPath "platform.port" }}']
+          - targets: ['{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "platform.port" }}']
 
       - job_name: 'node-agent'
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
