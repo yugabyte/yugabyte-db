@@ -48,7 +48,7 @@ If you are enabling client-to-node TLS, make sure to copy the client certificate
 In addition, ensure the following:
 
 - The file names and file paths of different certificates and keys are identical across all the database nodes. For example, if you name your CA root certificate as `ca.crt` on one node, then you must name it `ca.crt` on all the nodes. Similarly, if you copy `ca.crt` to `/opt/yugabyte/keys` on one node, then you must copy `ca.crt` to the same path on other nodes.
-- The yugabyte system user has read permissions to all the certificates and keys.
+- The `yugabyte` system user has read permissions to all the certificates and keys.
 
 ### Add the CA certificate to YugabyteDB Anywhere
 

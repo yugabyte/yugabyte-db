@@ -111,7 +111,7 @@ To have YugabyteDB Anywhere generate a certificate for the universe, use the def
 
 For more information on using and managing certificates, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
 
-Enable encryption at rest to encrypt the universe data. Refer to [Enable encryption at rest](../../security/enable-encryption-at-rest/).
+To encrypt the universe data, select the **Enable encryption at rest** option and select the [KMS configuration](../../security/create-kms-config/aws-kms/) to use for encryption. For more information on using and managing, refer to [Encryption at rest](../../security/enable-encryption-at-rest/).
 
 ### Advanced Configuration
 
