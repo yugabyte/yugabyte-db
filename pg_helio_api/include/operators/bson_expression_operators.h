@@ -401,6 +401,14 @@ void HandlePreParsedDollarBsonSize(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarBinarySize(pgbson *doc, void *arguments,
 									 ExpressionResult *expressionResult);
+void HandlePreParsedDollarBitAnd(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult);
+void HandlePreParsedDollarBitNot(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult);
+void HandlePreParsedDollarBitOr(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult);
+void HandlePreParsedDollarBitXor(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult);
 void HandlePreParsedDollarCmp(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarDateAdd(pgbson *doc, void *arguments,
@@ -482,6 +490,10 @@ void HandlePreParsedDollarZip(pgbson *doc, void *arguments,
 void ParseDollarAvg(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBsonSize(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBinarySize(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarBitAnd(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarBitNot(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarBitOr(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarBitXor(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *data);
@@ -546,6 +558,7 @@ void * ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 										int maxRequiredArgs,
 										const char *operatorName,
 										AggregationExpressionArgumentsKind *argumentsKind);
+List * ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant);
 void HandleVariableArgumentExpression(pgbson *doc,
 									  const bson_value_t *operatorValue,
 									  ExpressionResult *expressionResult,

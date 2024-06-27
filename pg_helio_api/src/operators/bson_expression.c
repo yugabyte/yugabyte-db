@@ -180,6 +180,14 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	  FEATURE_AGG_OPERATOR_AVG },
 	{ "$binarySize", NULL, &ParseDollarBinarySize, &HandlePreParsedDollarBinarySize,
 	  FEATURE_AGG_OPERATOR_BINARYSIZE },
+	{ "$bitAnd", NULL, &ParseDollarBitAnd, &HandlePreParsedDollarBitAnd,
+	  FEATURE_AGG_OPERATOR_BITAND },
+	{ "$bitNot", NULL, &ParseDollarBitNot, &HandlePreParsedDollarBitNot,
+	  FEATURE_AGG_OPERATOR_BITNOT },
+	{ "$bitOr", NULL, &ParseDollarBitOr, &HandlePreParsedDollarBitOr,
+	  FEATURE_AGG_OPERATOR_BITOR },
+	{ "$bitXor", NULL, &ParseDollarBitXor, &HandlePreParsedDollarBitXor,
+	  FEATURE_AGG_OPERATOR_BITXOR },
 	{ "$bsonSize", NULL, &ParseDollarBsonSize, &HandlePreParsedDollarBsonSize,
 	  FEATURE_AGG_OPERATOR_BSONSIZE },
 	{ "$ceil", &HandleDollarCeil, NULL, NULL, FEATURE_AGG_OPERATOR_CEIL },
@@ -3307,4 +3315,49 @@ HandlePreParsedDollarLet(pgbson *doc, void *arguments,
 	{
 		ExpressionResultSetValue(expressionResult, &childExpressionResult.value);
 	}
+}
+
+
+/* Parses the expressions that are specified as arguments for an operator and returns
+ * the list of AggregationExpressionData arguments */
+List *
+ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant)
+{
+	List *resultList = NIL;
+	*isConstant = true;
+
+	if (value->value_type == BSON_TYPE_ARRAY)
+	{
+		bson_iter_t arrayIter;
+		BsonValueInitIterator(value, &arrayIter);
+
+		while (bson_iter_next(&arrayIter))
+		{
+			const bson_value_t *current = bson_iter_value(&arrayIter);
+			AggregationExpressionData *expressionData = palloc0(
+				sizeof(AggregationExpressionData));
+			ParseAggregationExpressionData(expressionData, current);
+
+			if (!IsAggregationExpressionConstant(expressionData))
+			{
+				*isConstant = false;
+			}
+
+			resultList = lappend(resultList, expressionData);
+		}
+	}
+	else
+	{
+		AggregationExpressionData *expressionData = palloc0(
+			sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(expressionData, value);
+
+		if (!IsAggregationExpressionConstant(expressionData))
+		{
+			*isConstant = false;
+		}
+
+		resultList = lappend(resultList, expressionData);
+	}
+	return resultList;
 }

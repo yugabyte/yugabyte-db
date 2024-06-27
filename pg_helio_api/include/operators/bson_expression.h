@@ -212,4 +212,5 @@ void ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 									const bson_value_t *value);
 void ParseVariableSpec(const bson_value_t *variableSpec,
 					   ExpressionVariableContext *variableContext);
+
 #endif
