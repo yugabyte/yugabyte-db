@@ -71,11 +71,11 @@ To create a GCP provider:
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-1. Click **Validate and Save Configuration** option to proceeds with validation of the fields and save the provider if the validation succeeds. In case of errors, the respective fields will be highlighted with an error message. Validation can be retried after fixing the errant fields.
+1. Click **Validate and Save Configuration** option to validate the GCP provider fields and save the provider if the validation succeeds. In case of errors, the respective fields will be highlighted with an error message. Validation can be retried after fixing the errant fields.
 
 If you want to skip validation, choose **Ignore and save provider configuration anyway** option, which will ignore the validation errors and save the provider anyway.
 
-As part of validation, the following checks are performed for the given fields.
+Validation checks are performed for the given fields as per the following table:
 
 | Field category | Field name | Check |
 | :------------- | :--------- | :---- |
