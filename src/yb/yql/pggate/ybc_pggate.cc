@@ -2373,7 +2373,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
     auto row_message_pb = row_pb.row_message();
-    auto commit_time = row_message_pb.commit_time();
+    auto commit_time_ht = HybridTime::FromPB(row_message_pb.commit_time());
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
@@ -2471,12 +2471,14 @@ YBCStatus YBCPgGetCDCConsistentChanges(
     new (&resp_rows[row_idx]) YBCPgRowMessage{
         .col_count = col_count,
         .cols = cols,
-        .commit_time = commit_time,
+        // Convert the physical component of the HT to PG epoch.
+        .commit_time = static_cast<uint64_t>(
+            YBCGetPgCallbacks()->UnixEpochToPostgresEpoch(commit_time_ht.GetPhysicalValueMicros())),
+        .commit_time_ht = commit_time_ht.ToUint64(),
         .action = GetRowMessageAction(row_message_pb),
         .table_oid = table_oid,
         .lsn = row_message_pb.pg_lsn(),
-        .xid = row_message_pb.pg_transaction_id()
-    };
+        .xid = row_message_pb.pg_transaction_id()};
 
     min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
     max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());

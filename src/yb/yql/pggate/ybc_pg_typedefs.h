@@ -614,7 +614,11 @@ typedef enum PgRowMessageAction {
 typedef struct PgRowMessage {
   int col_count;
   YBCPgDatumMessage* cols;
+  // Microseconds since PostgreSQL epoch (2000-01-01). Used by most of the PG code and sent to the
+  // client as part of the record.
   uint64_t commit_time;
+  // The hybrid time of the commit. Used to set the correct read time for catalog changes.
+  uint64_t commit_time_ht;
   YBCPgRowMessageAction action;
   // Valid for DMLs and kPgInvalidOid for other (BEGIN/COMMIT) records.
   YBCPgOid table_oid;
