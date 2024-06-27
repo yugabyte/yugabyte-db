@@ -77,9 +77,26 @@ To create an Azure provider:
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+1. Click **Validate and Save Configuration** option to proceeds with validation of the fields and save the provider if the validation succeeds. In case of errors, the respective fields will be highlighted with an error message. Validation can be retried after fixing the errant fields.
 
-This process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
+If you want to skip validation, choose **Ignore and save provider configuration anyway** option, which will ignore the validation errors and save the provider anyway.
+
+As part of validation, the following checks are performed for the given fields.
+
+| Field category | Field name | Check |
+| :------------- | :--------- | :---- |
+| Cloud Info | Client ID, Client Secret, Subscription ID, Tenant ID | Verify validity |
+| | Resource Group | Verify that the resource group exists in the given subscription. |
+| | Virtual network and Security group | Verify that the virtual network exists in the given resource group. |
+| | Network Resource Group (Optional), Network Subscription ID (Optional) | Verify that network resource group is provided if network subscription ID is present. Verify that all the Virtual networks mentioned are present in the network resource group. |
+| | Subnet | Check that the subnet exists for the given virtual network. |
+| | Private DNS Zone (Optional) | Check that the DNS zone exists in the resource group. |
+| Linux Version Catalog | Machine image (Optional) | Check that it is valid image and available in the specified region.
+If the image has terms that need to accepted, verify that they are accepted. |
+| SSH Key Pairs | Key Pair Management | Validate that it is an RSA key pair. |
+| | NTP Server (Optional) | Check its a valid NTP server. |
+
+The create provider process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
 When the configuration is completed, you can see all the resources managed by YBA in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
 

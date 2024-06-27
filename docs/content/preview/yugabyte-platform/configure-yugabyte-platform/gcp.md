@@ -80,7 +80,7 @@ As part of validation, the following checks are performed for the given fields.
 | Field category | Field name | Check |
 | :------------- | :--------- | :---- |
 | Cloud Info | Credential Type, Service Account | Validate credentials and verify role bindings (if the Service Account has required permissions to manage VMs). |
-| | Shared VPC Project, VPC Setup | <ul><li>Validate existence in the specified GCP project (if existing VPC option is selected).</li><li>Validate permissions to create new VPC (if new VPC option is selected).</li></ul> |
+| | Shared VPC Project, VPC Setup | Validate existence in the specified GCP project (if existing VPC option is selected). Validate permissions to create new VPC (if new VPC option is selected). |
 | Regions | Subnet | Validate existence in the specified project, region, and VPC. |
 | | Instance Template | Validate existence in the specified GCP project. |
 | Linux Version Catalog | Machine Image ID | Validate existence in the specified GCP project. |
