@@ -29,8 +29,7 @@ struct PersistentCloneStateInfo :
   }
 };
 
-class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
-                       public MetadataCowWrapper<PersistentCloneStateInfo> {
+class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
  public:
   struct TabletData {
     TabletId source_tablet_id;
@@ -56,9 +55,6 @@ class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
   void SetRestorationId(const TxnSnapshotRestorationId& restoration_id);
 
  private:
-  friend class RefCountedThreadSafe<CloneStateInfo>;
-  ~CloneStateInfo() = default;
-
   // The ID field is used in the sys_catalog table.
   const std::string clone_request_id_;
 
