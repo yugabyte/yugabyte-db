@@ -8,31 +8,31 @@ import (
 	"github.com/spf13/viper"
 )
 
+func setAndHandleError(t *testing.T, file, key string, value interface{}) {
+	if err := SetYamlValue(file, key, value); err != nil {
+		t.Fatalf("error setting yaml value %s: %s", key, err.Error())
+	}
+}
+
+// TO ENABLE LOGGING IMPORT LOGGING PACKAGE AND RUN LOG.INIT
 func TestSetYaml(t *testing.T) {
 
 	filePath := "/tmp/test_common.yml"
 
-	yamlStr := `
-# test comment
-foo: # more test
-    bar:
-       abc: ""
-       def: etc
-level1: etc
-`
+	yamlStr := ""
 	_ = os.Remove(filePath)
 	err := os.WriteFile(filePath, []byte(yamlStr), 0600)
 	if err != nil {
 		t.Fatalf("error writing file %s: %s", filePath, err)
 	}
 
-	SetYamlValue(filePath, "level1", "new1")
-	SetYamlValue(filePath, "foo.bar.abc", "new2")
-	SetYamlValue(filePath, "foo.bar.ghi", "new3")
-	SetYamlValue(filePath, "biz.baz.booz", "new4")
-	SetYamlValue(filePath, "level2", "new5")
-	SetYamlValue(filePath, "foo.bar.list", []string{"abcd", "efgh"})
-	SetYamlValue(filePath, "foo.bar.list2", []string{})
+	setAndHandleError(t, filePath, "foo.bar.list", []string{"abcd", "efgh"})
+	setAndHandleError(t, filePath, "level1", "new1")
+	setAndHandleError(t, filePath, "foo.bar.abc", "new2")
+	setAndHandleError(t, filePath, "foo.bar.ghi", "new3")
+	setAndHandleError(t, filePath, "biz.baz.booz", "new4")
+	setAndHandleError(t, filePath, "level2", "new5")
+	setAndHandleError(t, filePath, "foo.bar.list2", []string{})
 
 	v := viper.New()
 	v.SetConfigFile(filePath)
