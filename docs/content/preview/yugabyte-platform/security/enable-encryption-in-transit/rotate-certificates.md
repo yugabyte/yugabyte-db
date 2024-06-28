@@ -16,9 +16,29 @@ You can rotate certificates for universes configured with the same type of certi
 
 Before rotating certificates, ensure that you have added the certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
 
-Rotating certificates requires restart of the YB-Master and YB-TServer processes and can result in downtime. To avoid downtime, you can opt to perform a rolling upgrade, which stops, updates, and restarts each node in the universe with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node is updated at the same time).
+## Rotating certificates
 
-## Rotate certificates
+Rotating certificates may require a restart of the YB-Master and YB-TServer processes and in some circumstances can result in downtime.
+
+- Client-to-node certificates
+
+  Regardless of whether the client-to-node certificates are expired or not expired, you can always trigger a rolling upgrade to rotate the certificates.
+
+  - If the universe was created before v2.16.6, then the rotation requires a restart, which can be done in a rolling manner with no downtime.
+  - If the universe was created after v2.16.6, then the rotation can be done without a restart and no downtime.
+
+- Node-to-node certificates
+
+  If the certificate has expired, the rotation requires a simultaneous restart of all nodes, resulting in some downtime.
+
+  If the certificate has not expired, the rotation can be done using a rolling upgrade.
+
+  - If the universe was created before v2.16.6, then the rotation requires a restart, which can be done in a rolling manner with no downtime.
+  - If the universe is created after v2.16.6, then the rotation can be done without a restart and no downtime.
+
+You can always opt to not perform rolling updates to update all nodes at the same time, but this will result in downtime.
+
+### Rotate certificates
 
 To modify encryption in transit settings and rotate certificates for a universe, do the following:
 
