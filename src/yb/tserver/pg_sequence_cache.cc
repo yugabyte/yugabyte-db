@@ -69,14 +69,12 @@ void PgSequenceCache::Entry::NotifyWaiter() {
 }
 
 Result<std::shared_ptr<PgSequenceCache::Entry>> PgSequenceCache::GetWhenAvailable(
-    int64_t sequence_id, const MonoTime& deadline) {
-  VLOG(3) << "Checking if entry for sequence id " << sequence_id
-          << "exists in tserver sequence cache";
-
+    const PgObjectId& sequence_id, const MonoTime& deadline) {
   std::shared_ptr<Entry> entry;
   {
     std::lock_guard cache_lock_guard(lock_);
     if (!cache_.contains(sequence_id)) {
+      VLOG(3) << "Create cache entry for sequence id " << sequence_id;
       cache_[sequence_id] = std::make_shared<Entry>();
     }
 
