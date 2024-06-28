@@ -2408,6 +2408,7 @@
           "type" : "boolean"
         },
         "isFullBackup" : {
+          "readOnly" : true,
           "type" : "boolean"
         },
         "isStorageConfigPresent" : {
@@ -2451,7 +2452,7 @@
           "type" : "boolean"
         }
       },
-      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -8064,6 +8065,7 @@
           "type" : "string"
         },
         "inUse" : {
+          "description" : "True if the node is in use  <b style=\"color:#ff0000\">Deprecated since YBA version 2024.1.0.0.</b> Use NodeInstance.state instead",
           "type" : "boolean"
         },
         "instanceName" : {
@@ -15193,9 +15195,11 @@
           "type" : "string"
         },
         "isRequired" : {
+          "readOnly" : true,
           "type" : "boolean"
         },
         "isValid" : {
+          "readOnly" : true,
           "type" : "boolean"
         },
         "type" : {
@@ -15206,7 +15210,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "description", "isRequired", "isValid", "type", "value" ],
+      "required" : [ "description", "type", "value" ],
       "type" : "object"
     },
     "VolumeDetails" : {

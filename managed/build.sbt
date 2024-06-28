@@ -204,7 +204,7 @@ libraryDependencies ++= Seq(
   "org.pac4j" %% "play-pac4j" % "9.0.2",
   "org.pac4j" % "pac4j-oauth" % "4.5.7" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
-  "org.playframework" %% "play-json" % "3.0.1",
+  "org.playframework" %% "play-json" % "3.0.4",
   "commons-validator" % "commons-validator" % "1.8.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -951,7 +951,28 @@ dependencyOverrides += "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5"
 dependencyOverrides += "jakarta.ws.rs" % "jakarta.ws.rs-api" % "2.1.6" % Test
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-jaxb-annotations" % "2.10.1" % Test
 
-val jacksonVersion         = "2.15.3"
+// This is a custom version, built based on 1.0.3 with the following commit added on top:
+// https://github.com/apache/pekko/commit/1e41829bf7abeec268b9a409f35051ed7f4e0090.
+// This is required to fix TLS infinite loop issue, which causes high CPU usage.
+// We can't use 1.1.0-M1 version yet, as it has the following issue:
+// https://github.com/playframework/playframework/pull/12662
+// Once the issue is fixed we should migrate back on stable version.
+val pekkoVersion         = "1.0.3-tls-loop-fix"
+
+val pekkoLibs = Seq(
+  "org.apache.pekko" %% "pekko-actor-typed",
+  "org.apache.pekko" %% "pekko-actor",
+  "org.apache.pekko" %% "pekko-protobuf-v3",
+  "org.apache.pekko" %% "pekko-serialization-jackson",
+  "org.apache.pekko" %% "pekko-slf4j",
+  "org.apache.pekko" %% "pekko-stream",
+)
+
+val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
+
+dependencyOverrides ++= pekkoOverrides
+
+val jacksonVersion         = "2.17.1"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
@@ -1090,9 +1111,6 @@ val swaggerGenTest: TaskKey[Unit] = taskKey[Unit](
   "test generate swagger.json"
 )
 
-val swaggerJacksonVersion = "2.11.1"
-val swaggerJacksonOverrides = jacksonLibs.map(_ % swaggerJacksonVersion)
-
 lazy val swagger = project
   .dependsOn(root % "compile->compile;test->test")
   .settings(commonSettings)
@@ -1104,7 +1122,8 @@ lazy val swagger = project
       "com.github.dwickern" %% "swagger-play3.0" % "4.0.0"
     ),
 
-    dependencyOverrides ++= swaggerJacksonOverrides,
+    dependencyOverrides ++= pekkoOverrides,
+    dependencyOverrides ++= jacksonOverrides,
     dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
 
     swaggerGen := Def.taskDyn {
