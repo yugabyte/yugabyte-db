@@ -1363,7 +1363,6 @@ Status PgClientSession::FetchSequenceTuple(
   using pggate::PgDocData;
   using pggate::PgWireDataHeader;
 
-  const int64_t sequence_id = req.seq_oid();
   const int64_t inc_by = req.inc_by();
   const bool use_sequence_cache = FLAGS_ysql_sequence_cache_method == "server";
   std::shared_ptr<PgSequenceCache::Entry> entry;
@@ -1374,6 +1373,8 @@ Status PgClientSession::FetchSequenceTuple(
     }
   });
   if (use_sequence_cache) {
+    const PgObjectId sequence_id(
+        narrow_cast<uint32_t>(req.db_oid()), narrow_cast<uint32_t>(req.seq_oid()));
     entry = VERIFY_RESULT(
         sequence_cache_.GetWhenAvailable(sequence_id, ToSteady(context->GetClientDeadline())));
 
@@ -1397,7 +1398,7 @@ Status PgClientSession::FetchSequenceTuple(
   RETURN_NOT_OK(
       (SetCatalogVersion<PgFetchSequenceTupleRequestPB, PgsqlWriteRequestPB>(req, write_request)));
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
-  write_request->add_partition_column_values()->mutable_value()->set_int64_value(sequence_id);
+  write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
   auto* fetch_sequence_params = write_request->mutable_fetch_sequence_params();
   fetch_sequence_params->set_fetch_count(req.fetch_count());
@@ -1425,7 +1426,7 @@ Status PgClientSession::FetchSequenceTuple(
   PgDocData::LoadCache(context->sidecars().GetFirst(), &row_count, &cursor);
   if (row_count != 2) {
     return STATUS_SUBSTITUTE(InternalError, "Invalid row count has been fetched from sequence $0",
-                             sequence_id);
+                             req.seq_oid());
   }
 
   int64_t first_value = 0, last_value = 0;
@@ -1433,7 +1434,7 @@ Status PgClientSession::FetchSequenceTuple(
   if (PgDocData::ReadDataHeader(&cursor).is_null()) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range start has been fetched from sequence $0",
-                             sequence_id);
+                             req.seq_oid());
   }
   cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &first_value));
 
@@ -1441,7 +1442,7 @@ Status PgClientSession::FetchSequenceTuple(
   if (PgDocData::ReadDataHeader(&cursor).is_null()) {
     return STATUS_SUBSTITUTE(InternalError,
                              "Invalid value range end has been fetched from sequence $0",
-                             sequence_id);
+                             req.seq_oid());
   }
   cursor.remove_prefix(PgDocData::ReadNumber(&cursor, &last_value));
 
@@ -1451,7 +1452,7 @@ Status PgClientSession::FetchSequenceTuple(
 
     RSTATUS_DCHECK(
         optional_sequence_value.has_value(), InternalError, "Value for sequence $0 was not found.",
-        sequence_id);
+        req.seq_oid());
     // Since the tserver cache is enabled, the connection cache size is implicitly 1 so the first
     // and last value are the same.
     last_value = first_value = *optional_sequence_value;
