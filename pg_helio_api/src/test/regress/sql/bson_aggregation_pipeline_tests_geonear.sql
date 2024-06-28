@@ -3,8 +3,6 @@ SET search_path TO helio_api,helio_core,helio_api_catalog;
 SET helio_api.next_collection_id TO 4900;
 SET helio_api.next_collection_index_id TO 4900;
 
-SET helio_api.enableGeospatial to on;
-
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "agg_geonear", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}');
 
 SELECT helio_api.insert_one('db','agg_geonear','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
@@ -80,9 +78,11 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
 ROLLBACK;
 
 
-RESET helio_api.enableGeospatial;
+SET helio_api.enableGeospatial to off;
 
 -- Make sure we fail if the helio_api.enableGeospatial is not set
 SELECT helio_api.insert_one('db','not_enabled_test','{ "_id": 1, "a": { "b": [ 0, 0]} }', NULL);
 SELECT document FROM helio_api.collection('db', 'not_enabled_test') WHERE document @@
     '{"a.b": {"$geoWithin": { "$geometry": { "type": "Polygon", "coordinates": [ [ [100, 0], [103, 0], [103, 3], [100, 3], [100, 0] ] ] } } }}';
+
+RESET helio_api.enableGeospatial;
