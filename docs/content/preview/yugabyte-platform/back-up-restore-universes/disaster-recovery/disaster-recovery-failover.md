@@ -58,7 +58,7 @@ To repair DR, do the following:
 
 1. Click **Repair DR**.
 
-    ![Disaster recovery failed](/images/yb-platform/disaster-recovery/disaster-recovery-repair.png)
+    ![Repair DR](/images/yb-platform/disaster-recovery/disaster-recovery-repair.png)
 
 1. If the current DR replica (formerly the DR primary) has recovered and is fully functional with no active alerts, choose **Reuse the current DR replica**.
 
