@@ -1258,6 +1258,10 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   bool IsConsistentSnapshotStream() const;
 
+  bool IsCDCSDKStream() const;
+
+  bool IsDynamicTableAdditionDisabled() const;
+
   std::string ToString() const override;
 
  private:

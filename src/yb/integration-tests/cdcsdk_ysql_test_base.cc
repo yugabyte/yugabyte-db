@@ -2283,7 +2283,7 @@ namespace cdc {
 
           return (tablets_after_split.size() == expected_num_tablets);
         },
-        MonoDelta::FromSeconds(120), "Tabelt Split not succesful"));
+        MonoDelta::FromSeconds(120), "Tablet Split not succesful"));
   }
 
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
@@ -3694,6 +3694,54 @@ namespace cdc {
     ASSERT_EQ(reads_snapshot, 100);
   }
 
+
+  Status CDCSDKYsqlTest::ExecuteYBAdminCommand(
+      const std::string& command_name, const std::vector<string>& command_args) {
+    string tool_path = GetToolPath("../bin", "yb-admin");
+    vector<string> argv;
+    argv.push_back(tool_path);
+    argv.push_back("--master_addresses");
+    argv.push_back(AsString(test_cluster_.mini_cluster_->GetMasterAddresses()));
+    argv.push_back(command_name);
+    for (const auto& command_arg : command_args) {
+      argv.push_back(command_arg);
+    }
+
+    RETURN_NOT_OK(Subprocess::Call(argv));
+
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::DisableDynamicTableAdditionOnCDCSDKStream(
+      const xrepl::StreamId& stream_id) {
+    std::string yb_admin_command = "disable_dynamic_table_addition_on_change_data_stream";
+    vector<string> command_args;
+    command_args.push_back(stream_id.ToString());
+    RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::RemoveUserTableFromCDCSDKStream(
+      const xrepl::StreamId& stream_id, const TableId& table_id) {
+    std::string yb_admin_command = "remove_user_table_from_change_data_stream";
+    vector<string> command_args;
+    command_args.push_back(stream_id.ToString());
+    command_args.push_back(table_id);
+    RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
+
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
+      const xrepl::StreamId& stream_id) {
+    std::string yb_admin_command =
+        "validate_and_sync_cdc_state_table_entries_on_change_data_stream";
+    vector<string> command_args;
+    command_args.push_back(stream_id.ToString());
+    RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
+
+    return Status::OK();
+  }
 
 } // namespace cdc
 } // namespace yb

@@ -1846,6 +1846,50 @@ Status get_change_data_stream_info_action(
   return Status::OK();
 }
 
+const auto disable_dynamic_table_addition_on_change_data_stream_args = "<stream_id>";
+Status disable_dynamic_table_addition_on_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  string msg = Format("Failed to disable dynamic table addition on CDC stream $0", stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->DisableDynamicTableAdditionOnCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
+const auto remove_user_table_from_change_data_stream_args = "<stream_id> <table_id>";
+Status remove_user_table_from_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  const string table_id = args[1];
+  string msg = Format("Failed to remove table $0 from CDC stream $1", table_id, stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->RemoveUserTableFromCDCSDKStream(stream_id, table_id), msg);
+  return Status::OK();
+}
+
+const auto validate_and_sync_cdc_state_table_entries_on_change_data_stream_args = "<stream_id>";
+Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  string msg =
+      Format("Failed to validate and sync cdc state table entries for CDC stream $0", stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->ValidateAndSyncCDCStateEntriesForCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
 const auto setup_universe_replication_args =
     "<producer_universe_uuid> <producer_master_addresses> "
     "<comma_separated_list_of_table_ids> [<comma_separated_list_of_producer_bootstrap_ids>] "
@@ -2251,6 +2295,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_cdc_streams);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
+  REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
+  REGISTER_COMMAND(remove_user_table_from_change_data_stream);
+  REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);
   REGISTER_COMMAND(alter_universe_replication);
