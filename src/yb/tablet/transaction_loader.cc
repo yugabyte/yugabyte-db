@@ -17,7 +17,6 @@
 #include "yb/dockv/intent.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/iter_util.h"
 
@@ -52,12 +51,11 @@ namespace tablet {
 
 namespace {
 
-docdb::BoundedRocksDbIterator CreateFullScanIterator(
-    rocksdb::DB* db, std::shared_ptr<rocksdb::ReadFileFilter> filter) {
+docdb::BoundedRocksDbIterator CreateFullScanIterator(rocksdb::DB* db) {
   return docdb::BoundedRocksDbIterator(docdb::CreateRocksDBIterator(
       db, &docdb::KeyBounds::kNoBounds,
       docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId, filter));
+      /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId));
 }
 
 } // namespace
@@ -77,11 +75,8 @@ class TransactionLoader::Executor {
     if (!scoped_pending_operation_.ok()) {
       return false;
     }
-    auto min_running_ht = context().MinRunningHybridTime();
-    VLOG_WITH_PREFIX(1) << "TransactionLoader min_running_ht: " << min_running_ht;
-    regular_iterator_ = CreateFullScanIterator(db.regular, nullptr /* filter */);
-    intents_iterator_ = CreateFullScanIterator(db.intents,
-        docdb::CreateIntentHybridTimeFileFilter(min_running_ht));
+    regular_iterator_ = CreateFullScanIterator(db.regular);
+    intents_iterator_ = CreateFullScanIterator(db.intents);
     loader_.state_.store(TransactionLoaderState::kLoading, std::memory_order_release);
     CHECK_OK(yb::Thread::Create(
         "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))

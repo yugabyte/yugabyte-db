@@ -613,7 +613,6 @@ message ClientReplicatedRetryableRequestRangesPB {
 message TabletBootstrapStatePB {
   optional OpIdPB last_op_id = 1;
   repeated ClientReplicatedRetryableRequestRangesPB client_requests = 2;
-  optional fixed64 min_running_ht = 3;
 }
 
 // A Raft implementation.

@@ -1074,21 +1074,9 @@ class TransactionParticipant::Impl
     return &participant_context_;
   }
 
-  void SetMinRunningHybridTimeLowerBound(HybridTime lower_bound) {
-    if (lower_bound == HybridTime::kMax || lower_bound == HybridTime::kInvalid) {
-      return;
-    }
-    HybridTime current_ht = min_running_ht_.load(std::memory_order_acquire);
-    while ((!current_ht || current_ht < lower_bound)
-        && !min_running_ht_.compare_exchange_weak(current_ht, lower_bound)) {}
-    VLOG_WITH_PREFIX(1) << "Updated min running hybrid time to at least " << lower_bound
-                        << ", was " << current_ht;
-  }
-
-  HybridTime MinRunningHybridTime() override {
+  HybridTime MinRunningHybridTime() {
     auto result = min_running_ht_.load(std::memory_order_acquire);
-    if (result == HybridTime::kMax || result == HybridTime::kInvalid
-        || !transactions_loaded_.load()) {
+    if (result == HybridTime::kMax || result == HybridTime::kInvalid) {
       return result;
     }
     auto now = CoarseMonoClock::now();
@@ -1249,11 +1237,6 @@ class TransactionParticipant::Impl
     VLOG_WITH_PREFIX(4) << "Transactions: " << AsString(transactions_, txn_to_id)
                         << ", requests: " << AsString(running_requests_);
     return transactions_.size();
-  }
-
-  void SetMinRunningHybridTimeUpdateCallback(std::function<void(HybridTime)> callback) {
-    std::lock_guard lock(mutex_);
-    min_running_ht_callback_ = std::move(callback);
   }
 
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) {
@@ -1485,7 +1468,7 @@ class TransactionParticipant::Impl
           ++idx;
         }
       }
-      transactions_loaded_.store(true);
+      transactions_loaded_ = true;
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
@@ -1506,13 +1489,6 @@ class TransactionParticipant::Impl
     }
   }
 
-  void SetMinRunningHybridTime(HybridTime min_running_ht) REQUIRES(mutex_) {
-    min_running_ht_.store(min_running_ht, std::memory_order_release);
-    if (min_running_ht_callback_) {
-      min_running_ht_callback_(min_running_ht);
-    }
-  }
-
   void TransactionsModifiedUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     metric_transactions_running_->set_value(transactions_.size());
     if (!transactions_loaded_) {
@@ -1520,14 +1496,14 @@ class TransactionParticipant::Impl
     }
 
     if (transactions_.empty()) {
-      SetMinRunningHybridTime(HybridTime::kMax);
+      min_running_ht_.store(HybridTime::kMax, std::memory_order_release);
       CheckMinRunningHybridTimeSatisfiedUnlocked(min_running_notifier);
       return;
     }
 
     auto& first_txn = **transactions_.get<StartTimeTag>().begin();
     if (first_txn.start_ht() != min_running_ht_.load(std::memory_order_relaxed)) {
-      SetMinRunningHybridTime(first_txn.start_ht());
+      min_running_ht_.store(first_txn.start_ht(), std::memory_order_release);
       next_check_min_running_.store(
           CoarseMonoClock::now() + 1ms * FLAGS_transaction_min_running_check_delay_ms,
           std::memory_order_release);
@@ -2182,7 +2158,6 @@ class TransactionParticipant::Impl
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
   HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
   std::atomic<bool> shutdown_done_{false};
-  std::function<void(HybridTime)> min_running_ht_callback_ GUARDED_BY(mutex_);
 
   LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
 
@@ -2204,7 +2179,7 @@ class TransactionParticipant::Impl
 
   std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(mutex_);
 
-  std::atomic<bool> transactions_loaded_{false};
+  bool transactions_loaded_ GUARDED_BY(mutex_) = false;
 
   bool pending_applied_notified_ = false;
   std::mutex pending_applies_mutex_;
@@ -2329,10 +2304,6 @@ TransactionParticipantContext* TransactionParticipant::context() const {
   return impl_->participant_context();
 }
 
-void TransactionParticipant::SetMinRunningHybridTimeLowerBound(HybridTime lower_bound) {
-  impl_->SetMinRunningHybridTimeLowerBound(lower_bound);
-}
-
 HybridTime TransactionParticipant::MinRunningHybridTime() const {
   return impl_->MinRunningHybridTime();
 }
@@ -2440,11 +2411,6 @@ void TransactionParticipant::RecordConflictResolutionKeysScanned(int64_t num_key
 
 void TransactionParticipant::RecordConflictResolutionScanLatency(MonoDelta latency) {
   impl_->RecordConflictResolutionScanLatency(latency);
-}
-
-void TransactionParticipant::SetMinRunningHybridTimeUpdateCallback(
-    std::function<void(HybridTime)> callback) {
-  impl_->SetMinRunningHybridTimeUpdateCallback(std::move(callback));
 }
 
 }  // namespace tablet
