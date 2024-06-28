@@ -51,7 +51,6 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetCDCDBStreamInfo)
     (IsBootstrapRequired)
     (WaitForReplicationDrain)
-    (SetupNSUniverseReplication)
     (GetReplicationStatus)
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)

@@ -1,15 +1,17 @@
-import { FC } from 'react';
+import { FC, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { Box, Grid, MenuItem, makeStyles } from '@material-ui/core';
 import { YBLabel, YBSelect } from '../../../../../../components';
+import { UniverseFormContext } from '../../../UniverseFormContainer';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
   getThroughputByStorageType,
   getStorageTypeOptions,
-  getIopsByStorageType
+  getIopsByStorageType,
+  useVolumeControls
 } from './VolumeInfoFieldHelper';
 import { StorageType, UniverseFormData, CloudType } from '../../../utils/dto';
 import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
@@ -33,12 +35,16 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface StorageTypeFieldProps {
-  disableStorageType: boolean;
+  isViewMode: boolean;
+  isEditMode: boolean;
 }
 
-export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType }) => {
+export const StorageTypeField: FC<StorageTypeFieldProps> = ({ isViewMode, isEditMode }) => {
   const { t } = useTranslation();
   const classes = useStyles();
+
+  const { universeConfigureTemplate } = useContext(UniverseFormContext)[0];
+  const updateOptions = universeConfigureTemplate?.updateOptions;
 
   // watchers
   const fieldValue = useWatch({ name: DEVICE_INFO_FIELD });
@@ -47,6 +53,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
   const { setValue } = useFormContext<UniverseFormData>();
+  const { disableStorageType } = useVolumeControls(isEditMode, updateOptions);
 
   //field actions
   const onStorageTypeChanged = (storageType: StorageType) => {
@@ -120,14 +127,14 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
             <YBSelect
               className={classes.storageTypeSelectField}
               fullWidth
-              disabled={disableStorageType}
+              disabled={isViewMode || disableStorageType}
               value={storageType}
               inputProps={{
                 min: 1,
                 'data-testid': 'VolumeInfoFieldDedicated-Common-StorageTypeSelect'
               }}
               onChange={(event) =>
-                onStorageTypeChanged(event?.target.value as unknown as StorageType)
+                onStorageTypeChanged((event?.target.value as unknown) as StorageType)
               }
             >
               {getStorageTypeOptions(provider?.code).map((item) => (

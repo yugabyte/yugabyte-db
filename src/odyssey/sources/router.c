@@ -724,9 +724,22 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 * 	   As of D26669, these queries are:
 	 * 			a. Creating TEMP TABLES.
 	 * 			b. Use of WITH HOLD CURSORS.
+	 *  c. Client connection is a logical or physical replication connection
 	 */
-	if (od_likely(!server->offline) && server->yb_sticky_connection == false) {
-		od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_IDLE);
+	if (od_likely(!server->offline) && !server->yb_sticky_connection) {
+		od_instance_t *instance = server->global->instance;
+		if (route->id.physical_rep || route->id.logical_rep) {
+			od_debug(&instance->logger, "expire-replication", NULL,
+				 server, "closing replication connection");
+			server->route = NULL;
+			od_backend_close_connection(server);
+			od_pg_server_pool_set(&route->server_pool, server,
+					      OD_SERVER_UNDEF);
+			od_backend_close(server);
+		} else {
+			od_pg_server_pool_set(&route->server_pool, server,
+					      OD_SERVER_IDLE);
+		}
 	} else {
 		od_instance_t *instance = server->global->instance;
 		od_debug(&instance->logger, "expire", NULL, server,

@@ -454,10 +454,6 @@ class ClusterAdminClient {
   Status WaitForReplicationDrain(
       const std::vector<xrepl::StreamId>& stream_ids, const std::string& target_time);
 
-  Status SetupNSUniverseReplication(const std::string& replication_group_id,
-                                    const std::vector<std::string>& producer_addresses,
-                                    const TypedNamespaceName& producer_namespace);
-
   Status GetReplicationInfo(const std::string& replication_group_id);
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
