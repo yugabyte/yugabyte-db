@@ -1,6 +1,7 @@
 package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
@@ -36,7 +37,10 @@ public class BackupResp {
   Boolean onDemand;
   StorageConfigType storageConfigType;
   BackupCategory category;
+
+  @JsonProperty("isFullBackup")
   Boolean isFullBackup;
+
   TableType backupType;
   CommonBackupInfo commonBackupInfo;
   String scheduleName;
