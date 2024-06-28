@@ -11,12 +11,15 @@
 #include <utils/guc.h>
 #include <limits.h>
 #include <access/xact.h>
+#include <storage/ipc.h>
 
 #include "helio_api_init.h"
 #include "metadata/metadata_guc.h"
 #include "planner/helio_planner.h"
 #include "customscan/custom_scan_registrations.h"
 #include "commands/connection_management.h"
+#include "utils/feature_counter.h"
+#include "utils/version_utils.h"
 
 /* --------------------------------------------------------- */
 /* Data Types & Enum values */
@@ -54,6 +57,8 @@ static const struct config_enum_entry READ_CONCERN_LEVEL_CONFIG_ENTRIES[] =
  */
 #define BSON_MAX_ALLOWED_SIZE (16 * 1024 * 1024)
 
+static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+
 /*
  * helio_api.enable_create_collection_on_insert GUC determines whether
  * an insert into a non-existent collection should create a collection.
@@ -67,9 +72,6 @@ bool DefaultInlineWriteOperations = true;
 bool UseLocalExecutionShardQueries = DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES;
 
 
-#define DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS false
-bool LookupUseLegacyExtractFunctions = DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS;
-
 #define DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY false
 bool EnableNewOperatorSelectivityMode = DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY;
 
@@ -82,6 +84,8 @@ bool EnableNewOperatorSelectivityMode = DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY;
 static void HelioTransactionCallback(XactEvent event, void *arg);
 static void HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
 										SubTransactionId parentSubid, void *arg);
+
+static void HelioSharedMemoryInit(void);
 
 /* --------------------------------------------------------- */
 /* GUCs and default values */
@@ -224,14 +228,8 @@ int32 MaxSegmentVertices = DEFAULT_MAX_SEGMENT_VERTICES;
 #define DEFAULT_MAX_INDEXES_PER_COLLECTION 64
 int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 
-#define DEFAULT_ENABLE_PUSH_SUPPORT false
-bool EnableGroupPushSupport = DEFAULT_ENABLE_PUSH_SUPPORT;
-
 #define DEFAULT_UNSHARDED_BATCH_UPDATE false
 bool EnableUnshardedBatchUpdate = DEFAULT_UNSHARDED_BATCH_UPDATE;
-
-#define DEFAULT_ENABLE_ADD_TO_SET_SUPPORT false
-bool EnableGroupAddToSetSupport = DEFAULT_ENABLE_ADD_TO_SET_SUPPORT;
 
 #define DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT false
 bool EnableGroupMergeObjectsSupport = DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT;
@@ -601,17 +599,11 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableGroupPushSupport",
-		gettext_noop("Feature flag for the group push support"), NULL,
-		&EnableGroupPushSupport, DEFAULT_ENABLE_PUSH_SUPPORT, PGC_USERSET, 0,
-		NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		"helio_api.enableUnshardedBatchUpdate",
 		gettext_noop(
 			"Feature flag to enable pushing an unsharded batch update to the worker"),
 		NULL,
-		&EnableUnshardedBatchUpdate, DEFAULT_ENABLE_PUSH_SUPPORT, PGC_USERSET, 0,
+		&EnableUnshardedBatchUpdate, DEFAULT_UNSHARDED_BATCH_UPDATE, PGC_USERSET, 0,
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -622,26 +614,12 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.lookupUseLegacyExtractFunction",
-		gettext_noop(
-			"Determines whether to use the legacy extract function if set to true."),
-		NULL, &LookupUseLegacyExtractFunctions,
-		DEFAULT_LOOKUP_USE_LEGACY_EXTRACT_FUNCTIONS,
-		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
 		"helio_api.enableNewSelectivityMode",
 		gettext_noop(
 			"Determines whether to use the new selectivity logic."),
 		NULL, &EnableNewOperatorSelectivityMode,
 		DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
-
-	DefineCustomBoolVariable(
-		"helio_api.enableGroupAddToSetSupport",
-		gettext_noop("Feature flag for the group addToSet support"), NULL,
-		&EnableGroupAddToSetSupport, DEFAULT_ENABLE_ADD_TO_SET_SUPPORT, PGC_USERSET, 0,
-		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		"helio_api.enableGroupMergeObjectsSupport",
@@ -746,9 +724,30 @@ UninstallHelioApiPostgresHooks(void)
 }
 
 
+void
+InitializeSharedMemoryHooks(void)
+{
+	prev_shmem_startup_hook = shmem_startup_hook;
+	shmem_startup_hook = HelioSharedMemoryInit;
+}
+
+
 /* --------------------------------------------------------- */
 /* Private methods */
 /* --------------------------------------------------------- */
+
+
+static void
+HelioSharedMemoryInit(void)
+{
+	SharedFeatureCounterShmemInit();
+	InitializeVersionCache();
+
+	if (prev_shmem_startup_hook != NULL)
+	{
+		prev_shmem_startup_hook();
+	}
+}
 
 
 static void

@@ -327,7 +327,6 @@ UpdatePathsToForceRumIndexScanToBitmapHeapScan(PlannerInfo *root, RelOptInfo *re
 			inputPath->pathtype == T_IndexScan)
 		{
 			hasIndexPaths = true;
-			break;
 		}
 	}
 

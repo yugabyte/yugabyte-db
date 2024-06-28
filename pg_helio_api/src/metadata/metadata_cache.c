@@ -4883,12 +4883,13 @@ GetArrayTypeOid(Oid *arrayTypeId, Oid baseElementType)
 Oid
 GetClusterBsonQueryTypeId()
 {
-	if (!IsClusterVersionAtleastThis(1, 9, 6))
+	Oid typeId = BsonQueryTypeId();
+	if (typeId == InvalidOid)
 	{
 		return BsonTypeId();
 	}
 
-	return BsonQueryTypeId();
+	return typeId;
 }
 
 

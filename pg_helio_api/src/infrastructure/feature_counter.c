@@ -28,8 +28,6 @@
 
 #define FEATURE_COUNTER_STATS_COLUMNS 2
 
-static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
-
 static void StoreAllFeatureCounterStats(Tuplestorestate *tupleStore, TupleDesc
 										tupleDescriptor, bool resetStatsAfterRead);
 static void PopulateFeatureCounters(FeatureCounter *aggregatedFeatureCounter);
@@ -305,28 +303,14 @@ get_feature_counter_stats(PG_FUNCTION_ARGS)
 
 
 /*
- * InitializeSharedFeatureCounter requests the necessary shared memory
- * from Postgres and sets up the shared memory startup hook.
+ * SharedFeatureCounterShmemInit initializes the shared memory used
+ * for keeping track of feature counters across backends.
  */
 void
-InitializeSharedFeatureCounter(void)
+SharedFeatureCounterShmemInit(void)
 {
-/* on PG 15, we use shmem_request_hook_type */
-#if PG_VERSION_NUM < PG_VERSION_15
-
-	/* allocate shared memory */
-	if (!IsUnderPostmaster)
-	{
-		RequestAddinShmemSpace(SharedFeatureCounterShmemSize());
-	}
-#endif
-
 	StaticAssertExpr(MAX_FEATURE_INDEX < MAX_FEATURE_COUNT,
 					 "feature enums should be less than size - bump up MAX_FEATURE_COUNT");
-
-
-	prev_shmem_startup_hook = shmem_startup_hook;
-	shmem_startup_hook = SharedFeatureCounterShmemInit;
 
 	/* Validate that we have names for the feature counters as well */
 	for (int i = 0; i < MAX_FEATURE_INDEX; i++)
@@ -336,28 +320,7 @@ InitializeSharedFeatureCounter(void)
 			ereport(PANIC, (errmsg("Feature mapping for index %d not found", i)));
 		}
 	}
-}
 
-
-/*
- * SharedFeatureCounterShmemSize returns the size that should be allocated
- * on the shared memory for shared feature counters.
- */
-size_t
-SharedFeatureCounterShmemSize(void)
-{
-	size_t feature_counter_shmem_size = mul_size(sizeof(FeatureCounter), MaxBackends);
-	return feature_counter_shmem_size;
-}
-
-
-/*
- * SharedFeatureCounterShmemInit initializes the shared memory used
- * for keeping track of feature counters across backends.
- */
-void
-SharedFeatureCounterShmemInit(void)
-{
 	bool found;
 
 	size_t feature_counter_shmem_size = mul_size(sizeof(FeatureCounter), MaxBackends);
@@ -365,19 +328,12 @@ SharedFeatureCounterShmemInit(void)
 								 ShmemInitStruct("Feature Counter Array",
 												 feature_counter_shmem_size, &found);
 
-
 	if (!found)
 	{
 		/*
 		 * We're the first - initialize.
 		 */
 		MemSet(FeatureCounterBackendArray, 0, feature_counter_shmem_size);
-	}
-
-
-	if (prev_shmem_startup_hook != NULL)
-	{
-		prev_shmem_startup_hook();
 	}
 }
 

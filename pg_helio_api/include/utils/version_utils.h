@@ -17,5 +17,6 @@ bool IsClusterVersionAtleastThis(int major, int minor, int patch);
 
 bool IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch);
 void InvalidateVersionCache(void);
+void InitializeVersionCache(void);
 
 #endif

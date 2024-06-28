@@ -30,9 +30,7 @@ typedef struct ExtensionVersion
 	int Patch;
 } ExtensionVersion;
 
-extern ExtensionVersion CurrentVersion;
-
-void RefreshCurrentVersion(void);
+ExtensionVersion RefreshCurrentVersion(void);
 
 bool IsExtensionVersionAtleastThis(ExtensionVersion extVersion, int major, int minor, int
 								   patch);

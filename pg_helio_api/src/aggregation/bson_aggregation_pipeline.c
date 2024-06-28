@@ -181,7 +181,6 @@ static bool CanInlineLookupStageUnwind(const bson_value_t *stageValue, const
 static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
 
-extern bool EnableGroupAddToSetSupport;
 extern bool EnableGroupMergeObjectsSupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
 
@@ -2809,12 +2808,6 @@ HandleInverseMatch(const bson_value_t *existingValue, Query *query,
 				   AggregationPipelineBuildContext *context)
 {
 	/* we need bson_dollar_inverse_match UDF which is in 1.14 */
-	if (!IsClusterVersionAtleastThis(1, 14, 0))
-	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
-						errmsg("Stage $inverseMatch is not supported yet.")));
-	}
-
 	ReportFeatureUsage(FEATURE_STAGE_INVERSEMATCH);
 
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
@@ -3845,23 +3838,13 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$addToSet"))
 		{
-			if (IsClusterVersionAtleastThis(1, 16, 0) ||
-				(EnableGroupAddToSetSupport && IsClusterVersionAtleastThis(1, 14, 7) &&
-				 !IsClusterVersionAtleastThis(1, 16, 0)))
-			{
-				repathArgs = AddSimpleGroupAccumulator(query,
-													   &accumulatorElement.bsonValue,
-													   repathArgs,
-													   accumulatorText, parseState,
-													   identifiers,
-													   origEntry->expr,
-													   BsonAddToSetAggregateFunctionOid());
-			}
-			else
-			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
-								errmsg("Accumulator $addToSet not implemented yet")));
-			}
+			repathArgs = AddSimpleGroupAccumulator(query,
+												   &accumulatorElement.bsonValue,
+												   repathArgs,
+												   accumulatorText, parseState,
+												   identifiers,
+												   origEntry->expr,
+												   BsonAddToSetAggregateFunctionOid());
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$mergeObjects"))
 		{

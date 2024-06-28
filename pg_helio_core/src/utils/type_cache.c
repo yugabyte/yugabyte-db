@@ -126,7 +126,10 @@ BsonQueryTypeId(void)
 		List *bsonTypeNameList = list_make2(makeString(CoreSchemaName),
 											makeString("bsonquery"));
 		TypeName *bsonTypeName = makeTypeNameFromNameList(bsonTypeNameList);
-		TypeCache.BsonQueryTypeId = typenameTypeId(NULL, bsonTypeName);
+
+		/* We set missingOk = true for extension upgrade tests. Otherwise this should always exist. */
+		bool missingOk = true;
+		TypeCache.BsonQueryTypeId = LookupTypeNameOid(NULL, bsonTypeName, missingOk);
 	}
 
 	return TypeCache.BsonQueryTypeId;

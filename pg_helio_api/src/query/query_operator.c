@@ -4380,13 +4380,6 @@ TryOptimizeNotInnerExpr(Expr *innerExpr, BsonQueryOperatorContext *context)
 		return NULL;
 	}
 
-	if (!IsClusterVersionEqualToAndAtLeastPatch(1, 14, 6) &&
-		!IsClusterVersionAtleastThis(1, 15, 1))
-	{
-		/* These operators are only added with 1.14-6 and 1.15-1 */
-		return NULL;
-	}
-
 	const MongoQueryOperator *queryOperator = NULL;
 	List *args = NIL;
 	if (IsA(innerExpr, FuncExpr))

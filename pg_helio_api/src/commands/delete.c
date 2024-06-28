@@ -107,10 +107,6 @@ static void DeleteOneObjectId(MongoCollection *collection,
 							  DeleteOneResult *result);
 static List * ValidateQueryDocuments(BatchDeletionSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchDeletionResult *batchResult);
-static void CallDeleteOneCore(MongoCollection *collection,
-							  DeleteOneParams *deleteOneParams,
-							  int64 shardKeyHash, text *transactionId,
-							  DeleteOneResult *result);
 static void DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
 								  DeleteOneParams *deleteOneParams,
 								  text *transactionId, DeleteOneResult *deleteOneResult);
@@ -719,8 +715,7 @@ CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 		DeleteOneInternalCore(collection->collectionId, shardKeyHash, deleteOneParams,
 							  transactionId, result);
 	}
-	else if (IsClusterVersionAtleastThis(1, 14, 4) ||
-			 IsClusterVersionEqualToAndAtLeastPatch(1, 13, 2))
+	else
 	{
 		/*
 		 * If the cluster supports it, and we need to go remote, call the update worker
@@ -728,12 +723,6 @@ CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 		 */
 		CallDeleteWorkerForDeleteOne(collection, deleteOneParams, shardKeyHash,
 									 transactionId, result);
-	}
-	else
-	{
-		/* Fall back to the existing logic of calling delete_one */
-		CallDeleteOneCore(collection, deleteOneParams, shardKeyHash, transactionId,
-						  result);
 	}
 }
 
@@ -792,123 +781,6 @@ CallDeleteWorkerForDeleteOne(MongoCollection *collection,
 	pgbson *resultPgbson = (pgbson *) DatumGetPointer(resultDatum[0]);
 
 	DeserializeWorkerDeleteResult(resultPgbson, result);
-}
-
-
-/*
- * CallDeleteOne calls the __API_INTERNAL_SCHEMA__.delete_one function, which could
- * get delegated based on the shard key value.
- */
-static void
-CallDeleteOneCore(MongoCollection *collection, DeleteOneParams *deleteOneParams,
-				  int64 shardKeyHash, text *transactionId, DeleteOneResult *result)
-{
-	StringInfoData deleteQuery;
-	int argCount = 7;
-	Oid argTypes[7];
-	Datum argValues[7];
-
-	/* whitespace means not null, n means null */
-	char argNulls[7] = { ' ', ' ', ' ', ' ', ' ', ' ', ' ' };
-
-	SPI_connect();
-	initStringInfo(&deleteQuery);
-	appendStringInfo(&deleteQuery,
-					 " SELECT o_is_row_deleted, o_result_deleted_document"
-					 " FROM %s.delete_one($1,$2,$3::%s,$4::%s,$5,$6::%s,$7)",
-					 ApiInternalSchemaName, FullBsonTypeName, FullBsonTypeName,
-					 FullBsonTypeName);
-
-	/* p_collection_id */
-	argTypes[0] = INT8OID;
-	argValues[0] = UInt64GetDatum(collection->collectionId);
-
-	/* p_shard_key_value */
-	argTypes[1] = INT8OID;
-	argValues[1] = Int64GetDatum(shardKeyHash);
-
-	/* p_query */
-	/* we use bytea because bson may not have the same OID on all nodes */
-	argTypes[2] = BYTEAOID;
-	argValues[2] = PointerGetDatum(CastPgbsonToBytea(deleteOneParams->query));
-
-	/* p_sort */
-	argTypes[3] = BYTEAOID;
-
-	if (deleteOneParams->sort != NULL)
-	{
-		argValues[3] = PointerGetDatum(CastPgbsonToBytea(deleteOneParams->sort));
-		argNulls[3] = ' ';
-	}
-	else
-	{
-		argValues[3] = 0;
-		argNulls[3] = 'n';
-	}
-
-	/* p_return_document */
-	argTypes[4] = BOOLOID;
-	argValues[4] = BoolGetDatum(deleteOneParams->returnDeletedDocument);
-
-	/* p_return_fields */
-	argTypes[5] = BYTEAOID;
-
-	if (deleteOneParams->returnFields != NULL)
-	{
-		argValues[5] = PointerGetDatum(CastPgbsonToBytea(deleteOneParams->returnFields));
-		argNulls[5] = ' ';
-	}
-	else
-	{
-		argValues[5] = 0;
-		argNulls[5] = 'n';
-	}
-
-	/* p_transaction_id */
-	argTypes[6] = TEXTOID;
-
-	if (transactionId != NULL)
-	{
-		argValues[6] = PointerGetDatum(transactionId);
-		argNulls[6] = ' ';
-	}
-	else
-	{
-		argValues[6] = 0;
-		argNulls[6] = 'n';
-	}
-
-	bool readOnly = false;
-	long maxTupleCount = 0;
-
-	SPI_execute_with_args(deleteQuery.data, argCount, argTypes, argValues, argNulls,
-						  readOnly, maxTupleCount);
-
-	if (SPI_processed > 0)
-	{
-		bool isNull = false;
-		int columnNumber = 1;
-
-		result->isRowDeleted = DatumGetBool(SPI_getbinval(SPI_tuptable->vals[0],
-														  SPI_tuptable->tupdesc,
-														  columnNumber, &isNull));
-		columnNumber = 2;
-		Datum documentDatum = SPI_getbinval(SPI_tuptable->vals[0],
-											SPI_tuptable->tupdesc,
-											columnNumber, &isNull);
-		if (!isNull)
-		{
-			bool typeByValue = false;
-			int typeLength = -1;
-			documentDatum = SPI_datumTransfer(documentDatum, typeByValue,
-											  typeLength);
-
-			result->resultDeletedDocument =
-				(pgbson *) DatumGetPointer(documentDatum);
-		}
-	}
-
-	SPI_finish();
 }
 
 

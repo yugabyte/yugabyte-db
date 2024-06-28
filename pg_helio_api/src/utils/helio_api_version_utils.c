@@ -14,15 +14,39 @@
 #include "utils/query_utils.h"
 #include "utils/guc_utils.h"
 #include <utils/builtins.h>
+#include <storage/ipc.h>
+#include <storage/shmem.h>
 
 /*
  * Global value tracking the Current Version deployed across
  * the cluster.
  */
-ExtensionVersion CurrentVersion = { 0 };
+static ExtensionVersion *CurrentVersion = NULL;
 
 char *VersionRefreshQuery =
 	"SELECT regexp_split_to_array(extversion, '[-\\.]')::int4[] FROM pg_extension WHERE extname = 'pg_helio_api'";
+
+
+/*
+ * Initializes the version cache in shared memory.
+ */
+void
+InitializeVersionCache(void)
+{
+	bool found;
+
+	size_t version_cache_size = MAXALIGN(sizeof(ExtensionVersion));
+	CurrentVersion = (ExtensionVersion *) ShmemInitStruct("Helio Version Cache",
+														  version_cache_size, &found);
+
+	if (!found)
+	{
+		/*
+		 * We're the first - initialize.
+		 */
+		memset(CurrentVersion, 0, version_cache_size);
+	}
+}
 
 
 /*
@@ -31,19 +55,19 @@ char *VersionRefreshQuery =
 bool
 IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch)
 {
-	RefreshCurrentVersion();
+	ExtensionVersion version = RefreshCurrentVersion();
 
-	if (CurrentVersion.Major != major)
+	if (version.Major != major)
 	{
 		return false;
 	}
-	else if (CurrentVersion.Minor != minor)
+	else if (version.Minor != minor)
 	{
 		return false;
 	}
 
 	/* Major and Minor are the expected ones, we should compare the patch version. */
-	return CurrentVersion.Patch >= patch;
+	return version.Patch >= patch;
 }
 
 
@@ -53,17 +77,17 @@ IsClusterVersionEqualToAndAtLeastPatch(int major, int minor, int patch)
 bool
 IsClusterVersionAtleastThis(int major, int minor, int patch)
 {
-	RefreshCurrentVersion();
+	ExtensionVersion version = RefreshCurrentVersion();
 
-	if (CurrentVersion.Major < major)
+	if (version.Major < major)
 	{
 		return false;
 	}
-	else if (CurrentVersion.Minor < minor)
+	else if (version.Minor < minor)
 	{
 		return false;
 	}
-	else if (CurrentVersion.Major != major || CurrentVersion.Minor != minor)
+	else if (version.Major != major || version.Minor != minor)
 	{
 		/* if CurrentVersion.Major or CurrentVersion.Minor are greater than the expected version */
 		/* parts we are on a later version, no need to compare the patch. */
@@ -71,7 +95,7 @@ IsClusterVersionAtleastThis(int major, int minor, int patch)
 	}
 
 	/* Major and Minor are the expected ones, we should compare the patch version. */
-	return CurrentVersion.Patch >= patch;
+	return version.Patch >= patch;
 }
 
 
@@ -108,18 +132,31 @@ IsExtensionVersionAtleastThis(ExtensionVersion extVersion, int major, int minor,
 void
 InvalidateVersionCache()
 {
-	CurrentVersion = (ExtensionVersion) {
-		0
-	};
+	if (CurrentVersion != NULL)
+	{
+		*CurrentVersion = (ExtensionVersion) {
+			0
+		};
+	}
+
+	pg_write_barrier();
 }
 
 
-void
+ExtensionVersion
 RefreshCurrentVersion(void)
 {
-	if (CurrentVersion.Major != 0)
+	ExtensionVersion currentVersion = { 0 };
+
+	pg_memory_barrier();
+	if (CurrentVersion != NULL)
 	{
-		return;
+		currentVersion = *CurrentVersion;
+	}
+
+	if (currentVersion.Major != 0 || CurrentVersion == NULL)
+	{
+		return currentVersion;
 	}
 
 	/*
@@ -137,7 +174,7 @@ RefreshCurrentVersion(void)
 	if (strcmp(versionString, "") == 0)
 	{
 		RollbackGUCChange(savedGUCLevel);
-		return;
+		return currentVersion;
 	}
 
 	int nargs = 1;
@@ -162,7 +199,13 @@ RefreshCurrentVersion(void)
 					  &elements, NULL, &numElements);
 
 	Assert(numElements == 3);
-	CurrentVersion.Major = DatumGetInt32(elements[0]);
-	CurrentVersion.Minor = DatumGetInt32(elements[1]);
-	CurrentVersion.Patch = DatumGetInt32(elements[2]);
+	ExtensionVersion newVersion = { 0 };
+	newVersion.Major = DatumGetInt32(elements[0]);
+	newVersion.Minor = DatumGetInt32(elements[1]);
+	newVersion.Patch = DatumGetInt32(elements[2]);
+
+	*CurrentVersion = newVersion;
+	pg_write_barrier();
+
+	return newVersion;
 }

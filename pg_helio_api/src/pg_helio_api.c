@@ -40,7 +40,7 @@ _PG_init(void)
 	InstallBsonMemVTables();
 	InitApiConfigurations("helio_api");
 	InitializeExtensionExternalConfigs("helio_api");
-	InitializeSharedFeatureCounter();
+	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("helio_api");
 
 	InstallHelioApiPostgresHooks();

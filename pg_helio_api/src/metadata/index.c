@@ -1263,24 +1263,12 @@ AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, c
 	StringInfo cmdStr = makeStringInfo();
 
 	appendStringInfo(cmdStr,
-					 "INSERT INTO %s (index_cmd, index_id, collection_id, index_cmd_status, cmd_type",
+					 "INSERT INTO %s (index_cmd, index_id, collection_id, index_cmd_status, cmd_type, user_oid",
 					 GetIndexQueueName());
 
-	if (IsClusterVersionAtleastThis(1, 14, 0))
-	{
-		appendStringInfo(cmdStr, ", user_oid");
-	}
+	appendStringInfo(cmdStr, ") VALUES ($1, $2, $3, $4, $5, $6) ");
 
-	appendStringInfo(cmdStr, ") VALUES ($1, $2, $3, $4, $5");
-
-	if (IsClusterVersionAtleastThis(1, 14, 0))
-	{
-		appendStringInfo(cmdStr, ", $6");
-	}
-
-	appendStringInfo(cmdStr, ") ");
-
-	int argCount = 5;
+	int argCount = 6;
 	Oid argTypes[6];
 	Datum argValues[6];
 	char argNulls[6] = { ' ', ' ', ' ', ' ', ' ', ' ' };
@@ -1300,12 +1288,8 @@ AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, c
 	argTypes[4] = CHAROID;
 	argValues[4] = CharGetDatum(cmdType);
 
-	if (IsClusterVersionAtleastThis(1, 14, 0))
-	{
-		argTypes[5] = OIDOID;
-		argValues[5] = ObjectIdGetDatum(userOid);
-		argCount++;
-	}
+	argTypes[5] = OIDOID;
+	argValues[5] = ObjectIdGetDatum(userOid);
 
 	bool isNull = true;
 	bool readOnly = false;
@@ -1347,19 +1331,13 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	 */
 	StringInfo cmdStr = makeStringInfo();
 	bool readOnly = false;
-	int numValues = 6;
+	int numValues = 7;
 	bool isNull[7];
 	Datum results[7];
 	Oid userOid = InvalidOid;
 
 	appendStringInfo(cmdStr,
-					 "SELECT index_cmd, index_id, index_cmd_status, COALESCE(attempt, 0) AS attempt, comment, update_time");
-	if (IsClusterVersionAtleastThis(1, 14, 0))
-	{
-		appendStringInfo(cmdStr,
-						 ", user_oid");
-		numValues++;
-	}
+					 "SELECT index_cmd, index_id, index_cmd_status, COALESCE(attempt, 0) AS attempt, comment, update_time, user_oid");
 	appendStringInfo(cmdStr,
 					 " FROM %s iq WHERE cmd_type = '%c'",
 					 GetIndexQueueName(), cmdType);
@@ -1387,7 +1365,7 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	int16 attemptCount = DatumGetUInt16(results[3]);
 	pgbson *comment = (pgbson *) DatumGetPointer(results[4]);
 	TimestampTz updateTime = DatumGetTimestampTz(results[5]);
-	if (IsClusterVersionAtleastThis(1, 14, 0) && !isNull[6])
+	if (!isNull[6])
 	{
 		userOid = DatumGetObjectId(results[6]);
 	}
@@ -1618,16 +1596,6 @@ IndexCmdStatus
 GetIndexBuildStatusFromIndexQueue(int indexId)
 {
 	IndexCmdStatus status = IndexCmdStatus_Unknown;
-	bool tableExists = false;
-	if (IsClusterVersionAtleastThis(1, 12, 0))
-	{
-		tableExists = true;
-	}
-
-	if (!tableExists)
-	{
-		return status;
-	}
 
 	const char *cmdStr =
 		FormatSqlQuery(

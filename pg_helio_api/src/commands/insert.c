@@ -106,8 +106,6 @@ static pgbson * PreprocessInsertionDoc(const bson_value_t *docValue,
 static uint64 InsertOneWithTransactionCore(uint64 collectionId, int64 shardKeyValue,
 										   text *transactionId,
 										   pgbson *objectId, pgbson *document);
-static uint64 CallInsertOne(MongoCollection *collection, int64 shardKeyHash,
-							pgbson *document, text *transactionId);
 static uint64 CallInsertWorkerForInsertOne(MongoCollection *collection, int64
 										   shardKeyHash,
 										   pgbson *document, text *transactionId);
@@ -849,15 +847,10 @@ ProcessInsertion(MongoCollection *collection,
 		list_free_deep(singleInsertList);
 		return insertResult;
 	}
-	else if (IsClusterVersionAtleastThis(1, 14, 4) ||
-			 IsClusterVersionEqualToAndAtLeastPatch(1, 13, 2))
+	else
 	{
 		return CallInsertWorkerForInsertOne(collection, shardKeyHash, insertDoc,
 											transactionId);
-	}
-	else
-	{
-		return CallInsertOne(collection, shardKeyHash, insertDoc, transactionId);
 	}
 }
 
@@ -916,70 +909,6 @@ CallInsertWorkerForInsertOne(MongoCollection *collection, int64 shardKeyHash,
 
 	/* If we got here, then it succeeded and inserted */
 	return 1;
-}
-
-
-/*
- * CallInsertOne calls the ApiInternalSchemaName.insert_one function, which could
- * get delegated based on the shard key value.
- */
-static uint64
-CallInsertOne(MongoCollection *collection, int64 shardKeyHash,
-			  pgbson *document, text *transactionId)
-{
-	StringInfoData insertQuery;
-	int argCount = 4;
-	Oid argTypes[4];
-	Datum argValues[4];
-
-	/* whitespace means not null, n means null */
-	char argNulls[] = { ' ', ' ', ' ', 'n' };
-	uint64 rowsInserted = 0;
-
-	SPI_connect();
-	initStringInfo(&insertQuery);
-	appendStringInfo(&insertQuery,
-					 "SELECT insert_one FROM %s.insert_one($1,$2,$3::%s,$4)",
-					 ApiInternalSchemaName, FullBsonTypeName);
-
-	argTypes[0] = INT8OID;
-	argValues[0] = UInt64GetDatum(collection->collectionId);
-
-	argTypes[1] = INT8OID;
-	argValues[1] = Int64GetDatum(shardKeyHash);
-
-	/* we use bytea because bson may not have the same OID on all nodes */
-	argTypes[2] = BYTEAOID;
-	argValues[2] = PointerGetDatum(CastPgbsonToBytea(document));
-
-	argTypes[3] = TEXTOID;
-	argValues[3] = 0;
-
-	if (transactionId != NULL)
-	{
-		argValues[3] = PointerGetDatum(transactionId);
-		argNulls[3] = ' ';
-	}
-
-	bool readOnly = false;
-	long maxTupleCount = 0;
-
-	SPI_execute_with_args(insertQuery.data, argCount, argTypes, argValues, argNulls,
-						  readOnly, maxTupleCount);
-
-	if (SPI_processed > 0)
-	{
-		bool isNull = false;
-		int columnNumber = 1;
-
-		rowsInserted = DatumGetUInt64(SPI_getbinval(SPI_tuptable->vals[0],
-													SPI_tuptable->tupdesc,
-													columnNumber, &isNull));
-	}
-
-	SPI_finish();
-
-	return rowsInserted;
 }
 
 

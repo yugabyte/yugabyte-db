@@ -48,9 +48,6 @@
 
 const int MaximumLookupPipelineDepth = 20;
 
-/* Graph lookup feature flag */
-extern bool LookupUseLegacyExtractFunctions;
-
 /*
  * Struct having parsed view of the
  * arguments to Lookup.
@@ -1360,15 +1357,11 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 &subPipelineContext);
 		}
 
-		bool isLegacyExtractFunction = !IsClusterVersionAtleastThis(1, 14, 5) ||
-									   LookupUseLegacyExtractFunctions;
-
 		/* Do not turn on the fast version if we're still using the legacy extract function
 		 * TODO: This can be removed once 1.16 fully deploys with this.
 		 */
 		bool canProcessForeignFieldAsDocumentId =
 			StringViewEquals(&lookupArgs->foreignField, &IdFieldStringView) &&
-			!isLegacyExtractFunction &&
 			!isRightQueryAgnostic;
 
 		/* We can apply the optimization on this based on object_id if and only if
@@ -1456,16 +1449,13 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		}
 		else
 		{
-			Oid extractFunctionOid = isLegacyExtractFunction ?
-									 BsonLookupExtractFilterExpressionFunctionOid() :
-									 HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid();
+			Oid extractFunctionOid =
+				HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid();
 
 			projectorFunc = makeFuncExpr(
 				extractFunctionOid, BsonTypeId(),
 				extractFilterArgs,
 				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
-			projectorFunc->funcretset = isLegacyExtractFunction;
-			leftQuery->hasTargetSRFs = isLegacyExtractFunction;
 		}
 
 		AttrNumber newProjectorAttrNum = list_length(leftQuery->targetList) + 1;
@@ -1502,16 +1492,6 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 			List *inArgs = list_make2(copyObject(rightObjectIdEntry->expr), matchVar);
 			inOperator->args = inArgs;
 			inClause = (Node *) inOperator;
-		}
-		else if (isLegacyExtractFunction)
-		{
-			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum, BsonTypeId(),
-									-1,
-									InvalidOid, matchLevelsUp);
-			List *inArgs = list_make2(copyObject(rightVar), matchVar);
-			inClause = (Node *) makeFuncExpr(BsonInMatchFunctionId(), BOOLOID, inArgs,
-											 InvalidOid, InvalidOid,
-											 COERCE_EXPLICIT_CALL);
 		}
 		else
 		{
