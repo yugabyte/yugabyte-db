@@ -19,6 +19,7 @@ const postgresUserMV = 3
 const ymlTypeFixMV = 4
 const promOomConfgMV = 5
 const promTLSCipherSuites = 6
+const ybaWait = 8
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -201,7 +202,24 @@ func migratePrometheusTLSCipherSuites(state *State) error {
 	return nil
 }
 
-// TODO: Also need to remember to update schemaVersion when adding migration! (automate testing?)
+func migrateYbaWait(state *State) error {
+	if !viper.IsSet("wait_for_yba_ready_secs") {
+		log.Info("wait for ready not set")
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		log.Info(fmt.Sprintf("setting to %d", viper.GetInt("wait_for_yba_ready_secs")))
+		err := common.SetYamlValue(common.InputFile(), "wait_for_yba_ready_secs",
+			viper.GetInt("wait_for_yba_ready_secs"))
+		if err != nil {
+			return fmt.Errorf("Error migrating yb_wait config: %s", err.Error())
+		}
+	} else {
+		log.Info("wait for ready set")
+	}
+
+	common.InitViper()
+	return nil
+}
+
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
 	promConfigMV:         migratePrometheus,
@@ -209,6 +227,7 @@ var migrations map[int]migrator = map[int]migrator{
 	ymlTypeFixMV:         migrateYmlTypes,
 	promOomConfgMV:       migratePrometheusOOMConfig,
 	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
+	ybaWait:              migrateYbaWait,
 }
 
 func getMigrationHandler(toSchema int) migrator {
