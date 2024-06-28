@@ -52,7 +52,7 @@ In addition, ensure the following:
 
 ### Add the CA certificate to YugabyteDB Anywhere
 
-Add a CA-signed certificate in YugabyteDB Anywhere, as follows:
+Add a CA-signed certificate to YugabyteDB Anywhere as follows:
 
 1. Navigate to **Configs > Security > Encryption in Transit**.
 

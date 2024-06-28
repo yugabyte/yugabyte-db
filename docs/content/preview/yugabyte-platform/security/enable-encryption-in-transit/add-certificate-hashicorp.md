@@ -26,7 +26,6 @@ YugabyteDB Anywhere allows you to add an encryption in transit configuration usi
 For the correct configuration, the following criteria must be met:
 
 - HashiCorp Vault is unsealed.
-
 - HashiCorp Vault with the PKI secret engine is configured and enabled.
 - HashiCorp Vault URL is accessible by YugabyteDB Anywhere.
 - Because HashiCorp Vault is accessed via an authentication token mechanism, a token must be created beforehand while creating a key provider with appropriate permissions.

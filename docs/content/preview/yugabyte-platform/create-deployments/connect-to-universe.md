@@ -33,7 +33,7 @@ If the universe uses Client-to-Node encryption in transit, to connect you need t
 
         This downloads the `yugabytedb.crt` and `yugabytedb.key` files.
 
-    - If you are connecting using a YCQL client (such as ycqlsh), click **Actions**, and choose **Download Root Cert**.
+    - If you are connecting using a YCQL client (such as ycqlsh), click **Actions**, and choose **Download Root CA Cert**.
 
         This downloads the `root.crt` file.
 
