@@ -140,7 +140,7 @@ int od_reset(od_server_t *server)
 			goto error;
 	}
 
-	/* TODO: Add an if block */
+	if (!route->id.logical_rep)
 	{
 		char query_reset[] = "RESET ROLE;SET SESSION AUTHORIZATION DEFAULT;RESET ALL";
 		rc = od_backend_query(server, "reset-resetall", query_reset,
