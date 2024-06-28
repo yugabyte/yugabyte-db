@@ -51,6 +51,9 @@ MASTER = "yb-master"
 TSERVER = "yb-tserver"
 POSTMASTER = "yb-postmaster"
 POSTGRES = "postgres"
+OTEL_COLLECTOR = "otelcol-contrib"
+YB_CONTROLLER = "yb-controller-server"
+NODE_EXPORTER = "node_exporter"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -210,6 +213,15 @@ YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
     "yb_node_clock_drift_check",
     "Time Drift betwen nodes within limits"
 )
+YB_PROCESS_CPU_SECONDS_TOTAL = MetricDefinition(
+    "yb_process_cpu_seconds_total",
+    "Check total cpu seconds per process and its subprocesses")
+YB_PROCESS_MEMORY_KB = MetricDefinition(
+    "yb_process_memory_kb",
+    "Check memory bytes per process and its subprocesses")
+YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
+    "yb_process_io_kb_total",
+    "Check io bytes per process and its subprocesses")
 
 ###################################################################################################
 # Reporting
@@ -499,7 +511,8 @@ class NodeChecker():
                  enable_tls_client, enable_tls, root_and_client_root_ca_same, ssl_protocol,
                  enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
                  ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
-                 time_drift_wrn_threshold, time_drift_err_threshold):
+                 time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
+                 temp_output_file):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -527,6 +540,26 @@ class NodeChecker():
         self.time_drift_wrn_threshold = time_drift_wrn_threshold
         self.time_drift_err_threshold = time_drift_err_threshold
         self.additional_info = {}
+        self.otel_enabled = otel_enabled
+        self.temp_output_file = temp_output_file
+        self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
+        self.current_process_results = {}
+
+    def _load_previous_per_process_results(self, temp_output_file):
+        try:
+            with open(temp_output_file) as f:
+                js = json.load(f)
+                return js
+        except IOError as ie:
+            logging.info("Failed to load prev process results")
+            return {}
+
+    def _dump_per_process_results(self):
+         try:
+            with open(self.temp_output_file, 'w') as f:
+                json.dump(self.current_process_results, f)
+         except IOError as ie:
+            logging.error("Failed to write current per process results: {}".format(str(ie)))
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name, self.node_identifier)
@@ -859,7 +892,7 @@ class NodeChecker():
 
             return self.get_process_pid_by_parent_pid_and_name(POSTGRES, tserver_pid)
 
-        cmd = "ps --no-headers -C {} -o pid=".format(process_name)
+        cmd = "ps hf -opid -C {} | head -n1".format(process_name)
         pid = self._check_output(cmd).strip()
         if pid.isdigit():
             return pid
@@ -1439,6 +1472,147 @@ class NodeChecker():
             return e.fill_and_return_warning_entry(errors, metrics=[metric])
         return e.fill_and_return_entry(["%s ms" % drift_ms], has_error=False, metrics=[metric])
 
+    def check_process_stats(self, process_name):
+        metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
+                   Metric.from_definition(YB_PROCESS_MEMORY_KB),
+                   Metric.from_definition(YB_PROCESS_IO_KB_TOTAL)]
+
+        e = self._new_metric_entry("Per-process check", process_name)
+        process = Label("process", process_name)
+        try:
+            res = self._load_per_process_metrics(process_name)
+            stat = res['total_stat']
+            self.current_process_results[process_name] = res
+            self._dump_per_process_results()
+
+            metrics[0].add_value(stat['user_cpu_seconds'], labels=[process,
+                                                                   Label('type', 'user')])
+            metrics[0].add_value(stat['system_cpu_seconds'], labels=[process,
+                                                                     Label('type', 'system')])
+            metrics[1].add_value(stat['resident_memory_kb'], labels=[process,
+                                                                        Label('type', 'resident')])
+            metrics[1].add_value(stat['proportional_memory_kb'], labels=[
+                process, Label('type', 'proportional')])
+            metrics[1].add_value(stat['virtual_memory_kb'], labels=[process,
+                                                                       Label('type', 'virtual')])
+            metrics[2].add_value(stat['io_write_kb'], labels=[process,
+                                                                 Label('type', 'write')])
+            metrics[2].add_value(stat['io_read_kb'], labels=[process,
+                                                                Label('type', 'read')])
+            return e.fill_and_return_entry([], has_error=False, metrics=metrics)
+        except Exception as ex:
+            return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
+                                           has_error=True, metrics = metrics)
+
+    def _load_per_process_metrics(self, process_name):
+        root_pid = self.get_process_pid_by_name(process_name)
+        if root_pid is None:
+            return {
+                'process_map': {},
+                'total_stat': self._get_empty_proc_results()
+            }
+        pid_list = self._get_subprocess_pids(root_pid)
+        pid_list.append(root_pid)
+        if process_name == TSERVER:
+            postgre_pid = self.get_process_pid_by_name(POSTMASTER)
+            pid_list.remove(postgre_pid)
+            pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
+        total_stat = self._get_empty_proc_results()
+        prev_process_map = {}
+        if process_name in self.prev_process_results.keys():
+            prev_process_map = self.prev_process_results[process_name]['process_map']
+            total_stat = self.prev_process_results[process_name]['total_stat']
+            self._clear_gauge_stats(total_stat)
+
+        process_map = {}
+        for cur_pid in pid_list:
+            stat = self._get_process_stats_by_pid(cur_pid)
+            # Calculating the sum with current state
+            total_stat = self._merge_proc_results(total_stat, stat)
+            # We need to substract pid stats from prev run
+            if cur_pid in prev_process_map:
+                prev_stat = prev_process_map[cur_pid]['stats']
+                self._invert_prev_pid_stats(prev_stat)
+                total_stat = self._merge_proc_results(total_stat, prev_stat)
+
+            process_map[cur_pid] = {
+                'is_root': cur_pid == root_pid,
+                'stats': stat
+            }
+        logging.info("Collected {} stats for {}".format(total_stat, process_name))
+        return {
+            'process_map': process_map,
+            'total_stat': total_stat
+        }
+
+    def _get_subprocess_pids(self, pid):
+        res = []
+        cmd = "ps --no-headers --ppid {} -o pid= ".format(pid)
+        child_processes = self._check_output(cmd).split('\n')
+        for child in child_processes:
+            if child.strip().isdigit():
+                res.append(child.strip())
+        return res
+
+    def _get_empty_proc_results(self):
+        return {
+            'user_cpu_seconds': 0,
+            'system_cpu_seconds': 0,
+            'io_write_kb': 0,
+            'io_read_kb': 0,
+            'resident_memory_kb': 0,
+            'proportional_memory_kb': 0,
+            'virtual_memory_kb': 0,
+        }
+
+    def _invert_prev_pid_stats(self, stat):
+        self._clear_gauge_stats(stat)
+        for key in stat.keys():
+            stat[key] = -stat[key]
+
+    def _clear_gauge_stats(self, stat):
+        for k in ['resident_memory_kb', 'virtual_memory_kb', 'proportional_memory_kb']:
+            stat[k] = 0
+
+    def _merge_proc_results(self, stat1, stat2):
+        res = {}
+        for key in stat1.keys():
+            res[key] = stat1[key] + stat2[key]
+        return res
+
+    def _get_process_stats_by_pid(self, pid):
+        res = self._get_empty_proc_results()
+        cmd = 'cat /proc/{}/stat'.format(pid)
+        stat = self._check_output(cmd).strip()
+        stat_list = stat.split(" ")
+        if len(stat_list) > 0:
+            res['user_cpu_seconds'] = int(stat_list[13])
+            res['system_cpu_seconds'] = int(stat_list[14])
+            res['virtual_memory_kb'] = int(stat_list[22]) // 1024
+
+        cmd = 'cat /proc/{}/smaps'.format(pid)
+        stat = self._check_output(cmd).strip()
+        stat_list = stat.split('\n')
+        for stat in stat_list:
+            lst = stat.split(' ')
+            if len(lst) > 0:
+                if lst[0] == 'Pss:':
+                    res['proportional_memory_kb'] += int(lst[len(lst) - 2])
+                if lst[0] == 'Rss:':
+                    res['resident_memory_kb'] += int(lst[len(lst) - 2])
+
+        cmd = 'cat /proc/{}/io'.format(pid)
+        stat = self._check_output(cmd).strip()
+        stat_list = stat.split("\n")
+        for lst in stat_list:
+            if "read_bytes" in lst:
+                res['io_read_kb'] = int(lst.split(" ")[1]) // 1024
+            if "write_bytes:" in lst:
+                res['io_write_kb'] = int(lst.split(" ")[1]) // 1024
+        logging.info("stats for {} pid are {}".format(pid, res))
+        return res
+
+
 ###################################################################################################
 # Utility functions
 ###################################################################################################
@@ -1639,6 +1813,7 @@ class NodeInfo:
         self.universe_uuid = data["universeUuid"]
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
+        self.otel_enabled = data["otelCollectorEnabled"]
 
 
 def main():
@@ -1653,6 +1828,9 @@ def main():
                         help='Output file to which the metrics will be written to.')
     parser.add_argument('--retry_interval_secs', type=int, required=False, default=30,
                         help='Time to wait between retries of failed checks.')
+    parser.add_argument('--temp_output_file', type=str, default="{{TMP_DIR}}/process_stats.json",
+                        required=False, help='Temporary output file to which the process '
+                                             'stats will be written to.')
     args = parser.parse_args()
 
     if args.metrics_only:
@@ -1675,7 +1853,8 @@ def main():
         n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol,
         n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
-        n.time_drift_wrn_threshold, n.time_drift_err_threshold)
+        n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
+        args.temp_output_file)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -1710,6 +1889,7 @@ def main():
         coordinator.add_check(checker, "check_is_master_leader")
         coordinator.add_check(checker, "check_leaderless_tablets")
         coordinator.add_check(checker, "check_underreplicated_tablets")
+        coordinator.add_check(checker, "check_process_stats", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -1737,9 +1917,16 @@ def main():
             coordinator.add_check(checker, "check_ysql_cgroup_memory_usage")
         if n.is_ybc_enabled:
             coordinator.add_check(checker, "check_yb_controller_availability", max_tries=3)
+            coordinator.add_check(checker, "check_process_stats", YB_CONTROLLER)
+        coordinator.add_check(checker, "check_process_stats", POSTMASTER)
+        coordinator.add_check(checker, "check_process_stats", TSERVER)
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
+        coordinator.add_check(checker, "check_process_stats", NODE_EXPORTER)
+
+    if n.otel_enabled:
+        coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
 
     entries = coordinator.run()
     for e in entries:
