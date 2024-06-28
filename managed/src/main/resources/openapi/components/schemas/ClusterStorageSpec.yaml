@@ -1,6 +1,9 @@
 title: ClusterStorageSpec
 description: 'Storage volume specification that is used for tserver nodes in this cluster. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec.'
 type: object
+required:
+  - volume_size
+  - num_volumes
 properties:
   volume_size:
     description: The size of each volume in each instance. Could be modified in payload for /resize_node API call

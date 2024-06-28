@@ -12,6 +12,7 @@ import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
+import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
@@ -142,14 +143,16 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .orElseThrow();
     ClusterStorageSpec newStorageSpec =
         primaryClusterSpec
+            .getNodeSpec()
             .getStorageSpec()
             .numVolumes(3)
             .volumeSize(65432)
             .storageType(StorageTypeEnum.GP3)
             .diskIops(16000)
             .throughput(1000);
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
     ClusterEditSpec clusterEditSpec =
-        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).storageSpec(newStorageSpec);
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     // run the edit universe
@@ -190,8 +193,9 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .findAny()
             .orElseThrow();
 
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().instanceType("c5.large");
     ClusterEditSpec clusterEditSpec =
-        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).instanceType("c5.large");
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     // run the edit universe
@@ -224,7 +228,17 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         com.yugabyte.yba.v2.client.models.ClusterAddSpec.ClusterTypeEnum.READ_REPLICA);
     // numNodes should be greater than rf=5 inherited from primary
     clusterAddSpec.setNumNodes(6);
-    clusterAddSpec.setInstanceType("c5.medium");
+    ClusterNodeSpec nodeSpec =
+        new ClusterNodeSpec()
+            .instanceType("c5.medium")
+            .storageSpec(
+                new ClusterStorageSpec()
+                    .numVolumes(1)
+                    .volumeSize(1024)
+                    .storageType(StorageTypeEnum.GP2)
+                    .diskIops(3000)
+                    .throughput(250));
+    clusterAddSpec.setNodeSpec(nodeSpec);
     ClusterProviderEditSpec clusterProviderSpec = new ClusterProviderEditSpec();
     clusterProviderSpec.addRegionListItem(Region.getByProvider(providerUuid).get(0).getUuid());
     clusterAddSpec.setProviderSpec(clusterProviderSpec);
