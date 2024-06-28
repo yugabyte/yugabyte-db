@@ -160,6 +160,17 @@ DEFINE_RUNTIME_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, fa
     "materialised view etc. in their stream metadata and these tables will be marked for removal "
     "by catalog manager background thread.");
 
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_identification_of_non_eligible_tables,
+                         kLocalPersisted,
+                         false,
+                         true,
+                         "This flag, when true, identifies all non-eligible tables that are part of"
+                         " a CDC stream metadata while loading the CDC streams on a master "
+                         "restart/leadership change. This identification happens on all CDC "
+                         "streams in the universe");
+TAG_FLAG(cdcsdk_enable_identification_of_non_eligible_tables, advanced);
+TAG_FLAG(cdcsdk_enable_identification_of_non_eligible_tables, hidden);
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
@@ -342,7 +353,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 
       // Check for any non-eligible tables like indexes, matview etc in CDC stream only if the
       // stream is not associated with a replication slot.
-      if (FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream &&
+      if (FLAGS_cdcsdk_enable_identification_of_non_eligible_tables &&
           stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
         catalog_manager_->FindAllNonEligibleTablesInCDCSDKStream(
             stream_id, metadata.table_id(), eligible_tables_info);
@@ -8007,7 +8018,7 @@ CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
         "from CDC stream $1",
         table_to_be_removed, stream_id);
 
-    LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet,stream) - "
+    LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet, stream, table) - "
                         << cdc_state_entries_to_be_deleted[0].ToString();
     RETURN_NOT_OK_PREPEND(
         cdc_state_table_->DeleteEntries(cdc_state_entries_to_be_deleted),
