@@ -193,7 +193,8 @@ bson_recv(PG_FUNCTION_ARGS)
 Datum
 bson_send(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_POINTER(PG_GETARG_PGBSON(0));
+	/* We need a copy to ensure that this can be pfree-ed */
+	PG_RETURN_POINTER(PG_DETOAST_DATUM_COPY(PG_GETARG_DATUM(0)));
 }
 
 

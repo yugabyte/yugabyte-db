@@ -2039,6 +2039,12 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 							skipValue)));
 	}
 
+	if (skipValue == 0)
+	{
+		/* Skip 0 can be ignored */
+		return query;
+	}
+
 	if (query->limitCount != NULL)
 	{
 		/* Because skip is evaluated first, an existing limit implies a new stage */
