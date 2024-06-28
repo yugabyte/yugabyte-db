@@ -2593,7 +2593,7 @@ HandleGeoNear(const bson_value_t *existingValue, Query *query,
 
 	EnsureGeospatialFeatureEnabled();
 
-	if (!IsClusterVersionAtleastThis(1, 18, 0))
+	if (!IsClusterVersionAtleastThis(1, 17, 2))
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg(

@@ -1972,7 +1972,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			EnsureGeospatialFeatureEnabled();
 
-			if (!IsClusterVersionAtleastThis(1, 18, 0))
+			if (!IsClusterVersionAtleastThis(1, 17, 2))
 			{
 				ereport(ERROR, (errcode(MongoCommandNotSupported),
 								errmsg(
