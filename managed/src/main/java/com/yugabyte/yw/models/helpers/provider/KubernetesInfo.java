@@ -1,9 +1,6 @@
 package com.yugabyte.yw.models.helpers.provider;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.*;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
@@ -79,6 +76,7 @@ public class KubernetesInfo implements CloudInfoInterface {
   @EditableInUseProvider(name = "Kubernetes Pull Secret Name", allowed = false)
   private String kubernetesPullSecretName;
 
+  @JsonProperty("isKubernetesOperatorControlled")
   // Flag for identifying the legacy k8s providers created before release 2.18.
   @ApiModelProperty(hidden = true)
   private boolean legacyK8sProvider = true;
