@@ -32,7 +32,7 @@ TableIndex::TablesRange TableIndex::GetAllTables() const {
 }
 
 TableIndex::TablesRange TableIndex::GetPrimaryTables() const {
-  return tables_.get<ColocatedUserTableTag>().equal_range(false);
+  return tables_.get<ColocatedUserTableTag>().equal_range(false /* is_colocated_user_table */);
 }
 
 void TableIndex::Clear() {

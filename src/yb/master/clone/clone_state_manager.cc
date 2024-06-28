@@ -495,9 +495,13 @@ Status CloneStateManager::ScheduleCloneOps(
     const auto& clone_pb_lock = clone_state->LockForRead();
     tablet::CloneTabletRequestPB req;
     if (not_snapshotted_tablets.contains(tablet_data.source_tablet_id)) {
-      RSTATUS_DCHECK(source_tablet->LockForRead()->pb.hide_hybrid_time() != 0, IllegalState,
-          Format("Expected not snapshotted tablet to be in HIDDEN state. Actual: $0",
+      auto lock = source_tablet->LockForRead();
+      RSTATUS_DCHECK(lock->is_hidden() || lock->pb.split_tablet_ids_size() != 0, IllegalState,
+          Format("Expected not snapshotted tablet to be hidden or split state. Actual state: $0",
               source_table_lock->state_name()));
+      VLOG(1) << Format(
+          "Cloning tablet $0 from active rocksdb since it was deleted or split before snapshot",
+          tablet_data.source_tablet_id);
       req.set_clone_from_active_rocksdb(true);
     }
     req.set_tablet_id(tablet_data.source_tablet_id);
