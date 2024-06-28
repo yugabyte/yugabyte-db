@@ -185,8 +185,6 @@ class TransactionParticipant : public TransactionStatusManager {
 
   TransactionParticipantContext* context() const;
 
-  void SetMinRunningHybridTimeLowerBound(HybridTime lower_bound);
-
   HybridTime MinRunningHybridTime() const override;
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override;
@@ -239,8 +237,6 @@ class TransactionParticipant : public TransactionStatusManager {
   void RecordConflictResolutionScanLatency(MonoDelta latency) override;
 
   size_t GetNumRunningTransactions() const;
-
-  void SetMinRunningHybridTimeUpdateCallback(std::function<void(HybridTime)> callback);
 
   struct CountIntentsResult {
     size_t num_intents;

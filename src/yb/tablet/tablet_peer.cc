@@ -329,12 +329,6 @@ Status TabletPeer::InitTabletPeer(
 
     prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
 
-    auto txn_participant = tablet_->transaction_participant();
-    if (txn_participant) {
-      txn_participant->SetMinRunningHybridTimeUpdateCallback(
-          std::bind_front(&TabletPeer::MinRunningHybridTimeUpdated, this));
-    }
-
     // "Publish" the tablet object right before releasing the lock.
     tablet_obj_state_.store(TabletObjectState::kAvailable, std::memory_order_release);
   }
@@ -1820,13 +1814,6 @@ TabletBootstrapFlushState TabletPeer::TEST_TabletBootstrapStateFlusherState() co
   return bootstrap_state_flusher
       ? bootstrap_state_flusher->flush_state()
       : TabletBootstrapFlushState::kFlushIdle;
-}
-
-void TabletPeer::MinRunningHybridTimeUpdated(HybridTime min_running_ht) {
-  if (min_running_ht && min_running_ht != HybridTime::kMax) {
-    VLOG_WITH_PREFIX(2) << "Min running hybrid time updated: " << min_running_ht;
-    bootstrap_state_manager_->bootstrap_state().SetMinRunningHybridTime(min_running_ht);
-  }
 }
 
 Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }

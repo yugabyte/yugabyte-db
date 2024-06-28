@@ -26,29 +26,6 @@
 
 namespace yb::tablet {
 
-TabletBootstrapState::TabletBootstrapState(const TabletBootstrapState& rhs):
-    min_running_ht_(rhs.min_running_ht_.load()) {}
-
-TabletBootstrapState::TabletBootstrapState(TabletBootstrapState&& rhs):
-    min_running_ht_(rhs.min_running_ht_.load()) {}
-
-void TabletBootstrapState::operator=(TabletBootstrapState&& rhs) {
-  min_running_ht_.store(rhs.min_running_ht_.load());
-}
-
-void TabletBootstrapState::CopyFrom(const TabletBootstrapState& rhs) {
-  min_running_ht_.store(rhs.min_running_ht_.load());
-}
-
-void TabletBootstrapState::ToPB(consensus::TabletBootstrapStatePB* pb) const {
-  pb->set_min_running_ht(min_running_ht_.load().ToUint64());
-}
-
-void TabletBootstrapState::FromPB(const consensus::TabletBootstrapStatePB& pb) {
-  min_running_ht_.store(
-      pb.has_min_running_ht() ? HybridTime(pb.min_running_ht()) : HybridTime::kInvalid);
-}
-
 TabletBootstrapStateManager::TabletBootstrapStateManager() { }
 
 TabletBootstrapStateManager::TabletBootstrapStateManager(
@@ -78,11 +55,8 @@ Status TabletBootstrapStateManager::SaveToDisk(consensus::RaftConsensus& raft_co
     return Status::OK();
   }
 
-  TabletBootstrapState bootstrap_state(bootstrap_state_);
-
   consensus::TabletBootstrapStatePB pb;
   retryable_requests->ToPB(&pb);
-  bootstrap_state.ToPB(&pb);
 
   auto path = NewFilePath();
   LOG(INFO) << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
@@ -114,7 +88,6 @@ Result<consensus::TabletBootstrapStatePB> TabletBootstrapStateManager::LoadFromD
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(fs_manager()->env(), path, &pb),
       Format("Could not load bootstrap state from $0", path));
-  bootstrap_state_.FromPB(pb);
   LOG(INFO) << Format("Loaded tablet ($0) bootstrap state "
                       "(max_replicated_op_id_=$1) from $2",
                       tablet_id_, pb.last_op_id(), path);
