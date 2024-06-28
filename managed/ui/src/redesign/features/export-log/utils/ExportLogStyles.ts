@@ -62,5 +62,8 @@ export const exportLogStyles = makeStyles((theme) => ({
     height: 'auto',
     alignItems: 'center',
     textAlign: 'center'
+  },
+  mr4: {
+    marginRight: theme.spacing(0.5)
   }
 }));
