@@ -27,6 +27,7 @@ Ensure the universes have the following characteristics:
 - They can be backed up and restored using the same backup configuration.
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the DR replica universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 - They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition, or a temporary outage of the DR replica universe.
+- Point-in-time-restore is enabled on the DR replica, which requires additional disk space. Note that if the DR replica universe already has PITR configured, that configuration is replaced by the DR configuration.
 - Neither universe is already being used for xCluster replication.
 
 Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
