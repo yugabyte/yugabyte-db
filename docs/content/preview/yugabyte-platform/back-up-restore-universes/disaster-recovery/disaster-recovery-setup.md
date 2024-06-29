@@ -27,7 +27,7 @@ Ensure the universes have the following characteristics:
 - They can be backed up and restored using the same backup configuration.
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the DR replica universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 - They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition, or a temporary outage of the DR replica universe.
-- Point-in-time-restore (PITR) is enabled on the DR replica, requiring additional disk space.
+- DR enables [Point-in-time-recovery](../../pitr/) (PITR) on the DR replica, requiring additional disk space for the replica.
 
     PITR is used by DR during failover to restore the database to a consistent state. Note that if the DR replica universe already has PITR configured, that configuration is replaced by the DR configuration.
 
