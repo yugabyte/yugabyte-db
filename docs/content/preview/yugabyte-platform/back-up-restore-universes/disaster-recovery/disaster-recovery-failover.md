@@ -56,7 +56,7 @@ To repair DR, do the following:
 
 1. Navigate to your (new) DR primary universe and select **xCluster Disaster Recovery**.
 
-1. Click **Repair DR**.
+1. Click **Repair DR** to display the **Repair DR** dialog.
 
     ![Repair DR](/images/yb-platform/disaster-recovery/disaster-recovery-repair.png)
 
