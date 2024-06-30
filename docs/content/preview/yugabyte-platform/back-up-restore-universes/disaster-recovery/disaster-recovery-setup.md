@@ -31,7 +31,13 @@ Ensure the universes have the following characteristics:
 
     PITR is used by DR during failover to restore the database to a consistent state. Note that if the DR replica universe already has PITR configured, that configuration is replaced by the DR configuration.
 
-    You can change the retention period for PITR used for DR by changing the `yb.xcluster.transactional.pitr.default_retention_period` [runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/); the default value is 3 days.
+    You can change the retention period for PITR used for DR by changing the following [runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/):
+
+    ```sh
+    yb.xcluster.transactional.pitr.default_retention_period
+    ```
+
+    The default value is 3 days.
 
 - Neither universe is already being used for xCluster replication.
 
