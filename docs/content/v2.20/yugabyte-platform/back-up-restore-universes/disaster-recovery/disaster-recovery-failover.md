@@ -41,6 +41,8 @@ If the DR primary is terminated for some reason, do the following:
 
 At this point, the DR configuration is halted and needs to be repaired.
 
+![Disaster recovery failed](/images/yb-platform/disaster-recovery/disaster-recovery-failed.png)
+
 ## Repair DR after failover
 
 There are two options to repair a DR that has failed over:
@@ -54,12 +56,18 @@ To repair DR, do the following:
 
 1. Navigate to your (new) DR primary universe and select **xCluster Disaster Recovery**.
 
-1. Click **Repair DR**.
+1. Click **Repair DR** to display the **Repair DR** dialog.
 
-1. If the original DR primary has recovered and is fully functional with no active alerts, choose **Reuse the current DR replica**.
+    ![Repair DR](/images/yb-platform/disaster-recovery/disaster-recovery-repair.png)
+
+1. If the current DR replica (formerly the DR primary) has recovered and is fully functional with no active alerts, choose **Reuse the current DR replica**.
 
     To use a new universe as the DR replica, choose **Select a new universe as DR replica** and select the universe.
 
 1. Click **Initiate Repair**.
 
-If your eventual desired configuration is for the other universe (that is, the one you have added to DR to act as DR replica) to be the DR primary, follow the steps for [Planned switchover](../disaster-recovery-switchover/).
+After the repair is complete, if your eventual desired configuration is for the replica (that is, the former primary if you chose Reuse, or the new one you added to DR to act as DR replica) to be the DR primary, follow the steps for [Planned switchover](../disaster-recovery-switchover/).
+
+{{< warning title="Important" >}}
+Do not attempt a switchover if you have not first repaired DR.
+{{< /warning >}}
