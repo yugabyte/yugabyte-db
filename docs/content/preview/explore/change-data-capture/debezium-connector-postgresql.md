@@ -1,12 +1,12 @@
 ---
 title: Debezium connector for YugabyteDB (Logical Replication)
 headerTitle: Debezium connector for YugabyteDB (Logical Replication)
-linkTitle: Debezium connector
+linkTitle: Debezium connector for YBPG
 description: Debezium is an open source distributed platform used to capture the changes in a database.
 aliases:
   - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql-pg
-  - /preview/explore/change-data-capture/debezium-connector
-  - /preview/explore/change-data-capture/debezium
+#   - /preview/explore/change-data-capture/debezium-connector
+#   - /preview/explore/change-data-capture/debezium
   - /preview/explore/change-data-capture/debezium-connector-postgres
   - /preview/explore/change-data-capture/debezium-postgresql
   - /preview/explore/change-data-capture/replication
