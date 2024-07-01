@@ -765,6 +765,133 @@ When a row is deleted, the *delete* event value still works with log compaction,
 
 To deploy a Debezium PostgreSQL connector, you install the Debezium PostgreSQL connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
 
-Prerequisites:
+Prerequisites
 * [Zookeeper](https://zookeeper.apache.org/), [Kafka](http://kafka.apache.org/), and [Kafka Connect](https://kafka.apache.org/documentation.html#connect) are installed.
 * PostgreSQL is installed and is [set up to run the Debezium connector](#reminder).
+
+Procedure
+1. Download the [Debezium PostgreSQL connector plug-in archive](#reminder).
+2. Extract the files into your Kafka Connect environment.
+3. Add the directory with the JAR files to [Kafka Connect’s `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
+4. Restart your Kafka Connect process to pick up the new JAR files.
+
+If you are working with immutable containers, see [Debezium’s Container images](#reminder) for Zookeeper, Kafka, PostgreSQL and Kafka Connect with the PostgreSQL connector already installed and ready to run. You can also [run Debezium on Kubernetes and OpenShift](#reminder).
+
+### Connector configuration example
+
+Following is an example of the configuration for a PostgreSQL connector that connects to a PostgreSQL server on port `5433` at `192.168.99.100`, whose logical name is `fulfillment`. Typically, you configure the Debezium PostgreSQL connector in a JSON file by setting the configuration properties available for the connector.
+
+You can choose to produce events for a subset of the schemas and tables in a database. Optionally, you can ignore, mask, or truncate columns that contain sensitive data, are larger than a specified size, or that you do not need.
+
+```output.json
+{
+  "name": "fulfillment-connector",  --> 1
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector", --> 2
+    "database.hostname": "192.168.99.100", --> 3
+    "database.port": "5432", --> 4
+    "database.user": "postgres", --> 5
+    "database.password": "postgres", --> 6
+    "database.dbname" : "postgres", --> 7
+    "topic.prefix": "fulfillment", --> 8
+    "table.include.list": "public.inventory" --> 9
+  }
+}
+```
+
+1. The name of the connector when registered with a Kafka Connect service.
+2. The name of this PostgreSQL connector class.
+3. The address of the PostgreSQL server.
+4. The port number of the PostgreSQL server.
+5. The name of the PostgreSQL user that has the [required privileges](#reminder).
+6. The password for the PostgreSQL user that has the [required privileges](#reminder).
+7. The name of the PostgreSQL database to connect to
+8. The topic prefix for the PostgreSQL server/cluster, which forms a namespace and is used in all the names of the Kafka topics to which the connector writes, the Kafka Connect schema names, and the namespaces of the corresponding Avro schema when the Avro converter is used.
+9. A list of all tables hosted by this server that this connector will monitor. This is optional, and there are other properties for listing the schemas and tables to include or exclude from monitoring.
+
+See the [complete list of PostgreSQL connector properties](#reminder) that can be specified in these configurations.
+
+You can send this configuration with a `POST` command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
+* Connects to the PostgreSQL database.
+* Reads the transaction log.
+* Streams change event records to Kafka topics.
+
+### Adding connector configuration
+
+To run a Debezium PostgreSQL connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
+
+Prerequisites
+* [PostgreSQL is configured to support logical replication.](#setting-up-yugabytedb)
+* The [logical decoding plug-in](#reminder) is installed.
+* The PostgreSQL connector is installed.
+
+Procedure
+1. Create a configuration for the PostgreSQL connector.
+2. Use the [Kafka Connect REST API](https://kafka.apache.org/documentation/#connect_rest) to add that connector configuration to your Kafka Connect cluster.
+
+#### Results
+
+After the connector starts, it [performs a consistent snapshot](#reminder) of the PostgreSQL server databases that the connector is configured for. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
+
+### Connector properties
+
+The Debezium PostgreSQL connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values. Information about the properties is organized as follows:
+* [Required configuration properties](#required-configuration-properties)
+* [Advanced configuration properties](#advanced-configuration-properties)
+* [Pass-through configuration properties](#pass-through-configuration-properties)
+
+The following configuration properties are *required* unless a default value is available.
+
+#### Required configuration properties
+#### Advanced configuration properties
+#### Pass-through configuration properties
+
+## Monitoring
+
+The Debezium PostgreSQL connector provides two types of metrics that are in addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide.
+
+* [Snapshot metrics](#snapshot-metrics) provide information about connector operation while performing a snapshot.
+* [Streaming metrics](#streaming-metrics) provide information about connector operation when the connector is capturing changes and streaming change event records.
+
+[Debezium monitoring documentation](https://debezium.io/documentation/reference/2.5/operations/monitoring.html#monitoring-debezium) provides details for how to expose these metrics by using JMX.
+
+### Snapshot metrics
+
+The **MBean** is `debezium.postgres:type=connector-metrics,context=snapshot,server=<topic.prefix>`.
+
+Snapshot metrics are not exposed unless a snapshot operation is active, or if a snapshot has occurred since the last connector start.
+
+The following table lists the shapshot metrics that are available.
+
+| Attributes | Type | Description |
+| :--------- | :--- | :---------- |
+| `LastEvent` | string | The last snapshot event that the connector has read. |
+| `MilliSecondsSinceLastEvent` | long | The number of milliseconds since the connector has read and processed the most recent event. |
+| `TotalNumberOfEventsSeen` | long | The total number of events that this connector has seen since last started or reset. |
+| `NumberOfEventsFiltered` | long | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
+| `CapturedTables` | string[] | The list of tables that are captured by the connector. |
+| `QueueTotalCapacity` | int | The length the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
+| `QueueRemainingCapacity` | int | The free capacity of the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
+| `TotalTableCount` | int | The total number of tables that are being included in the snapshot. |
+| `RemainingTableCount` | int | The number of tables that the snapshot has yet to copy. |
+| `SnapshotRunning` | boolean | Whether the snapshot was started. |
+| `SnapshotPaused` | boolean | Whether the snapshot was paused. |
+| `SnapshotAborted` | boolean | Whether the snapshot was aborted. |
+| `SnapshotCompleted` | boolean | Whether the snapshot completed. |
+| `SnapshotDurationInSeconds` | long | The total number of seconds that the snapshot has taken so far, even if not complete. Includes also time when snapshot was paused. |
+| `SnapshotPausedDurationInSeconds` | long | The total number of seconds that the snapshot was paused. If the snapshot was paused several times, the paused time adds up. |
+| `RowsScanned` | Map<String, Long> | Map containing the number of rows scanned for each table in the snapshot. Tables are incrementally added to the Map during processing. Updates every 10,000 rows scanned and upon completing a table. |
+| `MaxQueueSizeInBytes` | long | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
+| `CurrentQueueSizeInBytes` | long | The current volume, in bytes, of records in the queue. |
+
+The connector also provides the following additional snapshot metrics when an incremental snapshot is executed:
+
+| Attributes | Type | Description |
+| :--------- | :--- | :---------- |
+| `ChunkId` | string | The identifier of the current snapshot chunk. |
+| `ChunkFrom` | string | The lower bound of the primary key set defining the current chunk. |
+| `ChunkTo` | string | The upper bound of the primary key set defining the current chunk. |
+| `TableFrom` | string | The lower bound of the primary key set of the currently snapshotted table. |
+| `TableTo` | string | The upper bound of the primary key set of the currently snapshotted table. |
+
+### Streaming metrics
