@@ -346,7 +346,7 @@ UNION ALL
     FROM tree JOIN t ON (tree.parent_id = t.id)
 )
 SELECT t1.id, t2.path, t2 FROM t AS t1 JOIN t AS t2 ON
-(t1.id=t2.id) ORDER BY id; -- YB ordering
+(t1.id=t2.id);
 
 -- SEARCH clause
 
@@ -1083,7 +1083,7 @@ with
 A as ( select q2 as id, (select q1) as x from int8_tbl ),
 B as ( select id, row_number() over (partition by id) as r from A ),
 C as ( select A.id, array(select B.id from B where B.id = A.id) from A )
-select * from C ORDER BY id; -- YB ordering (not sorted like upstream PG)
+select * from C;
 
 --
 -- Test CTEs read in non-initialization orders

@@ -451,10 +451,10 @@ SELECT functest_S_14();
              2
 (1 row)
 
-\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
 DROP TABLE functest3 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default \\ -- YB
+DETAIL:  drop cascades to function functest_s_14()
+drop cascades to view functestv3
 -- information_schema tests
 CREATE FUNCTION functest_IS_1(a int, b int default 1, c text default 'foo')
     RETURNS int
@@ -540,10 +540,10 @@ SELECT routine_name, table_name FROM information_schema.routine_table_usage
 
 DROP FUNCTION functest_IS_4a CASCADE;
 NOTICE:  drop cascades to function functest_is_4b(integer)
-\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
 DROP SEQUENCE functest1 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default \\ -- YB
+DETAIL:  drop cascades to function functest_is_5(integer)
+drop cascades to function functest_is_6()
 DROP TABLE functest2 CASCADE;
 NOTICE:  drop cascades to function functest_is_7()
 -- overload
@@ -573,7 +573,7 @@ STABLE
 AS '
     SELECT * FROM functest3;
 ';
-SELECT * FROM functest_sri1() ORDER BY functest_sri1; -- YB: add ordering
+SELECT * FROM functest_sri1();
  functest_sri1 
 ---------------
              1
@@ -594,7 +594,7 @@ STABLE
 BEGIN ATOMIC
     SELECT * FROM functest3;
 END;
-SELECT * FROM functest_sri2() ORDER BY functest_sri2; -- YB: add ordering
+SELECT * FROM functest_sri2();
  functest_sri2 
 ---------------
              1
@@ -653,7 +653,7 @@ SELECT voidtest4(39);
 
 (1 row)
 
-TABLE sometable ORDER BY f1; -- YB: add ordering
+TABLE sometable;
  f1
 ----
  18
@@ -708,9 +708,37 @@ CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
 ERROR:  only one AS item needed for language "sql"
 -- Cleanup
-\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
 DROP SCHEMA temp_func_test CASCADE;
 NOTICE:  drop cascades to 30 other objects
-\set VERBOSITY default \\ -- YB
+DETAIL:  drop cascades to function double_append(anyarray,anyelement)
+drop cascades to function functest_a_1(text,date)
+drop cascades to function functest_a_2(text[])
+drop cascades to function functest_a_3()
+drop cascades to function functest_b_2(bigint)
+drop cascades to function functest_b_2(integer)
+drop cascades to function functest_b_3(integer)
+drop cascades to function functest_b_4(integer)
+drop cascades to function functest_c_1(integer)
+drop cascades to function functest_c_2(integer)
+drop cascades to function functest_c_3(integer)
+drop cascades to function functest_e_1(integer)
+drop cascades to function functest_e_2(integer)
+drop cascades to function functest_f_1(integer)
+drop cascades to function functest_f_2(integer)
+drop cascades to function functest_f_3(integer)
+drop cascades to function functest_f_4(integer)
+drop cascades to function functest_s_1(text,date)
+drop cascades to function functest_s_10(text,date)
+drop cascades to function functest_s_13()
+drop cascades to function functest_s_15(integer)
+drop cascades to function functest_s_2(text[])
+drop cascades to function functest_s_3()
+drop cascades to function functest_s_3a()
+drop cascades to function functest_sri1()
+drop cascades to function voidtest1(integer)
+drop cascades to function voidtest2(integer,integer)
+drop cascades to function voidtest3(integer)
+drop cascades to function voidtest4(integer)
+drop cascades to function voidtest5(integer)
 DROP USER regress_unpriv_user;
 RESET search_path;

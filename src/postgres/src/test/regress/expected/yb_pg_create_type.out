@@ -187,16 +187,25 @@ CREATE FUNCTION base_fn_out(base_type) RETURNS cstring AS 'boolout'
     LANGUAGE internal IMMUTABLE STRICT;
 NOTICE:  argument type base_type is only a shell
 CREATE TYPE base_type(INPUT = base_fn_in, OUTPUT = base_fn_out);
-\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP FUNCTION base_fn_in(cstring); -- error
 ERROR:  cannot drop function base_fn_in(cstring) because other objects depend on it
+DETAIL:  function base_fn_out(base_type) depends on type base_type
+type base_type depends on function base_fn_in(cstring)
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP FUNCTION base_fn_out(base_type); -- error
 ERROR:  cannot drop function base_fn_out(base_type) because other objects depend on it
+DETAIL:  function base_fn_in(cstring) depends on type base_type
+type base_type depends on function base_fn_out(base_type)
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE base_type; -- error
 ERROR:  cannot drop type base_type because other objects depend on it
+DETAIL:  function base_fn_in(cstring) depends on type base_type
+function base_fn_out(base_type) depends on type base_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE base_type CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default \\ -- YB: unsuppress cascade details
+DETAIL:  drop cascades to function base_fn_in(cstring)
+drop cascades to function base_fn_out(base_type)
 -- Check usage of typmod with a user-defined type
 -- (we have borrowed numeric's typmod functions)
 CREATE TEMP TABLE mytab (foo widget(42,13,7));     -- should fail
@@ -268,7 +277,7 @@ CREATE TABLE city (
 INSERT INTO city VALUES
 ('Podunk', '(1,2),(3,4)', '100,127,1000'),
 ('Gotham', '(1000,34),(1100,334)', '123456,127,-1000,6789');
-TABLE city ORDER BY name DESC; -- YB-added ordering
+TABLE city;
   name  |       location       |        budget         
 --------+----------------------+-----------------------
  Podunk | (3,4),(1,2)          | 100,127,1000,0
@@ -348,11 +357,26 @@ FROM pg_type WHERE typname = '_myvarchardom';
 (1 row)
 
 -- ensure dependencies are straight
-\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP FUNCTION myvarcharsend(myvarchar);  -- fail
 ERROR:  cannot drop function myvarcharsend(myvarchar) because other objects depend on it
+DETAIL:  function myvarcharin(cstring,oid,integer) depends on type myvarchar
+function myvarcharout(myvarchar) depends on type myvarchar
+function myvarcharrecv(internal,oid,integer) depends on type myvarchar
+type myvarchar depends on function myvarcharsend(myvarchar)
+type myvarchardom depends on function myvarcharsend(myvarchar)
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE myvarchar;  -- fail
 ERROR:  cannot drop type myvarchar because other objects depend on it
+DETAIL:  function myvarcharin(cstring,oid,integer) depends on type myvarchar
+function myvarcharout(myvarchar) depends on type myvarchar
+function myvarcharrecv(internal,oid,integer) depends on type myvarchar
+function myvarcharsend(myvarchar) depends on type myvarchar
+type myvarchardom depends on type myvarchar
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TYPE myvarchar CASCADE;
 NOTICE:  drop cascades to 5 other objects
-\set VERBOSITY default \\ -- YB: unsuppress cascade details
+DETAIL:  drop cascades to function myvarcharin(cstring,oid,integer)
+drop cascades to function myvarcharout(myvarchar)
+drop cascades to function myvarcharrecv(internal,oid,integer)
+drop cascades to function myvarcharsend(myvarchar)
+drop cascades to type myvarchardom

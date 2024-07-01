@@ -20,7 +20,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressDml extends BasePgRegressTest {
+public class TestPgRegressPgDml extends BasePgRegressTestSequentialYbrowid {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -28,6 +28,6 @@ public class TestPgRegressDml extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest("yb_dml_serial_schedule");
+    runPgRegressTest("yb_pg_dml_serial_schedule");
   }
 }
