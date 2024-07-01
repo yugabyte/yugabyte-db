@@ -367,6 +367,7 @@ static BsonLeafPathNode * CreateIndexesCreateLeafNode(const StringView *fieldPat
 													  const char *relativePath,
 													  void *state);
 static const char * SerializeWeightedPaths(List *weightedPaths);
+static bool IndexSupportsTruncation(IndexDef *indexDef);
 
 
 /*
@@ -1801,22 +1802,11 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 
 	if (indexDef->enableLargeIndexKeys == BoolIndexOption_True)
 	{
-		if (indexDef->key->hasHashedIndexes ||
-			indexDef->key->hasTextIndexes ||
-			indexDef->key->has2dIndex ||
-			indexDef->key->has2dsphereIndex ||
-			indexDef->key->hasCosmosIndexes)
+		if (!IndexSupportsTruncation(indexDef))
 		{
 			ereport(ERROR, (errcode(MongoCannotCreateIndex),
 							errmsg(
 								"enableLargeIndexKeys is only supported with regular indexes.")));
-		}
-
-		if (indexDef->expireAfterSeconds != NULL)
-		{
-			ereport(ERROR, (errcode(MongoCannotCreateIndex),
-							errmsg(
-								"enableLargeIndexKeys not supported with TTL indexes.")));
 		}
 
 		if (indexDef->unique != BoolIndexOption_Undefined)
@@ -4676,10 +4666,12 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 							 ApiDataSchemaName, collectionId);
 		}
 
-		bool enableLargeIndexKeys = DefaultEnableLargeIndexKeys;
-		if (indexDef->enableLargeIndexKeys != BoolIndexOption_Undefined)
+		bool enableLargeIndexKeys = false;
+		if (IndexSupportsTruncation(indexDef) && indexDef->unique != BoolIndexOption_True)
 		{
-			enableLargeIndexKeys = indexDef->enableLargeIndexKeys == BoolIndexOption_True;
+			enableLargeIndexKeys = DefaultEnableLargeIndexKeys &&
+								   indexDef->enableLargeIndexKeys !=
+								   BoolIndexOption_False;
 		}
 
 		appendStringInfo(cmdStr,
@@ -5884,4 +5876,19 @@ SerializeWeightedPaths(List *weightedPaths)
 	pgbsonelement element;
 	PgbsonToSinglePgbsonElement(PgbsonWriterGetPgbson(&topLevelWriter), &element);
 	return BsonValueToJsonForLogging(&element.bsonValue);
+}
+
+
+/*
+ * Returns true if index supports truncation.
+ */
+static bool
+IndexSupportsTruncation(IndexDef *indexDef)
+{
+	return !indexDef->key->hasHashedIndexes &&
+		   !indexDef->key->hasTextIndexes &&
+		   !indexDef->key->has2dIndex &&
+		   !indexDef->key->has2dsphereIndex &&
+		   !indexDef->key->hasCosmosIndexes &&
+		   indexDef->expireAfterSeconds == NULL;
 }

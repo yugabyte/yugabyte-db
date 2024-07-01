@@ -62,8 +62,8 @@ WHERE collection_name = 'reshard' AND database_name = 'db' \gset
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5001" helio_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true'))
-    "documents_rum_index_5002" helio_rum (document bson_rum_single_path_ops (path=z))
+    "documents_rum_index_5001" helio_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true', tl='2699'))
+    "documents_rum_index_5002" helio_rum (document bson_rum_single_path_ops (path=z, tl='2699'))
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = '5000'::bigint)
 
@@ -87,9 +87,9 @@ SELECT helio_api.shard_collection('db','reshard', '{"value":"hashed"}', false);
  creation_time   | timestamp with time zone |           | not null | now()
 Indexes:
     "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
-    "documents_rum_index_5003" helio_rum (document bson_rum_single_path_ops (path=_id))
-    "documents_rum_index_5004" helio_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true'))
-    "documents_rum_index_5005" helio_rum (document bson_rum_single_path_ops (path=z))
+    "documents_rum_index_5003" helio_rum (document bson_rum_single_path_ops (path=_id, tl='2699'))
+    "documents_rum_index_5004" helio_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true', tl='2699'))
+    "documents_rum_index_5005" helio_rum (document bson_rum_single_path_ops (path=z, tl='2699'))
 Check constraints:
     "shard_key_value_check" CHECK (shard_key_value = helio_api_internal.get_shard_key_value('{ "value" : "hashed" }'::bson, 5000::bigint, document))
 

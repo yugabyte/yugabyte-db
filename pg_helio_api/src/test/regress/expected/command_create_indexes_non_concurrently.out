@@ -194,13 +194,13 @@ DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection
 DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection_indexes WHERE collection_id = $1 AND helio_api_internal.index_spec_options_are_equivalent(index_spec, $2) AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
 DEBUG:  executing "SELECT COUNT(*) FROM helio_api_catalog.collection_indexes WHERE collection_id = 6000 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
 DEBUG:  executing "INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
-DEBUG:  executing "CREATE INDEX  documents_rum_index_6016 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='x.y.z')) " via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6016 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='x.y.z',tl=2699)) " via SPI
 DEBUG:  building index "documents_rum_index_6016" on table "documents_6000" serially
 DEBUG:  executing "INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
-DEBUG:  executing "CREATE INDEX  documents_rum_index_6017 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='c.d.e')) " via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6017 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='c.d.e',tl=2699)) " via SPI
 DEBUG:  building index "documents_rum_index_6017" on table "documents_6000" serially
 DEBUG:  executing "INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
-DEBUG:  executing "CREATE INDEX  documents_rum_index_6018 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='x.y')) " via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6018 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='x.y',tl=2699)) " via SPI
 DEBUG:  building index "documents_rum_index_6018" on table "documents_6000" serially
 DEBUG:  executing "SELECT COUNT(*) FROM helio_api_catalog.collection_indexes WHERE collection_id = 6000 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
                                                                                                     create_indexes_non_concurrently                                                                                                     
@@ -459,9 +459,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'ok_test_2', 'idx_1');
-                                                                                           helio_index_get_pg_def                                                                                            
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6020 ON helio_data.documents_6001 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a", "b.b.a$a.k$" ]', isexclusion='false'))
+                                                                                                      helio_index_get_pg_def                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6020 ON helio_data.documents_6001 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a", "b.b.a$a.k$" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_2');
@@ -848,9 +848,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_1', 'idx_1');
-                                                                                     helio_index_get_pg_def                                                                                      
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6029 ON helio_data.documents_6005 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a.b" ]', isexclusion='false'))
+                                                                                                helio_index_get_pg_def                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6029 ON helio_data.documents_6005 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -871,9 +871,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_2', 'idx_1');
-                                                                                    helio_index_get_pg_def                                                                                     
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6031 ON helio_data.documents_6006 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a" ]', isexclusion='false'))
+                                                                                               helio_index_get_pg_def                                                                                                
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6031 ON helio_data.documents_6006 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -894,9 +894,9 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_3', 'idx_1');
-                                                                                     helio_index_get_pg_def                                                                                      
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6033 ON helio_data.documents_6007 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a.b" ]', isexclusion='false'))
+                                                                                                helio_index_get_pg_def                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6033 ON helio_data.documents_6007 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -917,8 +917,8 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_4', 'idx_1');
-                                                                                       helio_index_get_pg_def                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6035 ON helio_data.documents_6008 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a.b.c.d" ]', isexclusion='false'))
+                                                                                                  helio_index_get_pg_def                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6035 ON helio_data.documents_6008 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b.c.d" ]', isexclusion='false'))
 (1 row)
 
