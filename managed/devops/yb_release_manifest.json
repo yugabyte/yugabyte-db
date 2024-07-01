@@ -6,7 +6,6 @@
     "configure-cluster-server.yml",
     "destroy-instance.yml",
     "python3_requirements_frozen.txt",
-    "python*_modules.tar.gz",
     "preprovision.yml",
     "use_custom_ssh_port.yml",
     "yb-otel-collector.yml",
