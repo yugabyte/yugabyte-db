@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
@@ -179,7 +180,9 @@ public class CertificateController extends AuthenticatedController {
             keyContent,
             certType,
             customCertInfo,
-            customServerCertData);
+            customServerCertData,
+            runtimeConfGetter.getConfForScope(
+                Customer.get(customerUUID), CustomerConfKeys.CheckCertificateConfig));
     auditService()
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Certificate, certUUID.toString(), Audit.ActionType.Create);

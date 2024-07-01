@@ -49,6 +49,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -108,7 +109,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -207,7 +207,8 @@ public class NodeManager extends DevopsBase {
     RunHooks,
     Wait_For_Connection,
     Hard_Reboot,
-    Manage_Otel_Collector
+    Manage_Otel_Collector,
+    Verify_Certs
   }
 
   public enum CertRotateAction {
@@ -271,7 +272,8 @@ public class NodeManager extends DevopsBase {
       if (optional.isPresent()) {
         NodeInstanceData instanceData = optional.get().getDetails();
         detailsJson = (ObjectNode) Json.toJson(instanceData);
-        if (type == NodeCommandType.Precheck && StringUtils.isEmpty(instanceData.nodeName)) {
+        if ((type == NodeCommandType.Precheck || type == NodeCommandType.Verify_Certs)
+            && StringUtils.isEmpty(instanceData.nodeName)) {
           detailsJson.put("nodeName", nodeTaskParam.nodeName);
         }
       }
@@ -458,7 +460,12 @@ public class NodeManager extends DevopsBase {
       if (StringUtils.isNotBlank(sshUser)) {
         subCommand.add(sshUser);
       } else {
-        subCommand.add(providerDetails.sshUser);
+        // For Verify_Certs, we should use yugabyte user if manual provisioning is enabled.
+        if (type == NodeCommandType.Verify_Certs && providerDetails.skipProvisioning) {
+          subCommand.add(YUGABYTE_USER);
+        } else {
+          subCommand.add(providerDetails.sshUser);
+        }
       }
     } else if (type == NodeCommandType.Wait_For_Connection
         || type == NodeCommandType.Manage_Otel_Collector) {
@@ -513,7 +520,6 @@ public class NodeManager extends DevopsBase {
         subCommand.add("--install_node_exporter");
       }
     }
-
     if (params instanceof AnsibleSetupServer.Params) {
       Params setupServerParams = (Params) params;
       if (providerDetails.airGapInstall) {
@@ -1459,7 +1465,7 @@ public class NodeManager extends DevopsBase {
       Map<String, String> gflagsToAdd,
       Set<String> gflagsToRemove) {
     String configValue = config.getString(SKIP_CERT_VALIDATION);
-    if (!configValue.isEmpty()) {
+    if (configValue != SkipCertValidationType.NONE.name()) {
       try {
         return SkipCertValidationType.valueOf(configValue);
       } catch (Exception e) {
@@ -1469,7 +1475,12 @@ public class NodeManager extends DevopsBase {
     if (gflagsToRemove.contains(GFlagsUtil.VERIFY_SERVER_ENDPOINT_GFLAG)) {
       return SkipCertValidationType.NONE;
     }
+    // If runtimeConfig is not set, check the gflags
+    return getCertValidationFromGflag(userIntent, gflagsToAdd, gflagsToRemove);
+  }
 
+  private static SkipCertValidationType getCertValidationFromGflag(
+      UserIntent userIntent, Map<String, String> gflagsToAdd, Set<String> gflagsToRemove) {
     boolean skipHostValidation;
     if (gflagsToAdd.containsKey(GFlagsUtil.VERIFY_SERVER_ENDPOINT_GFLAG)) {
       skipHostValidation = GFlagsUtil.shouldSkipServerEndpointVerification(gflagsToAdd);
@@ -2439,30 +2450,6 @@ public class NodeManager extends DevopsBase {
                   userIntent,
                   nodeTaskParam.getProvider().getUuid(),
                   nodeTaskParam.communicationPorts));
-
-          boolean rootAndClientAreTheSame =
-              nodeTaskParam.getClientRootCA() == null
-                  || Objects.equals(nodeTaskParam.rootCA, nodeTaskParam.getClientRootCA());
-          appendCertPathsToCheck(
-              commandArgs,
-              nodeTaskParam.rootCA,
-              false,
-              rootAndClientAreTheSame && userIntent.enableNodeToNodeEncrypt);
-
-          if (!rootAndClientAreTheSame) {
-            appendCertPathsToCheck(commandArgs, nodeTaskParam.getClientRootCA(), true, false);
-          }
-
-          config = runtimeConfigFactory.forUniverse(universe);
-
-          SkipCertValidationType skipType =
-              getSkipCertValidationType(
-                  config, userIntent, Collections.emptyMap(), Collections.emptySet());
-          if (skipType != SkipCertValidationType.NONE) {
-            commandArgs.add("--skip_cert_validation");
-            commandArgs.add(skipType.name());
-          }
-
           break;
         }
       case Delete_Root_Volumes:
@@ -2613,6 +2600,28 @@ public class NodeManager extends DevopsBase {
           }
           break;
         }
+      case Verify_Certs:
+        {
+          if (!(nodeTaskParam instanceof CheckCertificateConfig.Params)) {
+            throw new RuntimeException("NodeTaskParams is not CheckCertificateConfig.Params");
+          }
+          CheckCertificateConfig.Params taskParam = (CheckCertificateConfig.Params) nodeTaskParam;
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          if (taskParam.SkipHostNameCheck
+              || getCertValidationFromGflag(
+                      userIntent, Collections.emptyMap(), Collections.emptySet())
+                  == SkipCertValidationType.HOSTNAME) {
+            commandArgs.add("--skip_hostname_check");
+          }
+          boolean rootAndClientAreTheSame = taskParam.rootCA == taskParam.getClientRootCA();
+
+          appendCertPathsToCheck(commandArgs, taskParam.rootCA, false);
+
+          if (!rootAndClientAreTheSame) {
+            appendCertPathsToCheck(commandArgs, taskParam.getClientRootCA(), true);
+          }
+          break;
+        }
       default:
         break;
     }
@@ -2650,33 +2659,42 @@ public class NodeManager extends DevopsBase {
     }
   }
 
-  private void appendCertPathsToCheck(
-      List<String> commandArgs, UUID rootCA, boolean isClient, boolean appendClientPaths) {
+  private void appendCertPathsToCheck(List<String> commandArgs, UUID rootCA, boolean isClient) {
+    // We are not checking --client_cert_path here because it is not used in the current
+    // implementation. We are only checking root_certs and server_certs.
     if (rootCA == null) {
       return;
     }
     CertificateInfo rootCert = CertificateInfo.get(rootCA);
-    // checking only certs with CustomCertHostPath type, CustomServerCert is not used for onprem
-    if (rootCert.getCertType() != CertConfigType.CustomCertHostPath) {
-      return;
-    }
-    String suffix = isClient ? "_client_to_server" : "";
-
-    CertificateParams.CustomCertInfo customCertInfo = rootCert.getCustomCertPathParams();
-
-    commandArgs.add(String.format("--root_cert_path%s", suffix));
-    commandArgs.add(customCertInfo.rootCertPath);
-    commandArgs.add(String.format("--server_cert_path%s", suffix));
-    commandArgs.add(customCertInfo.nodeCertPath);
-    commandArgs.add(String.format("--server_key_path%s", suffix));
-    commandArgs.add(customCertInfo.nodeKeyPath);
-    if (appendClientPaths
-        && !StringUtils.isEmpty(customCertInfo.clientCertPath)
-        && !StringUtils.isEmpty(customCertInfo.clientKeyPath)) {
-      commandArgs.add("--client_cert_path");
-      commandArgs.add(customCertInfo.clientCertPath);
-      commandArgs.add("--client_key_path");
-      commandArgs.add(customCertInfo.clientKeyPath);
+    switch (rootCert.getCertType()) {
+      case CustomCertHostPath:
+        CertificateParams.CustomCertInfo certConfig = rootCert.getCustomCertPathParams();
+        // For NodeToNode encryption
+        if (!isClient) {
+          commandArgs.add("--root_cert_path");
+          commandArgs.add(certConfig.rootCertPath);
+          commandArgs.add("--yba_root_cert_checksum");
+          commandArgs.add(rootCert.getChecksum());
+          commandArgs.add("--node_server_cert_path");
+          commandArgs.add(certConfig.nodeCertPath);
+          commandArgs.add("--node_server_key_path");
+          commandArgs.add(certConfig.nodeKeyPath);
+        }
+        // For ClientToNode encryption
+        else {
+          commandArgs.add("--client_root_cert_path");
+          commandArgs.add(certConfig.rootCertPath);
+          commandArgs.add("--yba_client_root_cert_checksum");
+          commandArgs.add(rootCert.getChecksum());
+          commandArgs.add("--client_server_cert_path");
+          commandArgs.add(certConfig.nodeCertPath);
+          commandArgs.add("--client_server_key_path");
+          commandArgs.add(certConfig.nodeKeyPath);
+        }
+        break;
+      default:
+        log.debug("Unsupported cert type: " + rootCert.getCertType());
+        break;
     }
   }
 
@@ -2978,6 +2996,7 @@ public class NodeManager extends DevopsBase {
         || type == NodeCommandType.Reboot
         || type == NodeCommandType.Change_Instance_Type
         || type == NodeCommandType.Create_Root_Volumes
-        || type == NodeCommandType.RunHooks;
+        || type == NodeCommandType.RunHooks
+        || type == NodeCommandType.Verify_Certs;
   }
 }
