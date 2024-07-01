@@ -85,7 +85,7 @@ public class GFlagsValidation {
           Util.DB_VERSION_METADATA_FILENAME,
           YSQL_MIGRATION_FILES_LIST_FILE_NAME);
 
-  public static final String DB_BUILD_WITH_FLAG_FILES = "2.17.0.0-b1";
+  public static final String DB_BUILD_WITH_FLAG_FILES = "2.16.0.0-b1";
 
   @Inject
   public GFlagsValidation(
