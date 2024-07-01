@@ -245,6 +245,8 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
+DEFINE_test_flag(bool, enable_pg_client_mock, false, "Enable mocking of PgClient service in tests");
+
 namespace yb::tserver {
 
 namespace {
@@ -643,13 +645,25 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
-  auto pg_client_service = std::make_shared<PgClientServiceImpl>(
-      *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-      permanent_uuid(), &options(), xcluster_context_.get(), &pg_node_level_mutation_counter_);
-  pg_client_service_ = pg_client_service;
-  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
-  RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+
+  auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
+        *this, tablet_manager_->client_future(), clock(),
+        std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
+        messenger(), permanent_uuid(), &options(), xcluster_context_.get(),
+        &pg_node_level_mutation_counter_);
+  PgClientServiceIf* pg_client_service_if = &pg_client_service_holder->impl;
+  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service_if;
+
+  if (PREDICT_FALSE(FLAGS_TEST_enable_pg_client_mock)) {
+    pg_client_service_holder->mock.emplace(metric_entity(), pg_client_service_if);
+    pg_client_service_if = &pg_client_service_holder->mock.value();
+    LOG(INFO) << "Mock created for yb::tserver::PgClientServiceImpl";
+  }
+
+  pg_client_service_ = pg_client_service_holder;
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_pg_client_svc_queue_length, std::shared_ptr<PgClientServiceIf>(
+          std::move(pg_client_service_holder), pg_client_service_if)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -1236,10 +1250,12 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
 
 void TabletServer::InvalidatePgTableCache() {
   auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    LOG(INFO) << "Invalidating all PgTableCache caches since catalog version incremented";
-    pg_client_service->InvalidateTableCache();
+  if (!pg_client_service) {
+    return;
   }
+
+  LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
+  pg_client_service->impl.InvalidateTableCache();
 }
 
 void TabletServer::InvalidatePgTableCache(
@@ -1255,7 +1271,7 @@ void TabletServer::InvalidatePgTableCache(
       msg += Format("databases $0 are removed", yb::ToString(db_oids_deleted));
     }
     LOG(INFO) << msg;
-    pg_client_service->InvalidateTableCache(db_oids_updated, db_oids_deleted);
+    pg_client_service->impl.InvalidateTableCache(db_oids_updated, db_oids_deleted);
   }
 }
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
