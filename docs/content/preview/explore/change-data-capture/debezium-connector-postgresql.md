@@ -644,3 +644,100 @@ The following example shows the value portion of a change event that the connect
 | 8 | source | Mandatory field that describes the source metadata for the event. This field contains information that you can use to compare this event with other events, with regard to the origin of the events, the order in which the events occurred, and whether events were part of the same transaction. The source metadata includes:<br/><ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contains the new row</li><li>Stringified JSON array of additional offset information. The first value is always the last committed LSN, the second value is always the current LSN. Either value may be null.</li><li>Schema name</li><li>If the event was part of a snapshot</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
 | 9 | op | Mandatory string that describes the type of operation that caused the connector to generate the event. In this example, `c` indicates that the operation created a row. Valid values are: <ul><li> `c` = create <li> `r` = read (applies to only snapshots) <li> `u` = update <li> `d` = delete <li> `m` = message</ul> |
 | 10 | ts_ms | Optional field that displays the time at which the connector processed the event. The time is based on the system clock in the JVM running the Kafka Connect task.<br/><br/>In the `source` object, `ts_ms` indicates the time that the change was made in the database. By comparing the value for `payload.source.ts_ms` with the value for `payload.ts_ms`, you can determine the lag between the source database update and Debezium. |
+
+### *update* events
+
+The value of a change event for an update in the sample `customers` table has the same schema as a create event for that table. Likewise, the event value’s payload has the same structure. However, the event value payload contains different values in an update event. Here is an example of a change event value in an event that the connector generates for an update in the `customers` table:
+
+<!-- YB Note removed before image for DEFAULT replica identity -->
+
+```sql
+{
+    "schema": { ... },
+    "payload": {
+        "before": null, --> 1
+        "after": { --> 2
+            "id": 1,
+            "first_name": "Anne Marie",
+            "last_name": "Kretchmar",
+            "email": "annek@noanswer.org"
+        },
+        "source": { --> 3
+            "version": "2.5.2.Final",
+            "connector": "postgresql",
+            "name": "PostgreSQL_server",
+            "ts_ms": 1559033904863,
+            "snapshot": false,
+            "db": "postgres",
+            "schema": "public",
+            "table": "customers",
+            "txId": 556,
+            "lsn": 24023128,
+            "xmin": null
+        },
+        "op": "u", --> 4
+        "ts_ms": 1465584025523 --> 5
+    }
+}
+```
+
+*Descriptions of update event value fields:*
+
+| Item | Field name | Description |
+| :---- | :------ | :------------ |
+| 1 | before | An optional field that contains values that were in the row before the database commit. In this example, no previous value for any of the columns, is present because the table’s [REPLICA IDENTITY](#replica-identity) setting is, by default, `DEFAULT`. + For an update event to contain the previous values of all columns in the row, you would have to change the `customers` table by running `ALTER TABLE customers REPLICA IDENTITY FULL`. |
+| 2 | after | An optional field that specifies the state of the row after the event occurred. In this example, the `first_name` value is now `Anne Marie`. |
+| 3 | source | Mandatory field that describes the source metadata for the event. The `source` field structure has the same fields as in a create event, but some values are different. The source metadata includes:<br/<br/> <ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contains the new row</li><li>Schema name</li><li>If the event was part of a snapshot (always `false` for *update* events)</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
+| 4 | op | Mandatory string that describes the type of operation. In an update event value, the `op` field value is `u`, signifying that this row changed because of an update. |
+| 5 | ts_ms | Optional field that displays the time at which the connector processed the event. The time is based on the system clock in the JVM running the Kafka Connect task.<br/><br/>In the `source` object, `ts_ms` indicates the time that the change was made in the database. By comparing the value for `payload.source.ts_ms` with the value for `payload.ts_ms`, you can determine the lag between the source database update and Debezium. |
+
+{{< note title="Note" >}}
+
+Updating the columns for a row’s primary/unique key changes the value of the row’s key. When a key changes, Debezium outputs three events: a `DELETE` event and a [tombstone event]() with the old key for the row, followed by an event with the new key for the row. Details are in the next section.
+
+{{< /note >}}
+
+### Primary key updates
+
+An `UPDATE` operation that changes a row’s primary key field(s) is known as a primary key change. For a primary key change, in place of sending an `UPDATE` event record, the connector sends a `DELETE` event record for the old key and a `CREATE` event record for the new (updated) key.
+
+### *delete* events
+
+The value in a *delete* change event has the same `schema` portion as create and update events for the same table. The `payload` portion in a delete event for the sample `customers` table looks like this:
+
+```output.json
+{
+    "schema": { ... },
+    "payload": {
+        "before": { --> 1
+            "id": 1
+        },
+        "after": null, --> 2
+        "source": { --> 3
+            "version": "2.5.4.Final",
+            "connector": "postgresql",
+            "name": "PostgreSQL_server",
+            "ts_ms": 1559033904863,
+            "snapshot": false,
+            "db": "postgres",
+            "schema": "public",
+            "table": "customers",
+            "txId": 556,
+            "lsn": 46523128,
+            "xmin": null
+        },
+        "op": "d", --> 4
+        "ts_ms": 1465581902461 --> 5
+    }
+}
+```
+
+*Descriptions of delete event value fields:*
+
+| Item | Field name | Description |
+| :---- | :------ | :------------ |
+| 1 | before | Optional field that specifies the state of the row before the event occurred. In a *delete* event value, the `before` field contains the values that were in the row before it was deleted with the database commit.<br/><br/>In this example, the before field contains only the primary key column because the table’s [REPLICA IDENTITY](#replica-identity) setting is `DEFAULT`. |
+| 2 | after | Optional field that specifies the state of the row after the event occurred. In a delete event value, the `after` field is `null`, signifying that the row no longer exists. |
+| 3 | source | Mandatory field that describes the source metadata for the event. In a delete event value, the source field structure is the same as for create and update events for the same table. Many source field values are also the same. In a delete event value, the ts_ms and lsn field values, as well as other values, might have changed. But the source field in a delete event value provides the same metadata:<br/><ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contained the deleted row</li><li>Schema name</li><li>If the event was part of a snapshot (always false for delete events)</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
+| 4 | op | Mandatory string that describes the type of operation. The `op` field value is `d`, signifying that this row was deleted. |
+| 5 | ts_ms | Optional field that displays the time at which the connector processed the event. The time is based on the system clock in the JVM running the Kafka Connect task.<br/><br/>In the `source` object, `ts_ms` indicates the time that the change was made in the database. By comparing the value for `payload.source.ts_ms` with the value for `payload.ts_ms`, you can determine the lag between the source database update and Debezium. |
