@@ -1414,4 +1414,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " throwing UNAVAILABLE",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+  // Also need rbac to be on for this key to have effect.
+  public static final ConfKeyInfo<Boolean> groupMappingRbac =
+      new ConfKeyInfo<>(
+          "yb.security.group_mapping_rbac_support",
+          ScopeType.GLOBAL,
+          "Enable RBAC for Groups",
+          "Map LDAP/OIDC groups to custom roles defined by RBAC.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
