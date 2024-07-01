@@ -26,7 +26,7 @@ The first time it connects to a PostgreSQL server or cluster, the connector take
 
 ## Overview
 
-PostgreSQL’s [logical decoding](todo vaibhav) feature was introduced in version 9.4. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](todo vaibhav). The output plug-in enables clients to consume the changes.
+PostgreSQL’s [logical decoding](#reminder) feature was introduced in version 9.4. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
 
 The PostgreSQL connector contains two main parts that work together to read and process database changes:
 
@@ -39,7 +39,7 @@ The PostgreSQL connector contains two main parts that work together to read and 
     * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. This plug-in is always present so no additional libraries need to be installed. The Debezium connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
-* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses PostgreSQL’s [streaming replication protocol](todo vaibhav), by means of the YugabyteDB JDBC driver
+* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses PostgreSQL’s [streaming replication protocol](#reminder), by means of the YugabyteDB JDBC driver
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
 
@@ -57,7 +57,7 @@ The connector relies on and reflects the PostgreSQL logical decoding feature, wh
 
 Additionally, the pgoutput logical decoding output plug-in does not capture values for generated columns, resulting in missing data for these columns in the connector’s output.
 
-[Behavior when things go wrong](todo vaibhav) describes how the connector responds if there is a problem.
+[Behavior when things go wrong](#reminder) describes how the connector responds if there is a problem.
 
 {{< /tip >}}
 
@@ -67,6 +67,10 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
+## Reminder
+
+Reminder that the clicked link is an empty link and should be replaced with an appropriate one.
+
 ## How the connector works
 
 To optimally configure and run a Debezium PostgreSQL connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
@@ -75,7 +79,7 @@ To optimally configure and run a Debezium PostgreSQL connector, it is helpful to
 
 To use the Debezium connector to stream changes from a PostgreSQL database, the connector must operate with specific privileges in the database. Although one way to grant the necessary privileges is to provide the user with `superuser` privileges, doing so potentially exposes your PostgreSQL data to unauthorized access. Rather than granting excessive privileges to the Debezium user, it is best to create a dedicated Debezium replication user to which you grant specific privileges.
 
-For more information about configuring privileges for the Debezium PostgreSQL user, see [Setting up permissions](todo vaibhav). For more information about PostgreSQL logical replication security, see the [PostgreSQL documentation](todo vaibhav).
+For more information about configuring privileges for the Debezium PostgreSQL user, see [Setting up permissions](#reminder). For more information about PostgreSQL logical replication security, see the [PostgreSQL documentation](#reminder).
 
 ### Snapshots
 
@@ -83,9 +87,9 @@ Most PostgreSQL servers are configured to not retain the complete history of the
 
 #### Default workflow behavior of initial snapshots
 
-The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` [connector configuration property](todo vaibhav) to a value other than `initial`.
+The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` [connector configuration property](#reminder) to a value other than `initial`.
 
-1. Start a transaction with a [SERIALIZABLE, READ ONLY, DEFERRABLE](todo vaibhav) isolation level to ensure that subsequent reads in this transaction are against a single consistent version of the data. Any changes to the data due to subsequent `INSERT`, `UPDATE`, and `DELETE` operations by other clients are not visible to this transaction.
+1. Start a transaction with a [SERIALIZABLE, READ ONLY, DEFERRABLE](#reminder) isolation level to ensure that subsequent reads in this transaction are against a single consistent version of the data. Any changes to the data due to subsequent `INSERT`, `UPDATE`, and `DELETE` operations by other clients are not visible to this transaction.
 2. Read the current position in the server’s transaction log.
 3. Scan the database tables and schemas, generate a `READ` event for each row and write that event to the appropriate table-specific Kafka topic.
 4. Commit the transaction.
@@ -101,15 +105,15 @@ If the connector fails, is rebalanced, or stops after Step 1 begins but before S
 | `never` | The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the PostgreSQL logical replication slot was created on the server. The `never` snapshot mode is useful only when you know all data of interest is still reflected in the WAL. |
 | `initial` (default) | The connector performs a database snapshot when no Kafka offsets topic exists. After the database snapshot completes the Kafka offsets topic is written. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. |
 | `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector restarts the snapshot process and stops when the snapshot completes. |
-| `custom` | The `custom` snapshot mode lets you inject your own implementation of the `io.debezium.connector.postgresql.spi.Snapshotter` interface. Set the `snapshot.custom.class` configuration property to the class on the classpath of your Kafka Connect cluster or included in the JAR if using the `EmbeddedEngine`. For more details, see [custom snapshotter SPI](todo vaibhav). |
+| `custom` | The `custom` snapshot mode lets you inject your own implementation of the `io.debezium.connector.postgresql.spi.Snapshotter` interface. Set the `snapshot.custom.class` configuration property to the class on the classpath of your Kafka Connect cluster or included in the JAR if using the `EmbeddedEngine`. For more details, see [custom snapshotter SPI](#reminder). |
 
 <!-- YB note Skipping Ad-hoc snapshots -->
 
 ### Incremental snapshots
 
-To provide flexibility in managing snapshots, Debezium includes a supplementary snapshot mechanism, known as *incremental snapshotting*. Incremental snapshots rely on the Debezium mechanism for [sending signals to a Debezium connector](todo vaibhav). Incremental snapshots are based on the [DDD-3](todo vaibhav) design document.
+To provide flexibility in managing snapshots, Debezium includes a supplementary snapshot mechanism, known as *incremental snapshotting*. Incremental snapshots rely on the Debezium mechanism for [sending signals to a Debezium connector](#reminder). Incremental snapshots are based on the [DDD-3](#reminder) design document.
 
-In an incremental snapshot, instead of capturing the full state of a database all at once, as in an initial snapshot, Debezium captures each table in phases, in a series of configurable chunks. You can specify the tables that you want the snapshot to capture and the [size of each chunk](todo vaibhav). The chunk size determines the number of rows that the snapshot collects during each fetch operation on the database. The default chunk size for incremental snapshots is 1024 rows.
+In an incremental snapshot, instead of capturing the full state of a database all at once, as in an initial snapshot, Debezium captures each table in phases, in a series of configurable chunks. You can specify the tables that you want the snapshot to capture and the [size of each chunk](#reminder). The chunk size determines the number of rows that the snapshot collects during each fetch operation on the database. The default chunk size for incremental snapshots is 1024 rows.
 
 As an incremental snapshot proceeds, Debezium uses watermarks to track its progress, maintaining a record of each table row that it captures. This phased approach to capturing data provides the following advantages over the standard initial snapshot process:
 * You can run incremental snapshots in parallel with streamed data capture, instead of postponing streaming until the snapshot completes. The connector continues to capture near real-time events from the change log throughout the snapshot process, and neither operation blocks the other.
@@ -118,7 +122,7 @@ As an incremental snapshot proceeds, Debezium uses watermarks to track its progr
 
 #### Incremental snapshot process
 
-When you run an incremental snapshot, Debezium sorts each table by primary key and then splits the table into chunks based on the [configured chunk size](todo vaibhav). Working chunk by chunk, it then captures each table row in a chunk. For each row that it captures, the snapshot emits a `READ` event. That event represents the value of the row when the snapshot for the chunk began.
+When you run an incremental snapshot, Debezium sorts each table by primary key and then splits the table into chunks based on the [configured chunk size](#reminder). Working chunk by chunk, it then captures each table row in a chunk. For each row that it captures, the snapshot emits a `READ` event. That event represents the value of the row when the snapshot for the chunk began.
 
 As a snapshot proceeds, it’s likely that other processes continue to access the database, potentially modifying table records. To reflect such changes,`INSERT`, `UPDATE`, or `DELETE` operations are committed to the transaction log as per usual. Similarly, the ongoing Debezium streaming process continues to detect these change events and emits corresponding change event records to Kafka.
 
@@ -144,7 +148,7 @@ The Debezium connector for PostgreSQL does not support schema changes while an i
 
 #### Triggering an incremental snapshot
 
-Currently, the only way to initiate an incremental snapshot is to send an [ad hoc snapshot signal](todo vaibhav) to the signaling table on the source database.
+Currently, the only way to initiate an incremental snapshot is to send an [ad hoc snapshot signal](#reminder) to the signaling table on the source database.
 
 You submit a signal to the signaling table as SQL `INSERT` queries.
 
@@ -169,7 +173,7 @@ For example, to include a table that exists in the **public** schema and that ha
 Prerequisites:
 
 <!-- todo vaibhav require sub-bullets -->
-* [Signaling is enabled](todo vaibhav).
+* [Signaling is enabled](#reminder).
     * A signaling data collection exists on the source database.
     * The signaling data collection is specified in the `signal.data.collection` property.
 
@@ -177,9 +181,9 @@ Prerequisites:
 
 ### Streaming changes
 
-The PostgreSQL connector typically spends the vast majority of its time streaming changes from the PostgreSQL server to which it is connected. This mechanism relies on [PostgreSQL’s replication protocol](todo vaibhav). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction log at certain positions, which are referred to as Log Sequence Numbers (LSNs).
+The PostgreSQL connector typically spends the vast majority of its time streaming changes from the PostgreSQL server to which it is connected. This mechanism relies on [PostgreSQL’s replication protocol](#reminder). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction log at certain positions, which are referred to as Log Sequence Numbers (LSNs).
 
-Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plug-in](todo vaibhav). This function processes the changes from the transaction, converts them to a specific format (Protobuf or JSON in the case of Debezium plug-in) and writes them on an output stream, which can then be consumed by clients.
+Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plug-in](#reminder). This function processes the changes from the transaction, converts them to a specific format (Protobuf or JSON in the case of Debezium plug-in) and writes them on an output stream, which can then be consumed by clients.
 
 The Debezium PostgreSQL connector acts as a PostgreSQL client. When the connector receives changes it transforms the events into Debezium *create*, *update*, or *delete* events that include the LSN of the event. The PostgreSQL connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
@@ -203,7 +207,7 @@ The PostgreSQL connector retrieves schema information as part of the events sent
 
 As of PostgreSQL 10+, there is a logical replication stream mode, called pgoutput that is natively supported by PostgreSQL. This means that a Debezium PostgreSQL connector can consume that replication stream without the need for additional plug-ins. This is particularly valuable for environments where installation of plug-ins is not supported or not allowed.
 
-For more information, see [Setting up PostgreSQL](todo vaibhav).
+For more information, see [Setting up PostgreSQL](#reminder).
 
 ### Topic names
 
@@ -231,7 +235,7 @@ Now suppose that the tables are not part of a specific schema but were created i
 
 The connector applies similar naming conventions to label its [transaction metadata topics](todo vaubhav).
 
-If the default topic names don't meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see the Debezium documentation on [Topic routing](todo vaibhav).
+If the default topic names don't meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see the Debezium documentation on [Topic routing](#reminder).
 
 ### Transaction metadata
 
@@ -346,11 +350,11 @@ The following skeleton JSON shows the basic four parts of a change event. Howeve
 | 3 | `schema` | The second `schema` field is part of the event value. It specifies the Kafka Connect schema that describes what is in the event value's `payload` portion. In other words, the second `schema` describes the structure of the row that was changed. Typically, this schema contains nested schemas. |
 | 4 | `payload` | The second `payload` field is part of the event value. It has the structure described by the previous `schema` field and it contains the actual data for the row that was changed. |
 
-By default behavior is that the connector streams change event records to [topics with names that are the same as the event’s originating table](todo vaibhav).
+By default behavior is that the connector streams change event records to [topics with names that are the same as the event’s originating table](#reminder).
 
 {{< note title="Note" >}}
 
-Starting with Kafka 0.10, Kafka can optionally record the event key and value with the [timestamp](todo vaibhav) at which the message was created (recorded by the producer) or written to the log by Kafka.
+Starting with Kafka 0.10, Kafka can optionally record the event key and value with the [timestamp](#reminder) at which the message was created (recorded by the producer) or written to the log by Kafka.
 
 {{< /note >}}
 
@@ -450,7 +454,7 @@ The value portion of a change event for a change to this table varies according 
 
 ### Replica Identity
 
-[REPLICA IDENTITY](todo vaibhav) is a PostgreSQL-specific table-level setting that determines the amount of information that is available to the logical decoding plug-in for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
+[REPLICA IDENTITY](#reminder) is a PostgreSQL-specific table-level setting that determines the amount of information that is available to the logical decoding plug-in for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
 
 <!-- YB Note changes ahead -->
 There are 4 possible values for `REPLICA IDENTITY`:
@@ -635,10 +639,10 @@ The following example shows the value portion of a change event that the connect
 | Item | Field name | Description |
 | :---- | :------ | :------------ |
 | 1 | schema | The value’s schema, which describes the structure of the value’s payload. A change event’s value schema is the same in every change event that the connector generates for a particular table. |
-| 2 | name | In the schema section, each name field specifies the schema for a field in the value’s payload.<br/><br/>`PostgreSQL_server.inventory.customers.Value` is the schema for the payload’s *before* and *after* fields. This schema is specific to the customers table.<br/><br/>Names of schemas for *before* and *after* fields are of the form *logicalName.tableName.Value*, which ensures that the schema name is unique in the database. This means that when using the [Avro converter](todo vaibhav), the resulting Avro schema for each table in each logical source has its own evolution and history. |
+| 2 | name | In the schema section, each name field specifies the schema for a field in the value’s payload.<br/><br/>`PostgreSQL_server.inventory.customers.Value` is the schema for the payload’s *before* and *after* fields. This schema is specific to the customers table.<br/><br/>Names of schemas for *before* and *after* fields are of the form *logicalName.tableName.Value*, which ensures that the schema name is unique in the database. This means that when using the [Avro converter](#reminder), the resulting Avro schema for each table in each logical source has its own evolution and history. |
 | 3 | name | `io.debezium.connector.postgresql.Source` is the schema for the payload’s `source` field. This schema is specific to the PostgreSQL connector. The connector uses it for all events that it generates. |
 | 4 | name | `PostgreSQL_server.inventory.customers.Envelope` is the schema for the overall structure of the payload, where `PostgreSQL_server` is the connector name, `public` is the schema, and `customers` is the table. |
-| 5 | payload | The value’s actual data. This is the information that the change event is providing.<br/><br/>It may appear that the JSON representations of the events are much larger than the rows they describe. This is because the JSON representation must include the schema and the payload portions of the message. However, by using the [Avro converter](todo vaibhav), you can significantly decrease the size of the messages that the connector streams to Kafka topics. |
+| 5 | payload | The value’s actual data. This is the information that the change event is providing.<br/><br/>It may appear that the JSON representations of the events are much larger than the rows they describe. This is because the JSON representation must include the schema and the payload portions of the message. However, by using the [Avro converter](#reminder), you can significantly decrease the size of the messages that the connector streams to Kafka topics. |
 | 6 | before | An optional field that specifies the state of the row before the event occurred. When the op field is `c` for create, as it is in this example, the `before` field is `null` since this change event is for new content.<br/>{{< note title="Note" >}}Whether or not this field is available is dependent on the [REPLICA IDENTITY](#replica-identity) setting for each table.{{< /note >}} |
 | 7 | after | An optional field that specifies the state of the row after the event occurred. In this example, the `after` field contains the values of the new row’s `id`, `first_name`, `last_name`, and `email` columns. |
 | 8 | source | Mandatory field that describes the source metadata for the event. This field contains information that you can use to compare this event with other events, with regard to the origin of the events, the order in which the events occurred, and whether events were part of the same transaction. The source metadata includes:<br/><ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contains the new row</li><li>Stringified JSON array of additional offset information. The first value is always the last committed LSN, the second value is always the current LSN. Either value may be null.</li><li>Schema name</li><li>If the event was part of a snapshot</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
@@ -763,4 +767,4 @@ To deploy a Debezium PostgreSQL connector, you install the Debezium PostgreSQL c
 
 Prerequisites:
 * [Zookeeper](https://zookeeper.apache.org/), [Kafka](http://kafka.apache.org/), and [Kafka Connect](https://kafka.apache.org/documentation.html#connect) are installed.
-* PostgreSQL is installed and is [set up to run the Debezium connector](todo vaibhav).
+* PostgreSQL is installed and is [set up to run the Debezium connector](#reminder).
