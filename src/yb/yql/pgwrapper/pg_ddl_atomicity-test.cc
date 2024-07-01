@@ -364,13 +364,17 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST_IN_TSAN(PrimaryKeyRollback)) {
   ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey;", drop_pk_table)));
 
   // Verify presence of temp table created for adding a primary key.
-  VerifyTableExists(client.get(), kDatabase, add_pk_table + "_temp_old", 10);
-  VerifyTableExists(client.get(), kDatabase, drop_pk_table + "_temp_old", 10);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables(add_pk_table, false /* exclude_ysql */)).size(), 2);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables(drop_pk_table, false /* exclude_ysql */)).size(), 2);
 
   // Verify that the background task detected the failure of the DDL operation and removed the
   // temp table.
-  VerifyTableNotExists(client.get(), kDatabase, add_pk_table + "_temp_old", 40);
-  VerifyTableNotExists(client.get(), kDatabase, drop_pk_table + "_temp_old", 40);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(add_pk_table, false /* exclude_ysql */)).size() == 1
+          && VERIFY_RESULT(client->ListTables(drop_pk_table, false /* exclude_ysql */)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB tables to be dropped."));
 
   // Verify that PK constraint is not present on the table.
   ASSERT_OK(conn.Execute("INSERT INTO " + add_pk_table + " VALUES (1), (1)"));
