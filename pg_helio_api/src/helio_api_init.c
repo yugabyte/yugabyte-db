@@ -11,6 +11,7 @@
 #include <utils/guc.h>
 #include <limits.h>
 #include <access/xact.h>
+#include <postmaster/bgworker.h>
 #include <storage/ipc.h>
 
 #include "helio_api_init.h"
@@ -84,6 +85,7 @@ bool EnableNewOperatorSelectivityMode = DEFAULT_ENABLE_NEW_OPERATOR_SELECTIVITY;
 static void HelioTransactionCallback(XactEvent event, void *arg);
 static void HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
 										SubTransactionId parentSubid, void *arg);
+static void InitHelioBackgroundWorkerGucs(void);
 
 static void HelioSharedMemoryInit(void);
 
@@ -253,6 +255,15 @@ int MaxWildcardIndexKeySize = DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE;
 /* default value for max validator size */
 #define DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE 10 * 1024
 int MaxSchemaValidatorSize = DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE;
+
+#define DEFAULT_ENABLE_BG_WORKER false
+bool EnableBackgroundWorker = DEFAULT_ENABLE_BG_WORKER;
+
+#define DEFAULT_BG_DATABASE_NAME "postgres"
+char *BackgroundWorkerDatabaseName = DEFAULT_BG_DATABASE_NAME;
+
+#define DEFAULT_BG_LATCH_TIMEOUT_SEC 10
+int LatchTimeOutSec = DEFAULT_BG_LATCH_TIMEOUT_SEC;
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -683,6 +694,12 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableHelioBackgroundWorker",
+		gettext_noop("Enable Helio Background worker."),
+		NULL, &EnableBackgroundWorker, DEFAULT_ENABLE_BG_WORKER,
+		PGC_SUSET, 0, NULL, NULL, NULL);
 }
 
 
@@ -704,6 +721,37 @@ InstallHelioApiPostgresHooks(void)
 
 	RegisterScanNodes();
 	RegisterQueryScanNodes();
+}
+
+
+/* Initialized the background worker */
+void
+InitializeHelioBackgroundWorker(char *libraryName)
+{
+	/* Initialize GUCs */
+	InitHelioBackgroundWorkerGucs();
+
+	if (!EnableBackgroundWorker)
+	{
+		return;
+	}
+
+	BackgroundWorker worker;
+	memset(&worker, 0, sizeof(worker));
+
+	/* set up common data for the worker */
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
+	worker.bgw_restart_time = 10;
+	worker.bgw_main_arg = Int32GetDatum(0);
+	worker.bgw_notify_pid = 0;
+
+	sprintf(worker.bgw_library_name, "%s", libraryName);
+	sprintf(worker.bgw_function_name, "HelioBackgroundWorkerMain");
+	snprintf(worker.bgw_name, BGW_MAXLEN, "helio bg worker leader");
+	snprintf(worker.bgw_type, BGW_MAXLEN, "helio_bg_worker_leader");
+
+	RegisterBackgroundWorker(&worker);
 }
 
 
@@ -787,4 +835,31 @@ HelioSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
 			break;
 		}
 	}
+}
+
+
+static void
+InitHelioBackgroundWorkerGucs(void)
+{
+	DefineCustomStringVariable(
+		"helio_bg_worker.database_name",
+		gettext_noop("Database to which background worker will connect."),
+		NULL,
+		&BackgroundWorkerDatabaseName,
+		DEFAULT_BG_DATABASE_NAME,
+		PGC_POSTMASTER,
+		GUC_SUPERUSER_ONLY,
+		NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		"helio_bg_worker.latch_timeout",
+		gettext_noop("Latch timeout inside main thread of helio_bg worker leader."),
+		NULL,
+		&LatchTimeOutSec,
+		DEFAULT_BG_LATCH_TIMEOUT_SEC,
+		0,
+		200,
+		PGC_POSTMASTER,
+		GUC_SUPERUSER_ONLY,
+		NULL, NULL, NULL);
 }

@@ -42,6 +42,7 @@ _PG_init(void)
 	InitializeExtensionExternalConfigs("helio_api");
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("helio_api");
+	InitializeHelioBackgroundWorker("pg_helio_api");
 
 	InstallHelioApiPostgresHooks();
 

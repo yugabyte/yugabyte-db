@@ -13,5 +13,6 @@
 void InitApiConfigurations(char *prefix);
 void InstallHelioApiPostgresHooks(void);
 void UninstallHelioApiPostgresHooks(void);
+void InitializeHelioBackgroundWorker(char *libraryName);
 void InitializeSharedMemoryHooks(void);
 #endif
