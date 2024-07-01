@@ -16,6 +16,7 @@ import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
 import api.v2.models.UniverseSoftwareUpgradePrecheckReq;
 import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
+import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.YBATask;
 import com.google.inject.Inject;
@@ -116,5 +117,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask restartUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniUpgrade) throws Exception {
     return universeUpgradeHandler.restartUniverse(request, cUUID, uniUUID, uniUpgrade);
+  }
+
+  @Override
+  public YBATask systemdEnable(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
+      throws Exception {
+    return universeUpgradeHandler.systemdEnable(request, cUUID, uniUUID, systemd);
   }
 }
