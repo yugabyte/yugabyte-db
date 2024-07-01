@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
+import static org.junit.Assume.*;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -780,6 +781,13 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     // b) For non PG metadata cached table:
     //    Transaction should not conflict because new schema is used for
     //    DML operation and the original schema is not already cached.
+
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     for (AlterCommand alterType : AlterCommand.values()) {
       LOG.info("Run INSERT txn after ALTER " + alterType + " cache set " + !cacheMetadataSetTrue);
       runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, !cacheMetadataSetTrue,
@@ -792,6 +800,13 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testMultipleDmlTransactionWithAlterOnCurrentResource() throws Exception {
+
+    // The test fails with Connection Manager as it is expected that each new
+    // session would latch onto a new physical connection. Instead, any two
+    // logical connections share the same physical connection, leading to
+    // unexpected results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     LOG.info("Run multiple transactions before altering the resource");
     runMultipleTxnsBeforeAlterTable();
     LOG.info("Run multiple transactions before and after altering the resource");
