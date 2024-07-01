@@ -3,10 +3,8 @@ package com.yugabyte.yw.forms;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import java.util.UUID;
-import lombok.ToString;
 import play.data.validation.Constraints.Required;
 
-@ToString()
 public class XClusterConfigNeedBootstrapFormData {
 
   @Required
