@@ -49,6 +49,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
@@ -143,6 +144,10 @@ YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
 static constexpr uint64_t kVWALSessionId3 = std::numeric_limits<uint64_t>::max() / 2 + 2;
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
+}
 
 class CDCSDKYsqlTest : public CDCSDKTestBase {
  public:
