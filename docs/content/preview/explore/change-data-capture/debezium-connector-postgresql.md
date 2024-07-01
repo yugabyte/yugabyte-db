@@ -633,6 +633,7 @@ The following example shows the value portion of a change event that the connect
 *Descriptions of create event value fields:*
 
 | Item | Field name | Description |
+| :---- | :------ | :------------ |
 | 1 | schema | The value’s schema, which describes the structure of the value’s payload. A change event’s value schema is the same in every change event that the connector generates for a particular table. |
 | 2 | name | In the schema section, each name field specifies the schema for a field in the value’s payload.<br/><br/>
 `PostgreSQL_server.inventory.customers.Value` is the schema for the payload’s *before* and *after* fields. This schema is specific to the customers table.<br/><br/>Names of schemas for *before* and *after* fields are of the form *logicalName.tableName.Value*, which ensures that the schema name is unique in the database. This means that when using the [Avro converter](todo vaibhav), the resulting Avro schema for each table in each logical source has its own evolution and history. |
