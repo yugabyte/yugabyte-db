@@ -91,8 +91,7 @@ Validation checks are performed for the given fields as per the following table:
 | | Network Resource Group (Optional), Network Subscription ID (Optional) | Verify that network resource group is provided if network subscription ID is present. Verify that all the Virtual networks mentioned are present in the network resource group. |
 | | Subnet | Check that the subnet exists for the given virtual network. |
 | | Private DNS Zone (Optional) | Check that the DNS zone exists in the resource group. |
-| Linux Version Catalog | Machine image (Optional) | Check that it is valid image and available in the specified region.
-If the image has terms that need to accepted, verify that they are accepted. |
+| Linux&nbsp;Version&nbsp;Catalog | Machine image (Optional) | Check that it is valid image and available in the specified region. If the image has terms that need to accepted, verify that they are accepted. |
 | SSH Key Pairs | Key Pair Management | Validate that it is an RSA key pair. |
 | | NTP Server (Optional) | Check its a valid NTP server. |
 
