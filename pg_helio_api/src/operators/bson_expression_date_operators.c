@@ -61,6 +61,8 @@ typedef enum DatePart
 	DatePart_IsoWeekYear = 10,
 	DatePart_IsoWeek = 11,
 	DatePart_IsoDayOfWeek = 12,
+	DatePart_Str_Month = 13,
+	DatePart_Str_Month_Abbr = 14
 } DatePart;
 
 
@@ -142,17 +144,41 @@ typedef struct DollarDateFromParts
 /* Struct that represents the bson_value_t arguments to a $dateFromParts input values. */
 typedef struct DollarDateFromPartsBsonValue
 {
+	/* This part refers to the year value part in date */
 	bson_value_t year;
+
+	/* This part refers to the iso year value part in date */
 	bson_value_t isoWeekYear;
+
+	/* This part refers to the month value part in date ranges from 1-12 */
 	bson_value_t month;
+
+	/* This part refers to the iso week value part in date ranges from 1-53 */
 	bson_value_t isoWeek;
+
+	/* This part refers to the iso day of week value part in date ranges from 1-366 */
 	bson_value_t isoDayOfWeek;
+
+	/* This part refers to the day of month value part in date ranges from 1-31*/
 	bson_value_t day;
+
+	/* This part refers to the hour value part in date */
 	bson_value_t hour;
+
+	/* This part refers to the minute value part in date */
 	bson_value_t minute;
+
+	/* This part refers to the second value part in date */
 	bson_value_t second;
+
+	/* This part refers to the millisecond value part in date */
 	bson_value_t millisecond;
+
+	/* This part refers to the timezone  value part in date. It's a string  */
 	bson_value_t timezone;
+
+	/* This part refers to the day of year value part in date ranges from 1-366 */
+	bson_value_t dayOfYear;
 
 	/* This is added as during parsing we need to know if the date is in ISO format or not. So just storing it here for use of dateFromString */
 	bool isIsoFormat;
@@ -261,6 +287,11 @@ static const char *monthNamesLowerCase[12] = {
 	"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
 };
 
+static const char *monthNamesFull[12] = {
+	"january", "february", "march", "april", "may", "june", "july", "august", "september",
+	"october", "november", "december"
+};
+
 static const char *unitSizeForDateTrunc[9] = {
 	"day", "hour", "minute", "month", "quarter", "second", "week", "year", "millisecond"
 };
@@ -279,6 +310,7 @@ static const char *dateUnitStr[9] = {
 
 /* static mapping for mongo format specifiers to postgres format specifiers. These are sorted on mongo format specifier(index 0) and should be kept sorted */
 static const DateFormatMap dateFormats[] = {
+	{ "%B", "month", DatePart_Str_Month, 4, 9, -1, -1 },
 	{ "%G", "IYYY", DatePart_IsoWeekYear, 1, 4, 0, 9999 },
 	{ "%H", "HH24", DatePart_Hour, 2, 2, 0, 23 },
 	{ "%L", "MS", DatePart_Millisecond, 1, 3, 0, 999 },
@@ -286,7 +318,9 @@ static const DateFormatMap dateFormats[] = {
 	{ "%S", "SS", DatePart_Second, 2, 2, 0, 59 },
 	{ "%V", "IW", DatePart_IsoWeek, 1, 2, 1, 53 },
 	{ "%Y", "YYYY", DatePart_Year, 1, 4, 0, 9999 },
+	{ "%b", "mon", DatePart_Str_Month_Abbr, 3, 3, -1, -1 },
 	{ "%d", "DD", DatePart_DayOfMonth, 1, 2, 1, 31 },
+	{ "%j", "DDD", DatePart_DayOfYear, 1, 3, 1, 999 },
 	{ "%m", "MM", DatePart_Month, 1, 2, 1, 12 },
 	{ "%u", "ID", DatePart_IsoDayOfWeek, 1, 1, 1, 7 }
 };
@@ -421,7 +455,10 @@ static inline void ParseUtcOffsetForDateString(char *dateString, int sizeOfDateS
 static int32_t DetermineUtcOffsetForEpochWithTimezone(int64_t unixEpoch,
 													  ExtensionTimezone timezone);
 static uint32_t GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart);
+static StringView GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone,
+										  StringView format);
 static DateUnit GetDateUnitFromString(char *unit);
+static inline const char * GetDateUnitStringFromEnum(DateUnit unitEnum);
 static inline int GetDayOfWeek(int year, int month, int day);
 static inline int GetDifferenceInDaysForStartOfWeek(int dow, WeekDay weekdayEnum);
 static float8 GetEpochDiffForDateDiff(DateUnit dateUnitEnum, ExtensionTimezone
@@ -433,6 +470,7 @@ static Datum GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 
 									 millis);
 static Datum GetIntervalFromDateUnitAndAmount(DateUnit unitEnum, int64 amount);
 static int GetIsoWeeksForYear(int64 year);
+static inline int GetMonthIndexFromString(char *monthName, bool isAbbreviated);
 static Datum GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
 											  timezoneToApply);
 static Datum GetPgTimestampFromEpochWithTimezone(int64_t epochInMs, ExtensionTimezone
@@ -440,10 +478,7 @@ static Datum GetPgTimestampFromEpochWithTimezone(int64_t epochInMs, ExtensionTim
 static Datum GetPgTimestampFromEpochWithoutTimezone(int64_t epochInMs,
 													ExtensionTimezone timezone);
 static Datum GetPgTimestampFromUnixEpoch(int64_t epochInMs);
-static inline const char * GetDateUnitStringFromEnum(DateUnit unitEnum);
 static inline int64_t GetUnixEpochFromPgTimestamp(Datum timestamp);
-static StringView GetDateStringWithFormat(int64_t dateInMs, ExtensionTimezone timezone,
-										  StringView format);
 static inline void ReadThroughDatePart(char *dateString, int *indexOfDateStringIter,
 									   int maxCharsToRead, char *dateElement,
 									   bool areAllNumbers);
@@ -461,6 +496,11 @@ static void SetResultForDateFromIsoParts(DollarDateFromPartsBsonValue *dateFromP
 static void SetResultValueForDateFromString(DollarDateFromPartsBsonValue *dateFromParts,
 											ExtensionTimezone timezoneToApply,
 											bson_value_t *result);
+static void SetResultValueForDateFromStringInputDayOfYear(
+	DollarDateFromPartsBsonValue *dateFromParts,
+	ExtensionTimezone
+	timezoneToApply,
+	bson_value_t *result);
 static void SetResultValueForDateTruncFromDateBin(Datum pgTimestamp, Datum
 												  referenceTimestamp, ExtensionTimezone
 												  timezoneToApply, int64 binSize,
@@ -5434,6 +5474,26 @@ CheckIfRequiredPartsArePresent(DollarDateFromPartsBsonValue *dateFromParts,
 			return;
 		}
 	}
+	/* Special handling for case when day of year is present as it only requires year and this is non-iso format*/
+	else if (dateFromParts->dayOfYear.value_type == BSON_TYPE_INT32)
+	{
+		if (dateFromParts->year.value_type == BSON_TYPE_EOD)
+		{
+			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
+																	  MongoConversionFailure),
+																  errmsg(
+																	  "Error Parsing date string %s;A 'day of year' can only come after a year has been found",
+																	  dateString),
+																  errhint(
+																	  "Error Parsing date string;A 'day of year' can only come after a year has been found; No Year found  day of year is %d",
+																	  dateFromParts->
+																	  dayOfYear.value.
+																	  v_int32)
+																  )));
+			*isInputValid = false;
+			return;
+		}
+	}
 	else
 	{
 		if (dateFromParts->year.value_type == BSON_TYPE_EOD ||
@@ -5801,10 +5861,16 @@ ReadThroughDatePart(char *dateString, int *indexOfDateStringIter, int maxCharsTo
 		{
 			break;
 		}
+		else if (!areAllNumbers && !isalpha(dateString[*indexOfDateStringIter]))
+		{
+			break;
+		}
 		dateElement[i] = dateString[*indexOfDateStringIter];
 		i++;
 		(*indexOfDateStringIter)++;
 	}
+
+	/* This will not go out of bound as we allocated max charsToRead with size of terminating char */
 	dateElement[i] = '\0';
 }
 
@@ -5816,11 +5882,22 @@ static void
 SetResultValueForDateFromString(DollarDateFromPartsBsonValue *dateFromParts,
 								ExtensionTimezone timezoneToApply, bson_value_t *result)
 {
+	/*
+	 * Speical handling for when dayOfYear is given as input.
+	 * In this case to handle number of days we simply do a simple addition of interval to timestamp.
+	 */
+	if (dateFromParts->dayOfYear.value_type == BSON_TYPE_INT32)
+	{
+		SetResultValueForDateFromStringInputDayOfYear(dateFromParts, timezoneToApply,
+													  result);
+		return;
+	}
+
+	/* This 30 represents a fixed length string YYYY-DDD hh:mm:ss.ms */
 	char *postgresDateString = (char *) palloc(30 * sizeof(char));
 	char *postgresFormatString = (char *) (dateFromParts->isIsoFormat ?
 										   DefaultIsoPostgresFormatForDateString :
 										   DefaultPostgresFormatForDateString);
-
 	ConstructDateStringFromParts(dateFromParts, postgresDateString);
 	Datum timestampFromStringDatum = DirectFunctionCall2(to_timestamp,
 														 CStringGetTextDatum(
@@ -5829,6 +5906,65 @@ SetResultValueForDateFromString(DollarDateFromPartsBsonValue *dateFromParts,
 															 postgresFormatString));
 	Datum timestampAdjustedToTimezone =
 		GetPgTimestampAdjustedToTimezone(timestampFromStringDatum, timezoneToApply);
+	Datum resultEpoch = DirectFunctionCall2(timestamp_part,
+											CStringGetTextDatum(EPOCH),
+											timestampAdjustedToTimezone);
+
+	result->value.v_datetime = (int64) (DatumGetFloat8(resultEpoch) * 1000);
+	result->value_type = BSON_TYPE_DATE_TIME;
+}
+
+
+/*
+ * This function computes the result for input when we have dateParts specially dayOfYear.
+ * This function makes a timestamp using the given year and then add interval of days, hours, mins, sec to that year to find the result value.
+ */
+static void
+SetResultValueForDateFromStringInputDayOfYear(DollarDateFromPartsBsonValue *dateFromParts,
+											  ExtensionTimezone timezoneToApply,
+											  bson_value_t *result)
+{
+	/* Diretly using year as we have check year is required for dayOfyear calculation */
+	int32 year = dateFromParts->year.value.v_int32;
+	int32 dayOfyear = dateFromParts->dayOfYear.value.v_int32;
+	int32 hour = dateFromParts->hour.value_type != BSON_TYPE_EOD ?
+				 dateFromParts->hour.value.v_int32 : 0;
+	int32 minute = dateFromParts->minute.value_type != BSON_TYPE_EOD ?
+				   dateFromParts->minute.value.v_int32 : 0;
+	int32 second = dateFromParts->second.value_type != BSON_TYPE_EOD ?
+				   dateFromParts->second.value.v_int32 : 0.0;
+	int32 millis = dateFromParts->millisecond.value_type != BSON_TYPE_EOD ?
+				   dateFromParts->millisecond.value.v_int32 : 0;
+
+	int32 defaultValueForMonth = 1;
+	int32 defaultValueForDay = 1;
+
+	float8 secondsAdjustedWithMillis = second + (((float8) millis) /
+												 MILLISECONDS_IN_SECOND);
+	Datum timestampFromYear = DirectFunctionCall6(make_timestamp,
+												  year,
+												  defaultValueForMonth,
+												  defaultValueForDay,
+												  hour,
+												  minute,
+												  secondsAdjustedWithMillis);
+	Datum intervalWithDays = GetIntervalFromDatePart(0, 0, 0, dayOfyear, 0, 0, 0, 0);
+
+	bool isResultOverflow = false;
+	Datum timestampWithDaysAdjusted = AddIntervalToTimestampWithPgTry(timestampFromYear,
+																	  intervalWithDays,
+																	  &isResultOverflow);
+
+	/* This would be highly unlikely as days can be at max 999 but when year value is very high we return max value. */
+	if (isResultOverflow)
+	{
+		result->value_type = BSON_TYPE_DATE_TIME;
+		result->value.v_datetime = INT64_MAX;
+		return;
+	}
+
+	Datum timestampAdjustedToTimezone =
+		GetPgTimestampAdjustedToTimezone(timestampWithDaysAdjusted, timezoneToApply);
 	Datum resultEpoch = DirectFunctionCall2(timestamp_part,
 											CStringGetTextDatum(EPOCH),
 											timestampAdjustedToTimezone);
@@ -5978,8 +6114,9 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 	int maxRangeVal = dateFormats[indexOfDateFormatMap].maxRangeValue;
 	char *dateElement = (char *) palloc0((maxCharsToRead + 1) * sizeof(char));
 
-	/* For now, it's true but it can change on datePart when we add Month names */
-	bool areAllNumbers = true;
+	/* When Str parts are supplied then areAllNumbers are false otherwise true. */
+	bool areAllNumbers = !(datePart == DatePart_Str_Month || datePart ==
+						   DatePart_Str_Month_Abbr);
 	ReadThroughDatePart(dateString, indexOfDateStringIter, maxCharsToRead, dateElement,
 						areAllNumbers);
 	int lenDateElement = strlen(dateElement);
@@ -5995,29 +6132,34 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 		return;
 	}
 
-	/* Converting to integer and checking if the value is in the range. */
-	int dateElementValue = atoi(dateElement);
-	pfree(dateElement);
+	bson_value_t dateElementBsonValue = { .value_type = BSON_TYPE_INT32 };
 
-	if (dateElementValue < minRangeVal || dateElementValue > maxRangeVal)
+	/* In case all parts are numbers in mongo format then we can parse them upront*/
+	if (areAllNumbers)
 	{
-		CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
-																  MongoConversionFailure),
-															  errmsg(
-																  "Error parsing date string '%s'; %d: Value %d is out of range",
-																  dateString,
-																  *indexOfDateStringIter,
-																  dateElementValue),
-															  errhint(
-																  "Error parsing date string. Value %d is out of range",
-																  dateElementValue))));
-		*isInputValid = false;
-		return;
-	}
+		/* Converting to integer and checking if the value is in the range. */
+		int dateElementValue = atoi(dateElement);
+		pfree(dateElement);
 
-	bson_value_t dateElementBsonValue = {
-		.value.v_int32 = dateElementValue, .value_type = BSON_TYPE_INT32
-	};
+		if (dateElementValue < minRangeVal || dateElementValue > maxRangeVal)
+		{
+			CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
+																	  MongoConversionFailure),
+																  errmsg(
+																	  "Error parsing date string '%s'; %d: Value %d is out of range",
+																	  dateString,
+																	  *
+																	  indexOfDateStringIter,
+																	  dateElementValue),
+																  errhint(
+																	  "Error parsing date string. Value %d is out of range",
+																	  dateElementValue))));
+			*isInputValid = false;
+			return;
+		}
+		dateElementBsonValue.value.v_int32 = dateElementValue;
+		dateElementBsonValue.value_type = BSON_TYPE_INT32;
+	}
 
 	switch (datePart)
 	{
@@ -6087,6 +6229,41 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 			break;
 		}
 
+		case DatePart_DayOfYear:
+		{
+			*isIsoWeekDateFmt = 0;
+			dateFromParts->dayOfYear = dateElementBsonValue;
+			break;
+		}
+
+		case DatePart_Str_Month:
+		case DatePart_Str_Month_Abbr:
+		{
+			*isIsoWeekDateFmt = 0;
+			bool isAbbreviated = datePart == DatePart_Str_Month_Abbr;
+			int month = GetMonthIndexFromString(dateElement, isAbbreviated);
+			pfree(dateElement);
+
+			/* In case the name of month is wrong we return error.*/
+			if (month == -1)
+			{
+				CONDITIONAL_EREPORT(isOnErrorPresent, ereport(ERROR, (errcode(
+																		  MongoConversionFailure),
+																	  errmsg(
+																		  "Error parsing date string '%s'; %d: Textual month cannot be found",
+																		  dateString,
+																		  *
+																		  indexOfDateStringIter),
+																	  errhint(
+																		  "Error parsing date string. Textual month cannot be found for input month"))));
+				*isInputValid = false;
+				return;
+			}
+			dateElementBsonValue.value.v_int32 = month;
+			dateFromParts->month = dateElementBsonValue;
+			break;
+		}
+
 		default:
 		{
 			/* Invalid date part */
@@ -6094,6 +6271,37 @@ ValidateDatePartFromDateString(int indexOfDateFormatMap, char *dateString, int
 			break;
 		}
 	}
+}
+
+
+/* This is a small utility function which given the string name of month returns it's index.
+ * This function compares string ignoring case.
+ */
+static inline int
+GetMonthIndexFromString(char *monthName, bool isAbbreviated)
+{
+	int numMonths = sizeof(monthNamesFull) / sizeof(monthNamesFull[0]);
+
+	for (int index = 0; index < numMonths; index++)
+	{
+		if (isAbbreviated)
+		{
+			/* Compare only the first 3 characters, ignoring case */
+			if (strncasecmp(monthNamesFull[index], monthName, 3) == 0)
+			{
+				return index + 1;
+			}
+		}
+		else
+		{
+			/* Compare the full month name, ignoring case */
+			if (strcasecmp(monthNamesFull[index], monthName) == 0)
+			{
+				return index + 1;
+			}
+		}
+	}
+	return -1;
 }
 
 
