@@ -446,8 +446,37 @@ def check_files_in_path(path, files):
 
     return not has_error
 
+def get_ysqlsh_test_env_path():
+
+    # Find directories inside YUGABYTE_DIR containing ysqlsh
+    directories_with_ysqlsh = find_directories_with_ysqlsh(YUGABYTE_DIR)
+    if directories_with_ysqlsh:
+        for directory in directories_with_ysqlsh:
+            if 'postgres/bin' in directory:
+                ysqlsh_path = os.path.join(directory, 'ysqlsh')
+                Output.log("Using directory for running ysqlsh: {}".format(
+                                                                directory))
+                return ysqlsh_path
+    else:
+        Output.log_error_and_exit(
+            "No directories containing ysqlsh were found.")
+
+
+def find_directories_with_ysqlsh(root_dir):
+    directories_with_ysqlsh = []
+    for dirpath, _, filenames in os.walk(root_dir):
+        if 'ysqlsh' in filenames:
+            directories_with_ysqlsh.append(dirpath)
+    return directories_with_ysqlsh
+
 # Finds the path of a particular YB binary
 def find_binary_location(binary_name):
+
+    # Specific path for ysqlsh in test environment
+    is_test_env = os.getenv('USER') == 'jenkins'
+    if binary_name == "ysqlsh" and is_test_env:
+        return get_ysqlsh_test_env_path()
+
     # Default if tar is downloaded
     dir_candidates = [
         os.path.join(YUGABYTE_DIR, "bin")
