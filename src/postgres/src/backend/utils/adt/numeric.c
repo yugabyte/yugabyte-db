@@ -43,6 +43,9 @@
 #include "utils/pg_lsn.h"
 #include "utils/sortsupport.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /* ----------
  * Uncomment the following to enable compilation of dump_numeric()
  * and dump_var() and to get a dump of any result produced by make_result().

@@ -1,8 +1,8 @@
 ---
 title: Choose a topology
 linkTitle: Choose a topology
-description: Overview of topologies available in YugabyteDB Managed.
-headcontent: Deployment and replication options in YugabyteDB Managed
+description: Overview of topologies available in YugabyteDB Aeon.
+headcontent: Deployment and replication options in YugabyteDB Aeon
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-topology
@@ -17,7 +17,7 @@ A YugabyteDB cluster consists of three or more nodes that communicate with each 
 - Distributing data can make the data service resilient to zone and region outages in the cloud.
 - Geo-partitioning can keep user data in a particular geographic region to comply with data sovereignty regulations.
 
-YugabyteDB Managed offers a number of deployment and replication options in geo-distributed environments to achieve resilience, performance, and compliance objectives.
+YugabyteDB Aeon offers a number of deployment and replication options in geo-distributed environments to achieve resilience, performance, and compliance objectives.
 
 | Type | Consistency | Read Latency | Write Latency | Best For |
 | :--- | :--- | :--- | :--- | :--- |
@@ -123,7 +123,7 @@ Here's how it works:
 
 With this deployment mode, the cluster automatically keeps specific rows and all the table shards (known as tablets) in the specified region. In addition to complying with data sovereignty requirements, you also get low-latency access to data from users in the region while maintaining transactional consistency semantics.
 
-In YugabyteDB Managed, a partition-by-region cluster consists initially of a primary region where all tables that aren't geo-partitioned (that is, don't reside in a tablespace) reside, and any number of additional regions where you can store partitioned data, whether it's to reduce latencies or comply with data sovereignty requirements. Tablespaces are automatically placed in all the regions.
+In YugabyteDB Aeon, a partition-by-region cluster consists initially of a primary region where all tables that aren't geo-partitioned (that is, don't reside in a tablespace) reside, and any number of additional regions where you can store partitioned data, whether it's to reduce latencies or comply with data sovereignty requirements. Tablespaces are automatically placed in all the regions.
 
 ![Geo-partitioned cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-5.png)
 
@@ -160,7 +160,7 @@ To deploy a partition-by-region cluster, refer to [Partition by region](../creat
 <!--
 ## Cross-universe
 
-WARNING: This section is somewhat out of date, especially with regards to consistency; see [xCluster replication](../../../architecture/docdb-replication/async-replication/) for up-to-date information.  Also, note that YBM  does not use the word "universe" currently.
+WARNING: This section is somewhat out of date, especially with regards to consistency; see [xCluster replication](../../../architecture/docdb-replication/async-replication/) for up-to-date information.  Also, note that YugabyteDB Aeon does not use the word "universe" currently.
 
 In situations where applications want to keep data in multiple clouds or in remote regions, YugabyteDB offers xCluster replication across two data centers or cloud regions. This can be either bi-directional in an active-active configuration, or uni-directional in an active-passive configuration.
 

@@ -54,7 +54,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
       const xcluster::ConsumerTabletInfo& consumer_tablet_info,
       const NamespaceId& consumer_namespace_id,
       std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
-      rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
+      rpc::Rpcs* rpcs, client::YBClient& local_client,
       const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
       SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
       std::function<int64_t(const TabletId&)> get_leader_term);
@@ -157,7 +157,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
   std::atomic<SchemaVersion> last_compatible_consumer_schema_version_;
   std::function<int64_t(const TabletId&)> get_leader_term_;
 
-  const std::shared_ptr<XClusterClient> local_client_;
+  client::YBClient& local_client_;
   std::shared_ptr<XClusterOutputClient> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;
   std::shared_ptr<XClusterDDLQueueHandler> ddl_queue_handler_;

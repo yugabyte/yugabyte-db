@@ -8,6 +8,7 @@ import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -66,14 +67,17 @@ public class DeleteReplication extends XClusterConfigTaskBase {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
-      // Sync the state for the tables.
-      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
-          getClusterConfig(client, targetUniverse.getUniverseUUID());
-      boolean replicationGroupExists =
-          syncReplicationSetUpStateForTables(
-              clusterConfig, xClusterConfig, xClusterConfig.getTableIds());
-      if (!replicationGroupExists) {
-        log.warn("No replication group found for {}", xClusterConfig);
+
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        // Sync the state for the tables.
+        CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
+            getClusterConfig(client, targetUniverse.getUniverseUUID());
+        boolean replicationGroupExists =
+            syncReplicationSetUpStateForTables(
+                clusterConfig, xClusterConfig, xClusterConfig.getTableIds());
+        if (!replicationGroupExists) {
+          log.warn("No replication group found for {}", xClusterConfig);
+        }
       }
 
       // Catch the `Universe replication NOT_FOUND` exception, and because it already does not
@@ -108,15 +112,16 @@ public class DeleteReplication extends XClusterConfigTaskBase {
             xClusterConfig.getUuid(),
             e.getMessage());
       }
-
-      // After the RPC call, the corresponding stream ids on the source universe will be deleted
-      // as well.
-      xClusterConfig
-          .getTablesById(
-              xClusterConfig.getTableIdsWithReplicationSetup(
-                  xClusterConfig.getTableIds(), true /* done */))
-          .forEach(XClusterTableConfig::reset);
-      xClusterConfig.update();
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        // After the RPC call, the corresponding stream ids on the source universe will be deleted
+        // as well.
+        xClusterConfig
+            .getTablesById(
+                xClusterConfig.getTableIdsWithReplicationSetup(
+                    xClusterConfig.getTableIds(), true /* done */))
+            .forEach(XClusterTableConfig::reset);
+        xClusterConfig.update();
+      }
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse().incrementVersion();

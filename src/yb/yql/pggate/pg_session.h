@@ -360,10 +360,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     connected_database_ = "";
   }
 
-  // Generate a new random and unique rowid. It is a v4 UUID.
-  std::string GenerateNewRowid() {
-    return GenerateObjectId(true /* binary_id */);
-  }
+  std::string GenerateNewYbrowid();
 
   void InvalidateAllTablesCache();
 
@@ -432,7 +429,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
  private:
-  Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
+  Result<PgTableDescPtr> DoLoadTable(
+      const PgObjectId& table_id, bool fail_on_cache_hit,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
   Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   const std::string LogPrefix() const;

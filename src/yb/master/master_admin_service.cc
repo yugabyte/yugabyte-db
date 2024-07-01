@@ -50,10 +50,14 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (CreateTransactionStatusTable)
       (DdlLog)
       (DeleteNotServingTablet)
-      (DisableTabletSplitting)
       (FlushSysCatalog)
-      (IsTabletSplittingComplete)
       (SplitTablet)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      TabletSplitManager,
+      (DisableTabletSplitting)
+      (IsTabletSplittingComplete)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

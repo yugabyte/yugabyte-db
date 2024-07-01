@@ -540,6 +540,7 @@ message PgOpenTableRequestPB {
   string table_id = 1;
   bool reopen = 2;
   fixed64 invalidate_cache_time_us = 3;
+  bool include_inactive = 4;
 }
 
 message PgTablePartitionsPB {
@@ -611,6 +612,12 @@ message PgPerformOptionsPB {
   int64 pg_txn_start_us = 22;
 
   AshMetadataPB ash_metadata = 23;
+
+  // When set,
+  // - Sets the read time locally.
+  // - Clamps the read uncertainty window.
+  // See the commit desc for more info.
+  bool clamp_uncertainty_window = 24;
 }
 
 message PgPerformRequestPB {

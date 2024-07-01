@@ -1,8 +1,8 @@
-title: Availability Zone within a Region in a cloud provider
+title: AvailabilityZone
+description: Availability Zone (AZ) within a Region in a Cloud Provider. Part of Region.
 type: object
 required:
   - name
-description: Availability zone (AZ) for a region
 properties:
   uuid:
     description: AZ UUID

@@ -54,8 +54,10 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 using std::pair;
+using namespace std::literals;
 
 DECLARE_int32(metrics_retirement_age_ms);
+DECLARE_bool(TEST_pause_flush_aggregated_metrics);
 
 namespace yb {
 
@@ -688,6 +690,51 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
   // Check lag output.
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_lag Test lag description\n# TYPE t_lag gauge"));
+}
+
+TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
+  const std::string kDescription = "gauge description";
+
+  MetricEntity::AttributeMap entity_attr;
+  entity_attr["tablet_id"] = "tablet_id_49";
+  entity_attr["table_name"] = "test_table";
+  entity_attr["table_id"] = "table_id_50";
+  auto tablet_entity =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_51", entity_attr);
+  scoped_refptr<AtomicGauge<int64_t>> gauge =
+      tablet_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
+        std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
+            tablet_entity->prototype().name(), "t_gauge",
+            kDescription, MetricUnit::kBytes,
+            kDescription, yb::MetricLevel::kInfo)),
+        static_cast<int64_t>(0));
+
+  SetAtomicFlag(true, &FLAGS_TEST_pause_flush_aggregated_metrics);
+  std::thread metric_deletion_thread([&]{
+    // Simulate metric deletion in the middle of WriteForPrometheus.
+    std::this_thread::sleep_for(2s);
+    tablet_entity->Remove(gauge->prototype());
+    gauge.reset(nullptr);
+    SetAtomicFlag(false, &FLAGS_TEST_pause_flush_aggregated_metrics);
+  });
+
+  MetricPrometheusOptions opts;
+  opts.export_help_and_type = ExportHelpAndType::kTrue;
+  {
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    metric_deletion_thread.join();
+    // Check that the metric is still present in the output.
+    ASSERT_NE(output.str().find(kDescription), string::npos);
+  }
+  {
+    // Pull the metric again and check that it is not present in the output.
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+    ASSERT_EQ(output.str().find(kDescription), string::npos);
+  }
 }
 
 } // namespace yb

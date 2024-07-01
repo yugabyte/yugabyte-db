@@ -19,22 +19,22 @@ A distributed SQL database needs to automatically split the data in a table and 
 
 YugabyteDB splits table data into smaller pieces called [tablets a.k.a shards](../key-concepts#tablet). Sharding is the process of mapping of a row of a table to a shard. Sharding helps in scalability and geo-distribution by horizontally partitioning data. These shards are distributed across multiple server nodes (containers, virtual machines, bare-metal) in a shared-nothing architecture. The application interacts with a SQL table as one logical unit and remains agnostic to the physical placement of the shards. DocDB supports range and hash sharding natively.
 
-{{<tip>}}
+{{<lead link="sharding/">}}
 To know more about the different sharding strategies and how they work, see [Sharding strategies](sharding/).
-{{</tip>}}
+{{</lead>}}
 
 ## Tablet splitting
 
 As table data grows, the size of tablets increase. Once a tablet reaches a threshold size, it automatically splits into two. These 2 new tablets can now be placed in other nodes to keep the load on the system balanced. Tablet splitting is one of the foundations of [scaling](../../explore/linear-scalability).
 
-{{<tip>}}
+{{<lead link="tablet-splitting/">}}
 To understand how and when tablets split, see [Tablet splitting](tablet-splitting/).
-{{</tip>}}
+{{</lead>}}
 
 ## Colocated tables
 
 YugabyteDB allows for closely related data to reside together. Colocation helps to optimize for low-latency, high-performance data access by reducing the need for additional trips across the network. It also reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and the storage for these per node.
 
-{{<tip>}}
+{{<lead link="colocated-tables/">}}
 To know more about how and when to use colocated tables and database, see [Colocated tables](colocated-tables/).
-{{</tip>}}
+{{</lead>}}

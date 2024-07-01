@@ -30,8 +30,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/stack_trace.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 
@@ -58,6 +57,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
       const rocksdb::ReadOptions& read_opts,
       const ReadOperationData& read_operation_data,
       const TransactionOperationContext& txn_op_context,
+      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
       rocksdb::Statistics* intentsdb_statistics = nullptr);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
@@ -88,13 +88,20 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // Seek to last doc key.
   void SeekToLastDocKey();
 
-  // Seek to previous SubDocKey as opposed to previous DocKey.
+  // Seek to previous SubDocKey as opposed to previous DocKey. Used for Redis only.
   void PrevSubDocKey(const dockv::KeyBytes& key_bytes);
 
-  // This method positions the iterator at the beginning of the DocKey found before the doc_key
-  // provided.
+  // Refer to the IntentAwareIteratorIf definition for the methods description.
   void PrevDocKey(const dockv::DocKey& doc_key);
   void PrevDocKey(Slice encoded_doc_key) override;
+  void SeekPrevDocKey(Slice encoded_doc_key) override;
+
+  // Positions the iterator to the previous suitable record relative to the current position.
+  void Prev();
+
+  // Seek backward to the specified key (it is responsibility of caller to make sure it does not
+  // have hybrid time). Stops at the first met record scanned in the reverse order.
+  void SeekBackward(dockv::KeyBytes& key_bytes);
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
@@ -117,7 +124,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   // Finds the latest record for a particular key after the provided max_overwrite_time, returns the
   // write time of the found record, and optionally also the result value. This latest record may
-  // not be a full record, but instead a merge record (e.g. a TTL row).
+  // not be a full record, but instead a merge record (e.g. a TTL row). Used for Redis only.
   Status FindLatestRecord(
       Slice key_without_ht,
       EncodedDocHybridTime* max_overwrite_time,
@@ -128,8 +135,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // This record may not be a full record, but instead a merge record (e.g. a
   // TTL row).
   // Returns HybridTime::kInvalid if no such record was found.
-  Result<HybridTime> FindOldestRecord(Slice key_without_ht,
-                                      HybridTime min_hybrid_time);
+  Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
 
   size_t NumberOfBytesAppendedDuringSeekForward() const {
     return 1 + encoded_read_time_.global_limit.size();
@@ -140,10 +146,14 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   std::string DebugPosToString() override;
 
  private:
-  friend class IntentAwareIteratorUpperboundScope;
+  template <bool kLowerBound> friend class IntentAwareIteratorBoundScope;
 
   // Set the upper bound for the iterator.
-  Slice SetUpperbound(Slice upperbound) final;
+  Slice SetUpperbound(Slice upperbound);
+  Slice SetLowerbound(Slice lowerbound);
+
+  void DoPrevDocKey(Slice encoded_doc_key);
+  void DoSeekPrevDocKey(Slice encoded_doc_key);
 
   void DoSeekForward(Slice key);
 
@@ -152,7 +162,8 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   // Seek to latest doc key among regular and intent iterator.
   void SeekToLatestDocKeyInternal();
-  // Seek to latest subdoc key among regular and intent iterator.
+
+  // Seek to latest subdoc key among regular and intent iterator. Used for Redis only.
   void SeekToLatestSubDocKeyInternal();
 
   // Choose latest subkey among regular and intent iterators.
@@ -181,11 +192,15 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // If we already resolved intent after seek_key_prefix_, then it will be used.
   void SeekForwardToSuitableIntent();
 
+  // Returns true if there is a resolved intent and it is correctly ordered towards the given key.
+  template <Direction direction>
+  bool HasSuitableIntent(Slice key);
+
   // Seek intent sub-iterator forward (backward) to latest suitable intent for first available
   // key. Updates resolved_intent_XXX fields.
   // intent_iter_ will be positioned to first intent for the smallest (biggest) key
   // greater (smaller) than resolved_intent_sub_doc_key_encoded_.
-  template<Direction direction>
+  template <Direction direction>
   void SeekToSuitableIntent(const rocksdb::KeyValueEntry& entry);
 
   // Decodes intent at intent_iter_ position and updates resolved_intent_* fields if that intent
@@ -218,7 +233,19 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   Result<EncodedDocHybridTime> GetMatchingRegularRecordDocHybridTime(Slice key_without_ht);
 
   // Whether current entry is regular key-value pair.
-  bool IsEntryRegular(bool descending = false);
+  template <bool kDescending = false>
+  inline bool IsEntryRegular() const {
+    if (PREDICT_FALSE(!regular_entry_)) {
+      return false;
+    }
+    if (!HasValidIntent()) {
+      return true;
+    }
+    return IsRegularEntryOrderedBeforeResolvedIntent<kDescending>();
+  }
+
+  template <bool kDescending>
+  bool IsRegularEntryOrderedBeforeResolvedIntent() const;
 
   // Set the exclusive upperbound of the intent iterator to the current SubDocKey of the regular
   // iterator. This is necessary to avoid RocksDB iterator from scanning over the deleted intents
@@ -241,8 +268,14 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   const EncodedDocHybridTime& GetIntentDocHybridTime(bool* same_transaction = nullptr);
 
+  inline bool HasValidIntent() const {
+    return resolved_intent_state_ == ResolvedIntentState::kValid;
+  }
+
   // Returns true if iterator currently points to some record.
-  bool HasCurrentEntry();
+  inline bool HasCurrentEntry() const {
+    return regular_entry_ || HasValidIntent();
+  }
 
   size_t IntentPrepareSeek(Slice key, Slice suffix);
   size_t IntentPrepareSeek(Slice key, char suffix);
@@ -251,6 +284,11 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // for key + suffix.
   // If use_suffix_for_prefix then suffix is used in seek_key_prefix_, otherwise it will match key.
   void IntentSeekForward(size_t prefix_len);
+
+  // Seeks backwards to specified encoded key taking (it is responsibility of caller to make sure it
+  // doesn't have hybrid time). Does not perform a seek if the iterator is already positioned
+  // before the given key.
+  void IntentSeekBackward(Slice key);
 
   template <class T>
   bool HandleStatus(const Result<T>& result) {
@@ -261,10 +299,16 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
     return false;
   }
 
+  // If status is not OK, sets status_ and returns false; otherwise returns true. It is required
+  // to be called for any iterator's validity check, refer to #16565 for the details.
   bool HandleStatus(const Status& status);
+
+  template <bool kDescending = false>
   void FillEntry();
   void FillRegularEntry();
   void FillIntentEntry();
+
+  void ValidateResolvedIntentBounds();
 
   void SeekTriggered() {
 #ifndef NDEBUG
@@ -288,6 +332,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   // Upperbound for seek. If we see regular or intent record past this bound, it will be ignored.
   Slice upperbound_;
+  Slice lowerbound_;
 
   // Buffer for holding the exclusive upper bound of the intent key.
   KeyBuffer intent_upperbound_buffer_;
@@ -305,11 +350,14 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   KeyBuffer resolved_intent_sub_doc_key_encoded_;
   dockv::KeyBytes resolved_intent_value_;
 
+  const bool use_fast_backward_scan_ = false;
+
   TransactionStatusCache transaction_status_cache_;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
   KeyBuffer seek_buffer_;
   FetchedEntry entry_;
+  BoundedRocksDbIterator* entry_source_ = nullptr;
 
 #ifndef NDEBUG
   void DebugSeekTriggered();
@@ -321,25 +369,39 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 #endif
 };
 
-class NODISCARD_CLASS IntentAwareIteratorUpperboundScope {
+
+template <bool kLowerBound>
+class NODISCARD_CLASS IntentAwareIteratorBoundScope {
  public:
-  IntentAwareIteratorUpperboundScope(Slice upperbound, IntentAwareIterator* iterator)
-      : iterator_(iterator), prev_(iterator->SetUpperbound(upperbound)) {
+  IntentAwareIteratorBoundScope(Slice bound, IntentAwareIterator* iterator)
+      : iterator_(DCHECK_NOTNULL(iterator)), prev_bound_(SetBound(bound)) {
   }
 
-  IntentAwareIteratorUpperboundScope(const IntentAwareIteratorUpperboundScope&) = delete;
-  void operator=(const IntentAwareIteratorUpperboundScope&) = delete;
-
-  ~IntentAwareIteratorUpperboundScope() {
-    iterator_->SetUpperbound(prev_);
+  ~IntentAwareIteratorBoundScope() {
+    SetBound(prev_bound_);
   }
+
+  IntentAwareIteratorBoundScope(const IntentAwareIteratorBoundScope&) = delete;
+  IntentAwareIteratorBoundScope(IntentAwareIteratorBoundScope&&) = delete;
+  IntentAwareIteratorBoundScope& operator=(const IntentAwareIteratorBoundScope&) = delete;
+  IntentAwareIteratorBoundScope& operator=(IntentAwareIteratorBoundScope&&) = delete;
 
  private:
+  inline Slice SetBound(Slice bound) {
+    if constexpr (kLowerBound) {
+      return iterator_->SetLowerbound(bound);
+    } else {
+      return iterator_->SetUpperbound(bound);
+    }
+  }
+
   IntentAwareIterator* iterator_;
-  Slice prev_;
+  Slice prev_bound_;
 };
+
+using IntentAwareIteratorLowerboundScope = IntentAwareIteratorBoundScope<true>;
+using IntentAwareIteratorUpperboundScope = IntentAwareIteratorBoundScope<false>;
 
 std::string DebugDumpKeyToStr(Slice key);
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb

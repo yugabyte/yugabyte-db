@@ -13,11 +13,7 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.AppConfigHelper;
-import com.yugabyte.yw.common.config.impl.BootstrapRequiredRpcPoolMaxThreadListener;
-import com.yugabyte.yw.common.config.impl.MetricCollectionLevelListener;
-import com.yugabyte.yw.common.config.impl.MonitoredMountRootsListener;
-import com.yugabyte.yw.common.config.impl.UseNewRbacAuthzListener;
-import com.yugabyte.yw.common.config.impl.WSClientKeyListener;
+import com.yugabyte.yw.common.config.impl.*;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -40,7 +36,8 @@ public class RuntimeConfigChangeNotifier {
       MetricCollectionLevelListener metricCollectionLevelListener,
       MonitoredMountRootsListener monitoredMountRootsListener,
       UseNewRbacAuthzListener useNewRbacAuthzListener,
-      BootstrapRequiredRpcPoolMaxThreadListener bootstrapRequiredRpcPoolMaxThreadListener) {
+      BootstrapRequiredRpcPoolMaxThreadListener bootstrapRequiredRpcPoolMaxThreadListener,
+      CpuUsageIntervalListener cpuUsageIntervalListener) {
     List<String> refreshableClients = AppConfigHelper.getRefreshableClients();
     for (String wsClientKey : refreshableClients) {
       addListener(new WSClientKeyListener(wsClientKey));
@@ -49,6 +46,7 @@ public class RuntimeConfigChangeNotifier {
     addListener(monitoredMountRootsListener);
     addListener(useNewRbacAuthzListener);
     addListener(bootstrapRequiredRpcPoolMaxThreadListener);
+    addListener(cpuUsageIntervalListener);
   }
 
   public void notifyListeners(UUID scopeUUID, String path) {

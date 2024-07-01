@@ -35,6 +35,7 @@ class PgTableCache {
 
   Status GetInfo(
       const TableId& table_id,
+      master::IncludeInactive include_inactive,
       client::YBTablePtr* table,
       master::GetTableSchemaResponsePB* schema);
 
@@ -42,6 +43,9 @@ class PgTableCache {
 
   void Invalidate(const TableId& table_id);
   void InvalidateAll(CoarseTimePoint invalidation_time);
+  void InvalidateDbTables(const std::unordered_set<uint32_t>& db_oids_updated,
+                          const std::unordered_set<uint32_t>& db_oids_deleted,
+                          CoarseTimePoint invalidation_time);
 
  private:
   class Impl;

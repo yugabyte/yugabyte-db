@@ -94,7 +94,7 @@ Before installing YugabyteDB Anywhere, verify that you have the following:
 
 - A Kubernetes cluster with nodes configured according to the [hardware requirements](#kubernetes-based-installations).
 - A client environment with the kubectl and Helm command-line tools configured with a service account or user that has admin access to a  single namespace on the subject Kubernetes cluster.
-- A Kubernetes secret obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
+- A Kubernetes secret obtained from Yugabyte Support.
 
 In addition, ensure the following:
 

@@ -247,7 +247,7 @@ static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
  * ----------
  */
 static YBCPgYBTupleIdDescriptor*
-YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, HeapTuple tup)
+YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, TupleTableSlot *slot)
 {
 	bool using_index = false;
 	Relation idx_rel = RelationIdGetRelation(riinfo->conindid);
@@ -268,19 +268,17 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, HeapTuple tup)
 		riinfo->nkeys + (using_index ? 1 : 0));
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
 
-	Relation fk_rel = RelationIdGetRelation(riinfo->fk_relid);
 	YBCPgTableDesc ybc_source_table_desc = NULL;
 	HandleYBStatus(YBCPgGetTableDesc(source_dboid,
 									 source_rel_relfilenode_oid,
 									 &ybc_source_table_desc));
 
-	TupleDesc fk_tupdesc = fk_rel->rd_att;
 	TupleDesc source_tupdesc = source_rel->rd_att;
 	for (int i = 0; i < riinfo->nkeys; ++i, ++next_attr)
 	{
 		next_attr->attr_num = using_index ? (i + 1) : riinfo->pk_attnums[i];
 		const int fk_attnum = riinfo->fk_attnums[i];
-		const Oid type_id = TupleDescAttr(fk_tupdesc, fk_attnum - 1)->atttypid;
+		const Oid type_id = TupleDescAttr(slot->tts_tupleDescriptor, fk_attnum - 1)->atttypid;
 		/*
 		 * In case source_rel and fk_rel has different type of same attribute conversion is required
 		 * to build source_rel tuple id from fk_rel tuple.
@@ -300,14 +298,13 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo, HeapTuple tup)
 		 */
 		next_attr->collation_id =
 			TupleDescAttr(source_tupdesc, next_attr->attr_num - 1)->attcollation;
-		next_attr->datum = heap_getattr(tup, fk_attnum, fk_tupdesc, &next_attr->is_null);
+		next_attr->datum = slot_getattr(slot, fk_attnum, &next_attr->is_null);
 		YBCPgColumnInfo column_info = {0};
 		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_source_table_desc,
 												   next_attr->attr_num,
 												   &column_info), ybc_source_table_desc);
 		YBSetupAttrCollationInfo(next_attr, &column_info);
 	}
-	RelationClose(fk_rel);
 	RelationClose(source_rel);
 	if (using_index && result)
 		YBCFillUniqueIndexNullAttribute(result);
@@ -430,22 +427,16 @@ RI_FKey_check(TriggerData *trigdata)
 
 	if (IsYBRelation(pk_rel))
 	{
-		/* YB_TODO(later): Do away with TTS to heaptuple conversion. */
-		bool shouldFree;
-		HeapTuple new_row = ExecFetchSlotHeapTuple(newslot, false, &shouldFree);
-
 		/*
 		 * Use fast path for FK check in case ybctid for row in source table can be build from
 		 * referenced table tuple.
 		 */
-		YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(riinfo, new_row);
+		YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(riinfo, newslot);
 		if (descr)
 		{
 			bool found = false;
 			HandleYBStatus(YBCForeignKeyReferenceExists(descr, &found));
 			pfree(descr);
-			if (shouldFree)
-				pfree(new_row);
 			if (!found)
 			{
 				ri_BuildQueryKey(&qkey, riinfo, RI_PLAN_CHECK_LOOKUPPK);
@@ -455,8 +446,6 @@ RI_FKey_check(TriggerData *trigdata)
 			table_close(pk_rel, RowShareLock);
 			return PointerGetDatum(NULL);
 		}
-		if (shouldFree)
-			pfree(new_row);
 	}
 
 	if (SPI_connect() != SPI_OK_CONNECT)
@@ -3146,10 +3135,10 @@ RI_FKey_trigger_type(Oid tgfoid)
 }
 
 void
-YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, HeapTuple new_row)
+YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel, TupleTableSlot *new_slot)
 {
 	YBCPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(
-		ri_FetchConstraintInfo(trigger, fk_rel, false /* rel_is_pk */), new_row);
+		ri_FetchConstraintInfo(trigger, fk_rel, false /* rel_is_pk */), new_slot);
 	/*
 	 * Check that ybctid for row in source table can be build from referenced table tuple
 	 * (i.e. no type casting is required)

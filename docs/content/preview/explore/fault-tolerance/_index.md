@@ -43,49 +43,49 @@ A fault domain is a potential point of failure. Examples of fault domains would 
 
 In a universe with a replication factor (RF) of 3, the fault tolerance is equal to 1 node. That is, a minimum of 3 nodes is required to tolerate 1 node outage; an RF 5 universe needs a minimum of 5 nodes to tolerate 2 node outages. Each additional node increases the resilience to node failures.
 
-{{<tip>}}
+{{<lead link="./macos">}}
 See [Handling node failures](./macos) to understand how YugabyteDB is resilient to node failures.
-{{</tip>}}
+{{</lead>}}
 
 ### Rack failure
 
 In the case of on-premises deployments, you can consider racks as zones to make your universe rack-aware and ensure that a universe spread across racks can survive rack-level failures.
 
-{{<tip>}}
+{{<lead link="./handling-rack-failures">}}
 See [Handling rack failures](./handling-rack-failures) to understand how YugabyteDB is resilient to rack failures.
-{{</tip>}}
+{{</lead>}}
 
 ### Zone failure
 
 An RF 3 universe can survive 1 zone outage when spread across 3 zones. This setup ensures that even if an entire zone goes down, the database can continue operating.
 
-{{<tip>}}
+{{<lead link="./handling-zone-failures">}}
 See [Handling zone failures](./handling-zone-failures) to understand how YugabyteDB is resilient to zone failures.
-{{</tip>}}
+{{</lead>}}
 
 ### Region failure
 
 This is similar to zone-level fault tolerance, but on a larger scale, where nodes are spread across multiple regions. This provides the highest level of protection, providing fault tolerance against region-wide outages.
 
-{{<tip>}}
+{{<lead link="./handling-region-failures">}}
 See [Handling region failures](./handling-region-failures) to understand how YugabyteDB is resilient to region failures.
-{{</tip>}}
+{{</lead>}}
 
 ## Planned maintenance
 
 The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your universe](../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, stopping each node, upgrading the software, and restarting the node with zero downtime for the universe as a whole. YugabyteDB manages such scenarios without any service interruption.
 
-{{<tip>}}
+{{<lead link="./handling-node-upgrades">}}
 See [Handling node upgrades](./handling-node-upgrades) to understand how YugabyteDB continues without any service interruption during planned node outages.
-{{</tip>}}
+{{</lead>}}
 
 ## Transaction resilience
 
 YugabyteDB ensures that the [provisional records](../../architecture/transactions/distributed-txns/#provisional-records) are replicated across fault domains to ensure that transactions do not fail on the failure of fault domains.
 
-{{<tip>}}
+{{<lead link="./transaction-availability">}}
 See [High availability of transactions](./transaction-availability) to understand how transactions do not fail during fault domain failures.
-{{</tip>}}
+{{</lead>}}
 
 ## Recovery time
 

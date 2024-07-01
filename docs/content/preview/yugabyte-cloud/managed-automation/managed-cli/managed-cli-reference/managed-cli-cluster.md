@@ -2,7 +2,7 @@
 title: ybm CLI cluster resource
 headerTitle: ybm cluster
 linkTitle: cluster
-description: YugabyteDB Managed CLI reference Cluster resource.
+description: YugabyteDB Aeon CLI reference Cluster resource.
 headcontent: Manage clusters
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `cluster` resource to perform operations on a YugabyteDB Managed cluster, including the following:
+Use the `cluster` resource to perform operations on a YugabyteDB Aeon cluster, including the following:
 
 - create, update, and delete clusters
 - pause and resume clusters

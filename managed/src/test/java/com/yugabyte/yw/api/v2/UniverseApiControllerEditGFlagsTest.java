@@ -33,7 +33,7 @@ import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.UniverseEditGFlags;
 import com.yugabyte.yba.v2.client.models.UniverseEditGFlags.UpgradeOptionEnum;
-import com.yugabyte.yba.v2.client.models.YBPTask;
+import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -176,7 +176,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
 
   private void runGFlagsUpgrade(UUID universeUUID, UniverseEditGFlags gflags) throws ApiException {
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, gflags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, gflags);
   }
 
   private void verifyNoActions() {
@@ -353,7 +353,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
     UniverseEditGFlags universeGFlags =
         new UniverseEditGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
 
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
@@ -413,7 +413,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
                     .master(Map.of("master-flag", " 123 "))
                     .tserver(Map.of("tserver-flag", " 456 ")));
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
@@ -466,7 +466,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
         new UniverseEditGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
     universeGFlags.upgradeOption(UpgradeOptionEnum.NON_ROLLING);
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
 
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
@@ -524,7 +524,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
                     .master(Map.of("master-flag", "123"))
                     .tserver(Map.of("tserver-flag", "456")));
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =

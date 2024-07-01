@@ -128,6 +128,9 @@
 #include "catalog/pg_policy.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_shdepend.h"
+#include "catalog/pg_shdepend_d.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/dbcommands.h"
 #include "commands/tablegroup.h"
 #include "commands/view.h"
@@ -656,7 +659,8 @@ static void RemoveInheritance(Relation child_rel, Relation parent_rel,
 static ObjectAddress ATExecAttachPartition(List **wqueue, Relation rel,
 										   PartitionCmd *cmd,
 										   AlterTableUtilityContext *context);
-static void AttachPartitionEnsureIndexes(Relation rel, Relation attachrel);
+static void AttachPartitionEnsureIndexes(Relation rel, Relation attachrel,
+										 List **yb_wqueue);
 static void QueuePartitionConstraintValidation(List **wqueue, Relation scanrel,
 											   List *partConstraint,
 											   bool validate_default);
@@ -12221,7 +12225,7 @@ typedef struct YbFKTriggerScanDescData
 	int buffered_tuples_size;
 	int current_tuple_idx;
 	bool all_tuples_processed;
-	HeapTuple buffered_tuples[];
+	TupleTableSlot* buffered_tuples[];
 } YbFKTriggerScanDescData;
 
 typedef struct YbFKTriggerScanDescData *YbFKTriggerScanDesc;
@@ -12233,18 +12237,23 @@ typedef struct YbFKTriggerScanDescData *YbFKTriggerScanDesc;
  */
 typedef struct YbFKTriggerVTable
 {
-	bool (*get_next)(YbFKTriggerScanDesc descr, TupleTableSlot *slot);
+	TupleTableSlot *(*get_next)(YbFKTriggerScanDesc descr,
+								TupleTableSlot *slot);
 } YbFKTriggerVTable;
 
-static bool
+static TupleTableSlot *
 YbPgGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
 {
-	return table_scan_getnextslot(desc->scan, desc->scan_direction, slot);
+	return table_scan_getnextslot(desc->scan, desc->scan_direction, slot) ?
+			   slot :
+			   NULL;
 }
 
-static bool
+static TupleTableSlot *
 YbGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
 {
+	/* Note: slot argument is NULL and should not be used. */
+	Assert(slot == NULL);
 	if (desc->current_tuple_idx >= desc->buffered_tuples_size && !desc->all_tuples_processed)
 	{
 		/* Clear context of previously buffered tuples */
@@ -12253,23 +12262,22 @@ YbGetNext(YbFKTriggerScanDesc desc, TupleTableSlot *slot)
 		desc->buffered_tuples_size = 0;
 		while (desc->buffered_tuples_size < desc->buffered_tuples_capacity)
 		{
-			HeapTuple tuple = heap_getnext(desc->scan, desc->scan_direction);
-			if (tuple == NULL)
+			TupleTableSlot *new_slot = MakeSingleTupleTableSlot(
+				RelationGetDescr(desc->scan->rs_rd),
+				table_slot_callbacks(desc->scan->rs_rd));
+			if (!heap_getnextslot(desc->scan, desc->scan_direction, new_slot))
 			{
 				desc->all_tuples_processed = true;
+				ExecDropSingleTupleTableSlot(new_slot);
 				break;
 			}
-			YbAddTriggerFKReferenceIntent(desc->trigger, desc->fk_rel, tuple);
-			desc->buffered_tuples[desc->buffered_tuples_size++] = tuple;
+			YbAddTriggerFKReferenceIntent(desc->trigger, desc->fk_rel, new_slot);
+			desc->buffered_tuples[desc->buffered_tuples_size++] = new_slot;
 		}
 	}
-	if (desc->current_tuple_idx < desc->buffered_tuples_size)
-	{
-		HeapTuple tuple = desc->buffered_tuples[desc->current_tuple_idx++];
-		ExecForceStoreHeapTuple(tuple, slot, false);
-		return true;
-	}
-	return false;
+	return desc->current_tuple_idx < desc->buffered_tuples_size ?
+			   desc->buffered_tuples[desc->current_tuple_idx++] :
+			   NULL;
 }
 
 static YbFKTriggerVTable YbFKTriggerScanVTableNotYugaByteEnabled =
@@ -12305,7 +12313,7 @@ YbFKTriggerScanBegin(TableScanDesc scan,
 	return descr;
 }
 
-static bool
+static TupleTableSlot *
 YbFKTriggerScanGetNext(YbFKTriggerScanDesc descr, TupleTableSlot *slot)
 {
 	return descr->vptr->get_next(descr, slot);
@@ -12330,6 +12338,7 @@ validateForeignKeyConstraint(char *conname,
 	Snapshot	snapshot;
 	MemoryContext oldcxt;
 	MemoryContext perTupCxt;
+	TupleTableSlot *ybSlot;
 
 	ereport(DEBUG1,
 			(errmsg_internal("validating foreign key constraint \"%s\"", conname)));
@@ -12364,9 +12373,11 @@ validateForeignKeyConstraint(char *conname,
 	 * ereport(ERROR) and that's that.
 	 */
 	snapshot = RegisterSnapshot(GetLatestSnapshot());
-	slot = table_slot_create(rel, NULL);
+	/* YB note: slot is not used for YB relations */
+	slot = !IsYBRelation(rel) ? table_slot_create(rel, NULL) : NULL;
 	scan = table_beginscan(rel, snapshot, 0, NULL);
 
+	/* YB note: perTupCxt is used as per-batch (and not per-tuple) context */
 	if (IsYBRelation(rel))
 		perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
 										  "validateForeignKeyConstraint",
@@ -12385,7 +12396,7 @@ validateForeignKeyConstraint(char *conname,
 		perTupCxt);
 	oldcxt = MemoryContextSwitchTo(perTupCxt);
 
-	while (YbFKTriggerScanGetNext(fk_scan, slot))
+	while ((ybSlot = YbFKTriggerScanGetNext(fk_scan, slot)) != NULL)
 	{
 		LOCAL_FCINFO(fcinfo, 0);
 		TriggerData trigdata = {0};
@@ -12405,15 +12416,17 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.type = T_TriggerData;
 		trigdata.tg_event = TRIGGER_EVENT_INSERT | TRIGGER_EVENT_ROW;
 		trigdata.tg_relation = rel;
-		trigdata.tg_trigtuple = ExecFetchSlotHeapTuple(slot, false, NULL);
-		trigdata.tg_trigslot = slot;
+		trigdata.tg_trigtuple = ExecFetchSlotHeapTuple(ybSlot, false, NULL);
+		trigdata.tg_trigslot = ybSlot;
 		trigdata.tg_trigger = &trig;
 
 		fcinfo->context = (Node *) &trigdata;
 
 		RI_FKey_check_ins(fcinfo);
 
-		if (!IsYBRelation(rel))
+		if (IsYBRelation(rel))
+			ExecDropSingleTupleTableSlot(ybSlot);
+		else
 			MemoryContextReset(perTupCxt);
 	}
 
@@ -12422,7 +12435,8 @@ validateForeignKeyConstraint(char *conname,
 	table_endscan(scan);
 	pfree(fk_scan);
 	UnregisterSnapshot(snapshot);
-	ExecDropSingleTupleTableSlot(slot);
+	if (!IsYBRelation(rel))
+		ExecDropSingleTupleTableSlot(slot);
 }
 
 /*
@@ -15423,11 +15437,6 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		return;
 	}
 
-	if (YbGetTableProperties(rel)->is_colocated)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot move colocated table to a different tablespace")));
-
 	if (IsYBRelation(rel)) {
 		Datum *options;
 		int num_options;
@@ -15497,6 +15506,17 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	Oid			orig_tablespaceoid;
 	Oid			new_tablespaceoid;
 	List	   *role_oids = roleSpecsToIds(stmt->roles);
+	Form_pg_class yb_rd_rel;
+	Relation	yb_index_rel;
+	Relation	yb_table_rel;
+	Relation	yb_pg_class;
+	Oid			yb_table_oid = InvalidOid;
+	Oid			yb_colocated_with_tablegroup_oid = InvalidOid;
+	Oid			yb_orig_tablegroup_oid = InvalidOid;
+	Oid			yb_new_tablegroup_oid = InvalidOid;
+	char	   *yb_orig_tablegroup_name;
+	char	   *yb_new_tablegroup_name;
+	bool		yb_cascade = stmt->yb_cascade;
 
 	/* Ensure we were not asked to move something we can't */
 	if (stmt->objtype != OBJECT_TABLE && stmt->objtype != OBJECT_INDEX &&
@@ -15508,6 +15528,63 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	/* Get the orig and new tablespace OIDs */
 	orig_tablespaceoid = get_tablespace_oid(stmt->orig_tablespacename, false);
 	new_tablespaceoid = get_tablespace_oid(stmt->new_tablespacename, false);
+	yb_orig_tablegroup_name = get_implicit_tablegroup_name(orig_tablespaceoid);
+	yb_new_tablegroup_name = get_implicit_tablegroup_name(new_tablespaceoid);
+	yb_orig_tablegroup_oid = get_tablegroup_oid(yb_orig_tablegroup_name, true);
+	yb_new_tablegroup_oid = get_tablegroup_oid(yb_new_tablegroup_name, true);
+
+	/*
+	 * The new tablespace must not have any colocated relations present in
+	 * it. As we don't support decolocation of colocated tablets.
+	 */
+	if (MyDatabaseColocated && OidIsValid(yb_new_tablegroup_oid) &&
+		OidIsValid(yb_orig_tablegroup_oid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot move colocated relations to tablespace %s,"
+						" as it contains existing colocated relation",
+						stmt->new_tablespacename)));
+
+	/*
+	 * If CASCADE is not specified and the original tablespace contains
+	 * colocated tables then we don't support moving it unless cascade is
+	 * specified.
+	 */
+	if (!yb_cascade && OidIsValid(yb_orig_tablegroup_oid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot move colocated relations present in"
+						" tablespace %s", stmt->orig_tablespacename),
+				 errhint("Use ALTER ... CASCADE to move colcated relations.")));
+
+	/*
+	 * If a relation name is passed with the ALTER TABLE ALL ... COLOCATED WITH
+	 * ... SET TABLESPACE ... CASCADE command then we get the relation being
+	 * passed.
+	 */
+	if (stmt->yb_relation != NULL)
+	{
+		yb_table_oid = RangeVarGetRelid(stmt->yb_relation, NoLock, false);
+		yb_table_rel = RelationIdGetRelation(yb_table_oid);
+		yb_colocated_with_tablegroup_oid =
+			YbGetTableProperties(yb_table_rel)->tablegroup_oid;
+		RelationClose(yb_table_rel);
+	}
+
+	if (OidIsValid(yb_table_oid) && !MyDatabaseColocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("this command is not supported in a non-colocated"
+						" database"),
+				 errdetail("Use ALTER ... SET TABLESPACE to move non-colocated"
+						   " relations.")));
+
+	if (OidIsValid(yb_table_oid) &&
+		!(OidIsValid(yb_colocated_with_tablegroup_oid)))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("the specified relation is non-colocated"
+						" which can't be moved using this command")));
 
 	/* Can't move shared relations in to or out of pg_global */
 	/* This is also checked by ATExecSetTableSpace, but nice to stop earlier */
@@ -15577,15 +15654,73 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			IsToastNamespace(relForm->relnamespace))
 			continue;
 
-		/* Only move the object type requested */
-		if ((stmt->objtype == OBJECT_TABLE &&
-			 relForm->relkind != RELKIND_RELATION &&
-			 relForm->relkind != RELKIND_PARTITIONED_TABLE) ||
-			(stmt->objtype == OBJECT_INDEX &&
-			 relForm->relkind != RELKIND_INDEX &&
-			 relForm->relkind != RELKIND_PARTITIONED_INDEX) ||
-			(stmt->objtype == OBJECT_MATVIEW &&
-			 relForm->relkind != RELKIND_MATVIEW))
+		if (OidIsValid(yb_colocated_with_tablegroup_oid) &&
+			!ybIsTablegroupDependent(relOid, yb_colocated_with_tablegroup_oid))
+			continue;
+
+		/*
+		 * In YB, a primary key index is an intrinsic part of its base table.
+		 * For a primary key index, we only need to update the
+		 * new_tablespaceoid field in pg_class.
+		 */
+		if (relForm->relkind == RELKIND_INDEX ||
+			relForm->relkind == RELKIND_PARTITIONED_INDEX)
+		{
+			yb_index_rel = RelationIdGetRelation(relOid);
+			bool isPrimaryIndex = (yb_index_rel != NULL &&
+								   yb_index_rel->rd_index->indisprimary);
+
+			RelationClose(yb_index_rel);
+
+			if (isPrimaryIndex)
+			{
+				/*
+				 * We move the primary key indexes along with the tables that
+				 * they are associated with when using the following commands
+				 * ALTER TABLE/INDEX/MATERIALIZED VIEW ... SET TABLESPACE ...
+				 */
+				if (yb_cascade || (!yb_cascade && stmt->objtype == OBJECT_TABLE))
+				{
+					yb_pg_class = table_open(RelationRelationId,
+											RowExclusiveLock);
+
+					tuple = SearchSysCacheCopy1(RELOID,
+												ObjectIdGetDatum(relOid));
+					if (!HeapTupleIsValid(tuple))
+						elog(ERROR, "cache lookup failed for relation %u",
+							 relOid);
+					yb_rd_rel = (Form_pg_class) GETSTRUCT(tuple);
+
+					/* Update the pg_class row */
+					yb_rd_rel->reltablespace = new_tablespaceoid;
+					CatalogTupleUpdate(yb_pg_class, &tuple->t_self, tuple);
+
+					InvokeObjectPostAlterHook(RelationRelationId, relOid, 0);
+
+					heap_freetuple(tuple);
+
+					table_close(yb_pg_class, RowExclusiveLock);
+
+					/* Update the pg_shdepend entries. */
+					changeDependencyOnTablespace(RelationRelationId, relOid,
+												 new_tablespaceoid);
+				}
+				continue;
+			}
+		}
+
+		/*
+		 * If CASCADE is not specified, only move the object type requested.
+		 */
+		if (!yb_cascade &&
+			((stmt->objtype == OBJECT_TABLE &&
+			  relForm->relkind != RELKIND_RELATION &&
+			  relForm->relkind != RELKIND_PARTITIONED_TABLE) ||
+			 (stmt->objtype == OBJECT_INDEX &&
+			  relForm->relkind != RELKIND_INDEX &&
+			  relForm->relkind != RELKIND_PARTITIONED_INDEX) ||
+			 (stmt->objtype == OBJECT_MATVIEW &&
+			  relForm->relkind != RELKIND_MATVIEW)))
 			continue;
 
 		/* Check if we are only moving objects owned by certain roles */
@@ -15613,6 +15748,10 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		else
 			LockRelationOid(relOid, AccessExclusiveLock);
 
+		/* Update the pg_shdepend tables */
+		changeDependencyOnTablespace(RelationRelationId, relOid,
+									 new_tablespaceoid);
+
 		/* Add to our list of objects to move */
 		relations = lappend_oid(relations, relOid);
 	}
@@ -15621,11 +15760,14 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	table_close(rel, AccessShareLock);
 
 	if (relations == NIL)
+	{
 		ereport(NOTICE,
 				(errcode(ERRCODE_NO_DATA_FOUND),
 				 errmsg("no matching relations in tablespace \"%s\" found",
 						orig_tablespaceoid == InvalidOid ? "(database default)" :
 						get_tablespace_name(orig_tablespaceoid))));
+		return new_tablespaceoid;
+	}
 
 	/* Everything is locked, loop through and move all of the relations. */
 	foreach(l, relations)
@@ -15642,6 +15784,28 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		/* OID is set by AlterTableInternal */
 		AlterTableInternal(lfirst_oid(l), cmds, false);
 		EventTriggerAlterTableEnd();
+	}
+
+	/*
+	 * Update the dependencies present in pg_shdepend for tablegroup to
+	 * tablespace dependencies if CASCADE command is used in a colocated
+	 * database.
+	 */
+	if (yb_cascade && OidIsValid(new_tablespaceoid) &&
+		OidIsValid(orig_tablespaceoid) && MyDatabaseColocated &&
+		!OidIsValid(yb_new_tablegroup_oid) &&
+		OidIsValid(yb_orig_tablegroup_oid))
+	{
+		changeDependencyOnTablespace(YbTablegroupRelationId,
+									 yb_orig_tablegroup_oid, new_tablespaceoid);
+		/* Update entry in pg_yb_tablegroup */
+		ybAlterTablespaceForTablegroup(yb_orig_tablegroup_name,
+									   new_tablespaceoid);
+
+		ObjectAddress objAddress = RenameTablegroup(yb_orig_tablegroup_name,
+													yb_new_tablegroup_name);
+		/* Update pg_shdepend values with the new Tablespace. */
+		UnlockRelationOid(objAddress.objectId, RowExclusiveLock);
 	}
 
 	return new_tablespaceoid;
@@ -18826,7 +18990,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd,
 	StorePartitionBound(attachrel, rel, cmd->bound);
 
 	/* Ensure there exists a correct set of indexes in the partition. */
-	AttachPartitionEnsureIndexes(rel, attachrel);
+	AttachPartitionEnsureIndexes(rel, attachrel, wqueue);
 
 	/* and triggers */
 	CloneRowTriggersToPartition(rel, attachrel);
@@ -18939,7 +19103,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd,
  * partitioned table.
  */
 static void
-AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
+AttachPartitionEnsureIndexes(Relation rel, Relation attachrel, List **yb_wqueue)
 {
 	List	   *idxes;
 	List	   *attachRelIdxs;
@@ -19090,6 +19254,27 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 			stmt = generateClonedIndexStmt(NULL,
 										   idxRel, attmap,
 										   &constraintOid);
+			/*
+			 * YB Note: If a matching pk index is not found for the child
+			 * partition, then we must rewrite the child partition (and all
+			 * of its children).
+			 */
+			if (IsYBRelation(idxRel) && idxRel->rd_index->indisprimary)
+			{
+				MemoryContextSwitchTo(oldcxt);
+				AlteredTableInfo *tab;
+				tab = ATGetQueueEntry(yb_wqueue, attachrel);
+				tab->rewrite = YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+				YbGetTableProperties(attachrel);
+				/* Don't copy split options if we are creating a range key. */
+				bool skip_copy_split_options = YbATIsRangePk(stmt,
+					attachrel->yb_table_properties->is_colocated,
+					OidIsValid(
+						attachrel->yb_table_properties->tablegroup_oid));
+				YbATSetPKRewriteChildPartitions(yb_wqueue, tab,
+					skip_copy_split_options);
+				MemoryContextSwitchTo(cxt);
+			}
 			DefineIndex(RelationGetRelid(attachrel), stmt, InvalidOid,
 						RelationGetRelid(idxRel),
 						constraintOid,

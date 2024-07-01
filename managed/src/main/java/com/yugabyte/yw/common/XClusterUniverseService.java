@@ -49,6 +49,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetReplicationStatusResponse;
 import org.yb.client.GetXClusterSafeTimeResponse;
 import org.yb.client.IsBootstrapRequiredResponse;
+import org.yb.client.ListCDCStreamsResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
@@ -460,6 +461,35 @@ public class XClusterUniverseService {
         log.error("XClusterUniverseService.isBootstrapRequired hit error : {}", e.getMessage());
         throw new RuntimeException(e);
       }
+    }
+  }
+
+  /**
+   * Retrieves all CDC (Change Data Capture) streams in the given universe.
+   *
+   * @param ybClientService The YBClientService used to interact with the YBClient.
+   * @param universe The Universe object representing the universe.
+   * @return A set of strings representing the CDC stream IDs in the universe.
+   * @throws RuntimeException if there is an error listing the CDC streams.
+   */
+  public Set<String> getAllCDCStreamsInUniverse(
+      YBClientService ybClientService, Universe universe) {
+    try (YBClient client =
+        ybClientService.getClient(
+            universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+      ListCDCStreamsResponse cdcStreamsResponse = client.listCDCStreams(null, null, null);
+      if (cdcStreamsResponse.hasError()) {
+        throw new RuntimeException(
+            String.format(
+                "Error listing cdc streams for universe %s. Error: %s",
+                universe.getName(), cdcStreamsResponse.errorMessage()));
+      }
+      return cdcStreamsResponse.getStreams().stream()
+          .map(cdcStream -> cdcStream.getStreamId())
+          .collect(Collectors.toSet());
+    } catch (Exception e) {
+      log.error("XClusterUniverseService.getCDCStreams hit error : {}", e.getMessage());
+      throw new RuntimeException(e);
     }
   }
 

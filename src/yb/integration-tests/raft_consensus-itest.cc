@@ -3794,5 +3794,36 @@ TEST_F(RaftConsensusITest, OldLeaderLeaseTooOldOnNewLeader) {
       4, tablet_servers_[old_leader->uuid()].get(), tablet_id_, 10s));
 }
 
+// Test ConsensusMetadata::Flush failed when updaing current term.
+TEST_F(RaftConsensusITest, LeaderChangeWithConsensusMetadaFlushFailed) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 1));
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto new_leader_idx = (leader_idx + 2) % 3;
+
+  const auto follower = cluster_->tablet_server(follower_idx);
+  ASSERT_OK(cluster_->SetFlag(follower, "TEST_error_before_flushing_consensus_metadata", "true"));
+  ASSERT_OK(cluster_->SetFlag(follower, "TEST_request_vote_respond_leader_still_alive", "true"));
+  ASSERT_OK(follower->Pause());
+
+  const auto old_leader = cluster_->tablet_server(leader_idx);
+  const auto new_leader = cluster_->tablet_server(new_leader_idx);
+  ASSERT_OK(LeaderStepDown(
+      tablet_servers_[old_leader->uuid()].get(),
+      tablet_id_, tablet_servers_[new_leader->uuid()].get(),
+      10s));
+  ASSERT_OK(WaitUntilLeader(
+    tablet_servers_[new_leader->uuid()].get(), tablet_id_, 10s,
+    consensus::LeaderLeaseCheckMode::NEED_LEASE));
+
+  ASSERT_OK(follower->Resume());
+
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 2));
+}
+
 }  // namespace tserver
 }  // namespace yb

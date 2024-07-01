@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster that is deployed in a Virtual Private Cloud (VPC) with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a private connection, referred to as a private link.
+A private service endpoint (PSE) is used to connect a YugabyteDB Aeon cluster that is deployed in a Virtual Private Cloud (VPC) with other services on the same cloud provider - typically a VPC hosting the application that you want to access your cluster. The PSE on your cluster connects to an endpoint on the VPC hosting your application over a private connection, referred to as a private link.
 
 ![VPC network using PSE](/images/yb-cloud/managed-pse-diagram.png)
 
@@ -20,11 +20,11 @@ A private service endpoint (PSE) is used to connect a YugabyteDB Managed cluster
 
 While cloud providers refer to the components of a private link service in different ways, these components serve the same purposes.
 
-| YBM | AWS&nbsp;PrivateLink | Azure&nbsp;Private&nbsp;Link | Description |
+| YugabyteDB | AWS&nbsp;PrivateLink | Azure&nbsp;Private&nbsp;Link | Description |
 | :--- | :--- | :--- | :--- |
 | VPC | VPC | VNet | Secure virtual network created on a cloud provider. |
 | PSE | [Endpoint service](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-endpoint-services) | [Private Link service](https://learn.microsoft.com/en-us/azure/private-link/private-link-service-overview) | The endpoints on your cluster that you make available to the private link. |
-| Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | [Private endpoint](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview) | The endpoints on the application VPC corresponding to the PSEs on your cluster.
+| Application VPC endpoint | [Interface VPC endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/concepts.html#concepts-vpc-endpoints) | [Private endpoint](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview) | The endpoints on the application VPC corresponding to the PSEs on your cluster. |
 | Security principal | [AWS principal](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) (ARN) | [Subscription ID](https://learn.microsoft.com/en-us/azure/azure-portal/get-subscription-tenant-id#find-your-azure-subscription) | Cloud provider account with permissions to manage endpoints. |
 | Service name | Service name | Alias | Identifies the PSE to the application VPC endpoint. You provide the service name when creating the application VPC endpoint. |
 

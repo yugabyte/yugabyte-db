@@ -124,7 +124,7 @@ public class TestPgInsert extends BasePgSQLTest {
           List<Row> expectedRows = new ArrayList<>();
           String text_stmt = String.format(stmt_format, tableName,
                                            h, r + 0.5, h * 10 + r, "v" + h + r,
-                                           "h + 100L, r + 100, vs");
+                                           "h + 100, r + 100, vs");
           expectedRows.add(new Row(h + 100, r + 0.5 + 100, "v" + h + r));
           statement.execute(text_stmt);
 

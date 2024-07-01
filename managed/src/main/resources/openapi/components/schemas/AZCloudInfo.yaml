@@ -1,4 +1,5 @@
-title: AZ info in a cloud provider
+title: AZCloudInfo
+description: AZ info in a Cloud Provider. Part of AvailabilityZoneDetails.
 type: object
 properties:
   kubernetes:

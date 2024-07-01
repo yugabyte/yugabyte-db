@@ -6,7 +6,7 @@
 -- variation in results.
 SET extra_float_digits = -1;
 
-CREATE TABLE CIRCLE_TBL (f1 circle, ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE CIRCLE_TBL (f1 circle);
 
 INSERT INTO CIRCLE_TBL VALUES ('<(5,1),3>');
 
@@ -36,8 +36,7 @@ INSERT INTO CIRCLE_TBL VALUES ('1abc,3,5');
 
 INSERT INTO CIRCLE_TBL VALUES ('(3,(1,2),3)');
 
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM CIRCLE_TBL;
+SELECT * FROM CIRCLE_TBL;
 
 SELECT center(f1) AS center
   FROM CIRCLE_TBL;

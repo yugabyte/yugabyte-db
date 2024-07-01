@@ -63,7 +63,7 @@ The YugabyteDB source connector also supports AVRO serialization with schema reg
 
   {{% tab header="JSON" lang="json" %}}
 
-For JSON schema serialization, you can use the [Kafka JSON Serializer](https://mvnrepository.com/artifact/io.confluent/kafka-json-serializer) and equivalent deserializer. After downloading and including the required `JAR` file in the Kafka-Connect environment, you can directly configure the CDC source and sink connectors to use this converter.
+For JSON schema serialization, you can use the [Kafka JSON Serializer](https://mvnrepository.com/artifact/io.confluent/kafka-json-serializer) and equivalent de-serializer. After downloading and including the required `JAR` file in the Kafka-Connect environment, you can directly configure the CDC source and sink connectors to use this converter.
 
 For source connectors:
 
@@ -180,21 +180,76 @@ The highlighted fields in the update event are:
 | 3 | source | Mandatory field that describes the source metadata for the event. This has the same fields as a create event, but some values are different. The source metadata includes: <ul><li> Debezium version <li> Connector type and name <li> Database and table that contains the new row <li> Schema name <li> If the event was part of a snapshot (always `false` for update events) <li> ID of the transaction in which the operation was performed <li> Offset of the operation in the database log <li> Timestamp for when the change was made in the database </ul> |
 | 4 | op | In an update event, this field's value is `u`, signifying that this row changed because of an update. |
 
-Here is one more example, consider the following employee table into which a row is inserted, subsquently updated, and deleted:
+### Before image modes
+
+YugabyteDB supports the following record types in the context of before image:
+
+- ALL
+- FULL_ROW_NEW_IMAGE
+- MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
+- CHANGE
+
+Consider the following employee table into which a row is inserted, subsequently updated, and deleted:
 
 ```sql
-create table employee(employee_id int primary key, employee_name varchar);
+create table employee (employee_id int primary key, employee_name varchar, employee_dept text);
 
-insert into employee values(1001, 'Alice');
+insert into employee values(1001, 'Alice', 'Packaging');
 
 update employee set employee_name='Bob' where employee_id=1001;
 
 delete from employee where employee_id=1001;
 ```
 
-CDC records for update and delete statements without enabling before image would be as follows:
+CDC records for update and delete statements without enabling before image (that is, the default record type `CHANGE`) would be as follows:
 
-With before image enabled, the update and delete records look like the following:
+<table>
+<tr>
+<td> CDC record for UPDATE: </td> <td> CDC record for DELETE: </td>
+</tr>
+
+<tr>
+<td>
+
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": null
+  }
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": null,
+    "employee_dept": null
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+
+</td> </tr> </table>
+
+For record type `ALL`, the update and delete records look like the following:
 
 <table>
 <tr>
@@ -207,31 +262,31 @@ With before image enabled, the update and delete records look like the following
 <pre>
 {
   "before": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": {
-        "employee_name": {
-          "value": {
-            "string": "Alice"
-          }
-        }
-      }
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
     }
   },
   "after": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": {
-        "employee_name": {
-          "value": {
-            "string": "Bob"
-          }
-        }
-      }
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
     }
   },
   "op": "u"
@@ -244,17 +299,128 @@ With before image enabled, the update and delete records look like the following
 <pre>
 {
   "before": {
-    "public.employee.Value":{
-      "employee_id": {
-        "value": 1001
-      },
-      "employee_name": {
-        "employee_name": {
-          "value": {
-            "string": "Bob"
-          }
-        }
-      }
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+
+</td> </tr> </table>
+
+For record type `FULL_ROW_NEW_IMAGE`, the update and delete records look like the following:
+
+<table>
+<tr>
+<td> CDC record for UPDATE: </td> <td> CDC record for DELETE: </td>
+</tr>
+
+<tr>
+<td>
+
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+
+</td> </tr> </table>
+
+For record type `MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES`, the update and delete records look like the following:
+
+<table>
+<tr>
+<td> CDC record for UPDATE: </td> <td> CDC record for DELETE: </td>
+</tr>
+
+<tr>
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    }
+  },
+  "after": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    }
+  },
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
     }
   },
   "after": null,
@@ -333,6 +499,18 @@ CDC record for UPDATE (using schema version 1):
 }
 ```
 
+## Colocated tables
+
+YugabyteDB supports streaming of changes from [colocated tables](../../../architecture/docdb-sharding/colocated-tables). The connector can be configured with regular configuration properties and deployed for streaming.
+
+{{< note title="Note" >}}
+
+If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, you cannot deploy a new connector for this newly created table.
+
+To stream the changes for the new table, delete the existing connector and deploy it again with the updated configuration property after adding the new table to `table.include.list`.
+
+{{< /note >}}
+
 ## Important configuration settings
 
 You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the YB-TServer reference and [Change data capture flags](../../../reference/configuration/yb-master/#change-data-capture-cdc-flags) section of the YB-Master reference. The following flags are particularly important for configuring CDC:
@@ -389,7 +567,7 @@ To configure a content-based router, you need to add the following lines to your
 
 The `<routing-expression>` contains the logic for routing of the events. For example, if you want to re-route the events based on the `country` column in user's table, you may use a expression similar to the following:
 
-```
+```regexp
 value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null) : (value.before?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null)"
 ```
 

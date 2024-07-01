@@ -6,8 +6,6 @@ import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.EncryptionInTransitSpec;
 import api.v2.models.UniverseCreateSpec;
-import api.v2.models.UniverseCreateSpecYcql;
-import api.v2.models.UniverseCreateSpecYsql;
 import api.v2.models.UniverseNetworkingSpec;
 import api.v2.models.UniverseSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -54,14 +52,6 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     UniverseCreateSpec universeSpec = delegate.toV2UniverseCreateSpec(v1UniverseTaskParams);
     // update unmapped properties of spec within created universeSpec
     updateUniverseSpec(v1UniverseTaskParams, universeSpec.getSpec());
-    // fetch ysql/ycql password of universe from primary cluster and set it at top-level in v2
-    UserIntent primaryUserIntent = v1UniverseTaskParams.getPrimaryCluster().userIntent;
-    if (primaryUserIntent.ysqlPassword != null) {
-      universeSpec.ysql(new UniverseCreateSpecYsql().password(primaryUserIntent.ysqlPassword));
-    }
-    if (primaryUserIntent.ycqlPassword != null) {
-      universeSpec.ycql(new UniverseCreateSpecYcql().password(primaryUserIntent.ycqlPassword));
-    }
     return universeSpec;
   }
 
@@ -76,13 +66,16 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParams(UniverseSpec universeSpec) {
     UniverseDefinitionTaskParams params = delegate.toV1UniverseDefinitionTaskParams(universeSpec);
 
+    // turn off version checking always
+    params.expectedUniverseVersion = -1;
     // set rootCA of encryptionInTransit into top-level of v1 universe
     if (universeSpec != null && universeSpec.getEncryptionInTransitSpec() != null) {
       EncryptionInTransitSpec source = universeSpec.getEncryptionInTransitSpec();
       params.rootCA = source.getRootCa();
       params.setClientRootCA(source.getClientRootCa());
-      params.rootAndClientRootCASame =
-          source.getRootCa() != null && source.getRootCa().equals(source.getClientRootCa());
+      if (source.getRootCa() != null && !source.getRootCa().equals(source.getClientRootCa())) {
+        params.rootAndClientRootCASame = false;
+      }
     }
 
     // The generated mapper will only create v1 Cluster from corresponding v2Cluster. Copy
@@ -123,6 +116,18 @@ public abstract class UniverseDefinitionTaskParamsDecorator
             cluster.userIntent.assignPublicIP = source.getAssignPublicIp();
             cluster.userIntent.assignStaticPublicIP = source.getAssignStaticPublicIp();
             cluster.userIntent.enableIPV6 = source.getEnableIpv6();
+          }
+          // set ysql into all clusters
+          if (universeSpec != null && universeSpec.getYsql() != null) {
+            cluster.userIntent.enableYSQL = universeSpec.getYsql().getEnable();
+            cluster.userIntent.enableYSQLAuth = universeSpec.getYsql().getEnableAuth();
+            cluster.userIntent.ysqlPassword = universeSpec.getYsql().getPassword();
+          }
+          // set ycql into all clusters
+          if (universeSpec != null && universeSpec.getYcql() != null) {
+            cluster.userIntent.enableYCQL = universeSpec.getYcql().getEnable();
+            cluster.userIntent.enableYCQLAuth = universeSpec.getYcql().getEnableAuth();
+            cluster.userIntent.ycqlPassword = universeSpec.getYcql().getPassword();
           }
         }
       }
@@ -166,11 +171,11 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     if (params.clusters != null) {
       for (Cluster cluster : params.clusters) {
         if (cluster.userIntent != null) {
-          if (universeCreateSpec.getYsql() != null) {
-            cluster.userIntent.ysqlPassword = universeCreateSpec.getYsql().getPassword();
+          if (universeCreateSpec.getSpec().getYsql() != null) {
+            cluster.userIntent.ysqlPassword = universeCreateSpec.getSpec().getYsql().getPassword();
           }
-          if (universeCreateSpec.getYcql() != null) {
-            cluster.userIntent.ycqlPassword = universeCreateSpec.getYcql().getPassword();
+          if (universeCreateSpec.getSpec().getYcql() != null) {
+            cluster.userIntent.ycqlPassword = universeCreateSpec.getSpec().getYcql().getPassword();
           }
         }
       }

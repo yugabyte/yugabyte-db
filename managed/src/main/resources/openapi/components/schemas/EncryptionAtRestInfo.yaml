@@ -1,4 +1,5 @@
-title: Encryption At Rest specification for the Universe
+title: EncryptionAtRestInfo
+description: Encryption At Rest specification for the Universe. Part of UniverseInfo.
 type: object
 readOnly: true
 properties:

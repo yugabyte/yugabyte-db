@@ -219,8 +219,8 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars)
 #else
 	vars->size = 0;
 
-	/* Ensure that role oid is "cached" after session_authorization. */
-	yb_kiwi_var_push(vars, "session_authorization", 22, "default", 8);
+	/* Ensure that role oid is "cached" after session authorization oid. */
+	yb_kiwi_var_push(vars, "session_authorization_oid", 26, "-1", 3);
 	yb_kiwi_var_push(vars, "role_oid", 9, "-1", 3);
 #endif
 }
@@ -367,8 +367,10 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 		if (strcmp(var->name, "compression") == 0)
 			continue;
 
-		/* do not send default value role_oid packet to the server */
-		if ((strcmp(var->name, "role_oid") == 0) && (strcmp(var->value, "-1") == 0))
+		/* do not send default value oid packets to the server */
+		if (((strcmp(var->name, "role_oid") == 0) ||
+			strcmp(var->name, "session_authorization_oid") == 0) &&
+			(strcmp(var->value, "-1") == 0))
 			continue;
 
 		kiwi_var_t *server_var;
@@ -388,19 +390,13 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 		memcpy(query + pos, "=", 1);
 		pos += 1;
 
-		/* Do not enquote the default values for auth related params. */
-        if (!(strcmp(var->name, "session_authorization") == 0 &&
-			strcmp(var->value, "default") == 0)) {
-			int quote_len;
-			quote_len =
-				kiwi_enquote(var->value, query + pos, query_len - pos);
-			if (quote_len == -1)
-				return -1;
-			pos += quote_len;
-		} else {
-			memcpy(query + pos, var->value, var->value_len - 1);
-			pos += var->value_len - 1;
-		}
+		int quote_len;
+		quote_len =
+			kiwi_enquote(var->value, query + pos, query_len - pos);
+		if (quote_len == -1)
+			return -1;
+		pos += quote_len;
+
 		memcpy(query + pos, ";", 1);
 		pos += 1;
 	}

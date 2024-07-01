@@ -517,7 +517,7 @@ During the universe creation, you can enable TLS certificates issued by the cert
 3. Create the universe:
 
    - Navigate to **Universes** and click **Create Universe**.
-   - In the **Provider** field, select the cloud provided that you have configured in step 2.
+   - In the **Provider** field, select the cloud provider that you have configured in step 2.
    - Complete the fields based on your requirements, and select **Enable Node-to-Node TLS** or **Enable Client-to-Node TLS**.
    - Select the root certificate that you have uploaded in step 1.
    - Click **Create**.

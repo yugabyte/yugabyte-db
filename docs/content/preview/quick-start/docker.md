@@ -5,7 +5,9 @@ linkTitle: Docker
 headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
-  - /quick-start/docker/
+  - /preview/quick-start/docker/
+  - /preview/deploy/docker/docker-compose
+
 type: docs
 unversioned: true
 ---
@@ -230,7 +232,7 @@ Perform the following to create a sample Java project:
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jdbc-yugabytedb</artifactId>
-      <version>42.3.0</version>
+      <version>42.3.5-yb-5</version>
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->

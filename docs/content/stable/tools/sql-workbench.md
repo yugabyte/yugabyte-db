@@ -38,12 +38,11 @@ For details on the JRE requirements, see the prerequisites section in the SQL Wo
 
 ### PostgreSQL JDBC driver
 
-To connect SQL Workbench/J to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver Download page](https://jdbc.postgresql.org/download/) page.
+To connect SQL Workbench/J to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver Download](https://jdbc.postgresql.org/download/) page.
 
-## Install SQL Workbench/J
+### SQL Workbench/J
 
-1. Go to the [SQL Workbench/J](http://www.sql-workbench.net/) website and download the distribution package for the operating system on your client computer.
-2. Extract the archive into a directory of your choice.
+To install, go to the [SQL Workbench/J](http://www.sql-workbench.net/) website, download the distribution package for the operating system on your client computer, and extract the archive into a directory of your choice.
 
 The application is now ready to run — no further steps are necessary. For details, see [Installing and starting SQL Workbench/J](http://www.sql-workbench.eu/manual/install.html) in the SQL Workbench/J user manual.
 
@@ -84,7 +83,7 @@ You have now configured the PostgreSQL JDBC driver to work with YugabyteDB and c
 For more information, see:
 
 - [JDBC Drivers](http://www.sql-workbench.net/manual/jdbc-setup.html) in the SQL Workbench/J user manual.
-- [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/documentation/documentation.html) documentation.
+- [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/documentation/) documentation.
 
 ### Create a YugabyteDB connection profile
 

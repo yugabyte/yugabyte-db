@@ -46,6 +46,105 @@ type SchemaAnalyzeReport struct {
     Issues          []SqlIssue       `json:"issues"`
 }
 
+type AssessmentVisualisationMetadata struct {
+    AssessmentJsonReport AssessmentReport                      `json:"AssessmentJsonReport"`
+    MigrationComplexity string                                 `json:"MigrationComplexity"`
+    SourceSizeDetails SourceDBSizeDetails                      `json:"SourceSizeDetails"`
+    TargetSizingRecommendations TargetSizingRecommendations    `json:"TargetRecommendations"`
+    ConversionIssues []Issue                                   `json:"ConversionIssues"`
+}
+
+type AssessmentReport struct {
+    SchemaSummary        SchemaSummary              `json:"SchemaSummary"`
+    Sizing               SizingAssessmentReport     `json:"Sizing"`
+    UnsupportedDataTypes []TableColumnsDataTypes    `json:"UnsupportedDataTypes"`
+    UnsupportedFeatures  []UnsupportedFeature       `json:"UnsupportedFeatures"`
+    TableIndexStats      []TableIndexStats          `json:"TableIndexStats"`
+}
+
+type SourceDBSizeDetails struct {
+    TotalDBSize        int64    `json:"TotalDBSize"`
+    TotalTableSize     int64    `json:"TotalTableSize"`
+    TotalIndexSize     int64    `json:"TotalIndexSize"`
+    TotalTableRowCount int64    `json:"TotalTableRowCount"`
+}
+
+type TargetSizingRecommendations struct {
+    TotalColocatedSize int64    `json:"TotalColocatedSize"`
+    TotalShardedSize   int64    `json:"TotalShardedSize"`
+}
+
+type SchemaSummary struct {
+    DBName      string     `json:"DbName,omitempty"`
+    SchemaNames []string   `json:"SchemaNames,omitempty"`
+    DBVersion   string     `json:"DbVersion,omitempty"`
+    Notes       []string   `json:"Notes,omitempty"`
+    DBObjects   []DBObject `json:"DatabaseObjects"`
+}
+
+type DBObject struct {
+    ObjectType   string `json:"ObjectType"`
+    TotalCount   int    `json:"TotalCount"`
+    InvalidCount int    `json:"InvalidCount,omitempty"`
+    ObjectNames  string `json:"ObjectNames,omitempty"`
+    Details      string `json:"Details,omitempty"`
+}
+
+type SizingAssessmentReport struct {
+    SizingRecommendation SizingRecommendation `json:"SizingRecommendation"`
+    FailureReasoning     string               `json:"FailureReasoning"`
+}
+
+type SizingRecommendation struct {
+    ColocatedTables                 []string    `json:"ColocatedTables"`
+    ColocatedReasoning              string      `json:"ColocatedReasoning"`
+    ShardedTables                   []string    `json:"ShardedTables"`
+    NumNodes                        float64     `json:"NumNodes"`
+    VCPUsPerInstance                int         `json:"VCPUsPerInstance"`
+    MemoryPerInstance               int         `json:"MemoryPerInstance"`
+    OptimalSelectConnectionsPerNode int64       `json:"OptimalSelectConnectionsPerNode"`
+    OptimalInsertConnectionsPerNode int64       `json:"OptimalInsertConnectionsPerNode"`
+    EstimatedTimeInMinForImport     float64     `json:"EstimatedTimeInMinForImport"`
+    ParallelVoyagerJobs             float64     `json:"ParallelVoyagerJobs"`
+}
+
+type TableColumnsDataTypes struct {
+    SchemaName string `json:"SchemaName"`
+    TableName  string `json:"TableName"`
+    ColumnName string `json:"ColumnName"`
+    DataType   string `json:"DataType"`
+}
+
+type UnsupportedFeature struct {
+    FeatureName string   `json:"FeatureName"`
+    ObjectNames []string `json:"ObjectNames"`
+}
+
+type TableIndexStats struct {
+    SchemaName      string  `json:"SchemaName"`
+    ObjectName      string  `json:"ObjectName"`
+    RowCount        *int64  `json:"RowCount"` // Pointer to allows null values
+    ColumnCount     *int64  `json:"ColumnCount"`
+    Reads           *int64  `json:"Reads"`
+    Writes          *int64  `json:"Writes"`
+    ReadsPerSecond  *int64  `json:"ReadsPerSecond"`
+    WritesPerSecond *int64  `json:"WritesPerSecond"`
+    IsIndex         bool    `json:"IsIndex"`
+    ObjectType      string  `json:"ObjectType"`
+    ParentTableName *string `json:"ParentTableName"`
+    SizeInBytes     *int64  `json:"SizeInBytes"`
+}
+
+type Issue struct {
+    ObjectType   string `json:"ObjectType"`
+    ObjectName   string `json:"ObjectName"`
+    Reason       string `json:"Reason"`
+    SqlStatement string `json:"SqlStatement,omitempty"`
+    FilePath     string `json:"FilePath"`
+    Suggestion   string `json:"Suggestion"`
+    GH           string `json:"GH"`
+}
+
 func CalculateAndUpdateComplexity(log logger.Logger, pgClient *pgxpool.Pool,
     migrationUuid string, migrationPhase int, migrationInvocationSq int) {
 

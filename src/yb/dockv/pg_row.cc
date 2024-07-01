@@ -344,10 +344,6 @@ struct GetValueType<uint64_t> {
 
 template <class T>
 struct PrimitiveValueDecoder {
-  static std::string SSS() {
-    return Format("PrimitiveValueDecoder<$0>", typeid(T).name());
-  }
-
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     auto value_type = GetValueType<T>::kValue;
     constexpr size_t kEncodedSize = sizeof(T) <= 4 ? 4 : 8;
@@ -384,10 +380,6 @@ struct PrimitiveValueDecoder {
 
 template <>
 struct PrimitiveValueDecoder<bool> {
-  static std::string SSS() {
-    return "PrimitiveValueDecoder<bool>";
-  }
-
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     if (PREDICT_FALSE(end - begin != 1)) {
       return false;
@@ -414,10 +406,6 @@ struct PrimitiveValueDecoder<bool> {
 
 template <bool kAppendZero, char kValueType>
 struct BinaryValueDecoder {
-  static std::string SSS() {
-    return Format("BinaryValueDecoder<$0, $1>", kAppendZero, kValueType);
-  }
-
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     if (PREDICT_FALSE(begin == end)) {
       return false;
@@ -479,8 +467,9 @@ UnsafeStatus DoDecodePackedColumnV1(
 template <bool kLast, class Decoder>
 UnsafeStatus DecodePackedColumnV1(
     PackedColumnDecoderDataV1* data, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const PackedColumnDecoderEntry* chain) {
-  auto column_value = data->decoder.FetchValue(chain->data);
+  auto column_value = data->decoder.FetchValue(decoder_args.packed_index);
   return DoDecodePackedColumnV1<kLast, Decoder>(
       data, projection_index, chain, column_value);
 }
@@ -489,7 +478,7 @@ template <class Decoder, bool kCheckNull, ColumnStrategy kStrategy>
 UnsafeStatus DecodeColumnValueV2(
     const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
     const PackedColumnDecoderEntry* chain) {
-  auto idx = chain->data;
+  auto idx = chain->decoder_args.packed_index;
   auto* row = static_cast<PgTableRow*>(context);
   constexpr auto kLast = kStrategy == ColumnStrategy::kLast;
   constexpr auto kIncrementProjectionIndex = kStrategy != ColumnStrategy::kSkip;
@@ -578,13 +567,13 @@ using NoNullsVisitorV2 = GetPackedColumnDecoderVisitorV2<false, kStrategy>;
 PackedColumnDecoderEntry GetPackedColumnDecoderEntryV2(
     ColumnStrategy strategy, DataType data_type, ssize_t packed_index) {
   return PackedColumnDecoderEntry {
-    .decoder = PackedColumnDecoderUnion {
-      .v2 = PackedColumnDecodersV2 {
+    .decoder = {
+      .v2 = {
         .with_nulls = GetPackedColumnDecoder<WithNullsVisitorV2>(strategy, data_type),
         .no_nulls = GetPackedColumnDecoder<NoNullsVisitorV2>(strategy, data_type),
       },
     },
-    .data = make_unsigned(packed_index),
+    .decoder_args = { .packed_index = make_unsigned(packed_index) }
   };
 }
 
@@ -875,10 +864,10 @@ PackedColumnDecoderEntry PgTableRow::GetPackedColumnDecoderV1(
     bool last, DataType data_type, ssize_t packed_index) {
   auto strategy = last ? ColumnStrategy::kLast : ColumnStrategy::kRegular;
   return PackedColumnDecoderEntry {
-    .decoder = PackedColumnDecoderUnion {
+    .decoder = {
       .v1 = GetPackedColumnDecoder<GetPackedColumnDecoderVisitorV1>(strategy, data_type),
     },
-    .data = make_unsigned(packed_index),
+    .decoder_args = { .packed_index = make_unsigned(packed_index) }
   };
 }
 

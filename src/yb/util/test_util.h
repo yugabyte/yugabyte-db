@@ -52,6 +52,9 @@
 } while (0)
 
 namespace yb {
+
+class CurlGlobalInitializer;
+
 namespace rpc {
 
 class Messenger;
@@ -87,6 +90,7 @@ class YBTest : public ::testing::Test {
 
  private:
   std::string test_dir_;
+  std::unique_ptr<CurlGlobalInitializer> global_curl_;
 };
 
 // Returns true if slow tests are runtime-enabled.
@@ -198,8 +202,10 @@ inline std::string GetYbcToolPath(const std::string& tool_name) {
 
 std::string GetCertsDir();
 
+// See https://docs.google.com/document/d/1aGD37sMIkkGFyvm7QEe2jtru1G-qGHIObu7IyoaUPS4
+// for more context and steps to use YB Controller in UTs locally.
 // Read YB_TEST_YB_CONTROLLER from env.
-// If true, spawn YBC servers for backup operations.
+// If true, spawn YB Controller servers for backup operations.
 bool UseYbController();
 
 /*
@@ -210,6 +216,8 @@ backups to fail.
 TODO: Re-enable the tests once GH#21689 is done.
 */
 bool DisableMiniClusterBackupTests();
+
+void AddExtraFlagsFromEnvVar(const char* env_var_name, std::vector<std::string>* args_dest);
 
 int CalcNumTablets(size_t num_tablet_servers);
 

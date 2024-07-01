@@ -1,0 +1,3 @@
+# src/test/regress/yb_foreign_data_schedule
+# This schedule includes YB-introduced tests related to postgres foreign data.
+test: yb_foreign_data

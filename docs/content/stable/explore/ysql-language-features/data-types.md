@@ -1,5 +1,6 @@
 ---
-title: Data types in YSQL
+title: YSQL data types
+headertitle: Data types
 linkTitle: Data types
 description: Data types in YSQL
 menu:

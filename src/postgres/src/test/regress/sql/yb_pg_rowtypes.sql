@@ -167,14 +167,14 @@ select a,b from test_table where (a,b) > ('a','a') order by a,b;
 reset enable_sort;
 
 -- Check row comparisons with IN
-select * from int8_tbl i8 where i8 in (row(123,456,789));  -- fail, type mismatch -- YB: adjust for ybsort column
+select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
 
 explain (costs off)
-select q1, q2 from int8_tbl i8 -- YB: avoid ybsort column
-where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjust for ybsort column
+select * from int8_tbl i8
+where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
 
-select q1, q2 from int8_tbl i8 -- YB: avoid ybsort column
-where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjust for ybsort column
+select * from int8_tbl i8
+where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
 
 -- Check ability to select columns from an anonymous rowtype
 select (row(1, 2.0)).f1;
@@ -417,9 +417,9 @@ select longname(f) from fullname f;
 -- (bug #11210 and other reports)
 --
 
-select replace((row_to_json(i)::jsonb - 'ybsort')::text, ' ', '')::json as row_to_json from int8_tbl i; -- YB: avoid ybsort column
+select row_to_json(i) from int8_tbl i;
 -- since "i" is of type "int8_tbl", attaching aliases doesn't change anything:
-select replace((row_to_json(i)::jsonb - 'ybsort')::text, ' ', '')::json as row_to_json from int8_tbl i(x,y); -- YB: avoid ybsort column
+select row_to_json(i) from int8_tbl i(x,y);
 
 -- in these examples, we'll report the exposed column names of the subselect:
 select row_to_json(ss) from

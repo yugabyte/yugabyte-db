@@ -536,6 +536,14 @@ public class CloudProviderApiController extends AuthenticatedController {
         if (region.has("config") && forEdit) {
           ((ObjectNode) region).remove("config");
         }
+        if (forEdit) {
+          if (region.has("vnetName")) {
+            ((ObjectNode) region).remove("vnetName");
+          }
+          if (region.has("securityGroupId")) {
+            ((ObjectNode) region).remove("securityGroupId");
+          }
+        }
         regionWithProviderCode.setAll((ObjectNode) region);
         JsonNode zones = region.get("zones");
         ArrayNode zonesNode = mapper.createArrayNode();

@@ -37,8 +37,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/function.hpp>
-
 #include "yb/common/common_fwd.h"
 
 #include "yb/gutil/macros.h"
@@ -62,10 +60,8 @@ namespace master {
 
 class TSInformationPB;
 
-typedef std::string TabletServerId;
-
 // A callback that is called when the number of tablet servers reaches a certain number.
-typedef boost::function<void()> TSCountCallback;
+using TSCountCallback = std::function<void()>;
 
 // Tracks the servers that the master has heard from, along with their
 // last heartbeat, etc.
@@ -79,8 +75,8 @@ typedef boost::function<void()> TSCountCallback;
 // This class is thread-safe.
 class TSManager {
  public:
-  TSManager();
-  virtual ~TSManager();
+  TSManager() {}
+  virtual ~TSManager() {}
 
   // Lookup the tablet server descriptor for the given instance identifier.
   // If the TS has never registered, or this instance doesn't match the
@@ -113,13 +109,13 @@ class TSManager {
   // heartbeat recently, indicating that they're alive and well.
   // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
   void GetAllLiveDescriptors(TSDescriptorVector* descs,
-                             const boost::optional<BlacklistSet>& blacklist = boost::none) const;
+                             const std::optional<BlacklistSet>& blacklist = std::nullopt) const;
 
   // Return all of the currently registered TS descriptors that have sent a heartbeat
   // recently and are in the same 'cluster' with given placement uuid.
   // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
-  void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, std::string placement_uuid,
-                                      const boost::optional<BlacklistSet>& blacklist = boost::none,
+  void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, const std::string& placement_uuid,
+                                      const std::optional<BlacklistSet>& blacklist = std::nullopt,
                                       bool primary_cluster = true) const;
 
   // Return all of the currently registered TS descriptors that have sent a
@@ -127,18 +123,19 @@ class TSManager {
   // full report of their tablets as well.
   void GetAllReportedDescriptors(TSDescriptorVector* descs) const;
 
-  // Return the tablet server descriptor running on the given port.
-  const TSDescriptorPtr GetTSDescriptor(const HostPortPB& host_port) const;
-
   // Check if the placement uuid of the tserver is same as given cluster uuid.
-  static bool IsTsInCluster(const TSDescriptorPtr& ts, std::string cluster_uuid);
+  static bool IsTsInCluster(const TSDescriptorPtr& ts, const std::string& cluster_uuid);
 
   static bool IsTsBlacklisted(const TSDescriptorPtr& ts,
-                              const boost::optional<BlacklistSet>& blacklist = boost::none);
+                              const std::optional<BlacklistSet>& blacklist = std::nullopt);
 
   // Register a callback to be called when the number of tablet servers reaches a certain number.
   // The callback is removed after it is called once.
   void SetTSCountCallback(int min_count, TSCountCallback callback);
+
+  size_t NumDescriptors() const;
+
+  size_t NumLiveDescriptors() const;
 
  private:
   void GetDescriptors(std::function<bool(const TSDescriptorPtr&)> condition,
@@ -147,7 +144,7 @@ class TSManager {
 
   void GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
   void GetDescriptorsUnlocked(std::function<bool(const TSDescriptorPtr&)> condition,
-                      TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
+                              TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
 
   // Returns the registered ts descriptors whose hostport matches the hostport in the
   // registration argument.
@@ -156,11 +153,11 @@ class TSManager {
       const TSRegistrationPB& registration,
       const CloudInfoPB& local_cloud_info) const REQUIRES_SHARED(lock_);
 
-  size_t GetCountUnlocked() const REQUIRES_SHARED(lock_);
+  size_t NumDescriptorsUnlocked() const REQUIRES_SHARED(lock_);
 
   mutable rw_spinlock lock_;
 
-  typedef std::unordered_map<std::string, TSDescriptorPtr> TSDescriptorMap;
+  using TSDescriptorMap = std::unordered_map<std::string, TSDescriptorPtr>;
   TSDescriptorMap servers_by_id_ GUARDED_BY(lock_);
 
   // This callback will be called when the number of tablet servers reaches the given number.

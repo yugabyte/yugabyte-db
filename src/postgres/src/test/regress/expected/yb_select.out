@@ -560,9 +560,12 @@ EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name
                      ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute att
                            Index Cond: (attnum > 0)
                            Filter: (attisdropped IS FALSE)
-                     ->  Index Scan using pg_type_oid_index on pg_type ty
-                           Index Cond: (oid = ANY (ARRAY[att.atttypid, $1, $2, ..., $1023]))
-(12 rows)
+                     ->  Memoize
+                           Cache Key: att.atttypid
+                           Cache Mode: logical
+                           ->  Index Scan using pg_type_oid_index on pg_type ty
+                                 Index Cond: (oid = ANY (ARRAY[att.atttypid, $1, $2, ..., $1023]))
+(15 rows)
 
 -- check system columns in YbSeqScan(#18485)
 explain (costs off)

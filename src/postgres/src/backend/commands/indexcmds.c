@@ -764,7 +764,7 @@ DefineIndex(Oid relationId,
 		 *   CONCURRENTLY/NONCONCURRENTLY. In the implicit case, concurrency
 		 *   is safe to be disabled.
 		 */
-		if (concurrent && IsCatalogRelation(rel))
+		if (concurrent && YbIsSysCatalogTabletRelation(rel))
 		{
 			if (stmt->concurrent == YB_CONCURRENCY_EXPLICIT_ENABLED)
 				ereport(ERROR,
@@ -777,9 +777,10 @@ DefineIndex(Oid relationId,
 		/*
 		 * For concurrent to be true, temporary tables should already be ruled
 		 * out by the PG-owned code far above, and by also ruling out system
-		 * tables, what's left should be YB relations.
+		 * tables, what's left should be YB relations and foreign relations.
 		 */
-		Assert(!concurrent || IsYBRelation(rel));
+		Assert(!concurrent || IsYBRelation(rel) ||
+			   rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 		if (concurrent && (stmt->primary || IsBootstrapProcessingMode()))
 		{
 			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);

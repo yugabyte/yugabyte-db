@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-When backing up to and/or restoring from external cloud storage, generally speaking, both YubayteDB Anywhere (YBA) and database nodes require permissions to write to and read from the external storage.
+When backing up to and/or restoring from external cloud storage, generally speaking, both YugabyteDB Anywhere (YBA) and database nodes require permissions to write to and read from the external storage.
 
 When backing up to an NFS storage target, only database nodes need access to the NFS storage.
 

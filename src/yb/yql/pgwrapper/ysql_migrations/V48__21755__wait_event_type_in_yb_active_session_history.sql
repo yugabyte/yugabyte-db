@@ -22,6 +22,18 @@ BEGIN;
 COMMIT;
 
 -- Recreating the system view yb_active_session_history
-CREATE OR REPLACE VIEW pg_catalog.yb_active_session_history WITH (use_initdb_acl = true) AS
-  SELECT *
-  FROM yb_active_session_history();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT TRUE FROM pg_attribute
+    WHERE attrelid = 'pg_catalog.yb_active_session_history'::regclass
+          AND attname = 'wait_event_type'
+          AND NOT attisdropped
+  ) THEN
+    CREATE OR REPLACE VIEW pg_catalog.yb_active_session_history
+    WITH (use_initdb_acl = true)
+    AS
+      SELECT *
+      FROM yb_active_session_history();
+  END IF;
+END $$;

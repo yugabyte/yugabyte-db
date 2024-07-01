@@ -78,39 +78,35 @@ SELECT CASE 'a' WHEN 'a' THEN 1 ELSE 2 END;
 -- Examples of targets involving tables
 --
 
-SELECT '' AS "Five",
+SELECT
   CASE
     WHEN i >= 3 THEN i
   END AS ">= 3 or Null"
-  FROM CASE_TBL
-  ORDER BY ">= 3 or Null";
+  FROM CASE_TBL;
 
-SELECT '' AS "Five",
+SELECT
   CASE WHEN i >= 3 THEN (i + i)
        ELSE i
   END AS "Simplest Math"
-  FROM CASE_TBL
-  ORDER BY "Simplest Math";
+  FROM CASE_TBL;
 
-SELECT '' AS "Five", i AS "Value",
+SELECT i AS "Value",
   CASE WHEN (i < 0) THEN 'small'
        WHEN (i = 0) THEN 'zero'
        WHEN (i = 1) THEN 'one'
        WHEN (i = 2) THEN 'two'
        ELSE 'big'
   END AS "Category"
-  FROM CASE_TBL
-  ORDER BY "Value", "Category";
+  FROM CASE_TBL;
 
-SELECT '' AS "Five",
+SELECT
   CASE WHEN ((i < 0) or (i < 0)) THEN 'small'
        WHEN ((i = 0) or (i = 0)) THEN 'zero'
        WHEN ((i = 1) or (i = 1)) THEN 'one'
        WHEN ((i = 2) or (i = 2)) THEN 'two'
        ELSE 'big'
   END AS "Category"
-  FROM CASE_TBL
-  ORDER BY "Category";
+  FROM CASE_TBL;
 
 --
 -- Examples of qualifications involving tables
@@ -126,24 +122,32 @@ SELECT * FROM CASE_TBL WHERE COALESCE(f,i) = 4;
 
 SELECT * FROM CASE_TBL WHERE NULLIF(f,i) = 2;
 
+ANALYZE CASE_TBL, CASE2_TBL; -- YB: add ANALYZE because case2_tbl should be leading in the joins below
 SELECT COALESCE(a.f, b.i, b.j)
-  FROM CASE_TBL a, CASE2_TBL b
-  ORDER BY coalesce;
+  FROM CASE_TBL a, CASE2_TBL b;
 
 SELECT *
   FROM CASE_TBL a, CASE2_TBL b
-  WHERE COALESCE(a.f, b.i, b.j) = 2
-  ORDER BY j;
+  WHERE COALESCE(a.f, b.i, b.j) = 2;
 
-SELECT '' AS Five, NULLIF(a.i,b.i) AS "NULLIF(a.i,b.i)",
+SELECT NULLIF(a.i,b.i) AS "NULLIF(a.i,b.i)",
   NULLIF(b.i, 4) AS "NULLIF(b.i,4)"
-  FROM CASE_TBL a, CASE2_TBL b
-  ORDER BY "NULLIF(a.i,b.i)", "NULLIF(b.i,4)";
+  FROM CASE_TBL a, CASE2_TBL b;
 
-SELECT '' AS "Two", *
+SELECT *
   FROM CASE_TBL a, CASE2_TBL b
-  WHERE COALESCE(f,b.i) = 2
-  ORDER BY j;
+  WHERE COALESCE(f,b.i) = 2;
+
+-- Tests for constant subexpression simplification
+
+explain (costs off)
+SELECT * FROM CASE_TBL WHERE NULLIF(1, 2) = 2;
+
+explain (costs off)
+SELECT * FROM CASE_TBL WHERE NULLIF(1, 1) IS NOT NULL;
+
+explain (costs off)
+SELECT * FROM CASE_TBL WHERE NULLIF(1, null) = 2;
 
 --
 -- Examples of updates involving tables
@@ -153,21 +157,23 @@ UPDATE CASE_TBL
   SET i = CASE WHEN i >= 3 THEN (- i)
                 ELSE (2 * i) END;
 
-SELECT * FROM CASE_TBL ORDER BY i, f;
+SELECT * FROM CASE_TBL;
 
 UPDATE CASE_TBL
   SET i = CASE WHEN i >= 2 THEN (2 * i)
                 ELSE (3 * i) END;
 
-SELECT * FROM CASE_TBL ORDER BY i, f;
+SELECT * FROM CASE_TBL;
 
+WITH ybtmp AS (DELETE FROM CASE_TBL WHERE f = 10.1 RETURNING *)
+  INSERT INTO CASE_TBL SELECT * FROM ybtmp; -- YB: imitate PG ctid reallocation for the following update
 UPDATE CASE_TBL
   SET i = CASE WHEN b.i >= 2 THEN (2 * j)
                 ELSE (3 * j) END
   FROM CASE2_TBL b
   WHERE j = -CASE_TBL.i;
 
-SELECT * FROM CASE_TBL ORDER BY i, f;
+SELECT * FROM CASE_TBL;
 
 --
 -- Nested CASE expressions

@@ -1,5 +1,5 @@
 ---
-title: Alerts in YugabyteDB Managed
+title: Alerts in YugabyteDB Aeon
 headerTitle: Alerts
 linkTitle: Alerts
 description: Set alerts for activity in your account.
@@ -20,8 +20,8 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 
 ## Features
 
-- YugabyteDB Managed sends email notifications to all account members.
-- When an alert triggers, YugabyteDB Managed sends an email notification once, regardless of how long the condition lasts.
+- YugabyteDB Aeon sends email notifications to all account members.
+- When an alert triggers, YugabyteDB Aeon sends an email notification once, regardless of how long the condition lasts.
 - When an alert triggers, a notification displays on the **Notifications** page. After the alert condition resolves, the notification dismisses automatically.
 - Alerts are enabled for all clusters in your account.
 - Alerts can have two severity levels: Warning or Severe. A third level, Info, does not trigger a notification.
@@ -95,7 +95,7 @@ If you get frequent cluster alerts on a [Sandbox cluster](../../cloud-basics/cre
 
 #### Fix throughput alerts
 
-YugabyteDB Managed sends a notification when the disk throughput on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon sends a notification when the disk throughput on any node in the cluster exceeds the threshold, as follows:
 
 - Node disk throughput utilization exceeded 80% (Warning).
 - Node disk throughput utilization reached 100% (Warning).
@@ -106,7 +106,7 @@ For information on scaling clusters, refer to [Scale and configure clusters](../
 
 #### Fix IOPS alerts
 
-YugabyteDB Managed sends a notification when the disk input output (I/O) operations per second (IOPS) on any node in the cluster (AWS only) exceeds the threshold, as follows:
+YugabyteDB Aeon sends a notification when the disk input output (I/O) operations per second (IOPS) on any node in the cluster (AWS only) exceeds the threshold, as follows:
 
 - Node disk IOPS utilization exceeded 80% (Warning).
 - Node disk IOPS utilization reached 100% (Warning).
@@ -119,7 +119,7 @@ For information on scaling clusters, refer to [Scale and configure clusters](../
 
 #### Fix storage alerts
 
-YugabyteDB Managed sends a notification when the free storage on any node in the cluster falls below the threshold, as follows:
+YugabyteDB Aeon sends a notification when the free storage on any node in the cluster falls below the threshold, as follows:
 
 - Node free storage is below 40% (Warning).
 - Node free storage is below 25% (Severe).
@@ -132,7 +132,7 @@ For information on scaling clusters, refer to [Scale and configure clusters](../
 
 #### Fix nodes reporting as down alerts
 
-YugabyteDB Managed sends a notification when the number of primary or read replica nodes that are down in a cluster exceeds the threshold, as follows:
+YugabyteDB Aeon sends a notification when the number of primary or read replica nodes that are down in a cluster exceeds the threshold, as follows:
 
 - More than 34% of all primary or read replica nodes in the cluster are reporting as down (Warning).
 - More than 66% of all primary or read replica nodes in the cluster are reporting as down (Severe).
@@ -147,7 +147,7 @@ When cluster nodes go down, Yugabyte is notified automatically and will restore 
 
 #### Fix memory alerts
 
-YugabyteDB Managed sends a notification when memory use in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon sends a notification when memory use in the cluster exceeds the threshold, as follows:
 
 - Memory use exceeds 70% (Warning).
 - Memory use exceeds 90% (Severe).
@@ -162,7 +162,7 @@ High memory use could also indicate a problem and may require debugging by {{% s
 
 #### Fix database overload alerts
 
-YugabyteDB Managed sends the following database overload alert:
+YugabyteDB Aeon sends the following database overload alert:
 
 - Cluster queues overflow and/or compaction overload.
 
@@ -185,7 +185,7 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 #### Fix YSQL connection alerts
 
-YugabyteDB Managed clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Managed sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
 - YSQL connections exceeds 60% of the limit (Warning).
 - YSQL connections exceeds 95% of the limit (Severe).
@@ -202,7 +202,7 @@ To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer t
 
 #### Fix CMK unavailable alerts
 
-YugabyteDB Managed sends a notification when the customer managed key (CMK) used to encrypt a cluster is unreachable.
+YugabyteDB Aeon sends a notification when the customer managed key (CMK) used to encrypt a cluster is unreachable.
 
 If your CMK is unreachable, check the following:
 
@@ -214,7 +214,7 @@ Refer to [Encryption at rest](../../cloud-secure-clusters/managed-ear/).
 
 #### Fix CPU alerts
 
-YugabyteDB Managed sends a notification when CPU use on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon sends a notification when CPU use on any node in the cluster exceeds the threshold, as follows:
 
 - Node CPU use exceeds 70% on average for at least 5 minutes (Warning).
 - Node CPU use exceeds 90% on average for at least 5 minutes (Severe).

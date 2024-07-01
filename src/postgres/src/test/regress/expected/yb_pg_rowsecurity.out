@@ -4,6 +4,7 @@
 -- Clean up in case a prior regression run failed
 -- Suppress NOTICE messages when users/groups don't exist
 SET client_min_messages TO 'warning';
+SET compute_query_id to regress; -- YB: disable query IDs in EXPLAIN VERBOSE output
 DROP USER IF EXISTS regress_rls_alice;
 DROP USER IF EXISTS regress_rls_bob;
 DROP USER IF EXISTS regress_rls_carol;
@@ -36,7 +37,7 @@ SET SESSION AUTHORIZATION regress_rls_alice;
 CREATE TABLE uaccount (
     pguser      name,
     seclv       int,
-    PRIMARY KEY(pguser ASC)
+    PRIMARY KEY(pguser ASC) -- YB: use ASC for ordering in queries
 );
 GRANT SELECT ON uaccount TO public;
 INSERT INTO uaccount VALUES
@@ -47,7 +48,7 @@ INSERT INTO uaccount VALUES
 CREATE TABLE category (
     cid        int,
     cname      text,
-    PRIMARY KEY(cid ASC)
+    PRIMARY KEY(cid ASC) -- YB: use ASC for ordering in queries
 );
 GRANT ALL ON category TO public;
 INSERT INTO category VALUES
@@ -56,16 +57,14 @@ INSERT INTO category VALUES
     (33, 'technology'),
     (44, 'manga');
 CREATE TABLE document (
-    did         int UNIQUE ,
+    did         int,
     cid         int references category(cid),
     dlevel      int not null,
     dauthor     name,
     dtitle      text,
-    k           serial,
-    PRIMARY KEY(k ASC)
+    PRIMARY KEY(did ASC) -- YB: use ASC for ordering in queries
 );
 GRANT ALL ON document TO public;
-GRANT ALL ON document_k_seq TO public;
 INSERT INTO document VALUES
     ( 1, 11, 1, 'regress_rls_bob', 'my first novel'),
     ( 2, 11, 2, 'regress_rls_bob', 'my second novel'),
@@ -97,9 +96,9 @@ CREATE POLICY p2r ON document AS RESTRICTIVE TO regress_rls_dave
 -- and Dave isn't allowed to see manga documents
 CREATE POLICY p1r ON document AS RESTRICTIVE TO regress_rls_dave
     USING (cid <> 44);
--- \dp
--- 'dp' command shows policies in without ordering, output may be unstable in context of YB
--- Use 'dp' original query instead of 'dp' command itself with extra ordering by 'polname'
+/* YB: 'dp' command shows policies in without ordering, output may be unstable in context of YB. Therefore, use 'dp' original query instead of 'dp' command itself with extra ordering by 'polname'
+\dp
+*/ -- YB
 SELECT n.nspname as "Schema",
   c.relname as "Name",
   CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'S' THEN 'sequence' WHEN 'f' THEN 'foreign table' WHEN 'p' THEN 'table' END as "Type",
@@ -114,8 +113,8 @@ SELECT n.nspname as "Schema",
     || CASE WHEN NOT polpermissive THEN
        E' (RESTRICTIVE)'
        ELSE '' END
-    || CASE WHEN polcmd != '*' THEN
-           E' (' || polcmd || E'):'
+    || CASE WHEN polcmd::pg_catalog.text != '*' THEN
+           E' (' || polcmd::pg_catalog.text || E'):'
        ELSE E':'
        END
     || CASE WHEN polqual IS NOT NULL THEN
@@ -142,40 +141,36 @@ FROM pg_catalog.pg_class c
      LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r','v','m','S','f','p')
   AND n.nspname !~ '^pg_' AND pg_catalog.pg_table_is_visible(c.oid)
-ORDER BY 1, 2;
-       Schema       |      Name      |   Type   |              Access privileges              | Column privileges |                  Policies
---------------------+----------------+----------+---------------------------------------------+-------------------+--------------------------------------------
- regress_rls_schema | category       | table    | regress_rls_alice=arwdDxt/regress_rls_alice+|                   |
-                    |                |          | =arwdDxt/regress_rls_alice                  |                   |
- regress_rls_schema | document       | table    | regress_rls_alice=arwdDxt/regress_rls_alice+|                   | p1:                                       +
-                    |                |          | =arwdDxt/regress_rls_alice                  |                   |   (u): (dlevel <= ( SELECT uaccount.seclv +
-                    |                |          |                                             |                   |    FROM uaccount                          +
-                    |                |          |                                             |                   |   WHERE (uaccount.pguser = CURRENT_USER)))+
-                    |                |          |                                             |                   | p1r (RESTRICTIVE):                        +
-                    |                |          |                                             |                   |   (u): (cid <> 44)                        +
-                    |                |          |                                             |                   |   to: regress_rls_dave                    +
-                    |                |          |                                             |                   | p2r (RESTRICTIVE):                        +
-                    |                |          |                                             |                   |   (u): ((cid <> 44) AND (cid < 50))       +
-                    |                |          |                                             |                   |   to: regress_rls_dave
- regress_rls_schema | document_k_seq | sequence | regress_rls_alice=rwU/regress_rls_alice    +|                   |
-                    |                |          | =rwU/regress_rls_alice                      |                   |
- regress_rls_schema | uaccount       | table    | regress_rls_alice=arwdDxt/regress_rls_alice+|                   |
-                    |                |          | =r/regress_rls_alice                        |                   |
-(4 rows)
+ORDER BY 1, 2; -- YB: use \dp query with ORDER BY polname
+       Schema       |   Name   | Type  |              Access privileges              | Column privileges |                  Policies
+--------------------+----------+-------+---------------------------------------------+-------------------+--------------------------------------------
+ regress_rls_schema | category | table | regress_rls_alice=arwdDxt/regress_rls_alice+|                   |
+                    |          |       | =arwdDxt/regress_rls_alice                  |                   |
+ regress_rls_schema | document | table | regress_rls_alice=arwdDxt/regress_rls_alice+|                   | p1:                                       +
+                    |          |       | =arwdDxt/regress_rls_alice                  |                   |   (u): (dlevel <= ( SELECT uaccount.seclv +
+                    |          |       |                                             |                   |    FROM uaccount                          +
+                    |          |       |                                             |                   |   WHERE (uaccount.pguser = CURRENT_USER)))+
+                    |          |       |                                             |                   | p1r (RESTRICTIVE):                        +
+                    |          |       |                                             |                   |   (u): (cid <> 44)                        +
+                    |          |       |                                             |                   |   to: regress_rls_dave                    +
+                    |          |       |                                             |                   | p2r (RESTRICTIVE):                        +
+                    |          |       |                                             |                   |   (u): ((cid <> 44) AND (cid < 50))       +
+                    |          |       |                                             |                   |   to: regress_rls_dave
+ regress_rls_schema | uaccount | table | regress_rls_alice=arwdDxt/regress_rls_alice+|                   |
+                    |          |       | =r/regress_rls_alice                        |                   |
+(3 rows)
 
 \d document
-                      Table "regress_rls_schema.document"
- Column  |  Type   | Collation | Nullable |               Default
----------+---------+-----------+----------+-------------------------------------
- did     | integer |           |          |
+        Table "regress_rls_schema.document"
+ Column  |  Type   | Collation | Nullable | Default
+---------+---------+-----------+----------+---------
+ did     | integer |           | not null |
  cid     | integer |           |          |
  dlevel  | integer |           | not null |
  dauthor | name    |           |          |
  dtitle  | text    |           |          |
- k       | integer |           | not null | nextval('document_k_seq'::regclass)
 Indexes:
-    "document_pkey" PRIMARY KEY, lsm (k ASC)
-    "document_did_key" UNIQUE CONSTRAINT, lsm (did HASH)
+    "document_pkey" PRIMARY KEY, lsm (did ASC)
 Foreign-key constraints:
     "document_cid_fkey" FOREIGN KEY (cid) REFERENCES category(cid)
 Policies:
@@ -209,13 +204,13 @@ NOTICE:  f_leak => my first manga
 NOTICE:  f_leak => great science fiction
 NOTICE:  f_leak => great manga
 NOTICE:  f_leak => awesome science fiction
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+---
-   1 |  11 |      1 | regress_rls_bob   | my first novel          | 1
-   4 |  44 |      1 | regress_rls_bob   | my first manga          | 4
-   6 |  22 |      1 | regress_rls_carol | great science fiction   | 6
-   8 |  44 |      1 | regress_rls_carol | great manga             | 8
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction | 9
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   4 |  44 |      1 | regress_rls_bob   | my first manga
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   8 |  44 |      1 | regress_rls_carol | great manga
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
 (5 rows)
 
 SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle) ORDER BY did;
@@ -224,13 +219,13 @@ NOTICE:  f_leak => my first manga
 NOTICE:  f_leak => great science fiction
 NOTICE:  f_leak => great manga
 NOTICE:  f_leak => awesome science fiction
- cid | did | dlevel |      dauthor      |         dtitle          | k |      cname
------+-----+--------+-------------------+-------------------------+---+-----------------
-  11 |   1 |      1 | regress_rls_bob   | my first novel          | 1 | novel
-  44 |   4 |      1 | regress_rls_bob   | my first manga          | 4 | manga
-  22 |   6 |      1 | regress_rls_carol | great science fiction   | 6 | science fiction
-  44 |   8 |      1 | regress_rls_carol | great manga             | 8 | manga
-  22 |   9 |      1 | regress_rls_dave  | awesome science fiction | 9 | science fiction
+ cid | did | dlevel |      dauthor      |         dtitle          |      cname
+-----+-----+--------+-------------------+-------------------------+-----------------
+  11 |   1 |      1 | regress_rls_bob   | my first novel          | novel
+  44 |   4 |      1 | regress_rls_bob   | my first manga          | manga
+  22 |   6 |      1 | regress_rls_carol | great science fiction   | science fiction
+  44 |   8 |      1 | regress_rls_carol | great manga             | manga
+  22 |   9 |      1 | regress_rls_dave  | awesome science fiction | science fiction
 (5 rows)
 
 -- try a sampled version
@@ -250,18 +245,18 @@ NOTICE:  f_leak => great technology book
 NOTICE:  f_leak => great manga
 NOTICE:  f_leak => awesome science fiction
 NOTICE:  f_leak => awesome technology book
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+----
-   1 |  11 |      1 | regress_rls_bob   | my first novel          |  1
-   2 |  11 |      2 | regress_rls_bob   | my second novel         |  2
-   3 |  22 |      2 | regress_rls_bob   | my science fiction      |  3
-   4 |  44 |      1 | regress_rls_bob   | my first manga          |  4
-   5 |  44 |      2 | regress_rls_bob   | my second manga         |  5
-   6 |  22 |      1 | regress_rls_carol | great science fiction   |  6
-   7 |  33 |      2 | regress_rls_carol | great technology book   |  7
-   8 |  44 |      1 | regress_rls_carol | great manga             |  8
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction |  9
-  10 |  33 |      2 | regress_rls_dave  | awesome technology book | 10
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  22 |      2 | regress_rls_bob   | my science fiction
+   4 |  44 |      1 | regress_rls_bob   | my first manga
+   5 |  44 |      2 | regress_rls_bob   | my second manga
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   8 |  44 |      1 | regress_rls_carol | great manga
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book
 (10 rows)
 
 SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle) ORDER BY did;
@@ -275,18 +270,18 @@ NOTICE:  f_leak => great technology book
 NOTICE:  f_leak => great manga
 NOTICE:  f_leak => awesome science fiction
 NOTICE:  f_leak => awesome technology book
- cid | did | dlevel |      dauthor      |         dtitle          | k  |      cname
------+-----+--------+-------------------+-------------------------+----+-----------------
-  11 |   1 |      1 | regress_rls_bob   | my first novel          |  1 | novel
-  11 |   2 |      2 | regress_rls_bob   | my second novel         |  2 | novel
-  22 |   3 |      2 | regress_rls_bob   | my science fiction      |  3 | science fiction
-  44 |   4 |      1 | regress_rls_bob   | my first manga          |  4 | manga
-  44 |   5 |      2 | regress_rls_bob   | my second manga         |  5 | manga
-  22 |   6 |      1 | regress_rls_carol | great science fiction   |  6 | science fiction
-  33 |   7 |      2 | regress_rls_carol | great technology book   |  7 | technology
-  44 |   8 |      1 | regress_rls_carol | great manga             |  8 | manga
-  22 |   9 |      1 | regress_rls_dave  | awesome science fiction |  9 | science fiction
-  33 |  10 |      2 | regress_rls_dave  | awesome technology book | 10 | technology
+ cid | did | dlevel |      dauthor      |         dtitle          |      cname
+-----+-----+--------+-------------------+-------------------------+-----------------
+  11 |   1 |      1 | regress_rls_bob   | my first novel          | novel
+  11 |   2 |      2 | regress_rls_bob   | my second novel         | novel
+  22 |   3 |      2 | regress_rls_bob   | my science fiction      | science fiction
+  44 |   4 |      1 | regress_rls_bob   | my first manga          | manga
+  44 |   5 |      2 | regress_rls_bob   | my second manga         | manga
+  22 |   6 |      1 | regress_rls_carol | great science fiction   | science fiction
+  33 |   7 |      2 | regress_rls_carol | great technology book   | technology
+  44 |   8 |      1 | regress_rls_carol | great manga             | manga
+  22 |   9 |      1 | regress_rls_dave  | awesome science fiction | science fiction
+  33 |  10 |      2 | regress_rls_dave  | awesome technology book | technology
 (10 rows)
 
 -- try a sampled version
@@ -329,15 +324,15 @@ NOTICE:  f_leak => great science fiction
 NOTICE:  f_leak => great technology book
 NOTICE:  f_leak => awesome science fiction
 NOTICE:  f_leak => awesome technology book
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+----
-   1 |  11 |      1 | regress_rls_bob   | my first novel          |  1
-   2 |  11 |      2 | regress_rls_bob   | my second novel         |  2
-   3 |  22 |      2 | regress_rls_bob   | my science fiction      |  3
-   6 |  22 |      1 | regress_rls_carol | great science fiction   |  6
-   7 |  33 |      2 | regress_rls_carol | great technology book   |  7
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction |  9
-  10 |  33 |      2 | regress_rls_dave  | awesome technology book | 10
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  22 |      2 | regress_rls_bob   | my science fiction
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book
 (7 rows)
 
 SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle) ORDER BY did;
@@ -348,15 +343,15 @@ NOTICE:  f_leak => great science fiction
 NOTICE:  f_leak => great technology book
 NOTICE:  f_leak => awesome science fiction
 NOTICE:  f_leak => awesome technology book
- cid | did | dlevel |      dauthor      |         dtitle          | k  |      cname
------+-----+--------+-------------------+-------------------------+----+-----------------
-  11 |   1 |      1 | regress_rls_bob   | my first novel          |  1 | novel
-  11 |   2 |      2 | regress_rls_bob   | my second novel         |  2 | novel
-  22 |   3 |      2 | regress_rls_bob   | my science fiction      |  3 | science fiction
-  22 |   6 |      1 | regress_rls_carol | great science fiction   |  6 | science fiction
-  33 |   7 |      2 | regress_rls_carol | great technology book   |  7 | technology
-  22 |   9 |      1 | regress_rls_dave  | awesome science fiction |  9 | science fiction
-  33 |  10 |      2 | regress_rls_dave  | awesome technology book | 10 | technology
+ cid | did | dlevel |      dauthor      |         dtitle          |      cname
+-----+-----+--------+-------------------+-------------------------+-----------------
+  11 |   1 |      1 | regress_rls_bob   | my first novel          | novel
+  11 |   2 |      2 | regress_rls_bob   | my second novel         | novel
+  22 |   3 |      2 | regress_rls_bob   | my science fiction      | science fiction
+  22 |   6 |      1 | regress_rls_carol | great science fiction   | science fiction
+  33 |   7 |      2 | regress_rls_carol | great technology book   | technology
+  22 |   9 |      1 | regress_rls_dave  | awesome science fiction | science fiction
+  33 |  10 |      2 | regress_rls_dave  | awesome technology book | technology
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
@@ -407,13 +402,13 @@ NOTICE:  f_leak => my second novel
 NOTICE:  f_leak => my science fiction
 NOTICE:  f_leak => my first manga
 NOTICE:  f_leak => my second manga
- did | cid | dlevel |     dauthor     |       dtitle       | k
------+-----+--------+-----------------+--------------------+---
-   1 |  11 |      1 | regress_rls_bob | my first novel     | 1
-   2 |  11 |      2 | regress_rls_bob | my second novel    | 2
-   3 |  22 |      2 | regress_rls_bob | my science fiction | 3
-   4 |  44 |      1 | regress_rls_bob | my first manga     | 4
-   5 |  44 |      2 | regress_rls_bob | my second manga    | 5
+ did | cid | dlevel |     dauthor     |       dtitle
+-----+-----+--------+-----------------+--------------------
+   1 |  11 |      1 | regress_rls_bob | my first novel
+   2 |  11 |      2 | regress_rls_bob | my second novel
+   3 |  22 |      2 | regress_rls_bob | my science fiction
+   4 |  44 |      1 | regress_rls_bob | my first manga
+   5 |  44 |      2 | regress_rls_bob | my second manga
 (5 rows)
 
 SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle) ORDER by did;
@@ -422,13 +417,13 @@ NOTICE:  f_leak => my second novel
 NOTICE:  f_leak => my science fiction
 NOTICE:  f_leak => my first manga
 NOTICE:  f_leak => my second manga
- cid | did | dlevel |     dauthor     |       dtitle       | k |      cname
------+-----+--------+-----------------+--------------------+---+-----------------
-  11 |   1 |      1 | regress_rls_bob | my first novel     | 1 | novel
-  11 |   2 |      2 | regress_rls_bob | my second novel    | 2 | novel
-  22 |   3 |      2 | regress_rls_bob | my science fiction | 3 | science fiction
-  44 |   4 |      1 | regress_rls_bob | my first manga     | 4 | manga
-  44 |   5 |      2 | regress_rls_bob | my second manga    | 5 | manga
+ cid | did | dlevel |     dauthor     |       dtitle       |      cname
+-----+-----+--------+-----------------+--------------------+-----------------
+  11 |   1 |      1 | regress_rls_bob | my first novel     | novel
+  11 |   2 |      2 | regress_rls_bob | my second novel    | novel
+  22 |   3 |      2 | regress_rls_bob | my science fiction | science fiction
+  44 |   4 |      1 | regress_rls_bob | my first manga     | manga
+  44 |   5 |      2 | regress_rls_bob | my second manga    | manga
 (5 rows)
 
 -- viewpoint from rls_regres_carol again
@@ -437,22 +432,22 @@ SELECT * FROM document WHERE f_leak(dtitle) ORDER BY did;
 NOTICE:  f_leak => great science fiction
 NOTICE:  f_leak => great technology book
 NOTICE:  f_leak => great manga
- did | cid | dlevel |      dauthor      |        dtitle         | k
------+-----+--------+-------------------+-----------------------+---
-   6 |  22 |      1 | regress_rls_carol | great science fiction | 6
-   7 |  33 |      2 | regress_rls_carol | great technology book | 7
-   8 |  44 |      1 | regress_rls_carol | great manga           | 8
+ did | cid | dlevel |      dauthor      |        dtitle
+-----+-----+--------+-------------------+-----------------------
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   8 |  44 |      1 | regress_rls_carol | great manga
 (3 rows)
 
 SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle) ORDER by did;
 NOTICE:  f_leak => great science fiction
 NOTICE:  f_leak => great technology book
 NOTICE:  f_leak => great manga
- cid | did | dlevel |      dauthor      |        dtitle         | k |      cname
------+-----+--------+-------------------+-----------------------+---+-----------------
-  22 |   6 |      1 | regress_rls_carol | great science fiction | 6 | science fiction
-  33 |   7 |      2 | regress_rls_carol | great technology book | 7 | technology
-  44 |   8 |      1 | regress_rls_carol | great manga           | 8 | manga
+ cid | did | dlevel |      dauthor      |        dtitle         |      cname
+-----+-----+--------+-------------------+-----------------------+-----------------
+  22 |   6 |      1 | regress_rls_carol | great science fiction | science fiction
+  33 |   7 |      2 | regress_rls_carol | great technology book | technology
+  44 |   8 |      1 | regress_rls_carol | great manga           | manga
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
@@ -483,14 +478,14 @@ ALTER TABLE category ENABLE ROW LEVEL SECURITY;
 -- cannot delete PK referenced by invisible FK
 SET SESSION AUTHORIZATION regress_rls_bob;
 SELECT * FROM document d FULL OUTER JOIN category c on d.cid = c.cid ORDER BY d.did, c.cid;
- did | cid | dlevel |     dauthor     |       dtitle       | k | cid |   cname
------+-----+--------+-----------------+--------------------+---+-----+------------
-   1 |  11 |      1 | regress_rls_bob | my first novel     | 1 |  11 | novel
-   2 |  11 |      2 | regress_rls_bob | my second novel    | 2 |  11 | novel
-   3 |  22 |      2 | regress_rls_bob | my science fiction | 3 |     |
-   4 |  44 |      1 | regress_rls_bob | my first manga     | 4 |     |
-   5 |  44 |      2 | regress_rls_bob | my second manga    | 5 |     |
-     |     |        |                 |                    |   |  33 | technology
+ did | cid | dlevel |     dauthor     |       dtitle       | cid |   cname
+-----+-----+--------+-----------------+--------------------+-----+------------
+   1 |  11 |      1 | regress_rls_bob | my first novel     |  11 | novel
+   2 |  11 |      2 | regress_rls_bob | my second novel    |  11 | novel
+   3 |  22 |      2 | regress_rls_bob | my science fiction |     |
+   4 |  44 |      1 | regress_rls_bob | my first manga     |     |
+   5 |  44 |      2 | regress_rls_bob | my second manga    |     |
+     |     |        |                 |                    |  33 | technology
 (6 rows)
 
 DELETE FROM category WHERE cid = 33;    -- fails with FK violation
@@ -499,21 +494,21 @@ DETAIL:  Key is still referenced from table "document".
 -- can insert FK referencing invisible PK
 SET SESSION AUTHORIZATION regress_rls_carol;
 SELECT * FROM document d FULL OUTER JOIN category c on d.cid = c.cid ORDER BY d.did, c.cid;
- did | cid | dlevel |      dauthor      |        dtitle         | k | cid |      cname
------+-----+--------+-------------------+-----------------------+---+-----+-----------------
-   6 |  22 |      1 | regress_rls_carol | great science fiction | 6 |  22 | science fiction
-   7 |  33 |      2 | regress_rls_carol | great technology book | 7 |     |
-   8 |  44 |      1 | regress_rls_carol | great manga           | 8 |  44 | manga
+ did | cid | dlevel |      dauthor      |        dtitle         | cid |      cname
+-----+-----+--------+-------------------+-----------------------+-----+-----------------
+   6 |  22 |      1 | regress_rls_carol | great science fiction |  22 | science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book |     |
+   8 |  44 |      1 | regress_rls_carol | great manga           |  44 | manga
 (3 rows)
 
 INSERT INTO document VALUES (11, 33, 1, current_user, 'hoge');
 -- UNIQUE or PRIMARY KEY constraint violation DOES reveal presence of row
 SET SESSION AUTHORIZATION regress_rls_bob;
 INSERT INTO document VALUES (8, 44, 1, 'regress_rls_bob', 'my third manga'); -- Must fail with unique violation, revealing presence of did we can't see
-ERROR:  duplicate key value violates unique constraint "document_did_key"
+ERROR:  duplicate key value violates unique constraint "document_pkey"
 SELECT * FROM document WHERE did = 8; -- and confirm we can't see it
- did | cid | dlevel | dauthor | dtitle | k
------+-----+--------+---------+--------+---
+ did | cid | dlevel | dauthor | dtitle
+-----+-----+--------+---------+--------
 (0 rows)
 
 -- RLS policies are checked before constraints
@@ -525,19 +520,19 @@ ERROR:  new row violates row-level security policy for table "document"
 RESET SESSION AUTHORIZATION;
 SET row_security TO ON;
 SELECT * FROM document;
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+----
-   1 |  11 |      1 | regress_rls_bob   | my first novel          |  1
-   2 |  11 |      2 | regress_rls_bob   | my second novel         |  2
-   3 |  22 |      2 | regress_rls_bob   | my science fiction      |  3
-   4 |  44 |      1 | regress_rls_bob   | my first manga          |  4
-   5 |  44 |      2 | regress_rls_bob   | my second manga         |  5
-   6 |  22 |      1 | regress_rls_carol | great science fiction   |  6
-   7 |  33 |      2 | regress_rls_carol | great technology book   |  7
-   8 |  44 |      1 | regress_rls_carol | great manga             |  8
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction |  9
-  10 |  33 |      2 | regress_rls_dave  | awesome technology book | 10
-  11 |  33 |      1 | regress_rls_carol | hoge                    | 13
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  22 |      2 | regress_rls_bob   | my science fiction
+   4 |  44 |      1 | regress_rls_bob   | my first manga
+   5 |  44 |      2 | regress_rls_bob   | my second manga
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   8 |  44 |      1 | regress_rls_carol | great manga
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book
+  11 |  33 |      1 | regress_rls_carol | hoge
 (11 rows)
 
 SELECT * FROM category;
@@ -553,19 +548,19 @@ SELECT * FROM category;
 RESET SESSION AUTHORIZATION;
 SET row_security TO OFF;
 SELECT * FROM document;
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+----
-   1 |  11 |      1 | regress_rls_bob   | my first novel          |  1
-   2 |  11 |      2 | regress_rls_bob   | my second novel         |  2
-   3 |  22 |      2 | regress_rls_bob   | my science fiction      |  3
-   4 |  44 |      1 | regress_rls_bob   | my first manga          |  4
-   5 |  44 |      2 | regress_rls_bob   | my second manga         |  5
-   6 |  22 |      1 | regress_rls_carol | great science fiction   |  6
-   7 |  33 |      2 | regress_rls_carol | great technology book   |  7
-   8 |  44 |      1 | regress_rls_carol | great manga             |  8
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction |  9
-  10 |  33 |      2 | regress_rls_dave  | awesome technology book | 10
-  11 |  33 |      1 | regress_rls_carol | hoge                    | 13
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  22 |      2 | regress_rls_bob   | my science fiction
+   4 |  44 |      1 | regress_rls_bob   | my first manga
+   5 |  44 |      2 | regress_rls_bob   | my second manga
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   8 |  44 |      1 | regress_rls_carol | great manga
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book
+  11 |  33 |      1 | regress_rls_carol | hoge
 (11 rows)
 
 SELECT * FROM category;
@@ -581,19 +576,19 @@ SELECT * FROM category;
 SET SESSION AUTHORIZATION regress_rls_exempt_user;
 SET row_security TO OFF;
 SELECT * FROM document;
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+----
-   1 |  11 |      1 | regress_rls_bob   | my first novel          |  1
-   2 |  11 |      2 | regress_rls_bob   | my second novel         |  2
-   3 |  22 |      2 | regress_rls_bob   | my science fiction      |  3
-   4 |  44 |      1 | regress_rls_bob   | my first manga          |  4
-   5 |  44 |      2 | regress_rls_bob   | my second manga         |  5
-   6 |  22 |      1 | regress_rls_carol | great science fiction   |  6
-   7 |  33 |      2 | regress_rls_carol | great technology book   |  7
-   8 |  44 |      1 | regress_rls_carol | great manga             |  8
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction |  9
-  10 |  33 |      2 | regress_rls_dave  | awesome technology book | 10
-  11 |  33 |      1 | regress_rls_carol | hoge                    | 13
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  22 |      2 | regress_rls_bob   | my science fiction
+   4 |  44 |      1 | regress_rls_bob   | my first manga
+   5 |  44 |      2 | regress_rls_bob   | my second manga
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   8 |  44 |      1 | regress_rls_carol | great manga
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book
+  11 |  33 |      1 | regress_rls_carol | hoge
 (11 rows)
 
 SELECT * FROM category;
@@ -609,19 +604,19 @@ SELECT * FROM category;
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security TO ON;
 SELECT * FROM document;
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+----
-   1 |  11 |      1 | regress_rls_bob   | my first novel          |  1
-   2 |  11 |      2 | regress_rls_bob   | my second novel         |  2
-   3 |  22 |      2 | regress_rls_bob   | my science fiction      |  3
-   4 |  44 |      1 | regress_rls_bob   | my first manga          |  4
-   5 |  44 |      2 | regress_rls_bob   | my second manga         |  5
-   6 |  22 |      1 | regress_rls_carol | great science fiction   |  6
-   7 |  33 |      2 | regress_rls_carol | great technology book   |  7
-   8 |  44 |      1 | regress_rls_carol | great manga             |  8
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction |  9
-  10 |  33 |      2 | regress_rls_dave  | awesome technology book | 10
-  11 |  33 |      1 | regress_rls_carol | hoge                    | 13
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  22 |      2 | regress_rls_bob   | my science fiction
+   4 |  44 |      1 | regress_rls_bob   | my first manga
+   5 |  44 |      2 | regress_rls_bob   | my second manga
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   8 |  44 |      1 | regress_rls_carol | great manga
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book
+  11 |  33 |      1 | regress_rls_carol | hoge
 (11 rows)
 
 SELECT * FROM category;
@@ -637,19 +632,19 @@ SELECT * FROM category;
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security TO OFF;
 SELECT * FROM document;
- did | cid | dlevel |      dauthor      |         dtitle          | k
------+-----+--------+-------------------+-------------------------+----
-   1 |  11 |      1 | regress_rls_bob   | my first novel          |  1
-   2 |  11 |      2 | regress_rls_bob   | my second novel         |  2
-   3 |  22 |      2 | regress_rls_bob   | my science fiction      |  3
-   4 |  44 |      1 | regress_rls_bob   | my first manga          |  4
-   5 |  44 |      2 | regress_rls_bob   | my second manga         |  5
-   6 |  22 |      1 | regress_rls_carol | great science fiction   |  6
-   7 |  33 |      2 | regress_rls_carol | great technology book   |  7
-   8 |  44 |      1 | regress_rls_carol | great manga             |  8
-   9 |  22 |      1 | regress_rls_dave  | awesome science fiction |  9
-  10 |  33 |      2 | regress_rls_dave  | awesome technology book | 10
-  11 |  33 |      1 | regress_rls_carol | hoge                    | 13
+ did | cid | dlevel |      dauthor      |         dtitle
+-----+-----+--------+-------------------+-------------------------
+   1 |  11 |      1 | regress_rls_bob   | my first novel
+   2 |  11 |      2 | regress_rls_bob   | my second novel
+   3 |  22 |      2 | regress_rls_bob   | my science fiction
+   4 |  44 |      1 | regress_rls_bob   | my first manga
+   5 |  44 |      2 | regress_rls_bob   | my second manga
+   6 |  22 |      1 | regress_rls_carol | great science fiction
+   7 |  33 |      2 | regress_rls_carol | great technology book
+   8 |  44 |      1 | regress_rls_carol | great manga
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book
+  11 |  33 |      1 | regress_rls_carol | hoge
 (11 rows)
 
 SELECT * FROM category;
@@ -666,186 +661,16 @@ SELECT * FROM category;
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security TO ON;
-CREATE TABLE t1 (a int, junk1 text, b text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE t1 (id int not null, a int, junk1 text, b text, PRIMARY KEY(id ASC)); -- YB: use ASC for ordering in queries
 ALTER TABLE t1 DROP COLUMN junk1;    -- just a disturbing factor
 GRANT ALL ON t1 TO public;
-COPY t1(a, b) FROM stdin;
+COPY t1 FROM stdin WITH ;
 CREATE TABLE t2 (c float) INHERITS (t1);
 ERROR:  INHERITS not supported yet
 LINE 1: CREATE TABLE t2 (c float) INHERITS (t1);
                                   ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
-GRANT ALL ON t2 TO public;
-ERROR:  relation "t2" does not exist
--- TODO(dmitry): Uncomment when table t2 will be created (ie INHERITS feature will be enabled #1129)
--- COPY t2 FROM stdin;
--- 1	abc	1.1	201
--- 2	bcd	2.2	202
--- 3	cde	3.3	203
--- 4	def	4.4	204
--- \.
-CREATE TABLE t3 (c text, b text, a int, k serial, PRIMARY KEY(k ASC));
-ALTER TABLE t3 INHERIT t1;
-ERROR:  ALTER TABLE INHERIT not supported yet
-LINE 1: ALTER TABLE t3 INHERIT t1;
-                       ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
-GRANT ALL ON t3 TO public;
-COPY t3(a,b,c) FROM stdin;
-CREATE POLICY p1 ON t1 FOR ALL TO PUBLIC USING (a % 2 = 0); -- be even number
-CREATE POLICY p2 ON t2 FOR ALL TO PUBLIC USING (a % 2 = 1); -- be odd number
-ERROR:  relation "t2" does not exist
-ALTER TABLE t1 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE t2 ENABLE ROW LEVEL SECURITY;
-ERROR:  relation "t2" does not exist
-SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM t1;
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
-(2 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1;
-           QUERY PLAN
----------------------------------
- Seq Scan on t1
-   Storage Filter: ((a % 2) = 0)
-(2 rows)
-
-SELECT * FROM t1 WHERE f_leak(b);
-NOTICE:  f_leak => bbb
-NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
-(2 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
-           QUERY PLAN
----------------------------------
- Seq Scan on t1
-   Storage Filter: ((a % 2) = 0)
-   Filter: f_leak(b)
-(3 rows)
-
--- reference to system column
-SELECT oid, * FROM t1;
-ERROR:  column "oid" does not exist
-LINE 1: SELECT oid, * FROM t1;
-               ^
-EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
-           QUERY PLAN
----------------------------------
- Seq Scan on t1
-   Storage Filter: ((a % 2) = 0)
-(2 rows)
-
--- reference to whole-row reference
-SELECT *, t1 FROM t1;
- a |  b  | k |    t1
----+-----+---+-----------
- 2 | bbb | 2 | (2,bbb,2)
- 4 | dad | 4 | (4,dad,4)
-(2 rows)
-
-EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
-           QUERY PLAN
----------------------------------
- Seq Scan on t1
-   Storage Filter: ((a % 2) = 0)
-(2 rows)
-
--- for share/update lock
-SELECT * FROM t1 FOR SHARE;
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
-(2 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1 FOR SHARE;
-              QUERY PLAN
----------------------------------------
- LockRows
-   ->  Seq Scan on t1
-         Storage Filter: ((a % 2) = 0)
-(3 rows)
-
-SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
-NOTICE:  f_leak => bbb
-NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
-(2 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
-              QUERY PLAN
----------------------------------------
- LockRows
-   ->  Seq Scan on t1
-         Storage Filter: ((a % 2) = 0)
-         Filter: f_leak(b)
-(4 rows)
-
--- union all query
-SELECT a, b, oid FROM t2 UNION ALL SELECT a, b, oid FROM t3;
-ERROR:  relation "t2" does not exist
-LINE 1: SELECT a, b, oid FROM t2 UNION ALL SELECT a, b, oid FROM t3;
-                              ^
-EXPLAIN (COSTS OFF) SELECT a, b, oid FROM t2 UNION ALL SELECT a, b, oid FROM t3;
-ERROR:  relation "t2" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT a, b, oid FROM t2 UNION ALL SELEC...
-                                                  ^
--- superuser is allowed to bypass RLS checks
-RESET SESSION AUTHORIZATION;
-SET row_security TO OFF;
-SELECT * FROM t1 WHERE f_leak(b);
-NOTICE:  f_leak => aba
-NOTICE:  f_leak => bbb
-NOTICE:  f_leak => ccc
-NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 2 | bbb | 2
- 3 | ccc | 3
- 4 | dad | 4
-(4 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
-     QUERY PLAN
----------------------
- Seq Scan on t1
-   Filter: f_leak(b)
-(2 rows)
-
--- non-superuser with bypass privilege can bypass RLS policy when disabled
-SET SESSION AUTHORIZATION regress_rls_exempt_user;
-SET row_security TO OFF;
-SELECT * FROM t1 WHERE f_leak(b);
-NOTICE:  f_leak => aba
-NOTICE:  f_leak => bbb
-NOTICE:  f_leak => ccc
-NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 2 | bbb | 2
- 3 | ccc | 3
- 4 | dad | 4
-(4 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
-     QUERY PLAN
----------------------
- Seq Scan on t1
-   Filter: f_leak(b)
-(2 rows)
-
+-- YB: port further queries when above works
 --
 -- Partitioned Tables
 --
@@ -885,7 +710,7 @@ CREATE POLICY pp1 ON part_document AS PERMISSIVE
 CREATE POLICY pp1r ON part_document AS RESTRICTIVE TO regress_rls_dave
     USING (cid < 55);
 \d+ part_document
-                          Table "regress_rls_schema.part_document"
+                    Partitioned table "regress_rls_schema.part_document"
  Column  |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description
 ---------+---------+-----------+----------+---------+----------+--------------+-------------
  did     | integer |           |          |         | plain    |              |
@@ -918,7 +743,7 @@ SELECT * FROM pg_policies WHERE schemaname = 'regress_rls_schema' AND tablename 
 -- viewpoint from regress_rls_bob
 SET SESSION AUTHORIZATION regress_rls_bob;
 SET row_security TO ON;
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
@@ -931,12 +756,27 @@ NOTICE:  f_leak => 55
    9 |  11 |      1 | regress_rls_dave  | awesome science fiction
 (4 rows)
 
-/*
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-*/
+                         QUERY PLAN
+------------------------------------------------------------
+ Append
+   InitPlan 1 (returns $0)
+     ->  Index Scan using uaccount_pkey on uaccount
+           Index Cond: (pguser = CURRENT_USER)
+   ->  Seq Scan on part_document_fiction part_document_1
+         Storage Filter: (dlevel <= $0)
+         Filter: f_leak(dtitle)
+   ->  Seq Scan on part_document_satire part_document_2
+         Storage Filter: (dlevel <= $0)
+         Filter: f_leak(dtitle)
+   ->  Seq Scan on part_document_nonfiction part_document_3
+         Storage Filter: (dlevel <= $0)
+         Filter: f_leak(dtitle)
+(13 rows)
+
 -- viewpoint from regress_rls_carol
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
@@ -961,12 +801,27 @@ NOTICE:  f_leak => 99
   10 |  99 |      2 | regress_rls_dave  | awesome technology book
 (10 rows)
 
-/*
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-*/
+                         QUERY PLAN
+------------------------------------------------------------
+ Append
+   InitPlan 1 (returns $0)
+     ->  Index Scan using uaccount_pkey on uaccount
+           Index Cond: (pguser = CURRENT_USER)
+   ->  Seq Scan on part_document_fiction part_document_1
+         Storage Filter: (dlevel <= $0)
+         Filter: f_leak(dtitle)
+   ->  Seq Scan on part_document_satire part_document_2
+         Storage Filter: (dlevel <= $0)
+         Filter: f_leak(dtitle)
+   ->  Seq Scan on part_document_nonfiction part_document_3
+         Storage Filter: (dlevel <= $0)
+         Filter: f_leak(dtitle)
+(13 rows)
+
 -- viewpoint from regress_rls_dave
 SET SESSION AUTHORIZATION regress_rls_dave;
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
@@ -979,9 +834,17 @@ NOTICE:  f_leak => 11
    9 |  11 |      1 | regress_rls_dave  | awesome science fiction
 (4 rows)
 
-/*
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-*/
+                     QUERY PLAN
+----------------------------------------------------
+ Seq Scan on part_document_fiction part_document
+   Storage Filter: ((cid < 55) AND (dlevel <= $0))
+   Filter: f_leak(dtitle)
+   InitPlan 1 (returns $0)
+     ->  Index Scan using uaccount_pkey on uaccount
+           Index Cond: (pguser = CURRENT_USER)
+(6 rows)
+
 -- pp1 ERROR
 INSERT INTO part_document VALUES (100, 11, 5, 'regress_rls_dave', 'testing pp1'); -- fail
 ERROR:  new row violates row-level security policy for table "part_document"
@@ -995,7 +858,7 @@ ERROR:  new row violates row-level security policy "pp1r" for table "part_docume
 -- But this should succeed.
 INSERT INTO part_document_satire VALUES (100, 55, 1, 'regress_rls_dave', 'testing RLS with partitions'); -- success
 -- We still cannot see the row using the parent
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
@@ -1009,7 +872,7 @@ NOTICE:  f_leak => 11
 (4 rows)
 
 -- But we can if we look directly
-SELECT * FROM part_document_satire WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document_satire WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 55
 NOTICE:  f_leak => 55
 NOTICE:  f_leak => 55
@@ -1037,7 +900,7 @@ SELECT * FROM part_document_satire WHERE f_leak(dtitle) ORDER BY did;
 
 -- The parent looks same as before
 -- viewpoint from regress_rls_dave
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
@@ -1051,20 +914,19 @@ NOTICE:  f_leak => 11
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                       QUERY PLAN
----------------------------------------------------------
- Append
+                     QUERY PLAN
+----------------------------------------------------
+ Seq Scan on part_document_fiction part_document
+   Storage Filter: ((cid < 55) AND (dlevel <= $0))
+   Filter: f_leak(dtitle)
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Seq Scan on part_document_fiction
-         Storage Filter: ((cid < 55) AND (dlevel <= $0))
-         Filter: f_leak(dtitle)
-(7 rows)
+(6 rows)
 
 -- viewpoint from regress_rls_carol
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
@@ -1092,19 +954,19 @@ NOTICE:  f_leak => 99
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                     QUERY PLAN
-----------------------------------------------------
+                         QUERY PLAN
+------------------------------------------------------------
  Append
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Seq Scan on part_document_fiction
+   ->  Seq Scan on part_document_fiction part_document_1
          Storage Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
-   ->  Seq Scan on part_document_satire
+   ->  Seq Scan on part_document_satire part_document_2
          Storage Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
-   ->  Seq Scan on part_document_nonfiction
+   ->  Seq Scan on part_document_nonfiction part_document_3
          Storage Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
 (13 rows)
@@ -1118,7 +980,7 @@ SET SESSION AUTHORIZATION regress_rls_alice;
 ALTER POLICY pp1 ON part_document USING (dauthor = current_user);
 -- viewpoint from regress_rls_bob again
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 55
@@ -1135,7 +997,7 @@ NOTICE:  f_leak => 99
 
 -- viewpoint from rls_regres_carol again
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did;
+SELECT * FROM part_document WHERE f_leak(text(cid)) ORDER BY did; -- YB: use text(cid) instead of dtitle for ordering as using dtitle jumbles the NOTICE order for same cid
 NOTICE:  f_leak => 11
 NOTICE:  f_leak => 55
 NOTICE:  f_leak => 99
@@ -1150,11 +1012,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                           QUERY PLAN
 ---------------------------------------------------------------
  Append
-   ->  Seq Scan on part_document_fiction
+   ->  Seq Scan on part_document_fiction part_document_1
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_satire
+   ->  Seq Scan on part_document_satire part_document_2
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_nonfiction
+   ->  Seq Scan on part_document_nonfiction part_document_3
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
 (7 rows)
 
@@ -1279,7 +1141,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM dependent; -- After drop, should be unqualifie
 -- Simple recursion
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE rec1 (x integer, y integer, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE rec1 (x integer, y integer, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 CREATE POLICY r1 ON rec1 USING (x = (SELECT r.x FROM rec1 r WHERE y = r.y));
 ALTER TABLE rec1 ENABLE ROW LEVEL SECURITY;
 SET SESSION AUTHORIZATION regress_rls_bob;
@@ -1289,7 +1151,7 @@ ERROR:  infinite recursion detected in policy for relation "rec1"
 -- Mutual recursion
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE rec2 (a integer, b integer, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE rec2 (a integer, b integer, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 ALTER POLICY r1 ON rec1 USING (x = (SELECT a FROM rec2 WHERE b = y));
 CREATE POLICY r2 ON rec2 USING (a = (SELECT x FROM rec1 WHERE y = b));
 ALTER TABLE rec2 ENABLE ROW LEVEL SECURITY;
@@ -1312,12 +1174,12 @@ ERROR:  infinite recursion detected in policy for relation "rec1"
 -- Mutual recursion via .s.b views
 --
 SET SESSION AUTHORIZATION regress_rls_bob;
-\set VERBOSITY terse \\ -- suppress cascade details
-DROP VIEW rec1v CASCADE;
+\set VERBOSITY terse \\ -- YB: suppress cascade details
+DROP VIEW rec1v CASCADE; -- YB: drop multiple objects not supported (see #880)
 NOTICE:  drop cascades to policy r2 on table rec2
-DROP VIEW rec2v CASCADE;
+DROP VIEW rec2v CASCADE; -- YB: drop multiple objects not supported (see #880)
 NOTICE:  drop cascades to policy r1 on table rec1
-\set VERBOSITY default
+\set VERBOSITY default \\ -- YB
 CREATE VIEW rec1v WITH (security_barrier) AS SELECT * FROM rec1;
 CREATE VIEW rec2v WITH (security_barrier) AS SELECT * FROM rec2;
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -1330,9 +1192,9 @@ ERROR:  infinite recursion detected in policy for relation "rec1"
 -- recursive RLS and VIEWs in policy
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE s1 (a int, b text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE s1 (a int, b text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 INSERT INTO s1 (SELECT x, md5(x::text) FROM generate_series(-10,10) x);
-CREATE TABLE s2 (x int, y text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE s2 (x int, y text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 INSERT INTO s2 (SELECT x, md5(x::text) FROM generate_series(-6,6) x);
 GRANT SELECT ON s1, s2 TO regress_rls_bob;
 CREATE POLICY p1 ON s1 USING (a in (select x from s2 where y like '%2f%'));
@@ -1350,13 +1212,13 @@ SET SESSION AUTHORIZATION regress_rls_alice;
 DROP POLICY p3 on s1;
 ALTER POLICY p2 ON s2 USING (x % 2 = 0);
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM s1 WHERE f_leak(b);	-- OK
+SELECT a,b FROM s1 WHERE f_leak(b);	-- OK -- YB: hide ybsort
 NOTICE:  f_leak => c81e728d9d4c2f636f067f89cc14862c
 NOTICE:  f_leak => a87ff679a2f3e71d9181a67b7542122c
- a |                b                 | k
----+----------------------------------+----
- 2 | c81e728d9d4c2f636f067f89cc14862c | 13
- 4 | a87ff679a2f3e71d9181a67b7542122c | 15
+ a |                b
+---+----------------------------------
+ 2 | c81e728d9d4c2f636f067f89cc14862c
+ 4 | a87ff679a2f3e71d9181a67b7542122c
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM only s1 WHERE f_leak(b);
@@ -1372,13 +1234,13 @@ EXPLAIN (COSTS OFF) SELECT * FROM only s1 WHERE f_leak(b);
 SET SESSION AUTHORIZATION regress_rls_alice;
 ALTER POLICY p1 ON s1 USING (a in (select x from v2)); -- using VIEW in RLS policy
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM s1 WHERE f_leak(b);	-- OK
+SELECT a,b FROM s1 WHERE f_leak(b);	-- OK -- YB: hide ybsort
 NOTICE:  f_leak => 0267aaf632e87a63288a08331f22c7c3
 NOTICE:  f_leak => 1679091c5a880faf6fb5e6087eb1b2dc
- a  |                b                 | k
-----+----------------------------------+----
- -4 | 0267aaf632e87a63288a08331f22c7c3 |  7
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc | 17
+ a  |                b
+----+----------------------------------
+ -4 | 0267aaf632e87a63288a08331f22c7c3
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM s1 WHERE f_leak(b);
@@ -1391,12 +1253,12 @@ EXPLAIN (COSTS OFF) SELECT * FROM s1 WHERE f_leak(b);
            Storage Filter: (((x % 2) = 0) AND (y ~~ '%af%'::text))
 (5 rows)
 
-SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
- xx | x  |                y                 | k
-----+----+----------------------------------+---
- -6 | -6 | 596a3d04481816330f07e4f97510c28f | 1
- -4 | -4 | 0267aaf632e87a63288a08331f22c7c3 | 3
-  2 |  2 | c81e728d9d4c2f636f067f89cc14862c | 9
+SELECT (SELECT x FROM s1 LIMIT 1) xx, x, y FROM s2 WHERE y like '%28%'; -- YB: hide ybsort
+ xx | x  |                y
+----+----+----------------------------------
+ -6 | -6 | 596a3d04481816330f07e4f97510c28f
+ -4 | -4 | 0267aaf632e87a63288a08331f22c7c3
+  2 |  2 | c81e728d9d4c2f636f067f89cc14862c
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT (SELECT x FROM s1 LIMIT 1) xx, * FROM s2 WHERE y like '%28%';
@@ -1418,259 +1280,12 @@ ALTER POLICY p2 ON s2 USING (x in (select a from s1 where b like '%d2%'));
 SET SESSION AUTHORIZATION regress_rls_bob;
 SELECT * FROM s1 WHERE f_leak(b);	-- fail (infinite recursion via view)
 ERROR:  infinite recursion detected in policy for relation "s1"
--- prepared statement with regress_rls_alice privilege
-PREPARE p1(int) AS SELECT * FROM t1 WHERE a <= $1;
-EXECUTE p1(2);
- a |  b  | k
----+-----+---
- 2 | bbb | 2
-(1 row)
-
-EXPLAIN (COSTS OFF) EXECUTE p1(2);
-                   QUERY PLAN
-------------------------------------------------
- Seq Scan on t1
-   Storage Filter: ((a <= 2) AND ((a % 2) = 0))
-(2 rows)
-
--- superuser is allowed to bypass RLS checks
-RESET SESSION AUTHORIZATION;
-SET row_security TO OFF;
-SELECT * FROM t1 WHERE f_leak(b);
-NOTICE:  f_leak => aba
-NOTICE:  f_leak => bbb
-NOTICE:  f_leak => ccc
-NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 2 | bbb | 2
- 3 | ccc | 3
- 4 | dad | 4
-(4 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
-     QUERY PLAN
----------------------
- Seq Scan on t1
-   Filter: f_leak(b)
-(2 rows)
-
--- plan cache should be invalidated
-EXECUTE p1(2);
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 2 | bbb | 2
-(2 rows)
-
-EXPLAIN (COSTS OFF) EXECUTE p1(2);
-         QUERY PLAN
-----------------------------
- Seq Scan on t1
-   Storage Filter: (a <= 2)
-(2 rows)
-
-PREPARE p2(int) AS SELECT * FROM t1 WHERE a = $1;
-EXECUTE p2(2);
- a |  b  | k
----+-----+---
- 2 | bbb | 2
-(1 row)
-
-EXPLAIN (COSTS OFF) EXECUTE p2(2);
-        QUERY PLAN
----------------------------
- Seq Scan on t1
-   Storage Filter: (a = 2)
-(2 rows)
-
--- also, case when privilege switch from superuser
-SET SESSION AUTHORIZATION regress_rls_bob;
-SET row_security TO ON;
-EXECUTE p2(2);
- a |  b  | k
----+-----+---
- 2 | bbb | 2
-(1 row)
-
-EXPLAIN (COSTS OFF) EXECUTE p2(2);
-                  QUERY PLAN
------------------------------------------------
- Seq Scan on t1
-   Storage Filter: ((a = 2) AND ((a % 2) = 0))
-(2 rows)
-
---
--- UPDATE / DELETE and Row-level security
---
-SET SESSION AUTHORIZATION regress_rls_bob;
-EXPLAIN (COSTS OFF) UPDATE t1 SET b = b || b WHERE f_leak(b);
-              QUERY PLAN
----------------------------------------
- Update on t1
-   ->  Seq Scan on t1
-         Storage Filter: ((a % 2) = 0)
-         Filter: f_leak(b)
-(4 rows)
-
-UPDATE t1 SET b = b || b WHERE f_leak(b);
-NOTICE:  f_leak => bbb
-NOTICE:  f_leak => dad
-EXPLAIN (COSTS OFF) UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
-              QUERY PLAN
----------------------------------------
- Update on t1
-   ->  Seq Scan on t1
-         Storage Filter: ((a % 2) = 0)
-         Filter: f_leak(b)
-(4 rows)
-
-UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
-NOTICE:  f_leak => bbbbbb
-NOTICE:  f_leak => daddad
--- returning clause with system column
-UPDATE only t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
-ERROR:  column "oid" does not exist
-LINE 1: ...PDATE only t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1...
-                                                             ^
-UPDATE t1 SET b = b WHERE f_leak(b) RETURNING *;
-NOTICE:  f_leak => bbbbbb_updt
-NOTICE:  f_leak => daddad_updt
- a |      b      | k
----+-------------+---
- 2 | bbbbbb_updt | 2
- 4 | daddad_updt | 4
-(2 rows)
-
-UPDATE t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
-ERROR:  column "oid" does not exist
-LINE 1: UPDATE t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
-                                                      ^
--- updates with from clause
-EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t3
-WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
-ERROR:  relation "t2" does not exist
-LINE 1: EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t3
-                                   ^
-UPDATE t2 SET b=t2.b FROM t3
-WHERE t2.a = 3 and t3.a = 2 AND f_leak(t2.b) AND f_leak(t3.b);
-ERROR:  relation "t2" does not exist
-LINE 1: UPDATE t2 SET b=t2.b FROM t3
-               ^
-EXPLAIN (COSTS OFF) UPDATE t1 SET b=t1.b FROM t2
-WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  relation "t2" does not exist
-LINE 1: EXPLAIN (COSTS OFF) UPDATE t1 SET b=t1.b FROM t2
-                                                      ^
-UPDATE t1 SET b=t1.b FROM t2
-WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  relation "t2" does not exist
-LINE 1: UPDATE t1 SET b=t1.b FROM t2
-                                  ^
-EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t1
-WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  relation "t2" does not exist
-LINE 1: EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t1
-                                   ^
-UPDATE t2 SET b=t2.b FROM t1
-WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-ERROR:  relation "t2" does not exist
-LINE 1: UPDATE t2 SET b=t2.b FROM t1
-               ^
--- updates with from clause self join
-EXPLAIN (COSTS OFF) UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
-WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
-AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
-ERROR:  relation "t2" does not exist
-LINE 1: EXPLAIN (COSTS OFF) UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2...
-                                   ^
-UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
-WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
-AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
-ERROR:  relation "t2" does not exist
-LINE 1: UPDATE t2 t2_1 SET b = t2_2.b FROM t2 t2_2
-               ^
-EXPLAIN (COSTS OFF) UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
-WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
-AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
-                           QUERY PLAN
------------------------------------------------------------------
- Update on t1 t1_1
-   ->  Merge Join
-         Merge Cond: (t1_1.b = t1_2.b)
-         ->  Sort
-               Sort Key: t1_1.b
-               ->  Seq Scan on t1 t1_1
-                     Storage Filter: ((a = 4) AND ((a % 2) = 0))
-                     Filter: f_leak(b)
-         ->  Sort
-               Sort Key: t1_2.b
-               ->  Seq Scan on t1 t1_2
-                     Storage Filter: ((a = 4) AND ((a % 2) = 0))
-                     Filter: f_leak(b)
-(13 rows)
-
-UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
-WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
-AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
-NOTICE:  f_leak => daddad_updt
-NOTICE:  f_leak => daddad_updt
- a |      b      | k | a |      b      | k |       t1_1        |       t1_2
----+-------------+---+---+-------------+---+-------------------+-------------------
- 4 | daddad_updt | 4 | 4 | daddad_updt | 4 | (4,daddad_updt,4) | (4,daddad_updt,4)
-(1 row)
-
-RESET SESSION AUTHORIZATION;
-SET row_security TO OFF;
-SELECT * FROM t1 ORDER BY a,b;
- a |      b      | k
----+-------------+---
- 1 | aba         | 1
- 2 | bbbbbb_updt | 2
- 3 | ccc         | 3
- 4 | daddad_updt | 4
-(4 rows)
-
-SET SESSION AUTHORIZATION regress_rls_bob;
-SET row_security TO ON;
-EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
-              QUERY PLAN
----------------------------------------
- Delete on t1
-   ->  Seq Scan on t1
-         Storage Filter: ((a % 2) = 0)
-         Filter: f_leak(b)
-(4 rows)
-
-EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
-              QUERY PLAN
----------------------------------------
- Delete on t1
-   ->  Seq Scan on t1
-         Storage Filter: ((a % 2) = 0)
-         Filter: f_leak(b)
-(4 rows)
-
-DELETE FROM only t1 WHERE f_leak(b) RETURNING *, t1;
-NOTICE:  f_leak => bbbbbb_updt
-NOTICE:  f_leak => daddad_updt
- a |      b      | k |        t1
----+-------------+---+-------------------
- 2 | bbbbbb_updt | 2 | (2,bbbbbb_updt,2)
- 4 | daddad_updt | 4 | (4,daddad_updt,4)
-(2 rows)
-
-DELETE FROM t1 WHERE f_leak(b) RETURNING *, t1;
- a | b | k | t1
----+---+---+----
-(0 rows)
-
+-- YB: port further queries when above works (table t2 and t3 inherit from t1)
 --
 -- S.b. view on top of Row-level security
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE b1 (a int, b text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE b1 (a int, b text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 INSERT INTO b1 (SELECT x, md5(x::text) FROM generate_series(-10,10) x);
 CREATE POLICY p1 ON b1 USING (a % 2 = 0);
 ALTER TABLE b1 ENABLE ROW LEVEL SECURITY;
@@ -1681,72 +1296,7 @@ ERROR:  VIEW WITH CHECK OPTION not supported yet
 LINE 1: ...security_barrier) AS SELECT * FROM b1 WHERE a > 0 WITH CHECK...
                                                              ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-GRANT ALL ON bv1 TO regress_rls_carol;
-ERROR:  relation "bv1" does not exist
-SET SESSION AUTHORIZATION regress_rls_carol;
-EXPLAIN (COSTS OFF) SELECT * FROM bv1 WHERE f_leak(b);
-ERROR:  relation "bv1" does not exist
-LINE 1: EXPLAIN (COSTS OFF) SELECT * FROM bv1 WHERE f_leak(b);
-                                          ^
-SELECT * FROM bv1 WHERE f_leak(b);
-ERROR:  relation "bv1" does not exist
-LINE 1: SELECT * FROM bv1 WHERE f_leak(b);
-                      ^
-INSERT INTO bv1 VALUES (-1, 'xxx'); -- should fail view WCO
-ERROR:  relation "bv1" does not exist
-LINE 1: INSERT INTO bv1 VALUES (-1, 'xxx');
-                    ^
-INSERT INTO bv1 VALUES (11, 'xxx'); -- should fail RLS check
-ERROR:  relation "bv1" does not exist
-LINE 1: INSERT INTO bv1 VALUES (11, 'xxx');
-                    ^
-INSERT INTO bv1 VALUES (12, 'xxx'); -- ok
-ERROR:  relation "bv1" does not exist
-LINE 1: INSERT INTO bv1 VALUES (12, 'xxx');
-                    ^
-EXPLAIN (COSTS OFF) UPDATE bv1 SET b = 'yyy' WHERE a = 4 AND f_leak(b);
-ERROR:  relation "bv1" does not exist
-LINE 1: EXPLAIN (COSTS OFF) UPDATE bv1 SET b = 'yyy' WHERE a = 4 AND...
-                                   ^
-UPDATE bv1 SET b = 'yyy' WHERE a = 4 AND f_leak(b);
-ERROR:  relation "bv1" does not exist
-LINE 1: UPDATE bv1 SET b = 'yyy' WHERE a = 4 AND f_leak(b);
-               ^
-EXPLAIN (COSTS OFF) DELETE FROM bv1 WHERE a = 6 AND f_leak(b);
-ERROR:  relation "bv1" does not exist
-LINE 1: EXPLAIN (COSTS OFF) DELETE FROM bv1 WHERE a = 6 AND f_leak(b...
-                                        ^
-DELETE FROM bv1 WHERE a = 6 AND f_leak(b);
-ERROR:  relation "bv1" does not exist
-LINE 1: DELETE FROM bv1 WHERE a = 6 AND f_leak(b);
-                    ^
-SET SESSION AUTHORIZATION regress_rls_alice;
-SELECT * FROM b1;
-  a  |                b                 | k
------+----------------------------------+----
- -10 | 1b0fd9efa5279c4203b7c70233f86dbf |  1
-  -9 | 252e691406782824eec43d7eadc3d256 |  2
-  -8 | a8d2ec85eaf98407310b72eb73dda247 |  3
-  -7 | 74687a12d3915d3c4d83f1af7b3683d5 |  4
-  -6 | 596a3d04481816330f07e4f97510c28f |  5
-  -5 | 47c1b025fa18ea96c33fbb6718688c0f |  6
-  -4 | 0267aaf632e87a63288a08331f22c7c3 |  7
-  -3 | b3149ecea4628efd23d2f86e5a723472 |  8
-  -2 | 5d7b9adcbe1c629ec722529dd12e5129 |  9
-  -1 | 6bb61e3b7bce0931da574d19d1d82c88 | 10
-   0 | cfcd208495d565ef66e7dff9f98764da | 11
-   1 | c4ca4238a0b923820dcc509a6f75849b | 12
-   2 | c81e728d9d4c2f636f067f89cc14862c | 13
-   3 | eccbc87e4b5ce2fe28308fd9f2a7baf3 | 14
-   4 | a87ff679a2f3e71d9181a67b7542122c | 15
-   5 | e4da3b7fbbce2345d7772b0674a318d5 | 16
-   6 | 1679091c5a880faf6fb5e6087eb1b2dc | 17
-   7 | 8f14e45fceea167a5a36dedd4bea2543 | 18
-   8 | c9f0f895fb98ab9159f51fd0297e236d | 19
-   9 | 45c48cce2e2d7fbdea1afc51c7c6ad26 | 20
-  10 | d3d9446802a44259755d38e6d163e820 | 21
-(21 rows)
-
+-- YB: port further queries when above works
 --
 -- INSERT ... ON CONFLICT DO UPDATE and Row-level security
 --
@@ -1761,9 +1311,9 @@ CREATE POLICY p3 ON document FOR UPDATE
 SET SESSION AUTHORIZATION regress_rls_bob;
 -- Exists...
 SELECT * FROM document WHERE did = 2;
- did | cid | dlevel |     dauthor     |     dtitle      | k
------+-----+--------+-----------------+-----------------+---
-   2 |  11 |      2 | regress_rls_bob | my second novel | 2
+ did | cid | dlevel |     dauthor     |     dtitle
+-----+-----+--------+-----------------+-----------------
+   2 |  11 |      2 | regress_rls_bob | my second novel
 (1 row)
 
 -- ...so violates actual WITH CHECK OPTION within UPDATE (not INSERT, since
@@ -1784,26 +1334,26 @@ ERROR:  new row violates row-level security policy (USING expression) for table 
 -- not violated):
 INSERT INTO document VALUES (2, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'my first novel')
     ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle RETURNING *;
- did | cid | dlevel |     dauthor     |     dtitle     | k
------+-----+--------+-----------------+----------------+---
-   2 |  11 |      2 | regress_rls_bob | my first novel | 2
+ did | cid | dlevel |     dauthor     |     dtitle
+-----+-----+--------+-----------------+----------------
+   2 |  11 |      2 | regress_rls_bob | my first novel
 (1 row)
 
 -- Fine (we INSERT, so "cid = 33" ("technology") isn't evaluated):
 INSERT INTO document VALUES (78, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'some technology novel')
     ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle, cid = 33 RETURNING *;
- did | cid | dlevel |     dauthor     |        dtitle         | k
------+-----+--------+-----------------+-----------------------+----
-  78 |  11 |      1 | regress_rls_bob | some technology novel | 20
+ did | cid | dlevel |     dauthor     |        dtitle
+-----+-----+--------+-----------------+-----------------------
+  78 |  11 |      1 | regress_rls_bob | some technology novel
 (1 row)
 
 -- Fine (same query, but we UPDATE, so "cid = 33", ("technology") is not the
 -- case in respect of *existing* tuple):
 INSERT INTO document VALUES (78, (SELECT cid from category WHERE cname = 'novel'), 1, 'regress_rls_bob', 'some technology novel')
     ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle, cid = 33 RETURNING *;
- did | cid | dlevel |     dauthor     |        dtitle         | k
------+-----+--------+-----------------+-----------------------+----
-  78 |  33 |      1 | regress_rls_bob | some technology novel | 20
+ did | cid | dlevel |     dauthor     |        dtitle
+-----+-----+--------+-----------------+-----------------------
+  78 |  33 |      1 | regress_rls_bob | some technology novel
 (1 row)
 
 -- Same query a third time, but now fails due to existing tuple finally not
@@ -1816,9 +1366,9 @@ ERROR:  new row violates row-level security policy (USING expression) for table 
 -- path *isn't* taken, and so UPDATE-related policy does not apply:
 INSERT INTO document VALUES (79, (SELECT cid from category WHERE cname = 'technology'), 1, 'regress_rls_bob', 'technology book, can only insert')
     ON CONFLICT (did) DO UPDATE SET dtitle = EXCLUDED.dtitle RETURNING *;
- did | cid | dlevel |     dauthor     |              dtitle              | k
------+-----+--------+-----------------+----------------------------------+----
-  79 |  33 |      1 | regress_rls_bob | technology book, can only insert | 23
+ did | cid | dlevel |     dauthor     |              dtitle
+-----+-----+--------+-----------------+----------------------------------
+  79 |  33 |      1 | regress_rls_bob | technology book, can only insert
 (1 row)
 
 -- But this time, the same statement fails, because the UPDATE path is taken,
@@ -1881,11 +1431,57 @@ INSERT INTO document VALUES (1, (SELECT cid from category WHERE cname = 'novel')
     ON CONFLICT (did) DO UPDATE SET dauthor = 'regress_rls_carol';
 ERROR:  new row violates row-level security policy for table "document"
 --
+-- MERGE
+--
+RESET SESSION AUTHORIZATION;
+DROP POLICY p3_with_all ON document;
+ALTER TABLE document ADD COLUMN dnotes text DEFAULT '';
+-- all documents are readable
+CREATE POLICY p1 ON document FOR SELECT USING (true);
+-- one may insert documents only authored by them
+CREATE POLICY p2 ON document FOR INSERT WITH CHECK (dauthor = current_user);
+-- one may only update documents in 'novel' category
+CREATE POLICY p3 ON document FOR UPDATE
+  USING (cid = (SELECT cid from category WHERE cname = 'novel'))
+  WITH CHECK (dauthor = current_user);
+-- one may only delete documents in 'manga' category
+CREATE POLICY p4 ON document FOR DELETE
+  USING (cid = (SELECT cid from category WHERE cname = 'manga'));
+SELECT * FROM document; -- YB: ordering change due to PRIMARY KEY(did ASC)
+ did | cid | dlevel |      dauthor      |              dtitle              | dnotes
+-----+-----+--------+-------------------+----------------------------------+--------
+   1 |  11 |      1 | regress_rls_bob   | my first novel                   |
+   2 |  11 |      2 | regress_rls_bob   | my first novel                   |
+   3 |  22 |      2 | regress_rls_bob   | my science fiction               |
+   4 |  44 |      1 | regress_rls_bob   | my first manga                   |
+   5 |  44 |      2 | regress_rls_bob   | my second manga                  |
+   6 |  22 |      1 | regress_rls_carol | great science fiction            |
+   7 |  33 |      2 | regress_rls_carol | great technology book            |
+   8 |  44 |      1 | regress_rls_carol | great manga                      |
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction          |
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book          |
+  11 |  33 |      1 | regress_rls_carol | hoge                             |
+  33 |  22 |      1 | regress_rls_bob   | okay science fiction             |
+  78 |  33 |      1 | regress_rls_bob   | some technology novel            |
+  79 |  33 |      1 | regress_rls_bob   | technology book, can only insert |
+(14 rows)
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+-- Fails, since update violates WITH CHECK qual on dauthor
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge1 ', dauthor = 'regress_rls_alice';
+ERROR:  This statement not supported yet
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+-- YB: port further queries when above works
+--
 -- ROLE/GROUP
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE z1 (a int, b text, k serial, PRIMARY KEY(k ASC));
-CREATE TABLE z2 (a int, b text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE z1 (a int, b text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
+CREATE TABLE z2 (a int, b text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 GRANT SELECT ON z1,z2 TO regress_rls_group1, regress_rls_group2,
     regress_rls_bob, regress_rls_carol;
 INSERT INTO z1 VALUES
@@ -1897,13 +1493,13 @@ CREATE POLICY p1 ON z1 TO regress_rls_group1 USING (a % 2 = 0);
 CREATE POLICY p2 ON z1 TO regress_rls_group2 USING (a % 2 = 1);
 ALTER TABLE z1 ENABLE ROW LEVEL SECURITY;
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM z1 WHERE f_leak(b);
+SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
+ a |  b
+---+-----
+ 2 | bbb
+ 4 | dad
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
@@ -1923,7 +1519,7 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test;
    Filter: f_leak(b)
 (3 rows)
 
-PREPARE plancache_test2 AS WITH q AS (SELECT * FROM z1 WHERE f_leak(b)) SELECT * FROM q,z2;
+PREPARE plancache_test2 AS WITH q AS MATERIALIZED (SELECT * FROM z1 WHERE f_leak(b)) SELECT * FROM q,z2;
 EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
                QUERY PLAN
 -----------------------------------------
@@ -1937,7 +1533,7 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
          ->  Seq Scan on z2
 (8 rows)
 
-PREPARE plancache_test3 AS WITH q AS (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
+PREPARE plancache_test3 AS WITH q AS MATERIALIZED (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
                  QUERY PLAN
 ---------------------------------------------
@@ -1952,13 +1548,13 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 (8 rows)
 
 SET ROLE regress_rls_group1;
-SELECT * FROM z1 WHERE f_leak(b);
+SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
+ a |  b
+---+-----
+ 2 | bbb
+ 4 | dad
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
@@ -2004,13 +1600,13 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 (8 rows)
 
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM z1 WHERE f_leak(b);
+SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
 NOTICE:  f_leak => aba
 NOTICE:  f_leak => ccc
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 3 | ccc | 3
+ a |  b
+---+-----
+ 1 | aba
+ 3 | ccc
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
@@ -2056,13 +1652,13 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 (8 rows)
 
 SET ROLE regress_rls_group2;
-SELECT * FROM z1 WHERE f_leak(b);
+SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
 NOTICE:  f_leak => aba
 NOTICE:  f_leak => ccc
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 3 | ccc | 3
+ a |  b
+---+-----
+ 1 | aba
+ 3 | ccc
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
@@ -2112,21 +1708,21 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 --
 -- View and Table owner are the same.
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE VIEW rls_view AS SELECT * FROM z1 WHERE f_leak(b);
+CREATE VIEW rls_view AS SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
 GRANT SELECT ON rls_view TO regress_rls_bob;
 -- Query as role that is not owner of view or table.  Should return all records.
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM rls_view;
+SELECT a,b FROM rls_view; -- YB: hide ybsort
 NOTICE:  f_leak => aba
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => ccc
 NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 2 | bbb | 2
- 3 | ccc | 3
- 4 | dad | 4
+ a |  b
+---+-----
+ 1 | aba
+ 2 | bbb
+ 3 | ccc
+ 4 | dad
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
@@ -2138,17 +1734,17 @@ EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
 
 -- Query as view/table owner.  Should return all records.
 SET SESSION AUTHORIZATION regress_rls_alice;
-SELECT * FROM rls_view;
+SELECT a,b FROM rls_view; -- YB: hide ybsort
 NOTICE:  f_leak => aba
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => ccc
 NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 1 | aba | 1
- 2 | bbb | 2
- 3 | ccc | 3
- 4 | dad | 4
+ a |  b
+---+-----
+ 1 | aba
+ 2 | bbb
+ 3 | ccc
+ 4 | dad
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
@@ -2161,7 +1757,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
 DROP VIEW rls_view;
 -- View and Table owners are different.
 SET SESSION AUTHORIZATION regress_rls_bob;
-CREATE VIEW rls_view AS SELECT * FROM z1 WHERE f_leak(b);
+CREATE VIEW rls_view AS SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
 GRANT SELECT ON rls_view TO regress_rls_alice;
 -- Query as role that is not owner of view but is owner of table.
 -- Should return records based on view owner policies.
@@ -2169,10 +1765,10 @@ SET SESSION AUTHORIZATION regress_rls_alice;
 SELECT * FROM rls_view;
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
+ a |  b
+---+-----
+ 2 | bbb
+ 4 | dad
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
@@ -2189,10 +1785,10 @@ SET SESSION AUTHORIZATION regress_rls_bob;
 SELECT * FROM rls_view;
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
+ a |  b
+---+-----
+ 2 | bbb
+ 4 | dad
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
@@ -2212,13 +1808,14 @@ ERROR:  permission denied for view rls_view
 -- Query as role that is not the owner of the table or view with permissions.
 SET SESSION AUTHORIZATION regress_rls_bob;
 GRANT SELECT ON rls_view TO regress_rls_carol;
+SET SESSION AUTHORIZATION regress_rls_carol;
 SELECT * FROM rls_view;
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => dad
- a |  b  | k
----+-----+---
- 2 | bbb | 2
- 4 | dad | 4
+ a |  b
+---+-----
+ 2 | bbb
+ 4 | dad
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
@@ -2229,13 +1826,274 @@ EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
    Filter: f_leak(b)
 (3 rows)
 
+-- Policy requiring access to another table.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE TABLE z1_blacklist (a int);
+INSERT INTO z1_blacklist VALUES (3), (4);
+CREATE POLICY p3 ON z1 AS RESTRICTIVE USING (a NOT IN (SELECT a FROM z1_blacklist));
+-- Query as role that is not owner of table but is owner of view without permissions.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not owner of table but is owner of view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_bob;
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT a,b FROM rls_view; -- YB: hide ybsort
+NOTICE:  f_leak => bbb
+ a |  b
+---+-----
+ 2 | bbb
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                     QUERY PLAN
+----------------------------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 0)
+   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(5 rows)
+
+-- Query as role that is not the owner of the table or view with permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT a,b FROM rls_view; -- YB: hide ybsort
+NOTICE:  f_leak => bbb
+ a |  b
+---+-----
+ 2 | bbb
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                     QUERY PLAN
+----------------------------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 0)
+   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(5 rows)
+
+SET SESSION AUTHORIZATION regress_rls_alice;
+REVOKE SELECT ON z1_blacklist FROM regress_rls_bob;
+DROP POLICY p3 ON z1;
+SET SESSION AUTHORIZATION regress_rls_bob;
+DROP VIEW rls_view;
+--
+-- Security invoker views should follow policy for current user.
+--
+-- View and table owner are the same.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE VIEW rls_view WITH (security_invoker) AS
+    SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
+GRANT SELECT ON rls_view TO regress_rls_bob;
+GRANT SELECT ON rls_view TO regress_rls_carol;
+-- Query as table owner.  Should return all records.
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => ccc
+NOTICE:  f_leak => dad
+ a |  b
+---+-----
+ 1 | aba
+ 2 | bbb
+ 3 | ccc
+ 4 | dad
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+     QUERY PLAN
+---------------------
+ Seq Scan on z1
+   Filter: f_leak(b)
+(2 rows)
+
+-- Queries as other users.
+-- Should return records based on current user's policies.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => dad
+ a |  b
+---+-----
+ 2 | bbb
+ 4 | dad
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+           QUERY PLAN
+---------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 0)
+   Filter: f_leak(b)
+(3 rows)
+
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => ccc
+ a |  b
+---+-----
+ 1 | aba
+ 3 | ccc
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+           QUERY PLAN
+---------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 1)
+   Filter: f_leak(b)
+(3 rows)
+
+-- View and table owners are different.
+SET SESSION AUTHORIZATION regress_rls_alice;
+DROP VIEW rls_view;
+SET SESSION AUTHORIZATION regress_rls_bob;
+CREATE VIEW rls_view WITH (security_invoker) AS
+    SELECT a,b FROM z1 WHERE f_leak(b); -- YB: hide ybsort
+GRANT SELECT ON rls_view TO regress_rls_alice;
+GRANT SELECT ON rls_view TO regress_rls_carol;
+-- Query as table owner.  Should return all records.
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => ccc
+NOTICE:  f_leak => dad
+ a |  b
+---+-----
+ 1 | aba
+ 2 | bbb
+ 3 | ccc
+ 4 | dad
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+     QUERY PLAN
+---------------------
+ Seq Scan on z1
+   Filter: f_leak(b)
+(2 rows)
+
+-- Queries as other users.
+-- Should return records based on current user's policies.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => dad
+ a |  b
+---+-----
+ 2 | bbb
+ 4 | dad
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+           QUERY PLAN
+---------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 0)
+   Filter: f_leak(b)
+(3 rows)
+
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => ccc
+ a |  b
+---+-----
+ 1 | aba
+ 3 | ccc
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+           QUERY PLAN
+---------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 1)
+   Filter: f_leak(b)
+(3 rows)
+
+-- Policy requiring access to another table.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE POLICY p3 ON z1 AS RESTRICTIVE USING (a NOT IN (SELECT a FROM z1_blacklist));
+-- Query as role that is not owner of table but is owner of view without permissions.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not owner of table but is owner of view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_bob;
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+ a |  b
+---+-----
+ 2 | bbb
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                     QUERY PLAN
+----------------------------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 0)
+   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(5 rows)
+
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not the owner of the table or view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_carol;
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+ a |  b
+---+-----
+ 1 | aba
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                     QUERY PLAN
+----------------------------------------------------
+ Seq Scan on z1
+   Storage Filter: ((a % 2) = 1)
+   Filter: ((NOT (hashed SubPlan 1)) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(5 rows)
+
 SET SESSION AUTHORIZATION regress_rls_bob;
 DROP VIEW rls_view;
 --
 -- Command specific
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE x1 (a int, b text, c text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE x1 (a int, b text, c text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 GRANT ALL ON x1 TO PUBLIC;
 INSERT INTO x1 VALUES
     (1, 'abc', 'regress_rls_bob'),
@@ -2253,90 +2111,90 @@ CREATE POLICY p3 ON x1 FOR UPDATE USING (a % 2 = 0);
 CREATE POLICY p4 ON x1 FOR DELETE USING (a < 8);
 ALTER TABLE x1 ENABLE ROW LEVEL SECURITY;
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM x1 WHERE f_leak(b) ORDER BY a ASC;
+SELECT a,b,c FROM x1 WHERE f_leak(b) ORDER BY a ASC; -- YB: hide ybsort
 NOTICE:  f_leak => abc
 NOTICE:  f_leak => bcd
 NOTICE:  f_leak => def
 NOTICE:  f_leak => efg
 NOTICE:  f_leak => fgh
 NOTICE:  f_leak => fgh
- a |  b  |         c         | k
----+-----+-------------------+---
- 1 | abc | regress_rls_bob   | 1
- 2 | bcd | regress_rls_bob   | 2
- 4 | def | regress_rls_carol | 4
- 5 | efg | regress_rls_bob   | 5
- 6 | fgh | regress_rls_bob   | 6
- 8 | fgh | regress_rls_carol | 8
+ a |  b  |         c
+---+-----+-------------------
+ 1 | abc | regress_rls_bob
+ 2 | bcd | regress_rls_bob
+ 4 | def | regress_rls_carol
+ 5 | efg | regress_rls_bob
+ 6 | fgh | regress_rls_bob
+ 8 | fgh | regress_rls_carol
 (6 rows)
 
-UPDATE x1 SET b = b || '_updt' WHERE f_leak(b) RETURNING *;
+UPDATE x1 SET b = b || '_updt' WHERE f_leak(b) RETURNING a,b,c; -- YB: hide ybsort
 NOTICE:  f_leak => abc
 NOTICE:  f_leak => bcd
 NOTICE:  f_leak => def
 NOTICE:  f_leak => efg
 NOTICE:  f_leak => fgh
 NOTICE:  f_leak => fgh
- a |    b     |         c         | k
----+----------+-------------------+---
- 1 | abc_updt | regress_rls_bob   | 1
- 2 | bcd_updt | regress_rls_bob   | 2
- 4 | def_updt | regress_rls_carol | 4
- 5 | efg_updt | regress_rls_bob   | 5
- 6 | fgh_updt | regress_rls_bob   | 6
- 8 | fgh_updt | regress_rls_carol | 8
+ a |    b     |         c
+---+----------+-------------------
+ 1 | abc_updt | regress_rls_bob
+ 2 | bcd_updt | regress_rls_bob
+ 4 | def_updt | regress_rls_carol
+ 5 | efg_updt | regress_rls_bob
+ 6 | fgh_updt | regress_rls_bob
+ 8 | fgh_updt | regress_rls_carol
 (6 rows)
 
 SET SESSION AUTHORIZATION regress_rls_carol;
-SELECT * FROM x1 WHERE f_leak(b) ORDER BY a ASC;
+SELECT a,b,c FROM x1 WHERE f_leak(b) ORDER BY a ASC; -- YB: hide ybsort
 NOTICE:  f_leak => bcd_updt
 NOTICE:  f_leak => cde
 NOTICE:  f_leak => def_updt
 NOTICE:  f_leak => fgh_updt
 NOTICE:  f_leak => fgh
 NOTICE:  f_leak => fgh_updt
- a |    b     |         c         | k
----+----------+-------------------+---
- 2 | bcd_updt | regress_rls_bob   | 2
- 3 | cde      | regress_rls_carol | 3
- 4 | def_updt | regress_rls_carol | 4
- 6 | fgh_updt | regress_rls_bob   | 6
- 7 | fgh      | regress_rls_carol | 7
- 8 | fgh_updt | regress_rls_carol | 8
+ a |    b     |         c
+---+----------+-------------------
+ 2 | bcd_updt | regress_rls_bob
+ 3 | cde      | regress_rls_carol
+ 4 | def_updt | regress_rls_carol
+ 6 | fgh_updt | regress_rls_bob
+ 7 | fgh      | regress_rls_carol
+ 8 | fgh_updt | regress_rls_carol
 (6 rows)
 
-UPDATE x1 SET b = b || '_updt' WHERE f_leak(b) RETURNING *;
+UPDATE x1 SET b = b || '_updt' WHERE f_leak(b) RETURNING a,b,c; -- YB: hide ybsort
 NOTICE:  f_leak => bcd_updt
 NOTICE:  f_leak => cde
 NOTICE:  f_leak => def_updt
 NOTICE:  f_leak => fgh_updt
 NOTICE:  f_leak => fgh
 NOTICE:  f_leak => fgh_updt
- a |       b       |         c         | k
----+---------------+-------------------+---
- 2 | bcd_updt_updt | regress_rls_bob   | 2
- 3 | cde_updt      | regress_rls_carol | 3
- 4 | def_updt_updt | regress_rls_carol | 4
- 6 | fgh_updt_updt | regress_rls_bob   | 6
- 7 | fgh_updt      | regress_rls_carol | 7
- 8 | fgh_updt_updt | regress_rls_carol | 8
+ a |       b       |         c
+---+---------------+-------------------
+ 2 | bcd_updt_updt | regress_rls_bob
+ 3 | cde_updt      | regress_rls_carol
+ 4 | def_updt_updt | regress_rls_carol
+ 6 | fgh_updt_updt | regress_rls_bob
+ 7 | fgh_updt      | regress_rls_carol
+ 8 | fgh_updt_updt | regress_rls_carol
 (6 rows)
 
-DELETE FROM x1 WHERE f_leak(b) RETURNING *;
+DELETE FROM x1 WHERE f_leak(b) RETURNING a,b,c; -- YB: hide ybsort
 NOTICE:  f_leak => bcd_updt_updt
 NOTICE:  f_leak => cde_updt
 NOTICE:  f_leak => def_updt_updt
 NOTICE:  f_leak => fgh_updt_updt
 NOTICE:  f_leak => fgh_updt
 NOTICE:  f_leak => fgh_updt_updt
- a |       b       |         c         | k
----+---------------+-------------------+---
- 2 | bcd_updt_updt | regress_rls_bob   | 2
- 3 | cde_updt      | regress_rls_carol | 3
- 4 | def_updt_updt | regress_rls_carol | 4
- 6 | fgh_updt_updt | regress_rls_bob   | 6
- 7 | fgh_updt      | regress_rls_carol | 7
- 8 | fgh_updt_updt | regress_rls_carol | 8
+ a |       b       |         c
+---+---------------+-------------------
+ 2 | bcd_updt_updt | regress_rls_bob
+ 3 | cde_updt      | regress_rls_carol
+ 4 | def_updt_updt | regress_rls_carol
+ 6 | fgh_updt_updt | regress_rls_bob
+ 7 | fgh_updt      | regress_rls_carol
+ 8 | fgh_updt_updt | regress_rls_carol
 (6 rows)
 
 --
@@ -2344,7 +2202,7 @@ NOTICE:  f_leak => fgh_updt_updt
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
 CREATE TABLE y1 (a int, b text);
-CREATE TABLE y2 (a int, b text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE y2 (a int, b text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 GRANT ALL ON y1, y2 TO regress_rls_bob;
 CREATE POLICY p1 ON y1 FOR ALL USING (a % 2 = 0);
 CREATE POLICY p2 ON y1 FOR SELECT USING (a > 2);
@@ -2390,7 +2248,7 @@ INSERT INTO y2 (SELECT x, md5(x::text) FROM generate_series(0,20) x);
 CREATE POLICY p2 ON y2 USING (a % 3 = 0);
 CREATE POLICY p3 ON y2 USING (a % 4 = 0);
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM y2 WHERE f_leak(b);
+SELECT a,b FROM y2 WHERE f_leak(b); -- YB: hide ybsort
 NOTICE:  f_leak => cfcd208495d565ef66e7dff9f98764da
 NOTICE:  f_leak => c81e728d9d4c2f636f067f89cc14862c
 NOTICE:  f_leak => eccbc87e4b5ce2fe28308fd9f2a7baf3
@@ -2405,22 +2263,22 @@ NOTICE:  f_leak => 9bf31c7ff062936a96d3c8bd1f8f2ff3
 NOTICE:  f_leak => c74d97b01eae257e44aa9d5bade97baf
 NOTICE:  f_leak => 6f4922f45568161a8cdf4ad2299f6d23
 NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3 |  4
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
-  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26 | 10
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3 | 16
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 20 | 98f13708210194c475687be6106a3b84 | 21
+ a  |                b
+----+----------------------------------
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
 (14 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak(b);
@@ -2434,7 +2292,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak(b);
 --
 -- Qual push-down of leaky functions, when not referring to table
 --
-SELECT * FROM y2 WHERE f_leak('abc');
+SELECT a,b FROM y2 WHERE f_leak('abc'); -- YB: hide ybsort, output has difference in number of NOTICEs due to expression pushdown
 NOTICE:  f_leak => abc
 NOTICE:  f_leak => abc
 NOTICE:  f_leak => abc
@@ -2449,22 +2307,22 @@ NOTICE:  f_leak => abc
 NOTICE:  f_leak => abc
 NOTICE:  f_leak => abc
 NOTICE:  f_leak => abc
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3 |  4
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
-  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26 | 10
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3 | 16
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 20 | 98f13708210194c475687be6106a3b84 | 21
+ a  |                b
+----+----------------------------------
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
 (14 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak('abc');
@@ -2476,14 +2334,14 @@ EXPLAIN (COSTS OFF) SELECT * FROM y2 WHERE f_leak('abc');
 (3 rows)
 
 CREATE TABLE test_qual_pushdown (
-    abc text, k serial, PRIMARY KEY(k ASC)
+    abc text, ybsort serial, PRIMARY KEY(ybsort ASC) -- YB: add ybsort ASC for ordering
 );
 INSERT INTO test_qual_pushdown VALUES ('abc'),('def');
-SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(abc);
+SELECT a,b,abc FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(abc); -- YB: hide ybsort
 NOTICE:  f_leak => abc
 NOTICE:  f_leak => def
- a | b | k | abc | k
----+---+---+-----+---
+ a | b | abc
+---+---+-----
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(abc);
@@ -2501,7 +2359,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE 
                Filter: f_leak(abc)
 (10 rows)
 
-SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b);
+SELECT a,b,abc FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b); -- YB: hide ybsort
 NOTICE:  f_leak => cfcd208495d565ef66e7dff9f98764da
 NOTICE:  f_leak => c81e728d9d4c2f636f067f89cc14862c
 NOTICE:  f_leak => eccbc87e4b5ce2fe28308fd9f2a7baf3
@@ -2516,8 +2374,8 @@ NOTICE:  f_leak => 9bf31c7ff062936a96d3c8bd1f8f2ff3
 NOTICE:  f_leak => c74d97b01eae257e44aa9d5bade97baf
 NOTICE:  f_leak => 6f4922f45568161a8cdf4ad2299f6d23
 NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
- a | b | k | abc | k
----+---+---+-----+---
+ a | b | abc
+---+---+-----
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM y2 JOIN test_qual_pushdown ON (b = abc) WHERE f_leak(b);
@@ -2540,11 +2398,9 @@ DROP TABLE test_qual_pushdown;
 -- Plancache invalidate on user change.
 --
 RESET SESSION AUTHORIZATION;
-\set VERBOSITY terse \\ -- suppress cascade details
+\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP TABLE t1 CASCADE;
--- TODO(dmitry) Remove extra DROP commands once t3 will inherit t1 (#1129).
-DROP TABLE IF EXISTS t3 CASCADE;
-\set VERBOSITY default
+\set VERBOSITY default \\ -- YB
 CREATE TABLE t1 (a integer);
 GRANT SELECT ON t1 TO regress_rls_bob, regress_rls_carol;
 CREATE POLICY p1 ON t1 TO regress_rls_bob USING ((a % 2) = 0);
@@ -2586,14 +2442,14 @@ EXPLAIN (COSTS OFF) EXECUTE role_inval;
 --
 RESET SESSION AUTHORIZATION;
 DROP TABLE t1 CASCADE;
-CREATE TABLE t1 (a integer, b text, k serial, PRIMARY KEY(k ASC));
-GRANT ALL ON t1_k_seq TO PUBLIC;
+CREATE TABLE t1 (a integer, b text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
+GRANT ALL ON t1_ybsort_seq TO PUBLIC; -- YB: allow INSERTs for the sequence
 CREATE POLICY p1 ON t1 USING (a % 2 = 0);
 ALTER TABLE t1 ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON t1 TO regress_rls_bob;
 INSERT INTO t1 (SELECT x, md5(x::text) FROM generate_series(0,20) x);
 SET SESSION AUTHORIZATION regress_rls_bob;
-WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
+WITH cte1 AS MATERIALIZED (SELECT * FROM t1 WHERE f_leak(b)) SELECT a,b FROM cte1; -- YB: hide ybsort
 NOTICE:  f_leak => cfcd208495d565ef66e7dff9f98764da
 NOTICE:  f_leak => c81e728d9d4c2f636f067f89cc14862c
 NOTICE:  f_leak => a87ff679a2f3e71d9181a67b7542122c
@@ -2605,22 +2461,23 @@ NOTICE:  f_leak => aab3238922bcc25a6f606eb525ffdc56
 NOTICE:  f_leak => c74d97b01eae257e44aa9d5bade97baf
 NOTICE:  f_leak => 6f4922f45568161a8cdf4ad2299f6d23
 NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 20 | 98f13708210194c475687be6106a3b84 | 21
+ a  |                b
+----+----------------------------------
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
 (11 rows)
 
-EXPLAIN (COSTS OFF) WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
+EXPLAIN (COSTS OFF)
+WITH cte1 AS MATERIALIZED (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
                QUERY PLAN
 -----------------------------------------
  CTE Scan on cte1
@@ -2632,28 +2489,28 @@ EXPLAIN (COSTS OFF) WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FRO
 
 WITH cte1 AS (UPDATE t1 SET a = a + 1 RETURNING *) SELECT * FROM cte1; --fail
 ERROR:  new row violates row-level security policy for table "t1"
-WITH cte1 AS (UPDATE t1 SET a = a RETURNING *) SELECT * FROM cte1; --ok
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 20 | 98f13708210194c475687be6106a3b84 | 21
+WITH cte1 AS (UPDATE t1 SET a = a, ybsort = nextval('t1_ybsort_seq') RETURNING *) SELECT a,b FROM cte1; --ok -- YB: mimic upstream PG's new ctid allocation, hide ybsort
+ a  |                b
+----+----------------------------------
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
 (11 rows)
 
 WITH cte1 AS (INSERT INTO t1 VALUES (21, 'Fail') RETURNING *) SELECT * FROM cte1; --fail
 ERROR:  new row violates row-level security policy for table "t1"
-WITH cte1 AS (INSERT INTO t1 VALUES (20, 'Success') RETURNING *) SELECT * FROM cte1; --ok
- a  |    b    | k
-----+---------+----
- 20 | Success | 23
+WITH cte1 AS (INSERT INTO t1 VALUES (20, 'Success') RETURNING *) SELECT a,b FROM cte1; --ok -- YB: hide ybsort
+ a  |    b
+----+---------
+ 20 | Success
 (1 row)
 
 --
@@ -2685,7 +2542,7 @@ SELECT polname, relname
 -- Check INSERT SELECT
 --
 SET SESSION AUTHORIZATION regress_rls_bob;
-CREATE TABLE t2 (a integer, b text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE t2 (a integer, b text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 INSERT INTO t2 (SELECT * FROM t1);
 EXPLAIN (COSTS OFF) INSERT INTO t2 (SELECT * FROM t1);
               QUERY PLAN
@@ -2695,21 +2552,21 @@ EXPLAIN (COSTS OFF) INSERT INTO t2 (SELECT * FROM t1);
          Storage Filter: ((a % 2) = 0)
 (3 rows)
 
-SELECT * FROM t2;
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 20 | 98f13708210194c475687be6106a3b84 | 21
- 20 | Success                          | 23
+SELECT a,b FROM t2; -- YB: hide ybsort
+ a  |                b
+----+----------------------------------
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
+ 20 | Success
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t2;
@@ -2719,47 +2576,47 @@ EXPLAIN (COSTS OFF) SELECT * FROM t2;
 (1 row)
 
 CREATE TABLE t3 AS SELECT * FROM t1;
-SELECT * FROM t3 ORDER BY k;
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 20 | 98f13708210194c475687be6106a3b84 | 21
- 20 | Success                          | 23
+SELECT a,b FROM t3 ORDER BY ybsort; -- YB: add ordering
+ a  |                b
+----+----------------------------------
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
+ 20 | Success
 (12 rows)
 
 SELECT * INTO t4 FROM t1;
-SELECT * FROM t4 ORDER BY k;
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 20 | 98f13708210194c475687be6106a3b84 | 21
- 20 | Success                          | 23
+SELECT a,b FROM t4 ORDER BY ybsort; -- YB: add ordering
+ a  |                b
+----+----------------------------------
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
+ 20 | Success
 (12 rows)
 
 --
 -- RLS with JOIN
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE blog (id integer, author text, post text, k serial, PRIMARY KEY(k ASC));
-CREATE TABLE comment (blog_id integer, message text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE blog (id integer, author text, post text);
+CREATE TABLE comment (blog_id integer, message text);
 GRANT ALL ON blog, comment TO regress_rls_bob;
 CREATE POLICY blog_1 ON blog USING (id % 2 = 0);
 ALTER TABLE blog ENABLE ROW LEVEL SECURITY;
@@ -2778,19 +2635,21 @@ INSERT INTO comment VALUES
     (2, 'who did it?');
 SET SESSION AUTHORIZATION regress_rls_bob;
 -- Check RLS JOIN with Non-RLS.
+/*+ HashJoin(comment blog) Leading((comment blog)) */ -- YB: use pg_hint to ensure same query plan and result ordering as postgres
 SELECT id, author, message FROM blog JOIN comment ON id = blog_id;
  id | author |   message
 ----+--------+-------------
-  2 | bob    | who did it?
   4 | alice  | insane!
+  2 | bob    | who did it?
 (2 rows)
 
 -- Check Non-RLS JOIN with RLS.
+/*+ HashJoin(comment blog) Leading((comment blog)) */ -- YB: use pg_hint to ensure same query plan and result ordering as postgres
 SELECT id, author, message FROM comment JOIN blog ON id = blog_id;
  id | author |   message
 ----+--------+-------------
-  2 | bob    | who did it?
   4 | alice  | insane!
+  2 | bob    | who did it?
 (2 rows)
 
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -2820,31 +2679,31 @@ DROP POLICY p2 ON t1;
 ALTER TABLE t1 OWNER TO regress_rls_alice;
 -- Check that default deny does not apply to superuser.
 RESET SESSION AUTHORIZATION;
-SELECT * FROM t1;
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  1 | c4ca4238a0b923820dcc509a6f75849b |  2
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3 |  4
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  5 | e4da3b7fbbce2345d7772b0674a318d5 |  6
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  7 | 8f14e45fceea167a5a36dedd4bea2543 |  8
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
-  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26 | 10
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 11 | 6512bd43d9caa6e02c990b0a82652dca | 12
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 13 | c51ce410c124a10e0db5e4b97fc2af39 | 14
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3 | 16
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 17 | 70efdf2ec9b086079795c442636b55fb | 18
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 19 | 1f0e3dad99908345f7439f8ffabdffc4 | 20
- 20 | 98f13708210194c475687be6106a3b84 | 21
- 20 | Success                          | 23
+SELECT a,b FROM t1; -- YB: hide ybsort
+ a  |                b
+----+----------------------------------
+  1 | c4ca4238a0b923820dcc509a6f75849b
+  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3
+  5 | e4da3b7fbbce2345d7772b0674a318d5
+  7 | 8f14e45fceea167a5a36dedd4bea2543
+  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26
+ 11 | 6512bd43d9caa6e02c990b0a82652dca
+ 13 | c51ce410c124a10e0db5e4b97fc2af39
+ 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3
+ 17 | 70efdf2ec9b086079795c442636b55fb
+ 19 | 1f0e3dad99908345f7439f8ffabdffc4
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
+ 20 | Success
 (22 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
@@ -2855,31 +2714,31 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1;
 
 -- Check that default deny does not apply to table owner.
 SET SESSION AUTHORIZATION regress_rls_alice;
-SELECT * FROM t1;
- a  |                b                 | k
-----+----------------------------------+----
-  0 | cfcd208495d565ef66e7dff9f98764da |  1
-  1 | c4ca4238a0b923820dcc509a6f75849b |  2
-  2 | c81e728d9d4c2f636f067f89cc14862c |  3
-  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3 |  4
-  4 | a87ff679a2f3e71d9181a67b7542122c |  5
-  5 | e4da3b7fbbce2345d7772b0674a318d5 |  6
-  6 | 1679091c5a880faf6fb5e6087eb1b2dc |  7
-  7 | 8f14e45fceea167a5a36dedd4bea2543 |  8
-  8 | c9f0f895fb98ab9159f51fd0297e236d |  9
-  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26 | 10
- 10 | d3d9446802a44259755d38e6d163e820 | 11
- 11 | 6512bd43d9caa6e02c990b0a82652dca | 12
- 12 | c20ad4d76fe97759aa27a0c99bff6710 | 13
- 13 | c51ce410c124a10e0db5e4b97fc2af39 | 14
- 14 | aab3238922bcc25a6f606eb525ffdc56 | 15
- 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3 | 16
- 16 | c74d97b01eae257e44aa9d5bade97baf | 17
- 17 | 70efdf2ec9b086079795c442636b55fb | 18
- 18 | 6f4922f45568161a8cdf4ad2299f6d23 | 19
- 19 | 1f0e3dad99908345f7439f8ffabdffc4 | 20
- 20 | 98f13708210194c475687be6106a3b84 | 21
- 20 | Success                          | 23
+SELECT a,b FROM t1; -- YB: hide ybsort
+ a  |                b
+----+----------------------------------
+  1 | c4ca4238a0b923820dcc509a6f75849b
+  3 | eccbc87e4b5ce2fe28308fd9f2a7baf3
+  5 | e4da3b7fbbce2345d7772b0674a318d5
+  7 | 8f14e45fceea167a5a36dedd4bea2543
+  9 | 45c48cce2e2d7fbdea1afc51c7c6ad26
+ 11 | 6512bd43d9caa6e02c990b0a82652dca
+ 13 | c51ce410c124a10e0db5e4b97fc2af39
+ 15 | 9bf31c7ff062936a96d3c8bd1f8f2ff3
+ 17 | 70efdf2ec9b086079795c442636b55fb
+ 19 | 1f0e3dad99908345f7439f8ffabdffc4
+  0 | cfcd208495d565ef66e7dff9f98764da
+  2 | c81e728d9d4c2f636f067f89cc14862c
+  4 | a87ff679a2f3e71d9181a67b7542122c
+  6 | 1679091c5a880faf6fb5e6087eb1b2dc
+  8 | c9f0f895fb98ab9159f51fd0297e236d
+ 10 | d3d9446802a44259755d38e6d163e820
+ 12 | c20ad4d76fe97759aa27a0c99bff6710
+ 14 | aab3238922bcc25a6f606eb525ffdc56
+ 16 | c74d97b01eae257e44aa9d5bade97baf
+ 18 | 6f4922f45568161a8cdf4ad2299f6d23
+ 20 | 98f13708210194c475687be6106a3b84
+ 20 | Success
 (22 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
@@ -2891,9 +2750,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1;
 -- Check that default deny applies to non-owner/non-superuser when RLS on.
 SET SESSION AUTHORIZATION regress_rls_bob;
 SET row_security TO ON;
-SELECT * FROM t1;
- a | b | k
----+---+---
+SELECT a,b FROM t1; -- YB: hide ybsort
+ a | b
+---+---
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
@@ -2904,9 +2763,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1;
 (2 rows)
 
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM t1;
- a | b | k
----+---+---
+SELECT a,b FROM t1; -- YB: hide ybsort
+ a | b
+---+---
 (0 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
@@ -3075,7 +2934,7 @@ DROP TABLE copy_t;
 DROP TABLE copy_rel_to CASCADE;
 -- Check WHERE CURRENT OF
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE current_check (currentid int, payload text, rlsuser text, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE current_check (currentid int, payload text, rlsuser text, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 GRANT ALL ON current_check TO PUBLIC;
 INSERT INTO current_check VALUES
     (1, 'abc', 'regress_rls_bob'),
@@ -3088,17 +2947,17 @@ CREATE POLICY p3 ON current_check FOR UPDATE USING (currentid = 4) WITH CHECK (r
 ALTER TABLE current_check ENABLE ROW LEVEL SECURITY;
 SET SESSION AUTHORIZATION regress_rls_bob;
 -- Can SELECT even rows
-SELECT * FROM current_check;
- currentid | payload |     rlsuser     | k
------------+---------+-----------------+---
-         2 | bcd     | regress_rls_bob | 2
-         4 | def     | regress_rls_bob | 4
+SELECT currentid, payload, rlsuser FROM current_check; -- YB: hide ybsort
+ currentid | payload |     rlsuser
+-----------+---------+-----------------
+         2 | bcd     | regress_rls_bob
+         4 | def     | regress_rls_bob
 (2 rows)
 
 -- Cannot UPDATE row 2
-UPDATE current_check SET payload = payload || '_new' WHERE currentid = 2 RETURNING *;
- currentid | payload | rlsuser | k
------------+---------+---------+---
+UPDATE current_check SET payload = payload || '_new' WHERE currentid = 2 RETURNING currentid, payload, rlsuser; -- YB: hide ybsort
+ currentid | payload | rlsuser
+-----------+---------+---------
 (0 rows)
 
 BEGIN;
@@ -3110,54 +2969,7 @@ ERROR:  FETCH ABSOLUTE not supported yet
 LINE 1: FETCH ABSOLUTE 1 FROM current_check_cursor;
               ^
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
--- Still cannot UPDATE row 2 through cursor
-UPDATE current_check SET payload = payload || '_new' WHERE CURRENT OF current_check_cursor RETURNING *;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: ...ATE current_check SET payload = payload || '_new' WHERE CURR...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
--- Can update row 4 through cursor, which is the next visible row
-FETCH RELATIVE 1 FROM current_check_cursor;
-ERROR:  FETCH RELATIVE not supported yet
-LINE 1: FETCH RELATIVE 1 FROM current_check_cursor;
-              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
-UPDATE current_check SET payload = payload || '_new' WHERE CURRENT OF current_check_cursor RETURNING *;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: ...ATE current_check SET payload = payload || '_new' WHERE CURR...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
-SELECT * FROM current_check;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
--- Plan should be a subquery TID scan
-EXPLAIN (COSTS OFF) UPDATE current_check SET payload = payload WHERE CURRENT OF current_check_cursor;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: ...S OFF) UPDATE current_check SET payload = payload WHERE CURR...
-                                                             ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
--- Similarly can only delete row 4
-FETCH ABSOLUTE 1 FROM current_check_cursor;
-ERROR:  FETCH ABSOLUTE not supported yet
-LINE 1: FETCH ABSOLUTE 1 FROM current_check_cursor;
-              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
-DELETE FROM current_check WHERE CURRENT OF current_check_cursor RETURNING *;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: DELETE FROM current_check WHERE CURRENT OF current_check_cur...
-                                  ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
-FETCH RELATIVE 1 FROM current_check_cursor;
-ERROR:  FETCH RELATIVE not supported yet
-LINE 1: FETCH RELATIVE 1 FROM current_check_cursor;
-              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/6514. React with thumbs up to raise its priority
-DELETE FROM current_check WHERE CURRENT OF current_check_cursor RETURNING *;
-ERROR:  WHERE CURRENT OF not supported yet
-LINE 1: DELETE FROM current_check WHERE CURRENT OF current_check_cur...
-                                  ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/737. React with thumbs up to raise its priority
-SELECT * FROM current_check;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+-- YB: Port further queries when above is supported
 COMMIT;
 --
 -- check pg_stats view filtering
@@ -3174,14 +2986,13 @@ SELECT row_security_active('current_check');
 
 SELECT attname, most_common_vals FROM pg_stats
   WHERE tablename = 'current_check'
-  ORDER BY 1;
+  AND attname != 'ybsort' ORDER BY 1; -- YB: result has ybsort column as well due to its creation in CREATE TABLE current_check, ignore it
   attname  | most_common_vals
 -----------+-------------------
  currentid |
- k         |
  payload   |
  rlsuser   | {regress_rls_bob}
-(4 rows)
+(3 rows)
 
 SET SESSION AUTHORIZATION regress_rls_bob;
 -- Stats not visible
@@ -3200,10 +3011,8 @@ SELECT attname, most_common_vals FROM pg_stats
 
 --
 -- Collation support
--- Running in serializable mode to pick up rows created within the separate DDL transaction.
 --
--- TODO(#12494): reverse this change
-BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+BEGIN;
 CREATE TABLE coll_t (c) AS VALUES ('bar'::text);
 CREATE POLICY coll_p ON coll_t USING (c < ('foo'::text COLLATE "C"));
 ALTER TABLE coll_t ENABLE ROW LEVEL SECURITY;
@@ -3286,7 +3095,7 @@ CREATE POLICY p ON t USING (c % 2 = 1);
 ALTER TABLE t ENABLE ROW LEVEL SECURITY;
 SAVEPOINT q;
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
-  SELECT * FROM generate_series(1,5) t0(c); -- fails due to row level security enabled
+  SELECT * FROM generate_series(1,5) t0(c); -- fails due to row-level security enabled
 ERROR:  could not convert table "t" to a view because it has row security enabled
 ROLLBACK TO q;
 ALTER TABLE t DISABLE ROW LEVEL SECURITY;
@@ -3299,23 +3108,23 @@ DROP POLICY p ON t;
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
   SELECT * FROM generate_series(1,5) t0(c); -- succeeds
 ROLLBACK;
+DROP VIEW t; -- YB: manually ROLLBACK and DROP the VIEW conversion above to prevent conflict with CREATE TABLE below (see #1404)
 --
 -- Policy expression handling
 --
 BEGIN;
 CREATE TABLE t (c) AS VALUES ('bar'::text);
-ERROR:  relation "t" already exists
 CREATE POLICY p ON t USING (max(c)); -- fails: aggregate functions are not allowed in policy expressions
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  aggregate functions are not allowed in policy expressions
 ROLLBACK;
 --
 -- Non-target relations are only subject to SELECT policies
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE TABLE r1 (a int, k serial, PRIMARY KEY(k ASC));
-CREATE TABLE r2 (a int, k serial, PRIMARY KEY(k ASC));
-GRANT ALL ON r1_k_seq TO PUBLIC;
-GRANT ALL ON r2_k_seq TO PUBLIC;
+CREATE TABLE r1 (a int, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
+CREATE TABLE r2 (a int, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
+GRANT ALL ON r1_ybsort_seq TO PUBLIC; -- YB: allow INSERTs for the sequence
+GRANT ALL ON r2_ybsort_seq TO PUBLIC; -- YB: allow INSERTs for the sequence
 INSERT INTO r1 VALUES (10), (20);
 INSERT INTO r2 VALUES (10), (20);
 GRANT ALL ON r1, r2 TO regress_rls_bob;
@@ -3327,67 +3136,67 @@ CREATE POLICY p3 ON r2 FOR UPDATE USING (false);
 CREATE POLICY p4 ON r2 FOR DELETE USING (false);
 ALTER TABLE r2 ENABLE ROW LEVEL SECURITY;
 SET SESSION AUTHORIZATION regress_rls_bob;
-SELECT * FROM r1;
- a  | k
-----+---
- 10 | 1
- 20 | 2
+SELECT a FROM r1; -- YB: hide ybsort
+ a
+----
+ 10
+ 20
 (2 rows)
 
-SELECT * FROM r2;
- a  | k
-----+---
- 10 | 1
- 20 | 2
+SELECT a FROM r2; -- YB: hide ybsort
+ a
+----
+ 10
+ 20
 (2 rows)
 
 -- r2 is read-only
 INSERT INTO r2 VALUES (2); -- Not allowed
 ERROR:  new row violates row-level security policy for table "r2"
-UPDATE r2 SET a = 2 RETURNING *; -- Updates nothing
- a | k
----+---
+UPDATE r2 SET a = 2 RETURNING a; -- Updates nothing -- YB: hide ybsort
+ a
+---
 (0 rows)
 
-DELETE FROM r2 RETURNING *; -- Deletes nothing
- a | k
----+---
+DELETE FROM r2 RETURNING a; -- Deletes nothing -- YB: hide ybsort
+ a
+---
 (0 rows)
 
 -- r2 can be used as a non-target relation in DML
-INSERT INTO r1 SELECT a + 1 FROM r2 RETURNING *; -- OK
- a  | k
-----+---
- 11 | 3
- 21 | 4
+INSERT INTO r1 SELECT a + 1 FROM r2 RETURNING a; -- OK -- YB: hide ybsort
+ a
+----
+ 11
+ 21
 (2 rows)
 
-UPDATE r1 SET a = r2.a + 2 FROM r2 WHERE r1.a = r2.a RETURNING *; -- OK
- a  | k | a  | k
-----+---+----+---
- 12 | 1 | 10 | 1
- 22 | 2 | 20 | 2
+UPDATE r1 SET a = r2.a + 2 FROM r2 WHERE r1.a = r2.a RETURNING r1.a as a, r2.a as a; -- OK -- YB: hide ybsort
+ a  | a
+----+----
+ 12 | 10
+ 22 | 20
 (2 rows)
 
-DELETE FROM r1 USING r2 WHERE r1.a = r2.a + 2 RETURNING *; -- OK
- a  | k | a  | k
-----+---+----+---
- 12 | 1 | 10 | 1
- 22 | 2 | 20 | 2
+DELETE FROM r1 USING r2 WHERE r1.a = r2.a + 2 RETURNING r1.a as a, r2.a as a; -- OK -- YB: hide ybsort
+ a  | a
+----+----
+ 12 | 10
+ 22 | 20
 (2 rows)
 
-SELECT * FROM r1;
- a  | k
-----+---
- 11 | 3
- 21 | 4
+SELECT a FROM r1; -- YB: hide ybsort
+ a
+----
+ 11
+ 21
 (2 rows)
 
-SELECT * FROM r2;
- a  | k
-----+---
- 10 | 1
- 20 | 2
+SELECT a FROM r2; -- YB: hide ybsort
+ a
+----
+ 10
+ 20
 (2 rows)
 
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -3398,7 +3207,7 @@ DROP TABLE r2;
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security = on;
-CREATE TABLE r1 (a int UNIQUE);
+CREATE TABLE r1 (a int);
 INSERT INTO r1 VALUES (10), (20);
 CREATE POLICY p1 ON r1 USING (false);
 ALTER TABLE r1 ENABLE ROW LEVEL SECURITY;
@@ -3443,7 +3252,7 @@ DROP TABLE r1;
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security = on;
-CREATE TABLE r1 (a int, PRIMARY KEY(a ASC));
+CREATE TABLE r1 (a int PRIMARY KEY);
 CREATE TABLE r2 (a int REFERENCES r1);
 INSERT INTO r1 VALUES (10), (20);
 INSERT INTO r2 VALUES (10), (20);
@@ -3478,7 +3287,7 @@ INSERT INTO r2 VALUES (10);
 DROP TABLE r2;
 DROP TABLE r1;
 -- Ensure cascaded DELETE works
-CREATE TABLE r1 (a int, PRIMARY KEY(a ASC));
+CREATE TABLE r1 (a int PRIMARY KEY);
 CREATE TABLE r2 (a int REFERENCES r1 ON DELETE CASCADE);
 INSERT INTO r1 VALUES (10), (20);
 INSERT INTO r2 VALUES (10), (20);
@@ -3502,8 +3311,8 @@ TABLE r2;
 DROP TABLE r2;
 DROP TABLE r1;
 -- Ensure cascaded UPDATE works
-CREATE TABLE r1 (a int UNIQUE);
-CREATE TABLE r2 (a int REFERENCES r1(a) ON UPDATE CASCADE, k serial, PRIMARY KEY(k ASC));
+CREATE TABLE r1 (a int PRIMARY KEY);
+CREATE TABLE r2 (a int REFERENCES r1 ON UPDATE CASCADE, ybsort serial, PRIMARY KEY(ybsort ASC)); -- YB: add ybsort ASC for ordering
 INSERT INTO r1 VALUES (10), (20);
 INSERT INTO r2 VALUES (10), (20);
 -- Create policies on r2 which prevent the
@@ -3518,11 +3327,11 @@ UPDATE r1 SET a = a+5;
 ALTER TABLE r2 NO FORCE ROW LEVEL SECURITY;
 -- As owner, we now bypass RLS
 -- verify records in r2 updated
-TABLE r2;
- a  | k
-----+---
- 15 | 1
- 25 | 2
+SELECT a from r2; -- YB: hide ybsort
+ a
+----
+ 15
+ 25
 (2 rows)
 
 DROP TABLE r2;
@@ -3562,7 +3371,7 @@ DROP TABLE r1;
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security = on;
-CREATE TABLE r1 (a int UNIQUE);
+CREATE TABLE r1 (a int PRIMARY KEY);
 CREATE POLICY p1 ON r1 FOR SELECT USING (a < 20);
 CREATE POLICY p2 ON r1 FOR UPDATE USING (a < 20) WITH CHECK (true);
 CREATE POLICY p3 ON r1 FOR INSERT WITH CHECK (true);
@@ -3602,7 +3411,7 @@ INSERT INTO r1 VALUES (10)
     ON CONFLICT (a) DO UPDATE SET a = 30;
 ERROR:  new row violates row-level security policy for table "r1"
 INSERT INTO r1 VALUES (10)
-    ON CONFLICT ON CONSTRAINT r1_a_key DO UPDATE SET a = 30;
+    ON CONFLICT ON CONSTRAINT r1_pkey DO UPDATE SET a = 30;
 ERROR:  new row violates row-level security policy for table "r1"
 DROP TABLE r1;
 -- Check dependency handling
@@ -3675,6 +3484,58 @@ DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t2; -- should succeed
 DROP USER regress_rls_dob_role1;
 DROP USER regress_rls_dob_role2;
+-- Bug #15708: view + table with RLS should check policies as view owner
+CREATE TABLE ref_tbl (a int);
+INSERT INTO ref_tbl VALUES (1);
+CREATE TABLE rls_tbl (a int);
+INSERT INTO rls_tbl VALUES (10);
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p1 ON rls_tbl USING (EXISTS (SELECT 1 FROM ref_tbl));
+GRANT SELECT ON ref_tbl TO regress_rls_bob;
+GRANT SELECT ON rls_tbl TO regress_rls_bob;
+CREATE VIEW rls_view AS SELECT a FROM rls_tbl; -- YB: hide ybsort
+ALTER VIEW rls_view OWNER TO regress_rls_bob;
+ERROR:  ALTER VIEW not supported yet
+LINE 1: ALTER VIEW rls_view OWNER TO regress_rls_bob;
+        ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1131. React with thumbs up to raise its priority
+GRANT SELECT ON rls_view TO regress_rls_alice;
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM ref_tbl; -- Permission denied
+ERROR:  permission denied for table ref_tbl
+SELECT * FROM rls_tbl; -- Permission denied
+ERROR:  permission denied for table rls_tbl
+SELECT * FROM rls_view; -- OK
+ a
+----
+ 10
+(1 row)
+
+RESET SESSION AUTHORIZATION;
+DROP VIEW rls_view;
+DROP TABLE rls_tbl;
+DROP TABLE ref_tbl;
+-- Leaky operator test
+CREATE TABLE rls_tbl (a int);
+INSERT INTO rls_tbl SELECT x/10 FROM generate_series(1, 100) x;
+ANALYZE rls_tbl;
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON rls_tbl TO regress_rls_alice;
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE FUNCTION op_leak(int, int) RETURNS bool
+    AS 'BEGIN RAISE NOTICE ''op_leak => %, %'', $1, $2; RETURN $1 < $2; END'
+    LANGUAGE plpgsql;
+CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
+                     restrict = scalarltsel);
+SELECT * FROM rls_tbl WHERE a <<< 1000;
+ a
+---
+(0 rows)
+
+DROP OPERATOR <<< (int, int);
+DROP FUNCTION op_leak(int, int);
+RESET SESSION AUTHORIZATION;
+DROP TABLE rls_tbl;
 -- Bug #16006: whole-row Vars in a policy don't play nice with sub-selects
 SET SESSION AUTHORIZATION regress_rls_alice;
 CREATE TABLE rls_tbl (a int, b int, c int);
@@ -3700,7 +3561,7 @@ INSERT INTO rls_tbl
 
 INSERT INTO rls_tbl
   SELECT * FROM (SELECT b, c FROM rls_tbl ORDER BY a) ss;
-SELECT * FROM rls_tbl order by a;
+SELECT * FROM rls_tbl ORDER BY a; -- YB: add ordering
  a  | b  | c
 ----+----+----
  10 | 20 | 30
@@ -3709,27 +3570,6 @@ SELECT * FROM rls_tbl order by a;
 
 DROP TABLE rls_tbl;
 RESET SESSION AUTHORIZATION;
--- Leaky operator test
-CREATE TABLE rls_tbl (a int);
-INSERT INTO rls_tbl SELECT x/10 FROM generate_series(1, 100) x;
-ANALYZE rls_tbl;
-ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
-GRANT SELECT ON rls_tbl TO regress_rls_alice;
-SET SESSION AUTHORIZATION regress_rls_alice;
-CREATE FUNCTION op_leak(int, int) RETURNS bool
-    AS 'BEGIN RAISE NOTICE ''op_leak => %, %'', $1, $2; RETURN $1 < $2; END'
-    LANGUAGE plpgsql;
-CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
-                     restrict = scalarltsel);
-SELECT * FROM rls_tbl WHERE a <<< 1000;
- a
----
-(0 rows)
-
-DROP OPERATOR <<< (int, int);
-DROP FUNCTION op_leak(int, int);
-RESET SESSION AUTHORIZATION;
-DROP TABLE rls_tbl;
 -- CVE-2023-2455: inlining an SRF may introduce an RLS dependency
 create table rls_t (c text);
 insert into rls_t values ('invisible to bob');
@@ -3761,10 +3601,10 @@ DROP TABLE rls_t;
 -- Clean up objects
 --
 RESET SESSION AUTHORIZATION;
-\set VERBOSITY terse \\ -- suppress cascade details
-DROP SCHEMA regress_rls_schema CASCADE;
-NOTICE:  drop cascades to 31 other objects
-\set VERBOSITY default
+\set VERBOSITY terse \\ -- YB: suppress cascade details
+DROP SCHEMA regress_rls_schema CASCADE; -- YB: 32 tables dropped instead of 30 due to DDL transaction rollbacks not working (coll_t and tbl1)
+NOTICE:  drop cascades to 32 other objects
+\set VERBOSITY default \\ -- YB
 DROP USER regress_rls_alice;
 DROP USER regress_rls_bob;
 DROP USER regress_rls_carol;

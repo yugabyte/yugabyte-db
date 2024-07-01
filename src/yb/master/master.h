@@ -111,6 +111,8 @@ class Master : public tserver::DbServerBase {
 
   CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
 
+  TabletSplitManager& tablet_split_manager() const;
+
   XClusterManagerIf* xcluster_manager() const;
 
   XClusterManager* xcluster_manager_impl() const;
@@ -251,6 +253,9 @@ class Master : public tserver::DbServerBase {
 
   std::atomic<MasterState> state_;
 
+  // The metric entity for the cluster.
+  scoped_refptr<MetricEntity> metric_entity_cluster_;
+
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
   std::unique_ptr<MasterAutoFlagsManager> auto_flags_manager_;
@@ -276,9 +281,6 @@ class Master : public tserver::DbServerBase {
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
-
-  // The metric entity for the cluster.
-  scoped_refptr<MetricEntity> metric_entity_cluster_;
 
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;

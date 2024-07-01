@@ -399,6 +399,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				opt_grant_grant_option opt_grant_admin_option
 				opt_nowait opt_if_exists opt_with_data
 				opt_transaction_chain
+				yb_opt_cascade
 %type <ival>	opt_nowait_or_skip
 
 %type <list>	OptRoleList AlterOptRoleList
@@ -2166,31 +2167,46 @@ AlterTableStmt:
 					n->missing_ok = true;
 					$$ = (Node *) n;
 				}
-		|	ALTER TABLE ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait
+		|	ALTER TABLE ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait yb_opt_cascade
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALL IN TABLESPACE", 1124);
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 
 					n->orig_tablespacename = $6;
 					n->objtype = OBJECT_TABLE;
 					n->roles = NIL;
+					n->yb_relation = NULL;
 					n->new_tablespacename = $9;
 					n->nowait = $10;
+					n->yb_cascade = $11;
 					$$ = (Node *) n;
 				}
-		|	ALTER TABLE ALL IN_P TABLESPACE name OWNED BY role_list SET TABLESPACE name opt_nowait
+		|	ALTER TABLE ALL IN_P TABLESPACE name OWNED BY role_list SET TABLESPACE name opt_nowait yb_opt_cascade
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALL IN TABLESPACE", 1124);
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 
 					n->orig_tablespacename = $6;
 					n->objtype = OBJECT_TABLE;
 					n->roles = $9;
+					n->yb_relation = NULL;
 					n->new_tablespacename = $12;
 					n->nowait = $13;
+					n->yb_cascade = $14;
 					$$ = (Node *) n;
+				}
+		|	ALTER TABLE ALL IN_P TABLESPACE name COLOCATED WITH relation_expr SET TABLESPACE name opt_nowait yb_opt_cascade
+				{
+					AlterTableMoveAllStmt *n =
+						makeNode(AlterTableMoveAllStmt);
+					n->orig_tablespacename = $6;
+					n->objtype = OBJECT_TABLE;
+					n->roles = NIL;
+					n->yb_relation = $9;
+					n->new_tablespacename = $12;
+					n->nowait = $13;
+					n->yb_cascade = $14;
+					$$ = (Node *)n;
 				}
 		|	ALTER INDEX qualified_name alter_table_cmds
 				{
@@ -2222,30 +2238,32 @@ AlterTableStmt:
 					n->missing_ok = false;
 					$$ = (Node *) n;
 				}
-		|	ALTER INDEX ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait
+		|	ALTER INDEX ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait yb_opt_cascade
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 
 					n->orig_tablespacename = $6;
 					n->objtype = OBJECT_INDEX;
 					n->roles = NIL;
+					n->yb_relation = NULL;
 					n->new_tablespacename = $9;
 					n->nowait = $10;
+					n->yb_cascade = $11;
 					$$ = (Node *) n;
 				}
-		|	ALTER INDEX ALL IN_P TABLESPACE name OWNED BY role_list SET TABLESPACE name opt_nowait
+		|	ALTER INDEX ALL IN_P TABLESPACE name OWNED BY role_list SET TABLESPACE name opt_nowait yb_opt_cascade
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER INDEX", 1130);
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 
 					n->orig_tablespacename = $6;
 					n->objtype = OBJECT_INDEX;
 					n->roles = $9;
+					n->yb_relation = NULL;
 					n->new_tablespacename = $12;
 					n->nowait = $13;
+					n->yb_cascade = $14;
 					$$ = (Node *) n;
 				}
 		|	ALTER SEQUENCE qualified_name alter_table_cmds
@@ -2312,30 +2330,32 @@ AlterTableStmt:
 					n->missing_ok = true;
 					$$ = (Node *) n;
 				}
-		|	ALTER MATERIALIZED VIEW ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait
+		|	ALTER MATERIALIZED VIEW ALL IN_P TABLESPACE name SET TABLESPACE name opt_nowait yb_opt_cascade
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 
 					n->orig_tablespacename = $7;
 					n->objtype = OBJECT_MATVIEW;
 					n->roles = NIL;
+					n->yb_relation = NULL;
 					n->new_tablespacename = $10;
 					n->nowait = $11;
+					n->yb_cascade = $12;
 					$$ = (Node *) n;
 				}
-		|	ALTER MATERIALIZED VIEW ALL IN_P TABLESPACE name OWNED BY role_list SET TABLESPACE name opt_nowait
+		|	ALTER MATERIALIZED VIEW ALL IN_P TABLESPACE name OWNED BY role_list SET TABLESPACE name opt_nowait yb_opt_cascade
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER MATERIALIZED VIEW", 1131);
 					AlterTableMoveAllStmt *n =
 						makeNode(AlterTableMoveAllStmt);
 
 					n->orig_tablespacename = $7;
 					n->objtype = OBJECT_MATVIEW;
 					n->roles = $10;
+					n->yb_relation = NULL;
 					n->new_tablespacename = $13;
 					n->nowait = $14;
+					n->yb_cascade = $15;
 					$$ = (Node *) n;
 				}
 		|	ALTER FOREIGN TABLE relation_expr alter_table_cmds
@@ -3059,6 +3079,11 @@ opt_collate_clause:
 alter_using:
 			USING a_expr				{ $$ = $2; }
 			| /* EMPTY */				{ $$ = NULL; }
+		;
+
+yb_opt_cascade:
+			CASCADE     				{ $$ = true; }
+			| /* EMPTY */				{ $$ = false; }
 		;
 
 replica_identity:

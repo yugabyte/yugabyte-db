@@ -19,17 +19,17 @@ Table data is split into [tablets](../key-concepts#tablet) and managed by [DocDB
 
 At the heart of YugabyteDB is Raft consensus protocol that ensures the replicated data remains consistent across all the nodes. Raft is designed to be a more understandable alternative to the complex Paxos protocol. It works by electing a leader node that is responsible for managing the replicated log and coordinating the other nodes.
 
-{{<tip>}}
+{{<lead link="./raft">}}
 To understand the different concepts in the consensus protocol, see [Raft](./raft).
-{{</tip>}}
+{{</lead>}}
 
 ## Synchronous Replication
 
 YugabyteDB ensures that all writes are replicated to a majority of the nodes before the write is considered complete and acknowledged to the client. This provides the highest level of data consistency, as the data is guaranteed to be durable and available on multiple nodes. YugabyteDB's synchronous replication architecture is inspired by [Google Spanner](https://research.google.com/archive/spanner-osdi2012.pdf).
 
-{{<tip>}}
+{{<lead link="./replication">}}
 To understand how replication works, see [Synchronous replication](./replication).
-{{</tip>}}
+{{</lead>}}
 
 ## xCluster
 
@@ -37,17 +37,17 @@ Asynchronous replication, on the other hand, does not wait for writes to be repl
 
 In YugabyteDB, you can use xCluster to set up asynchronous replication between 2 different distant [universes](../key-concepts#universe) either in a unidirectional or bi-directional manner.
 
-{{<tip>}}
+{{<lead link="./async-replication">}}
 To understand how asynchronous replication between 2 universes works, see [xCluster](./async-replication).
-{{</tip>}}
+{{</lead>}}
 
 ## Read replica
 
 Read replicas are effectively in-universe asynchronous replicas. It is a optional cluster that you can add on to an existing cluster which can help you improve read latency for users located far away from your [primary cluster](../key-concepts#primary-cluster).
 
-{{<tip>}}
+{{<lead link="./read-replicas">}}
 To understand how read replicas work, see [Read replicas](./read-replicas).
-{{</tip>}}
+{{</lead>}}
 
 ## Change Data Capture (CDC)
 
@@ -55,6 +55,6 @@ CDC is a technique used to track and replicate changes to the data. CDC systems 
 
 CDC is particularly beneficial in scenarios where real-time data synchronization is required, such as data warehousing, stream processing, and event-driven architectures. It allows the replicated data to be kept in sync without the need for full table replication, which can be more efficient and scalable.
 
-{{<tip>}}
+{{<lead link="./change-data-capture">}}
 To understand how CDC works, see [CDC](./change-data-capture).
-{{</tip>}}
+{{</lead>}}

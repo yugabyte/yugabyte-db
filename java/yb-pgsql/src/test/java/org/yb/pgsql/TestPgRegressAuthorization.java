@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -20,11 +22,18 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress authorization-related tests on YB code.
  */
 @RunWith(value = YBTestRunner.class)
-public class TestPgRegressAuthorization extends BasePgRegressTest {
+public class TestPgRegressAuthorization extends BasePgRegressTestSequentialYbrowid {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_reindex", "true");
+    return flagMap;
+}
 
   @Test
   public void testPgRegressAuthorization() throws Exception {

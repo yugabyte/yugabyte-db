@@ -119,6 +119,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
@@ -288,6 +289,10 @@ DEFINE_RUNTIME_uint32(ddl_verification_timeout_multiplier, 5,
     " default_admin_operation_timeout which is the timeout used for a single DDL operation ");
 
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);
+
+DEFINE_test_flag(int32, create_namespace_if_not_exist_inject_delay_ms, 0,
+                 "After checking a namespace does not exist, inject delay "
+                 "before creating the namespace.");
 
 namespace yb {
 namespace client {
@@ -1016,22 +1021,43 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
                                             const std::string& source_namespace_id,
                                             const boost::optional<uint32_t>& next_pg_oid,
                                             const bool colocated) {
-  const auto namespace_exists = VERIFY_RESULT(
-      !namespace_id.empty() ? NamespaceIdExists(namespace_id)
-                            : NamespaceExists(namespace_name));
-  if (namespace_exists) {
-    // Verify that the namespace we found is running so that, once this request returns,
-    // the client can send operations without receiving a "namespace not found" error.
-    return data_->WaitForCreateNamespaceToFinish(this, namespace_name, database_type, namespace_id,
-        CoarseMonoClock::Now() + default_admin_operation_timeout());
-  }
+  bool retried = false;
+  while (true) {
+    const auto namespace_exists = VERIFY_RESULT(
+        !namespace_id.empty() ? NamespaceIdExists(namespace_id)
+                              : NamespaceExists(namespace_name));
+    if (namespace_exists) {
+      // Verify that the namespace we found is running so that, once this request returns,
+      // the client can send operations without receiving a "namespace not found" error.
+      return data_->WaitForCreateNamespaceToFinish(
+          this, namespace_name, database_type, namespace_id,
+          CoarseMonoClock::Now() + default_admin_operation_timeout());
+    } else if (FLAGS_TEST_create_namespace_if_not_exist_inject_delay_ms > 0) {
+      std::this_thread::sleep_for(FLAGS_TEST_create_namespace_if_not_exist_inject_delay_ms * 1ms);
+    }
 
-  Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
-                             source_namespace_id, next_pg_oid, nullptr /* txn */, colocated);
-  if (s.IsAlreadyPresent() && database_type && *database_type == YQLDatabase::YQL_DATABASE_CQL) {
-    return Status::OK();
+    Status s = CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
+                               source_namespace_id, next_pg_oid, nullptr /* txn */, colocated);
+
+    // Retain old behavior: return Status::OK() on s.IsAlreadyPresent() error for
+    // YQLDatabase::YQL_DATABASE_CQL database_type.
+    if (!s.IsAlreadyPresent() || !database_type) {
+      return s;
+    }
+    if (*database_type == YQLDatabase::YQL_DATABASE_CQL) {
+      return Status::OK();
+    }
+
+    // Do one time retry for YQL_DATABASE_PGSQL.
+    if (*database_type == YQLDatabase::YQL_DATABASE_PGSQL && !retried) {
+      // Sleep a bit before retrying.
+      std::this_thread::sleep_for(1000ms * kTimeMultiplier);
+      retried = true;
+    } else {
+      return s;
+    }
   }
-  return s;
+  return STATUS(RuntimeError, "Unreachable statement");
 }
 
 Status YBClient::IsCreateNamespaceInProgress(const std::string& namespace_name,
@@ -1529,7 +1555,8 @@ Status YBClient::GetCDCStream(
     std::optional<uint64_t>* consistent_snapshot_time,
     std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
     std::optional<uint64_t>* stream_creation_time,
-    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map) {
+    std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map,
+    std::optional<std::string>* replication_slot_name) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1576,6 +1603,10 @@ Status YBClient::GetCDCStream(
   }
   if (stream_creation_time && resp.stream().has_stream_creation_time()) {
     *stream_creation_time = resp.stream().stream_creation_time();
+  }
+
+  if (replication_slot_name && resp.stream().has_cdcsdk_ysql_replication_slot_name()) {
+    *replication_slot_name = resp.stream().cdcsdk_ysql_replication_slot_name();
   }
 
   return Status::OK();
@@ -1914,11 +1945,12 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-    PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
+    PartitionsOnly partitions_only, GetTableLocationsCallback callback,
+    master::IncludeInactive include_inactive) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetTableLocations(
       this, table_id, max_tablets, require_tablets_running, partitions_only, deadline,
-      std::move(callback));
+      std::move(callback), include_inactive);
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
@@ -2678,16 +2710,18 @@ Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
 }
 
 Status YBClient::OpenTable(
-    const TableId& table_id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
-  return DoOpenTable(table_id, table, resp);
+    const TableId& table_id, YBTablePtr* table, master::IncludeInactive include_inactive,
+    master::GetTableSchemaResponsePB* resp) {
+  return DoOpenTable(table_id, table, include_inactive, resp);
 }
 
 template <class Id>
 Status YBClient::DoOpenTable(
-    const Id& id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
+    const Id& id, YBTablePtr* table, master::IncludeInactive include_inactive,
+    master::GetTableSchemaResponsePB* resp) {
   std::promise<Result<YBTablePtr>> result;
   DoOpenTableAsync(
-      id, [&result](const auto& res) { result.set_value(res); }, resp);
+      id, [&result](const auto& res) { result.set_value(res); }, include_inactive, resp);
   *table = VERIFY_RESULT(result.get_future().get());
   return Status::OK();
 }
@@ -2699,28 +2733,31 @@ void YBClient::OpenTableAsync(
 
 void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
                               master::GetTableSchemaResponsePB* resp) {
-  DoOpenTableAsync(table_id, callback, resp);
+  DoOpenTableAsync(table_id, callback, master::IncludeInactive::kFalse, resp);
 }
 
 template <class Id>
-void YBClient::DoOpenTableAsync(const Id& id,
-                                const OpenTableAsyncCallback& callback,
-                                master::GetTableSchemaResponsePB* resp) {
+void YBClient::DoOpenTableAsync(
+    const Id& id, const OpenTableAsyncCallback& callback, master::IncludeInactive include_inactive,
+    master::GetTableSchemaResponsePB* resp) {
   auto info = std::make_shared<YBTableInfo>();
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+
   auto s = data_->GetTableSchema(
       this, id, deadline, info,
-      Bind(&YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback),
-      resp);
+      Bind(
+          &YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback,
+          include_inactive),
+      include_inactive, resp);
   if (!s.ok()) {
     callback(s);
     return;
   }
 }
 
-void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
-                                      const OpenTableAsyncCallback& callback,
-                                      const Status& s) {
+void YBClient::GetTableSchemaCallback(
+    std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback,
+    master::IncludeInactive include_inactive, const Status& s) {
   if (!s.ok()) {
     callback(s);
     return;
@@ -2736,7 +2773,8 @@ void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
           auto table = std::make_shared<YBTable>(*info, *fetch_result);
           callback(table);
         }
-      });
+      },
+      include_inactive);
 }
 
 shared_ptr<YBSession> YBClient::NewSession(MonoDelta delta) {

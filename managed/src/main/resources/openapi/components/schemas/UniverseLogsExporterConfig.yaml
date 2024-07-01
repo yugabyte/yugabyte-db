@@ -1,5 +1,6 @@
+title: UniverseLogsExporterConfig
 type: object
-description: Universe Logs Exporter Config
+description: Universe Logs Exporter Config. Part of AuditLogConfig.
 required:
   - additional_tags
   - exporter_uuid

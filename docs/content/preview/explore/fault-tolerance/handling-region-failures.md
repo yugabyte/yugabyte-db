@@ -28,9 +28,7 @@ Consider a scenario where you have deployed your database across three regions -
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-{{<collapse title="Set up a local cluster">}}
 {{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-central-1a,aws.us-west.us-west-1a" fault-domain="region">}}
-{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
@@ -70,7 +68,7 @@ To simulate the failure of the 3rd region locally, you can just stop the third n
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -98,7 +96,7 @@ To simulate the failure of the secondary region locally, you can just stop the s
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -126,7 +124,7 @@ To simulate the failure of the primary region locally, you can just stop the fir
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -158,6 +156,6 @@ The following illustration shows how the primary application (assuming it is sti
 
 There may be scenarios where you want to deploy the database in just one region. It is quite common for enterprises to have one data center as their primary and another data center just for failover. For this scenario, you can deploy YugabyteDB in your primary data center and set up another cluster in the second data center that gets the data from the primary cluster via asynchronous replication. This is also known as the 2DC or xCluster model.
 
-{{<tip>}}
+{{<lead link="../../../develop/build-global-apps/active-active-single-master">}}
 You can set this up by following the instructions of the [Active-Active Single-Master](../../../develop/build-global-apps/active-active-single-master) pattern.
-{{</tip>}}
+{{</lead>}}

@@ -2,7 +2,7 @@
 title: ybm CLI vpc peering resource
 headerTitle: ybm vpc peering
 linkTitle: vpc peering
-description: YugabyteDB Managed CLI reference VPC Peering resource.
+description: YugabyteDB Aeon CLI reference VPC Peering resource.
 headcontent: Manage account peering connections
 menu:
   preview_yugabyte-cloud:

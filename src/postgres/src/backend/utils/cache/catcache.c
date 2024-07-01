@@ -2647,3 +2647,25 @@ GetCatCacheMisses()
 {
 	return NumCatalogCacheMisses;
 }
+
+YbCatCListIterator
+YbCatCListIteratorBegin(CatCList *list)
+{
+	YbCatCListIterator iterator = { .list = list, .index = 0 };
+	return iterator;
+}
+
+HeapTuple
+YbCatCListIteratorGetNext(YbCatCListIterator *iterator)
+{
+	if (iterator->index == iterator->list->n_members)
+		return NULL;
+
+	return &iterator->list->members[iterator->index++]->tuple;
+}
+
+void
+YbCatCListIteratorFree(YbCatCListIterator *iterator)
+{
+	ReleaseCatCacheList(iterator->list);
+}

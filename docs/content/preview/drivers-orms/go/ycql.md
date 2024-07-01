@@ -3,6 +3,8 @@ title: YugabyteDB Go driver for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using YugabyteDB Go driver for YCQL
+aliases:
+  - /preview/tutorials/build-apps/go/cloud-ycql-go/
 menu:
   preview:
     identifier: yb-pgx-driver-ycql
@@ -35,9 +37,9 @@ type: docs
 
 [Yugabyte Go Driver for YCQL](https://github.com/yugabyte/gocql) is based on [gocql](https://gocql.github.io/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-To use the driver's partition-aware load balancing feature in a YugabyteDB Managed cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Managed](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-managed).
+To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon cluster, applications must be deployed in a VPC that has been peered with the cluster VPC so that they have access to all nodes in the cluster. For more information, refer to [Using YCQL drivers with YugabyteDB Aeon](../../smart-drivers-ycql/#using-ycql-drivers-with-yugabytedb-aeon).
 
 {{< /note >}}
 

@@ -19,9 +19,9 @@ YugabyteDB's implementation of Raft is based on [Apache Kudu](https://kudu.apach
 
 Let us go over the different components involved in Raft consensus protocol and how they work.
 
-{{<tip>}}
+{{<lead link="https://Raft.github.io/">}}
 To see an animated visual of the workings of Raft, see [Raft Visualization](https://Raft.github.io/).
-{{</tip>}}
+{{</lead>}}
 
 ## Roles
 

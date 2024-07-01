@@ -739,8 +739,6 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
 }
 
 TEST_F(PgDdlAtomicitySanityTest, AddReplicaIdentityTest) {
-  ASSERT_OK(
-      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("set yb_enable_replica_identity = true"));
@@ -1679,6 +1677,49 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
   auto rows =
       ASSERT_RESULT((conn.FetchRows<int32_t, float, int32_t>("SELECT * FROM test2 ORDER BY key")));
   ASSERT_EQ(rows, (decltype(rows){{2, 2, 2}, {3, 3, 3}, {4, 4, 4}}));
+}
+
+// Test that the schema verification works correctly for partition tables and its children.
+TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // Set report_ysql_ddl_txn_status_to_master to false, so that we can test the schema verification
+  // codepaths on master.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  // Create a parent partitioned table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_parent (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
+      "PARTITION BY LIST(key)"));
+  // Create a child partition.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_child PARTITION OF test_parent FOR VALUES IN (1)"));
+
+  // Perform an unsuccessful alter table operation.
+  ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_parent DROP COLUMN value"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
+  // Perform an unsuccessful alter table rewrite operation.
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 SERIAL"));
+
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 1);
+  // Verify that the failed alter table rewrite operation created an orphaned child table.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 2);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=false"));
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(client->ListTables("test_child")).size() == 1;
+  }, MonoDelta::FromSeconds(60), "Wait for orphaned child table to be cleaned up."));
+
+  // Perform a successful alter table operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 int"));
+  // Perform a successful alter table rewrite operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col2 SERIAL"));
+
+  // Perform a successful drop table operation.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE test_parent"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 0);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 0);
 }
 } // namespace pgwrapper
 } // namespace yb

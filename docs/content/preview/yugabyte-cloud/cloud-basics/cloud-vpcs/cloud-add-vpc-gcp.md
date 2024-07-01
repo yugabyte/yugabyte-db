@@ -30,9 +30,9 @@ type: docs
 
 </ul>
 
-YugabyteDB Managed supports peering virtual private cloud (VPC) networks on AWS and GCP.
+YugabyteDB Aeon supports peering virtual private cloud (VPC) networks on AWS and GCP.
 
-Using YugabyteDB Managed, you can create a VPC on GCP, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on GCP.
+Using YugabyteDB Aeon, you can create a VPC on GCP, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on GCP.
 
 To peer VPCs in GCP, you need to complete the following tasks:
 
@@ -44,7 +44,7 @@ To peer VPCs in GCP, you need to complete the following tasks:
 | **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Add the application VPC to the IP allow list](#add-the-application-vpc-to-the-cluster-ip-allow-list)** | Allows the peered application VPC to connect to the cluster.<br>Add at least one of the CIDR blocks associated with the peered application VPC to the [IP allow list](../../../cloud-secure-clusters/add-connections/) for your cluster. |
 
-With the exception of completing the peering in GCP, these tasks are performed in YugabyteDB Managed.
+With the exception of completing the peering in GCP, these tasks are performed in YugabyteDB Aeon.
 
 For information on VPC network peering in GCP, refer to [VPC Network Peering overview](https://cloud.google.com/vpc/docs/vpc-peering) in the Google VPC documentation.
 
@@ -65,7 +65,7 @@ To create a VPC, do the following:
 1. Enter a name for the VPC.
 1. Choose the provider (GCP).
 1. Choose one of the following options:
-    - **Automated** - VPCs are created globally and GCP assigns network blocks to each region supported by YugabyteDB Managed. (Not recommended for production, refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations) in the GCP documentation.)
+    - **Automated** - VPCs are created globally and GCP assigns network blocks to each region supported by YugabyteDB Aeon. (Not recommended for production, refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations) in the GCP documentation.)
     - **Custom** - Select a region. Click **Add Region** to add additional regions. If the VPC is to be used for a multi-region cluster, add a region for each of the regions in the cluster.
 1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). CIDR addresses in different regions can't overlap.
     - For Automated, use network sizes of /16, /17, or /18.
@@ -75,13 +75,13 @@ To create a VPC, do the following:
 
 1. Click **Save**.
 
-YugabyteDB Managed adds the VPC to the [VPCs list](../cloud-add-vpc/) with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
+YugabyteDB Aeon adds the VPC to the [VPCs list](../cloud-add-vpc/) with a status of _Creating_. If successful, after a minute or two, the status will change to _Active_.
 
 The VPC's network name and project ID are automatically assigned. You'll need these details when configuring the peering in GCP.
 
 ## Create a peering connection
 
-After creating a VPC in YugabyteDB Managed that uses GCP, you can peer it with a GCP application VPC.
+After creating a VPC in YugabyteDB Aeon that uses GCP, you can peer it with a GCP application VPC.
 
 {{< tip title="What you need" >}}
 The following details for the GCP application VPC you are peering with:
@@ -99,7 +99,7 @@ To create a peering connection, do the following:
 1. Click **Add Peering Connection** to display the **Create Peering** sheet.
 1. Enter a name for the peering connection.
 1. Choose **GCP**.
-1. Choose the YugabyteDB Managed VPC. Only VPCs that use GCP are listed.
+1. Choose the YugabyteDB Aeon VPC. Only VPCs that use GCP are listed.
 1. Enter the GCP Project ID, application VPC network name, and, optionally, VPC CIDR address.
 1. Click **Initiate Peering**.
 
@@ -110,7 +110,7 @@ The peering connection is created with a status of _Pending_.
 To complete a _Pending_ GCP peering connection, you need to sign in to GCP and create a peering connection.
 
 {{< tip title="What you need" >}}
-The **Project ID** and **VPC network name** of the YugabyteDB Managed VPC you are peering with.
+The **Project ID** and **VPC network name** of the YugabyteDB Aeon VPC you are peering with.
 
 **Where to find it**<br>The **VPC Details** sheet on the [VPCs page](../cloud-add-vpc/) or the **Peering Details** sheet on the [Peering Connections page](../cloud-add-peering/).
 {{< /tip >}}
@@ -127,10 +127,10 @@ In the Google Cloud Console, do the following:
 
 1. Enter a name for the GCP peering connection.
 1. Select your VPC network name.
-1. Select **In another project** and enter the **Project ID** and **VPC network name** of the YugabyteDB Managed VPC you are peering with.
+1. Select **In another project** and enter the **Project ID** and **VPC network name** of the YugabyteDB Aeon VPC you are peering with.
 1. Click **Create**.
 
-When finished, the status of the peering connection in YugabyteDB Managed changes to _Active_ if the connection is successful.
+When finished, the status of the peering connection in YugabyteDB Aeon changes to _Active_ if the connection is successful.
 
 ## Deploy a cluster in the VPC
 

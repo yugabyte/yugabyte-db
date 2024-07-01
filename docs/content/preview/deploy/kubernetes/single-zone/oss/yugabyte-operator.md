@@ -33,6 +33,6 @@ type: docs
   </li>
 </ul>
 
-A preliminary version of the YugabyteDB Kubernetes Operator is available in [Tech Preview](/preview/releases/versioning/#feature-availability) (not recommended for production use). The operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+A preliminary version of the YugabyteDB Kubernetes Operator is available in [Tech Preview](/preview/releases/versioning/#feature-maturity) (not recommended for production use). The operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
 
 For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.

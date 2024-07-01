@@ -47,7 +47,7 @@ Upgrades are performed via a rolling update, where one node in the universe is t
 
 If your universe uses a Linux version managed by YugabyteDB Anywhere, updated images are automatically added to the provider.
 
-If your universe uses a custom Linux version and you want to upgrade to a new custom version, you must first add the updated custom Linux version to the universe provider configuration. Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/aws/).
+If your universe uses a custom Linux version and you want to upgrade to a new custom version, you must first add the updated custom Linux version to the universe provider configuration. Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
 
 ## Upgrade Linux version
 

@@ -15,7 +15,7 @@
 --	0 1 2 3
 --
 -- boxes are specified by two points, given by four floats x1,y1,x2,y2
-CREATE TABLE BOX_TBL (f1 box, ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE BOX_TBL (f1 box);
 INSERT INTO BOX_TBL (f1) VALUES ('(2.0,2.0,0.0,0.0)');
 INSERT INTO BOX_TBL (f1) VALUES ('(1.0,1.0,3.0,3.0)');
 INSERT INTO BOX_TBL (f1) VALUES ('((-8, 2), (-2, -10))');
@@ -44,8 +44,7 @@ INSERT INTO BOX_TBL (f1) VALUES ('asdfasdf(ad');
 ERROR:  invalid input syntax for type box: "asdfasdf(ad"
 LINE 1: INSERT INTO BOX_TBL (f1) VALUES ('asdfasdf(ad');
                                          ^
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM BOX_TBL;
+SELECT * FROM BOX_TBL;
          f1          
 ---------------------
  (2,2),(0,0)
@@ -55,8 +54,7 @@ SELECT f1 FROM BOX_TBL;
  (3,3),(3,3)
 (5 rows)
 
--- YB note: avoid selecting ybsort column.
-SELECT b.f1, area(b.f1) as barea
+SELECT b.*, area(b.f1) as barea
    FROM BOX_TBL b;
          f1          | barea 
 ---------------------+-------
@@ -79,8 +77,7 @@ SELECT b.f1
 (3 rows)
 
 -- left-or-overlap (x only)
--- YB note: avoid selecting ybsort column.
-SELECT b1.f1
+SELECT b1.*
    FROM BOX_TBL b1
    WHERE b1.f1 &< box '(2.0,2.0,2.5,2.5)';
          f1          
@@ -91,8 +88,7 @@ SELECT b1.f1
 (3 rows)
 
 -- right-or-overlap (x only)
--- YB note: avoid selecting ybsort column.
-SELECT b1.f1
+SELECT b1.*
    FROM BOX_TBL b1
    WHERE b1.f1 &> box '(2.0,2.0,2.5,2.5)';
          f1          
@@ -223,8 +219,7 @@ SELECT @@(b1.f1) AS p
 (5 rows)
 
 -- wholly-contained
--- YB note: avoid selecting ybsort column.
-SELECT b1.f1, b2.f1
+SELECT b1.*, b2.*
    FROM BOX_TBL b1, BOX_TBL b2
    WHERE b1.f1 @> b2.f1 and not b1.f1 ~= b2.f1;
      f1      |     f1      

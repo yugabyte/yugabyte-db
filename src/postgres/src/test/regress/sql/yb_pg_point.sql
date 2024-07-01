@@ -19,48 +19,37 @@ INSERT INTO POINT_TBL(f1) VALUES ('(10.0,10.0');
 INSERT INTO POINT_TBL(f1) VALUES ('(10.0, 1e+500)');	-- Out of range
 
 
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM POINT_TBL;
+SELECT * FROM POINT_TBL;
 
 -- left of
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE p.f1 << '(0.0, 0.0)';
+SELECT p.* FROM POINT_TBL p WHERE p.f1 << '(0.0, 0.0)';
 
 -- right of
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE '(0.0,0.0)' >> p.f1;
+SELECT p.* FROM POINT_TBL p WHERE '(0.0,0.0)' >> p.f1;
 
 -- above
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE '(0.0,0.0)' |>> p.f1;
+SELECT p.* FROM POINT_TBL p WHERE '(0.0,0.0)' |>> p.f1;
 
 -- below
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE p.f1 <<| '(0.0, 0.0)';
+SELECT p.* FROM POINT_TBL p WHERE p.f1 <<| '(0.0, 0.0)';
 
 -- equal
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE p.f1 ~= '(5.1, 34.5)';
+SELECT p.* FROM POINT_TBL p WHERE p.f1 ~= '(5.1, 34.5)';
 
 -- point in box
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE p.f1 <@ box '(0,0,100,100)';
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE box '(0,0,100,100)' @> p.f1;
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE not p.f1 <@ box '(0,0,100,100)';
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE p.f1 <@ path '[(0,0),(-10,0),(-10,10)]';
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE not box '(0,0,100,100)' @> p.f1;
 
 SELECT p.f1, p.f1 <-> point '(0,0)' AS dist

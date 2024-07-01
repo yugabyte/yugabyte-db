@@ -552,7 +552,7 @@ TEST_F(TabletSplitITest, SplitSystemTable) {
           YQL_DATABASE_CQL, "system_schema", "tables")};
 
   for (const auto& systable : systables) {
-    for (const auto& tablet : systable->GetTablets()) {
+    for (const auto& tablet : ASSERT_RESULT(systable->GetTablets())) {
       LOG(INFO) << "Splitting : " << systable->name() << " Tablet :" << tablet->id();
       auto s = catalog_mgr->TEST_SplitTablet(tablet, true /* is_manual_split */);
       LOG(INFO) << s.ToString();
@@ -1626,7 +1626,7 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplitsPerTserver
   // Check that non-running child tablets count against the per-tserver split limit, and so only
   // one split is triggered.
   SleepForBgTaskIters(4);
-  ASSERT_EQ(table_info->GetTablets().size(), 3);
+  ASSERT_EQ(table_info->TabletCount(), 3);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0.0;
 
   ASSERT_OK(WaitForTabletSplitCompletion(3));
@@ -1702,7 +1702,7 @@ TEST_F(AutomaticTabletSplitITest, SizeRatio) {
   auto catalog_mgr = ASSERT_RESULT(catalog_manager());
   std::unordered_map<TabletServerId, std::vector<int>> ts_to_table_indexes;
   for (int i = 0; i < kNumTables; ++i) {
-    auto tablets = catalog_mgr->GetTableInfo(table_handles[i]->id())->GetTablets();
+    auto tablets = ASSERT_RESULT(catalog_mgr->GetTableInfo(table_handles[i]->id())->GetTablets());
     auto replica_map = tablets[0]->GetReplicaLocations();
     ts_to_table_indexes[replica_map->begin()->first].push_back(i);
   }
@@ -2559,7 +2559,7 @@ void TabletSplitSingleServerITest::TestRetryableWrite() {
   if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
     // Wait retryable requests flushed to disk.
     ASSERT_OK(WaitFor([&] {
-      return peer->TEST_HasRetryableRequestsOnDisk();
+      return peer->TEST_HasBootstrapStateOnDisk();
     }, 10s, "retryable requests flushed to disk"));
   }
 

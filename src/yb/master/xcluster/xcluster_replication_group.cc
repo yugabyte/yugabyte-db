@@ -32,6 +32,9 @@
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_string(certs_for_cdc_dir);
 
+DEFINE_RUNTIME_bool(xcluster_skip_health_check_on_replication_setup, false,
+    "Skip health check on xCluster replication setup");
+
 namespace yb::master {
 
 namespace {
@@ -148,6 +151,40 @@ Status ValidateAutoFlagsInternal(
 
   return Status::OK();
 }
+
+Result<bool> IsSafeTimeReady(
+    const SysUniverseReplicationEntryPB& universe_pb, const XClusterManagerIf& xcluster_manager) {
+  if (!IsDbScoped(universe_pb)) {
+    // Only valid in Db scoped replication.
+    return true;
+  }
+
+  const auto safe_time_map = VERIFY_RESULT(xcluster_manager.GetXClusterNamespaceToSafeTimeMap());
+  for (const auto& namespace_info : universe_pb.db_scoped_info().namespace_infos()) {
+    const auto& namespace_id = namespace_info.consumer_namespace_id();
+    auto* it = FindOrNull(safe_time_map, namespace_id);
+    if (!it || it->is_special()) {
+      VLOG_WITH_FUNC(1) << "Safe time for namespace " << namespace_id
+                        << " is not yet ready: " << (it ? it->ToString() : "NA");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+Result<bool> IsReplicationGroupReady(
+    const UniverseReplicationInfo& universe, CatalogManager& catalog_manager) {
+  // The replication group must be in a healthy state.
+  if (!FLAGS_xcluster_skip_health_check_on_replication_setup &&
+      VERIFY_RESULT(catalog_manager.HasReplicationGroupErrors(universe.ReplicationGroupId()))) {
+    return false;
+  }
+
+  auto l = universe.LockForRead();
+  return IsSafeTimeReady(l->pb, *catalog_manager.GetXClusterManager());
+}
+
 }  // namespace
 
 Result<uint32> GetAutoFlagConfigVersionIfCompatible(
@@ -373,27 +410,6 @@ Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
   return xcluster_client;
 }
 
-Result<bool> IsSafeTimeReady(
-    const SysUniverseReplicationEntryPB& universe_pb, const XClusterManagerIf& xcluster_manager) {
-  if (!IsDbScoped(universe_pb)) {
-    // Only valid in Db scoped replication.
-    return true;
-  }
-
-  const auto safe_time_map = VERIFY_RESULT(xcluster_manager.GetXClusterNamespaceToSafeTimeMap());
-  for (const auto& namespace_info : universe_pb.db_scoped_info().namespace_infos()) {
-    const auto& namespace_id = namespace_info.consumer_namespace_id();
-    auto* it = FindOrNull(safe_time_map, namespace_id);
-    if (!it || it->is_special()) {
-      VLOG_WITH_FUNC(1) << "Safe time for namespace " << namespace_id
-                        << " is not yet ready: " << (it ? it->ToString() : "NA");
-      return false;
-    }
-  }
-
-  return true;
-}
-
 Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id, CatalogManager& catalog_manager) {
   // Cases for completion:
@@ -437,8 +453,7 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
 
   bool is_done = false;
   if (!is_alter_request && state == SysUniverseReplicationEntryPB::ACTIVE) {
-    auto l = universe->LockForRead();
-    is_done = VERIFY_RESULT(IsSafeTimeReady(l->pb, *catalog_manager.GetXClusterManager()));
+    is_done = VERIFY_RESULT(IsReplicationGroupReady(*universe, catalog_manager));
   }
 
   return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
@@ -636,6 +651,20 @@ Status ValidateTableListForDbScopedReplication(
       universe.id(), yb::ToString(diff), yb::ToString(namespace_ids));
 
   return Status::OK();
+}
+
+bool HasNamespace(UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
+  auto l = universe.LockForRead();
+  if (!l->IsDbScoped()) {
+    return false;
+  }
+
+  const auto& namespace_infos = l->pb.db_scoped_info().namespace_infos();
+  return std::any_of(
+      namespace_infos.begin(), namespace_infos.end(),
+      [&consumer_namespace_id](const auto& namespace_info) {
+        return namespace_info.consumer_namespace_id() == consumer_namespace_id;
+      });
 }
 
 }  // namespace yb::master

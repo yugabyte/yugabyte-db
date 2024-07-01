@@ -182,7 +182,7 @@ To build a Go application that communicates securely over SSL with YugabyteDB da
 
 To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables at the client side.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables at the client side.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -196,7 +196,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### SSL modes
 
-Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. YugabyteDB Managed clusters are always SSL/TLS enabled.
+Install [OpenSSL](https://www.openssl.org/) 1.1.1 or later only if you have a YugabyteDB setup with SSL/TLS enabled. YugabyteDB Aeon clusters are always SSL/TLS enabled.
 
 The following table summarizes the SSL modes and their support in the driver:
 
@@ -209,7 +209,7 @@ The following table summarizes the SSL modes and their support in the driver:
 | verify-ca | SSL enabled for data encryption and Server CA is verified | Supported
 | verify-full | SSL enabled for data encryption. Both CA and hostname of the certificate are verified | Supported
 
-YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
+YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
 ## Transaction and isolation levels
 

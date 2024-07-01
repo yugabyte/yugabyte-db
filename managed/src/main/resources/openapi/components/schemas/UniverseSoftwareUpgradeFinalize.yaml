@@ -1,0 +1,12 @@
+title: UniverseSoftwareUpgradeFinalize
+description: |
+  UniverseSoftwareUpgradeFinalize
+
+  Payload to finalize a YugabyteDB software upgrade on a Universe
+type: object
+properties:
+  upgrade_system_catalog:
+    description: Upgrade the YSQL System Catalog.
+    type: boolean
+    default: true
+    x-yba-api-visibility: internal

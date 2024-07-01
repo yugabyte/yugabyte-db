@@ -776,7 +776,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   QLAddInt32HashValue(req, 1);
   table.AddInt32ColumnValue(req, kValueColumn, 1);
   auto status = session->TEST_ApplyAndFlush(op);
-  ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
+  ASSERT_TRUE(status.IsTimedOut()) << "Status: " << status;
 }
 
 // This test tries to catch situation when some entries were applied and flushed in RocksDB,

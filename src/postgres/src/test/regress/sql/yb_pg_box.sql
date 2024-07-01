@@ -19,7 +19,7 @@
 -- boxes are specified by two points, given by four floats x1,y1,x2,y2
 
 
-CREATE TABLE BOX_TBL (f1 box, ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE BOX_TBL (f1 box);
 
 INSERT INTO BOX_TBL (f1) VALUES ('(2.0,2.0,0.0,0.0)');
 
@@ -46,11 +46,9 @@ INSERT INTO BOX_TBL (f1) VALUES ('(1, 2, 3, 4) x');
 INSERT INTO BOX_TBL (f1) VALUES ('asdfasdf(ad');
 
 
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM BOX_TBL;
+SELECT * FROM BOX_TBL;
 
--- YB note: avoid selecting ybsort column.
-SELECT b.f1, area(b.f1) as barea
+SELECT b.*, area(b.f1) as barea
    FROM BOX_TBL b;
 
 -- overlap
@@ -59,14 +57,12 @@ SELECT b.f1
    WHERE b.f1 && box '(2.5,2.5,1.0,1.0)';
 
 -- left-or-overlap (x only)
--- YB note: avoid selecting ybsort column.
-SELECT b1.f1
+SELECT b1.*
    FROM BOX_TBL b1
    WHERE b1.f1 &< box '(2.0,2.0,2.5,2.5)';
 
 -- right-or-overlap (x only)
--- YB note: avoid selecting ybsort column.
-SELECT b1.f1
+SELECT b1.*
    FROM BOX_TBL b1
    WHERE b1.f1 &> box '(2.0,2.0,2.5,2.5)';
 
@@ -125,8 +121,7 @@ SELECT @@(b1.f1) AS p
    FROM BOX_TBL b1;
 
 -- wholly-contained
--- YB note: avoid selecting ybsort column.
-SELECT b1.f1, b2.f1
+SELECT b1.*, b2.*
    FROM BOX_TBL b1, BOX_TBL b2
    WHERE b1.f1 @> b2.f1 and not b1.f1 ~= b2.f1;
 

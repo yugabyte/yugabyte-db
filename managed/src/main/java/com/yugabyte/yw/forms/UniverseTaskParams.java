@@ -12,6 +12,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -125,6 +126,80 @@ public class UniverseTaskParams extends AbstractTaskParams {
       ports.ysqlServerRpcPort = params.communicationPorts.ysqlServerRpcPort;
       ports.yqlServerHttpPort = params.communicationPorts.yqlServerHttpPort;
       ports.yqlServerRpcPort = params.communicationPorts.yqlServerRpcPort;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      CommunicationPorts ports = (CommunicationPorts) o;
+      return masterHttpPort == ports.masterHttpPort
+          && masterRpcPort == ports.masterRpcPort
+          && tserverHttpPort == ports.tserverHttpPort
+          && tserverRpcPort == ports.tserverRpcPort
+          && ybControllerHttpPort == ports.ybControllerHttpPort
+          && ybControllerrRpcPort == ports.ybControllerrRpcPort
+          && redisServerHttpPort == ports.redisServerHttpPort
+          && redisServerRpcPort == ports.redisServerRpcPort
+          && yqlServerHttpPort == ports.yqlServerHttpPort
+          && yqlServerRpcPort == ports.yqlServerRpcPort
+          && ysqlServerHttpPort == ports.ysqlServerHttpPort
+          && ysqlServerRpcPort == ports.ysqlServerRpcPort
+          && nodeExporterPort == ports.nodeExporterPort
+          && otelCollectorMetricsPort == ports.otelCollectorMetricsPort;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(
+          masterHttpPort,
+          masterRpcPort,
+          tserverHttpPort,
+          tserverRpcPort,
+          ybControllerHttpPort,
+          ybControllerrRpcPort,
+          redisServerHttpPort,
+          redisServerRpcPort,
+          yqlServerHttpPort,
+          yqlServerRpcPort,
+          ysqlServerHttpPort,
+          ysqlServerRpcPort,
+          nodeExporterPort,
+          otelCollectorMetricsPort);
+    }
+
+    @Override
+    public String toString() {
+      return "CommunicationPorts{"
+          + "masterHttpPort="
+          + masterHttpPort
+          + ", masterRpcPort="
+          + masterRpcPort
+          + ", tserverHttpPort="
+          + tserverHttpPort
+          + ", tserverRpcPort="
+          + tserverRpcPort
+          + ", ybControllerHttpPort="
+          + ybControllerHttpPort
+          + ", ybControllerrRpcPort="
+          + ybControllerrRpcPort
+          + ", redisServerHttpPort="
+          + redisServerHttpPort
+          + ", redisServerRpcPort="
+          + redisServerRpcPort
+          + ", yqlServerHttpPort="
+          + yqlServerHttpPort
+          + ", yqlServerRpcPort="
+          + yqlServerRpcPort
+          + ", ysqlServerHttpPort="
+          + ysqlServerHttpPort
+          + ", ysqlServerRpcPort="
+          + ysqlServerRpcPort
+          + ", nodeExporterPort="
+          + nodeExporterPort
+          + ", otelCollectorMetricsPort="
+          + otelCollectorMetricsPort
+          + '}';
     }
   }
 

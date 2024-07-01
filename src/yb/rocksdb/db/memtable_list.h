@@ -124,10 +124,14 @@ class MemTableListVersion {
 
   void UnrefMemTable(autovector<MemTable*>* to_delete, MemTable* m);
 
+  void VerifyNumFlushginBytes() const;
+
   friend class MemTableList;
 
   // Immutable MemTables that have not yet been flushed.
   std::list<MemTable*> memlist_;
+
+  size_t total_data_size_ = 0;
 
   // MemTables that have already been flushed
   // (used during Transaction validation)
@@ -230,6 +234,8 @@ class MemTableList {
   // parameter). This flush request will persist until the next time
   // PickMemtablesToFlush() is called.
   void FlushRequested() { flush_requested_ = true; }
+
+  size_t TotalDataSize() const;
 
   // Copying allowed
   // MemTableList(const MemTableList&);

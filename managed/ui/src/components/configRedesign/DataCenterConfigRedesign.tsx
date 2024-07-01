@@ -6,7 +6,7 @@
  */
 import { Tab } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
-import { useQueries } from 'react-query';
+import { useQuery, useQueries } from 'react-query';
 
 import SecurityConfiguration from '../config/Security/SecurityConfiguration';
 import awsLogo from '../config/ConfigProvider/images/aws.svg';
@@ -28,6 +28,7 @@ import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
 import { ProviderView } from './providerRedesign/providerView/ProviderView';
 import { StorageConfigurationContainer } from '../config';
+import { ExportLog } from '../../redesign/features/export-log/ExportLog';
 import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
@@ -35,14 +36,22 @@ import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
-import { TroubleshootConfiguration } from '@yugabytedb/troubleshoot-ui';
+import { TroubleshootingDetails } from '../../redesign/features/Troubleshooting/TroubleshootingDetails';
+import { fetchGlobalRunTimeConfigs } from '../../api/admin';
+import { runtimeConfigQueryKey } from '../../redesign/helpers/api';
+import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
 interface ReactRouterProps {
   location: LocationShape;
   params: { tab?: string; section?: string; uuid?: string };
+  isTroubleshootingEnabled: boolean;
 }
 
-export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps) => {
+export const DataCenterConfigRedesign = ({
+  location,
+  params,
+  isTroubleshootingEnabled
+}: ReactRouterProps) => {
   const { currentCustomer } = useSelector((state: any) => state.customer);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   showOrRedirect(currentCustomer.data.features, 'menu.config');
@@ -67,6 +76,15 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
     }))
   );
 
+  const globalRuntimeConfigs = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  );
+
+  const isExportLogEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
+    )?.value === 'true';
+
   // Validate the URL params.
   if (
     params.tab !== undefined &&
@@ -82,7 +100,7 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
   const activeSection = params.section ?? 's3';
   return (
     <div>
-      <h2 className="content-title">Provider Configuration</h2>
+      <h2 className="content-title">Provider Configurations</h2>
       <RbacValidator accessRequiredOn={ApiPermissionMap.GET_PROVIDERS}>
         <YBTabsWithLinksPanel
           defaultTab={defaultTab}
@@ -204,6 +222,13 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
               />
             </Tab>
           )}
+
+          {isExportLogEnabled && (
+            <Tab eventKey={ConfigTabKey.LOG} title="Log" key="log">
+              <ExportLog />
+            </Tab>
+          )}
+
           {isAvailable(currentCustomer.data.features, 'config.security') && (
             <Tab eventKey={ConfigTabKey.SECURITY} title="Security" key="security-config">
               <SecurityConfiguration activeTab={params.section} />
@@ -217,6 +242,15 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
               key="new-backup-config"
             >
               <NewStorageConfiguration activeTab={params.section} />
+            </Tab>
+          )}
+          {isTroubleshootingEnabled && (
+            <Tab
+              eventKey={ConfigTabKey.TROUBLESHOOT}
+              title="Troubleshoot"
+              key="troubleshoot-config"
+            >
+              <TroubleshootingDetails activeTab={params.section} />
             </Tab>
           )}
         </YBTabsWithLinksPanel>

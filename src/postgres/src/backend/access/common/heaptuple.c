@@ -730,6 +730,32 @@ heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest)
 	memcpy((char *) dest->t_data, (char *) src->t_data, src->t_len);
 }
 
+/* ----------------
+ *		yb_heap_copytuple_with_tuple
+ *
+ *		copy a tuple into a caller-supplied HeapTuple management struct assuming
+ *		that the dest heap tuple's t_data already has *sufficient* memory
+ *		pre-allocated.
+ *
+ * ----------------
+ */
+void
+yb_heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest)
+{
+	if (!HeapTupleIsValid(src) || src->t_data == NULL)
+	{
+		dest->t_data = NULL;
+		return;
+	}
+
+	dest->t_len = src->t_len;
+	dest->t_self = src->t_self;
+	HEAPTUPLE_COPY_YBITEM(src, dest);
+	dest->t_tableOid = src->t_tableOid;
+	/* assumes that dest->t_data is pre-allocated with enough memory. */
+	memcpy((char *) dest->t_data, (char *) src->t_data, src->t_len);
+}
+
 /*
  * Expand a tuple which has fewer attributes than required. For each attribute
  * not present in the sourceTuple, if there is a missing value that will be

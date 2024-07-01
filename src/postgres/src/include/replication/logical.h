@@ -117,9 +117,6 @@ typedef struct LogicalDecodingContext
 	 */
 	XLogRecPtr	yb_start_decoding_at;
 
-	/* True if we are yet to handle the relcache invalidation at the startup. */
-	bool		yb_handle_relcache_invalidation_startup;
-
 	/*
 	 * A per table_oid to oid map.
 	 *

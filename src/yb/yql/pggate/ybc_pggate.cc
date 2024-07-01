@@ -116,13 +116,14 @@ DEFINE_NON_RUNTIME_bool(
     "Fill postgres' caches with system items only");
 
 DECLARE_bool(TEST_ash_debug_aux);
+DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
 namespace {
 
 bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
   for (const char& c : flag_val) {
     if (c != '_' && c != ',' && !islower(c)) {
-      LOG(ERROR) << "Found invalid character " << c << " in flag " << flag_name;
+      LOG_FLAG_VALIDATION_ERROR(flag_name, flag_val) << "Found invalid character '" << c << "'";
       return false;
     }
   }
@@ -356,6 +357,7 @@ void AshCopyTServerSample(
 
   cb_metadata->query_id = tserver_metadata.query_id();
   cb_metadata->session_id = tserver_metadata.session_id();
+  cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_state_code());
@@ -935,8 +937,9 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               YBCPgOid database_oid,
                               YBCPgOid table_relfilenode_oid,
                               bool is_shared_table,
+                              bool is_sys_catalog_table,
                               bool if_not_exist,
-                              bool add_primary_key,
+                              YBCPgYbrowidMode ybrowid_mode,
                               bool is_colocated_via_database,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid colocation_id,
@@ -953,8 +956,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
   const PgObjectId old_relfilenode_id(database_oid, old_relfilenode_oid);
 
   return ToYBCStatus(pgapi->NewCreateTable(
-      database_name, schema_name, table_name, table_id, is_shared_table,
-      if_not_exist, add_primary_key, is_colocated_via_database, tablegroup_id, colocation_id,
+      database_name, schema_name, table_name, table_id, is_shared_table, is_sys_catalog_table,
+      if_not_exist, ybrowid_mode, is_colocated_via_database, tablegroup_id, colocation_id,
       tablespace_id, is_matview, pg_table_id, old_relfilenode_id, is_truncate, handle));
 }
 
@@ -1135,6 +1138,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const YBCPgOid index_oid,
                               const YBCPgOid table_relfilenode_oid,
                               bool is_shared_index,
+                              bool is_sys_catalog_index,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
@@ -1153,8 +1157,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
   const PgObjectId old_relfilenode_id(database_oid, old_relfilenode_oid);
 
   return ToYBCStatus(pgapi->NewCreateIndex(database_name, schema_name, index_name, index_id,
-                                           table_id, is_shared_index, is_unique_index,
-                                           skip_index_backfill, if_not_exist,
+                                           table_id, is_shared_index, is_sys_catalog_index,
+                                           is_unique_index, skip_index_backfill, if_not_exist,
                                            is_colocated_via_database, tablegroup_id,
                                            colocation_id, tablespace_id, pg_table_id,
                                            old_relfilenode_id, handle));
@@ -1732,6 +1736,14 @@ YBCStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
 
+YBCStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
+  return ToYBCStatus(pgapi->SetInTxnBlock(in_txn_blk));
+}
+
+YBCStatus YBCPgSetReadOnlyStmt(bool read_only_stmt) {
+  return ToYBCStatus(pgapi->SetReadOnlyStmt(read_only_stmt));
+}
+
 YBCStatus YBCPgEnterSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->EnterSeparateDdlTxnMode());
 }
@@ -1912,6 +1924,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_db_catalog_version_mode,
       .TEST_ysql_hide_catalog_version_increment_log =
           &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
+      .TEST_generate_ybrowid_sequentially =
+          &FLAGS_TEST_generate_ybrowid_sequentially,
   };
   // clang-format on
   return &accessor;

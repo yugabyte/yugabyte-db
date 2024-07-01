@@ -4535,6 +4535,8 @@ _copyAlterTableMoveAllStmt(const AlterTableMoveAllStmt *from)
 	COPY_NODE_FIELD(roles);
 	COPY_STRING_FIELD(new_tablespacename);
 	COPY_SCALAR_FIELD(nowait);
+	COPY_NODE_FIELD(yb_relation);
+	COPY_SCALAR_FIELD(yb_cascade);
 
 	return newnode;
 }

@@ -39,6 +39,26 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 {{< /tip >}}
 
+## Connector compatibility
+
+The connector is compatible with the following versions of YugabyteDB.
+
+| YugabyteDB | Connector |
+| :--- | :--- |
+| 2.14 (EA) | 1.9.5.y.3 |
+| 2.16 | 1.9.5.y.24 |
+| 2.18.2 | 1.9.5.y.33.2 |
+| 2.20 | 1.9.5.y.220.2 |
+
+{{< note title="Note" >}}
+
+Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme *major.y.minor*, as follows:
+- *major* - Debezium release the connector is based on
+- *minor* - version of YugabyteDB the connector works with
+The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
+
+{{< /note >}}
+
 ## How the connector works
 
 To optimally configure and run a Debezium YugabyteDB connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
@@ -1025,7 +1045,7 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 
 * [Local deployments](../../../secure/tls-encryption/)
 * [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
-* [YugabyteDB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Aeon](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 
@@ -1190,7 +1210,16 @@ This can happen in the following 2 scenarios:
 
 When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
-The YugabyteDB connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact. Never drop a replication slot on the primary server or you will lose data.
+The YugabyteDB connector externally stores the last processed offset in the form of a checkpoint. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the stream ID remains intact. Never delete a stream ID without deleting all the associated connectors with it, otherwise you will lose data.
+
+## Dropping a table part of the replication
+
+While the connector is running with a set of tables configured to capture the changes, if one of the tables in the set is dropped, the connector will fail with an error message indicating that the object is not found.
+
+To avoid or resolve a failure due to a dropped table, follow these steps:
+1. Delete the connector that contains the table that was dropped, or that you want to drop.
+2. Edit the configuration and remove the given table from `table.include.list`.
+3. Deploy a new connector with the updated configuration.
 
 ### Kafka Connect process stops gracefully
 

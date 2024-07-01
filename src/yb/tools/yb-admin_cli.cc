@@ -38,8 +38,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include "yb/cdc/cdc_service.h"
-
+#include "yb/cdc/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
@@ -2557,13 +2556,76 @@ Status get_xcluster_outbound_replication_group_info_action(
   std::cout << "Outbound Replication Group: " << replication_group_id << std::endl;
 
   for (const auto& [namespace_id, table_info] : group_info) {
-    std::cout << std::endl << "NamespaceId: " << namespace_id << std::endl;
+    std::cout << std::endl << "Namespace ID: " << namespace_id << std::endl;
     auto* namespace_info = FindOrNull(namespace_map, namespace_id);
     std::cout << "Namespace name: " << (namespace_info ? namespace_info->id.name() : "<N/A>")
-              << std::endl;
+              << std::endl
+              << "Table Id\t\tStream Id" << std::endl;
     for (const auto& [table_id, stream_id] : table_info) {
-      std::cout << "\tTable: " << table_id << ", Stream: " << stream_id << std::endl;
+      std::cout << table_id << "\t\t" << stream_id << std::endl;
     }
+  }
+
+  return Status::OK();
+}
+
+const auto list_universe_replications_args = "[namespace_id]";
+Status list_universe_replications_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  NamespaceId namespace_id;
+  if (args.size() > 0) {
+    namespace_id = args[0];
+  }
+
+  auto group_ids = VERIFY_RESULT(client->XClusterClient().GetUniverseReplications(namespace_id));
+
+  std::cout << group_ids.size() << " Universe Replication Groups found"
+            << (namespace_id.empty() ? "" : Format(" for namespace $0", namespace_id)) << ": "
+            << std::endl
+            << yb::AsString(group_ids) << std::endl;
+
+  return Status::OK();
+}
+
+const auto get_universe_replication_info_args = "<replication_group_id>";
+Status get_universe_replication_info_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  const auto group_info =
+      VERIFY_RESULT(client->XClusterClient().GetUniverseReplicationInfo(replication_group_id));
+
+  const auto& namespace_map = VERIFY_RESULT_REF(client->GetNamespaceMap());
+
+  std::cout << "Replication Group Id: " << replication_group_id << std::endl;
+  std::cout << "Source master addresses: " << group_info.source_master_addrs << std::endl;
+  std::cout << "Type: " << xcluster::ShortReplicationType(group_info.replication_type) << std::endl;
+
+  if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
+    std::cout << std::endl
+              << "DB Scoped info(s):" << std::endl
+              << "Namespace name\t\tTarget Namespace ID\t\tSource Namespace ID" << std::endl;
+    for (const auto& [target_namespace_id, source_namespace_id] :
+         group_info.db_scope_namespace_id_map) {
+      auto* namespace_info = FindOrNull(namespace_map, target_namespace_id);
+      std::cout << (namespace_info ? namespace_info->id.name() : "<N/A>") << "\t\t"
+                << target_namespace_id << "\t\t" << source_namespace_id << std::endl;
+    }
+  }
+
+  std::cout << std::endl
+            << "Tables:" << std::endl
+            << "Target Table ID\t\tSource Table ID\t\tStreamId" << std::endl;
+  for (const auto& tables : group_info.table_infos) {
+    std::cout << tables.target_table_id << "\t\t" << tables.source_table_id << "\t\t"
+              << tables.stream_id << std::endl;
   }
 
   return Status::OK();
@@ -2683,6 +2745,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(set_universe_replication_enabled);
   REGISTER_COMMAND(get_replication_status);
   REGISTER_COMMAND(get_xcluster_safe_time);
+  REGISTER_COMMAND(list_universe_replications);
+  REGISTER_COMMAND(get_universe_replication_info);
   // xCluster common commands
   REGISTER_COMMAND(change_xcluster_role);
 

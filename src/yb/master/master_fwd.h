@@ -51,9 +51,7 @@ class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
 class CloneStateManager;
-class CDCConsumerSplitDriverIf;
 class XClusterRpcTasks;
-class CDCSplitDriverIf;
 class ClusterConfigInfo;
 class ClusterLoadBalancer;
 class FlushManager;
@@ -115,7 +113,7 @@ class TableInfo;
 using TableInfoPtr = scoped_refptr<TableInfo>;
 
 class TabletInfo;
-using TabletInfoPtr = scoped_refptr<TabletInfo>;
+using TabletInfoPtr = std::shared_ptr<TabletInfo>;
 using TabletInfos = std::vector<TabletInfoPtr>;
 
 struct SnapshotScheduleRestoration;
@@ -139,7 +137,7 @@ using TablespaceIdToReplicationInfoMap = std::unordered_map<
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
-using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
+using TabletInfoMap = std::map<TabletId, TabletInfoPtr>;
 struct cloud_hash;
 struct cloud_equal_to;
 using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;

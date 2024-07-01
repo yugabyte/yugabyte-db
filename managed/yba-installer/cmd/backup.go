@@ -19,12 +19,19 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
-// CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
+
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
 	excludeReleases bool, restart bool, disableVersion bool, verbose bool, plat Platform) {
+		CreateBackupScriptHelper(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
+			disableVersion, verbose, plat.backupScript(), plat.YsqlDump, plat.PgBin + "/pg_dump")
+}
 
-	fileName := plat.backupScript()
-	err := os.Chmod(fileName, 0777)
+// CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
+func CreateBackupScriptHelper(outputPath string, dataDir string, excludePrometheus bool,
+	excludeReleases bool, restart bool, disableVersion bool, verbose bool, script, ysqldump, pgdump string) {
+
+
+	err := os.Chmod(script, 0777)
 	if err != nil {
 		log.Fatal(err.Error())
 	} else {
@@ -48,7 +55,7 @@ func CreateBackupScript(outputPath string, dataDir string, excludePrometheus boo
 		args = append(args, "--verbose")
 	}
 	if viper.GetBool("ybdb.install.enabled") {
-		args = append(args, "--ysql_dump_path", plat.YsqlDump)
+		args = append(args, "--ysql_dump_path", ysqldump)
 		args = addYbdbArgs(args)
 	} else if viper.GetBool("postgres.useExisting.enabled") {
 		if viper.GetString("postgres.useExisting.pg_dump_path") != "" {
@@ -60,12 +67,12 @@ func CreateBackupScript(outputPath string, dataDir string, excludePrometheus boo
 			log.Fatal("pg_dump path must be set. Stopping backup process")
 		}
 	} else {
-		args = append(args, "--pg_dump_path", plat.PgBin+"/pg_dump")
+		args = append(args, "--pg_dump_path", pgdump)
 		args = addPostgresArgs(args)
 	}
 
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
-	out := shell.Run(fileName, args...)
+	out := shell.Run(script, args...)
 	if !out.SucceededOrLog() {
 		log.Fatal(out.Error.Error())
 	}
@@ -97,14 +104,37 @@ func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbos
 	}
 
 }
+func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
+	verbose bool, plat Platform, migration bool, useSystemPostgres bool, disableVersion bool) {
+
+	RestoreBackupScriptHelper(inputPath, destination, skipRestart, verbose, migration,
+		useSystemPostgres, disableVersion, plat.backupScript(), plat.DataDir, plat.YsqlBin,
+		plat.PgBin + "/pg_restore")
+
+	if err := plat.SetDataDirPerms(); err != nil {
+		log.Warn(fmt.Sprintf("Could not set %s permissions.", plat.DataDir))
+	}
+
+	if migration {
+		// Wait a minute so that files are found on filesystem
+		time.Sleep(15 * time.Second)
+		// set fixPaths conf variable
+		plat.FixPaths = true
+		config.GenerateTemplate(plat)
+
+		if err := plat.Restart(); err != nil {
+			log.Fatal(fmt.Sprintf("Error %s restarting yb-platform.", err.Error()))
+		}
+	}
+}
 
 // RestoreBackupScript calls the yb_platform_backup.sh script with the correct args.
 // TODO: Version check is still disabled because of issues finding the path across all installs.
-func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
-	verbose bool, plat Platform, migration bool, useSystemPostgres bool, disableVersion bool) {
+func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart bool,
+	verbose bool, migration bool, useSystemPostgres bool, disableVersion bool,
+	script, dataDir, ysqlBin, pgRestore string) {
 	userName := viper.GetString("service_username")
-	fileName := plat.backupScript()
-	err := os.Chmod(fileName, 0777)
+	err := os.Chmod(script, 0777)
 	if err != nil {
 		log.Fatal(err.Error())
 	} else {
@@ -113,7 +143,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 
 	args := []string{"restore", "--input", inputPath,
 		"--destination", destination, "--data_dir", destination, "--yba_installer",
-		"--yba_user", userName, "--ybai_data_dir", plat.DataDir}
+		"--yba_user", userName, "--ybai_data_dir", dataDir}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
@@ -139,7 +169,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	}
 
 	if viper.GetBool("ybdb.install.enabled") {
-		args = append(args, "--ysqlsh_path", plat.YsqlBin)
+		args = append(args, "--ysqlsh_path", ysqlBin)
 		args = addYbdbArgs(args)
 	} else if viper.GetBool("postgres.useExisting.enabled") {
 		if viper.GetString("postgres.useExisting.pg_restore_path") != "" {
@@ -154,34 +184,18 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 			log.Fatal("pg_restore path must be set. Stopping restore process.")
 		}
 	} else {
-		args = append(args, "--pg_restore_path", plat.PgBin+"/pg_restore")
+		args = append(args, "--pg_restore_path", pgRestore)
 		args = addPostgresArgs(args)
 	}
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")
-	if out := shell.Run(fileName, args...); !out.SucceededOrLog() {
+	if out := shell.Run(script, args...); !out.SucceededOrLog() {
 		log.Fatal("Restore script failed. May need to restart services.")
 	}
 	if common.HasSudoAccess() {
 		log.Debug("ensuring ownership of restored directories")
-		user := viper.GetString("service_user")
-		if err := common.Chown(plat.DataDir, user, user, true); err != nil {
-			log.Fatal("failed to change ownership of " + plat.DataDir + "to user/group " + user)
-		}
-	}
-
-	if err := plat.SetDataDirPerms(); err != nil {
-		log.Warn(fmt.Sprintf("Could not set %s permissions.", plat.DataDir))
-	}
-
-	if migration {
-		// Wait a minute so that files are found on filesystem
-		time.Sleep(15 * time.Second)
-		// set fixPaths conf variable
-		plat.FixPaths = true
-		config.GenerateTemplate(plat)
-
-		if err := plat.Restart(); err != nil {
-			log.Fatal(fmt.Sprintf("Error %s restarting yb-platform.", err.Error()))
+		user := viper.GetString("service_username")
+		if err := common.Chown(dataDir, user, user, true); err != nil {
+			log.Fatal("failed to change ownership of " + dataDir + "to user/group " + user)
 		}
 	}
 }

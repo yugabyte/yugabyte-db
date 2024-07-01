@@ -21,8 +21,10 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
  public:
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
+    // TODO(#23000) Remove this when the tests have been rationalized to run with consistent /
+    // non-consistent snapshot streams.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   }
 
   void TestCSStreamSnapshotEstablishment(
@@ -360,7 +362,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
   auto stream_id = ASSERT_RESULT(CreateDBStream());
   ASSERT_TRUE(DeleteCDCStream(stream_id));
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
-  auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Check that UpdatePeersAndMetrics has been blocked from releasing retention barriers
   auto checkpoint_result =
@@ -1298,7 +1300,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotAcrossMultipleTables)
 
   // Create a Non Consistent Snapshot Stream and another Consistent Snapshot stream
   auto stream_id = ASSERT_RESULT(CreateDBStream());
-  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // Setup snapshot boundary on test1 for stream_id
   auto resp1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets1));
@@ -1411,7 +1413,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
 
   // Create a Non Consistent Snapshot Stream and another Consistent Snapshot streams
   auto stream_id = ASSERT_RESULT(CreateDBStream());
-  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
   // For cs_stream_id, only poll table1 but not table2
   auto cp_resp1 =

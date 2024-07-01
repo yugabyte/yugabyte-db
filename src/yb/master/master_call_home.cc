@@ -107,14 +107,7 @@ class TServersInfoCollector : public MasterCollector {
   using MasterCollector::MasterCollector;
 
   void Collect(CollectionLevel collection_level) override {
-    vector<std::shared_ptr<TSDescriptor>> descs;
-    master()->ts_manager()->GetAllDescriptors(&descs);
-    if (collection_level == CollectionLevel::LOW) {
-      json_ = Substitute("\"tservers\":$0", descs.size());
-    } else {
-      // TODO(hector): Add more details.
-      json_ = Substitute("\"tservers\":$0", descs.size());
-    }
+    json_ = Substitute("\"tservers\":$0", master()->ts_manager()->NumDescriptors());
   }
 
   string collector_name() override { return "TServersInfoCollector"; }

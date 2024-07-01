@@ -31,6 +31,8 @@
 #include <sys/uio.h>
 #include <time.h>
 
+#include <fstream>
+#include <limits>
 #include <set>
 #include <vector>
 
@@ -54,6 +56,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/faststring.h"
 #include "yb/util/file_system_posix.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -111,6 +114,10 @@ DEFINE_UNKNOWN_bool(never_fsync, FLAGS_never_fsync_default,
 
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
+
+DEFINE_NON_RUNTIME_bool(use_cgroups_memory, false,
+             "use cgroup memory max value instead of total memory of the node.");
+TAG_FLAG(use_cgroups_memory, advanced);
 
 DEFINE_UNKNOWN_int32(o_direct_block_size_bytes, 4096,
              "Size of the block to use when flag durable_wal_write is set.");
@@ -1435,6 +1442,23 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  static constexpr int64_t kUndefinedMemoryLimit = -1;
+
+  int64_t ReadCgroupMemoryLimit(const std::string& path) {
+    faststring value;
+    Status s = ReadFileToString(Env::Default(), path, &value);
+    if (s.ok()) {
+      try {
+        return stoull(value.ToString());
+      } catch (const std::exception& e) {
+        LOG(WARNING) << "Unable to parse memory limit: " << e.what();
+      }
+    } else {
+      LOG(WARNING) << "Failed to read cgroup limit file: " << s.ToString();
+    }
+    return kUndefinedMemoryLimit;
+  }
+
   Status GetTotalRAMBytes(int64_t* ram) override {
 #if defined(__APPLE__)
     int mib[2];
@@ -1445,11 +1469,36 @@ class PosixEnv : public Env {
     mib[1] = HW_MEMSIZE;
     CHECK_ERR(sysctl(mib, 2, ram, &length, nullptr, 0)) << "sysctl CTL_HW HW_MEMSIZE failed";
 #else
+
+    if (FLAGS_use_cgroups_memory) {
+      const std::string kCGroupV2MemoryPath = "/sys/fs/cgroup/memory.max";
+      const std::string kCGroupV1MemoryPath = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
+      const int64_t kCGroupMaxMemoryLimit = std::numeric_limits<int64_t>::max();
+
+      int64_t memory_limit = kUndefinedMemoryLimit;
+      // Read cgroup memory limit in order (V2, V1).
+      memory_limit = ReadCgroupMemoryLimit(kCGroupV2MemoryPath);
+      LOG(INFO) << "Memory limit from cgroup V2: " << memory_limit;
+      if (memory_limit == kUndefinedMemoryLimit) {
+        LOG(WARNING) << "Memory limit from cgroup V2: " << memory_limit
+                     << " fallback to cgroup v1";
+        memory_limit = ReadCgroupMemoryLimit(kCGroupV1MemoryPath);
+        LOG(INFO) << "Memory limit from cgroup V1: " << memory_limit;
+      }
+
+      if (memory_limit > 0 && memory_limit < kCGroupMaxMemoryLimit) {
+        *ram = memory_limit;
+        return Status::OK();
+      }
+    }
+
     struct sysinfo info;
     if (sysinfo(&info) < 0) {
       return STATUS_IO_ERROR("sysinfo() failed", errno);
     }
+    LOG(INFO) << "Using memory limit from sysinfo(): " << info.totalram;
     *ram = info.totalram;
+
 #endif
     return Status::OK();
   }

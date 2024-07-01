@@ -492,7 +492,7 @@ Status XClusterSourceManager::CheckpointStreamsToOp0(
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto& [table_id, stream_id] : table_streams) {
     auto table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
-    for (const auto& tablet : table->GetTablets()) {
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream_id);
       entry.checkpoint = OpId().Min();
       entry.last_replication_time = GetCurrentTimeMicros();
@@ -527,7 +527,7 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     bootstrap_req.add_xrepl_stream_ids(stream_id.ToString());
 
     if (!ts_desc) {
-      auto ts_desc_result = table_info->GetTablets().front()->GetLeader();
+      auto ts_desc_result = VERIFY_RESULT(table_info->GetTablets()).front()->GetLeader();
       if (!ts_desc_result) {
         // After a master failover we may not yet have the leader info, so we need to try again.
         if (ts_desc_result.status().IsNotFound()) {

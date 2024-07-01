@@ -2065,6 +2065,7 @@ YBUpdateActiveSubTransaction(TransactionState s) {
 static void
 YBStartTransaction(TransactionState s)
 {
+	elog(DEBUG2, "YBStartTransaction");
 	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
 	s->ybDataSent             = false;
 	s->ybDataSentForCurrQuery = false;
@@ -3228,6 +3229,7 @@ StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
 void
 StartTransactionCommand(void)
 {
+	elog(DEBUG2, "StartTransactionCommand");
 	StartTransactionCommandInternal(false /* yb_skip_read_committed_handling */);
 }
 
@@ -3282,6 +3284,7 @@ IsCurrentTxnWithPGRel(void)
 void
 CommitTransactionCommand(void)
 {
+	elog(DEBUG2, "CommitTransactionCommand");
 	TransactionState s = CurrentTransactionState;
 	SavedTransactionCharacteristics savetc;
 
@@ -4050,6 +4053,7 @@ CallSubXactCallbacks(SubXactEvent event,
 void
 BeginTransactionBlock(void)
 {
+	elog(DEBUG2, "BeginTransactionBlock");
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)
@@ -4101,6 +4105,10 @@ BeginTransactionBlock(void)
 				 BlockStateAsString(s->blockState));
 			break;
 	}
+
+	/* YB: Notify pggate that we are within a txn block. */
+	if (IsYugaByteEnabled())
+		HandleYBStatus(YBCPgSetInTxnBlock(true));
 }
 
 /*
@@ -4465,6 +4473,10 @@ BeginImplicitTransactionBlock(void)
 	 */
 	if (s->blockState == TBLOCK_STARTED)
 		s->blockState = TBLOCK_IMPLICIT_INPROGRESS;
+
+	/* YB: Notify pggate that we are within an (implicit) txn block. */
+	if (IsYugaByteEnabled())
+		HandleYBStatus(YBCPgSetInTxnBlock(true));
 }
 
 /*
@@ -5049,6 +5061,7 @@ RollbackAndReleaseCurrentSubTransaction(void)
 void
 AbortOutOfAnyTransaction(void)
 {
+	elog(DEBUG2, "AbortOutOfAnyTransaction");
 	TransactionState s = CurrentTransactionState;
 
 	/* Ensure we're not running in a doomed memory context */
@@ -5397,7 +5410,7 @@ CommitSubTransaction(void)
 
 	/* Conserve sticky object count before popping transaction state. */
 	s->parent->ybUncommittedStickyObjectCount = s->ybUncommittedStickyObjectCount;
-	
+
 	PopTransaction();
 }
 
@@ -5601,6 +5614,8 @@ CleanupSubTransaction(void)
 static void
 PushTransaction(void)
 {
+	elog(DEBUG2, "PushTransaction increment sub-txn id from %d -> %d",
+			 currentSubTransactionId, currentSubTransactionId+1);
 	TransactionState p = CurrentTransactionState;
 	TransactionState s;
 
@@ -5666,6 +5681,7 @@ PushTransaction(void)
 static void
 PopTransaction(void)
 {
+	elog(DEBUG2, "PopTransaction sub-txn id %d", currentSubTransactionId);
 	TransactionState s = CurrentTransactionState;
 
 	if (s->state != TRANS_DEFAULT)

@@ -33,13 +33,83 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 1. Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
 
+1. For cron-based universes, run the following commands:
+
+    ```sh
+    ./bin/yb-server-ctl.sh master stop
+    ./bin/yb-server-ctl.sh tserver stop
+    ./bin/yb-server-ctl.sh controller stop
+    ```
+
+    For user systemd universes, run the following commands:
+
+    ```sh
+    systemctl --user stop yb-master
+    systemctl --user stop yb-tserver
+    systemctl --user stop yb-controller
+    ```
+
+    For user systemd universes, run the following commands:
+
+    ```sh
+    sudo systemctl stop yb-master
+    sudo systemctl stop yb-tserver
+    sudo systemctl stop yb-controller
+    ```
+
+1. If the on-premises nodes are not manually provisioned, depending on the VM image, for files in `/etc/systemd/system`, `/usr/lib/systemd/system`, or `</home/yugabyte | yb_home_dir>/.config/systemd/user`, do the following:
+
+    ```sh
+    rm <dir>/yb-clean_cores.timer
+    rm <dir>/yb-clean_cores.service
+    rm <dir>/yb-zip_purge_yb_logs.timer
+    rm <dir>/yb-zip_purge_yb_logs.service
+    rm <dir>/yb-bind_check.service
+    rm <dir>/yb-collect_metrics.timer
+    rm <dir>/yb-collect_metrics.service
+    rm <dir>/yb-master.service
+    rm <dir>/yb-tserver.service
+    rm <dir>/yb-controller.service
+    systemctl daemon-reload
+    ```
+
+1. Delete cron job that collects metrics, cleans cores, and purges logs. Job names include, "metric collection every minute", "cleanup core files every 5 minutes", and "cleanup yb log files every 5 minutes". Note that some job files may not exist.
+
+1. If node exporter exists, perform the following steps:
+
+    1. Stop the node exporter service using the following command:
+
+        ```sh
+        sudo systemctl stop node_exporter
+        ```
+
+    1. Delete node exporter service under `/etc/systemd/system`, `/usr/lib/systemd/system`, or `</home/yugabyte | yb_home_dir>/.config/systemd/user` using the following command:
+
+        ```sh
+        rm <dir>/node_exporter.service
+        ```
+
+1. If otel collector service exists, perform the following steps:
+
+    1. Stop the otel collector service using the following command:
+
+        ```sh
+        sudo systemctl stop otel-collector
+        ```
+
+    1. Delete otel collector service under `/etc/systemd/system`, `/usr/lib/systemd/system`, or `</home/yugabyte | yb_home_dir>/.config/systemd/user` using the following command:
+
+        ```sh
+        rm <dir>/otel-collector.service
+        ```
+
 1. Execute the following command:
 
     ```shell
     ./bin/yb-server-ctl.sh clean-instance
     ```
 
-This removes all YugabyteDB code and settings from the node, removing it from the Universe.
+This removes all YugabyteDB code and settings from the node, removing it from the universe.
 
 If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 

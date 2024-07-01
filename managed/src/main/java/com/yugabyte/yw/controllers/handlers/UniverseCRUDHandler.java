@@ -49,7 +49,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -138,6 +140,8 @@ public class UniverseCRUDHandler {
 
   @Inject CertificateHelper certificateHelper;
 
+  @Inject GFlagsValidation gFlagsValidation;
+
   public enum OpType {
     CONFIGURE,
     CREATE,
@@ -161,7 +165,7 @@ public class UniverseCRUDHandler {
     return trimData;
   }
 
-  public Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+  public static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
       UniverseDefinitionTaskParams taskParams,
       UniverseConfigureTaskParams.ClusterOperationType clusterOperation) {
     Cluster cluster =
@@ -172,7 +176,7 @@ public class UniverseCRUDHandler {
         taskParams, clusterOperation, cluster, PlacementInfoUtil.getUniverseForParams(taskParams));
   }
 
-  private Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+  private static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
       UniverseDefinitionTaskParams taskParams,
       UniverseConfigureTaskParams.ClusterOperationType clusterOperation,
       Cluster cluster,
@@ -189,7 +193,26 @@ public class UniverseCRUDHandler {
 
     boolean smartResizePossible =
         ResizeNodeParams.checkResizeIsPossible(
-            cluster.uuid, currentCluster.userIntent, cluster.userIntent, universe, true);
+            cluster.uuid, currentCluster.userIntent, cluster.userIntent, universe);
+    boolean samePlacement =
+        PlacementInfoUtil.isSamePlacement(currentCluster.placementInfo, cluster.placementInfo);
+
+    boolean nonNodeChanges =
+        !cluster.areTagsSame(currentCluster)
+            || !Objects.equals(
+                PlacementInfoUtil.getDefaultRegion(universe.getUniverseDetails()),
+                PlacementInfoUtil.getDefaultRegion(taskParams))
+            || PlacementInfoUtil.didAffinitizedLeadersChange(
+                currentCluster.placementInfo, cluster.placementInfo)
+            || isRegionListUpdate(cluster, currentCluster)
+            || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
+            || isKubernetesVolumeUpdate(cluster, currentCluster)
+            || isKubernetesNodeSpecUpdate(cluster, currentCluster);
+
+    boolean nodeSettingsChanges =
+        isAwsArnChanged(cluster, currentCluster)
+            || areCommunicationPortsChanged(taskParams, universe)
+            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP;
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -200,31 +223,18 @@ public class UniverseCRUDHandler {
     }
     if (!hasRemainingNodes) {
       result.add(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
-      if (!PlacementInfoUtil.isSamePlacement(currentCluster.placementInfo, cluster.placementInfo)) {
+      if (!samePlacement) {
         smartResizePossible = false;
       }
     } else {
-      if (hasChangedNodes
-          || !cluster.areTagsSame(currentCluster)
-          || !Objects.equals(
-              PlacementInfoUtil.getDefaultRegion(universe.getUniverseDetails()),
-              PlacementInfoUtil.getDefaultRegion(taskParams))
-          || PlacementInfoUtil.didAffinitizedLeadersChange(
-              currentCluster.placementInfo, cluster.placementInfo)
-          || isRegionListUpdate(cluster, currentCluster)
-          || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
-          || isKubernetesVolumeUpdate(cluster, currentCluster)
-          || isKubernetesNodeSpecUpdate(cluster, currentCluster)) {
+      if (hasChangedNodes || !samePlacement || nonNodeChanges) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
       } else if (GFlagsUtil.checkGFlagsByIntentChange(
           currentCluster.userIntent, cluster.userIntent)) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.GFLAGS_UPGRADE);
       }
     }
-    if (smartResizePossible
-        && (result.isEmpty()
-            || result.equals(
-                Collections.singleton(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE)))) {
+    if (smartResizePossible && !nonNodeChanges && samePlacement && !nodeSettingsChanges) {
       if (isSameInstanceTypes(
           cluster.userIntent,
           currentCluster.userIntent,
@@ -237,7 +247,7 @@ public class UniverseCRUDHandler {
     return result;
   }
 
-  private boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {
+  private static boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {
     List<UUID> newList =
         cluster.userIntent.regionList == null
             ? new ArrayList<>()
@@ -249,13 +259,13 @@ public class UniverseCRUDHandler {
     return !Objects.equals(newList, currentList);
   }
 
-  private boolean isKubernetesVolumeUpdate(Cluster cluster, Cluster currentCluster) {
+  private static boolean isKubernetesVolumeUpdate(Cluster cluster, Cluster currentCluster) {
     return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
         && currentCluster.userIntent.deviceInfo.volumeSize
             < cluster.userIntent.deviceInfo.volumeSize;
   }
 
-  private boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
+  private static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
     return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
         && (!(Objects.equals(
                 currentCluster.userIntent.tserverK8SNodeResourceSpec,
@@ -265,7 +275,7 @@ public class UniverseCRUDHandler {
                 cluster.userIntent.masterK8SNodeResourceSpec)));
   }
 
-  private boolean isSameInstanceTypes(
+  private static boolean isSameInstanceTypes(
       UserIntent newIntent, UserIntent currentIntent, Collection<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
       return Objects.equals(newIntent.getBaseInstanceType(), currentIntent.getBaseInstanceType());
@@ -278,6 +288,21 @@ public class UniverseCRUDHandler {
       }
     }
     return true;
+  }
+
+  public static boolean isAwsArnChanged(Cluster cluster, Cluster currentCluster) {
+    String curArnString = currentCluster.userIntent.awsArnString;
+    String newArnString = cluster.userIntent.awsArnString;
+    return cluster.userIntent.providerType == Common.CloudType.aws
+        && (!StringUtils.isEmpty(curArnString) || !StringUtils.isEmpty(newArnString))
+        && !Objects.equals(curArnString, newArnString);
+  }
+
+  public static boolean areCommunicationPortsChanged(
+      UniverseDefinitionTaskParams taskParams, Universe universe) {
+    return taskParams.communicationPorts != null
+        && !Objects.equals(
+            taskParams.communicationPorts, universe.getUniverseDetails().communicationPorts);
   }
 
   private boolean proxyConfigChanged(
@@ -541,6 +566,10 @@ public class UniverseCRUDHandler {
                 + nodeDetails.nodeIdx);
       }
     }
+    List<GroupName> gflagGroups = new ArrayList<>();
+    if (taskParams.getPrimaryCluster().userIntent.specificGFlags != null) {
+      gflagGroups = taskParams.getPrimaryCluster().userIntent.specificGFlags.getGflagGroups();
+    }
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Multiple layers of check as cloud info can be null in unit tests
@@ -619,6 +648,14 @@ public class UniverseCRUDHandler {
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
       if (c.userIntent.specificGFlags != null) {
+        if (c.clusterType == ClusterType.ASYNC) {
+          // Apply group uniformly to all clusters
+          c.userIntent.specificGFlags.setGflagGroups(gflagGroups);
+        }
+        // check gflag groups
+        c.userIntent.specificGFlags =
+            GFlagsUtil.processGFlagGroups(
+                c.userIntent.specificGFlags, c.userIntent.ybSoftwareVersion, gFlagsValidation);
         c.userIntent.masterGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
         c.userIntent.tserverGFlags =
@@ -1435,6 +1472,10 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    List<GroupName> primaryGflagGroups = new ArrayList<>();
+    if (primaryCluster.userIntent.specificGFlags != null) {
+      primaryGflagGroups = primaryCluster.userIntent.specificGFlags.getGflagGroups();
+    }
     taskParams.clusters.add(primaryCluster);
     validateConsistency(primaryCluster, readOnlyCluster);
 
@@ -1453,16 +1494,25 @@ public class UniverseCRUDHandler {
           readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
               primaryGFlags.getPerProcessFlags());
           readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+          readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
         }
       }
       List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
       clusters.add(readOnlyCluster);
+      readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
+      readOnlyCluster.userIntent.specificGFlags =
+          GFlagsUtil.processGFlagGroups(
+              readOnlyCluster.userIntent.specificGFlags,
+              readOnlyCluster.userIntent.ybSoftwareVersion,
+              gFlagsValidation);
       readOnlyCluster.userIntent.masterGFlags =
           GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clusters);
       readOnlyCluster.userIntent.tserverGFlags =
           GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, readOnlyCluster, clusters);
     } else {
+      // nothing needed here since we don't have specific gflags
       readOnlyCluster.userIntent.specificGFlags = SpecificGFlags.constructInherited();
+      readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
       readOnlyCluster.userIntent.masterGFlags = primaryCluster.userIntent.masterGFlags;
       readOnlyCluster.userIntent.tserverGFlags = primaryCluster.userIntent.tserverGFlags;
     }

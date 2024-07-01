@@ -8,24 +8,17 @@ menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
-    weight: 80
+    weight: 10
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
-
-Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
+For higher availability, you can install additional YugabyteDB Anywhere instances, and configure them later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
     <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
+      <i class="fa-solid fa-building"></i>On-premises and public clouds</a>
   </li>
 
   <li>
@@ -33,14 +26,11 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
-  <li>
-    <a href="../openshift/" class="nav-link">
-      <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
 </ul>
 
-## Install YugabyteDB Anywhere on a Kubernetes cluster
+For information on installing YugabyteDB Anywhere on OpenShift, refer to [Install YugabyteDB Anywhere on OpenShift](../openshift/).
+
+## Install YugabyteDB Anywhere
 
 You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
@@ -50,7 +40,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     kubectl create namespace yb-platform
     ```
 
-1. Apply the YugabyteDB Anywhere secret that you obtained from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form) by running the following `kubectl create` command:
+1. Apply the YugabyteDB Anywhere secret that you obtained from Yugabyte Support by running the following `kubectl create` command:
 
     ```sh
     kubectl create -f yugabyte-k8s-secret.yml -n yb-platform
@@ -95,6 +85,8 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
 
+    To install YBA using the Yugabyte Kubernetes Operator (the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity)), see [Use Yugabyte Kubernetes Operator to automate YBA deployments](#use-yugabyte-kubernetes-operator-to-automate-yba-deployments).
+
 1. Use the following command to check the service:
 
     ```sh
@@ -133,7 +125,7 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     [info] AkkaHttpServer.scala:447 [main] Listening for HTTP on /0.0.0.0:9000
     ```
 
-    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Prerequisites for Kubernetes-based installations](../../prerequisites/kubernetes). See [Install and upgrade issues on Kubernetes](../../../troubleshoot/install-upgrade-issues/kubernetes/) to troubleshoot the problem.
+    If YugabyteDB Anywhere fails to start for the first time, verify that your system meets the installation requirements, as per [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware/). See [Install and upgrade issues on Kubernetes](../../../troubleshoot/install-upgrade-issues/kubernetes/) to troubleshoot the problem.
 
 ## Customize YugabyteDB Anywhere
 
@@ -151,9 +143,111 @@ You can copy the preceding code block into a file called `yba-values.yaml` and t
 
 If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}` command and copying the specific section to your own values file.
 
+### Use Yugabyte Kubernetes Operator to automate YBA deployments
+
+The [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) {{<badge/tp>}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
+
+Note that for Yugabyte Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
+
+To install YugabyteDB Anywhere (YBA) and a universe using the Yugabyte Kubernetes Operator, do the following:
+
+1. Apply the following Custom Resource Definition:
+
+    ```sh
+    kubectl apply -f https://github.com/yugabyte/charts/blob/2024.1/crds/concatenated_crd.yaml
+    ```
+
+1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
+
+    ```sh
+    # Modify the fields kubernetesOperatorNamespace and defaultUser.password fields as required
+    helm install yugabytedb/yugaware \
+      --version 2024.1.0 \
+      --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test",defaultUser.enabled=true,defaultUser.password="Password#Test123"–generate-name
+    ```
+
+1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
+
+    ```sh
+    kubectl get pods -n <yba_namespace>
+    ```
+
+    ```sh
+    kubectl get pods -n <operator_namespace>
+    ```
+
+    ```output
+    NAME                                       READY   STATUS    RESTARTS   AGE
+    chart-1706728534-yugabyte-k8s-operator-0   3/3     Running   0          26h
+    ```
+
+    Additionally, you should see no stack traces, but the following messages in the `KubernetesOperatorReconciler` log:
+
+    ```output
+    LOG.info("Finished running ybUniverseController");
+    ```
+
+1. Create the following custom resource, and save it as `demo-universe.yaml`.
+
+    ```yaml
+    # demo-universe.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: YBUniverse
+    metadata:
+      name: demo-test
+    spec:
+      numNodes: 1
+      replicationFactor: 1
+      enableYSQL: true
+      enableNodeToNodeEncrypt: true
+      enableClientToNodeEncrypt: true
+      enableLoadBalancer: true
+      ybSoftwareVersion: "2024.1.0-b2" <- This will be the YBA  version
+      enableYSQLAuth: false
+      enableYCQL: true
+      enableYCQLAuth: false
+      gFlags:
+        tserverGFlags: {}
+        masterGFlags: {}
+      deviceInfo:
+        volumeSize: 100
+        numVolumes: 1
+        storageClass: "yb-standard"
+    ```
+
+1. Create a universe using the custom resource `demo-universe.yaml` as follows:
+
+    ```sh
+    kubectl apply -f demo-universe.yaml -n yb-platform
+    ```
+
+1. Check the status of the universe as follows:
+
+    ```sh
+    kubectl get ybuniverse  -n yb-operator
+    ```
+
+    ```output
+    NAME                STATE   SOFTWARE VERSION
+    anab-test-2         Ready   2.23.0.0-b33
+    anab-test-backups   Ready   2.21.1.0-b269
+    anab-test-restore   Ready   2.21.1.0-b269
+    ```
+
+For more details, see [Yugabyte Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
+
+### Customize the creation of an internal service account
+
+By default, the Helm chart will attempt to create a service account that has certain ClusterRoles listed [here](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166). These roles are used to do the following:
+
+1. Enable YBA to collect resource metrics such as CPU and memory from the Kubernetes nodes.
+1. Create YugabyteDB deployments in new namespaces.
+
+To customize this behavior (and potentially lose some functionality), you can set the `serviceAccount` value to a pre-existing service account that you've already created. It is recommended that you at least grant this service account the cluster roles listed in the "required to scrape" section of the [RBAC configuration file](https://github.com/yugabyte/charts/blob/master/stable/yugaware/templates/rbac.yaml#L166), along with a namespace admin role. To completely disable this behavior, set the `rbac.create` value to false. Note that without the ability to create new namespaces, YugabyteDB Anywhere must be [configured with a pre-created namespace](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).
+
 ### Specify custom container registry
 
-If you have pushed the container images to a custom registry as mentioned in [Pull and push YugabyteDB Docker images to private container registry](../../prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry), set the registry address, as follows:
+If you have pushed the container images to a custom registry as mentioned in [Pull and push YugabyteDB Docker images to private container registry](../../../prepare/server-nodes-software/software-kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry), set the registry address, as follows:
 
 ```yaml
 # yba-values.yaml
@@ -176,7 +270,7 @@ By default, a load balancer is created to enable access to YugabyteDB Anywhere. 
 
 #### Disable the load balancer
 
-To access YugabyteDB Anywhere by other means, such as port-forwarding, different gateway or ingress solutions, and so on, you can disable the load balancer by changing the service type to `ClusterIP`, as follows:
+To access YugabyteDB Anywhere by other means (such as port-forwarding, different gateway or ingress solutions, and so on) you can disable the load balancer by changing the service type to `ClusterIP`, as follows:
 
 ```yaml
 # yba-values.yaml
@@ -305,7 +399,7 @@ The value is passed to Nginx frontend as [ssl_protocols](https://nginx.org/r/ssl
 
 ### Control placement of YugabyteDB Anywhere pods
 
-The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendations provided in [Configure storage class](../../prepare-environment/kubernetes/#configure-storage-class). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
+The Helm chart allows you to control the placement of the pods when installing YugabyteDB Anywhere in your Kubernetes cluster via `nodeSelector`, `zoneAffinity`, and `toleration`. When you are using these constraints, ensure that you are following recommendations provided in [Hardware requirements](../../../prepare/server-nodes-hardware/). For more information about pod placement, see [Assigning pods to nodes](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/).
 
 #### nodeSelector
 
@@ -424,7 +518,7 @@ yugaware:
   storage: "200Gi"
 ```
 
-You should use a storage class that has been configured based on recommendations provided in [Configure storage class](../../prepare-environment/kubernetes/#configure-storage-class).
+You should use a storage class that has been configured based on recommendations provided in [Hardware requirements (Kubernetes)](../../../prepare/server-nodes-hardware/).
 
 In addition, it is recommended to set a large initial storage size, because resizing the volumes later is challenging.
 
@@ -437,7 +531,7 @@ If you are using Google Cloud Storage (GCS) for backups, you can enable GKE serv
 
 Before enabling GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam).
 
-To enable GCP IAM, provide the following additional helm values during installation to a version which supports this feature (v2.18.4 or later):
+To enable GCP IAM, provide the following additional Helm values during installation to a version which supports this feature (v2.18.4 or later):
 
 - serviceAccount: Provide the name of the Kubernetes service account you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
 - [nodeSelector](#nodeselector): Pass a node selector override to make sure YBA pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.

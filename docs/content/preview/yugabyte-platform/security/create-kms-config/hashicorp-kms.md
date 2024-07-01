@@ -125,7 +125,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
     - `period` — If specified, the token can be infinitely renewed.
 
-    YBA automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
+    YugabyteDB Anywhere automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
 
     For more information, refer to [Tokens](https://developer.hashicorp.com/vault/tutorials/tokens/tokens) in the Hashicorp documentation.
 

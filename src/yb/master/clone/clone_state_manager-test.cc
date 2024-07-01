@@ -65,7 +65,7 @@ MATCHER_P(CloneTabletRequestPBMatcher, expected, "CloneTabletRequestPBs did not 
   return pb_util::ArePBsEqual(arg, expected, nullptr /* diff_str */);
 }
 
-// This is needed for the mock of GenerateSnapshotInfoFromSchedule.
+// This is needed for the mock of GenerateSnapshotInfoFromScheduleForClone.
 std::ostream& operator<<(
     std::ostream& os, const Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>& res) {
   if (!res.ok()) {
@@ -125,7 +125,7 @@ class CloneStateManagerTest : public YBTest {
 
     MOCK_METHOD(
         (Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>),
-        GenerateSnapshotInfoFromSchedule,
+        GenerateSnapshotInfoFromScheduleForClone,
         (const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
         CoarseTimePoint deadline), (override));
 
@@ -189,9 +189,9 @@ class CloneStateManagerTest : public YBTest {
     // Set up tablets.
     for (int i = 0; i < kNumTablets; ++i) {
       auto source_tablet =
-          make_scoped_refptr<TabletInfo>(source_table_, GetTestTabletId(true /* source */, i));
+          std::make_shared<TabletInfo>(source_table_, GetTestTabletId(true /* source */, i));
       auto target_tablet =
-          make_scoped_refptr<TabletInfo>(target_table_, GetTestTabletId(false /* source */, i));
+          std::make_shared<TabletInfo>(target_table_, GetTestTabletId(false /* source */, i));
 
       source_tablets_.push_back(source_tablet);
       target_tablets_.push_back(target_tablet);
@@ -534,8 +534,8 @@ TEST_F(CloneStateManagerTest, AbortInStartTabletsCloning) {
   EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
   EXPECT_CALL(MockFuncs(), Upsert(_)).WillRepeatedly(Return(Status::OK()));
-  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromSchedule).WillOnce(Return(
-      STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromSchedule for test")));
+  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(Return(
+      STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromScheduleForClone for test")));
 
   auto [source_namespace_id, seq_no] = ASSERT_RESULT(CloneNamespace(
       source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
@@ -583,8 +583,8 @@ TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManager
       CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
 
   // We expect an upsert when aborting the clone.
-  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromSchedule).WillOnce(Return(
-      STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromSchedule for test")));
+  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(Return(
+      STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromScheduleForClone for test")));
   EXPECT_CALL(MockFuncs(), Upsert(_));
   ASSERT_OK(callback(Status::OK() /* pg_schema_cloning_status */));
 

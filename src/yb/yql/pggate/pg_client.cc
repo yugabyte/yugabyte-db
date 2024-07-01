@@ -162,13 +162,14 @@ void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptions
   ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
   ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
   ash_metadata->set_query_id(pg_metadata->query_id);
+  ash_metadata->set_database_id(pg_metadata->database_id);
 
   uint8_t addr_family = pg_metadata->addr_family;
   ash_metadata->set_addr_family(addr_family);
   // unix addresses are displayed as null, so we only send IPv4 and IPv6 addresses.
   if (addr_family == AF_INET || addr_family == AF_INET6) {
-      ash_metadata->mutable_client_host_port()->set_host(ash_config.host);
-      ash_metadata->mutable_client_host_port()->set_port(pg_metadata->client_port);
+    ash_metadata->mutable_client_host_port()->set_host(ash_config.host);
+    ash_metadata->mutable_client_host_port()->set_port(pg_metadata->client_port);
   }
 }
 
@@ -465,13 +466,15 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      master::IncludeInactive include_inactive) {
     tserver::PgOpenTableRequestPB req;
     req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
     if (invalidate_cache_time != CoarseTimePoint()) {
       req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
     }
+    req.set_include_inactive(include_inactive);
     tserver::PgOpenTableResponsePB resp;
 
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
@@ -1303,8 +1306,9 @@ void PgClient::SetTimeout(MonoDelta timeout) {
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 Result<PgTableDescPtr> PgClient::OpenTable(
-    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
-  return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
+    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+    master::IncludeInactive include_inactive) {
+  return impl_->OpenTable(table_id, reopen, invalidate_cache_time, include_inactive);
 }
 
 Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(

@@ -1,0 +1,13 @@
+title: UniverseSoftwareUpgradePrecheckReq
+description: |
+  UniverseSoftwareUpgradePrecheckReq
+
+  Payload to precheck a YugabyteDB software upgrade on a Universe. Part of 
+  UniverseSoftwareUpgradePrecheckReq
+type: object
+required:
+  - yb_software_version
+properties:
+  yb_software_version:
+    description: Run prechecks as if the universe would be upgraded to this version.
+    type: string

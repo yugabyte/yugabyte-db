@@ -1,4 +1,8 @@
-title: Add a Cluster to an existing Universe
+title: ClusterAddSpec
+description: |
+  ClusterAddSpec
+
+  Request payload to add a new cluster to an existing YugabyteDB Universe.
 type: object
 required:
   - cluster_type
@@ -23,6 +27,9 @@ properties:
     description: Set instance type for tserver nodes of cluster
     type: string
     example: c5.xlarge
+  custom_instance_spec:
+    description: 'Used only for a k8s Universe and instance_type set to "custom", ignored otherwise. Custom instance spec is used to specify custom cpu and memory requests/limits for tserver and master pods of a cluster.'
+    $ref: "./ClusterCustomInstanceSpec.yaml"
   storage_spec:
     $ref: "./ClusterStorageSpec.yaml"
   provider_spec:

@@ -5,9 +5,6 @@ linkTitle: PostgreSQL extensions
 description: Summary of supported PostgreSQL extensions
 image: /images/section_icons/develop/ecosystem-integrations.png
 summary: Reference for YSQL extensions
-aliases:
-  - /stable/explore/ysql-language-features/pg-extensions/extension-postgis/
-  - /stable/explore/ysql-language-features/pg-extensions/extension-pgsql-postal/
 menu:
   stable:
     identifier: pg-extensions

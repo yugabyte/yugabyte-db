@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+{{<tip title="v2.20 and earlier">}}
+For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{</tip>}}
+
 When deploying database clusters using an on-premises provider, YugabyteDB Anywhere (YBA) relies on you to manually create the VMs and provide these pre-created VMs to YBA.
 
 With the on-premises provider, you must provide to YBA one, three, five, or more VM(s) with the following installed:

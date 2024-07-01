@@ -473,7 +473,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     }
     if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
       SCHECK(new_row_id_holder.empty(), Corruption, "Multiple kYBRowId attribute detected");
-      new_row_id_holder = session->GenerateNewRowid();
+      new_row_id_holder = session->GenerateNewYbrowid();
       expr_pb->mutable_value()->ref_binary_value(new_row_id_holder);
     } else {
       const auto& collation_info = attr->collation_info;
@@ -499,6 +499,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     doc_key_.set_hash(VERIFY_RESULT(
         target_desc->partition_schema().PgsqlHashColumnCompoundValue(hashed_values)));
   }
+  VLOG(5) << "Built ybctid: " << doc_key_.ToString();
   return doc_key_.Encode();
 }
 
@@ -902,8 +903,9 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  const char *table_name,
                                  const PgObjectId& table_id,
                                  bool is_shared_table,
+                                 bool is_sys_catalog_table,
                                  bool if_not_exist,
-                                 bool add_primary_key,
+                                 PgYbrowidMode ybrowid_mode,
                                  bool is_colocated_via_database,
                                  const PgObjectId& tablegroup_oid,
                                  const ColocationId colocation_id,
@@ -914,8 +916,8 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  bool is_truncate,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
-      pg_session_, database_name, schema_name, table_name,
-      table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
+      pg_session_, database_name, schema_name, table_name, table_id, is_shared_table,
+      is_sys_catalog_table, if_not_exist, ybrowid_mode, is_colocated_via_database,
       tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
       old_relfilenode_oid, is_truncate);
   if (pg_txn_manager_->IsDdlMode()) {
@@ -1213,6 +1215,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const PgObjectId& index_id,
                                  const PgObjectId& base_table_id,
                                  bool is_shared_index,
+                                 bool is_sys_catalog_index,
                                  bool is_unique_index,
                                  const bool skip_index_backfill,
                                  bool if_not_exist,
@@ -1225,7 +1228,7 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
-      if_not_exist, false /* add_primary_key */,
+      is_sys_catalog_index, if_not_exist, PG_YBROWID_MODE_NONE,
       is_colocated_via_database, tablegroup_oid, colocation_id,
       tablespace_oid, false /* is_matview */, pg_table_id, old_relfilenode_id,
       false /* is_truncate */);
@@ -2159,6 +2162,14 @@ Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t stalen
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
   return pg_txn_manager_->SetDeferrable(deferrable);
+}
+
+Status PgApiImpl::SetInTxnBlock(bool in_txn_blk) {
+  return pg_txn_manager_->SetInTxnBlock(in_txn_blk);
+}
+
+Status PgApiImpl::SetReadOnlyStmt(bool read_only_stmt) {
+  return pg_txn_manager_->SetReadOnlyStmt(read_only_stmt);
 }
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {

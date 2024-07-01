@@ -128,6 +128,9 @@ static void pg_decode_stream_truncate(LogicalDecodingContext *ctx,
 static void
 yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
 
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
+
 void
 _PG_init(void)
 {
@@ -163,7 +166,10 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->stream_truncate_cb = pg_decode_stream_truncate;
 
 	if (IsYugaByteEnabled())
+	{
 		cb->yb_schema_change_cb = yb_pgoutput_schema_change;
+		cb->yb_support_yb_specifc_replica_identity_cb = yb_support_yb_specific_replica_identity;
+	}
 }
 
 
@@ -1004,6 +1010,12 @@ pg_decode_stream_truncate(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 static void
 yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
+{
+	/* NOOP. */
+}
+
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity)
 {
 	/* NOOP. */
 }

@@ -2,7 +2,7 @@
 title: ybm CLI user resource
 headerTitle: ybm user
 linkTitle: user
-description: YugabyteDB Managed CLI reference user resource.
+description: YugabyteDB Aeon CLI reference user resource.
 headcontent: Manage users
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `user` resource to invite and manage YugabyteDB Managed account [users](../../../../managed-security/manage-access/).
+Use the `user` resource to invite and manage YugabyteDB Aeon account [users](../../../../managed-security/manage-access/).
 
 ## Syntax
 
@@ -22,13 +22,13 @@ Usage: ybm user [command] [flags]
 
 ## Examples
 
-List users in YugabyteDB Managed:
+List users in YugabyteDB Aeon:
 
 ```sh
 ybm user list
 ```
 
-Invite a user to YugabyteDB Managed:
+Invite a user to YugabyteDB Aeon:
 
 ```sh
 ybm user invite --email developer@mycompany.com --role Developer
@@ -46,7 +46,7 @@ Delete a specified user.
 
 ### invite
 
-Invite a user to your YugabyteDB Managed account.
+Invite a user to your YugabyteDB Aeon account.
 
 | Flag | Description |
 | :--- | :--- |
@@ -55,7 +55,7 @@ Invite a user to your YugabyteDB Managed account.
 
 ### list
 
-List the users in your YugabyteDB Managed account.
+List the users in your YugabyteDB Aeon account.
 
 | Flag | Description |
 | :--- | :--- |
@@ -63,7 +63,7 @@ List the users in your YugabyteDB Managed account.
 
 ### update
 
-Modify the role of a user in your YugabyteDB Managed account.
+Modify the role of a user in your YugabyteDB Aeon account.
 
 | Flag | Description |
 | :--- | :--- |

@@ -54,7 +54,7 @@ Topology-aware load balancing further achieves lower latencies by enabling appli
 
 **YugabyteDB** - Use a smart driver if all the nodes in the cluster are available for direct connectivity from the location where the client application is running.
 
-**YugabyteDB Managed** - Use a smart driver if your client application is running in a peered VPC. Without a smart driver, YugabyteDB Managed falls back to the connection load balancing provided by cloud providers; however you lose many of the advantages of cluster- and topology-awareness provided by the smart drivers.
+**YugabyteDB Aeon** - Use a smart driver if your client application is running in a peered VPC. Without a smart driver, YugabyteDB Aeon falls back to the connection load balancing provided by cloud providers; however you lose many of the advantages of cluster- and topology-awareness provided by the smart drivers.
 
 ### How hard is it to port an application to use a smart driver?
 

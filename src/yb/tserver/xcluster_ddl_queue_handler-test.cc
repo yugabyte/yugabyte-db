@@ -25,6 +25,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
+#include "yb/tserver/xcluster_output_client.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"

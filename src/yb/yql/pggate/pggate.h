@@ -306,8 +306,9 @@ class PgApiImpl {
                         const char *table_name,
                         const PgObjectId& table_id,
                         bool is_shared_table,
+                        bool is_sys_catalog_table,
                         bool if_not_exist,
-                        bool add_primary_key,
+                        PgYbrowidMode ybrowid_mode,
                         bool is_colocated_via_database,
                         const PgObjectId& tablegroup_oid,
                         const ColocationId colocation_id,
@@ -385,6 +386,7 @@ class PgApiImpl {
                         const PgObjectId& index_id,
                         const PgObjectId& table_id,
                         bool is_shared_index,
+                        bool is_sys_catalog_index,
                         bool is_unique_index,
                         const bool skip_index_backfill,
                         bool if_not_exist,
@@ -658,6 +660,8 @@ class PgApiImpl {
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
+  Status SetInTxnBlock(bool in_txn_blk);
+  Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
