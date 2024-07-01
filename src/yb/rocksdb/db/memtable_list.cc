@@ -49,8 +49,20 @@ class InternalKeyComparator;
 class Mutex;
 class VersionSet;
 
+void MemTableListVersion::VerifyNumFlushginBytes() const {
+#ifndef NDEBUG
+  size_t total_data_size = 0;
+  for (const auto* mem_table : memlist_) {
+    total_data_size += mem_table->data_size();
+  }
+  DCHECK_EQ(total_data_size, total_data_size_);
+#endif
+}
+
 void MemTableListVersion::AddMemTable(MemTable* m) {
   memlist_.push_front(m);
+  total_data_size_ += m->data_size();
+  VerifyNumFlushginBytes();
   *parent_memtable_list_memory_usage_ += m->ApproximateMemoryUsage();
 }
 
@@ -70,10 +82,12 @@ MemTableListVersion::MemTableListVersion(
           old->max_write_buffer_number_to_maintain_),
       parent_memtable_list_memory_usage_(parent_memtable_list_memory_usage) {
   if (old != nullptr) {
+    total_data_size_ = old->total_data_size_;
     memlist_ = old->memlist_;
     for (auto& m : memlist_) {
       m->Ref();
     }
+    VerifyNumFlushginBytes();
 
     memlist_history_ = old->memlist_history_;
     for (auto& m : memlist_history_) {
@@ -106,6 +120,10 @@ void MemTableListVersion::Unref(autovector<MemTable*>* to_delete) {
     }
     delete this;
   }
+}
+
+size_t MemTableList::TotalDataSize() const {
+  return current_->total_data_size_;
 }
 
 int MemTableList::NumNotFlushed() const {
@@ -242,6 +260,8 @@ void MemTableListVersion::Remove(MemTable* m,
                                  autovector<MemTable*>* to_delete) {
   assert(refs_ == 1);  // only when refs_ == 1 is MemTableListVersion mutable
   memlist_.remove(m);
+  total_data_size_ -= m->data_size();
+  VerifyNumFlushginBytes();
 
   if (max_write_buffer_number_to_maintain_ > 0) {
     memlist_history_.push_front(m);
@@ -285,40 +305,42 @@ void MemTableList::PickMemtablesToFlush(
       yb::make_signed(current_->memlist_.size()) >= mutable_cf_options->max_write_buffer_number;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
     MemTable* m = *it;
-    if (!m->flush_in_progress_) {
-      if (filter) {
-        Result<bool> filter_result = filter(*m, write_blocked);
-        if (filter_result.ok()) {
-          if (!filter_result.get()) {
-            // The filter succeeded and said that this memtable cannot be flushed yet.
-            continue;
-          }
-        } else {
-          // This failure usually means that there is an empty immutable memtable. We need to output
-          // additional diagnostics in that case.
-          ostringstream ss;
-          if (!all_memtables_logged) {
-            ss << ". All memtables:\n";
-            for (const MemTable* memtable_for_logging : memlist) {
-              ss << "  " << memtable_for_logging->ToString() << "\n";
-            }
-            all_memtables_logged = true;
-          }
-          LOG(ERROR) << "Failed when checking if memtable can be flushed (will still flush it): "
-                     << filter_result.status() << ". Memtable: " << m->ToString()
-                     << ss.str();
-          // Still flush the memtable so that this error does not keep occurring.
-        }
-      }
-      assert(!m->flush_completed_);
-      num_flush_not_started_--;
-      if (num_flush_not_started_ == 0) {
-        imm_flush_needed.store(false, std::memory_order_release);
-      }
-      m->flush_in_progress_ = true;  // flushing will start very soon
-      ret->push_back(m);
+    if (m->flush_in_progress_) {
+      continue;
     }
+    if (filter) {
+      Result<bool> filter_result = filter(*m, write_blocked);
+      if (filter_result.ok()) {
+        if (!filter_result.get()) {
+          // The filter succeeded and said that this memtable cannot be flushed yet.
+          break;
+        }
+      } else {
+        // This failure usually means that there is an empty immutable memtable. We need to output
+        // additional diagnostics in that case.
+        ostringstream ss;
+        if (!all_memtables_logged) {
+          ss << ". All memtables:\n";
+          for (const MemTable* memtable_for_logging : memlist) {
+            ss << "  " << memtable_for_logging->ToString() << "\n";
+          }
+          all_memtables_logged = true;
+        }
+        LOG(ERROR) << "Failed when checking if memtable can be flushed (will still flush it): "
+                   << filter_result.status() << ". Memtable: " << m->ToString()
+                   << ss.str();
+        // Still flush the memtable so that this error does not keep occurring.
+      }
+    }
+    assert(!m->flush_completed_);
+    num_flush_not_started_--;
+    if (num_flush_not_started_ == 0) {
+      imm_flush_needed.store(false, std::memory_order_release);
+    }
+    m->flush_in_progress_ = true;  // flushing will start very soon
+    ret->push_back(m);
   }
+
   flush_requested_ = false;  // start-flush request is complete
 }
 

@@ -4,8 +4,7 @@
 --
 
 --DROP TABLE LINE_TBL;
--- YB note: add sorting column.
-CREATE TABLE LINE_TBL (s line, ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE LINE_TBL (s line);
 
 INSERT INTO LINE_TBL VALUES ('{0,-1,5}');	-- A == 0
 INSERT INTO LINE_TBL VALUES ('{1,0,5}');	-- B == 0
@@ -37,8 +36,7 @@ INSERT INTO LINE_TBL VALUES ('[(1,2),(1,2)]');
 
 INSERT INTO LINE_TBL VALUES (line(point '(1,0)', point '(1,0)'));
 
--- YB note: avoid selecting ybsort column.
-select s from LINE_TBL;
+select * from LINE_TBL;
 
 select '{nan, 1, nan}'::line = '{nan, 1, nan}'::line as true,
 	   '{nan, 1, nan}'::line = '{nan, 2, nan}'::line as false;

@@ -17,8 +17,8 @@ import {
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { AllowedTasks } from '../../../../redesign/helpers/dtos';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
 import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
+import { INPUT_FIELD_WIDTH_PX } from '../../constants';
 import { DrConfig } from '../dtos';
 
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
@@ -179,7 +179,7 @@ export const EditConfigModal = ({
         name="storageConfig"
         rules={{ required: t('error.backupStorageConfigRequired') }}
         isDisabled={isFormDisabled}
-        autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+        autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
         maxWidth="100%"
         defaultValue={defaultBackupStorageConfigOption}
       />

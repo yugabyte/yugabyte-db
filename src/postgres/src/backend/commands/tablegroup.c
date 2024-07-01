@@ -608,3 +608,56 @@ AlterTablegroupOwner(const char *grpname, Oid newOwnerId)
 
 	return address;
 }
+
+/*
+ * ybAlterTablespaceForTablegroup - Update tablespace entry
+ *									for the given tablegroup.
+ *
+ * If a tablegroup does not exist with the provided oid, then an error is
+ * raised.
+ */
+void
+ybAlterTablespaceForTablegroup(const char *grpname, Oid newTablespace)
+{
+	Oid					tablegroupoid;
+	HeapTuple			tuple;
+	Relation			rel;
+	ScanKeyData			entry[1];
+	TableScanDesc		scandesc;
+	Form_pg_yb_tablegroup	datForm;
+
+	if (!YbTablegroupCatalogExists)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Tablegroup system catalog does not exist.")));
+	}
+
+	rel = table_open(YbTablegroupRelationId, RowExclusiveLock);
+	ScanKeyInit(&entry[0],
+				Anum_pg_yb_tablegroup_grpname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(grpname));
+	scandesc = table_beginscan_catalog(rel, 1, entry);
+	tuple = heap_getnext(scandesc, ForwardScanDirection);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablegroup \"%s\" does not exist", grpname)));
+
+	datForm = (Form_pg_yb_tablegroup) GETSTRUCT(tuple);
+	tablegroupoid = datForm->oid;
+
+	if (datForm->grptablespace != newTablespace)
+	{
+		datForm->grptablespace = newTablespace;
+
+		CatalogTupleUpdate(rel, &tuple->t_self, tuple);
+	}
+
+	InvokeObjectPostAlterHook(YbTablegroupRelationId, tablegroupoid, 0);
+
+	heap_endscan(scandesc);
+
+	table_close(rel, RowExclusiveLock);
+}

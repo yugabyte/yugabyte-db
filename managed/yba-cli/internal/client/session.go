@@ -27,6 +27,12 @@ func (a *AuthAPIClient) RegisterCustomer() (
 	return a.APIClient.SessionManagementApi.RegisterCustomer(a.ctx)
 }
 
+// ApiToken regenerates and fetches unmasked API token
+func (a *AuthAPIClient) ApiToken() (
+	ybaclient.SessionManagementApiApiApiTokenRequest) {
+	return a.APIClient.SessionManagementApi.ApiToken(a.ctx, a.CustomerUUID)
+}
+
 // GetSessionInfo fetches YugabyteDB Anywhere session info
 func (a *AuthAPIClient) GetSessionInfo() (
 	ybaclient.SessionManagementApiApiGetSessionInfoRequest) {

@@ -695,6 +695,24 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
  */
 extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
 
+/*
+ * Get a string representation of a tuple (row) given its tuple description
+ * (schema) and is_omitted values.
+ *
+ * Logical Replication specific version of the general utility function
+ * YbHeapTupleToString. This function also logs the is_omitted values which
+ * indicates attributes which were omitted due to the value of the replica
+ * identity.
+ */
+extern const char* YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
+													TupleDesc tupleDesc,
+													bool *is_omitted);
+
+/* Same as above except it takes slot instead of tuple. */
+extern const char* YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot,
+														 TupleDesc tupleDesc,
+														 bool *is_omitted);
+
 /* Get a string representation of a bitmapset (for debug purposes only!) */
 extern const char* YbBitmapsetToString(Bitmapset *bms);
 
@@ -1152,5 +1170,11 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
+
+static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
+	return db_oid == kYBCPgSequencesDataDatabaseOid;
+}
+
+extern Oid YbGetSQLIncrementCatalogVersionsFunctionOid();
 
 #endif /* PG_YB_UTILS_H */

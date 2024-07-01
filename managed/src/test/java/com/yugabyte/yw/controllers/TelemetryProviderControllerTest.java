@@ -12,47 +12,51 @@ https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL
 package com.yugabyte.yw.controllers;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static play.mvc.Http.Status.OK;
-import static play.test.Helpers.*;
+import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.TelemetryProviderServiceTest;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.InjectMocks;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
+@RunWith(MockitoJUnitRunner.class)
 public class TelemetryProviderControllerTest extends FakeDBApplication {
 
   private Customer customer;
   private String authToken;
   private Users user;
-  private TelemetryProviderService telemetryProviderService;
   private TelemetryProviderServiceTest telemetryProviderServiceTest;
-  private TelemetryProvider telemetryProvider;
-  private TelemetryProviderController telemetryProviderController;
-
-  @InjectMocks private TelemetryProviderController controller;
 
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.dbAuditLoggingEnabled.getKey(), "true");
 
-    telemetryProviderService = app.injector().instanceOf(TelemetryProviderService.class);
-    telemetryProviderController = app.injector().instanceOf(TelemetryProviderController.class);
+    doNothing().when(mockTelemetryProviderService).validateBean(any());
+    doNothing().when(mockTelemetryProviderService).validateTelemetryProvider(any());
+    doNothing().when(mockTelemetryProviderService).throwExceptionIfRuntimeFlagDisabled();
   }
 
   @Test
@@ -61,8 +65,8 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
         TelemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test1");
     TelemetryProvider provider2 =
         TelemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test2");
-    telemetryProviderService.save(provider1);
-    telemetryProviderService.save(provider2);
+    provider1.generateUUID().save();
+    provider2.generateUUID().save();
 
     Result result =
         doRequestWithAuthToken(
@@ -80,7 +84,7 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
   @Test
   public void testCreateTelemetryProvider() {
     TelemetryProvider provider =
-        telemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
+        TelemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
@@ -97,8 +101,8 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteTelemetryProvider() {
     TelemetryProvider provider =
-        telemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
-    telemetryProviderService.save(provider);
+        TelemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
+    provider.generateUUID().save();
 
     Result result =
         doRequestWithAuthToken(

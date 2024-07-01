@@ -375,6 +375,50 @@ tablegroupHasDependents(Oid tablegroupId)
 }
 
 /*
+ * ybIsTablegroupDependent -- check if the specified relation is dependent on
+ * the specified tablegroup.
+ */
+bool
+ybIsTablegroupDependent(Oid relOid, Oid tablegroupId)
+{
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+	bool		found = false;
+
+	depRel = table_open(DependRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(YbTablegroupRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(tablegroupId));
+
+	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
+							  NULL, 2, key);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	{
+		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
+
+		if (depform->objid == relOid)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	systable_endscan(scan);
+	table_close(depRel, RowExclusiveLock);
+
+	return found;
+}
+
+/*
  * deleteDependencyRecordsForClass -- delete all records with given depender
  * classId/objectId, dependee classId, and deptype.
  * Returns the number of records deleted.

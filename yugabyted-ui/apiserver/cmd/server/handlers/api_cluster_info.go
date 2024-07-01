@@ -384,9 +384,11 @@ func (c *Container) getRawMetricsForAllNodes(
     var ts int64
     var value int
     var details string
+    c.logger.Infof("Getting metrics for nodes: %v", nodeList)
     for _, hostName := range nodeList {
         query := fmt.Sprintf(QUERY_FORMAT_NODE, "system.metrics", metricColumnValue,
             hostToUuid[hostName], startTime*1000, endTime*1000)
+        c.logger.Infof("Metrics query for node %s: %s", hostName, query)
         iter := session.Query(query).Iter()
         values := [][]float64{}
         for iter.Scan(&ts, &value, &details) {
@@ -463,6 +465,7 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
             return ctx.String(http.StatusInternalServerError, err.Error())
         }
     }
+    c.logger.Infof("Getting metrics for nodes: %v", nodeList)
     hostToUuid, err := c.helper.GetHostToUuidMap(helpers.HOST)
     if err != nil {
         c.logger.Errorf("[GetHostToUuidMap]: %s", err.Error())
@@ -856,7 +859,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
     }
 
     currentTime := time.Now().UnixMicro()
-    hostToUuid, errHostToUuidMap := c.helper.GetHostToUuidMap(helpers.HOST)
+    hostToUuid := c.helper.GetHostToUuidMapFromFuture(tabletServersResponse)
     tserverAddresses := map[string]bool{}
     for placementUuid, obj := range tabletServersResponse.Tablets {
         // Cross check the placement UUID of the node with that of read-replica cluster
@@ -933,22 +936,20 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                         masterUptimeUs = currentTime - master.InstanceId.StartTimeUs
                     }
                 }
-                if errHostToUuidMap == nil {
-                    query :=
-                        fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
-                            hostToUuid[hostName])
-                    session, err := c.GetSession()
-                    if err == nil {
-                        iter := session.Query(query).Iter()
-                        var ts int64
-                        var value int64
-                        var details string
-                        iter.Scan(&ts, &value, &details)
-                        totalDiskBytes = value
-                        if err := iter.Close(); err != nil {
-                            c.logger.Errorf("Error fetching total_disk from %s: %s",
-                                hostName, err.Error())
-                        }
+                query :=
+                    fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
+                        hostToUuid[hostName])
+                session, err := c.GetSession()
+                if err == nil {
+                    iter := session.Query(query).Iter()
+                    var ts int64
+                    var value int64
+                    var details string
+                    iter.Scan(&ts, &value, &details)
+                    totalDiskBytes = value
+                    if err := iter.Close(); err != nil {
+                        c.logger.Errorf("Error fetching total_disk from %s: %s",
+                            hostName, err.Error())
                     }
                 }
             }

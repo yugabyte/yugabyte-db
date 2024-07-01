@@ -19,6 +19,12 @@ To access backups from a specific universe, navigate to the universe and choose 
 
 To access all universe backups, navigate to **Backups**.
 
+{{< warning title="Restoring a backup using YBC" >}}
+
+Backups from a stable track universe can only be restored to a higher version stable track YugabyteDB universe, and the same applies for preview track. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YugabyteDB Anywhere version checks during restores. For more information, contact {{% support-platform %}}.
+
+{{< /warning >}}
+
 ## Prerequisites
 
 - The target universe must have enough nodes to accommodate the restore.
@@ -111,7 +117,7 @@ To view the details of a restored database, navigate to **Universes > Restore Hi
 In addition to the basic restore, an advanced restore option is available for the following circumstances:
 
 - you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe.
-- you want to restore a backup that was [moved to a different location](../back-up-universe-data/#moving-backups-between-buckets) (for example, for long-term storage) and is no longer being managed by YBA; that is, is no longer listed in the **Backups** list.
+- you want to restore a backup that was [moved to a different location](../back-up-universe-data/#moving-backups-between-buckets) (for example, for long-term storage) and is no longer being managed by YugabyteDB Anywhere; that is, is no longer listed in the **Backups** list.
 
 For information regarding components of a backup, refer to [Access backups in storage](../back-up-universe-data/#access-backups-in-storage).
 
@@ -119,10 +125,10 @@ For information regarding components of a backup, refer to [Access backups in st
 
 To perform an advanced restore, you need the following:
 
-- If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YBA installation so that the backup can be decrypted.
-- A matching [storage configuration](../configure-backup-storage/) in the target YBA installation with credentials to access the storage where the backup is located.
+- If the backup had [encryption at rest enabled](../../security/enable-encryption-at-rest), a matching KMS configuration in the target YugabyteDB Anywhere installation so that the backup can be decrypted.
+- A matching [storage configuration](../configure-backup-storage/) in the target YugabyteDB Anywhere installation with credentials to access the storage where the backup is located.
 
-    If you are restoring from a backup that was moved to another location, copy the backup to a location with a corresponding storage configuration in YBA.
+    If you are restoring from a backup that was moved to another location, copy the backup to a location with a corresponding storage configuration in YugabyteDB Anywhere.
 
 - The storage address of the database or keyspace backup you want to restore.
 
@@ -168,7 +174,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
     s3://user_bucket/test/univ-xyz...
     ```
 
-    YBA looks for the backup in `test_bucket/test`, not `user_bucket/test`.
+    YugabyteDB Anywhere looks for the backup in `test_bucket/test`, not `user_bucket/test`.
 
 1. Specify the name of the database or keyspace from which you are performing a restore.
 
@@ -176,7 +182,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
 1. If the backup involved universes that had [encryption at rest enabled](../../security/enable-encryption-at-rest), then select the KMS configuration to use.
 
-1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
+1. If you are using YugabyteDB Anywhere version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
 
 1. If you chose to rename databases/keyspaces, click **Next**, then enter new names for the databases/keyspaces that you want to rename.
 

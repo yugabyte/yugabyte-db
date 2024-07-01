@@ -1,5 +1,5 @@
-title: Audit Log Configuration
-description: Audit Log Configuration Specification for the universe cluster
+title: AuditLogConfig
+description: Audit Log Configuration Specification for the Universe. Part of Clusterspec.
 required:
   - universe_logs_exporter_config
 type: object

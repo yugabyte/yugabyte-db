@@ -91,7 +91,7 @@ void AsyncClientInitializer::InitClient(const server::ClockPtr& clock) {
       return;
     }
 
-    LOG(ERROR) << "Failed to initialize client: " << result.status();
+    LOG(WARNING) << "Failed to initialize client: " << result.status();
     if (result.status().IsAborted()) {
       break;
     }

@@ -20,6 +20,7 @@ SKIP_VERIFY_CERT=""
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
+SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
@@ -64,11 +65,16 @@ run_as_super_user() {
 }
 
 export_path() {
+  set +euo pipefail
+  source "$INSTALL_USER_HOME"/.bashrc >/dev/null 2>&1
   if [[ ":$PATH:" != *":$1:"* ]]; then
-    PATH="$1${PATH:+":$PATH"}"
-    echo "PATH=$PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    NEW_PATH="$1":\$PATH
+    PATH="$1":$PATH
+    echo "PATH=$NEW_PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    echo "export PATH" >> "$INSTALL_USER_HOME"/.bashrc
     export PATH
   fi
+  set -euo pipefail
 }
 
 save_node_agent_home() {
@@ -252,22 +258,16 @@ modify_selinux() {
       # altered with chcon goes back to default when restorecon is run.
       # It should not even try to reach out to the repo.
       run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
-    else
-      if command -v yum >/dev/null 2>&1; then
-        # Install the semanage package directly.
-        run_as_super_user yum install -y policycoreutils-python-utils
-        if ! command -v semanage >/dev/null 2>&1; then
-          # Search and install the package that provides semanage.
-          run_as_super_user yum install -y /usr/sbin/semanage
-        fi
-      elif command -v apt-get >/dev/null 2>&1; then
-        run_as_super_user apt-get update -y
-        run_as_super_user apt-get install -y semanage-utils
-      fi
+    elif command -v yum >/dev/null 2>&1; then
+      # Install the semanage package directly.
+      run_as_super_user yum install -y policycoreutils-python-utils
       if ! command -v semanage >/dev/null 2>&1; then
-        # Let it proceed as there can be policies to allow.
-        echo "Command semanage does not exist. Installation did not succeed"
+        # Search and install the package that provides semanage.
+        run_as_super_user yum install -y /usr/sbin/semanage
       fi
+    elif command -v apt-get >/dev/null 2>&1; then
+      run_as_super_user apt-get update -y
+      run_as_super_user apt-get install -y semanage-utils
     fi
   fi
   # Check if semanage was installed in the previous steps.
@@ -281,6 +281,10 @@ modify_selinux() {
       run_as_super_user semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
     fi
     run_as_super_user restorecon -ir "$NODE_AGENT_HOME"
+  else
+    # Let it proceed as there can be policies to allow.
+    echo "Command semanage does not exist. Defaulting to using chcon"
+    run_as_super_user chcon -R -t bin_t "$NODE_AGENT_HOME"
   fi
   set -e
 }
@@ -521,6 +525,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --airgap)
       AIRGAP_INSTALL="true"
+    ;;
+    --skip_package_download)
+      SKIP_PACKAGE_DOWNLOAD="true"
     ;;
     --node_name)
       NODE_NAME="$2"

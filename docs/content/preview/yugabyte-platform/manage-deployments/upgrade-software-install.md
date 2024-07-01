@@ -17,40 +17,6 @@ YugabyteDB is a distributed database that can be installed on multiple nodes. Up
 If you have issues after upgrading a universe, you can roll back in-place and restore the universe to its state before the upgrade.
 <!-- Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later. -->
 
-## View and import releases
-
-Before you can upgrade your universe to a specific version of YugabyteDB, verify that the release is available and, if necessary, import the release into YugabyteDB Anywhere.
-
-To view the releases that are available, do the following:
-
-- Click the user profile icon and choose **Releases**.
-
-    ![Releases](/images/yp/releases-list.png)
-
-If a release that you want to install on a universe is not available, import it as follows:
-
-1. On the **Releases** page, click **Import** to open the **Import Releases** dialog as shown in the following illustration:
-
-    ![Import Releases](/images/yp/import-releases.png)
-
-1. Specify the release version to import.
-
-1. Select the storage or URL that contains the release.
-
-    - If the release is located on Amazon S3, you would need to provide the access information, in the form of your secret access key.
-    - If the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials.
-    - If the release is accessible via a HTTP, you would need to specify the checksum value of the download.
-
-1. Provide the path to the storage location.
-
-1. Click **OK**.
-
-When imported, the release is added to the **Releases** list.
-
-To delete or disable a release, click its corresponding **Actions**.
-
-## Upgrade a universe
-
 You upgrade a universe in the following phases:
 
 - Upgrade - Update the nodes in the universe to the new database version.
@@ -59,7 +25,11 @@ You upgrade a universe in the following phases:
 <!-- (Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later.) -->
 - Finalize - Depending on the changes included in the upgrade, you may need to finalize the upgrade to make the upgrade permanent. The system will tell you if this step is necessary. After finalizing, you can no longer roll back.
 
-### Perform the upgrade
+## Perform the upgrade
+
+{{< warning title="For YugabyteDB upgrades in YugabyteDB Anywhere" >}}
+You can only upgrade from a stable version to another stable version, or from a preview version to another preview version. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB version checks during upgrades. For more information, contact {{% support-platform %}}.
+{{< /warning >}}
 
 You perform a rolling upgrade on a live universe deployment as follows:
 
@@ -75,11 +45,11 @@ You perform a rolling upgrade on a live universe deployment as follows:
 Currently, you cannot downgrade a universe to an older YugabyteDB release. For assistance with downgrades, contact Yugabyte Support.
     {{< /note >}}
 
+    If you choose a target version where you will need to finalize the upgrade, YugabyteDB Anywhere displays a message to that effect.
+
 1. Choose the **Rolling Upgrade** option.
 
     Select rolling upgrade to minimize application disruption (at the expense of a longer node-by-node iterative operation). Deselect this option if application downtime is not a concern, and you favor speed; the database cluster is taken offline to perform the upgrade.
-
-    For internal details about the steps involved in a YugabyteDB rolling upgrade, refer to [Upgrade a deployment](../../../manage/upgrade-deployment/).
 
 1. If you are performing a rolling upgrade, specify the delay between node upgrades.
 
@@ -93,7 +63,7 @@ Currently, you cannot downgrade a universe to an older YugabyteDB release. For a
 
 YugabyteDB Anywhere starts the upgrade process, and you can view the progress on the **Tasks** tab.
 
-#### Upgrade manually-provisioned on-premises universe
+### Upgrade manually-provisioned on-premises universe
 
 If you are upgrading a manually-provisioned [On-Premises](../../configure-yugabyte-platform/on-premises/) universe from a database version prior to 2.18.0 to a version at 2.18.0 or later, you must additionally manually install YB Controller (YBC) after the otherwise-automated software upgrade procedure completes.
 
@@ -104,15 +74,15 @@ curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes
      --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
 ```
 
-To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YBA window.
+To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
 
-You can view your Universe ID from your YBA universe URL, as follows:
+You can view your Universe ID from your YugabyteDB Anywhere universe URL, as follows:
 
 ```sh
 https://<YB-Anywhere-IP-address>/universes/<universe-ID>
 ```
 
-### Monitor the universe
+## Monitor the universe
 
 Once all the nodes have been upgraded, monitor the universe to ensure it is healthy:
 
@@ -120,9 +90,9 @@ Once all the nodes have been upgraded, monitor the universe to ensure it is heal
 - Check that all nodes are up and reachable.
 - Check the [performance metrics](../../alerts-monitoring/anywhere-metrics/) for spikes or anomalies.
 
-If you have problems, you can roll back any time.
+If you have problems, you can [roll back](#roll-back-an-upgrade) during this time.
 
-For upgrades that require finalizing, you can monitor for as long as you need, but it is recommended to finalize the upgrade sooner in order to avoid operator errors that can arise from having to maintain two versions. A subset of features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have finalized the current one.
+For upgrades that require finalizing, you can monitor for as long as you need, but it is recommended to finalize the upgrade sooner to avoid operator errors that can arise from having to maintain two versions. A subset of features that require format changes will not be available until the upgrade is finalized. Also, you cannot perform another upgrade until you have finalized the current one.
 
 If you are satisfied with the upgrade:
 
@@ -130,7 +100,9 @@ If you are satisfied with the upgrade:
 
 - For upgrades that require finalizing, proceed to [Finalize](#finalize-an-upgrade) the upgrade.
 
-### Roll back an upgrade
+## Roll back an upgrade
+
+If you aren't satisfied with an upgrade, you can roll back to the version that was previously installed.
 
 To roll back an upgrade, do the following:
 
@@ -138,16 +110,34 @@ To roll back an upgrade, do the following:
 
 1. Click **Actions > Roll Back Upgrade** to display the **Roll Back Upgrade** dialog.
 
-1. Choose the **Rolling Upgrade** option and set the delay between nodes restarting.
+    ![Roll back upgrade](/images/yb-platform/upgrade/upgrade-rollback.png)
+
+1. Choose the **Roll back one node at a time** option and set the delay between nodes restarting.
+
+    Select this option to minimize application disruption (at the expense of a longer node-by-node iterative operation). Deselect this option if application downtime is not a concern, and you favor speed; the database cluster is taken offline to perform the upgrade.
+
+1. If you are rolling back one node at a time, specify the delay between node upgrades.
 
 1. Click **Proceed With Rollback**.
 
 YugabyteDB Anywhere starts the rollback process, and you can view the progress on the **Tasks** tab.
 
-### Finalize an upgrade
+## Finalize an upgrade
+
+If your upgrade requires finalizing, the universe has a status of Pending upgrade finalization.
+
+![Finalize upgrade](/images/yb-platform/upgrade/upgrade-finalize.png)
+
+You have the option of [rolling back](#roll-back-an-upgrade), or finalizing. Note that you can't roll back after you finalize.
 
 To finalize an upgrade, do the following:
 
 1. Navigate to **Universes** and select your universe.
 
 1. Click **Finalize Upgrade**.
+
+1. Click **Proceed to finalize the upgrade** to confirm.
+
+## Learn more
+
+For internal details about the steps involved in a YugabyteDB rolling upgrade, refer to [Upgrade a deployment](../../../manage/upgrade-deployment/).

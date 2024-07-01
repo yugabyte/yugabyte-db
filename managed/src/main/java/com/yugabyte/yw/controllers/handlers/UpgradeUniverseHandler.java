@@ -263,6 +263,9 @@ public class UpgradeUniverseHandler {
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
+      if (userIntent.specificGFlags != null) {
+        requestParams.processGFlagGroupsOnUpgrades(universe);
+      }
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
@@ -470,8 +473,20 @@ public class UpgradeUniverseHandler {
 
   public UUID modifyAuditLoggingConfig(
       AuditLogConfigParams requestParams, Customer customer, Universe universe) {
+    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    // Verify if the audit log payload is same as existing audit log config.
+    if (requestParams.auditLogConfig != null
+        && requestParams.auditLogConfig.equals(userIntent.auditLogConfig)) {
+      String errorMessage =
+          String.format(
+              "Audit log config is same as existing config on universe '%s'.",
+              universe.getUniverseUUID());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
 
     // Verify if exporter config is set to export active.
     if (requestParams.auditLogConfig.isExportActive()) {

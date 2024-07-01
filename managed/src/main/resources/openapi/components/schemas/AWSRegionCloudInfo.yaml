@@ -1,4 +1,5 @@
-title: Region in AWS provider
+title: AWSRegionCloudInfo
+description: Region in AWS provider. Part of RegionCloudInfo.
 type: object
 properties:
   security_group_id:

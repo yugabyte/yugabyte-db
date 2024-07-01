@@ -178,8 +178,7 @@ select '(a,a)'::textrange;
 --
 -- create some test data and test the operators
 --
-CREATE TABLE numrange_test (nr NUMRANGE,
-                            ybsort SERIAL, PRIMARY KEY (ybsort ASC));
+CREATE TABLE numrange_test (nr NUMRANGE);
 create index numrange_test_btree on numrange_test(nr);
 ERROR:  INDEX on column of type 'NUMRANGE' not yet supported
 INSERT INTO numrange_test VALUES('[,)');
@@ -210,8 +209,7 @@ SELECT nr, lower_inc(nr), lower_inf(nr), upper_inc(nr), upper_inf(nr) FROM numra
  [1.7,1.7] | t         | f         | t         | f
 (6 rows)
 
--- YB note: avoid selecting ybsort column here and below queries.
-SELECT nr FROM numrange_test WHERE range_contains(nr, numrange(1.9,1.91));
+SELECT * FROM numrange_test WHERE range_contains(nr, numrange(1.9,1.91));
     nr     
 -----------
  (,)
@@ -219,20 +217,20 @@ SELECT nr FROM numrange_test WHERE range_contains(nr, numrange(1.9,1.91));
  [1.1,2.2)
 (3 rows)
 
-SELECT nr FROM numrange_test WHERE nr @> numrange(1.0,10000.1);
+SELECT * FROM numrange_test WHERE nr @> numrange(1.0,10000.1);
  nr  
 -----
  (,)
 (1 row)
 
-SELECT nr FROM numrange_test WHERE range_contained_by(numrange(-1e7,-10000.1), nr);
+SELECT * FROM numrange_test WHERE range_contained_by(numrange(-1e7,-10000.1), nr);
   nr  
 ------
  (,)
  (,5)
 (2 rows)
 
-SELECT nr FROM numrange_test WHERE 1.9 <@ nr;
+SELECT * FROM numrange_test WHERE 1.9 <@ nr;
     nr     
 -----------
  (,)
@@ -240,29 +238,29 @@ SELECT nr FROM numrange_test WHERE 1.9 <@ nr;
  [1.1,2.2)
 (3 rows)
 
-select nr from numrange_test where nr = 'empty';
+select * from numrange_test where nr = 'empty';
   nr   
 -------
  empty
 (1 row)
 
-select nr from numrange_test where nr = '(1.1, 2.2)';
+select * from numrange_test where nr = '(1.1, 2.2)';
  nr 
 ----
 (0 rows)
 
-select nr from numrange_test where nr = '[1.1, 2.2)';
+select * from numrange_test where nr = '[1.1, 2.2)';
     nr     
 -----------
  [1.1,2.2)
 (1 row)
 
-select nr from numrange_test where nr < 'empty';
+select * from numrange_test where nr < 'empty';
  nr 
 ----
 (0 rows)
 
-select nr from numrange_test where nr < numrange(-1000.0, -1000.0,'[]');
+select * from numrange_test where nr < numrange(-1000.0, -1000.0,'[]');
   nr   
 -------
  (,)
@@ -270,7 +268,7 @@ select nr from numrange_test where nr < numrange(-1000.0, -1000.0,'[]');
  empty
 (3 rows)
 
-select nr from numrange_test where nr < numrange(0.0, 1.0,'[]');
+select * from numrange_test where nr < numrange(0.0, 1.0,'[]');
   nr   
 -------
  (,)
@@ -278,7 +276,7 @@ select nr from numrange_test where nr < numrange(0.0, 1.0,'[]');
  empty
 (3 rows)
 
-select nr from numrange_test where nr < numrange(1000.0, 1001.0,'[]');
+select * from numrange_test where nr < numrange(1000.0, 1001.0,'[]');
     nr     
 -----------
  (,)
@@ -289,13 +287,13 @@ select nr from numrange_test where nr < numrange(1000.0, 1001.0,'[]');
  [1.7,1.7]
 (6 rows)
 
-select nr from numrange_test where nr <= 'empty';
+select * from numrange_test where nr <= 'empty';
   nr   
 -------
  empty
 (1 row)
 
-select nr from numrange_test where nr >= 'empty';
+select * from numrange_test where nr >= 'empty';
     nr     
 -----------
  (,)
@@ -306,7 +304,7 @@ select nr from numrange_test where nr >= 'empty';
  [1.7,1.7]
 (6 rows)
 
-select nr from numrange_test where nr > 'empty';
+select * from numrange_test where nr > 'empty';
     nr     
 -----------
  (,)
@@ -316,7 +314,7 @@ select nr from numrange_test where nr > 'empty';
  [1.7,1.7]
 (5 rows)
 
-select nr from numrange_test where nr > numrange(-1001.0, -1000.0,'[]');
+select * from numrange_test where nr > numrange(-1001.0, -1000.0,'[]');
     nr     
 -----------
  [3,)
@@ -324,7 +322,7 @@ select nr from numrange_test where nr > numrange(-1001.0, -1000.0,'[]');
  [1.7,1.7]
 (3 rows)
 
-select nr from numrange_test where nr > numrange(0.0, 1.0,'[]');
+select * from numrange_test where nr > numrange(0.0, 1.0,'[]');
     nr     
 -----------
  [3,)
@@ -332,7 +330,7 @@ select nr from numrange_test where nr > numrange(0.0, 1.0,'[]');
  [1.7,1.7]
 (3 rows)
 
-select nr from numrange_test where nr > numrange(1000.0, 1000.0,'[]');
+select * from numrange_test where nr > numrange(1000.0, 1000.0,'[]');
  nr 
 ----
 (0 rows)
@@ -549,10 +547,7 @@ select * from numrange_test2 where nr = 'empty'::numrange;
  empty
 (1 row)
 
--- YB note: add ordering.
-SELECT nr FROM (
-select * from numrange_test2 where nr = numrange(1.1, 2.2)
-LIMIT ALL) ybview ORDER BY nr;
+select * from numrange_test2 where nr = numrange(1.1, 2.2);
     nr     
 -----------
  [1.1,2.2)
@@ -567,8 +562,7 @@ select * from numrange_test2 where nr = numrange(1.1, 2.3);
 set enable_nestloop=t;
 set enable_hashjoin=f;
 set enable_mergejoin=f;
--- YB note: avoid selecting ybsort column here and below queries.
-select nr from numrange_test natural join numrange_test2 order by nr;
+select * from numrange_test natural join numrange_test2 order by nr;
     nr     
 -----------
  empty
@@ -580,7 +574,7 @@ select nr from numrange_test natural join numrange_test2 order by nr;
 set enable_nestloop=f;
 set enable_hashjoin=t;
 set enable_mergejoin=f;
-select nr from numrange_test natural join numrange_test2 order by nr;
+select * from numrange_test natural join numrange_test2 order by nr;
     nr     
 -----------
  empty
@@ -592,7 +586,7 @@ select nr from numrange_test natural join numrange_test2 order by nr;
 set enable_nestloop=f;
 set enable_hashjoin=f;
 set enable_mergejoin=t;
-select nr from numrange_test natural join numrange_test2 order by nr;
+select * from numrange_test natural join numrange_test2 order by nr;
     nr     
 -----------
  empty
@@ -609,8 +603,7 @@ DROP TABLE numrange_test2;
 --
 -- Apply a subset of the above tests on a collatable type, too
 --
-CREATE TABLE textrange_test (tr textrange,
-                             ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE textrange_test (tr textrange);
 create index textrange_test_btree on textrange_test(tr);
 ERROR:  INDEX on column of type 'user_defined_type' not yet supported
 INSERT INTO textrange_test VALUES('[,)');
@@ -641,7 +634,7 @@ SELECT tr, lower_inc(tr), lower_inf(tr), upper_inc(tr), upper_inf(tr) FROM textr
  [d,d] | t         | f         | t         | f
 (6 rows)
 
-SELECT tr FROM textrange_test WHERE range_contains(tr, textrange('f', 'fx'));
+SELECT * FROM textrange_test WHERE range_contains(tr, textrange('f', 'fx'));
   tr   
 -------
  (,)
@@ -650,21 +643,21 @@ SELECT tr FROM textrange_test WHERE range_contains(tr, textrange('f', 'fx'));
  [b,g)
 (4 rows)
 
-SELECT tr FROM textrange_test WHERE tr @> textrange('a', 'z');
+SELECT * FROM textrange_test WHERE tr @> textrange('a', 'z');
   tr  
 ------
  (,)
  [a,)
 (2 rows)
 
-SELECT tr FROM textrange_test WHERE range_contained_by(textrange('0','9'), tr);
+SELECT * FROM textrange_test WHERE range_contained_by(textrange('0','9'), tr);
   tr  
 ------
  (,)
  (,q)
 (2 rows)
 
-SELECT tr FROM textrange_test WHERE 'e'::text <@ tr;
+SELECT * FROM textrange_test WHERE 'e'::text <@ tr;
   tr   
 -------
  (,)
@@ -673,24 +666,24 @@ SELECT tr FROM textrange_test WHERE 'e'::text <@ tr;
  [b,g)
 (4 rows)
 
-select tr from textrange_test where tr = 'empty';
+select * from textrange_test where tr = 'empty';
   tr   
 -------
  empty
 (1 row)
 
-select tr from textrange_test where tr = '("b","g")';
+select * from textrange_test where tr = '("b","g")';
  tr 
 ----
 (0 rows)
 
-select tr from textrange_test where tr = '["b","g")';
+select * from textrange_test where tr = '["b","g")';
   tr   
 -------
  [b,g)
 (1 row)
 
-select tr from textrange_test where tr < 'empty';
+select * from textrange_test where tr < 'empty';
  tr 
 ----
 (0 rows)

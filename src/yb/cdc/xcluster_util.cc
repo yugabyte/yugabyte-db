@@ -12,6 +12,7 @@
 //
 
 #include "yb/cdc/xcluster_util.h"
+#include "yb/gutil/strings/util.h"
 
 namespace yb::xcluster {
 
@@ -34,5 +35,11 @@ ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& repli
     clean_id.remove_suffix(sizeof(kAlterReplicationGroupSuffix) - 1 /* exclude \0 ending */);
   }
   return ReplicationGroupId(clean_id.ToString());
+}
+
+std::string ShortReplicationType(XClusterReplicationType type) {
+  return StringReplace(
+      XClusterReplicationType_Name(type), "XCLUSTER_", "",
+      /*replace_all=*/false);
 }
 }  // namespace yb::xcluster

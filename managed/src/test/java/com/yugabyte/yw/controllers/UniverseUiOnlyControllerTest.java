@@ -7,7 +7,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.ModelFactory.awsProvider;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
@@ -37,7 +36,6 @@ import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
-import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
@@ -50,7 +48,6 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UpdateOptions;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -309,62 +306,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     Result result = assertPlatformException(() -> sendPrimaryEditConfigureRequest(topJson));
     assertBadRequest(result, "Couldn't find 12 nodes of type type.small in PlacementAZ 1");
     assertAuditEntry(0, customer.getUuid());
-  }
-
-  @Test
-  @Parameters({
-    "-20, 0, Persistent, FULL_MOVE",
-    "0, -1, Persistent, FULL_MOVE",
-    "0, 0, Scratch, FULL_MOVE",
-    "100, 0, Persistent, SMART_RESIZE_NON_RESTART",
-    "0, 1, Persistent, FULL_MOVE",
-  })
-  public void testConfigureEditVolumeChanges(
-      int deltaVolumeSize,
-      int deltaNumVolumes,
-      StorageType storageType,
-      UpdateOptions expectedUpdateOption) {
-    Provider p = ModelFactory.gcpProvider(customer);
-    Universe u = createUniverse(customer.getId());
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
-    InstanceType i =
-        InstanceType.upsert(
-            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-    UniverseDefinitionTaskParams utd = new UniverseDefinitionTaskParams();
-    utd.setUniverseUUID(u.getUniverseUUID());
-    UniverseDefinitionTaskParams.UserIntent ui = getTestUserIntent(r, p, i, 5);
-    ui.universeName = u.getName();
-    ui.deviceInfo = new DeviceInfo();
-    ui.deviceInfo.numVolumes = 2;
-    ui.deviceInfo.volumeSize = 100;
-    ui.deviceInfo.storageType = StorageType.Persistent;
-    Cluster pc = utd.upsertPrimaryCluster(ui, null);
-    PlacementInfoUtil.updateUniverseDefinition(
-        utd,
-        customer.getId(),
-        utd.getPrimaryCluster().uuid,
-        UniverseConfigureTaskParams.ClusterOperationType.CREATE);
-    Universe.UniverseUpdater updater = universe -> universe.setUniverseDetails(utd);
-    Universe.saveDetails(u.getUniverseUUID(), updater);
-    u = Universe.getOrBadRequest(u.getUniverseUUID());
-    UniverseDefinitionTaskParams editTestUTD = u.getUniverseDetails();
-    UniverseDefinitionTaskParams.Cluster primaryCluster = editTestUTD.getPrimaryCluster();
-    primaryCluster.userIntent.deviceInfo.volumeSize += deltaVolumeSize;
-    primaryCluster.userIntent.deviceInfo.numVolumes += deltaNumVolumes;
-    primaryCluster.userIntent.deviceInfo.storageType = storageType;
-    editTestUTD.nodeDetailsSet.forEach(Node -> Node.state = NodeState.Live);
-
-    ObjectNode editJson = (ObjectNode) Json.toJson(editTestUTD);
-    Result result = sendPrimaryEditConfigureRequest(editJson);
-    assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.get("updateOptions").isArray());
-    ArrayNode updateOptionsJson = (ArrayNode) json.get("updateOptions");
-    assertEquals(1, updateOptionsJson.size());
-    assertTrue(updateOptionsJson.get(0).asText().equals(expectedUpdateOption.name()));
   }
 
   @Test
@@ -1983,7 +1924,11 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsEditRegions() throws IOException {
     testGetAvailableOptions(
-        x -> x.getPrimaryCluster().userIntent.regionList.add(UUID.randomUUID()),
+        x -> {
+          x.getPrimaryCluster().userIntent.regionList =
+              new ArrayList<>(x.getPrimaryCluster().userIntent.regionList);
+          x.getPrimaryCluster().userIntent.regionList.add(UUID.randomUUID());
+        },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
   }
@@ -2029,6 +1974,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testGetUpdateOptionsNoSRforK8s() throws IOException {
     testGetAvailableOptions(
+        CloudType.kubernetes,
         u -> {
           List<NodeDetails> nodesToAdd = new ArrayList<>();
           u.nodeDetailsSet.forEach(
@@ -2042,7 +1988,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
           u.nodeDetailsSet.addAll(nodesToAdd);
           u.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50;
           u.getPrimaryCluster().userIntent.instanceType = "c3.large";
-          u.getPrimaryCluster().userIntent.providerType = CloudType.kubernetes;
         },
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
@@ -2333,8 +2278,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
       UniverseConfigureTaskParams.ClusterOperationType operationType,
       UniverseDefinitionTaskParams.UpdateOptions... expectedOptions)
       throws IOException {
+    testGetAvailableOptions(CloudType.aws, mutator, operationType, expectedOptions);
+  }
+
+  private void testGetAvailableOptions(
+      CloudType providerType,
+      Consumer<UniverseDefinitionTaskParams> mutator,
+      UniverseConfigureTaskParams.ClusterOperationType operationType,
+      UniverseDefinitionTaskParams.UpdateOptions... expectedOptions)
+      throws IOException {
     Universe u = createUniverse(customer.getId());
-    Provider provider = awsProvider(customer);
+    Provider provider = Provider.create(customer.getUuid(), providerType, "Provider");
     Region region = Region.create(provider, "test-region", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");
     // create default universe
@@ -2347,10 +2301,8 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     userIntent.instanceType = "c5.large";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, true));
-    u = Universe.getOrBadRequest(u.getUniverseUUID());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, true));
     UniverseDefinitionTaskParams udtp = u.getUniverseDetails();
     mutator.accept(udtp);
     udtp.setUniverseUUID(u.getUniverseUUID());

@@ -35,6 +35,7 @@ using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
 struct Comparator;
 class SetPreferredZonesRequestPB;
 
+static std::once_flag sequences_data_table_filter_once_flag_;
 static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
 
 class CatalogManagerUtil {
@@ -78,7 +79,7 @@ class CatalogManagerUtil {
       const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer);
 
   // Returns error if tablet partition is not covered by running inner tablets partitions.
-  static Status CheckIfCanDeleteSingleTablet(const scoped_refptr<TabletInfo>& tablet);
+  static Status CheckIfCanDeleteSingleTablet(const TabletInfoPtr& tablet);
 
   enum CloudInfoSimilarity {
     NO_MATCH = 0,
@@ -117,8 +118,8 @@ class CatalogManagerUtil {
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
   template<class LoadState>
-  static void FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
-    auto tablets = table_info->GetTablets(IncludeInactive::kTrue);
+  static Status FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+    auto tablets = VERIFY_RESULT(table_info->GetTablets(IncludeInactive::kTrue));
 
     for (const auto& tablet : tablets) {
       // Ignore if tablet is not running.
@@ -139,12 +140,14 @@ class CatalogManagerUtil {
         state->per_ts_replica_load_[loc.first]++;
       }
     }
+    return Status::OK();
   }
 
   static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
-    if (sequences_data_table_filter_.empty()) {
+    std::call_once(sequences_data_table_filter_once_flag_, []() {
       *sequences_data_table_filter_.Add()->mutable_table_id() = kPgSequencesDataTableId;
-    }
+    });
+
     return sequences_data_table_filter_;
   }
 

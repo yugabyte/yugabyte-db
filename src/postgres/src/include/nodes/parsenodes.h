@@ -2492,6 +2492,8 @@ typedef struct AlterTableMoveAllStmt
 	List	   *roles;			/* List of roles to move objects of */
 	char	   *new_tablespacename;
 	bool		nowait;
+	RangeVar   *yb_relation;
+	bool		yb_cascade;
 } AlterTableMoveAllStmt;
 
 /* ----------------------

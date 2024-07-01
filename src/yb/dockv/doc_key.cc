@@ -706,7 +706,7 @@ class DecodeSubDocKeyCallback {
  public:
   explicit DecodeSubDocKeyCallback(boost::container::small_vector_base<Slice>* out) : out_(out) {}
 
-  Status DecodeDocKey(Slice* slice) const {
+  Status DecodeDocKey(Slice* slice, AllowSpecial) const {
     return DocKey::PartiallyDecode(slice, out_);
   }
 
@@ -739,8 +739,8 @@ class SubDocKey::DecodeCallback {
  public:
   explicit DecodeCallback(SubDocKey* key) : key_(key) {}
 
-  Status DecodeDocKey(Slice* slice) const {
-    return key_->doc_key_.DecodeFrom(slice);
+  Status DecodeDocKey(Slice* slice, AllowSpecial allow_special) const {
+    return key_->doc_key_.DecodeFrom(slice, DocKeyPart::kWholeDocKey, allow_special);
   }
 
   KeyEntryValue* AddSubkey() const {
@@ -792,7 +792,7 @@ Status SubDocKey::DoDecode(rocksdb::Slice* slice,
   }
   const rocksdb::Slice original_bytes(*slice);
 
-  RETURN_NOT_OK(callback.DecodeDocKey(slice));
+  RETURN_NOT_OK(callback.DecodeDocKey(slice, allow_special));
   for (;;) {
     if (allow_special && !slice->empty() &&
         IsSpecialKeyEntryType(static_cast<KeyEntryType>(slice->cdata()[0]))) {

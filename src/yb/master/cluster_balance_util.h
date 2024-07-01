@@ -397,7 +397,7 @@ class PerTableLoadState {
   // Note: this does not call SortLeaderLoad.
   Status AddLeaderTablet(const TabletId& tablet_id,
                          const TabletServerId& ts_uuid,
-                         const TabletServerId& ts_path);
+                         const std::string& ts_path);
 
   // Note: this does not call SortLeaderLoad.
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);

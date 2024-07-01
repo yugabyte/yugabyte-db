@@ -47,7 +47,7 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
-DECLARE_bool(TEST_pause_before_flushing_retryable_requests);
+DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_replicate_batch);
 DECLARE_bool(TEST_pause_update_majority_replicated);
 DECLARE_int32(ht_lease_duration_ms);
@@ -296,12 +296,12 @@ TEST_F_EX(
 
   PutKeyValue("1", "1");
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = true;
 
   ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
   ASSERT_OK(WaitFor([&] {
-    return tablet_peer->TEST_RetryableRequestsFlusherState() ==
-        tablet::RetryableRequestsFlushState::kFlushing;
+    return tablet_peer->TEST_TabletBootstrapStateFlusherState() ==
+        tablet::TabletBootstrapFlushState::kFlushing;
   }, 10s, "Start flushing retryable requests"));
 
   // If flusher is not shutdown correctly from Tablet::CompleteShutdown, will get error:
@@ -315,7 +315,7 @@ TEST_F_EX(
     ASSERT_OK(server->WaitStarted());
   });
   SleepFor(1s);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
 
   thread_holder.WaitAndStop(10s);
 }
@@ -425,7 +425,7 @@ TEST_F_EX(RetryableRequestTest,
   }, 10s, "Ops committed on leader"));
 
   // Flush the retryable requests that contain requests that wrote the first several kvs.
-  ASSERT_OK(leader_peer->FlushRetryableRequests());
+  ASSERT_OK(leader_peer->FlushBootstrapState());
 
   // Restart the leader, with issue (https://github.com/yugabyte/yugabyte-db/issues/18412),
   // tablet local bootstrap will fail with the following error:

@@ -16,6 +16,7 @@ var ReferenceYbaCtlConfig string
 
 // WriteDefaultConfig writes the default config to /opt/yba-ctl/yba-ctl.yml (creating dirs if nec)
 func WriteDefaultConfig() {
+	common.MkdirAllOrFail(filepath.Dir(common.InputFile()), common.DirMode)
 	cfgFile, err := os.Create(common.InputFile())
 	if err != nil {
 		log.Fatal("could not create input file: " + err.Error())
@@ -34,6 +35,7 @@ func WriteDefaultConfig() {
 		// Update default installRoot to $HOME/yugabyte
 		common.SetYamlValue(common.InputFile(), "installRoot",
 			filepath.Join(common.GetUserHomeDir(), "yugabyte"))
+		common.SetYamlValue(common.InputFile(), "as_root", false)
 	}
 
 }

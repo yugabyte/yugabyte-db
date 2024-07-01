@@ -401,7 +401,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
     LOG(INFO) << "Table info " << table->id();
-    if (!table->AreAllTabletsHidden()) {
+    if (!VERIFY_RESULT(table->AreAllTabletsHidden())) {
       return STATUS_FORMAT(IllegalState, "Tablets of table $0 not hidden on master", table_id);
     }
     if (!table->LockForRead()->is_hidden()) {
@@ -431,7 +431,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
     LOG(INFO) << "Table info " << table->id();
-    if (!table->AreAllTabletsDeleted()) {
+    if (!VERIFY_RESULT(table->AreAllTabletsDeleted())) {
       return false;
     }
     if (!table->LockForRead()->is_deleted()) {
@@ -455,7 +455,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       const TxnSnapshotId& snapshot_id, const TableId& table_id) {
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().GetTableById(table_id));
-    auto tablets = table->GetTablets(master::IncludeInactive::kTrue);
+    auto tablets = VERIFY_RESULT(table->GetTablets(master::IncludeInactive::kTrue));
     auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
         &master_leader->catalog_manager_impl().snapshot_coordinator());
     for (const auto& tablet : tablets) {
@@ -899,7 +899,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       scoped_refptr<TableInfo> info = cluster_->mini_master()->catalog_manager().
           GetTableInfo(table_pair.new_id());
       ASSERT_EQ(old_table_name, info->name());
-      auto tablets = info->GetTablets();
+      auto tablets = ASSERT_RESULT(info->GetTablets());
       ASSERT_EQ(old_table_num_tablets, tablets.size());
 
       const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();

@@ -362,6 +362,17 @@ Status YBSession::TEST_Flush() {
               << " failed: " << error->status();
     }
   }
+
+  if (flush_status.status.IsIOError() &&
+      flush_status.status.message() == client::internal::Batcher::kErrorReachingOutToTServersMsg &&
+      !flush_status.errors.empty()) {
+    // TODO: move away from string comparison here and use a more specific status than IOError.
+    // See https://github.com/YugaByte/yugabyte-db/issues/702
+
+    // When any error occurs during the dispatching of YBOperation, YBSession saves the error and
+    // returns IOError. When it happens, just return the first error seen.
+    return flush_status.errors.front()->status();
+  }
   return std::move(flush_status.status);
 }
 

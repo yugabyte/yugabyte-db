@@ -75,7 +75,7 @@ Before starting the migration, ensure that you have the following:
 
     If, after completing the preceding steps, you encounter "Failed to connect" error message, check the access permissions with your MySQL DBA:
 
-  - Verify that YSQL Loader instance can reach the target YugabyeDB cluster and communicate with one of the YugabyteDB nodes across port 5433, as follows:
+  - Verify that YSQL Loader instance can reach the target YugabyteDB cluster and communicate with one of the YugabyteDB nodes across port 5433, as follows:
 
     ```sh
     telnet <YugabyteDB_node_ip> 5433

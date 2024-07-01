@@ -154,30 +154,31 @@ Status AppendPsqlErrorCode(const Status& status,
 // Get a common transaction error code for all the errors and append it to the previous Status.
 Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& errors) {
   TransactionErrorCode common_txn_error = TransactionErrorCode::kNone;
+  constexpr auto kNumTxnErrorCodes = 6;
+  static const TransactionErrorCode precedence_list[kNumTxnErrorCodes] = {
+      TransactionErrorCode::kDeadlock, TransactionErrorCode::kAborted,
+      TransactionErrorCode::kConflict, TransactionErrorCode::kReadRestartRequired,
+      TransactionErrorCode::kSnapshotTooOld, TransactionErrorCode::kSkipLocking};
+  size_t common_txn_error_idx = kNumTxnErrorCodes;
   for (const auto& error : errors) {
     const TransactionErrorCode txn_error = TransactionError(error->status()).value();
-    if (txn_error == TransactionErrorCode::kNone ||
-        txn_error == common_txn_error) {
-      continue;
-    }
-    if (common_txn_error == TransactionErrorCode::kNone) {
-      common_txn_error = txn_error;
-      continue;
-    }
-    // If we receive a list of errors, with one as kConflict and others as kAborted, we retain the
-    // error as kConflict, since in case of a batched request the first operation would receive the
-    // kConflict and all the others would receive the kAborted error.
-    if ((txn_error == TransactionErrorCode::kConflict &&
-         common_txn_error == TransactionErrorCode::kAborted) ||
-        (txn_error == TransactionErrorCode::kAborted &&
-         common_txn_error == TransactionErrorCode::kConflict)) {
-      common_txn_error = TransactionErrorCode::kConflict;
+    if (txn_error == TransactionErrorCode::kNone || txn_error == common_txn_error) {
       continue;
     }
 
-    // In all the other cases, reset the common_txn_error to kNone.
-    common_txn_error = TransactionErrorCode::kNone;
-    break;
+    size_t txn_error_idx = std::find(
+        precedence_list, precedence_list + kNumTxnErrorCodes, txn_error) - precedence_list;
+    if ((txn_error_idx >= kNumTxnErrorCodes)) {
+      LOG(DFATAL) << "Unknown transaction error code: " << ToString(txn_error);
+      return status;
+    }
+
+    if ((common_txn_error == TransactionErrorCode::kNone) ||
+        (txn_error_idx < common_txn_error_idx)) {
+      common_txn_error = txn_error;
+      common_txn_error_idx = txn_error_idx;
+      VLOG(4) << "updating common_txn_error to: " << ToString(common_txn_error);
+    }
   }
 
   return (common_txn_error != TransactionErrorCode::kNone) ?
@@ -385,7 +386,16 @@ struct PerformData {
 
   void FlushDone(client::FlushStatus* flush_status) {
     PgClientSession::UsedReadTimeData used_read_time;
+    if (VLOG_IS_ON(3)) {
+      std::vector<string> status_strings;
+      for (const auto& error : flush_status->errors) {
+        status_strings.push_back(error->status().ToString());
+      }
+      VLOG(3) << SessionLogPrefix(session_id) << "Flush status: " << flush_status->status
+          << ", Errors: " << AsString(status_strings);
+    }
     auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
+    VLOG(3) << SessionLogPrefix(session_id) << "Combined status: " << status;
     if (status.ok()) {
       status = ProcessResponse(used_read_time_applier ? &used_read_time : nullptr);
     }
@@ -1149,7 +1159,8 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 }
 
 void PgClientSession::ProcessReadTimeManipulation(
-    ReadTimeManipulation manipulation, uint64_t read_time_serial_no) {
+    ReadTimeManipulation manipulation, uint64_t read_time_serial_no,
+    ClampUncertaintyWindow clamp) {
   VLOG_WITH_PREFIX(2) << "ProcessReadTimeManipulation: " << manipulation
                       << ", read_time_serial_no: " << read_time_serial_no
                       << ", read_time_serial_no_: " << read_time_serial_no_;
@@ -1162,7 +1173,8 @@ void PgClientSession::ProcessReadTimeManipulation(
       return;
     case ReadTimeManipulation::ENSURE_READ_TIME_IS_SET :
       if (!read_point.GetReadTime() || read_time_serial_no_ != read_time_serial_no) {
-          read_point.SetCurrentReadTime();
+          // Clamp read uncertainty window when requested by the query layer.
+          read_point.SetCurrentReadTime(clamp);
           VLOG(1) << "Setting current ht as read point " << read_point.GetReadTime();
       }
       return;
@@ -1271,7 +1283,9 @@ PgClientSession::SetupSession(
       RSTATUS_DCHECK(
           kind == PgClientSessionKind::kPlain, IllegalState,
           "Read time manipulation can't be specified for non kPlain sessions");
-      ProcessReadTimeManipulation(options.read_time_manipulation(), read_time_serial_no);
+      ProcessReadTimeManipulation(
+        options.read_time_manipulation(), read_time_serial_no,
+        ClampUncertaintyWindow(options.clamp_uncertainty_window()));
     } else if (options.has_read_time() && options.read_time().has_read_ht()) {
       const auto read_time = ReadHybridTime::FromPB(options.read_time());
       session.SetReadPoint(read_time);
@@ -1312,6 +1326,21 @@ PgClientSession::SetupSession(
     if (in_txn_limit) {
       // TODO: Shouldn't the below logic for DDL transactions as well?
       session.SetInTxnLimit(in_txn_limit);
+    }
+
+    if (options.clamp_uncertainty_window()
+        && !session.read_point()->GetReadTime()) {
+      RSTATUS_DCHECK(
+        !(transaction && transaction->isolation() == SERIALIZABLE_ISOLATION),
+        IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+      // Set read time with clamped uncertainty window when reqeusted by
+      // the query layer.
+      // Do not mess with the read time if already set.
+      session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+        << "Setting read time to "
+        << session.read_point()->GetReadTime()
+        << " for read only txn/stmt";
     }
   }
 

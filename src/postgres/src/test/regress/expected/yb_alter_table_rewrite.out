@@ -1018,3 +1018,23 @@ SELECT * FROM test_table;
     1
     1
 (2 rows)
+
+--
+-- Test ALTER TABLE ... ADD COLUMN ... GENERATED ALWAYS AS IDENTITY
+--
+CREATE TABLE test_identity (id int, PRIMARY KEY (id ASC));
+INSERT INTO test_identity VALUES (1), (2), (3);
+ALTER TABLE test_identity ADD COLUMN id2 int GENERATED ALWAYS AS IDENTITY;
+INSERT INTO test_identity VALUES (4, 4); -- should fail
+ERROR:  cannot insert a non-DEFAULT value into column "id2"
+DETAIL:  Column "id2" is an identity column defined as GENERATED ALWAYS.
+HINT:  Use OVERRIDING SYSTEM VALUE to override.
+INSERT INTO test_identity OVERRIDING SYSTEM VALUE VALUES (4, 4);
+SELECT * FROM test_identity;
+ id | id2
+----+-----
+  1 |   1
+  2 |   2
+  3 |   3
+  4 |   4
+(4 rows)

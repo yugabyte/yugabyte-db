@@ -85,12 +85,13 @@ DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(max_group_replicate_batch_size);
 DECLARE_int32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_int32(retryable_request_timeout_secs);
 
 DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(quick_leader_election_on_create);
-DECLARE_bool(TEST_pause_before_copying_retryable_requests);
-DECLARE_bool(TEST_pause_before_flushing_retryable_requests);
-DECLARE_bool(TEST_pause_before_submitting_flush_retryable_requests);
+DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
+DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
+DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
 
 namespace yb {
 namespace tablet {
@@ -125,7 +126,7 @@ class TabletPeerTest : public YBTabletTest {
 
     ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
     ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
-    ASSERT_OK(ThreadPoolBuilder("flush-retryable-requests").Build(&flush_retryable_requests_pool_));
+    ASSERT_OK(ThreadPoolBuilder("flush-bootstrap-state").Build(&flush_bootstrap_state_pool_));
 
     rpc::MessengerBuilder builder(CURRENT_TEST_NAME());
     messenger_ = ASSERT_RESULT(builder.Build());
@@ -185,7 +186,7 @@ class TabletPeerTest : public YBTabletTest {
     auto pre_log_rollover_callback = [peer_weak_ptr]() {
       auto peer = peer_weak_ptr.lock();
       if (peer) {
-        Status s = peer->SubmitFlushRetryableRequestsTask();
+        Status s = peer->SubmitFlushBootstrapStateTask();
         LOG_IF(WARNING, !s.ok() && !s.IsNotSupported())
             <<  "Failed to submit retryable requests task: " << s.ToString();
       }
@@ -197,13 +198,16 @@ class TabletPeerTest : public YBTabletTest {
                         log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
                         pre_log_rollover_callback, new_segment_allocation_callback));
 
-    consensus::RetryableRequestsManager retryable_requests_manager(
-        tablet()->tablet_id(),
-        metadata->fs_manager(),
-        metadata->wal_dir(),
+    auto bootstrap_state_manager = std::make_shared<TabletBootstrapStateManager>(
+        tablet()->tablet_id(), metadata->fs_manager(), metadata->wal_dir());
+    ASSERT_OK(bootstrap_state_manager->Init());
+
+    consensus::RetryableRequests retryable_requests(
         MemTracker::FindOrCreateTracker(tablet()->tablet_id()),
         "");
-    ASSERT_OK(retryable_requests_manager.Init(clock()));
+    retryable_requests.SetServerClock(clock());
+    retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     raft_notifications_pool_ = std::make_unique<rpc::ThreadPool>(rpc::ThreadPoolOptions {
       .name = "raft_notifications",
@@ -219,11 +223,12 @@ class TabletPeerTest : public YBTabletTest {
                                            raft_pool_.get(),
                                            raft_notifications_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           &retryable_requests_manager,
+                                           &retryable_requests,
+                                           bootstrap_state_manager,
                                            nullptr /* consensus_meta */,
                                            multi_raft_manager_.get(),
-                                           flush_retryable_requests_pool_.get()));
-    tablet_peer_->EnableFlushRetryableRequests();
+                                           flush_bootstrap_state_pool_.get()));
+    tablet_peer_->EnableFlushBootstrapState();
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {
@@ -358,7 +363,7 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
-  std::unique_ptr<ThreadPool> flush_retryable_requests_pool_;
+  std::unique_ptr<ThreadPool> flush_bootstrap_state_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
   std::unique_ptr<rpc::ThreadPool> raft_notifications_pool_;
@@ -638,9 +643,9 @@ TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLim
   ASSERT_TRUE(resp.has_error()) << "\n Response:\n" << resp.DebugString();
 }
 
-class RetryableRequestsFlusherTest : public TabletPeerTest {
+class TabletBootstrapStateFlusherTest : public TabletPeerTest {
  protected:
-  RetryableRequestsFlusherTest() : TabletPeerTest(GetSimpleTestSchema()) {}
+  TabletBootstrapStateFlusherTest() : TabletPeerTest(GetSimpleTestSchema()) {}
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
     TabletPeerTest::SetUp();
@@ -652,157 +657,157 @@ class RetryableRequestsFlusherTest : public TabletPeerTest {
     ASSERT_OK(StartPeer(info));
   }
 
-  Status WaitForFlushState(RetryableRequestsFlushState state) {
+  Status WaitForFlushState(TabletBootstrapFlushState state) {
     return WaitFor([&] {
-      return tablet_peer_->TEST_RetryableRequestsFlusherState() == state;
+      return tablet_peer_->TEST_TabletBootstrapStateFlusherState() == state;
     }, 10s, Format("Wait for flush state to be $0", state));
   }
 };
 
-TEST_F(RetryableRequestsFlusherTest, RejectFlushOrSubmitIfFlushingOrSubmitted) {
+TEST_F(TabletBootstrapStateFlusherTest, RejectFlushOrSubmitIfFlushingOrSubmitted) {
   TestThreadHolder thread_holder;
 
   // If a flush is in progress, the next flush or submit should just return with
   // AlreadyPresent error.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
-    ASSERT_OK(tablet_peer_->FlushRetryableRequests());
+    ASSERT_OK(tablet_peer_->FlushBootstrapState());
   });
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushing));
-  Status s = tablet_peer_->FlushRetryableRequests();
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushing));
+  Status s = tablet_peer_->FlushBootstrapState();
   ASSERT_TRUE(s.IsAlreadyPresent());
-  s = tablet_peer_->SubmitFlushRetryableRequestsTask();
+  s = tablet_peer_->SubmitFlushBootstrapStateTask();
   ASSERT_TRUE(s.IsAlreadyPresent());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushIdle));
 
   // If a flush is submitted, the next flush or submit should just return with AlreadyPresent error.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
-    ASSERT_OK(tablet_peer_->SubmitFlushRetryableRequestsTask());
+    ASSERT_OK(tablet_peer_->SubmitFlushBootstrapStateTask());
   });
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushSubmitted));
-  s = tablet_peer_->FlushRetryableRequests();
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushSubmitted));
+  s = tablet_peer_->FlushBootstrapState();
   ASSERT_TRUE(s.IsAlreadyPresent());
-  s = tablet_peer_->SubmitFlushRetryableRequestsTask();
+  s = tablet_peer_->SubmitFlushBootstrapStateTask();
   ASSERT_TRUE(s.IsAlreadyPresent());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = false;
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_bootstrap_state) = false;
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushIdle));
 
   thread_holder.WaitAndStop(10s);
 }
 
-TEST_F(RetryableRequestsFlusherTest, WaitFlushDoneBeforeCopy) {
+TEST_F(TabletBootstrapStateFlusherTest, WaitFlushDoneBeforeCopy) {
   TestThreadHolder thread_holder;
 
   std::atomic<int> finish_order{0};
   // If a flush is in progress, the next copy should wait for flush done.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
-    ASSERT_OK(tablet_peer_->FlushRetryableRequests());
+    ASSERT_OK(tablet_peer_->FlushBootstrapState());
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 0);
   });
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushing));
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushing));
   thread_holder.AddThreadFunctor([&] {
-    // There's no data to flush, so CopyRetryableRequestsTo should do nothing.
-    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    // There's no data to flush, so CopyBootstrapStateTo should do nothing.
+    auto res = tablet_peer_->CopyBootstrapStateTo("fake_path");
     ASSERT_FALSE(res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
-    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    ASSERT_TRUE(res.status().message().Contains("Bootstrap state has not been flushed"));
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 1);
   });
   SleepFor(1s);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushIdle));
   thread_holder.WaitAndStop(10s);
 
   finish_order.store(0);
   // If a submit is in progress, the next copy should wait for flush done.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
-    ASSERT_OK(tablet_peer_->SubmitFlushRetryableRequestsTask());
+    ASSERT_OK(tablet_peer_->SubmitFlushBootstrapStateTask());
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 0);
   });
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushSubmitted));
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushSubmitted));
   thread_holder.AddThreadFunctor([&] {
-    // There's no data to flush, so CopyRetryableRequestsTo should do nothing.
-    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    // There's no data to flush, so CopyBootstrapStateTo should do nothing.
+    auto res = tablet_peer_->CopyBootstrapStateTo("fake_path");
     ASSERT_FALSE(res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
-    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    ASSERT_TRUE(res.status().message().Contains("Bootstrap state has not been flushed"));
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 1);
   });
   SleepFor(1s);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = false;
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_bootstrap_state) = false;
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushIdle));
 
   thread_holder.WaitAndStop(10s);
 }
 
-TEST_F(RetryableRequestsFlusherTest, WaitCopyDoneBeforeFlushOrSubmit) {
+TEST_F(TabletBootstrapStateFlusherTest, WaitCopyDoneBeforeFlushOrSubmit) {
   TestThreadHolder thread_holder;
 
   std::atomic<int> finish_order{0};
   // If a flush is in progress, the next copy should wait for flush done.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
-    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    auto res = tablet_peer_->CopyBootstrapStateTo("fake_path");
     ASSERT_FALSE(res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
-    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    ASSERT_TRUE(res.status().message().Contains("Bootstrap state has not been flushed"));
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 0);
   });
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kReading));
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kReading));
   thread_holder.AddThreadFunctor([&] {
-    ASSERT_OK(tablet_peer_->FlushRetryableRequests());
+    ASSERT_OK(tablet_peer_->FlushBootstrapState());
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 1);
   });
   SleepFor(1s);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = false;
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_bootstrap_state) = false;
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushIdle));
   thread_holder.WaitAndStop(10s);
 
   finish_order.store(0);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
-    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    auto res = tablet_peer_->CopyBootstrapStateTo("fake_path");
     ASSERT_FALSE(res.ok());
     ASSERT_TRUE(res.status().IsNotFound());
-    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    ASSERT_TRUE(res.status().message().Contains("Bootstrap state has not been flushed"));
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 0);
   });
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kReading));
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kReading));
   thread_holder.AddThreadFunctor([&] {
-    ASSERT_OK(tablet_peer_->SubmitFlushRetryableRequestsTask());
+    ASSERT_OK(tablet_peer_->SubmitFlushBootstrapStateTask());
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 1);
   });
   SleepFor(1s);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = false;
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_bootstrap_state) = false;
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushIdle));
 
   thread_holder.WaitAndStop(10s);
 }
 
-TEST_F(RetryableRequestsFlusherTest, WaitFlushIdleBeforeShutdown) {
+TEST_F(TabletBootstrapStateFlusherTest, WaitFlushIdleBeforeShutdown) {
   TestThreadHolder thread_holder;
 
   std::atomic<int> finish_order{0};
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = true;
   thread_holder.AddThreadFunctor([&] {
-    Status s = tablet_peer_->FlushRetryableRequests();
+    Status s = tablet_peer_->FlushBootstrapState();
     ASSERT_TRUE(s.ok() || s.IsIllegalState());
     auto order = finish_order.fetch_add(1);
     ASSERT_EQ(order, 0);
   });
-  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushing));
+  ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushing));
   thread_holder.AddThreadFunctor([&] {
     WARN_NOT_OK(
         tablet_peer_->Shutdown(
@@ -812,23 +817,23 @@ TEST_F(RetryableRequestsFlusherTest, WaitFlushIdleBeforeShutdown) {
     ASSERT_EQ(order, 1);
   });
   SleepFor(1s);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
 
   thread_holder.WaitAndStop(10s);
 }
 
-class RetryableRequestsFlusherWithLargeBatchTest : public RetryableRequestsFlusherTest {
+class TabletBootstrapStateFlusherWithLargeBatchTest : public TabletBootstrapStateFlusherTest {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 5_KB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = 1_KB;
-    RetryableRequestsFlusherTest::SetUp();
+    TabletBootstrapStateFlusherTest::SetUp();
   }
 };
 
-TEST_F_EX(RetryableRequestsFlusherTest,
+TEST_F_EX(TabletBootstrapStateFlusherTest,
           TestLogRolloverWithSingleBatch,
-          RetryableRequestsFlusherWithLargeBatchTest) {
+          TabletBootstrapStateFlusherWithLargeBatchTest) {
   const int kNumOps = 100;
   std::string value(ANNOTATE_UNPROTECTED_READ(FLAGS_log_segment_size_bytes) + 1, 'X');
 
@@ -853,13 +858,13 @@ TEST_F_EX(RetryableRequestsFlusherTest,
 
   // Pause at the first flush, and following submission or flush should be skipped.
   // Otherwise, it will cause deadlock, see https://github.com/yugabyte/yugabyte-db/issues/18946
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = true;
   for (auto& query : queries) {
     tablet_peer->WriteAsync(std::move(query));
     SleepFor(10ms);
   }
   latch.Wait();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
 }
 
 } // namespace tablet

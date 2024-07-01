@@ -8,7 +8,7 @@ image: /images/section_icons/develop/ecosystem/apache-kafka-icon.png
 aliases:
   - /preview/integrations/apache-kafka/
 cascade:
-  earlyAccess: /preview/releases/versioning/#feature-availability
+  earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   preview_tutorials:
     identifier: tutorials-kafka-stream

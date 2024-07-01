@@ -21,7 +21,14 @@
 using std::string;
 
 DEFINE_NON_RUNTIME_int32(flagstest_testflag, 0, "test flag");
-bool ValidateTestFlag(const char* flag_name, const int32 new_val) { return new_val >= 0; }
+bool ValidateTestFlag(const char* flag_name, const int32 new_val) {
+  if (new_val >= 0) {
+    return true;
+  }
+
+  LOG_FLAG_VALIDATION_ERROR(flag_name, new_val) << "Must be >= 0";
+  return false;
+}
 DEFINE_validator(flagstest_testflag, &ValidateTestFlag);
 DECLARE_string(vmodule);
 
@@ -49,6 +56,35 @@ TEST_F(FlagsTest, TestSetFlagDefault) {
 
   // Make sure validator is called. Set to a non valid number.
   ASSERT_NOK(SET_FLAG_DEFAULT_AND_CURRENT(flagstest_testflag, -1));
+}
+
+TEST_F(FlagsTest, TestSetFlag) {
+  ASSERT_EQ(FLAGS_flagstest_testflag, 0);
+
+  std::string old_value, output_msg;
+  auto res =
+      SetFlag("flag_not_exist", "1", flags_internal::SetFlagForce::kFalse, &old_value, &output_msg);
+  ASSERT_EQ(res, flags_internal::SetFlagResult::NO_SUCH_FLAG);
+
+  // Flag is not runtime so it should fail to set without the Force flag.
+  res = SetFlag(
+      "flagstest_testflag", "1", flags_internal::SetFlagForce::kFalse, &old_value, &output_msg);
+  ASSERT_EQ(res, flags_internal::SetFlagResult::NOT_SAFE);
+
+  res = SetFlag(
+      "flagstest_testflag", "-1", flags_internal::SetFlagForce::kTrue, &old_value, &output_msg);
+  ASSERT_EQ(res, flags_internal::SetFlagResult::BAD_VALUE);
+  ASSERT_STR_CONTAINS(output_msg, "flagstest_testflag");
+  ASSERT_STR_CONTAINS(output_msg, "-1");
+  ASSERT_STR_CONTAINS(output_msg, "Must be >= 0");
+
+  ASSERT_EQ(0, FLAGS_flagstest_testflag);
+
+  res = SetFlag(
+      "flagstest_testflag", "1", flags_internal::SetFlagForce::kTrue, &old_value, &output_msg);
+  ASSERT_EQ(res, flags_internal::SetFlagResult::SUCCESS);
+
+  ASSERT_EQ(1, FLAGS_flagstest_testflag);
 }
 
 TEST_F(FlagsTest, TestVmodule) {

@@ -214,10 +214,7 @@ static TupleTableSlot *mergeGetUpdateNewTuple(ResultRelInfo *relinfo,
 
 static void YbPostProcessDml(CmdType cmd_type,
 							 Relation rel,
-							 TupleDesc desc,
-							 HeapTuple newtup);
-static void YbTupleTablePostProcessDml(CmdType cmd_type, Relation rel,
-									   TupleTableSlot *slot);
+							 TupleTableSlot *newslot);
 
 /*
  * Verify that the tuples to be produced by INSERT match the
@@ -1261,7 +1258,7 @@ ExecInsert(ModifyTableContext *context,
 		}
 	}
 
-	YbTupleTablePostProcessDml(CMD_INSERT, resultRelationDesc, slot);
+	YbPostProcessDml(CMD_INSERT, resultRelationDesc, slot);
 
 	if (canSetTag)
 		(estate->es_processed)++;
@@ -1811,8 +1808,7 @@ ldelete:;
 
 	YbPostProcessDml(CMD_DELETE,
 					 resultRelationDesc,
-					 NULL /* desc */,
-					 NULL /* newtup */);
+					 NULL /* newslot */);
 
 	if (canSetTag)
 		(estate->es_processed)++;
@@ -1902,14 +1898,14 @@ YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
 /* ----------------------------------------------------------------
  * YBBuildExtraUpdatedCols
  *
- * Function compares attribute value in oldtuple and newtuple for attributes which are not in the
+ * Function compares attribute value in oldtuple and newslot for attributes which are not in the
  * updatedCols set. Returns set of changed attributes or NULL.
  * ----------------------------------------------------------------
  */
 static Bitmapset*
 YBBuildExtraUpdatedCols(Relation rel,
                         HeapTuple oldtuple,
-                        HeapTuple newtuple,
+                        TupleTableSlot *newslot,
                         Bitmapset *updatedCols)
 {
 	if (bms_is_member(InvalidAttrNumber, updatedCols))
@@ -1936,7 +1932,7 @@ YBBuildExtraUpdatedCols(Relation rel,
 		bool old_is_null = false;
 		bool new_is_null = false;
 		Datum old_value = heap_getattr(oldtuple, attnum, tupleDesc, &old_is_null);
-		Datum new_value = heap_getattr(newtuple, attnum, tupleDesc, &new_is_null);
+		Datum new_value = slot_getattr(newslot, attnum, &new_is_null);
 		if (old_is_null != new_is_null ||
 		    (!new_is_null && !YBEqualDatums(old_value,
 		                                    new_value,
@@ -1946,29 +1942,6 @@ YBBuildExtraUpdatedCols(Relation rel,
 			result = bms_add_member(result, bms_idx);
 		}
 	}
-	return result;
-}
-
-/* YB_TODO(review) Revisit later. */
-static Bitmapset *
-YBTupleTableBuildExtraUpdatedCols(Relation rel, HeapTuple oldtuple,
-								  TupleTableSlot *slot, Bitmapset *updatedCols)
-{
-	bool	   shouldFree;
-	HeapTuple  tuple;
-	Bitmapset *result;
-
-	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
-
-	/* Update the tuple with table oid */
-	slot->tts_tableOid = RelationGetRelid(rel);
-	tuple->t_tableOid = slot->tts_tableOid;
-
-	result = YBBuildExtraUpdatedCols(rel, oldtuple, tuple, updatedCols);
-
-	if (shouldFree)
-		pfree(tuple);
-
 	return result;
 }
 
@@ -2502,8 +2475,8 @@ yb_lreplace:;
 	if (beforeRowUpdateTriggerFired)
 	{
 		/* trigger might have changed tuple */
-		extraUpdatedCols = YBTupleTableBuildExtraUpdatedCols(
-			resultRelationDesc, oldtuple, slot, rte->updatedCols);
+		extraUpdatedCols = YBBuildExtraUpdatedCols(resultRelationDesc, oldtuple,
+												   slot, rte->updatedCols);
 		if (extraUpdatedCols)
 		{
 			extraUpdatedCols =
@@ -2966,7 +2939,7 @@ redo_act:
 		}
 	}
 
-	YbTupleTablePostProcessDml(CMD_UPDATE, resultRelationDesc, slot);
+	YbPostProcessDml(CMD_UPDATE, resultRelationDesc, slot);
 
 	if (canSetTag)
 		(estate->es_processed)++;
@@ -5185,31 +5158,11 @@ ExecReScanModifyTable(ModifyTableState *node)
  */
 static void YbPostProcessDml(CmdType cmd_type,
 							 Relation rel,
-							 TupleDesc desc,
-							 HeapTuple newtup)
+							 TupleTableSlot *newslot)
 {
 	/*
 	 * TODO(alex, myang):
 	 *   Mark system catalogs as directly modified so that we know to increment
 	 *   catalog version. Handle shared table modification as well!
 	 */
-}
-
-/* YB_TODO(review) Revisit later. */
-static void
-YbTupleTablePostProcessDml(CmdType cmd_type, Relation rel, TupleTableSlot *slot)
-{
-	bool	  shouldFree;
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
-
-	/* Update the tuple with table oid */
-	slot->tts_tableOid = RelationGetRelid(rel);
-	tuple->t_tableOid = slot->tts_tableOid;
-
-	YbPostProcessDml(cmd_type, rel, slot->tts_tupleDescriptor, tuple);
-
-	if (shouldFree)
-		 pfree(tuple);
-
-	return;
 }

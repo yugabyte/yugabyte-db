@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.api.client.util.Throwables;
 import com.google.common.base.Stopwatch;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -65,6 +66,7 @@ import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +78,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLException;
 import lombok.Builder;
@@ -85,6 +88,8 @@ import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.mapstruct.ap.internal.util.Strings;
+import org.slf4j.Marker;
+import org.slf4j.MarkerFactory;
 import play.libs.Json;
 
 /** This class contains all the methods required to communicate to a node agent server. */
@@ -343,29 +348,31 @@ public class NodeAgentClient {
       return throwable;
     }
 
-    public void waitFor() throws Throwable {
+    public void waitFor() {
       waitFor(true);
     }
 
-    public void waitFor(boolean throwOnError) throws Throwable {
+    public void waitFor(boolean throwOnError) {
       try {
         latch.await();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
       if (throwOnError && throwable != null) {
-        throw throwable;
+        Throwables.propagate(throwable);
       }
     }
   }
 
   static class ExecuteCommandResponseObserver extends BaseResponseObserver<ExecuteCommandResponse> {
+    private final boolean logOutput;
     private final StringBuilder stdOut;
     private final StringBuilder stdErr;
     private final AtomicInteger exitCode;
 
-    ExecuteCommandResponseObserver(String id) {
+    ExecuteCommandResponseObserver(String id, boolean logOutput) {
       super(id);
+      this.logOutput = logOutput;
       this.stdOut = new StringBuilder();
       this.stdErr = new StringBuilder();
       this.exitCode = new AtomicInteger();
@@ -373,21 +380,41 @@ public class NodeAgentClient {
 
     @Override
     public void onNext(ExecuteCommandResponse response) {
+      Marker fileMarker = MarkerFactory.getMarker("fileOnly");
       if (response.hasError()) {
         exitCode.set(response.getError().getCode());
-        stdErr.append(response.getError().getMessage());
+        String errMsg = response.getError().getMessage();
+        if (logOutput) {
+          log.debug(fileMarker, errMsg);
+        }
+        stdErr.append(errMsg);
         onError(
             new RuntimeException(
                 String.format(
                     "Error(%d) %s",
                     response.getError().getCode(), response.getError().getMessage())));
       } else {
-        stdOut.append(response.getOutput());
+        String msg = response.getOutput();
+        if (logOutput) {
+          log.debug(fileMarker, msg);
+        }
+        stdOut.append(msg);
       }
     }
 
     public ShellResponse getResponse() {
-      return ShellResponse.create(exitCode.get(), exitCode.get() == 0 ? getStdOut() : getStdErr());
+      waitFor(false);
+      ShellResponse response = new ShellResponse();
+      if (exitCode.get() != 0) {
+        response.code = exitCode.get();
+        response.message = getStdErr();
+      } else if (getThrowable() != null) {
+        response.code = ShellResponse.ERROR_CODE_GENERIC_ERROR;
+        response.message = getThrowable().getMessage();
+      } else {
+        response.message = getStdOut();
+      }
+      return response;
     }
 
     public String getStdOut() {
@@ -554,36 +581,64 @@ public class NodeAgentClient {
     }
   }
 
+  public ShellResponse executeCommand(
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
+    return executeCommand(nodeAgent, command, context, false);
+  }
+
   public ShellResponse executeCommand(NodeAgent nodeAgent, List<String> command) {
-    return executeCommand(nodeAgent, command, null, null);
+    // Use the user of the node-agent process by not setting a specific user.
+    return executeCommand(
+        nodeAgent,
+        command,
+        ShellProcessContext.DEFAULT.toBuilder().useDefaultUser(false).build(),
+        false);
   }
 
   public ShellResponse executeCommand(
-      NodeAgent nodeAgent, List<String> command, String user, Duration timeout) {
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context, boolean useBash) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
     String id = String.format("%s-%s", nodeAgent.getUuid(), command.get(0));
-    ExecuteCommandResponseObserver responseObserver = new ExecuteCommandResponseObserver(id);
+    ExecuteCommandResponseObserver responseObserver =
+        new ExecuteCommandResponseObserver(id, context.isLogCmdOutput());
     ExecuteCommandRequest.Builder builder =
-        ExecuteCommandRequest.newBuilder().addAllCommand(command);
+        ExecuteCommandRequest.newBuilder()
+            .addAllCommand(useBash ? getBashCommand(command) : command);
+    String user = context.getSshUser();
     if (StringUtils.isNotBlank(user)) {
       builder.setUser(user);
     }
-    if (timeout != null && !timeout.isZero()) {
-      stub = stub.withDeadlineAfter(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    if (context.getTimeoutSecs() > 0L) {
+      stub = stub.withDeadlineAfter(context.getTimeoutSecs(), TimeUnit.SECONDS);
+    }
+    List<String> redactedCommand = context.redactCommand(command);
+    String description =
+        context.getDescription() == null
+            ? StringUtils.abbreviateMiddle(String.join(" ", redactedCommand), " ... ", 140)
+            : context.getDescription();
+    String logMsg = String.format("Starting proc (abbrev cmd) - %s", description);
+    if (context.isTraceLogging()) {
+      log.trace(logMsg);
+    } else {
+      log.info(logMsg);
     }
     try {
+      if (context.isLogCmdOutput()) {
+        log.debug("Proc stdout for '{}' :", description);
+      }
       stub.executeCommand(builder.build(), responseObserver);
-      responseObserver.waitFor(false);
-      return responseObserver.getResponse();
+      ShellResponse response = responseObserver.getResponse();
+      response.setDescription(description);
+      return response;
     } catch (Throwable e) {
-      log.error("Error in running command. Error: {}", responseObserver.stdErr);
+      log.error("Error in running command. Error: {}", e.getMessage());
       throw new RuntimeException("Command execution failed. Error: " + e.getMessage(), e);
     }
   }
 
   public ShellResponse executeScript(
-      NodeAgent nodeAgent, Path scriptPath, List<String> params, String user, Duration timeout) {
+      NodeAgent nodeAgent, Path scriptPath, List<String> params, ShellProcessContext context) {
     try {
       byte[] bytes = Files.readAllBytes(scriptPath);
       ImmutableList.Builder<String> commandBuilder = ImmutableList.builder();
@@ -593,7 +648,7 @@ public class NodeAgentClient {
               "/bin/bash -s %s <<'EOF'\n%s\nEOF",
               Strings.join(params, " "), new String(bytes, StandardCharsets.UTF_8)));
       List<String> command = commandBuilder.build();
-      return executeCommand(nodeAgent, command, user, timeout);
+      return executeCommand(nodeAgent, command, context);
     } catch (Exception e) {
       log.error("Error in running script {}", scriptPath, e);
       if (e instanceof RuntimeException) {
@@ -645,7 +700,7 @@ public class NodeAgentClient {
       }
       requestObserver.onCompleted();
       responseObserver.waitFor();
-    } catch (Throwable e) {
+    } catch (Exception e) {
       throw new RuntimeException(
           String.format(
               "Error in uploading file %s to %s. Error: %s", inputFile, outputFile, e.getMessage()),
@@ -674,7 +729,7 @@ public class NodeAgentClient {
       }
       stub.downloadFile(builder.build(), responseObserver);
       responseObserver.waitFor();
-    } catch (Throwable e) {
+    } catch (Exception e) {
       throw new RuntimeException(
           String.format(
               "Error in downloading file %s to %s. Error: %s",
@@ -711,5 +766,17 @@ public class NodeAgentClient {
     } catch (RuntimeException e) {
       log.error("Client cache cleanup failed {}", e);
     }
+  }
+
+  private List<String> getBashCommand(List<String> command) {
+    List<String> shellCommand = new ArrayList<>();
+    // Same join as in rpc.py of node agent.
+    shellCommand.add("bash");
+    shellCommand.add("-c");
+    shellCommand.add(
+        command.stream()
+            .map(part -> part.contains(" ") ? "'" + part + "'" : part)
+            .collect(Collectors.joining(" ")));
+    return shellCommand;
   }
 }

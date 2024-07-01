@@ -92,11 +92,13 @@ CREATE TYPE range_type AS RANGE (
 (1 row)
 
 SELECT typname FROM pg_type WHERE typname LIKE '%range_type';
-   typname
--------------
- range_type
+     typname
+------------------
  _range_type
-(2 rows)
+ multirange_type
+ _multirange_type
+ range_type
+(4 rows)
 
 SELECT '[1.111, 2.222]'::range_type;
   range_type
@@ -236,7 +238,7 @@ SELECT * FROM base_table ORDER BY CAST(a AS text);
 --
 -- Summary
 --
-SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 16;
+SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 18;
      typname
 ------------------
  base_table
@@ -245,8 +247,10 @@ SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 16;
  base_type
  range_table
  _range_table
- _range_type
  range_type
+ _multirange_type
+ multirange_type
+ _range_type
  enum_table
  _enum_table
  enum_type
@@ -255,7 +259,7 @@ SELECT typname FROM pg_type WHERE oid > 16000 ORDER BY oid DESC LIMIT 16;
  _composite_table
  composite_type
  _composite_type
-(16 rows)
+(18 rows)
 
 --
 -- Drop composite type

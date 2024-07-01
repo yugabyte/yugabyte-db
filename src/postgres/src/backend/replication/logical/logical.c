@@ -313,8 +313,6 @@ StartupDecodingContext(List *output_plugin_options,
 	{
 		HASHCTL		ctl;
 
-		ctx->yb_handle_relcache_invalidation_startup = true;
-
 		/*
 		 * Allocate the hash table to handle relcache invaldations. Uses the
 		 * memory context of the LogicalDecodingContext.
@@ -742,14 +740,27 @@ LoadOutputPlugin(OutputPluginCallbacks *callbacks, const char *plugin)
 {
 	LogicalOutputPluginInit plugin_init;
 
-	plugin_init = (LogicalOutputPluginInit)
-		load_external_function(plugin, "_PG_output_plugin_init", false, NULL);
+	/* 'yboutput' is a special plugin which reuses most of the code of 'pgoutput'. */
+	if (IsYugaByteEnabled() && strcmp(plugin, YB_OUTPUT_PLUGIN) == 0)
+		plugin_init = (LogicalOutputPluginInit)
+			load_external_function(PG_OUTPUT_PLUGIN,"_PG_output_plugin_init", false, NULL);
+	else
+		plugin_init = (LogicalOutputPluginInit)
+		  load_external_function(plugin, "_PG_output_plugin_init", false, NULL);	
 
 	if (plugin_init == NULL)
 		elog(ERROR, "output plugins have to declare the _PG_output_plugin_init symbol");
 
 	/* ask the output plugin to fill the callback struct */
 	plugin_init(callbacks);
+
+	if (IsYugaByteEnabled())
+	{
+		if (strcmp(plugin, YB_OUTPUT_PLUGIN) == 0)
+			callbacks->yb_support_yb_specifc_replica_identity_cb(true);
+		else
+			callbacks->yb_support_yb_specifc_replica_identity_cb(false);
+	}
 
 	if (callbacks->begin_cb == NULL)
 		elog(ERROR, "output plugins have to register a begin callback");

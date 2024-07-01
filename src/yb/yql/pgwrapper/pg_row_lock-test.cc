@@ -184,7 +184,7 @@ TEST_F(PgRowLockTest, RowLockWithoutTransaction) {
   auto conn = ASSERT_RESULT(Connect());
 
   auto status = conn.Execute(
-      "SELECT tmplinline FROM pg_catalog.pg_pltemplate WHERE tmplname !~ tmplhandler FOR SHARE");
+      "SELECT relname FROM pg_catalog.pg_class WHERE relname NOT LIKE 'pg%' FOR SHARE");
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.message().ToBuffer(),
                       "Read request with row mark types must be part of a transaction");
@@ -243,6 +243,7 @@ TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
   //              Table "pg_catalog.pg_ts_dict"
   //      Column     | Type | Collation | Nullable | Default
   // ----------------+------+-----------+----------+---------
+  //  oid            | oid  |           | not null |
   //  dictname       | name |           | not null |
   //  dictnamespace  | oid  |           | not null |
   //  dictowner      | oid  |           | not null |
@@ -268,12 +269,14 @@ TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
     const int dictnamespace = i;
     ASSERT_OK(conn1.Execute(kStartTxnStatementStr));
     ASSERT_OK(conn2.Execute(kStartTxnStatementStr));
-
+    const auto pg_next_oid_str =
+        "pg_nextoid('pg_ts_dict'::regclass::oid, 'oid', 'pg_ts_dict_oid_index'::regclass::oid)";
     // Insert a row in each transaction. The first insert should always succeed.
-    ASSERT_OK(conn1.Execute(
-        Format("INSERT INTO pg_ts_dict VALUES ('$0', $1, 1, 2, 'b')", dictname, dictnamespace)));
-    Status insert_status2 = conn2.Execute(
-        Format("INSERT INTO pg_ts_dict VALUES ('$0', $1, 3, 4, 'c')", dictname, dictnamespace));
+    ASSERT_OK(conn1.Execute(Format("INSERT INTO pg_ts_dict VALUES ($0, '$1', $2, 1, 2, 'b')",
+        pg_next_oid_str, dictname, dictnamespace)));
+    Status insert_status2 = conn2.Execute(Format(
+        "INSERT INTO pg_ts_dict VALUES ($0, '$1', $2, 3, 4, 'c')",
+        pg_next_oid_str, dictname, dictnamespace));
     if (!insert_status2.ok()) {
       LOG(INFO) << "MUST BE A CONFLICT: Insert failed: " << insert_status2;
       insert2_fail_count++;

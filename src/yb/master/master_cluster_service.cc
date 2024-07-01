@@ -58,7 +58,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
 
     std::vector<std::shared_ptr<TSDescriptor>> descs;
     if (!req->primary_only()) {
-      server_->ts_manager()->GetAllDescriptors(&descs);
+      descs = server_->ts_manager()->GetAllDescriptors();
     } else {
       auto uuid_result = server_->catalog_manager_impl()->placement_uuid();
       if (!uuid_result.ok()) {
@@ -273,11 +273,17 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
 
     if (req->return_dump_as_string()) {
       std::ostringstream ss;
-      server_->catalog_manager_impl()->DumpState(&ss, req->on_disk());
+      auto s = server_->catalog_manager_impl()->DumpState(&ss, req->on_disk());
+      CheckRespErrorOrSetUnknown(s, resp);
+      if (!s.ok())
+        return;
       resp->set_dump(title + ":\n" + ss.str());
     } else {
       LOG(INFO) << title;
-      server_->catalog_manager_impl()->DumpState(&LOG(INFO), req->on_disk());
+      auto s = server_->catalog_manager_impl()->DumpState(&LOG(INFO), req->on_disk());
+      CheckRespErrorOrSetUnknown(s, resp);
+      if (!s.ok())
+        return;
     }
 
     if (req->has_peers_also() && req->peers_also()) {

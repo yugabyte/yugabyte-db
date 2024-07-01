@@ -4,7 +4,7 @@
 --
 
 --DROP TABLE LSEG_TBL;
-CREATE TABLE LSEG_TBL (s lseg, ybsort serial, PRIMARY KEY (ybsort ASC));
+CREATE TABLE LSEG_TBL (s lseg);
 
 INSERT INTO LSEG_TBL VALUES ('[(1,2),(3,4)]');
 INSERT INTO LSEG_TBL VALUES ('(0,0),(6,6)');
@@ -21,5 +21,4 @@ INSERT INTO LSEG_TBL VALUES ('[1,2,3, 4');
 INSERT INTO LSEG_TBL VALUES ('[(,2),(3,4)]');
 INSERT INTO LSEG_TBL VALUES ('[(1,2),(3,4)');
 
--- YB note: avoid selecting ybsort column.
-select s from LSEG_TBL;
+select * from LSEG_TBL;

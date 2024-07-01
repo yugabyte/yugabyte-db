@@ -359,9 +359,6 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 
 	/* Keep ybctid consistent across all databases. */
 	Datum ybctid = 0;
-	TupleTableSlot *slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRel),
-													&TTSOpsHeapTuple);
-	ExecStoreHeapTuple(tup, slot, false);
 	if (yb_shared_insert)
 	{
 		if (!IsYsqlUpgrade)
@@ -377,25 +374,25 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 			if (dboid == YBCGetDatabaseOid(heapRel))
 				continue; /* Will be done after the loop. */
 
-			YBCExecuteInsertForDb(dboid,
-								  heapRel,
-								  slot,
-								  ONCONFLICT_NONE,
-								  &ybctid,
-								  YB_TRANSACTIONAL);
+			YBCExecuteInsertHeapTupleForDb(dboid,
+										   heapRel,
+										   tup,
+										   ONCONFLICT_NONE,
+										   &ybctid,
+										   YB_TRANSACTIONAL);
 		}
 		YB_FOR_EACH_DB_END;
 	}
 
-	YBCExecuteInsertForDb(YBCGetDatabaseOid(heapRel),
-						  heapRel,
-						  slot,
-						  ONCONFLICT_NONE,
-						  &ybctid,
-						  YB_TRANSACTIONAL);
+	YBCExecuteInsertHeapTupleForDb(YBCGetDatabaseOid(heapRel),
+								   heapRel,
+								   tup,
+								   ONCONFLICT_NONE,
+								   &ybctid,
+								   YB_TRANSACTIONAL);
+
 	/* Update the local cache automatically */
 	YbSetSysCacheTuple(heapRel, tup);
-	ExecDropSingleTupleTableSlot(slot);
 
 	indstate = CatalogOpenIndexes(heapRel);
 	CatalogIndexInsert(indstate, tup, yb_shared_insert);
@@ -425,9 +422,6 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 	{
 		/* Keep ybctid consistent across all databases. */
 		Datum ybctid = 0;
-		TupleTableSlot *slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRel),
-														&TTSOpsHeapTuple);
-		ExecStoreHeapTuple(tup, slot, false);
 		if (yb_shared_insert)
 		{
 			if (!IsYsqlUpgrade)
@@ -442,22 +436,21 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 				 */
 				if (dboid == YBCGetDatabaseOid(heapRel))
 					continue; /* Will be done after the loop. */
-				YBCExecuteInsertForDb(
-						dboid, heapRel, slot, ONCONFLICT_NONE, &ybctid,
-						YB_TRANSACTIONAL);
+				YBCExecuteInsertHeapTupleForDb(dboid, heapRel, tup,
+											   ONCONFLICT_NONE, &ybctid,
+											   YB_TRANSACTIONAL);
 			}
 			YB_FOR_EACH_DB_END;
 		}
-		YBCExecuteInsertForDb(YBCGetDatabaseOid(heapRel),
-							  heapRel,
-							  slot,
-							  ONCONFLICT_NONE,
-							  &ybctid,
-							  YB_TRANSACTIONAL);
+		YBCExecuteInsertHeapTupleForDb(YBCGetDatabaseOid(heapRel),
+									   heapRel,
+									   tup,
+									   ONCONFLICT_NONE,
+									   &ybctid,
+									   YB_TRANSACTIONAL);
 
 		/* Update the local cache automatically */
 		YbSetSysCacheTuple(heapRel, tup);
-		ExecDropSingleTupleTableSlot(slot);
 	}
 	else
 	{

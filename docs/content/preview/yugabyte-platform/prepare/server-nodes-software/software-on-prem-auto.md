@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+{{<tip title="v2.20 and earlier">}}
+For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{</tip>}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../software-on-prem-auto/" class="nav-link active">
@@ -35,7 +39,7 @@ type: docs
   </li>
 </ul>
 
-When YBA has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
+When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
 
 ## With Internet or Yum connectivity
 

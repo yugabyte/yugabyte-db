@@ -15,8 +15,8 @@ The Chinook sample database for a digital media store can be used to explore and
 
 You can install and use the Chinook sample database using:
 
-- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
-- Using cloud shell or a client shell to connect to a cluster in YugabyteDB Managed. Refer to [Connect to clusters in YugabyteDB Managed](../../yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Managed, refer to [Quick start](../../yugabyte-cloud/cloud-quickstart/).
+- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](/preview/quick-start/).
+- Using cloud shell or a client shell to connect to a cluster in YugabyteDB Aeon. Refer to [Connect to clusters in YugabyteDB Aeon](/preview/yugabyte-cloud/cloud-connect/). To get started with YugabyteDB Aeon, refer to [Quick start](/preview/yugabyte-cloud/cloud-quickstart/).
 
 In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
 
@@ -56,7 +56,7 @@ If you are using a local installation of YugabyteDB, run the `ysqlsh` command fr
 $ ./bin/ysqlsh
 ```
 
-If you are connecting to YugabyteDB Managed, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
+If you are connecting to YugabyteDB Aeon, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
 
 ### Create the Chinook database
 

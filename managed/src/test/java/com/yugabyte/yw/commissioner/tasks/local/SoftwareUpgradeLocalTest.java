@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
 import org.junit.Before;
+import org.junit.Test;
 
 public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
@@ -29,22 +31,24 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
   }
 
   public static final String OLD_DB_VERSION = "2.20.0.1-b1";
-  public static final String OLD_DB_VERSION_URL =
-      "https://downloads.yugabyte.com/releases/2.20.0.1/" + "yugabyte-2.20.0.1-b1-%s-%s.tar.gz";
+  public static String OLD_DB_VERSION_URL =
+      "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
+          + "local-provider-test/2.20.0.1-b1/yugabyte-2.20.0.1-b1-%s-%s.tar.gz";
 
   public static final String NEW_DB_VERSION = "2.21.0.0-b366";
   public static final String NEW_DB_VERSION_URL =
-      "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com"
-          + "/vbansal/yugabyte-2.21.0.0-b366-centos-x86_64.tar.gz";
+      "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
+          + "local-provider-test/2.21.0.0-b366/yugabyte-2.21.0.0-b366-%s-%s.tar.gz";
 
   public static final String OLD_VERSION_WITH_ROLLBACK = "2.21.0.0-b340";
   private static final String OLD_VERSION_WTH_ROLLBACK_URL =
-      "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com"
-          + "/vbansal/yugabyte-2.21.0.0-b340-centos-x86_64.tar.gz";
+      "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
+          + "local-provider-test/2.21.0.0-b340/yugabyte-2.21.0.0-b340-%s-%s.tar.gz";
 
   @Before
   public void setup() {
-    downloadAndSetUpYBSoftware(os, arch, NEW_DB_VERSION_URL, NEW_DB_VERSION);
+    downloadAndSetUpYBSoftware(
+        os, arch, String.format(NEW_DB_VERSION_URL, os, arch), NEW_DB_VERSION);
 
     ObjectNode releases =
         (ObjectNode) YugawareProperty.get(ReleaseManager.CONFIG_TYPE.name()).getValue();
@@ -59,8 +63,7 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         OLD_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + OLD_DB_VERSION + "/bin");
   }
 
-  //   @Test
-  // TODO(vbasnal): Fix this test by placing DB bits in a new public s3 bucket.
+  @Test
   public void testSoftwareUpgradeWithNoRollbackSupport() throws InterruptedException {
     String downloadURL = String.format(OLD_DB_VERSION_URL, os, arch);
     downloadAndSetUpYBSoftware(os, arch, downloadURL, OLD_DB_VERSION);
@@ -89,16 +92,21 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     verifyPayload();
   }
 
-  // TODO(vbansal): Enable these unit tests once 2.20.2 is releasesd.
-  // @Test
+  @Test
   public void testRollbackUpgrade() throws InterruptedException {
-    addRelease(OLD_VERSION_WITH_ROLLBACK, OLD_VERSION_WTH_ROLLBACK_URL);
+    addRelease(OLD_VERSION_WITH_ROLLBACK, String.format(OLD_VERSION_WTH_ROLLBACK_URL, os, arch));
     ybVersion = OLD_VERSION_WITH_ROLLBACK;
     ybBinPath = deriveYBBinPath(OLD_VERSION_WITH_ROLLBACK);
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initAndStartPayload(universe);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
+        "false",
+        true);
     SoftwareUpgradeParams params = new SoftwareUpgradeParams();
     params.ybSoftwareVersion = NEW_DB_VERSION;
     params.setUniverseUUID(universe.getUniverseUUID());
@@ -124,16 +132,21 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     verifyPayload();
   }
 
-  // TODO(vbansal): Enable these unit tests once 2.20.2 is releasesd.
-  //  @Test
+  @Test
   public void finalizeUpgrade() throws InterruptedException {
-    addRelease(OLD_VERSION_WITH_ROLLBACK, OLD_VERSION_WTH_ROLLBACK_URL);
+    addRelease(OLD_VERSION_WITH_ROLLBACK, String.format(OLD_VERSION_WTH_ROLLBACK_URL, os, arch));
     ybVersion = OLD_VERSION_WITH_ROLLBACK;
     ybBinPath = deriveYBBinPath(OLD_VERSION_WITH_ROLLBACK);
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initAndStartPayload(universe);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
+        "false",
+        true);
     SoftwareUpgradeParams params = new SoftwareUpgradeParams();
     params.ybSoftwareVersion = NEW_DB_VERSION;
     params.setUniverseUUID(universe.getUniverseUUID());

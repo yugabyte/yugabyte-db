@@ -12,9 +12,7 @@ CREATE TABLE arrtest (
 	d			text[][],
 	e 			float8[],
 	f			char(5)[],
-	g			varchar(5)[],
-	ybsort 		serial,
-	PRIMARY KEY (ybsort ASC)
+	g			varchar(5)[]
 );
 
 CREATE TABLE array_op_test (
@@ -53,7 +51,7 @@ INSERT INTO arrtest (b[2]) VALUES(now());  -- error, type mismatch
 
 INSERT INTO arrtest (b[1:2]) VALUES(now());  -- error, type mismatch
 
-SELECT a, b, c, d, e, f, g FROM arrtest; -- YB note: avoid ybsort column
+SELECT * FROM arrtest;
 
 SELECT arrtest.a[1],
           arrtest.b[1][1][1],
@@ -78,7 +76,7 @@ SELECT array_dims(a) AS a,array_dims(b) AS b,array_dims(c) AS c
    FROM arrtest;
 
 -- returns nothing
-SELECT a, b, c, d, e, f, g -- YB note: avoid ybsort column
+SELECT *
    FROM arrtest
    WHERE a[1] < 5 and
          c = '{"foobar"}'::_name;
@@ -146,14 +144,12 @@ SELECT (now())[1];
 -- test slices with empty lower and/or upper index
 CREATE TEMP TABLE arrtest_s (
   a       int2[],
-  b       int2[][],
-  ybsort 	serial,
-  PRIMARY KEY (ybsort ASC)
+  b       int2[][]
 );
 INSERT INTO arrtest_s VALUES ('{1,2,3,4,5}', '{{1,2,3}, {4,5,6}, {7,8,9}}');
 INSERT INTO arrtest_s VALUES ('[0:4]={1,2,3,4,5}', '[0:2][0:2]={{1,2,3}, {4,5,6}, {7,8,9}}');
 
-SELECT a, b FROM arrtest_s; -- YB note: avoid ybsort column
+SELECT * FROM arrtest_s;
 SELECT a[:3], b[:2][:2] FROM arrtest_s;
 SELECT a[2:], b[2:][2:] FROM arrtest_s;
 SELECT a[:], b[:] FROM arrtest_s;
@@ -161,11 +157,11 @@ SELECT a[:], b[:] FROM arrtest_s;
 -- updates
 UPDATE arrtest_s SET a[:3] = '{11, 12, 13}', b[:2][:2] = '{{11,12}, {14,15}}'
   WHERE array_lower(a,1) = 1;
-SELECT a, b FROM arrtest_s; -- YB note: avoid ybsort column
+SELECT * FROM arrtest_s;
 UPDATE arrtest_s SET a[3:] = '{23, 24, 25}', b[2:][2:] = '{{25,26}, {28,29}}';
-SELECT a, b FROM arrtest_s; -- YB note: avoid ybsort column
+SELECT * FROM arrtest_s;
 UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';
-SELECT a, b FROM arrtest_s; -- YB note: avoid ybsort column
+SELECT * FROM arrtest_s;
 UPDATE arrtest_s SET a[:] = '{23, 24, 25}';  -- fail, too small
 INSERT INTO arrtest_s VALUES(NULL, NULL);
 UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';  -- fail, no good with null
@@ -185,14 +181,14 @@ SELECT f1[:1] FROM POINT_TBL;
 SELECT f1[:] FROM POINT_TBL;
 
 -- subscript assignments to fixed-width result in NULL if previous value is NULL
-UPDATE point_tbl SET f1[0] = 10 WHERE f1 IS NULL RETURNING f1; -- YB note: avoid RETURNING * as the table contains ybsort columns
-INSERT INTO point_tbl(f1[0]) VALUES(0) RETURNING f1; -- YB note: avoid RETURNING * as the table contains ybsort columns
+UPDATE point_tbl SET f1[0] = 10 WHERE f1 IS NULL RETURNING *;
+INSERT INTO point_tbl(f1[0]) VALUES(0) RETURNING *;
 -- NULL assignments get ignored
-UPDATE point_tbl SET f1[0] = NULL WHERE f1::text = '(10,10)'::point::text RETURNING f1; -- YB note: avoid RETURNING * as the table contains ybsort columns
+UPDATE point_tbl SET f1[0] = NULL WHERE f1::text = '(10,10)'::point::text RETURNING *;
 -- but non-NULL subscript assignments work
-UPDATE point_tbl SET f1[0] = -10, f1[1] = -10 WHERE f1::text = '(10,10)'::point::text RETURNING f1; -- YB note: avoid RETURNING * as the table contains ybsort columns
+UPDATE point_tbl SET f1[0] = -10, f1[1] = -10 WHERE f1::text = '(10,10)'::point::text RETURNING *;
 -- but not to expand the range
-UPDATE point_tbl SET f1[3] = 10 WHERE f1::text = '(-10,-10)'::point::text RETURNING f1; -- YB note: avoid RETURNING * as the table contains ybsort columns
+UPDATE point_tbl SET f1[3] = 10 WHERE f1::text = '(-10,-10)'::point::text RETURNING *;
 
 DROP TABLE point_tbl; -- YB note: reset the changes from above.
 DROP SCHEMA yb_tmp; -- YB note: reset the changes from above.
@@ -673,9 +669,9 @@ select array(select array['Hello', i::text] from generate_series(9,11) i);
 
 create temp table t1 (f1 int8_tbl[]);
 insert into t1 (f1[5].q1) values(42);
-select * from t1; -- YB note: output differs because of ybsort column
+select * from t1;
 update t1 set f1[5].q2 = 43;
-select * from t1; -- YB note: output differs because of ybsort column
+select * from t1;
 
 -- Check that arrays of composites are safely detoasted when needed
 

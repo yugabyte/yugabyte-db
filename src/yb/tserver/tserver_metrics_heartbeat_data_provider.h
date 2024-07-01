@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <memory>
-
 #include "yb/tserver/heartbeater.h"
 
 namespace yb {
@@ -25,8 +23,8 @@ class TServerMetricsHeartbeatDataProvider : public PeriodicalHeartbeatDataProvid
   explicit TServerMetricsHeartbeatDataProvider(TabletServer* server);
 
  private:
-  void DoAddData(
-      const master::TSHeartbeatResponsePB& last_resp, master::TSHeartbeatRequestPB* req) override;
+  void DoAddData(bool needs_full_tablet_report, master::TSHeartbeatRequestPB* req) override;
+  MonoDelta Period() const override;
 
   uint64_t CalculateUptime();
 

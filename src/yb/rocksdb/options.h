@@ -302,6 +302,10 @@ struct ColumnFamilyOptions {
   // Dynamically changeable through SetOptions() API
   int max_write_buffer_number;
 
+  // The limit for the number of bytes in immutable mem tables.
+  // After reaching this limit new writes are blocked.
+  size_t max_flushing_bytes = std::numeric_limits<size_t>::max();
+
   // The minimum number of write buffers that will be merged together
   // before writing to storage.  If set to 1, then
   // all write buffers are fushed to L0 as individual files and this increases

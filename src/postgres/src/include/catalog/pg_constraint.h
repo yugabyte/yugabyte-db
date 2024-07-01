@@ -22,6 +22,7 @@
 #include "catalog/genbki.h"
 #include "catalog/pg_constraint_d.h"
 #include "nodes/pg_list.h"
+#include "utils/catcache.h"
 
 /* ----------------
  *		pg_constraint definition.  cpp turns this into

@@ -99,6 +99,16 @@ static void send_repl_origin(LogicalDecodingContext *ctx,
 static void update_replication_progress(LogicalDecodingContext *ctx,
 										bool skipped_xact);
 
+/* 
+ * This indicates whether the plugin being used is yboutput or pgoutput. In
+ * yboutput mode, we also support yb-specific replica identity 
+ * (CHANGE for now).
+ */
+static bool yb_is_yboutput_mode;
+
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
+
 /*
  * Only 3 publication actions are used for row filtering ("insert", "update",
  * "delete"). See RelationSyncEntry.exprstate[].
@@ -282,7 +292,10 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 	cb->stream_prepare_cb = pgoutput_stream_prepare_txn;
 
 	if (IsYugaByteEnabled())
+	{
 		cb->yb_schema_change_cb = yb_pgoutput_schema_change;
+		cb->yb_support_yb_specifc_replica_identity_cb = yb_support_yb_specific_replica_identity;
+	}
 }
 
 static void
@@ -722,6 +735,10 @@ maybe_send_schema(LogicalDecodingContext *ctx,
 		set_schema_sent_in_streamed_txn(relentry, topxid);
 	else
 		relentry->schema_sent = true;
+
+	if (IsYugaByteEnabled())
+		elog(DEBUG1, "Sent the RELATION message for table_id: %d",
+			RelationGetRelid(relation));
 }
 
 /*
@@ -1512,7 +1529,7 @@ pgoutput_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 			bool		*yb_old_is_omitted = NULL;
 			bool		*yb_new_is_omitted = NULL;
-			if (IsYugaByteEnabled())
+			if (IsYugaByteEnabled() && yb_is_yboutput_mode)
 			{
 				yb_old_is_omitted =
 					(change->data.tp.oldtuple) ?
@@ -1756,6 +1773,8 @@ pgoutput_shutdown(LogicalDecodingContext *ctx)
 static void
 yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
 {
+	elog(DEBUG1, "yb_pgoutput_schema_change for relid: %d", relid);
+
 	rel_sync_cache_relation_cb(0 /* unused */, relid);
 }
 
@@ -2442,4 +2461,10 @@ update_replication_progress(LogicalDecodingContext *ctx, bool skipped_xact)
 		OutputPluginUpdateProgress(ctx, skipped_xact);
 		changes_count = 0;
 	}
+}
+
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity)
+{
+	yb_is_yboutput_mode = support_yb_specific_replica_identity;
 }

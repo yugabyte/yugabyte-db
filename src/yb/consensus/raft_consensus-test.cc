@@ -58,6 +58,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
+DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(never_fsync);
 
@@ -143,7 +144,7 @@ class RaftConsensusSpy : public RaftConsensus {
                    std::unique_ptr<PeerMessageQueue> queue,
                    std::unique_ptr<PeerManager> peer_manager,
                    std::unique_ptr<ThreadPoolToken> raft_pool_token,
-                   std::unique_ptr<consensus::RetryableRequestsManager> retryable_requests_manager,
+                   std::unique_ptr<consensus::RetryableRequests> retryable_requests,
                    const scoped_refptr<MetricEntity>& table_metric_entity,
                    const scoped_refptr<MetricEntity>& tablet_metric_entity,
                    const std::string& peer_uuid,
@@ -168,7 +169,7 @@ class RaftConsensusSpy : public RaftConsensus {
                     parent_mem_tracker,
                     mark_dirty_clbk,
                     YQL_TABLE_TYPE,
-                    retryable_requests_manager.get()) {
+                    retryable_requests.get()) {
     // These "aliases" allow us to count invocations and assert on them.
     ON_CALL(*this, StartConsensusOnlyRoundUnlocked(_))
         .WillByDefault(Invoke(this,
@@ -280,21 +281,19 @@ class RaftConsensusTest : public YBTest {
     std::unique_ptr<ThreadPoolToken> raft_pool_token =
         raft_pool_->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
 
-    std::unique_ptr<consensus::RetryableRequestsManager> retryable_requests_manager =
-        std::make_unique<consensus::RetryableRequestsManager>(
-            options_.tablet_id,
-            fs_manager_.get(),
-            fs_manager_->GetWalRootDirs()[0],
+    std::unique_ptr<consensus::RetryableRequests> retryable_requests =
+        std::make_unique<consensus::RetryableRequests>(
             MemTracker::GetRootTracker(),
             "");
-    Status s = retryable_requests_manager->Init(clock_);
+    retryable_requests->SetServerClock(clock_);
+    retryable_requests->SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
     consensus_.reset(new RaftConsensusSpy(options_,
                                           std::move(cmeta),
                                           std::move(proxy_factory),
                                           std::unique_ptr<PeerMessageQueue>(queue_),
                                           std::unique_ptr<PeerManager>(peer_manager_),
                                           std::move(raft_pool_token),
-                                          std::move(retryable_requests_manager),
+                                          std::move(retryable_requests),
                                           table_metric_entity_,
                                           tablet_metric_entity_,
                                           peer_uuid,

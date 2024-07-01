@@ -21,6 +21,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/tserver/xcluster_output_client.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
@@ -91,12 +92,14 @@ Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data
 }  // namespace
 
 XClusterDDLQueueHandler::XClusterDDLQueueHandler(
-    std::shared_ptr<XClusterClient> local_client, const NamespaceName& namespace_name,
+    client::YBClient* local_client, const NamespaceName& namespace_name,
     const NamespaceId& namespace_id, ConnectToPostgresFunc connect_to_pg_func)
     : local_client_(local_client),
       namespace_name_(namespace_name),
       namespace_id_(namespace_id),
       connect_to_pg_func_(std::move(connect_to_pg_func)) {}
+
+XClusterDDLQueueHandler::~XClusterDDLQueueHandler() {}
 
 Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientResponse& response) {
   DCHECK(response.status.ok());
@@ -175,16 +178,19 @@ Status XClusterDDLQueueHandler::ProcessDDLQueueTable(const XClusterOutputClientR
 
 Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) {
   std::stringstream setup_query;
+  setup_query << "SET ROLE NONE;";
+
+  // Set session variables in order to pass the key to the replicated_ddls table.
+  setup_query << Format("SET $0 TO $1;", kLocalVariableStartTime, query_info.start_time);
+  setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
+
+  // Set schema and role after setting the superuser extension variables.
   if (!query_info.schema.empty()) {
     setup_query << Format("SET SCHEMA '$0';", query_info.schema);
   }
   if (!query_info.user.empty()) {
     setup_query << Format("SET ROLE $0;", query_info.user);
   }
-
-  // Set session variables in order to pass the key to the replicated_ddls table.
-  setup_query << Format("SET $0 TO $1;", kLocalVariableStartTime, query_info.start_time);
-  setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
   RETURN_NOT_OK(RunAndLogQuery(query_info.query));
@@ -222,7 +228,7 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   }
   // Create pg connection if it doesn't exist.
   // TODO(#20693) Create prepared statements as part of opening the connection.
-  CoarseTimePoint deadline = CoarseMonoClock::Now() + local_client_->client->default_rpc_timeout();
+  CoarseTimePoint deadline = CoarseMonoClock::Now() + local_client_->default_rpc_timeout();
   pg_conn_ = std::make_unique<pgwrapper::PGConn>(
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
 
@@ -246,15 +252,15 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
 }
 
 Result<HybridTime> XClusterDDLQueueHandler::GetXClusterSafeTimeForNamespace() {
-  return local_client_->client->GetXClusterSafeTimeForNamespace(
+  return local_client_->GetXClusterSafeTimeForNamespace(
       namespace_id_, master::XClusterSafeTimeFilter::DDL_QUEUE);
 }
 
 Result<std::vector<std::tuple<int64, int64, std::string>>>
 XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& apply_safe_time) {
   // Since applies can come out of order, need to read at the apply_safe_time and not latest.
-  RETURN_NOT_OK(
-      pg_conn_->ExecuteFormat("SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
+  RETURN_NOT_OK(pg_conn_->ExecuteFormat(
+      "SET ROLE NONE; SET yb_read_time = $0", apply_safe_time.GetPhysicalValueMicros()));
   // Select all rows that are in ddl_queue but not in replicated_ddls.
   // Note that this is done at apply_safe_time and rows written to replicated_ddls are done at the
   // time the DDL is rerun, so this does not filter out all rows (see kDDLPrepStmtAlreadyProcessed).

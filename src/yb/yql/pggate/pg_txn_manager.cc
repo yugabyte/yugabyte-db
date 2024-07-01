@@ -177,6 +177,9 @@ Status PgTxnManager::BeginTransaction(int64_t start_time) {
     return STATUS(IllegalState, "Transaction is already in progress");
   }
   pg_txn_start_us_ = start_time;
+  // NOTE: Do not reset in_txn_blk_ when restarting txns internally
+  // (i.e., via PgTxnManager::RecreateTransaction).
+  in_txn_blk_ = false;
   return RecreateTransaction(SavePriority::kFalse);
 }
 
@@ -244,6 +247,20 @@ Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
 
 Status PgTxnManager::SetDeferrable(bool deferrable) {
   deferrable_ = deferrable;
+  return Status::OK();
+}
+
+Status PgTxnManager::SetInTxnBlock(bool in_txn_blk) {
+  in_txn_blk_ = in_txn_blk;
+  VLOG_WITH_FUNC(2) << (in_txn_blk ? "In " : "Not in ") << "txn block.";
+  return Status::OK();
+}
+
+Status PgTxnManager::SetReadOnlyStmt(bool read_only_stmt) {
+  read_only_stmt_ = read_only_stmt;
+  VLOG_WITH_FUNC(2)
+    << "Executing a " << (read_only_stmt ? "read only " : "read/write ")
+    << "stmt.";
   return Status::OK();
 }
 
@@ -358,6 +375,7 @@ bool PgTxnManager::IsRestartReadPointRequested() {
 }
 
 void PgTxnManager::SetActiveSubTransactionId(SubTransactionId id) {
+  VLOG_WITH_FUNC(4) << "id: " << id << ", old id: " << active_sub_transaction_id_;
   active_sub_transaction_id_ = id;
 }
 
@@ -411,6 +429,7 @@ void PgTxnManager::ResetTxnAndSession() {
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  read_only_stmt_ = false;
 }
 
 Status PgTxnManager::EnterSeparateDdlTxnMode() {
@@ -516,6 +535,19 @@ void PgTxnManager::SetupPerformOptions(
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
     // pg_txn_start_us is similarly only used for kPlain transactions.
     options->set_pg_txn_start_us(pg_txn_start_us_);
+    // Only clamp read-only txns/stmts.
+    // Do not clamp in the serializable case since
+    // - SERIALIZABLE reads do not pick read time until later.
+    // - SERIALIZABLE reads do not observe read restarts anyways.
+    if (yb_read_after_commit_visibility
+          == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
+        && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION)
+      // We clamp uncertainty window when
+      // - either we are working with a read only txn
+      // - or we are working with a read only stmt
+      //   i.e. no txn block and a pure SELECT stmt.
+      options->set_clamp_uncertainty_window(
+        read_only_ || (!in_txn_blk_ && read_only_stmt_));
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
@@ -546,6 +578,7 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 }
 
 void PgTxnManager::IncTxnSerialNo() {
+  VLOG_WITH_FUNC(4) << "old txn_serial_no_: " << txn_serial_no_;
   ++txn_serial_no_;
   active_sub_transaction_id_ = kMinSubTransactionId;
   ++read_time_serial_no_;

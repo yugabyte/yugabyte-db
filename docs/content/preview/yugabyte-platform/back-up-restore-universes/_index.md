@@ -29,7 +29,7 @@ You can use YugabyteDB to schedule and manage backups of your universe data. Thi
 - [Disaster recovery](disaster-recovery/). Failover to an asynchronously replicated universe in case of unplanned outages.
 
 {{< note title="Note" >}}
-Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YBA 2.16 or later for universes with YugabyteDB version 2.16 or later.
+Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YugabyteDB Anywhere v2.16 or later for universes with YugabyteDB version 2.16 or later.
 {{< /note >}}
 
 {{<index/block>}}

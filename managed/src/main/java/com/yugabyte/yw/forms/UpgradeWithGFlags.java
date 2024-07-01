@@ -2,15 +2,17 @@
 
 package com.yugabyte.yw.forms;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -29,6 +31,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
 
+  @Inject protected GFlagsValidation gFlagsValidation;
+
   protected boolean verifyGFlagsHasChanges(Universe universe) {
     if (isUsingSpecificGFlags(universe)) {
       return verifySpecificGFlags(universe);
@@ -44,6 +48,13 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
    * @return true if changed
    */
   private boolean verifySpecificGFlags(Universe universe) {
+    // verify changes to groups here
+    // if groups are added, cannot allow changes to those gflags
+    Cluster currentPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    SpecificGFlags currentSpecificGFlags = new SpecificGFlags();
+    if (currentPrimaryCluster.userIntent.specificGFlags != null) {
+      currentSpecificGFlags = currentPrimaryCluster.userIntent.specificGFlags;
+    }
     Map<UUID, Cluster> newClusters =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
     boolean hasClustersToUpdate = false;
@@ -66,6 +77,11 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       }
       if (newCluster.userIntent.specificGFlags != null) {
         newCluster.userIntent.specificGFlags.validateConsistency();
+        GFlagsUtil.validateGFlagGroupsOnUpgrade(
+            newCluster.userIntent.specificGFlags,
+            currentSpecificGFlags,
+            newCluster.userIntent.ybSoftwareVersion,
+            gFlagsValidation);
       }
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
@@ -129,6 +145,11 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
 
   public Map<UUID, UniverseDefinitionTaskParams.Cluster> getNewVersionsOfClusters(
       Universe universe) {
+    return getVersionsOfClusters(universe, this);
+  }
+
+  public Map<UUID, UniverseDefinitionTaskParams.Cluster> getVersionsOfClusters(
+      Universe universe, UpgradeWithGFlags params) {
     boolean usingSpecificGFlags = isUsingSpecificGFlags(universe);
     Map<UUID, Cluster> clustersFromParams =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
@@ -140,8 +161,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
               curCluster.clusterType, curCluster.userIntent.clone());
       newVersion.uuid = curCluster.uuid;
       if (!usingSpecificGFlags) {
-        newVersion.userIntent.masterGFlags = this.masterGFlags;
-        newVersion.userIntent.tserverGFlags = this.tserverGFlags;
+        newVersion.userIntent.masterGFlags = params.masterGFlags;
+        newVersion.userIntent.tserverGFlags = params.tserverGFlags;
       } else if (clusterFromParams != null) {
         newVersion.userIntent.specificGFlags = clusterFromParams.userIntent.specificGFlags;
       }
@@ -154,7 +175,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       NodeDetails node,
       UniverseTaskBase.ServerType serverType,
       UniverseDefinitionTaskParams.Cluster curCluster,
-      List<Cluster> curClusters,
+      Collection<Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newClusterVersion,
       Collection<Cluster> newClusters) {
     Map<String, String> newGflags =

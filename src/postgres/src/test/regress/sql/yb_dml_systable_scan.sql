@@ -89,15 +89,15 @@ END;
 $$ LANGUAGE plpgsql STABLE;
 
 -- Expect pushdown in all cases.
-EXPLAIN SELECT * FROM pg_database WHERE datname = test_null_pushdown();
-EXPLAIN SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
-EXPLAIN SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
+EXPLAIN (costs off) /*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
 
 -- Test execution.
-SELECT * FROM pg_database WHERE datname = test_null_pushdown();
-SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
+/*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname = test_null_pushdown();
+/*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN (test_null_pushdown());
 -- Test null mixed with valid (existing) options.
-SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
+/*+IndexScan(pg_database)*/ SELECT * FROM pg_database WHERE datname IN ('template1', test_null_pushdown(), 'template0');
 -- Test null(s) mixed with invalid (existing) options.
 SELECT * FROM pg_database WHERE datname IN ('non_existing_db1', test_null_pushdown(), 'non_existing_db2', test_null_pushdown());
 

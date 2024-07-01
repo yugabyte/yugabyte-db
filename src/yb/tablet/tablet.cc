@@ -319,6 +319,7 @@ using client::YBSession;
 using client::YBTablePtr;
 
 using dockv::DocKey;
+using dockv::KeyEntryTypeAsChar;
 using docdb::DocRowwiseIterator;
 using docdb::TableInfoProvider;
 using dockv::SubDocKey;
@@ -805,7 +806,14 @@ auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
   return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
 }
 
-Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable, bool write_blocked) {
+struct Tablet::IntentsDbFlushFilterState {
+  std::optional<int64_t> largest_flushed_index;
+  std::optional<rocksdb::FlushAbility> flush_ability;
+};
+
+Result<bool> Tablet::IntentsDbFlushFilter(
+    const rocksdb::MemTable& memtable, bool write_blocked,
+    std::shared_ptr<Tablet::IntentsDbFlushFilterState> state) {
   VLOG_WITH_PREFIX(4) << __func__;
 
   auto frontiers = memtable.Frontiers();
@@ -813,33 +821,43 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable, boo
     const auto& intents_largest =
         down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
 
-    // We allow to flush intents DB only after regular DB.
-    // Otherwise we could lose applied intents when corresponding regular records were not
-    // flushed.
-    auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
-    if (regular_flushed_frontier) {
-      const auto& regular_flushed_largest =
-          static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
-      if (regular_flushed_largest.op_id().index >= intents_largest.op_id().index) {
-        VLOG_WITH_PREFIX(4) << __func__ << ", regular already flushed";
-        return true;
+    if (!state->largest_flushed_index) {
+      // We allow to flush intents DB only after regular DB.
+      // Otherwise we could lose applied intents when corresponding regular records were not
+      // flushed.
+      auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
+      if (regular_flushed_frontier) {
+        const auto& regular_flushed_largest =
+            static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
+        state->largest_flushed_index = regular_flushed_largest.op_id().index;
+      } else {
+        state->largest_flushed_index = std::numeric_limits<int64_t>::min();
       }
+    }
+
+    if (*state->largest_flushed_index >= intents_largest.op_id().index) {
+      VLOG_WITH_PREFIX(4) << __func__ << ", regular already flushed";
+      return true;
     }
   } else {
     VLOG_WITH_PREFIX(4) << __func__ << ", no frontiers";
   }
 
+  bool initial = !state->flush_ability;
+  if (initial) {
+    state->flush_ability = regular_db_->GetFlushAbility();
+  }
   // If regular db does not have anything to flush, it means that we have just added intents,
   // without apply, so it is OK to flush the intents RocksDB.
-  auto flush_intention = regular_db_->GetFlushAbility();
-  if (flush_intention == rocksdb::FlushAbility::kNoNewData) {
+  if (*state->flush_ability == rocksdb::FlushAbility::kNoNewData) {
     VLOG_WITH_PREFIX(4) << __func__ << ", no new data";
     return true;
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
-  if (flush_intention != rocksdb::FlushAbility::kAlreadyFlushing &&
+  if (initial &&
+      *state->flush_ability != rocksdb::FlushAbility::kAlreadyFlushing &&
       (shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
     VLOG_WITH_PREFIX(2) << __func__ << ", force flush";
@@ -981,7 +999,9 @@ Status Tablet::OpenKeyValueTablet() {
     intents_rocksdb_options.tablet_id = tablet_id();
 
     intents_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
-      return std::bind(&Tablet::IntentsDbFlushFilter, this, _1, _2);
+      return std::bind(
+          &Tablet::IntentsDbFlushFilter, this, _1, _2,
+          std::make_shared<IntentsDbFlushFilterState>());
     });
 
     intents_rocksdb_options.compaction_filter_factory =
@@ -2153,7 +2173,7 @@ Status Tablet::RemoveIntentsImpl(
       AtomicFlagSleepMs(&FLAGS_apply_intents_task_injected_delay_ms);
     }
   }
-
+  DEBUG_ONLY_TEST_SYNC_POINT("Tablet::RemoveIntentsImpl");
   return Status::OK();
 }
 
@@ -4601,7 +4621,6 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
   }
 
   TransactionLockInfoManager lock_info_manager(tablet_lock_info);
-
   rocksdb::ReadOptions read_options;
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
@@ -4613,10 +4632,9 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
     while (intent_iter->Valid() &&
            (key_bounds_.upper.empty() || intent_iter->key().compare(key_bounds_.upper) < 0)) {
       auto key = intent_iter->key();
-
-      if (key[0] == dockv::KeyEntryTypeAsChar::kTransactionId) {
+      if (key[0] == KeyEntryTypeAsChar::kTransactionId) {
         static const std::array<char, 1> kAfterTransactionId{
-            dockv::KeyEntryTypeAsChar::kTransactionId + 1};
+            KeyEntryTypeAsChar::kTransactionId + 1};
         static const Slice kAfterTxnRegion(kAfterTransactionId);
         intent_iter->Seek(kAfterTxnRegion);
         continue;
@@ -4641,7 +4659,7 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
     std::vector<dockv::KeyBytes> txn_intent_keys;
     static constexpr size_t kReverseKeySize = 1 + sizeof(TransactionId);
     char reverse_key_data[kReverseKeySize];
-    reverse_key_data[0] = dockv::KeyEntryTypeAsChar::kTransactionId;
+    reverse_key_data[0] = KeyEntryTypeAsChar::kTransactionId;
     for (auto& txn : transactions) {
       auto& txn_id = txn.first;
       memcpy(&reverse_key_data[1], txn_id.data(), sizeof(TransactionId));
@@ -4655,7 +4673,7 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
       // Scan the transaction's corresponding reverse index section.
       while (intent_iter->Valid() && intent_iter->key().compare_prefix(reverse_key) == 0) {
-        DCHECK_EQ(intent_iter->key()[0], dockv::KeyEntryTypeAsChar::kTransactionId);
+        DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
         // We should only consider intents whose value is within the tablet's key bounds.
         // Else, we would observe duplicate results in case of tablet split.
         if (key_bounds_.IsWithinBounds(intent_iter->value())) {
@@ -4669,17 +4687,19 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
     std::sort(txn_intent_keys.begin(), txn_intent_keys.end());
     intent_iter->SeekToFirst();
     RETURN_NOT_OK(intent_iter->status());
-
+    DEBUG_ONLY_TEST_SYNC_POINT("Tablet::GetLockStatus:1");
+    DEBUG_ONLY_TEST_SYNC_POINT("Tablet::GetLockStatus:2");
     for (const auto& intent_key : txn_intent_keys) {
       intent_iter->Seek(intent_key);
       RETURN_NOT_OK(intent_iter->status());
-
-      auto key = intent_iter->key();
-      DCHECK_EQ(intent_iter->key(), key);
-
-      auto val = intent_iter->value();
-      RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, val, *this, transactions, &lock_info_manager, max_txn_locks_per_tablet));
+      // Since records could get added/tombstoned after we formed 'txn_intent_keys', ensure that
+      // we are operating on the previously seen provisional record. If the record has been
+      // tombstoned, move on to the next record of interest.
+      if (intent_iter->Valid() && intent_iter->key() == intent_key) {
+        RETURN_NOT_OK(PopulateLockInfoFromIntent(
+            intent_iter->key(), intent_iter->value(), *this, transactions, &lock_info_manager,
+            max_txn_locks_per_tablet));
+      }
     }
   }
 

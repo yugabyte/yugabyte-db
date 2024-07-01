@@ -807,4 +807,6 @@ heap_getattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 }
 #endif							/* FRONTEND */
 
+extern void yb_heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest);
+
 #endif							/* HTUP_DETAILS_H */

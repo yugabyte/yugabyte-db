@@ -154,8 +154,8 @@ ALTER FOREIGN DATA WRAPPER alt_fdw1 RENAME TO alt_fdw3;  -- OK
 ALTER SERVER alt_fserv1 RENAME TO alt_fserv2;   -- failed (name conflict)
 ALTER SERVER alt_fserv1 RENAME TO alt_fserv3;   -- OK
 
-SELECT fdwname FROM pg_foreign_data_wrapper WHERE fdwname like 'alt_fdw%';
-SELECT srvname FROM pg_foreign_server WHERE srvname like 'alt_fserv%';
+SELECT fdwname FROM pg_foreign_data_wrapper WHERE fdwname like 'alt_fdw%' ORDER BY fdwname; -- YB: add ordering
+SELECT srvname FROM pg_foreign_server WHERE srvname like 'alt_fserv%' ORDER BY srvname; -- YB: add ordering
 
 --
 -- Procedural Language

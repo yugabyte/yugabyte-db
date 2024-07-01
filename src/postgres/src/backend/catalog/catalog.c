@@ -57,6 +57,7 @@
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/defrem.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "pg_yb_utils.h"
 
@@ -984,4 +985,63 @@ YbGetUseInitdbAclFromRelOptions(List *options)
 	}
 
 	return InvalidOid;
+}
+
+/*
+ * Is this relation stored into the YB system catalog tablet?
+ */
+bool
+YbIsSysCatalogTabletRelation(Relation rel)
+{
+	Oid			namespaceId = RelationGetNamespace(rel);
+	char	   *namespace_name = get_namespace_name_or_temp(namespaceId);
+
+	return YbIsSysCatalogTabletRelationByIds(RelationGetRelid(rel),
+											 namespaceId,
+											 namespace_name);
+}
+
+/*
+ * Same as above but potentially faster by avoiding get_namespace_name_or_temp
+ * call in case the caller already has the namespace name.
+ */
+bool
+YbIsSysCatalogTabletRelationByIds(Oid relationId, Oid namespaceId,
+								  char *namespace_name)
+{
+	Assert(namespace_name);
+	/* Re-evaluate this when toast relations are supported. */
+	Assert(!IsToastNamespace(namespaceId));
+
+	/*
+	 * YB puts catalog relations and information_schema relations in the sys
+	 * catalog tablet.  From commit 5c28dc4a654cc246d0da0807e18d07b81cfe45eb
+	 * to the time of writing (2024-05-22), it is not possible to create user
+	 * relations in pg_catalog because it hits an error if IsYsqlUpgrade is
+	 * false, and if that is true, then relations are created as system
+	 * relations.  Before that commit, it seems to segfault when attempting to
+	 * create table in pg_catalog (at least when testing on v2.0.11.0).
+	 */
+	if (IsCatalogNamespace(namespaceId) ||
+		strcmp(namespace_name, "information_schema") == 0)
+	{
+		if (relationId >= FirstNormalObjectId)
+		{
+			/*
+			 * At the time of writing (2024-05-22), it is possible for users
+			 * (with the correct privileges) to create user relations in
+			 * information_schema.  Since these are persisted in the sys
+			 * catalog tablet and this function may be called with such tables,
+			 * don't hard fail upon encountering such tables.
+			 */
+			Assert(strcmp(namespace_name, "information_schema") == 0);
+			ereport(WARNING,
+					(errmsg("unexpected user relation in system namespace"),
+					 errdetail("Table with oid %u should not be in namespace"
+							   " %s.",
+							   relationId, namespace_name)));
+		}
+		return true;
+	}
+	return false;
 }

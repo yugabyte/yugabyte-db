@@ -43,11 +43,11 @@ Make sure that default security group in your application Azure Virtual Network 
 
 To use Azure Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create a corresponding private endpoint in Azure.
 
-## Create a PSE in YugabyteDB Managed
+## Create a PSE in YugabyteDB Aeon
 
 You create the PSEs (one for each region) for your cluster on the cluster **Settings** tab, or using [ybm CLI](../../../managed-automation/managed-cli/).
 
-### Use YugabyteDB Managed
+### Use YugabyteDB Aeon
 
 To create or edit a PSE, do the following:
 
@@ -231,7 +231,7 @@ The link is listed in the Virtual network links list.
         pse-westus3.65f14618-f86a-41c2-a8c6-7004edbb965a
         ```
 
-        The PSE Host is also displayed in YugabyteDB Managed under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
+        The PSE Host is also displayed in YugabyteDB Aeon under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
 
     - **Type** - select the **A - Address record** option (this is the default).
     - **IP address** - enter the private IP address of your Azure private endpoint (noted earlier).
@@ -244,7 +244,7 @@ You can now connect to your cluster from your application in Azure using your cl
 
 #### Create a private endpoint
 
-To create the private endpoint and connect it to your YBM PSE (called a private link service in Azure) using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/), enter the following command:
+To create the private endpoint and connect it to your YugabyteDB Aeon PSE (called a private link service in Azure) using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/), enter the following command:
 
 ```sh
 az network private-endpoint create \
@@ -283,7 +283,7 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
 
     - `resource_group_name` - the resource group in which the private endpoint was created.
 
-    All private DNS zones for endpoints that are used with YugabyteDB Managed are named `azure.ybdb.io`.
+    All private DNS zones for endpoints that are used with YugabyteDB Aeon are named `azure.ybdb.io`.
 
 1. To link the private DNS zone to the VNet containing the private endpoint, enter the following command:
 

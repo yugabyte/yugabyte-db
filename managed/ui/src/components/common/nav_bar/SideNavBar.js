@@ -8,9 +8,23 @@ import './stylesheets/SideNavBar.scss';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isHidden, isNotHidden, getFeatureState } from '../../../utils/LayoutUtils';
 
+//icons
+import UnionIcon from '../../../redesign/assets/union.svg';
+import UnionInActiveIcon from '../../../redesign/assets/union_inactive.svg';
+
 class NavLink extends Component {
   render() {
-    const { router, display, index, to, icon, text, ...props } = this.props;
+    const {
+      router,
+      display,
+      index,
+      to,
+      icon,
+      text,
+      iconComponent,
+      inActiveIcon,
+      ...props
+    } = this.props;
 
     // Added by withRouter in React Router 3.0.
     delete props.params;
@@ -25,12 +39,20 @@ class NavLink extends Component {
       <li className={`${isActive ? 'active' : ''}${display === 'disabled' ? ' disabled' : ''}`}>
         {display === 'disabled' ? (
           <div>
-            <i className={icon}></i>
+            {iconComponent ? (
+              <img src={isActive ? iconComponent : inActiveIcon} alt="--" />
+            ) : (
+              <i className={icon}></i>
+            )}
             <span>{text}</span>
           </div>
         ) : (
           <LinkComponent to={to} title={text} disabled={display === 'disabled'} {...props}>
-            <i className={icon}></i>
+            {iconComponent ? (
+              <img src={isActive ? iconComponent : inActiveIcon} alt="--" />
+            ) : (
+              <i className={icon}></i>
+            )}
             <span>{text}</span>
           </LinkComponent>
         )}
@@ -112,22 +134,11 @@ export default class SideNavBar extends Component {
                     <NavLink
                       to="/config"
                       icon="fa fa-cloud-upload"
-                      text="Configs"
+                      iconComponent={UnionIcon}
+                      inActiveIcon={UnionInActiveIcon}
+                      text="Integrations"
                       display={getFeatureState(currentCustomer.data.features, 'menu.config')}
                     />
-
-                    {this.props.isTroubleshootingEnabled && (
-                      <NavLink
-                        to="/troubleshoot"
-                        icon="fa fa-cloud-upload"
-                        text="Troubleshoot"
-                        display={getFeatureState(
-                          currentCustomer.data.features,
-                          'menu.troubleshoot'
-                        )}
-                      />
-                    )}
-
                     <NavLink
                       to="/admin"
                       icon="fa fa-gear"

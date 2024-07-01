@@ -31,9 +31,12 @@ Result<std::string> YsqlBinaryRunner::Run(const std::optional<std::vector<std::s
     complete_args.insert(complete_args.end(), args->begin(), args->end());
   }
   LOG(INFO) << "Running tool: " << AsString(complete_args);
-  std::string execution_output;
-  RETURN_NOT_OK(Subprocess::Call(complete_args, &execution_output));
-  return execution_output;
+  std::string output, error;
+  auto status = Subprocess::Call(complete_args, &output, &error);
+  if (!status.ok()) {
+    return status.CloneAndAppend(error);
+  }
+  return output;
 }
 
 // ============================================================================

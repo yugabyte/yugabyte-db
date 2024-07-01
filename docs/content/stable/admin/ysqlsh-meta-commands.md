@@ -16,7 +16,7 @@ Similarly to psql, ysqlsh provides a number of meta-commands that make ysqlsh mo
 
 {{< note title="Cloud shell" >}}
 
-For security reasons, the YugabyteDB Managed cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
+For security reasons, the YugabyteDB Aeon cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem don't work in cloud shell.
 
 {{< /note >}}
 
@@ -355,7 +355,7 @@ Unlike most other meta-commands, the entire remainder of the line is always take
 
 ##### \f [ string ]
 
-Sets the field separator for unaligned query output. The default is the vertical bar (`|`). It is equivalent to [\pset fieldsep](../ysqlsh-pset-options/#pset-option-value).
+Sets the field separator for unaligned query output. The default is the vertical bar (`|`). It is equivalent to [\pset fieldsep](../ysqlsh-pset-options/#fieldsep).
 
 ##### \g [ filename ], \g [ |command ]
 
@@ -553,7 +553,7 @@ Sets options affecting the output of query result tables. *option* indicates whi
 
 `\pset` without any arguments displays the current status of all printing options.
 
-The *options* are defined in [pset options](../ysqlsh-pset-options/#pset-options).
+The *options* are defined in [pset options](../ysqlsh-pset-options/).
 
 For examples using `\pset`, see [ysqlsh meta-command examples](../ysqlsh-meta-examples/).
 

@@ -6545,14 +6545,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		}
 
 		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
-		{
-			/* YB_TODO(later): Do away with TTS to heaptuple conversion. */
-			bool shouldFree;
-			HeapTuple newtup = ExecFetchSlotHeapTuple(newslot, false, &shouldFree);
-			YbAddTriggerFKReferenceIntent(trigger, rel, newtup);
-			if (shouldFree)
-				pfree(newtup);
-		}
+			YbAddTriggerFKReferenceIntent(trigger, rel, newslot);
 
 		afterTriggerAddEvent(&afterTriggers.query_stack[afterTriggers.query_depth].events,
 							 &new_event, &new_shared);

@@ -1,10 +1,4 @@
--- This test's output has temporary tables' schema names that contain the
--- tserver uuid, which can lead to unstable results.
--- Use replace_temp_schema_name to change the schema name to pg_temp_x so that
--- the result is stable.
-select current_setting('data_directory') || '/describe.out' as desc_output_file
-\gset
-\set replace_temp_schema_name 'select regexp_replace(pg_read_file(:\'desc_output_file\'), \'pg_temp_.{32}_\\d+\', \'pg_temp_x\', \'g\')'
+SET compute_query_id to regress; -- hide query id for EXPLAIN VERBOSE
 
 -- Check for unsupported system columns.
 CREATE TABLE test_tab1(id INT);
@@ -64,7 +58,6 @@ WITH yb_with AS (
 INSERT INTO test_temp_tab VALUES (5) RETURNING xmax
 ) SELECT count(*) FROM yb_with;
 */
-\o :desc_output_file
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab;
@@ -77,8 +70,6 @@ EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
-\o
-:replace_temp_schema_name;
 SELECT ctid FROM test_temp_tab;
 SELECT cmin FROM test_temp_tab;
 SELECT cmax FROM test_temp_tab;
@@ -89,7 +80,6 @@ SELECT xmin FROM test_temp_tab
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab
 ) SELECT count(*) FROM yb_with;
-\o :desc_output_file
 EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab WHERE id = 1;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab WHERE id = 2;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab WHERE id = 3;
@@ -102,8 +92,6 @@ EXPLAIN (VERBOSE, COSTS OFF)
 WITH yb_with AS (
 SELECT xmax FROM test_temp_tab WHERE id = 5
 ) SELECT count(*) FROM yb_with;
-\o
-:replace_temp_schema_name;
 SELECT ctid FROM test_temp_tab WHERE id = 1;
 SELECT cmin FROM test_temp_tab WHERE id = 2;
 SELECT cmax FROM test_temp_tab WHERE id = 3;

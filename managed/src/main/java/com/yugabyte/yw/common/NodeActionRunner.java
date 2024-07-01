@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +25,6 @@ import org.apache.commons.lang3.math.NumberUtils;
 @Slf4j
 @Singleton
 public class NodeActionRunner {
-  private final String DEFAULT_REMOTE_USER = "yugabyte";
 
   private final Config config;
   private final NodeAgentClient nodeAgentClient;
@@ -47,19 +45,8 @@ public class NodeActionRunner {
    */
   public ShellResponse runCommand(
       NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
-    String user =
-        StringUtils.isBlank(context.getSshUser()) ? DEFAULT_REMOTE_USER : context.getSshUser();
-    Duration timeout =
-        context.getTimeoutSecs() == 0 ? null : Duration.ofSeconds(context.getTimeoutSecs());
-    List<String> shellCommand = new ArrayList<>();
-    shellCommand.add("bash");
-    shellCommand.add("-c");
-    // Same join as in rpc.py of node agent.
-    shellCommand.add(
-        command.stream()
-            .map(part -> part.contains(" ") ? "'" + part + "'" : part)
-            .collect(Collectors.joining(" ")));
-    ShellResponse response = nodeAgentClient.executeCommand(nodeAgent, shellCommand, user, timeout);
+    ShellResponse response =
+        nodeAgentClient.executeCommand(nodeAgent, command, context, true /* use bash */);
     if (response.getCode() == 0) {
       // Prefix is added to make the output same as that of run_node_action.py.
       response.message = ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + response.message;
@@ -81,16 +68,11 @@ public class NodeActionRunner {
       String localScriptPath,
       List<String> params,
       ShellProcessContext context) {
-    String user =
-        StringUtils.isBlank(context.getSshUser()) ? DEFAULT_REMOTE_USER : context.getSshUser();
-    Duration timeout =
-        context.getTimeoutSecs() == 0 ? null : Duration.ofSeconds(context.getTimeoutSecs());
     Path scriptPath = Paths.get(localScriptPath);
     if (!scriptPath.isAbsolute()) {
       scriptPath = Paths.get(config.getString("yb.devops.home"), localScriptPath);
     }
-    ShellResponse response =
-        nodeAgentClient.executeScript(nodeAgent, scriptPath, params, user, timeout);
+    ShellResponse response = nodeAgentClient.executeScript(nodeAgent, scriptPath, params, context);
     if (response.getCode() == 0) {
       // Prefix is added to keep the output same as that of run_node_action.py.
       response.message = ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + response.message;
@@ -113,10 +95,8 @@ public class NodeActionRunner {
       String ybHomeDir,
       String targetLocalFile,
       ShellProcessContext context) {
-    String user =
-        StringUtils.isBlank(context.getSshUser()) ? DEFAULT_REMOTE_USER : context.getSshUser();
-    Duration timeout =
-        context.getTimeoutSecs() == 0 ? null : Duration.ofSeconds(context.getTimeoutSecs());
+    String user = context.getSshUser();
+    Duration timeout = context.getTimeout();
     String tarFilename = node.getNodeName() + "-support_package.tar.gz";
     List<String> command = new ArrayList<>();
     command.add("tar");
@@ -133,12 +113,11 @@ public class NodeActionRunner {
       command.add("master/logs/yb-master.INFO");
     }
     // Create the tgz file.
-    nodeAgentClient.executeCommand(nodeAgent, command, user, timeout).processErrors();
+    nodeAgentClient.executeCommand(nodeAgent, command, context).processErrors();
     try {
       nodeAgentClient.downloadFile(nodeAgent, tarFilename, targetLocalFile, user, timeout);
     } finally {
-      nodeAgentClient.executeCommand(
-          nodeAgent, Arrays.asList("rm", "-f", tarFilename), user, timeout);
+      nodeAgentClient.executeCommand(nodeAgent, Arrays.asList("rm", "-f", tarFilename), context);
     }
   }
 
@@ -159,10 +138,8 @@ public class NodeActionRunner {
       String fileListFilepath,
       String targetLocalFile,
       ShellProcessContext context) {
-    String user =
-        StringUtils.isBlank(context.getSshUser()) ? DEFAULT_REMOTE_USER : context.getSshUser();
-    Duration timeout =
-        context.getTimeoutSecs() == 0 ? null : Duration.ofSeconds(context.getTimeoutSecs());
+    String user = context.getSshUser();
+    Duration timeout = context.getTimeout();
     String tarFilename = String.format("%s-%s.tar.gz", node.getNodeName(), UUID.randomUUID());
     String targetNodeFilesPath = fileListFilepath;
     // Upload the files to be downloaded.
@@ -176,7 +153,7 @@ public class NodeActionRunner {
     scriptParams.add(fileListFilepath);
     String scriptOutput =
         nodeAgentClient
-            .executeScript(nodeAgent, scriptPath, scriptParams, user, timeout)
+            .executeScript(nodeAgent, scriptPath, scriptParams, context)
             .processErrors()
             .getMessage();
     log.debug("Output for create_tar_file for {}: {}", tarFilename, scriptOutput);
@@ -186,7 +163,7 @@ public class NodeActionRunner {
     scriptParams.add(tarFilename);
     scriptOutput =
         nodeAgentClient
-            .executeScript(nodeAgent, scriptPath, scriptParams, user, timeout)
+            .executeScript(nodeAgent, scriptPath, scriptParams, context)
             .processErrors()
             .getMessage();
     log.debug("Output for check_file_exists for {}: {}", tarFilename, scriptOutput);
@@ -197,7 +174,7 @@ public class NodeActionRunner {
         nodeAgentClient.downloadFile(nodeAgent, tarFilename, targetLocalFile, user, timeout);
       } finally {
         nodeAgentClient.executeCommand(
-            nodeAgent, Arrays.asList("rm", "-f", tarFilename, fileListFilepath), user, timeout);
+            nodeAgent, Arrays.asList("rm", "-f", tarFilename, fileListFilepath), context);
       }
     }
   }
@@ -212,15 +189,10 @@ public class NodeActionRunner {
    */
   public void copyFile(
       NodeAgent nodeAgent, String remoteFile, String localFile, ShellProcessContext context) {
-    String user =
-        StringUtils.isBlank(context.getSshUser()) ? DEFAULT_REMOTE_USER : context.getSshUser();
-    Duration timeout =
-        context.getTimeoutSecs() == 0 ? null : Duration.ofSeconds(context.getTimeoutSecs());
     Path localFilepath = Paths.get(localFile);
     Path localFileDir = localFilepath.getParent().toAbsolutePath();
     nodeAgentClient
-        .executeCommand(
-            nodeAgent, Arrays.asList("mkdir", "-p", localFileDir.toString()), user, timeout)
+        .executeCommand(nodeAgent, Arrays.asList("mkdir", "-p", localFileDir.toString()), context)
         .processErrors();
     nodeAgentClient.downloadFile(nodeAgent, remoteFile, localFile);
   }
@@ -240,11 +212,8 @@ public class NodeActionRunner {
       String targetFile,
       String permissions,
       ShellProcessContext context) {
-    String user =
-        StringUtils.isBlank(context.getSshUser()) ? DEFAULT_REMOTE_USER : context.getSshUser();
-    Duration timeout =
-        context.getTimeoutSecs() == 0 ? null : Duration.ofSeconds(context.getTimeoutSecs());
     int perm = StringUtils.isBlank(permissions) ? 0 : Integer.parseInt(permissions.trim(), 8);
-    nodeAgentClient.uploadFile(nodeAgent, sourceFile, targetFile, user, perm, timeout);
+    nodeAgentClient.uploadFile(
+        nodeAgent, sourceFile, targetFile, context.getSshUser(), perm, context.getTimeout());
   }
 }

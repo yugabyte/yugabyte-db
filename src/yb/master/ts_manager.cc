@@ -36,10 +36,12 @@
 #include <vector>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
 
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
+
 #include "yb/util/atomic.h"
 
 using std::string;
@@ -52,12 +54,6 @@ TAG_FLAG(master_register_ts_check_desired_host_port, advanced);
 
 namespace yb {
 namespace master {
-
-TSManager::TSManager() {
-}
-
-TSManager::~TSManager() {
-}
 
 Status TSManager::LookupTS(const NodeInstancePB& instance,
                            TSDescriptorPtr* ts_desc) {
@@ -84,7 +80,7 @@ Status TSManager::LookupTS(const NodeInstancePB& instance,
   return Status::OK();
 }
 
-bool TSManager::LookupTSByUUID(const string& uuid,
+bool TSManager::LookupTSByUUID(const std::string& uuid,
                                TSDescriptorPtr* ts_desc) {
   SharedLock<decltype(lock_)> l(lock_);
   const TSDescriptorPtr* found_ptr = FindOrNull(servers_by_id_, uuid);
@@ -159,14 +155,13 @@ TSManager::FindHostPortMatches(
     };
   }
   std::vector<std::pair<TSDescriptor*, std::shared_ptr<TSInformationPB>>> matches;
-  for (const auto& map_entry : servers_by_id_) {
-    const auto existing_ts_info = map_entry.second->GetTSInformationPB();
-    const auto& existing_ts_registration_common = existing_ts_info->registration().common();
-    if (existing_ts_info->tserver_instance().permanent_uuid() == instance.permanent_uuid()) {
+  for (const auto& [_, ts_desc] : servers_by_id_) {
+    if (ts_desc->permanent_uuid() == instance.permanent_uuid()) {
       continue;
     }
-    if (hostport_checker(existing_ts_registration_common)) {
-      matches.push_back(std::pair(map_entry.second.get(), std::move(existing_ts_info)));
+    auto existing_ts_info = ts_desc->GetTSInformationPB();
+    if (hostport_checker(existing_ts_info->registration().common())) {
+      matches.push_back(std::pair(ts_desc.get(), std::move(existing_ts_info)));
     }
   }
   return matches;
@@ -181,7 +176,7 @@ Status TSManager::RegisterTS(
   TSCountCallback callback_to_call;
   {
     std::lock_guard l(lock_);
-    const string& uuid = instance.permanent_uuid();
+    const std::string& uuid = instance.permanent_uuid();
     auto duplicate_hostport_ts_descriptors =
         FindHostPortMatches(instance, registration, local_cloud_info);
     for (const auto& [ts, ts_info] : duplicate_hostport_ts_descriptors) {
@@ -216,15 +211,15 @@ Status TSManager::RegisterTS(
       LOG(INFO) << "Re-registered known tablet server { " << instance.ShortDebugString()
                 << " }: " << registration.ShortDebugString();
     }
-    if (!ts_count_callback_.empty()) {
-      auto new_count = GetCountUnlocked();
+    if (ts_count_callback_) {
+      auto new_count = NumDescriptorsUnlocked();
       if (new_count >= ts_count_callback_min_count_) {
         callback_to_call = std::move(ts_count_callback_);
         ts_count_callback_min_count_ = 0;
       }
     }
   }
-  if (!callback_to_call.empty()) {
+  if (callback_to_call) {
     callback_to_call();
   }
   return Status::OK();
@@ -268,7 +263,7 @@ void TSManager::GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const {
 }
 
 void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs,
-                                      const boost::optional<BlacklistSet>& blacklist) const {
+                                      const std::optional<BlacklistSet>& blacklist) const {
   GetDescriptors([blacklist](const TSDescriptorPtr& ts) -> bool {
     return ts->IsLive() && !IsTsBlacklisted(ts, blacklist); }, descs);
 }
@@ -278,21 +273,18 @@ void TSManager::GetAllReportedDescriptors(TSDescriptorVector* descs) const {
                    -> bool { return ts->IsLive() && ts->has_tablet_report(); }, descs);
 }
 
-bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, string cluster_uuid) {
+bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, const std::string& cluster_uuid) {
   return ts->placement_uuid() == cluster_uuid;
 }
 
 bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
-                                const boost::optional<BlacklistSet>& blacklist) {
-  if (!blacklist.is_initialized()) {
-    return false;
-  }
-  return ts->IsBlacklisted(*blacklist);
+                                const std::optional<BlacklistSet>& blacklist) {
+  return blacklist.has_value() && ts->IsBlacklisted(*blacklist);
 }
 
 void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
-    string placement_uuid,
-    const boost::optional<BlacklistSet>& blacklist,
+    const std::string& placement_uuid,
+    const std::optional<BlacklistSet>& blacklist,
     bool primary_cluster) const {
   descs->clear();
   SharedLock<decltype(lock_)> l(lock_);
@@ -310,23 +302,10 @@ void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
   }
 }
 
-const TSDescriptorPtr TSManager::GetTSDescriptor(const HostPortPB& host_port) const {
-  SharedLock<decltype(lock_)> l(lock_);
-
-  for (const TSDescriptorMap::value_type& entry : servers_by_id_) {
-    const TSDescriptorPtr& ts = entry.second;
-    if (ts->IsLive() && ts->IsRunningOn(host_port)) {
-      return ts;
-    }
-  }
-
-  return nullptr;
-}
-
-size_t TSManager::GetCountUnlocked() const {
-  TSDescriptorVector descs;
-  GetAllDescriptorsUnlocked(&descs);
-  return descs.size();
+size_t TSManager::NumDescriptorsUnlocked() const {
+  return std::count_if(
+      servers_by_id_.cbegin(), servers_by_id_.cend(),
+      [](const auto& entry) -> bool { return !entry.second->IsRemoved(); });
 }
 
 // Register a callback to be called when the number of tablet servers reaches a certain number.
@@ -334,6 +313,18 @@ void TSManager::SetTSCountCallback(int min_count, TSCountCallback callback) {
   std::lock_guard l(lock_);
   ts_count_callback_ = std::move(callback);
   ts_count_callback_min_count_ = min_count;
+}
+
+size_t TSManager::NumDescriptors() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return NumDescriptorsUnlocked();
+}
+
+size_t TSManager::NumLiveDescriptors() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return std::count_if(
+      servers_by_id_.cbegin(), servers_by_id_.cend(),
+      [](const auto& entry) -> bool { return entry.second->IsLive(); });
 }
 
 } // namespace master

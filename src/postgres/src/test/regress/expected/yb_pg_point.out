@@ -25,8 +25,7 @@ INSERT INTO POINT_TBL(f1) VALUES ('(10.0, 1e+500)');	-- Out of range
 ERROR:  "1e+500" is out of range for type double precision
 LINE 1: INSERT INTO POINT_TBL(f1) VALUES ('(10.0, 1e+500)');
                                           ^
--- YB note: avoid selecting ybsort column.
-SELECT f1 FROM POINT_TBL;
+SELECT * FROM POINT_TBL;
         f1
 -------------------
  (0,0)
@@ -42,8 +41,7 @@ SELECT f1 FROM POINT_TBL;
 (10 rows)
 
 -- left of
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE p.f1 << '(0.0, 0.0)';
+SELECT p.* FROM POINT_TBL p WHERE p.f1 << '(0.0, 0.0)';
     f1
 ----------
  (-10,0)
@@ -52,8 +50,7 @@ SELECT p.f1 FROM POINT_TBL p WHERE p.f1 << '(0.0, 0.0)';
 (3 rows)
 
 -- right of
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE '(0.0,0.0)' >> p.f1;
+SELECT p.* FROM POINT_TBL p WHERE '(0.0,0.0)' >> p.f1;
     f1
 ----------
  (-10,0)
@@ -62,32 +59,28 @@ SELECT p.f1 FROM POINT_TBL p WHERE '(0.0,0.0)' >> p.f1;
 (3 rows)
 
 -- above
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE '(0.0,0.0)' |>> p.f1;
+SELECT p.* FROM POINT_TBL p WHERE '(0.0,0.0)' |>> p.f1;
     f1
 ----------
  (-5,-12)
 (1 row)
 
 -- below
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE p.f1 <<| '(0.0, 0.0)';
+SELECT p.* FROM POINT_TBL p WHERE p.f1 <<| '(0.0, 0.0)';
     f1
 ----------
  (-5,-12)
 (1 row)
 
 -- equal
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p WHERE p.f1 ~= '(5.1, 34.5)';
+SELECT p.* FROM POINT_TBL p WHERE p.f1 ~= '(5.1, 34.5)';
      f1
 ------------
  (5.1,34.5)
 (1 row)
 
 -- point in box
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE p.f1 <@ box '(0,0,100,100)';
      f1
 ------------
@@ -96,8 +89,7 @@ SELECT p.f1 FROM POINT_TBL p
  (10,10)
 (3 rows)
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE box '(0,0,100,100)' @> p.f1;
      f1
 ------------
@@ -106,8 +98,7 @@ SELECT p.f1 FROM POINT_TBL p
  (10,10)
 (3 rows)
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE not p.f1 <@ box '(0,0,100,100)';
         f1
 -------------------
@@ -120,8 +111,7 @@ SELECT p.f1 FROM POINT_TBL p
  (NaN,NaN)
 (7 rows)
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE p.f1 <@ path '[(0,0),(-10,0),(-10,10)]';
         f1
 ------------------
@@ -130,8 +120,7 @@ SELECT p.f1 FROM POINT_TBL p
  (1e-300,-1e-300)
 (3 rows)
 
--- YB note: avoid selecting ybsort column.
-SELECT p.f1 FROM POINT_TBL p
+SELECT p.* FROM POINT_TBL p
    WHERE not box '(0,0,100,100)' @> p.f1;
         f1
 -------------------

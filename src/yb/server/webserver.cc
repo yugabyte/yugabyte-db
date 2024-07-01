@@ -337,6 +337,10 @@ Status Webserver::Impl::BuildListenSpec(string* spec) const {
 Status Webserver::Impl::Start() {
   LOG(INFO) << "Starting webserver on " << http_address_;
 
+  // Mini-cluster tests can restart the webserver by calling Stop() and Start() on the same instance
+  // of the webserver. To support this, reset the state that was set during the previous shutdown.
+  stop_initiated = false;
+
   vector<const char*> options;
 
   if (static_pages_available()) {

@@ -50,12 +50,12 @@ The main downside is in certain scenarios where concurrent transactions try to p
 
 YugabyteDB maintains data consistency internally using multi-version concurrency control (MVCC) without the need to lock rows. Each transaction works on a version of the data in the database as of some hybrid timestamp that is derived from [Hybrid Logical Clock](#hybrid-logical-clocks). This prevents transactions from reading the intermediate updates made by concurrently-running transactions, some of which may be updating the same rows. Each transaction, however, can see its own updates, thereby providing transaction isolation for each database session. Using MVCC minimizes lock contention during the execution of multiple concurrent transactions.
 
-YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
+YugabyteDB implements MVCC and internally keeps track of multiple versions of values corresponding to the same key (for example, of a particular column in a particular row), as described in [Persistence on top of RocksDB](../../docdb/data-model). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
 
 ## Provisional records
 
 YugabyteDB needs to store uncommitted values written by distributed transactions in a similar persistent data structure. However, they cannot be written to DocDB as regular values, because they would then become visible at different times to clients reading through different tablet servers, allowing a client to see a partially applied transaction and thus breaking atomicity.
 
-{{<tip>}}
+{{<lead link="../distributed-txns#provisional-records">}}
 To get a deeper understanding of the layout of the uncommited records, see [Provisional records](../distributed-txns#provisional-records)
-{{</tip>}}
+{{</lead>}}

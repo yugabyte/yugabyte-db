@@ -357,9 +357,9 @@ TEST_F(CqlIndexTest, TestSaturatedWorkers) {
 
    * TODO: when switching to a fully asynchronous model, this failure will disappear.
    */
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_prepare_child_threshold_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_prepare_child_threshold_ms) = 0;
 
-  constexpr int kKeys = 10000;
+  constexpr int kKeys = 10;
   constexpr int kMaxRound = 10;
   Status status;
 
@@ -413,9 +413,14 @@ TEST_F(CqlIndexTest, TestSaturatedWorkers) {
     }
   }
 
-  ASSERT_FALSE(status.ok());
-  ASSERT_NE(status.message().ToBuffer().find("Timed out waiting for prepare child status"),
-            std::string::npos) << status;
+  static const char expected_error[] = "Timed out waiting for prepare child status";
+  if (!status.ok()) {
+    // Got the expected error - check the error message.
+    ASSERT_NE(status.message().ToBuffer().find(expected_error), std::string::npos) << status;
+  } else {
+    ASSERT_TRUE(false) << "Unexpected case: '" << expected_error << "' error was not detected "
+                       << "after " << kMaxRound << " rounds: status = " << status;
+  }
 }
 
 YB_STRONGLY_TYPED_BOOL(CheckReady);

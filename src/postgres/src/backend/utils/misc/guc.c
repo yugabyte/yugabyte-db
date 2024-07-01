@@ -269,6 +269,7 @@ static bool check_transaction_priority_upper_bound(double *newval, void **extra,
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 extern double YBCGetTransactionPriority();
 extern TxnPriorityRequirement YBCGetTransactionPriorityType();
+static bool yb_check_no_txn(int* newval, void **extra, GucSource source);
 
 static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
@@ -637,6 +638,12 @@ static const struct config_enum_entry wal_compression_options[] = {
 	{"1", WAL_COMPRESSION_PGLZ, true},
 	{"0", WAL_COMPRESSION_NONE, true},
 	{NULL, 0, false}
+};
+
+const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
+  {"strict", YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, false},
+  {"relaxed", YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY, false},
+  {NULL, 0, false}
 };
 
 /*
@@ -2473,12 +2480,12 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replication_commands,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
 	{
-		{"TEST_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"yb_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable consumption of changes via replication slots. "
 						 "This feature is currently in active development and "
 						 "should not be enabled."),
@@ -2486,7 +2493,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE,
 		},
 		&yb_enable_replication_slot_consumption,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2497,7 +2504,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replica_identity,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3098,6 +3105,19 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_walsender_poll_sleep_duration_empty_ms,
 		1 * 1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_reorderbuffer_max_changes_in_memory", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum number of changes kept in memory per transaction "
+						 "in reorder buffer, which is used in streaming changes via "
+						 "logical replication. After that, changes are spooled to disk."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_reorderbuffer_max_changes_in_memory,
+		4096, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -6347,6 +6367,46 @@ static struct config_enum ConfigureNamesEnum[] =
 		NULL, assign_yb_pg_batch_detection_mechanism, NULL
 	},
 
+	{
+		/*
+		 * Read-after-commit-visibility guarantee: any client issued read
+		 * should see all data that was committed before the read request
+		 * was issued (even in the presence of clock skew between nodes).
+		 * In other words, the following example should always work:
+		 * (1) User X commits some data (for which the db picks a commit
+		 * 	timestamp say ht1)
+		 * (2) Then user X communicates to user Y to inform about the commit
+		 * 	via a channel outside the database (say a phone call)
+		 * (3) Then user Y issues a read to some YB node which picks a
+		 * 	read time (less than ht1 due to clock skew)
+		 * (4) Then it should not happen that user Y gets an output without
+		 * 	the data that user Y was informed about.
+		 */
+		{
+			"yb_read_after_commit_visibility", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Control read-after-commit-visibility guarantee."),
+			gettext_noop(
+				"This GUC is intended as a crutch for users migrating from PostgreSQL and new to"
+				" read restart errors. Users can now largely avoid these errors when"
+				" read-after-commit-visibility guarantee is not a strong requirement."
+				" This option cannot be set from within a transaction block."
+				" Configure one of the following options:"
+				" (a) strict: Default Behavior. The read-after-commit-visibility guarantee is"
+				" maintained by the database. However, users may see read restart errors that"
+				" show \"ERROR:  Query error: Restart read required at: ...\". The database"
+				" attempts to retry on such errors internally but that is not always possible."
+				" (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
+				" relaxed. Read only statements/transactions do not see read restart errors but"
+				" may miss recent updates with staleness bounded by clock skew."
+			),
+			0
+		},
+		&yb_read_after_commit_visibility,
+		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
+		yb_read_after_commit_visibility_options,
+		yb_check_no_txn, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL, NULL
@@ -8220,17 +8280,40 @@ ReportGUCOption(struct config_generic *record)
 			free(record->last_reported);
 		record->last_reported = strdup(val);
 
-		/* 
-		 * Send the equivalent of a ParameterStatus packet corresponding to role_oid
-		 * back to YSQL Connection Manager.
+		/*
+		 * Send the equivalent of a ParameterStatus packet corresponding to a
+		 * role oid back to YSQL Connection Manager. Also ensure that we are
+		 * in an active transaction before sending the packet, we cannot search
+		 * for role oids otherwise.
 		 */
-		if ((strcmp(record->name, "role") == 0) && YbIsClientYsqlConnMgr())
+		if (YbIsClientYsqlConnMgr())
 		{
+			int yb_role_oid_type = 0;
 			StringInfoData rolebuf;
 
+			if (strcmp(record->name, "role") == 0)
+				yb_role_oid_type = 1;
+			else if (strcmp(record->name, "session_authorization") == 0)
+				yb_role_oid_type = 2;
+			else
+			{
+				pfree(val);
+				return;
+			}
+			/*
+			 * Header 'r' informs Connection Manager that this packet does
+			 * not need to be forwarded back to the client
+			 */
 			pq_beginmessage(&rolebuf, 'r');
-			pq_sendstring(&rolebuf, "role_oid");
-			if (val != NULL && strcmp(val, "none") != 0)
+
+			if (yb_role_oid_type == 1)
+				pq_sendstring(&rolebuf, "role_oid");
+			else if (yb_role_oid_type == 2)
+				pq_sendstring(&rolebuf, "session_authorization_oid");
+			if (val != NULL &&
+				strcmp(val, "none") != 0 &&
+				strcmp(val, "default") != 0 &&
+				IsTransactionState())
 			{
 				char oid[16];
 				snprintf(oid, 16, "%u", get_role_oid(val, false));
@@ -9048,19 +9131,34 @@ set_config_option_ext(const char *name, const char *value,
 		Assert(YbIsClientYsqlConnMgr());
 
 	/* 
-	 * role_oid is a provision made for YSQL Connection Manager to handle
-	 * scenarios around "ALTER ROLE RENAME" queries as it only caches the
-	 * previously used role by that client.
+	 * role_oid and session_authorization_oid are provisions made for YSQL
+	 * Connection Manager to handle scenarios around "ALTER ROLE RENAME"
+	 * queries as it only caches the previously used role by that client.
 	 */
-	if (strcmp(name, "role_oid") == 0)
+	if (YbIsClientYsqlConnMgr())
 	{
-		Assert(YbIsClientYsqlConnMgr());
-		/* Handle RESET ROLE queries */
-		if (!value || strcmp(value, "0") == 0)
-			return set_config_option("role", NULL, context, source,
-								action, changeVal, elevel, is_reload);
-		return set_config_option("role", GetUserNameFromId(atoi(value), false), context, source,
-								action, changeVal, elevel, is_reload);
+		if (strcmp(name, "role_oid") == 0)
+		{
+			/* Handle RESET ROLE queries */
+			if (!value || strcmp(value, "0") == 0)
+				return set_config_option("role", NULL, context, source, action,
+										 changeVal, elevel, is_reload);
+			return set_config_option("role",
+									 GetUserNameFromId(atoi(value), false),
+									 context, source, action, changeVal, elevel,
+									 is_reload);
+		} else if (strcmp(name, "session_authorization_oid") == 0)
+		{
+			/* Handle RESET SESSION AUTHORIZATION queries */
+			if (!value || strcmp(value, "0") == 0)
+				return set_config_option("session_authorization", NULL, context,
+										 source, action, changeVal, elevel,
+										 is_reload);
+			return set_config_option("session_authorization",
+									 GetUserNameFromId(atoi(value), false),
+									 context, source, action, changeVal, elevel,
+									 is_reload);
+		}
 	}
 
 	if (elevel == 0)
@@ -14948,6 +15046,23 @@ yb_check_toast_catcache_threshold(int *newVal, void **extra, GucSource source)
 {
 	if (*newVal != -1 && *newVal < 128) {
 		GUC_check_errdetail("must greater than or equal to 128 bytes, or -1 to disable.");
+		return false;
+	}
+	return true;
+}
+
+/*
+ * YB: yb_check_no_txn
+ *
+ * Do not allow users to set yb_read_after_commit_visibility
+ * from within a txn block.
+ */
+static bool
+yb_check_no_txn(int *newVal, void **extra, GucSource source)
+{
+	if (IsTransactionBlock())
+	{
+		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
 	}
 	return true;

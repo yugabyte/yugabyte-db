@@ -36,6 +36,11 @@ struct SeekStats {
 // Seek forward using Next call.
 SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, Slice seek_key);
 
+// Seeks to the latest record which is strictly less than upper_bound_key (in other words, seeks
+// to a record most closest to upper_bound_key but strictly less than upper_bound_key).
+// Does not perform a seek if the iterator is already positioned before the upper_bound_key.
+const rocksdb::KeyValueEntry& SeekBackward(Slice upper_bound_key, rocksdb::Iterator& iter);
+
 // When we replace HybridTime::kMin in the end of seek key, next seek will skip older versions of
 // this key, but will not skip any subkeys in its subtree. If the iterator is already positioned far
 // enough, does not perform a seek.

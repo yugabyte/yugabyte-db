@@ -1,4 +1,5 @@
-title: Edit Cloud Provider settings for the cluster
+title: ClusterProviderEditSpec
+description: Edit Cloud Provider settings for the cluster. Part of ClusterAddSpec and ClusterEditSpec.
 type: object
 required:
   - region_list

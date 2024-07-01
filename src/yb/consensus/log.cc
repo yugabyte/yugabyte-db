@@ -219,13 +219,28 @@ DEFINE_RUNTIME_int32(min_segment_size_bytes_to_rollover_at_flush, 0,
                     "Only rotate wals at least of this size (in bytes) at tablet flush."
                     "-1 to disable WAL rollover at flush. 0 to always rollover WAL at flush.");
 
+// Default 3GB. Assuming 300MBps disk throughput rate.
+DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 3 * 1024,
+    "Reject writes if less than this much disk space is available on the WAL directory. "
+    "'reject_writes_when_disk_full' must be enabled. Set this flag to a value larger than "
+    "'disk throughput rate' * 10");
+
+DEFINE_RUNTIME_uint32(reject_writes_min_disk_space_check_interval_sec, 60,
+    "Interval in seconds to check for disk space availability. The check will default to a 10s "
+    "if the disk space is less than 'reject_writes_min_disk_space_aggressive_check_mb'");
+
+// Default 18GB. Assuming 300MBps disk throughput rate.
+DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_aggressive_check_mb, 18 * 1024,
+    "Once the available disk space falls below this value we will check the disk space every 10s "
+    "instead of 'reject_writes_min_disk_space_check_interval_sec'. Set this flag to a value larger "
+    "than 'disk throughput rate' * 'reject_writes_min_disk_space_check_interval_sec'");
+
 // Validate that log_min_segments_to_retain >= 1
-static bool ValidateLogsToRetain(const char* flagname, int value) {
+static bool ValidateLogsToRetain(const char* flag_name, int value) {
   if (value >= 1) {
     return true;
   }
-  LOG(ERROR) << strings::Substitute("$0 must be at least 1, value $1 is invalid",
-                                    flagname, value);
+  LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be at least 1";
   return false;
 }
 DEFINE_validator(log_min_segments_to_retain, &ValidateLogsToRetain);
@@ -449,7 +464,7 @@ Log::Appender::Appender(Log* log, ThreadPool* append_thread_pool)
     wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
     wait_state_->UpdateAuxInfo({.tablet_id = log_->tablet_id(), .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(wait_state_, Idle);
-    yb::ash::RaftLogAppenderWaitStatesTracker().Track(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Track(wait_state_);
   }
   DCHECK(log_min_segments_to_retain_validator_registered);
 }
@@ -565,7 +580,7 @@ void Log::Appender::Shutdown() {
     task_stream_.reset();
   }
   if (wait_state_) {
-    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Untrack(wait_state_);
   }
 }
 
@@ -675,7 +690,7 @@ Log::Log(
     background_synchronizer_wait_state_->UpdateAuxInfo(
         {.tablet_id = tablet_id_, .method = "RaftWAL"});
     SET_WAIT_STATUS_TO(background_synchronizer_wait_state_, Idle);
-    yb::ash::RaftLogAppenderWaitStatesTracker().Track(background_synchronizer_wait_state_);
+    yb::ash::RaftLogWaitStatesTracker().Track(background_synchronizer_wait_state_);
   }
 }
 
@@ -1641,6 +1656,9 @@ Status Log::Close() {
       RETURN_NOT_OK(CloseCurrentSegment());
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       log_state_ = kLogClosed;
+      if (background_synchronizer_wait_state_) {
+        yb::ash::RaftLogWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
+      }
       VLOG_WITH_PREFIX(1) << "Log closed";
 
       // Release FDs held by these objects.
@@ -1655,9 +1673,6 @@ Status Log::Close() {
 
     default:
       return STATUS(IllegalState, Substitute("Bad state for Close() $0", log_state_));
-  }
-  if (background_synchronizer_wait_state_) {
-    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(background_synchronizer_wait_state_);
   }
 }
 
@@ -2096,6 +2111,72 @@ Status Log::LogEntryBatch::Serialize() {
 void Log::LogEntryBatch::MarkReady() {
   DCHECK_EQ(state_, kEntryReserved);
   state_ = kEntryReady;
+}
+
+bool Log::HasSufficientDiskSpaceForWrite() {
+  const auto now = CoarseMonoClock::Now();
+  const auto last_disk_space_check_time =
+      last_disk_space_check_time_.load(std::memory_order_acquire);
+
+  auto check_interval_sec = disk_space_frequent_check_interval_sec_.load(std::memory_order_acquire);
+  if (check_interval_sec == 0) {
+    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
+  }
+
+  if (IsInitialized(last_disk_space_check_time) &&
+      (now - last_disk_space_check_time < check_interval_sec * 1s)) {
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+
+  std::unique_lock l(disk_space_mutex_, std::defer_lock);
+  if (!l.try_lock_for(std::chrono::milliseconds(0))) {
+    // Someone else is already checking disk space. Just use the cached value.
+
+    if (!IsInitialized(last_disk_space_check_time)) {
+      // Always wait for the initial value to be valid.
+      SharedLock shared_l(disk_space_mutex_);
+    }
+
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+
+  std::string path;
+  {
+    std::lock_guard lock(active_segment_mutex_);
+    path = active_segment_->path();
+  }
+
+  bool has_space = true;
+  // Lets assume we need to check frequently. If we have enough space, we will adjust this value.
+  check_interval_sec =
+      std::min(static_cast<uint32>(10), FLAGS_reject_writes_min_disk_space_check_interval_sec);
+
+  auto free_space_result = get_env()->GetFreeSpaceBytes(path);
+  if (!free_space_result.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 300) << "Unable to get free space: " << free_space_result;
+
+    // Fallback to the last known value.
+    return has_free_disk_space_.load(std::memory_order_acquire);
+  }
+  const auto free_space_mb = *free_space_result / 1024 / 1024;
+
+  if (free_space_mb < FLAGS_reject_writes_min_disk_space_mb) {
+    YB_LOG_EVERY_N_SECS(ERROR, 600) << "Not enough disk space available on " << path
+                                    << ". Free space: " << *free_space_result << " bytes";
+    has_space = false;
+  } else if (free_space_mb < FLAGS_reject_writes_min_disk_space_aggressive_check_mb) {
+    YB_LOG_EVERY_N_SECS(WARNING, 600)
+        << "Low disk space on " << path << ". Free space: " << *free_space_result << " bytes";
+  } else {
+    // We have enough space so no need to check frequently.
+    check_interval_sec = FLAGS_reject_writes_min_disk_space_check_interval_sec;
+  }
+
+  disk_space_frequent_check_interval_sec_.store(check_interval_sec, std::memory_order_release);
+  has_free_disk_space_.store(has_space, std::memory_order_release);
+  last_disk_space_check_time_.store(now, std::memory_order_release);
+
+  return has_space;
 }
 
 }  // namespace log

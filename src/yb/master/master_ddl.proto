@@ -188,6 +188,7 @@ message ListTablesResponsePB {
 
 message GetTableSchemaRequestPB {
   required TableIdentifierPB table = 1;
+  optional bool include_inactive = 2;
 }
 
 message GetTableSchemaResponsePB {

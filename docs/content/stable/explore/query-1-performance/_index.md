@@ -27,7 +27,21 @@ CREATE EXTENSION if not exists pg_stat_statements;
 
 To get the output of `pg_stat_statements` in JSON format, visit `https://<yb-tserver-ip>:13000/statements` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
 
-For more information, refer to [Get query statistics using `pg_stat_statements`](./pg-stat-statements).
+For more information, refer to [Get query statistics using pg_stat_statements](./pg-stat-statements).
+
+<!-- ### View live queries
+
+Use the `pg_stat_activity` view to get information on currently running tasks. Using `pg_stat_activity` you can identify inactive, active, and long time active sessions, and get process information and the current query.
+
+To get the output of `pg_stat_activity` in JSON format, visit `https://<yb-tserver-ip>:13000/rpcz` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
+
+For more information, refer to [View live queries with pg_stat_activity](../observability/pg-stat-activity/).
+
+### View COPY operation status
+
+Use the `pg_stat_progress_copy` view to get status information of a COPY command execution. In addition to the COPY status, `pg_stat_progress_copy` provides the number of tuples processed and other additional information, and retains the COPY progress report after the command execution.
+
+For more information, refer to [View COPY progress with pg_stat_progress_copy](../observability/pg-stat-progress-copy/). -->
 
 ### View plans with EXPLAIN
 
@@ -60,7 +74,7 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
-Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
+Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](../../troubleshoot/nodes/check-logs/#yb-tserver-logs).
 
 {{< note title="Note" >}}
 
@@ -95,8 +109,8 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg
     icon="/images/section_icons/develop/learn.png">}}
 
   {{<index/item
-    title="Get query statistics using pg_stat_statements"
-    body="Track planning and execution statistics for all SQL statements executed by a server."
+    title="Get query statistics"
+    body="Track planning and execution statistics for all statements executed by a server using pg_stat_staments and ycql_stat_statements."
     href="pg-stat-statements/"
     icon="/images/section_icons/develop/learn.png">}}
 

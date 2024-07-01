@@ -174,8 +174,9 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const char *table_name,
                              const PgObjectId& table_id,
                              bool is_shared_table,
+                             bool is_sys_catalog_table,
                              bool if_not_exist,
-                             bool add_primary_key,
+                             PgYbrowidMode ybrowid_mode,
                              bool is_colocated_via_database,
                              const PgObjectId& tablegroup_oid,
                              const ColocationId colocation_id,
@@ -189,8 +190,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_database_name(database_name);
   req_.set_table_name(table_name);
   req_.set_num_tablets(-1);
-  req_.set_is_pg_catalog_table(strcmp(schema_name, "pg_catalog") == 0 ||
-                               strcmp(schema_name, "information_schema") == 0);
+  req_.set_is_pg_catalog_table(is_sys_catalog_table);
   req_.set_is_shared_table(is_shared_table);
   req_.set_if_not_exist(if_not_exist);
   req_.set_is_colocated_via_database(is_colocated_via_database);
@@ -206,14 +206,15 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
   req_.set_is_truncate(is_truncate);
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.
-  if (add_primary_key) {
-    // For regular user table, ybrowid should be a hash key because ybrowid is a random uuid.
-    // For colocated or sys catalog table, ybrowid should be a range key because they are
-    // unpartitioned tables in a single tablet.
-    bool is_hash =
-        !req_.is_pg_catalog_table() && !is_colocated_via_database && !tablegroup_oid.IsValid();
-    CHECK_OK(AddColumn("ybrowid", static_cast<int32_t>(PgSystemAttrNum::kYBRowId),
-                       YB_YQL_DATA_TYPE_BINARY, is_hash, true /* is_range */));
+  switch (ybrowid_mode) {
+    case PG_YBROWID_MODE_NONE:
+      return;
+    case PG_YBROWID_MODE_HASH: FALLTHROUGH_INTENDED;
+    case PG_YBROWID_MODE_RANGE:
+      bool is_hash = ybrowid_mode == PG_YBROWID_MODE_HASH;
+      CHECK_OK(AddColumn("ybrowid", static_cast<int32_t>(PgSystemAttrNum::kYBRowId),
+                         YB_YQL_DATA_TYPE_BINARY, is_hash, true /* is_range */));
+      break;
   }
 }
 

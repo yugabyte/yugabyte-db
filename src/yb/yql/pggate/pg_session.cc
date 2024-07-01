@@ -61,6 +61,15 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
+DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
+                 "For new tables without PK, make the ybrowid column ASC and generated using a"
+                 " naive per-node sequential counter. This can fail with collisions for a"
+                 " multi-node cluster, and the ordering can be inconsistent in case multiple"
+                 " connections generate ybrowid at the same time. In case a SPLIT INTO clause is"
+                 " provided, fall back to the old behavior. The primary use case of this flag is"
+                 " for ported pg_regress tests that expect deterministic output ordering based on"
+                 " ctid. This is a best-effort reproduction of that, but it still falls short in"
+                 " case of UPDATEs because PG regenerates ctid while YB doesn't.");
 
 namespace yb::pggate {
 namespace {
@@ -601,7 +610,8 @@ Status PgSession::DropTablegroup(const PgOid database_oid,
 
 //--------------------------------------------------------------------------------------------------
 
-Result<PgTableDescPtr> PgSession::DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit) {
+Result<PgTableDescPtr> PgSession::DoLoadTable(
+    const PgObjectId& table_id, bool fail_on_cache_hit, master::IncludeInactive include_inactive) {
   auto cached_table_it = table_cache_.find(table_id);
   const auto exists = cached_table_it != table_cache_.end();
   const auto cache_hit = exists && cached_table_it->second;
@@ -618,11 +628,12 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(const PgObjectId& table_id, bool f
         "Partition list refresh failed for table \"$0\": $1. Invalidating table cache.",
         cached_table_it->second->table_name(), status);
     InvalidateTableCache(table_id, InvalidateOnPgClient::kFalse);
-    return DoLoadTable(table_id, /* fail_on_cache_hit */ true);
+    return DoLoadTable(table_id, /* fail_on_cache_hit */ true, include_inactive);
   }
 
   VLOG(4) << "Table cache MISS: " << table_id;
-  auto table = VERIFY_RESULT(pg_client_.OpenTable(table_id, exists, invalidate_table_cache_time_));
+  auto table = VERIFY_RESULT(
+      pg_client_.OpenTable(table_id, exists, invalidate_table_cache_time_, include_inactive));
   invalidate_table_cache_time_ = CoarseTimePoint();
   if (exists) {
     cached_table_it->second = table;
@@ -634,7 +645,11 @@ Result<PgTableDescPtr> PgSession::DoLoadTable(const PgObjectId& table_id, bool f
 
 Result<PgTableDescPtr> PgSession::LoadTable(const PgObjectId& table_id) {
   VLOG(3) << "Loading table descriptor for " << table_id;
-  return DoLoadTable(table_id, /* fail_on_cache_hit */ false);
+  // When loading table description and yb_read_time is set, return the table properties even if the
+  // table is hidden. For instance, this is required for succesful return of yb_table_properties()
+  // when yb_read_time is set and the table was hidden at yb_read_time.
+  master::IncludeInactive include_inactive = master::IncludeInactive(yb_read_time != 0);
+  return DoLoadTable(table_id, /* fail_on_cache_hit */ false, include_inactive);
 }
 
 void PgSession::InvalidateTableCache(
@@ -702,6 +717,17 @@ PgIsolationLevel PgSession::GetIsolationLevel() {
 bool PgSession::IsHashBatchingEnabled() {
   return yb_enable_hash_batch_in &&
       GetIsolationLevel() != PgIsolationLevel::SERIALIZABLE;
+}
+
+std::string PgSession::GenerateNewYbrowid() {
+  if (PREDICT_FALSE(FLAGS_TEST_generate_ybrowid_sequentially)) {
+    unsigned char buf[sizeof(uint64_t)];
+    BigEndian::Store64(buf, MonoTime::Now().ToUint64());
+    return std::string(reinterpret_cast<char*>(buf), sizeof(buf));
+  }
+
+  // Generate a new random and unique v4 UUID.
+  return GenerateObjectId(true /* binary_id */);
 }
 
 Result<bool> PgSession::IsInitDbDone() {
@@ -961,7 +987,9 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgPerformOptionsPB options;
   pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
-  return pg_client_.RollbackToSubTransaction(id, &options);
+  auto status = pg_client_.RollbackToSubTransaction(id, &options);
+  VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
+  return status;
 }
 
 void PgSession::ResetHasWriteOperationsInDdlMode() {

@@ -23,22 +23,23 @@ Although you could use an RF 3 cluster, an RF 5 cluster provides quicker failove
 Consider a scenario where you have deployed your database across three regions - us-west, us-east, and us-central. Typically, you choose one region as the [preferred region](../../multi-region-deployments/synchronous-replication-ysql/#preferred-region) for your database. This is the region where your applications are active. Then determine which region is closest to the preferred to be the failover region for your applications, and set this region as your second preferred region for the database. The third region needs no explicit setting and automatically becomes the third preferred region.
 
 <!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-<details> <summary>Set up a local cluster</summary>
-{{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-central-1a,aws.us-west.us-west-1a">}}
-</details>
+{{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-central-1a,aws.us-west.us-west-1a" fault-domain="region">}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}} {{<setup/cloud>}} {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-In the following illustration, the leaders are in us-east (the preferred region), which is also where the applications are active. The standby application is in us-central and will be the failover. This has been set as the second preferred region for the database.
+{{<note>}}
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout#legend-for-illustrations)
+{{</note>}}
+
+In the following illustration, the leaders are in us-east (the preferred region), which is also where the applications are active. The standby application is in us-central and will be the failover. This has been set as the second preferred region for the database
 
 ![Sync replication setup - Handling region outage](/images/explore/fault-tolerance/region-failure-setup.png)
 
@@ -53,27 +54,21 @@ As us-central is closer to us-east than us-west, the followers in central will a
 If the third (least preferred) region fails, availability is not affected at all. This is because the leaders will be in the preferred region, and there will be one follower in the second preferred region. There is no data loss and no recovery is needed.
 
 <!-- begin nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-<details> <summary>Simulate failure of the third region locally</summary>
+{{<collapse title="Simulate failure of the third region locally">}}
 To simulate the failure of the 3rd region locally, you can just stop the third node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd3
-```
+{{%cluster/cmd op="stop" nodes="3"%}}
 
-</details>
+{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
-{{</nav/panel>}}
-
-{{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -88,26 +83,20 @@ The following illustration shows the scenario of the third region (us-west) regi
 When the second preferred region fails, availability is not affected at all. This is because there are no leaders in this region - all the leaders are in the preferred region. But your write latency could be affected as every write to the leader has to wait for acknowledgment from the third region, which is farther away. Reads are not affected as the primary application will read from the leaders in the preferred region. There is no data loss at all.
 
 <!-- begin nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 {{<collapse title="Simulate failure of the secondary region locally" >}}
 To simulate the failure of the secondary region locally, you can just stop the second node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd2
-```
+{{%cluster/cmd op="stop" nodes="2"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
-{{</nav/panel>}}
-
-{{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -122,26 +111,20 @@ In the following illustration, you can see that as us-central has failed, writes
 When the preferred region fails, there is no data loss but availability will be affected for a short time. This is because all the leaders are located in this region, and your applications are also active in this region. At the moment of the preferred region failure, all tablets will have no leaders.
 
 <!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 {{<collapse title="Simulate failure of the primary region locally" >}}
 To simulate the failure of the primary region locally, you can just stop the first node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd1
-```
+{{%cluster/cmd op="stop" nodes="1"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
-{{</nav/panel>}}
-
-{{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed. {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -173,6 +156,6 @@ The following illustration shows how the primary application (assuming it is sti
 
 There may be scenarios where you want to deploy the database in just one region. It is quite common for enterprises to have one data center as their primary and another data center just for failover. For this scenario, you can deploy YugabyteDB in your primary data center and set up another cluster in the second data center that gets the data from the primary cluster via asynchronous replication. This is also known as the 2DC or xCluster model.
 
-{{<tip>}}
+{{<lead link="../../../develop/build-global-apps/active-active-single-master">}}
 You can set this up by following the instructions of the [Active-Active Single-Master](../../../develop/build-global-apps/active-active-single-master) pattern.
-{{</tip>}}
+{{</lead>}}

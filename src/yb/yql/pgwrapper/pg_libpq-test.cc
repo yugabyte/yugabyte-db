@@ -3727,6 +3727,49 @@ TEST_P(PgOidCollisionTest, TablespaceOidCollision) {
   ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces * 2 - 1);
 }
 
+class PgOidCollisionReservedNormalOid
+    : public PgOidCollisionTestBase {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgOidCollisionTestBase::UpdateMiniClusterOptions(options);
+    // This gflag simulates the scenario that OIDs < 65532 are already allocated
+    // so the next OID to allocate will be FirstNormalObjectId + 49148 = 65532.
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_ysql_oid_prefetch_adjustment=49148"));
+  }
+};
+
+TEST_F(PgOidCollisionReservedNormalOid, PgOidCollisionSystemPostgresTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  for (int i = 0; i < 4; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE test_db$0", i));
+  }
+  conn = ASSERT_RESULT(ConnectToDB("test_db3"));
+  for (int i = 0; i < 2; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0 (id int)", i));
+  }
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k SERIAL, v INT)"));
+  auto query = "SELECT oid FROM pg_database WHERE oid >= 16384"s;
+  auto values = ASSERT_RESULT(conn.FetchRows<PGOid>(query));
+  std::unordered_set<PgOid> user_created_db_oids;
+  for (const auto& oid : values) {
+    user_created_db_oids.insert(oid);
+  }
+  std::unordered_set<PgOid> expected = std::unordered_set<PgOid>(
+     {65532, 65533, 65534, 65536});
+  ASSERT_TRUE(user_created_db_oids == expected) << yb::ToString(user_created_db_oids);
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  master::GetNamespaceInfoResponsePB namespace_info;
+  ASSERT_OK(client->GetNamespaceInfo(
+      "" /* namespace_id */, "system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
+
+  const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(
+      namespace_info.namespace_().id()));
+  // Make sure the reserved db_oid for system_postgres hasn't changed otherwise
+  // the value of --TEST_ysql_oid_prefetch_adjustment in this test needs to be
+  // adjusted.
+  ASSERT_EQ(db_oid, 65535);
+}
+
 class PgLibPqTempTest: public PgLibPqTest {
  public:
   Status TestDeletedByQuery(
@@ -3903,6 +3946,51 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
       ASSERT_EQ(result, stable_result);
     }
   }
+}
+
+class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--TEST_create_namespace_if_not_exist_inject_delay_ms=5000");
+  }
+};
+
+TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) {
+  // Make two connections to two different nodes so that they can have a race.
+  // Both will try to create the YB specific system sequence table. The race
+  // is created via --TEST_create_namespace_if_not_exist_inject_delay_ms=5000.
+  pg_ts = cluster_->tablet_server(1);
+  auto conn1 = ASSERT_RESULT(Connect());
+  pg_ts = cluster_->tablet_server(2);
+  auto conn2 = ASSERT_RESULT(Connect());
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn1]() -> void {
+    ASSERT_OK(conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)"));
+    ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
+  });
+  thread_holder.AddThreadFunctor([&conn2]() -> void {
+    ASSERT_OK(conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)"));
+    ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
+  });
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
+}
+
+class PgLibPqDropIndexDelayTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back(
+        "--TEST_delay_clearing_fully_applied_ms=5000");
+  }
+};
+
+TEST_F(PgLibPqDropIndexDelayTest, DropIndexDelayUpdateTableTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+    "CREATE TABLE IF NOT EXISTS tb_1 "
+    "(k varchar PRIMARY KEY, v1 VARCHAR, v2 integer)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx1_tb_1 ON tb_1 (k)"));
+  ASSERT_OK(conn.Execute("DROP INDEX idx1_tb_1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tempTable2 AS SELECT * FROM tb_1 limit 1000000"));
 }
 
 class PgBackendsSessionExpireTest : public LibPqTestBase {

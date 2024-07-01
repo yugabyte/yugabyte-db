@@ -29,7 +29,7 @@ Install Hashicorp Vault. See [Installing Vault](https://developer.hashicorp.com/
 
 Before using Vault, do the following:
 
-- Add go to the path as follows:
+- Add Go to the path as follows:
 
     ```sh
     export GOPATH=$HOME/go
@@ -66,6 +66,10 @@ Install the YSQL plugin for Hashicorp Vault as follows:
     ```go
     go build -o <build dir>/ysql-plugin cmd/ysql-plugin/main.go
     ```
+
+Alternatively, you can download the binary directly from GitHub:
+
+- Pre-built binary can be found at the [releases page](https://github.com/yugabyte/hashicorp-vault-ysql-plugin/releases). Download, unzip the file and place the binary in build directory.
 
 ## Run and configure the vault server
 

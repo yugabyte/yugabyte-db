@@ -6,7 +6,7 @@ CREATE OPERATOR FAMILY alt_opf1 USING hash;
 SET SESSION AUTHORIZATION regress_priv_user;
 CREATE EXTENSION pgcrypto; -- should fail
 ERROR:  permission denied to create extension "pgcrypto"
-HINT:  Must be superuser or a member of the yb_extension role to create this extension.
+HINT:  Must have CREATE privilege on current database to create this extension.
 CREATE EXTENSION orafce; -- should fail
 ERROR:  permission denied to create extension "orafce"
 HINT:  Must be superuser or a member of the yb_extension role to create this extension.
@@ -57,9 +57,9 @@ CREATE EXTENSION file_fdw;
 CREATE SERVER s1 FOREIGN DATA WRAPPER file_fdw;
 -- should not allow the user to set the filename/program options as they require more privileges
 CREATE FOREIGN TABLE test (x int) SERVER s1 OPTIONS ( filename 'foo');
-ERROR:  only superuser or a member of the pg_read_server_files role may specify the filename option of a file_fdw foreign table
+ERROR:  only superuser or a role with privileges of the pg_read_server_files role may specify the filename option of a file_fdw foreign table
 CREATE FOREIGN TABLE test (x int) SERVER s1 OPTIONS ( program 'foo');
-ERROR:  only superuser or a member of the pg_execute_server_program role may specify the program option of a file_fdw foreign table
+ERROR:  only superuser or a role with privileges of the pg_execute_server_program role may specify the program option of a file_fdw foreign table
 DROP SERVER s1;
 DROP EXTENSION file_fdw;
 \c -
@@ -92,12 +92,12 @@ GRANT yb_fdw TO regress_priv_user;
 GRANT yb_db_admin TO regress_priv_user WITH ADMIN OPTION;
 SET SESSION AUTHORIZATION regress_priv_user;
 CREATE EXTENSION PGAudit;
-ALTER EXTENSION PGAudit UPDATE TO '1.3.2';
-NOTICE:  version "1.3.2" of extension "pgaudit" is already installed
+ALTER EXTENSION PGAudit UPDATE TO '1.7';
+NOTICE:  version "1.7" of extension "pgaudit" is already installed
 DROP EXTENSION PGAudit;
 CREATE EXTENSION orafce;
-ALTER EXTENSION orafce UPDATE TO '3.14';
-NOTICE:  version "3.14" of extension "orafce" is already installed
+ALTER EXTENSION orafce UPDATE TO '4.9';
+NOTICE:  version "4.9" of extension "orafce" is already installed
 DROP EXTENSION orafce;
 -- removing yb_db_admin role should result in error
 REVOKE yb_db_admin FROM regress_priv_user;

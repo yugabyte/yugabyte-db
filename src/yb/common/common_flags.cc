@@ -115,14 +115,14 @@ DEFINE_RUNTIME_int32(
     "tserver");
 TAG_FLAG(ysql_clone_pg_schema_rpc_timeout_ms, advanced);
 
-DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
-                            "Enable support for CDC Consistent Snapshot Streams");
+DEFINE_RUNTIME_AUTO_bool(
+    yb_enable_cdc_consistent_snapshot_streams, kLocalPersisted, false, true,
+    "Enable support for CDC Consistent Snapshot Streams");
 
-DEFINE_RUNTIME_PG_FLAG(bool, TEST_enable_replication_slot_consumption, false,
-                       "Enable consumption of changes via replication slots."
-                       "Requires yb_enable_replication_commands to be true.");
-TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, unsafe);
-TAG_FLAG(ysql_TEST_enable_replication_slot_consumption, hidden);
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_enable_replication_slot_consumption, kLocalPersisted, false, true,
+    "Enable consumption of changes via replication slots."
+    "Requires yb_enable_replication_commands to be true.");
 
 DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
                         "Hide catalog version increment log messages.");
@@ -147,36 +147,33 @@ namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
 
-void RpcThrottleThresholdBytesValidator() {
-  if (FLAGS_rpc_throttle_threshold_bytes <= 0) {
-    return;
+bool RpcThrottleThresholdBytesValidator(const char* flag_name, int64 value) {
+  if (value <= 0) {
+    return true;
   }
 
-  if (FLAGS_rpc_throttle_threshold_bytes < kMinRpcThrottleThresholdBytes) {
-    LOG(FATAL) << "Flag validation failed. rpc_throttle_threshold_bytes (value: "
-               << FLAGS_rpc_throttle_threshold_bytes << ") must be at least "
-               << kMinRpcThrottleThresholdBytes;
+  if (value < kMinRpcThrottleThresholdBytes) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "Must be at least " << kMinRpcThrottleThresholdBytes;
+    return false;
   }
 
-  if (yb::std_util::cmp_greater_equal(
-          FLAGS_rpc_throttle_threshold_bytes, FLAGS_consensus_max_batch_size_bytes)) {
-    LOG(FATAL) << "Flag validation failed. rpc_throttle_threshold_bytes (value: "
-               << FLAGS_rpc_throttle_threshold_bytes
-               << ") must be less than consensus_max_batch_size_bytes "
-               << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";
+  // This validation depends on the value of other flag(s): consensus_max_batch_size_bytes.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
+  if (yb::std_util::cmp_greater_equal(value, FLAGS_consensus_max_batch_size_bytes)) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "Must be less than consensus_max_batch_size_bytes "
+        << "(value: " << FLAGS_consensus_max_batch_size_bytes << ")";
+    return false;
   }
+
+  return true;
 }
 
 }  // namespace
 
-// Normally we would have used DEFINE_validator. But this validation depends on the value of another
-// flag (consensus_max_batch_size_bytes). On process startup flag validations are run as each flag
-// gets parsed from the command line parameter. So this would impose a restriction on the user to
-// pass the flags in a particular obscure order via command line. YBA has no guarantees on the order
-// it uses as well. So, instead we use a Callback with LOG(FATAL) since at startup Callbacks are run
-// after all the flags have been parsed.
-REGISTER_CALLBACK(rpc_throttle_threshold_bytes, "RpcThrottleThresholdBytesValidator",
-    &RpcThrottleThresholdBytesValidator);
+DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, false, true,
     "Enables validation of AutoFlags between the xcluster universes");

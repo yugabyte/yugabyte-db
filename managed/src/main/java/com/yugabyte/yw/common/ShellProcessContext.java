@@ -1,17 +1,34 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.AccessLevel;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.Value;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Value
 @Builder(toBuilder = true)
 public class ShellProcessContext {
+  public static final String DEFAULT_REMOTE_USER = "yugabyte";
   public static final ShellProcessContext DEFAULT = ShellProcessContext.builder().build();
-  // specify the SSH user to connect with.
+
+  // Specify the SSH user to connect with.
+  @Getter(AccessLevel.NONE)
   String sshUser;
+
+  // Set it to true if default user needs to be used if sshUser is not set.
+  @Builder.Default boolean useDefaultUser = true;
   // Whether to log stdout&stderr to application.log or not.
   boolean logCmdOutput;
   // Executed command is logged with trace level, in case it's set to true. Otherwise info.
@@ -28,4 +45,45 @@ public class ShellProcessContext {
   Map<String, String> redactedVals;
   // Args that will be added to the cmd but will be redacted in logs.
   Map<String, String> sensitiveData;
+
+  public Duration getTimeout() {
+    return timeoutSecs > 0L ? Duration.ofSeconds(timeoutSecs) : Duration.ZERO;
+  }
+
+  public String getSshUser() {
+    if (StringUtils.isEmpty(sshUser)) {
+      return useDefaultUser ? DEFAULT_REMOTE_USER : null;
+    }
+    return sshUser;
+  }
+
+  public List<String> redactCommand(List<String> command) {
+    List<String> redactedCommand = new ArrayList<>(command);
+    // Redacting the sensitive data in the command which is used for logging.
+    if (getSensitiveData() != null) {
+      getSensitiveData()
+          .forEach(
+              (key, value) -> {
+                redactedCommand.add(key);
+                command.add(key);
+                command.add(value);
+
+                try {
+                  JsonNode valueJson = Json.mapper().readTree(value);
+                  redactedCommand.add(
+                      RedactingService.filterSecretFields(valueJson, RedactionTarget.LOGS)
+                          .toString());
+
+                } catch (JsonProcessingException e) {
+                  redactedCommand.add(RedactingService.redactString(value));
+                }
+              });
+    }
+    // If there are entries with redacted values, update them.
+    if (MapUtils.isNotEmpty(getRedactedVals())) {
+      redactedCommand.replaceAll(
+          entry -> getRedactedVals().containsKey(entry) ? getRedactedVals().get(entry) : entry);
+    }
+    return redactedCommand;
+  }
 }

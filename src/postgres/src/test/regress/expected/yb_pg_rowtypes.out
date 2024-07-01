@@ -420,19 +420,19 @@ select a,b from test_table where (a,b) > ('a','a') order by a,b;
 
 reset enable_sort;
 -- Check row comparisons with IN
-select * from int8_tbl i8 where i8 in (row(123,456,789));  -- fail, type mismatch -- YB: adjust for ybsort column
+select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
 ERROR:  cannot compare dissimilar column types bigint and integer at record column 1
 explain (costs off)
-select q1, q2 from int8_tbl i8 -- YB: avoid ybsort column
-where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjust for ybsort column
-                                    QUERY PLAN                                     
------------------------------------------------------------------------------------
+select * from int8_tbl i8
+where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Seq Scan on int8_tbl i8
-   Filter: (i8.* = ANY ('{"(123,456,1)","(4567890123456789,123,3)"}'::int8_tbl[]))
+   Filter: (i8.* = ANY ('{"(123,456)","(4567890123456789,123)"}'::int8_tbl[]))
 (2 rows)
 
-select q1, q2 from int8_tbl i8 -- YB: avoid ybsort column
-where i8 in (row(123,456,1)::int8_tbl, '(4567890123456789,123,3)'); -- YB: adjust for ybsort column
+select * from int8_tbl i8
+where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
         q1        | q2
 ------------------+-----
               123 | 456
@@ -997,7 +997,7 @@ select longname(f) from fullname f;
 -- Test that composite values are seen to have the correct column names
 -- (bug #11210 and other reports)
 --
-select replace((row_to_json(i)::jsonb - 'ybsort')::text, ' ', '')::json as row_to_json from int8_tbl i; -- YB: avoid ybsort column
+select row_to_json(i) from int8_tbl i;
                   row_to_json
 ------------------------------------------------
  {"q1":123,"q2":456}
@@ -1008,7 +1008,7 @@ select replace((row_to_json(i)::jsonb - 'ybsort')::text, ' ', '')::json as row_t
 (5 rows)
 
 -- since "i" is of type "int8_tbl", attaching aliases doesn't change anything:
-select replace((row_to_json(i)::jsonb - 'ybsort')::text, ' ', '')::json as row_to_json from int8_tbl i(x,y); -- YB: avoid ybsort column
+select row_to_json(i) from int8_tbl i(x,y);
                   row_to_json
 ------------------------------------------------
  {"q1":123,"q2":456}
