@@ -103,6 +103,7 @@ static bool CreateView(Datum databaseDatum, const char *viewName,
 
 PG_FUNCTION_INFO_V1(command_create_collection_view);
 
+extern bool EnableSchemaValidation;
 
 /*
  * command_create_collection_view represents the wire
@@ -145,8 +146,9 @@ command_create_collection_view(PG_FUNCTION_ARGS)
 		ReportFeatureUsage(FEATURE_COMMAND_CREATE_COLLECTION);
 		CreateCollection(databaseDatum, createDatum);
 
-		if (hasSchemaValidationSpec && IsClusterVersionAtleastThis(1, 19, 0))
+		if (hasSchemaValidationSpec)
 		{
+			ReportFeatureUsage(FEATURE_COMMAND_CREATE_VALIDATION);
 			UpsertSchemaValidation(databaseDatum, createDatum,
 								   createDefinition->validator,
 								   createDefinition->validationLevel,
@@ -266,7 +268,6 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 	PgbsonInitIterator(createSpec, &createIter);
 
 	CreateSpec *spec = palloc0(sizeof(CreateSpec));
-	bool hasReportedValidationFeature = false;
 	while (bson_iter_next(&createIter))
 	{
 		const char *key = bson_iter_key(&createIter);
@@ -376,32 +377,17 @@ ParseCreateSpec(Datum databaseDatum, pgbson *createSpec, bool *hasSchemaValidati
 		}
 		else if (strcmp(key, "validator") == 0)
 		{
-			if (!hasReportedValidationFeature)
-			{
-				ReportFeatureUsage(FEATURE_COMMAND_CREATE_VALIDATION);
-				hasReportedValidationFeature = true;
-			}
 			spec->validator = ParseAndGetValidatorSpec(&createIter, "create.validator",
 													   hasSchemaValidationSpec);
 		}
 		else if (strcmp(key, "validationLevel") == 0)
 		{
-			if (!hasReportedValidationFeature)
-			{
-				ReportFeatureUsage(FEATURE_COMMAND_CREATE_VALIDATION);
-				hasReportedValidationFeature = true;
-			}
 			spec->validationLevel = ParseAndGetValidationLevelOption(&createIter,
 																	 "create.validationLevel",
 																	 hasSchemaValidationSpec);
 		}
 		else if (strcmp(key, "validationAction") == 0)
 		{
-			if (!hasReportedValidationFeature)
-			{
-				ReportFeatureUsage(FEATURE_COMMAND_CREATE_VALIDATION);
-				hasReportedValidationFeature = true;
-			}
 			spec->validationAction = ParseAndGetValidationActionOption(&createIter,
 																	   "create.validationAction",
 																	   hasSchemaValidationSpec);
@@ -630,7 +616,7 @@ ValidateCollectionOptionsEquivalent(CreateSpec *createDefinition,
 		}
 	}
 
-	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	if (!EnableSchemaValidation)
 	{
 		return;
 	}

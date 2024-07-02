@@ -102,6 +102,7 @@ static const uint32_t MaxDatabaseCollectionLength = 235;
 static const StringView SystemPrefix = { .length = 7, .string = "system." };
 
 extern bool UseLocalExecutionShardQueries;
+extern bool EnableSchemaValidation;
 extern int MaxSchemaValidatorSize;
 
 /* user-defined functions */
@@ -1735,18 +1736,18 @@ UpsertSchemaValidation(Datum databaseDatum,
 		databaseDatum, collectionNameDatum
 	};
 
-	int nargs = 5;
+	int nargs = 2;
 	char argNulls[5] = { ' ', ' ', 'n', 'n', 'n' };
 	bool isNullIgnore = false;
 
 	bool isFirst = true;
 	if (validator != NULL)
 	{
-		appendStringInfo(query, "validator = $3 ");
-		argNulls[2] = ' ';
-		argsTypes[2] = BsonTypeId();
-		argValues[2] = PointerGetDatum(PgbsonInitFromDocumentBsonValue(
-										   validator));
+		appendStringInfo(query, "validator = $%d ", ++nargs);
+		argNulls[nargs - 1] = ' ';
+		argsTypes[nargs - 1] = BsonTypeId();
+		argValues[nargs - 1] = PointerGetDatum(PgbsonInitFromDocumentBsonValue(
+												   validator));
 		isFirst = false;
 	}
 	if (!isFirst && validationLevel != NULL)
@@ -1755,10 +1756,10 @@ UpsertSchemaValidation(Datum databaseDatum,
 	}
 	if (validationLevel != NULL)
 	{
-		appendStringInfo(query, "validation_level = $4 ");
-		argNulls[3] = ' ';
-		argsTypes[3] = TEXTOID;
-		argValues[3] = CStringGetTextDatum(validationLevel);
+		appendStringInfo(query, "validation_level = $%d ", ++nargs);
+		argNulls[nargs - 1] = ' ';
+		argsTypes[nargs - 1] = TEXTOID;
+		argValues[nargs - 1] = CStringGetTextDatum(validationLevel);
 		isFirst = false;
 	}
 	if (!isFirst && validationAction != NULL)
@@ -1767,10 +1768,10 @@ UpsertSchemaValidation(Datum databaseDatum,
 	}
 	if (validationAction != NULL)
 	{
-		appendStringInfo(query, "validation_action = $5 ");
-		argNulls[4] = ' ';
-		argsTypes[4] = TEXTOID;
-		argValues[4] = CStringGetTextDatum(validationAction);
+		appendStringInfo(query, "validation_action = $%d ", ++nargs);
+		argNulls[nargs - 1] = ' ';
+		argsTypes[nargs - 1] = TEXTOID;
+		argValues[nargs - 1] = CStringGetTextDatum(validationAction);
 	}
 
 	appendStringInfo(query, "WHERE database_name = $1 AND collection_name = $2");
@@ -1787,7 +1788,7 @@ UpsertSchemaValidation(Datum databaseDatum,
 const bson_value_t *
 ParseAndGetValidatorSpec(bson_iter_t *iter, const char *validatorName, bool *hasValue)
 {
-	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	if (!EnableSchemaValidation)
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg("validator not supported yet")));
@@ -1828,7 +1829,7 @@ char *
 ParseAndGetValidationActionOption(bson_iter_t *iter, const char *validationActionName,
 								  bool *hasValue)
 {
-	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	if (!EnableSchemaValidation)
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg("validator not supported yet")));
@@ -1871,7 +1872,7 @@ char *
 ParseAndGetValidationLevelOption(bson_iter_t *iter, const char *validationLevelName,
 								 bool *hasValue)
 {
-	if (!IsClusterVersionAtleastThis(1, 19, 0))
+	if (!EnableSchemaValidation)
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg("validator not supported yet")));

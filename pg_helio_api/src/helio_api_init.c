@@ -252,6 +252,10 @@ bool EnableCursorsOnAggregationQueryRewrite =
 #define DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE 200
 int MaxWildcardIndexKeySize = DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE;
 
+#define DEFAULT_ENABLE_SCHEMA_VALIDATION false
+bool EnableSchemaValidation =
+	DEFAULT_ENABLE_SCHEMA_VALIDATION;
+
 /* default value for max validator size */
 #define DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE 10 * 1024
 int MaxSchemaValidatorSize = DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE;
@@ -680,6 +684,17 @@ InitApiConfigurations(char *prefix)
 		gettext_noop("GUC for the max wildcard index key size."),
 		NULL, &MaxWildcardIndexKeySize,
 		DEFAULT_MAX_WILDCARD_INDEX_KEY_SIZE, 1, INT32_MAX,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableSchemaValidation", prefix),
+		gettext_noop(
+			"Whether or not to support schema validation."),
+		NULL,
+		&EnableSchemaValidation,
+		DEFAULT_ENABLE_SCHEMA_VALIDATION,
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);

@@ -241,6 +241,20 @@ command_coll_mod(PG_FUNCTION_ARGS)
 
 	if (specFlags & HAS_VALIDATION_OPTION)
 	{
+		ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VALIDATION);
+
+		/* if validationAction/validationLevel of collection is empty, it should be updated with customized or default value */
+		if (collection->schemaValidator.validationAction == ValidationAction_Invalid)
+		{
+			collModOptions.validationAction = collModOptions.validationAction == NULL ?
+											  "error" : collModOptions.validationAction;
+		}
+		if (collection->schemaValidator.validationLevel == ValidationLevel_Invalid)
+		{
+			collModOptions.validationLevel = collModOptions.validationLevel == NULL ?
+											 "strict" : collModOptions.validationLevel;
+		}
+
 		UpsertSchemaValidation(databaseDatum, CStringGetTextDatum(
 								   collModOptions.collectionName),
 							   collModOptions.validator,
@@ -264,9 +278,6 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 
 	CollModSpecFlags specFlags = HAS_NO_OPTIONS;
 	bool hasSchemaValidation = false;
-	collModOptions->validationAction = "error";
-	collModOptions->validationLevel = "strict";
-	bool hasReportedValidationFeature = false;
 
 	bson_iter_t iter;
 	PgbsonInitIterator(collModSpec, &iter);
@@ -308,22 +319,12 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 		}
 		else if (strcmp(key, "validator") == 0)
 		{
-			if (!hasReportedValidationFeature)
-			{
-				ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VALIDATION);
-				hasReportedValidationFeature = true;
-			}
 			collModOptions->validator = ParseAndGetValidatorSpec(&iter,
 																 "collMod.validator",
 																 &hasSchemaValidation);
 		}
 		else if (strcmp(key, "validationLevel") == 0)
 		{
-			if (!hasReportedValidationFeature)
-			{
-				ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VALIDATION);
-				hasReportedValidationFeature = true;
-			}
 			collModOptions->validationLevel = ParseAndGetValidationLevelOption(&iter,
 																			   "collMod.validationLevel",
 																			   &
@@ -331,11 +332,6 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 		}
 		else if (strcmp(key, "validationAction") == 0)
 		{
-			if (!hasReportedValidationFeature)
-			{
-				ReportFeatureUsage(FEATURE_COMMAND_COLLMOD_VALIDATION);
-				hasReportedValidationFeature = true;
-			}
 			collModOptions->validationAction = ParseAndGetValidationActionOption(&iter,
 																				 "collMod.validationAction",
 																				 &
