@@ -5719,9 +5719,10 @@ get_json_array_element(text *json, int index)
 int get_json_array_length(text *json)
 {
 	/* Create a dummy fcinfo to invoke json_array_length */
-	/* YB_TODO(neil) Shouldn't this code calls InitFunctionCallInfoData */
-	FunctionCallInfo fcinfo = palloc0(SizeForFunctionCallInfo(0));
+	LOCAL_FCINFO(fcinfo, 1);
+	InitFunctionCallInfoData(*fcinfo, NULL, 1, InvalidOid, NULL, NULL);
 	fcinfo->args[0].value = PointerGetDatum(json);
+	fcinfo->args[0].isnull = false;
 	Datum result = json_array_length(fcinfo);
 	return DatumGetInt32(result);
 }

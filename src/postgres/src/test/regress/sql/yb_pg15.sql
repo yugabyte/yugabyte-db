@@ -571,3 +571,6 @@ UPDATE test set b = b + 5;
 SELECT * FROM test ORDER BY a DESC;
 
 -- YB_TODO: end
+-- YB_TODO: begin: remove after tracking yb_tablespaces
+CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1}]}');
+-- YB_TODO: end
