@@ -30,4 +30,5 @@ test: yb_pg_errors
 test: yb_pg_select
 test: yb_pg_select_distinct
 test: yb_pg_select_distinct_on
+test: yb_pg_subselect
 test: yb_pg_with
