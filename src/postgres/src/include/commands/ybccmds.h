@@ -150,3 +150,5 @@ extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,
 								   XLogRecPtr confirmed_flush,
 								   YBCPgXLogRecPtr *restart_lsn);
+
+extern void YBCDropColumn(Relation rel, AttrNumber attnum);

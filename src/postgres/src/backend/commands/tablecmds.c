@@ -9163,7 +9163,12 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	if (!recursing)
 	{
 		/* Recursion has ended, drop everything that was collected */
-		performMultipleDeletions(addrs, behavior, 0);
+		/*
+		 * YB: Skip YB drop on the column, as that will be handled separately
+		 * by the ALTER TABLE flow.
+		 */
+		performMultipleDeletions(addrs, behavior,
+			IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);
 		free_object_addresses(addrs);
 	}
 

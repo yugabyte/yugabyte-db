@@ -2078,3 +2078,19 @@ YBCUpdateAndPersistLSN(const char *stream_id, XLogRecPtr restart_lsn_hint,
 	HandleYBStatus(YBCPgUpdateAndPersistLSN(stream_id, restart_lsn_hint,
 											confirmed_flush, restart_lsn));
 }
+
+void
+YBCDropColumn(Relation rel, AttrNumber attnum)
+{
+	TupleDesc tupleDesc = RelationGetDescr(rel);
+	Form_pg_attribute attr = TupleDescAttr(tupleDesc, attnum - 1);
+	YBCPgStatement handle = NULL;
+	HandleYBStatus(YBCPgNewAlterTable(
+		YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
+		YbGetRelfileNodeId(rel),
+		&handle));
+	HandleYBStatus(YBCPgAlterTableDropColumn(
+		handle,
+		attr->attname.data));
+	HandleYBStatus(YBCPgExecAlterTable(handle));
+}
