@@ -1,12 +1,12 @@
-            List of relations
- Schema |  Name   | Type  |     Owner
---------+---------+-------+---------------
- public | htest   | table | yugabyte_test
- public | htest_1 | table | yugabyte_test
- public | tbl     | table | yugabyte_test
- public | tbl2    | table | yugabyte_test
- public | tbl3    | table | yugabyte_test
- public | tbl4    | table | yugabyte_test
+                  List of relations
+ Schema |  Name   |       Type        |     Owner     
+--------+---------+-------------------+---------------
+ public | htest   | partitioned table | yugabyte_test
+ public | htest_1 | table             | yugabyte_test
+ public | tbl     | table             | yugabyte_test
+ public | tbl2    | table             | yugabyte_test
+ public | tbl3    | table             | yugabyte_test
+ public | tbl4    | table             | yugabyte_test
 (6 rows)
 
                           List of tablegroups

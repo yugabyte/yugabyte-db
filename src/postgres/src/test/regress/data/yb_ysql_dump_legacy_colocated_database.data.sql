@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.1.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
+-- Dumped from database version 15.2-YB-2.23.0.1500-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
 
 SET yb_binary_restore = true;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
@@ -14,6 +14,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -60,6 +61,8 @@ WITH (colocation_id='123456');
     ALTER TABLE public.htest OWNER TO yugabyte_test;
 \endif
 
+SET default_table_access_method = heap;
+
 --
 -- Name: htest_1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
@@ -72,8 +75,13 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16414'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16413'::pg_catalog.oid);
 
-CREATE TABLE public.htest_1 PARTITION OF public.htest
-FOR VALUES WITH (modulus 2, remainder 0)
+CREATE TABLE public.htest_1 (
+    k1 integer,
+    k2 text,
+    k3 integer,
+    v1 integer,
+    v2 text
+)
 WITH (colocation_id='234567');
 
 
@@ -182,6 +190,13 @@ SPLIT INTO 3 TABLETS;
 \endif
 
 --
+-- Name: htest_1; Type: TABLE ATTACH; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.htest ATTACH PARTITION public.htest_1 FOR VALUES WITH (modulus 2, remainder 0);
+
+
+--
 -- Data for Name: htest_1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -257,12 +272,12 @@ CREATE UNIQUE INDEX NONCONCURRENTLY tbl_v_idx ON public.tbl USING lsm (v DESC) W
 
 
 --
--- Name: FUNCTION pg_stat_statements_reset(); Type: ACL; Schema: pg_catalog; Owner: postgres
+-- Name: FUNCTION pg_stat_statements_reset(userid oid, dbid oid, queryid bigint); Type: ACL; Schema: pg_catalog; Owner: postgres
 --
 
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
-REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset() FROM PUBLIC;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 
@@ -274,6 +289,17 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \if :use_roles
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements TO PUBLIC;
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
+\endif
+
+
+--
+-- Name: TABLE pg_stat_statements_info; Type: ACL; Schema: pg_catalog; Owner: postgres
+--
+
+\if :use_roles
+SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
+GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
 

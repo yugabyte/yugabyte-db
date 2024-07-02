@@ -154,6 +154,11 @@ JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[1]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[1]
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpAllWithYbMetadata
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpAllWithoutYbMetadata
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpColocatedDB
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpLegacyColocatedDB
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpWithoutYbMetadata
 JAVA	org.yb.pgsql.TestYsqlMetrics
 JAVA	org.yb.pgsql.TestYsqlPartitionedBackup
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsCreatesThemEverywhere

@@ -24,6 +24,12 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 CREATE ROLE yugabyte_test;
 ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPLICATION BYPASSRLS;
 
+--
+-- User Configurations
+--
+
+
+
 
 
 
@@ -36,14 +42,22 @@ CREATE TABLESPACE tsp2 OWNER yugabyte_test LOCATION '' WITH (replica_placement='
 CREATE TABLESPACE tsp_unused OWNER yugabyte_test LOCATION '' WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"dc_unused","zone":"z_unused","min_num_replicas":1}]}');
 
 
+--
+-- Databases
+--
+
+--
+-- Database "template1" dump
+--
+
 \connect template1
 
 --
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.0.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
+-- Dumped from database version 15.2-YB-2.23.0.1500-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -52,11 +66,16 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
 --
 -- YSQL database dump complete
+--
+
+--
+-- Database "postgres" dump
 --
 
 \connect postgres
@@ -65,8 +84,8 @@ SET row_security = off;
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.0.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
+-- Dumped from database version 15.2-YB-2.23.0.1500-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -75,6 +94,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -83,11 +103,15 @@ SET row_security = off;
 --
 
 --
+-- Database "system_platform" dump
+--
+
+--
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.0.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
+-- Dumped from database version 15.2-YB-2.23.0.1500-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -96,6 +120,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -103,7 +128,7 @@ SET row_security = off;
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
 
 
 ALTER DATABASE system_platform OWNER TO postgres;
@@ -117,6 +142,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -132,11 +158,15 @@ COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';
 --
 
 --
+-- Database "yugabyte" dump
+--
+
+--
 -- YSQL database dump
 --
 
--- Dumped from database version 11.2-YB-2.21.0.0-b0
--- Dumped by ysql_dump version 11.2-YB-2.21.0.0-b0
+-- Dumped from database version 15.2-YB-2.23.0.1500-b0
+-- Dumped by ysql_dump version 15.2-YB-2.23.0.1500-b0
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -145,6 +175,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -152,7 +183,7 @@ SET row_security = off;
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
 
 
 ALTER DATABASE yugabyte OWNER TO postgres;
@@ -166,6 +197,7 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
+SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
@@ -178,7 +210,7 @@ COMMENT ON DATABASE yugabyte IS 'default administrative connection database';
 
 SET default_tablespace = tsp1;
 
-SET default_with_oids = false;
+SET default_table_access_method = heap;
 
 --
 -- Name: table1; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
@@ -258,6 +290,14 @@ SET default_tablespace = tsp1;
 --
 
 CREATE INDEX idx2 ON public.table2 USING lsm (name HASH);
+
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
+--
+
+REVOKE USAGE ON SCHEMA public FROM PUBLIC;
+GRANT ALL ON SCHEMA public TO PUBLIC;
 
 
 --
