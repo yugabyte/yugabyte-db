@@ -99,3 +99,5 @@ extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, Att
 
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);
+
+extern void YBCDropColumn(Relation rel, AttrNumber attnum);

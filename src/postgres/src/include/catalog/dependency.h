@@ -208,6 +208,8 @@ typedef enum ObjectClass
 #define PERFORM_DELETION_SKIP_ORIGINAL		0x0008	/* keep original obj */
 #define PERFORM_DELETION_SKIP_EXTENSIONS	0x0010	/* keep extensions */
 
+/* skip yb drop on a column -- used during ALTER TABLE */
+#define YB_SKIP_YB_DROP_COLUMN				0x8000
 
 /* in dependency.c */
 

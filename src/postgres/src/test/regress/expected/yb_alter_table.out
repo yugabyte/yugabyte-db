@@ -89,3 +89,12 @@ LINE 1: SELECT * FROM foobar;
 -- Rename operation must succeed now.
 ALTER TABLE rename_test RENAME TO foobar;
 DROP TABLE foobar;
+--
+-- Test for cascaded drops on columns
+--
+CREATE TABLE test_dropcolumn(a int, b int, c int);
+CREATE TYPE test_dropcolumn_type AS (a int, b int);
+ALTER TABLE test_dropcolumn ADD COLUMN d test_dropcolumn_type;
+DROP TYPE test_dropcolumn_type CASCADE; -- should drop the column d
+NOTICE:  drop cascades to column d of table test_dropcolumn
+ALTER TABLE test_dropcolumn ADD COLUMN d int;

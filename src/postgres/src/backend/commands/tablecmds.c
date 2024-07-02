@@ -7379,7 +7379,12 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	object.objectId = RelationGetRelid(rel);
 	object.objectSubId = attnum;
 
-	performDeletion(&object, behavior, 0);
+	/*
+	 * YB: Skip YB drop on the column, as that will be handled separately by
+	 * the ALTER TABLE flow.
+	 */
+	performDeletion(&object, behavior,
+		IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);
 
 	/*
 	 * If we dropped the OID column, must adjust pg_class.relhasoids and tell
