@@ -11,8 +11,7 @@ Options:
     Path to the release package to test. If not specified, the latest release package in the build
     directory is used.
   --docker-image <image>
-    Docker image to use for testing. If not specified, CentOS 7 or AlmaLinux 8 is selected
-    automatically based on the host OS.
+    Docker image to use for testing. If not specified, AlmaLinux 8 is used.
 EOT
 }
 
@@ -67,11 +66,7 @@ fi
 export YB_PACKAGE_PATH
 
 if [[ -z ${docker_image} ]]; then
-  if grep -q "CentOS Linux 7" /etc/os-release; then
-    docker_image=centos:7
-  else
-    docker_image=almalinux:8
-  fi
+  docker_image=almalinux:8
   log "Automatically selected Docker image ${docker_image}."
 fi
 
