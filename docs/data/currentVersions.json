@@ -51,19 +51,6 @@
       "endOfLife": "2025-02-16"
     },
     {
-      "series": "v2.16",
-      "display": "v2.16 (STS)",
-      "version": "2.16.9.0",
-      "versionShort": "2.16.9",
-      "appVersion": "2.16.9.0-b67",
-      "isStable": true,
-      "isLTS": false,
-      "isSTS": true,
-      "initialRelease": "2022-12-14",
-      "endOfMaintenance": "2023-12-14",
-      "endOfLife": "2024-06-14"
-    },
-    {
       "series": "v2.14",
       "display": "v2.14 (LTS)",
       "version": "2.14.17.0",
