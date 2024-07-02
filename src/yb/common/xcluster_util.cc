@@ -11,7 +11,8 @@
 // under the License.
 //
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
+
 #include "yb/gutil/strings/util.h"
 
 namespace yb::xcluster {
@@ -42,4 +43,5 @@ std::string ShortReplicationType(XClusterReplicationType type) {
       XClusterReplicationType_Name(type), "XCLUSTER_", "",
       /*replace_all=*/false);
 }
+
 }  // namespace yb::xcluster

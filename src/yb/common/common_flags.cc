@@ -193,6 +193,16 @@ DEFINE_NON_RUNTIME_PREVIEW_bool(enable_pg_cron, false,
     "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
     "assumed to be selected randomly.");
 
+DEFINE_NON_RUNTIME_string(certs_for_cdc_dir, "",
+    "The parent directory of where all certificates for xCluster source universes will "
+    "be stored, for when the source and target universes use different certificates. "
+    "Place the certificates for each source universe in "
+    "<certs_for_cdc_dir>/<source_cluster_uuid>/*.");
+
+DEFINE_NON_RUNTIME_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
+    "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
+TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
+
 namespace yb {
 
 void InitCommonFlags() {

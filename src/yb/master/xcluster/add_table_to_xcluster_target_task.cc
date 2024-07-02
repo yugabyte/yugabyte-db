@@ -13,7 +13,7 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/util/is_operation_done_result.h"
@@ -23,7 +23,6 @@
 #include "yb/rpc/messenger.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/trace.h"
 
 DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
     "Fail the table or index creation during xcluster bootstrap stage.");
@@ -101,8 +100,8 @@ Status AddTableToXClusterTargetTask::FirstStep() {
       VERIFY_RESULT(GetProducerNamespaceId(*universe_, table_info_->namespace_id()));
 
   // We need to keep the client alive until the callback is invoked.
-  remote_client_ = VERIFY_RESULT(GetXClusterRemoteClient(*universe_));
-  return remote_client_->GetXClusterTableCheckpointInfos(
+  remote_client_ = VERIFY_RESULT(GetXClusterRemoteClientHolder(*universe_));
+  return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
       universe_->ReplicationGroupId(), producer_namespace_id, {table_info_->name()},
       {table_info_->pgschema_name()}, std::move(callback));
 }

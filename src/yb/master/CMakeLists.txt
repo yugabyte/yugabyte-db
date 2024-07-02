@@ -260,6 +260,7 @@ ADD_YB_TEST(table_index_test)
 ADD_YB_TEST(tablet_creation_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
+YB_TEST_TARGET_LINK_LIBRARIES(xcluster/xcluster_outbound_replication_group-test yb_client_mock)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

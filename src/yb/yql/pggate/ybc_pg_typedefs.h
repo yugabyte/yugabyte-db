@@ -727,7 +727,7 @@ typedef struct AshSample {
   // If a certain number of samples are available and we capture a portion of
   // them, the sample weight is the reciprocal of the captured portion or 1,
   // whichever is maximum.
-  double sample_weight;
+  float sample_weight;
 
   // Timestamp when the sample was captured.
   uint64_t sample_time;

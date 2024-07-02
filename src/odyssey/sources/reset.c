@@ -48,7 +48,7 @@ int od_reset(od_server_t *server)
 	 *
 	 * 3. Continue with (1)
 	 */
-	int wait_timeout = 1000;
+	int wait_timeout = 5000;
 	int wait_try = 0;
 	int wait_try_cancel = 0;
 	int wait_cancel_limit = 1;
@@ -66,7 +66,8 @@ int od_reset(od_server_t *server)
 			wait_try++;
 			rc = od_backend_ready_wait(server, "reset", 1,
 						   wait_timeout);
-			if (rc == -1)
+			/* can be -1 or -2 */
+			if (rc < 0)
 				break;
 		}
 		if (rc == -1) {
@@ -113,7 +114,7 @@ int od_reset(od_server_t *server)
 					      query_rlb, NULL,
 					      sizeof(query_rlb), wait_timeout,
 					      1);
-			if (rc == -1)
+			if (rc < 0)
 				goto error;
 			assert(!server->is_transaction);
 		}
@@ -125,7 +126,7 @@ int od_reset(od_server_t *server)
 		rc = od_backend_query(server, "reset-discard", query_discard,
 				      NULL, sizeof(query_discard), wait_timeout,
 				      1);
-		if (rc == NOT_OK_RESPONSE)
+		if (rc < 0)
 			goto error;
 	}
 
@@ -136,7 +137,7 @@ int od_reset(od_server_t *server)
 		rc = od_backend_query(server, "reset-discard-smart",
 				      query_discard, NULL,
 				      sizeof(query_discard), wait_timeout, 1);
-		if (rc == NOT_OK_RESPONSE)
+		if (rc < 0)
 			goto error;
 	}
 
@@ -147,6 +148,9 @@ int od_reset(od_server_t *server)
 				      NULL, sizeof(query_reset), wait_timeout, 1);
 		if (rc == -1)
 			goto error;
+		/* reset timeout */
+		if (rc == -2)
+			server->reset_timeout = true;
 	}
 
 	/* ready */

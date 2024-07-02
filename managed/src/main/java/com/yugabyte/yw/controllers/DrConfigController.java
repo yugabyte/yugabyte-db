@@ -3,7 +3,7 @@ package com.yugabyte.yw.controllers;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
+import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -98,7 +98,7 @@ public class DrConfigController extends AuthenticatedController {
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
-  private final XClusterSyncScheduler xClusterSyncScheduler;
+  private final XClusterScheduler xClusterScheduler;
 
   @Inject
   public DrConfigController(
@@ -110,7 +110,7 @@ public class DrConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterSyncScheduler xClusterSyncScheduler) {
+      XClusterScheduler xClusterScheduler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -119,7 +119,7 @@ public class DrConfigController extends AuthenticatedController {
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
-    this.xClusterSyncScheduler = xClusterSyncScheduler;
+    this.xClusterScheduler = xClusterScheduler;
   }
 
   /**
@@ -935,11 +935,12 @@ public class DrConfigController extends AuthenticatedController {
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
     for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-      XClusterConfigTaskBase.setReplicationStatus(this.xClusterUniverseService, xClusterConfig);
+      XClusterConfigTaskBase.setReplicationStatus(
+          this.xClusterUniverseService, this.ybService, xClusterConfig);
     }
 
     XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
-    xClusterSyncScheduler.syncXClusterConfig(activeXClusterConfig);
+    xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
     activeXClusterConfig.refresh();
 
     DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);

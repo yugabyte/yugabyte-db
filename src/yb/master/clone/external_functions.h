@@ -61,6 +61,10 @@ class CloneStateManagerExternalFunctionsBase {
       AsyncClonePgSchema::ClonePgSchemaCallbackType callback,
       MonoTime deadline) = 0;
 
+  virtual Status ScheduleEnableDbConnectionsTask(
+      const std::string& permanent_uuid, const std::string& target_db_name,
+      AsyncEnableDbConns::EnableDbConnsCallbackType callback) = 0;
+
   virtual Status DoCreateSnapshot(
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
       CoarseTimePoint deadline, const LeaderEpoch& epoch) = 0;

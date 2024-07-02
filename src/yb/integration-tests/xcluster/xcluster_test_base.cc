@@ -15,7 +15,7 @@
 
 #include <string>
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
