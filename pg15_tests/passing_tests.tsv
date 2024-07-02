@@ -154,6 +154,7 @@ JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[1]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[1]
 JAVA	org.yb.pgsql.TestYsqlMetrics
+JAVA	org.yb.pgsql.TestYsqlPartitionedBackup
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsCreatesThemEverywhere
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsAfterFailure
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsByNonSuperuser

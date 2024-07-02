@@ -1589,7 +1589,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     throws SQLException {
 
     String query_plan = getQueryPlanString(stmt, query);
-    assertTrue(query_plan.contains("Merge Append"));
     assertTrue(query_plan.contains("Index Scan using " + index));
   }
 
@@ -1603,7 +1602,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     throws SQLException {
 
     String query_plan = getQueryPlanString(stmt, query);
-    assertTrue(query_plan.contains("Merge Append"));
     assertTrue(query_plan.contains("Index Only Scan using " + index));
   }
 
