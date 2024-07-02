@@ -38,6 +38,7 @@ namespace master {
 class GetXClusterSafeTimeRequestPB;
 class GetXClusterSafeTimeResponsePB;
 struct LeaderEpoch;
+class XClusterConsumerReplicationStatusPB;
 struct XClusterStatus;
 
 class XClusterManagerIf {
@@ -62,6 +63,28 @@ class XClusterManagerIf {
   GetInboundTransactionalReplicationGroups() const = 0;
 
   virtual Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
+
+  virtual void NotifyAutoFlagsConfigChanged() = 0;
+
+  virtual void StoreConsumerReplicationStatus(
+      const XClusterConsumerReplicationStatusPB& consumer_replication_status) = 0;
+
+  virtual void SyncConsumerReplicationStatusMap(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map) = 0;
+
+  virtual Result<bool> HasReplicationGroupErrors(
+      const xcluster::ReplicationGroupId& replication_group_id) = 0;
+
+  virtual bool IsTableReplicationConsumer(const TableId& table_id) const = 0;
+
+  virtual void RemoveTableConsumerStreams(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::set<TableId>& tables_to_clear) = 0;
+
+  virtual Status HandleTabletSplit(
+      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
+      const LeaderEpoch& epoch) = 0;
 
  protected:
   virtual ~XClusterManagerIf() = default;
