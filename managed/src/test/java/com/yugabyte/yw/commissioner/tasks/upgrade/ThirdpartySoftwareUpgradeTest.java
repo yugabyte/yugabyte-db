@@ -83,7 +83,6 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     attachHooks("ThirdpartySoftwareUpgrade");
     thirdpartySoftwareUpgrade.setUserTaskUUID(UUID.randomUUID());
     setCheckNodesAreSafeToTakeDown(mockClient);
-    setUnderReplicatedTabletsMock();
     setFollowerLagMock();
   }
 

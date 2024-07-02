@@ -139,7 +139,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     super.setUp();
     gFlagsUpgrade.setUserTaskUUID(UUID.randomUUID());
 
-    setUnderReplicatedTabletsMock();
     setFollowerLagMock();
     try {
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
