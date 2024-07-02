@@ -227,7 +227,7 @@ command_bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 
 		case WhenMatched_FAIL:
 		{
-			ereport(ERROR, (errcode(MongoLocation11000),
+			ereport(ERROR, (errcode(MongoDuplicateKey),
 							errmsg(
 								"$merge with whenMatched: fail found an existing document with the same values for the 'on' fields"),
 							errhint(

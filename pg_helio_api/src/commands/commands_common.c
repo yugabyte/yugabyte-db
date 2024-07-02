@@ -21,6 +21,7 @@
 #include "utils/mongo_errors.h"
 #include "aggregation/bson_query.h"
 #include "metadata/metadata_cache.h"
+#include "planner/helio_planner.h"
 
 
 /*
@@ -208,9 +209,60 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 	}
 
 	WriteError *writeError = palloc0(sizeof(WriteError));
-	writeError->index = writeErrorIdx;
-	writeError->code = errorData->sqlerrcode;
-	writeError->errmsg = pstrdup(errorData->message);
+	if (errorData->sqlerrcode == ERRCODE_EXCLUSION_VIOLATION ||
+		errorData->sqlerrcode == ERRCODE_UNIQUE_VIOLATION)
+	{
+		const char *mongoIndexName = NULL;
+		bool useLibPq = true;
+		if (errorData->constraint_name == NULL)
+		{
+			/* If the collection is on a remote node, this ends up being null. */
+			StringView constraintError = CreateStringViewFromString(
+				"conflicting key value violates exclusion constraint \"");
+			StringView uniqueIndexError = CreateStringViewFromString(
+				"duplicate key value violates unique constraint \"");
+			StringView errorView = CreateStringViewFromString(errorData->message);
+			if (StringViewStartsWithStringView(&errorView, &constraintError))
+			{
+				StringView indexNameView = StringViewSubstring(&errorView,
+															   constraintError.length);
+				StringView actualNameView = StringViewFindPrefix(&indexNameView, '\"');
+				mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+					CreateStringFromStringView(&actualNameView), useLibPq);
+			}
+			else if (StringViewStartsWithStringView(&errorView, &uniqueIndexError))
+			{
+				StringView indexNameView = StringViewSubstring(&errorView,
+															   uniqueIndexError.length);
+				StringView actualNameView = StringViewFindPrefix(&indexNameView, '\"');
+				mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+					CreateStringFromStringView(&actualNameView), useLibPq);
+			}
+		}
+		else
+		{
+			mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+				errorData->constraint_name, useLibPq);
+		}
+
+		if (mongoIndexName == NULL)
+		{
+			mongoIndexName = "<unknown>";
+		}
+
+		char *errorMessage = psprintf(
+			"Duplicate key violation on the requested collection: Index '%s'",
+			mongoIndexName);
+		writeError->index = writeErrorIdx;
+		writeError->code = MongoDuplicateKey;
+		writeError->errmsg = errorMessage;
+	}
+	else
+	{
+		writeError->index = writeErrorIdx;
+		writeError->code = errorData->sqlerrcode;
+		writeError->errmsg = pstrdup(errorData->message);
+	}
 
 	return writeError;
 }

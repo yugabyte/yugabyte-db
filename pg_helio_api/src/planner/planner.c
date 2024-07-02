@@ -989,24 +989,11 @@ ExtensionExplainGetIndexName(Oid indexId)
 
 
 /*
- * Retrieves the "mongo" index name for a given indexId.
- * This is retrieved by using the collection_indexes table
- * every time. Introduces an option to use libPQ or SPI.
- *
- * For LibPQ, Note that this should only be used for nested
- * distributed transaction cases that are not in the hot path
- * (e.g. EXPLAIN scenarios).
+ * Given a postgres index name, returns the corresponding mongo index name if available.
  */
 const char *
-ExtensionIndexOidGetIndexName(Oid indexId, bool useLibPq)
+GetHelioIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
 {
-	const char *pgIndexName = IndexIdGetIndexNameDefault(indexId);
-	if (pgIndexName == NULL)
-	{
-		return NULL;
-	}
-
-	/* if it's an extension secondary index */
 	int prefixLength = strlen(MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX);
 	if (strncmp(pgIndexName, MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX,
 				prefixLength) == 0)
@@ -1035,11 +1022,6 @@ ExtensionIndexOidGetIndexName(Oid indexId, bool useLibPq)
 			}
 		}
 
-		if (indexName == NULL)
-		{
-			indexName = IndexIdGetIndexNameDefault(indexId);
-		}
-
 		return indexName;
 	}
 	else if (strncmp(pgIndexName, MONGO_DATA_PRIMARY_KEY_FORMAT_PREFIX,
@@ -1050,6 +1032,35 @@ ExtensionIndexOidGetIndexName(Oid indexId, bool useLibPq)
 	}
 
 	return NULL;
+}
+
+
+/*
+ * Retrieves the "mongo" index name for a given indexId.
+ * This is retrieved by using the collection_indexes table
+ * every time. Introduces an option to use libPQ or SPI.
+ *
+ * For LibPQ, Note that this should only be used for nested
+ * distributed transaction cases that are not in the hot path
+ * (e.g. EXPLAIN scenarios).
+ */
+const char *
+ExtensionIndexOidGetIndexName(Oid indexId, bool useLibPq)
+{
+	const char *pgIndexName = IndexIdGetIndexNameDefault(indexId);
+	if (pgIndexName == NULL)
+	{
+		return NULL;
+	}
+
+	/* if it's an extension secondary index */
+	const char *indexName = GetHelioIndexNameFromPostgresIndex(pgIndexName, useLibPq);
+	if (indexName == NULL)
+	{
+		indexName = IndexIdGetIndexNameDefault(indexId);
+	}
+
+	return indexName;
 }
 
 

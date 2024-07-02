@@ -38,6 +38,7 @@ const char * ExtensionExplainGetIndexName(Oid indexId);
 Const * GetConstParamValue(Node *param, ParamListInfo boundParams);
 
 const char * ExtensionIndexOidGetIndexName(Oid indexId, bool useLibPq);
+const char * GetHelioIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq);
 
 /* Method that throws an error if we're trying to execute a write command and the
  * current database is in recovery mode (read-only mode). */
