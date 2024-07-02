@@ -8562,5 +8562,90 @@ TEST_F(CDCSDKYsqlTest, TestNoUpdateSafeTimeWithoutSnapshotTime) {
   ASSERT_EQ(row.cdc_sdk_safe_time, HybridTime::FromPB(checkpointed_time));
 }
 
+TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToNonConsistentSnapshotCDCStream) {
+  ASSERT_OK(SetUpWithParams(
+      1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  const auto tableName1 = "test_table_1";
+  const auto tableName2 = "test_table_2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table1, 0, &table1_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table1_tablets.size(), 3);
+
+  // Create non-user tables like index, mat views BEFORE the stream has been created
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0(a ASC)", tableName1));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv1 AS SELECT COUNT(*) FROM $0", tableName1));
+
+  auto stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+
+  // // Create non-user tables AFTER the stream has been created
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0(b ASC)", tableName1));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv2 AS SELECT COUNT(*) FROM $0", tableName1));
+  // Wait for the bg thread to complete finding out new tables added in the namespace and add
+  // them to CDC stream if relevant.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // Create a dynamic table and create non user tables on this dynamic table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName2));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table2, 0, &table2_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table2_tablets.size(), 3);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0 (b ASC)", tableName2));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", tableName2));
+  // Wait for the bg thread to complete finding out new tables added in the namespace and adding
+  // them to CDC stream if relevant.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // We expect only tablets of the two user tables i.e. test_table_1 & test_table_2.
+  std::unordered_set<TabletId> expected_tablets;
+  for (const auto& tablet : table1_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  for (const auto& tablet : table2_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  std::unordered_set<TabletId> actual_tablets;
+  client::TableHandle table_handle;
+  client::YBTableName cdc_state_table(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+  ASSERT_OK(table_handle.Open(cdc_state_table, test_client()));
+
+  for (const auto& row : client::TableRange(table_handle)) {
+    const auto& row_stream_id = row.column(master::kCdcStreamIdIdx).string_value();
+    const auto& tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
+    LOG(INFO) << "Read cdc_state table row for tablet_id: " << tablet_id
+              << " and stream_id: " << stream_id;
+    if (row_stream_id == stream_id) {
+      actual_tablets.insert(tablet_id);
+    }
+  }
+
+  LOG(INFO) << "Expected tablets: " << AsString(expected_tablets)
+            << ", Actual tablets: " << AsString(actual_tablets);
+  ASSERT_EQ(expected_tablets, actual_tablets);
+}
+
 }  // namespace cdc
 }  // namespace yb

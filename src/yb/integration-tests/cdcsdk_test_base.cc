@@ -70,6 +70,7 @@
 using std::string;
 
 DECLARE_bool(ysql_enable_pack_full_row_update);
+DECLARE_string(pgsql_proxy_bind_address);
 
 namespace yb {
 using client::YBClient;
@@ -141,10 +142,34 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
   return Status::OK();
 }
 
+Status CDCSDKTestBase::InitPostgres(
+    Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port) {
+  auto pg_ts = cluster->mini_cluster_->mini_tablet_server(pg_ts_idx);
+  pgwrapper::PgProcessConf pg_process_conf =
+      VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
+          AsString(Endpoint(pg_ts->bound_rpc_addr().address(), pg_port)),
+          pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+          pg_ts->server()->GetSharedMemoryFd()));
+  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+  pg_process_conf.force_disable_log_file = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) =
+      cluster->mini_cluster_->AllocateFreePort();
+
+  LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses << ":"
+            << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
+            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+  cluster->pg_supervisor_ =
+      std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+  RETURN_NOT_OK(cluster->pg_supervisor_->Start());
+
+  cluster->pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+  return Status::OK();
+}
+
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
     uint32_t replication_factor, uint32_t num_masters, bool colocated,
-    bool cdc_populate_safepoint_record) {
+    bool cdc_populate_safepoint_record, bool set_pgsql_proxy_bind_address) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   CDCSDKTestBase::SetUp();
   FLAGS_enable_ysql = true;
@@ -163,11 +188,27 @@ Status CDCSDKTestBase::SetUpWithParams(
 
   test_cluster_.mini_cluster_ = std::make_unique<MiniCluster>(opts);
 
+  size_t pg_ts_idx = 0;
+  uint16_t pg_port = 0;
+  if (set_pgsql_proxy_bind_address) {
+    // Randomly select the tserver index that will serve the postgres proxy.
+    pg_ts_idx = RandomUniformInt<size_t>(0, opts.num_tablet_servers - 1);
+    const std::string pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
+    // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
+    // tserver will store this address when it starts.
+    pg_port = test_cluster_.mini_cluster_->AllocateFreePort();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
+  }
+
   RETURN_NOT_OK(test_cluster()->StartSync());
   RETURN_NOT_OK(test_cluster()->WaitForTabletServerCount(replication_factor));
   RETURN_NOT_OK(WaitForInitDb(test_cluster()));
   test_cluster_.client_ = VERIFY_RESULT(test_cluster()->CreateClient());
+  if (set_pgsql_proxy_bind_address) {
+    RETURN_NOT_OK(InitPostgres(&test_cluster_, pg_ts_idx, pg_port));
+  } else {
     RETURN_NOT_OK(InitPostgres(&test_cluster_));
+  }
     RETURN_NOT_OK(CreateDatabase(&test_cluster_, kNamespaceName, colocated));
 
   cdc_proxy_ = GetCdcProxy();
