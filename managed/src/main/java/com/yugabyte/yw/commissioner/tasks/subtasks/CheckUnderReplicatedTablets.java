@@ -82,6 +82,13 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
           softwareVersion);
       return;
     }
+    if (CheckNodesAreSafeToTakeDown.isApiSupported(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)
+        && CheckNodesAreSafeToTakeDown.isApiSupported(softwareVersion)
+        && confGetter.getConfForScope(universe, UniverseConfKeys.useNodesAreSafeToTakeDown)) {
+      log.debug("Skipping check, CheckNodesAreSafeToTakeDown should have been applied");
+      return;
+    }
 
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
 

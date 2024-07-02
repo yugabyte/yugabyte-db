@@ -32,7 +32,6 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
     super.setUp();
     configureDBApis.setUserTaskUUID(UUID.randomUUID());
     setCheckNodesAreSafeToTakeDown(mockClient);
-    setUnderReplicatedTabletsMock();
     setFollowerLagMock();
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }

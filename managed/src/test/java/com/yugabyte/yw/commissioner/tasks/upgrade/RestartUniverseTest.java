@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.List;
@@ -76,12 +77,15 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     restartUniverse.setUserTaskUUID(UUID.randomUUID());
     attachHooks("RestartUniverse");
 
-    setUnderReplicatedTabletsMock();
     setFollowerLagMock();
   }
 
   private TaskInfo submitTask(RestartTaskParams requestParams) {
     return submitTask(requestParams, TaskType.RestartUniverse, commissioner);
+  }
+
+  private TaskInfo submitTask(RestartTaskParams requestParams, int expectedVersion) {
+    return submitTask(requestParams, TaskType.RestartUniverse, commissioner, expectedVersion);
   }
 
   private int assertSequence(
@@ -115,6 +119,40 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   public void testRollingRestart() {
     RestartTaskParams taskParams = new RestartTaskParams();
     TaskInfo taskInfo = submitTask(taskParams);
+    verify(mockNodeManager, times(30)).nodeCommand(any(), any());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PreUpgrade hooks
+    position = assertSequence(subTasksByPosition, MASTER, position);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
+    position = assertSequence(subTasksByPosition, TSERVER, position);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PostUpgrade hooks
+    assertEquals(89, position);
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testRollingRestartWithUnderReplicatedCheckRun() {
+    setUnderReplicatedTabletsMock();
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2.19.1.0-b444";
+            });
+
+    RestartTaskParams taskParams = new RestartTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(30)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();

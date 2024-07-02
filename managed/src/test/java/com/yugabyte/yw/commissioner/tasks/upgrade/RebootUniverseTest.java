@@ -77,7 +77,6 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     attachHooks("RebootUniverse");
     rebootUniverse.setUserTaskUUID(UUID.randomUUID());
     setCheckNodesAreSafeToTakeDown(mockClient);
-    setUnderReplicatedTabletsMock();
     setFollowerLagMock();
   }
 
