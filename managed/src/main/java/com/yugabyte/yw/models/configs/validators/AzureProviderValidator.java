@@ -3,7 +3,6 @@ package com.yugabyte.yw.models.configs.validators;
 import static com.yugabyte.yw.common.Util.addJsonPathToLeafNodes;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.azure.core.management.exception.ManagementException;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.compute.models.VirtualMachineImage;
 import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
@@ -66,6 +65,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
     String CLIENT_ERROR =
         String.format("Application with identifier '%s' was not found", cloudInfo.azuClientId);
     String SECRET_ERROR = "Invalid client secret provided.";
+    String SUBSCRIPTION_ERROR = "subscriptionnotfound";
 
     // Try building the API Client to validate
     // Client ID, Client Secret, Subscription ID & Tenant ID
@@ -77,26 +77,29 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
         String rgName = rg.name();
       }
     } catch (Exception e) {
-      String error = e.getMessage();
+      String error = e.getMessage().toLowerCase();
       String clientJsonPath = cloudInfoJson.get("azuClientId").get("jsonPath").asText();
       // secret can be null in case of managed identity so create path from client jsonPath
       String secretJsonPath = clientJsonPath.replace("azuClientId", "azuClientSecret");
+      String subIdJsonPath = cloudInfoJson.get("azuSubscriptionId").get("jsonPath").asText();
 
-      if (error.contains(TENANT_ERROR)) {
+      if (error.contains("tenant id")) {
         String tenantJsonPath = cloudInfoJson.get("azuTenantId").get("jsonPath").asText();
         validationErrorsMap.put(
             tenantJsonPath,
             TENANT_ERROR
                 + " Check to make sure you have the correct tenant ID."
                 + " This may happen if there are no active subscriptions for the tenant.");
-      } else if (error.contains(CLIENT_ERROR)) {
+      } else if (error.contains(CLIENT_ERROR.toLowerCase())) {
         validationErrorsMap.put(
             clientJsonPath,
             CLIENT_ERROR
                 + ".This can happen if the application has not been installed by the administrator"
                 + " of the tenant or consented to by any user in the tenant.");
-      } else if (error.contains(SECRET_ERROR)) {
+      } else if (error.contains(SECRET_ERROR.toLowerCase())) {
         validationErrorsMap.put(secretJsonPath, SECRET_ERROR);
+      } else if (error.contains(SUBSCRIPTION_ERROR)) {
+        validationErrorsMap.put(subIdJsonPath, "Subscription ID not found!");
       } else {
         // to make sure error doesn't go unescaped.
         throw e;
@@ -219,11 +222,9 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
                 String planID = vmImage.plan().name();
                 AgreementTerms terms =
                     manager.marketplaceAgreements().getAgreement(publisher, offer, planID);
-              } catch (ManagementException e) {
+              } catch (Exception e) {
                 String err = String.format("Need to accept the terms for the image %s", image);
                 validationErrorsMap.put(imageJsonPath, err);
-              } catch (Exception e) {
-                throw e;
               }
             }
           } catch (Exception e) {
@@ -313,15 +314,13 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
           try {
             NetworkSecurityGroup azureNetworkSecurityGroup =
                 azure.networkSecurityGroups().getByResourceGroup(resourceGroup, securityGroup);
-          } catch (ManagementException e) {
+          } catch (Exception e) {
             String sgJsonPath = cloudInfoJson.get("securityGroupId").get("jsonPath").asText();
             String err =
                 String.format(
                     "Security Group: %s not found in Resource Group: %s!",
                     securityGroup, resourceGroup);
             validationErrorsMap.put(sgJsonPath, err);
-          } catch (Exception e) {
-            throw e;
           }
         }
 
@@ -344,13 +343,11 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
               validationErrorsMap.put(subnetJsonPath, err);
             }
           }
-        } catch (ManagementException e) {
+        } catch (Exception e) {
           String err =
               String.format(
                   "Virtual Network: %s not found in Resource Group: %s", vnet, resourceGroup);
           validationErrorsMap.put(vnetJsonPath, err);
-        } catch (Exception e) {
-          throw e;
         }
       }
     } catch (Exception e) {
@@ -381,11 +378,9 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       SetMultimap<String, String> validationErrorsMap) {
     try {
       azure.genericResources().manager().subscriptionClient().getSubscriptions().get(subID);
-    } catch (ManagementException e) {
+    } catch (Exception e) {
       validationErrorsMap.put(errKey, "Subscription ID not found!");
       throwMultipleProviderValidatorError(validationErrorsMap, providerJson);
-    } catch (Exception e) {
-      throw e;
     }
   }
 
@@ -400,15 +395,13 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       try {
         PrivateDnsZone zone =
             azure.privateDnsZones().getByResourceGroup(resourceGroup, privateDnsZone);
-      } catch (ManagementException e) {
+      } catch (Exception e) {
         String dnsZoneJsonPath = cloudInfoJson.get("azuHostedZoneId").get("jsonPath").asText();
         String err =
             String.format(
                 "Private DNS Zone: %s not found in Resource Group: %s",
                 privateDnsZone, resourceGroup);
         validationErrorsMap.put(dnsZoneJsonPath, err);
-      } catch (Exception e) {
-        throw e;
       }
     }
   }
