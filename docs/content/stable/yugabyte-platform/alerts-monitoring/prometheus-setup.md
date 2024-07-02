@@ -12,9 +12,11 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere provides [metrics](../anywhere-metrics/) via a Prometheus instance that is created with your YugabyteDB Anywhere installation.
+While YugabyteDB Anywhere includes an [embedded Prometheus instance](../anywhere-metrics/) and uses it for storing time-series metrics data, you can also set up your own independent and separately-managed Prometheus instance.
 
-You can also set up your own Prometheus instance and use it to scrape universe metrics, and pass the metrics for visualization in Grafana or any other tool that supports Prometheus as a data source.
+This additional Prometheus instance can collect, visualize, alert on, and analyze universe metrics in your own observability tools. Prometheus itself, or any tool able to use Prometheus as a data source (such as Grafana) can be used.
+
+Your independent Prometheus instance will scrape data from database nodes directly (in the case of VM-based universes) or scrape data from a K8s Prometheus Service Monitor (in the case of K8s-based universes). This data scraping runs in parallel to and independently from the YugabyteDB Anywhere-embedded Prometheus.
 
 ## Kubernetes
 
