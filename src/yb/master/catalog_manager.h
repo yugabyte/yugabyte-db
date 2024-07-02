@@ -497,10 +497,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
 
+  void RemoveDdlTransactionStateUnlocked(
+      const TableId& table_id, const std::vector<TransactionId>& txn_ids)
+      REQUIRES_SHARED(ddl_txn_verifier_mutex_);
+
   void RemoveDdlTransactionState(
-      const TableId& table_id, const std::vector<TransactionId>& txn_ids);
+      const TableId& table_id, const std::vector<TransactionId>& txn_ids)
+      EXCLUDES(ddl_txn_verifier_mutex_);
 
   Status TriggerDdlVerificationIfNeeded(const TransactionMetadata& txn, const LeaderEpoch& epoch);
+  void ScheduleTriggerDdlVerificationIfNeeded(
+    const TransactionMetadata& txn, const LeaderEpoch& epoch, int32_t delay_ms);
 
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
