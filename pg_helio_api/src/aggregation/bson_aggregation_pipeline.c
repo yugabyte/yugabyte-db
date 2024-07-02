@@ -78,8 +78,6 @@ typedef bool (*RequiresPersistentCursorFunc)(const bson_value_t *existingValue);
 typedef bool (*CanInlineLookupStage)(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
 
-/* Validate query tree after parsing. */
-typedef void (*ValidateQueryTree)(const Query *query);
 
 /*
  * Declaration of a given aggregation pipeline stage.
@@ -97,9 +95,6 @@ typedef struct
 
 	/* Optional function for whether lookup stages can be inlined in the substage */
 	CanInlineLookupStage canInlineLookupStageFunc;
-
-	/* Optional function to validate query tree after parsing */
-	ValidateQueryTree validateQueryTree;
 
 	/* Does the stage maintain a stable sort order or modify the input stream */
 	bool preservesStableSortOrder;
@@ -166,6 +161,9 @@ static Query * HandleDistinct(const StringView *existingValue, Query *query,
 							  AggregationPipelineBuildContext *context);
 static Query * HandleGeoNear(const bson_value_t *existingValue, Query *query,
 							 AggregationPipelineBuildContext *context);
+static Query * HandleMatchAggregationStage(const bson_value_t *existingValue,
+										   Query *query,
+										   AggregationPipelineBuildContext *context);
 
 static bool RequiresPersistentCursorFalse(const bson_value_t *pipelineValue);
 static bool RequiresPersistentCursorTrue(const bson_value_t *pipelineValue);
@@ -205,7 +203,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$addFields",
@@ -216,7 +213,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$bucket",
@@ -227,7 +223,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$bucketAuto",
@@ -238,7 +233,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$changeStream",
@@ -249,7 +243,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$collStats",
@@ -260,7 +253,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$count",
@@ -275,7 +267,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$currentOp",
@@ -291,7 +282,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$densify",
@@ -302,7 +292,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$documents",
@@ -313,7 +302,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$facet",
@@ -328,7 +316,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$fill",
@@ -339,7 +326,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$geoNear",
@@ -350,7 +336,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$graphLookup",
@@ -361,7 +346,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$group",
@@ -377,7 +361,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$indexStats",
@@ -388,7 +371,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$inverseMatch",
@@ -403,7 +385,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$limit",
@@ -418,7 +399,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$listLocalSessions",
@@ -429,7 +409,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$listSessions",
@@ -440,7 +419,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$lookup",
@@ -453,11 +431,10 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$match",
-		.mutateFunc = &HandleMatch,
+		.mutateFunc = &HandleMatchAggregationStage,
 		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
 
 		/* can always be inlined since it doesn't change the projector */
@@ -468,7 +445,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = &ValidateQueryTreeForMatchStage,
 	},
 	{
 		.stage = "$merge",
@@ -479,7 +455,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = true,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$out",
@@ -490,7 +465,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = true,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$project",
@@ -503,7 +477,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$redact",
@@ -514,7 +487,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$replaceRoot",
@@ -527,7 +499,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$replaceWith",
@@ -540,7 +511,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$sample",
@@ -555,7 +525,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$search",
@@ -568,7 +537,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$searchMeta",
@@ -579,7 +547,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$set",
@@ -590,7 +557,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$setWindowFields",
@@ -601,7 +567,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$skip",
@@ -616,7 +581,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$sort",
@@ -631,7 +595,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$sortByCount",
@@ -642,7 +605,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$unionWith",
@@ -653,7 +615,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$unset",
@@ -664,7 +625,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$unwind",
@@ -675,7 +635,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	},
 	{
 		.stage = "$vectorSearch",
@@ -688,7 +647,6 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
-		.validateQueryTree = NULL,
 	}
 };
 
@@ -1118,11 +1076,6 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 		context->requiresPersistentCursor =
 			context->requiresPersistentCursor ||
 			definition->requiresPersistentCursor(&stageElement.bsonValue);
-
-		if (definition->validateQueryTree != NULL)
-		{
-			definition->validateQueryTree(query);
-		}
 
 		if (!definition->preservesStableSortOrder)
 		{
@@ -4921,4 +4874,17 @@ CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr)
 	}
 
 	return isGeoNearProject;
+}
+
+
+/*
+ * Handles $match aggregation stage and validates the query tree for geospatial queries.
+ */
+static Query *
+HandleMatchAggregationStage(const bson_value_t *existingValue, Query *query,
+							AggregationPipelineBuildContext *context)
+{
+	query = HandleMatch(existingValue, query, context);
+	ValidateQueryTreeForMatchStage(query);
+	return query;
 }

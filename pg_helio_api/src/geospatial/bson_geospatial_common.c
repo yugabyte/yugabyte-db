@@ -120,37 +120,6 @@ static const TraverseBsonExecutionFuncs ValidateGeography = {
 
 
 /*
- * For bloom validation the isEmpty flag is false in any error case
- */
-static inline void
-SetNonEmptyIfBloomValidation(ProcessCommonGeospatialState *state)
-{
-	if (IsBloomValidation(state))
-	{
-		state->isEmpty = false;
-	}
-}
-
-
-/*
- * For any error case that is found during parsing and processing of geospatial
- * values for geometries and geographies extractions, this utility check is called
- * to identify if we really want to throw error for strit validation type or just
- * mark it as non-empty if validation level is bloom_filter
- */
-static inline bool
-ShouldThrowGeoValidationError(ProcessCommonGeospatialState *state)
-{
-	if (IsIndexValidation(state))
-	{
-		return true;
-	}
-	SetNonEmptyIfBloomValidation(state);
-	return false;
-}
-
-
-/*
  * Callers must ensure this is called only if a valid shape is found.
  * This function increments the total count of valid shapes found
  * and runs the matcher function in case of GeospatialValidationLevel_Runtime
