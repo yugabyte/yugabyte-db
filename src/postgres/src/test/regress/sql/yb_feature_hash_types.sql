@@ -43,6 +43,10 @@ CREATE TABLE ft_h_tab_bool (feature_col BOOLEAN PRIMARY KEY);
 -- Enumerated Types
 CREATE TYPE feature_h_enum AS ENUM('one', 'two', 'three');
 CREATE TABLE ft_h_tab_enum (feature_col feature_h_enum PRIMARY KEY);
+-- YB(fizaa): Work-around for the test cleanup code that drops the enum type.
+-- Dropping the enum type will cause an error because a key column depends on it (GH #22902).
+-- By dropping the table now, the clean up code will succeed.
+DROP TABLE ft_h_tab_enum;
 --
 -- Geometric Types
 CREATE TABLE ft_h_tab_point (feature_col POINT PRIMARY KEY);
@@ -91,6 +95,10 @@ CREATE TABLE ft_h_tab_range (feature_col feature_h_range PRIMARY KEY);
 -- Domain Types
 CREATE DOMAIN feature_h_domain AS INTEGER CHECK (VALUE > 0);
 CREATE TABLE ft_h_tab_domain (feature_col feature_h_domain PRIMARY KEY);
+-- YB(fizaa): Work-around for the test cleanup code that drops the domain.
+-- Dropping the domain will cause an error because a key column depends on it (GH #22902).
+-- By dropping the table now, the clean up code will succeed.
+DROP TABLE ft_h_tab_domain;
 --
 -- Object Identifier Types
 CREATE TABLE ft_h_tab_oid (feature_col OID PRIMARY KEY);

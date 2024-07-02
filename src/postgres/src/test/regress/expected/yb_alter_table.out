@@ -412,3 +412,12 @@ ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+--
+-- Test for cascaded drops on columns
+--
+CREATE TABLE test_dropcolumn(a int, b int, c int);
+CREATE TYPE test_dropcolumn_type AS (a int, b int);
+ALTER TABLE test_dropcolumn ADD COLUMN d test_dropcolumn_type;
+DROP TYPE test_dropcolumn_type CASCADE; -- should drop the column d
+NOTICE:  drop cascades to column d of table test_dropcolumn
+ALTER TABLE test_dropcolumn ADD COLUMN d int;
