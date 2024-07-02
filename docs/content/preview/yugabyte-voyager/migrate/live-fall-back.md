@@ -77,14 +77,14 @@ Create a new database user, and assign the necessary user permissions.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#oracle" class="nav-link active" id="oracle-tab" data-toggle="tab"
+    <a href="#oracle" class="nav-link active" id="oracle-tab" data-bs-toggle="tab"
       role="tab" aria-controls="oracle" aria-selected="true">
       <i class="icon-oracle" aria-hidden="true"></i>
       Oracle
     </a>
   </li>
   <li >
-    <a href="#pg" class="nav-link" id="pg-tab" data-toggle="tab"
+    <a href="#pg" class="nav-link" id="pg-tab" data-bs-toggle="tab"
       role="tab" aria-controls="pg" aria-selected="false">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL

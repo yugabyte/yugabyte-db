@@ -3,6 +3,11 @@ html {
 }
 
 /******* Container Styling **********/
+.row {
+  margin-left: -15px;
+  margin-right: -15px;
+}
+
 .left-menu-scrolling .td-main {
   aside.td-sidebar .left-sidebar-wrap {
     transition: none !important;

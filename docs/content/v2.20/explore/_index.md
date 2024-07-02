@@ -42,21 +42,21 @@ You can run examples using a universe set up on your local machine or in a cloud
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li >
-    <a href="#cloud" class="nav-link" id="cloud-tab" data-toggle="tab"
+    <a href="#cloud" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       YugabyteDB Aeon
     </a>
   </li>
   <li>
-    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -260,21 +260,21 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#localworkload" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#localworkload" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li >
-    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-toggle="tab"
+    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
       YugabyteDB Aeon
     </a>
   </li>
   <li>
-    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere

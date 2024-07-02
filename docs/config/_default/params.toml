@@ -2,8 +2,6 @@ author = "Team Yugabyte"
 description = "YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps."
 copyright = "Yugabyte, Inc."
 privacy_policy = "https://www.yugabyte.com/privacy-policy/"
-algolia_docsearch = true
-algolia_sequence_expressions = true
 kapa_ai = true
 drift_snippet = true
 search_banner = true
@@ -12,6 +10,10 @@ version_menu = "Releases"
 # Change version_menu_pagelinks to true to go to the same page when you switch
 # versions from the dropdown menu.
 version_menu_pagelinks = true
+
+[search]
+  algolia_docsearch = true
+  algolia_sequence_expressions = true
 
 [path_base_for_github_subdir]
   from = "content/en/(.*?)/"

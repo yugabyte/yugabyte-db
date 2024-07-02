@@ -39,14 +39,14 @@ This section assumes that you have either [created an account](https://cloud.yug
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li >
-    <a href="#cloud" class="nav-link active" id="cloud-tab" data-toggle="tab"
+    <a href="#cloud" class="nav-link active" id="cloud-tab" data-bs-toggle="tab"
        role="tab" aria-controls="cloud" aria-selected="true">
       <i class="fas fa-cloud" aria-hidden="true"></i>
       Use a cloud cluster
     </a>
   </li>
   <li>
-    <a href="#local" class="nav-link" id="local-tab" data-toggle="tab"
+    <a href="#local" class="nav-link" id="local-tab" data-bs-toggle="tab"
        role="tab" aria-controls="local" aria-selected="false">
       <i class="icon-shell" aria-hidden="true"></i>
       Use a local cluster

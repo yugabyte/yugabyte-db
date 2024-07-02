@@ -65,13 +65,13 @@ The topology is shown in the following illustration:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li>
-    <a href="#platform" class="nav-link" id="platform-tab" data-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
+    <a href="#platform" class="nav-link" id="platform-tab" data-bs-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
     </a>
