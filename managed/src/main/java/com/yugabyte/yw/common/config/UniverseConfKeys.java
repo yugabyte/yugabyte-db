@@ -1224,4 +1224,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "CPU usage alert aggregation interval in seconds.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTimeDrift =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_clock_time_drift",
+          ScopeType.UNIVERSE,
+          "Enable health checks for time drift between nodes",
+          "Enable health checks for time drift between nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> healthCheckTimeDriftWrnThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.time_drift_wrn_threshold_ms",
+          ScopeType.UNIVERSE,
+          "Time drift threshold for warning health check",
+          "Threshold to raise a warning when time drift exceeds this amount",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> healthCheckTimeDriftErrThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.time_drift_err_threshold_ms",
+          ScopeType.UNIVERSE,
+          "Time drift threshold for error health check",
+          "Threshold to raise a error when time drift exceeds this amount",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

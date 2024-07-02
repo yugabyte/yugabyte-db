@@ -673,7 +673,7 @@ TEST_F(CloneStateManagerTest, AbortIncompleteCloneOnLoad) {
   // Check that each non-terminal state is aborted on load.
   for (int i = SysCloneStatePB::State_MIN; i <= SysCloneStatePB::State_MAX; ++i) {
     // Create a clone state in state i.
-    auto clone_state = make_scoped_refptr<CloneStateInfo>(GenerateObjectId());
+    auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
     auto state = SysCloneStatePB_State(i);
     {
       auto lock = clone_state->LockForWrite();

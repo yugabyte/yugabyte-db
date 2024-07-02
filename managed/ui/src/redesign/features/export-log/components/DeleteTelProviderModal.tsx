@@ -30,7 +30,7 @@ export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
     },
     {
       onSuccess: () => {
-        toast.success(`Created log export configuration ${telemetryProviderProps.name}`);
+        toast.success(t('exportAuditLog.deleteConfirmMsg', { name: telemetryProviderProps.name }));
         onClose();
       },
       onError: (error: any) => {

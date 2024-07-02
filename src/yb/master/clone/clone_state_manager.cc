@@ -387,7 +387,7 @@ Status CloneStateManager::ClearAndRunLoaders() {
 }
 
 Status CloneStateManager::LoadCloneState(const std::string& id, const SysCloneStatePB& metadata) {
-  auto clone_state = CloneStateInfoPtr(new CloneStateInfo(id));
+  auto clone_state = std::make_shared<CloneStateInfo>(id);
   clone_state->Load(metadata);
 
   std::string source_namespace_id;
@@ -432,7 +432,7 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
     }
   }
 
-  auto clone_state = make_scoped_refptr<CloneStateInfo>(GenerateObjectId());
+  auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
   clone_state->mutable_metadata()->StartMutation();
   auto* pb = &clone_state->mutable_metadata()->mutable_dirty()->pb;
   pb->set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);

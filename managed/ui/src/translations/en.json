@@ -2048,7 +2048,9 @@
       "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console.",
       "deleteModalTitle": "Delete Export Configuration",
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
-      "deleteModalSubmitLabel": "Delete Export Configuration"
+      "deleteModalSubmitLabel": "Delete Export Configuration",
+      "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
+      "deleteConfig": "Delete Configuration"
     }
   }
 }

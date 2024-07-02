@@ -63,9 +63,9 @@ class ProvisionCommand(Command):
         file.write("SUDO_ACCESS=\"false\"\n")
         file.write("set +e\n")
         file.write("if [ $(id -u) = 0 ]; then\n")
-        file.write("\tSUDO_ACCESS=\"true\"\n")
+        file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("elif sudo -n pwd >/dev/null 2>&1; then\n")
-        file.write("\tSUDO_ACCESS=\"true\"\n")
+        file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("fi\n")
         file.write("set -e\n")
 

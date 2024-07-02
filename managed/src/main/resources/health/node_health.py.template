@@ -206,6 +206,10 @@ YB_NODE_CLOCK_SKEW_CHECK = MetricDefinition(
 YB_NODE_CONTROLLER_CHECK = MetricDefinition(
     "yb_node_controller_check",
     "YB-Controller server check")
+YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
+    "yb_node_clock_drift_check",
+    "Time Drift betwen nodes within limits"
+)
 
 ###################################################################################################
 # Reporting
@@ -342,10 +346,11 @@ class Entry:
         self.ignore_result = True
         return self
 
-    def fill_and_return_warning_entry(self, details):
+    def fill_and_return_warning_entry(self, details, metrics=None):
         self.details = details
         self.has_error = False
         self.has_warning = True
+        self.metrics = metrics
         return self
 
     def as_json(self):
@@ -493,7 +498,8 @@ class NodeChecker():
                  yb_home_dir, ybc_dir, start_time_ms, ysql_port, ycql_port, redis_port,
                  enable_tls_client, enable_tls, root_and_client_root_ca_same, ssl_protocol,
                  enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
-                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port):
+                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
+                 time_drift_wrn_threshold, time_drift_err_threshold):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -518,6 +524,8 @@ class NodeChecker():
         self.node_version = node_version
         self.is_ybc_enabled = is_ybc_enabled
         self.ybc_port = ybc_port
+        self.time_drift_wrn_threshold = time_drift_wrn_threshold
+        self.time_drift_err_threshold = time_drift_err_threshold
         self.additional_info = {}
 
     def _new_entry(self, message, process=None):
@@ -1410,6 +1418,27 @@ class NodeChecker():
         metric.add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
+    def check_yb_node_clock_drift(self):
+        e = self._new_entry("Node Clock Drift")
+        if not chrony_exists():
+          return e.ignore_check()
+        metric = Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK)
+        drift_ms = get_clock_drift_ms()
+        # Returns error string on failure, int on success
+        if isinstance(drift_ms, str):
+          return e.fill_and_return_entry([drift_ms], has_error=True)
+        metric.add_value(drift_ms)
+        errors = []
+        if drift_ms > self.time_drift_err_threshold:
+            errors.append("Node clock drift is {} ms, over {} ms".format(
+                drift_ms, self.time_drift_err_threshold))
+            return e.fill_and_return_entry(errors, has_error=True, metrics=[metric])
+        if drift_ms > self.time_drift_wrn_threshold:
+            errors.append("Node clock drift is {} ms, over {} ms".format(
+                drift_ms, self.time_drift_wrn_threshold))
+            return e.fill_and_return_warning_entry(errors, metrics=[metric])
+        return e.fill_and_return_entry(["%s ms" % drift_ms], has_error=False, metrics=[metric])
+
 ###################################################################################################
 # Utility functions
 ###################################################################################################
@@ -1478,6 +1507,24 @@ def is_equal_release_build(release_build1, release_build2):
     return (is_equal_or_newer_release_build(release_build1, release_build2) and
             is_equal_or_newer_release_build(release_build2, release_build1))
 
+def get_clock_drift_ms():
+    """
+    Get the clock drift in milliseconds. Returns absolute value of the drift
+    """
+    env = os.environ.copy()
+    chrony_out = check_output("systemctl status chronyd.service", env)
+    if "Error" not in chrony_out and "Active: active" in chrony_out:
+        # Check drift using chrony
+        out = check_output("chronyc tracking", env)
+        match = re.search("System time.*: (.*) second", out, re.MULTILINE)
+        if match:
+          return int(float(match.group(1))*1000) # Convert seconds to milliseconds
+    return "Error: Unknown time service"
+
+def chrony_exists():
+    env = os.environ.copy()
+    chrony_out = check_output("command -v chronyc", env)
+    return "Error" not in chrony_out
 
 class CheckCoordinator:
     class PreCheckRunInfo:
@@ -1583,6 +1630,9 @@ class NodeInfo:
         self.tserver_http_port = data["tserverHttpPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.check_clock = data["checkClock"]
+        self.check_time_drift = data["checkTimeDrift"]
+        self.time_drift_wrn_threshold = data["timeDriftWrnThreshold"]
+        self.time_drift_err_threshold = data["timeDriftErrThreshold"]
         self.test_read_write = data["testReadWrite"]
         self.test_ysqlsh_connectivity = data["testYsqlshConnectivity"]
         self.test_cqlsh_connectivity = data["testCqlshConnectivity"]
@@ -1624,7 +1674,8 @@ def main():
         n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port,
         n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol,
         n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
-        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port)
+        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
+        n.time_drift_wrn_threshold, n.time_drift_err_threshold)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -1648,6 +1699,8 @@ def main():
             coordinator.add_check(checker, "check_file_descriptors")
         if n.check_clock:
             coordinator.add_check(checker, "check_clock_skew")
+        if n.check_time_drift:
+            coordinator.add_check(checker, "check_yb_node_clock_drift")
 
     if n.master_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", MASTER)

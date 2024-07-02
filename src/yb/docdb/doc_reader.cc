@@ -262,8 +262,9 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
 
   dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   const Schema schema;
+  auto deadline_info = DeadlineInfo(read_operation_data.deadline);
   DocDBTableReader doc_reader(
-      iter.get(), read_operation_data.deadline, projection, TableType::YQL_TABLE_TYPE,
+      iter.get(), deadline_info, projection, TableType::YQL_TABLE_TYPE,
       schema_packing_storage, schema);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, read_operation_data))));
@@ -359,7 +360,7 @@ class PackedRowData {
 
     if (!decoder.Valid()) {
       decoder.Init(version_, *data_.projection, *schema_packing_,
-                   context, data_.schema, column_update_tracker_.get());
+                   *context, data_.schema, column_update_tracker_.get());
     }
 
     // There may already be some updates for the packed row, let's take them into account.
@@ -399,14 +400,14 @@ class PackedRowData {
 };
 
 DocDBTableReaderData::DocDBTableReaderData(
-    IntentAwareIterator* iter_, CoarseTimePoint deadline,
+    IntentAwareIterator* iter_, DeadlineInfo& deadline_info_,
     const dockv::ReaderProjection* projection_,
     TableType table_type_,
     std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
     std::reference_wrapper<const Schema> schema_,
     bool use_fast_backward_scan_)
     : iter(iter_),
-      deadline_info(deadline),
+      deadline_info(deadline_info_),
       projection(projection_),
       table_type(table_type_),
       schema_packing_storage(schema_packing_storage_),
@@ -804,7 +805,10 @@ class GetHelperBase : public PackedRowContext {
           &data_, data_.schema_packing_storage, std::move(column_update_tracker)));
     }
 
-    data_.packed_row->PrepareScan();
+    // As of now PrepareScan is required for fast backward scan only.
+    if constexpr (kFastBackward) {
+      data_.packed_row->PrepareScan();
+    }
   }
 
   virtual ~GetHelperBase() {
@@ -1192,13 +1196,14 @@ UnsafeStatus DecodePackedColumnV1(
 
 template <bool kLast, bool kCheckNull, size_t kSize, class ContextType>
 UnsafeStatus DecodePackedColumnV2(
-    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    dockv::PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const dockv::PackedColumnDecoderEntry* chain) {
   Status status;
   if (kCheckNull &&
-      PREDICT_FALSE(dockv::PackedRowDecoderV2::IsNull(header, chain->decoder_args.packed_index))) {
+      PREDICT_FALSE(dockv::PackedRowDecoderV2::IsNull(data->header, decoder_args.packed_index))) {
     status = DecodePackedColumn(
-        static_cast<ContextType*>(context), projection_index, dockv::PackedValueV2::Null());
+        static_cast<ContextType*>(data->context), projection_index, dockv::PackedValueV2::Null());
   } else {
     Slice column_value_slice;
     if (kSize) {
@@ -1210,13 +1215,13 @@ UnsafeStatus DecodePackedColumnV2(
     dockv::PackedValueV2 column_value(column_value_slice);
     body = column_value->end();
     status = DecodePackedColumn(
-        static_cast<ContextType*>(context), projection_index, column_value);
+        static_cast<ContextType*>(data->context), projection_index, column_value);
   }
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
   }
   return dockv::CallNextDecoderV2<kCheckNull, kLast>(
-      header, body, context, projection_index, chain);
+      data, body, projection_index, chain);
 }
 
 template <dockv::PackedRowVersion kVersion, bool kLast, class ContextType>
@@ -1307,16 +1312,17 @@ UnsafeStatus MissingColumnDecoderV1(
 
 template <bool kCheckNull, bool kLast, class ContextType>
 UnsafeStatus MissingColumnDecoderV2(
-    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    dockv::PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const dockv::PackedColumnDecoderEntry* chain) {
-  auto* helper = static_cast<ContextType*>(context);
+  auto* helper = static_cast<ContextType*>(data->context);
   // Fill in missing value (if any) for skipped columns.
-  const QLValuePB* missing_value = DCHECK_NOTNULL(chain->decoder_args.missing_value);
+  const QLValuePB* missing_value = DCHECK_NOTNULL(decoder_args.missing_value);
   auto status = SkipPackedColumn(helper, projection_index, *missing_value);
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
   }
-  return CallNextDecoderV2<kCheckNull, kLast>(header, body, context, projection_index, chain);
+  return CallNextDecoderV2<kCheckNull, kLast>(data, body, projection_index, chain);
 }
 
 template <class HelperType>
@@ -1495,13 +1501,13 @@ class GetHelper : public BaseOfGetHelper<ResultType> {
   }
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV1(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV1, GetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV2(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV2, GetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
@@ -1741,13 +1747,13 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType, kFastBackward> {
   void* Context() override;
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV1(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV1, FlatGetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV2(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV2, FlatGetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
@@ -1760,13 +1766,6 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType, kFastBackward> {
     if (!packed_row_version) {
       VLOG_WITH_FUNC(4) << "Not a packed row: " << row_value.ToDebugHexString();
       return SetNullOrMissingResult(*data_.projection, result_, data_.schema);
-    }
-    // TODO(#22556): Fast backward scan is not supported for packed row V2 yet.
-    if constexpr (kFastBackward) {
-      if (dockv::PackedRowVersion::kV2 == *packed_row_version) {
-        return STATUS(NotSupported, "Fast backward scan is not supported for packed row V2 yet."
-                                    "Please turn the flag `use_fast_backward_scan` off.");
-      }
     }
     found_ = true;
     if constexpr (Base::kCheckExistOnly) {

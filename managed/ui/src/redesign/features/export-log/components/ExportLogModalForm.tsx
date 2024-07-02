@@ -16,7 +16,12 @@ import { YBDropZoneField } from '../../../../components/configRedesign/providerR
 import { api } from '../../../utils/api';
 import { createErrorMessage } from '../../universe/universe-form/utils/helpers';
 import { readFileAsText } from '../../../../components/configRedesign/providerRedesign/forms/utils';
-import { ExportLogFormFields, TelemetryProviderType, ExportLogPayload } from '../utils/types';
+import {
+  ExportLogFormFields,
+  TelemetryProviderType,
+  ExportLogPayload,
+  TPItem
+} from '../utils/types';
 import { TELEMETRY_PROVIDER_OPTIONS, DATADOG_SITES } from '../utils/constants';
 
 //styles
@@ -25,19 +30,24 @@ import { exportLogStyles } from '../utils/ExportLogStyles';
 interface ExportLogFormProps {
   open: boolean;
   onClose: () => void;
+  formProps: TPItem | null;
 }
 
-export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) => {
+export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, formProps }) => {
   const classes = exportLogStyles();
   const { t } = useTranslation();
+  const isViewMode = formProps !== null;
+  const formDefaultValues = isViewMode
+    ? formProps
+    : {
+        config: {
+          type: TelemetryProviderType.DATA_DOG,
+          site: DATADOG_SITES[0].value
+        }
+      };
 
   const formMethods = useForm<ExportLogFormFields>({
-    defaultValues: {
-      config: {
-        type: TelemetryProviderType.DATA_DOG,
-        site: DATADOG_SITES[0].value
-      }
-    },
+    defaultValues: formDefaultValues,
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
@@ -116,7 +126,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.dataDogApiKey')}</YBLabel>
-          <YBInputField control={control} name="config.apiKey" fullWidth />
+          <YBInputField control={control} name="config.apiKey" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'row'} mt={3}>
           <Box display={'flex'} flexShrink={1} width="200px" flexDirection={'column'}>
@@ -128,6 +138,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
               renderValue={() =>
                 DATADOG_SITES.find((ds) => ds.value === dataDogSiteValue)?.name ?? ' Self-hosted'
               }
+              disabled={isViewMode}
             >
               {DATADOG_SITES.map((item) => (
                 <MenuItem key={item.value} value={item.value} className={classes.dataDogmenuItem}>
@@ -148,7 +159,12 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
           </Box>
           <Box display={'flex'} ml={2} width="100%" flexDirection={'column'}>
             <YBLabel>{t('exportAuditLog.siteURL')}</YBLabel>
-            <YBInputField control={control} name="config.site" disabled={!isSelfHosted} fullWidth />
+            <YBInputField
+              control={control}
+              name="config.site"
+              disabled={!isSelfHosted || isViewMode}
+              fullWidth
+            />
           </Box>
         </Box>
       </>
@@ -160,23 +176,34 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.splunkToken')}</YBLabel>
-          <YBInputField control={control} name="config.token" fullWidth />
+          <YBInputField control={control} name="config.token" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.endpointURL')}</YBLabel>
-          <YBInputField control={control} name="config.endpoint" placeholder="https://" fullWidth />
+          <YBInputField
+            control={control}
+            name="config.endpoint"
+            placeholder="https://"
+            fullWidth
+            disabled={isViewMode}
+          />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.source')}</YBLabel>
-          <YBInputField control={control} name="config.source" fullWidth />
+          <YBInputField control={control} name="config.source" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.sourceType')}</YBLabel>
-          <YBInputField control={control} name="config.sourceType" fullWidth />
+          <YBInputField
+            control={control}
+            name="config.sourceType"
+            fullWidth
+            disabled={isViewMode}
+          />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.splunkIndex')}</YBLabel>
-          <YBInputField control={control} name="config.index" fullWidth />
+          <YBInputField control={control} name="config.index" fullWidth disabled={isViewMode} />
         </Box>
       </>
     );
@@ -187,31 +214,47 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.awsAccessKey')}</YBLabel>
-          <YBInputField control={control} name="config.awsAccessKeyID" fullWidth />
+          <YBInputField
+            control={control}
+            name="config.awsAccessKeyID"
+            fullWidth
+            disabled={isViewMode}
+          />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.awsSecretKey')}</YBLabel>
-          <YBInputField control={control} name="config.awsAccessKeySecret" fullWidth />
+          <YBInputField
+            control={control}
+            name="config.awsAccessKeySecret"
+            fullWidth
+            disabled={isViewMode}
+          />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.logGroup')}</YBLabel>
-          <YBInputField control={control} name="config.logGroup" fullWidth />
+          <YBInputField control={control} name="config.logGroup" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.logStream')}</YBLabel>
-          <YBInputField control={control} name="config.logStream" fullWidth />
+          <YBInputField control={control} name="config.logStream" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.awsRegion')}</YBLabel>
-          <YBInputField control={control} name="config.region" fullWidth />
+          <YBInputField control={control} name="config.region" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.awsRoleARN')}</YBLabel>
-          <YBInputField control={control} name="config.roleARN" fullWidth />
+          <YBInputField control={control} name="config.roleARN" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.awsEndpoint')}</YBLabel>
-          <YBInputField control={control} name="config.endpoint" placeholder="https://" fullWidth />
+          <YBInputField
+            control={control}
+            name="config.endpoint"
+            placeholder="https://"
+            fullWidth
+            disabled={isViewMode}
+          />
         </Box>
       </>
     );
@@ -222,7 +265,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('exportAuditLog.gcpProject')}</YBLabel>
-          <YBInputField control={control} name="config.project" fullWidth />
+          <YBInputField control={control} name="config.project" fullWidth disabled={isViewMode} />
         </Box>
         <Box display={'flex'} flexDirection={'column'} mt={3} width="100%">
           <YBDropZoneField
@@ -232,6 +275,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
             multipleFiles={false}
             showHelpText={true}
             className={classes.gcpJSONUploader}
+            disabled={isViewMode}
             descriptionText={
               <span>
                 <Trans i18nKey={'exportAuditLog.gcpDescription'} />
@@ -246,12 +290,17 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
   return (
     <YBSidePanel
       open={open}
-      title={t('exportAuditLog.modalTitle')}
-      submitLabel={t('exportAuditLog.submitLabel')}
+      title={isViewMode ? t('exportAuditLog.exportConfigForLogs') : t('exportAuditLog.modalTitle')}
+      submitLabel={!isViewMode ? t('exportAuditLog.submitLabel') : undefined}
       onClose={onClose}
-      cancelLabel={t('common.cancel')}
+      cancelLabel={isViewMode ? t('common.close') : t('common.cancel')}
       overrideWidth={680}
       onSubmit={handleFormSubmit}
+      buttonProps={{
+        primary: {
+          disabled: isViewMode
+        }
+      }}
     >
       <FormProvider {...formMethods}>
         <Box
@@ -272,6 +321,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
               name="name"
               placeholder="config_name_01"
               fullWidth
+              disabled={isViewMode}
             />
           </Box>
           <Box className={classes.mainFieldContainer}>
@@ -283,6 +333,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose }) =>
               control={control}
               options={TELEMETRY_PROVIDER_OPTIONS}
               orientation={RadioGroupOrientation.VERTICAL}
+              isDisabled={isViewMode}
             />
             {providerTypeValue === TelemetryProviderType.DATA_DOG && renderDatadogForm()}
             {providerTypeValue === TelemetryProviderType.SPLUNK && renderSplunkForm()}
