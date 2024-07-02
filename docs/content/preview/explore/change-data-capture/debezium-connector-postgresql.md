@@ -843,6 +843,23 @@ The Debezium PostgreSQL connector has many configuration properties that you can
 The following configuration properties are *required* unless a default value is available.
 
 #### Required configuration properties
+
+| Property | Default value | Description |
+| :------- | :------------ | :---------- |
+| name | No default | Unique name for the connector. Attempting to register again with the same name will fail. This property is required by all Kafka Connect connectors. |
+| connector.class | No default | The name of the Java class for the connector. Always use a value of `io.debezium.connector.postgresql.YBPostgresConnector` for the PostgreSQL connector. |
+| tasks.max | 1 | The maximum number of tasks that should be created for this connector. The PostgreSQL connector always uses a single task and therefore does not use this value, so the default is always acceptable. |
+| plugin.name | decoderbufs | The name of the PostgreSQL [logical decoding plug-in](#reminder) installed on the PostgreSQL server.<br/>Supported values are `yboutput`, and `pgoutput`. |
+| slot.name | debezium | The name of the PostgreSQL logical decoding slot that was created for streaming changes from a particular plug-in for a particular database/schema. The server uses this slot to stream events to the Debezium connector that you are configuring.<br/>Slot names must conform to [PostgreSQL replication slot naming rules](#reminder), which state: *"Each replication slot has a name, which can contain lower-case letters, numbers, and the underscore character."* |
+| slot.drop.on.stop | false | Whether or not to delete the logical replication slot when the connector stops in a graceful, expected way. The default behavior is that the replication slot remains configured for the connector when the connector stops. When the connector restarts, having the same replication slot enables the connector to start processing where it left off.<br/>Set to true in only testing or development environments. Dropping the slot allows the database to discard WAL segments. When the connector restarts it performs a new snapshot or it can continue from a persistent offset in the Kafka Connect offsets topic. |
+| publication.name | dbz_publication | The name of the PostgreSQL publication created for streaming changes when using pgoutput.<br/>This publication is created at start-up if it does not already exist and it includes all tables. Debezium then applies its own include/exclude list filtering, if configured, to limit the publication to change events for the specific tables of interest. The connector user must have superuser permissions to create this publication, so it is usually preferable to create the publication before starting the connector for the first time.<br/>If the publication already exists, either for all tables or configured with a subset of tables, Debezium uses the publication as it is defined. |
+| database.hostname | No default | IP address or hostname of the PostgreSQL database server. |
+| database.port | 5433 | Integer port number of the PostgreSQL database server. |
+| database.user | No default | Name of the PostgreSQL database user for connecting to the PostgreSQL database server. |
+| database.password | No default | Password to use when connecting to the PostgreSQL database server. |
+| database.dbname | No default | The name of the PostgreSQL database from which to stream the changes. |
+| topic.prefix | No default | Topic prefix that provides a namespace for the particular PostgreSQL database server or cluster in which Debezium is capturing changes. The prefix should be unique across all other connectors, since it is used as a topic name prefix for all Kafka topics that receive records from this connector. Only alphanumeric characters, hyphens, dots and underscores must be used in the database server logical name. {{< warning title="Warning" >}} Do not change the value of this property. If you change the name value, after a restart, instead of continuing to emit events to the original topics, the connector emits subsequent events to topics whose names are based on the new value. {{< /warning >}} |
+
 #### Advanced configuration properties
 #### Pass-through configuration properties
 
