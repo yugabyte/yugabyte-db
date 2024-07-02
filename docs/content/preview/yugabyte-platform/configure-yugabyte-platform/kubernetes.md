@@ -122,7 +122,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YBA uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
-1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
+1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
 
 If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 

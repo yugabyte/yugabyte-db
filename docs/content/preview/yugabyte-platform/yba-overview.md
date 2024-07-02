@@ -14,7 +14,7 @@ type: docs
 
 YugabyteDB Anywhere (YBA) is a self-managed database-as-a-service that allows you to deploy and operate YugabyteDB database clusters (also known as universes) at scale.
 
-In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) primary cluster, and can optionally also include a single [read replica](../../architecture/docdb-replication/read-replicas/) cluster attached to the primary cluster.
+In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) [primary cluster](../../architecture/key-concepts/#primary-cluster), and can optionally also include a single [read replica](../../architecture/key-concepts/#read-replica-cluster/) cluster attached to the primary cluster.
 
 ## Features
 
