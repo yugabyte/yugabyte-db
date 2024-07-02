@@ -35,11 +35,11 @@ NAME                                             READY   STATUS    RESTARTS   AG
 kube-prometheus-stack-operator-5577f9747-hqzbw   1/1     Running   0          4d19h
 ```
 
-### Set up YugabyteDB Anywhere universe
+### Use Prometheus with a YugabyteDB Anywhere Kubernetes universe
 
-To use a custom Prometheus instance with a universe:
+To use a custom Prometheus instance with a universe on Kubernetes:
 
-1. In YugabyteDB Anywhere, navigate to the Kubernetes universe you want to monitor.
+1. In YugabyteDB Anywhere, navigate to the universe you want to monitor.
 
 1. Click **Actions** and choose **Edit Kubernetes Overrides**.
 
