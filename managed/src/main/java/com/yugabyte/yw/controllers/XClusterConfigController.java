@@ -1101,8 +1101,28 @@ public class XClusterConfigController extends AuthenticatedController {
         namespaceIdToTableInfoListMap =
             XClusterConfigTaskBase.groupByNamespaceId(sourceTableInfoList);
     log.debug("namespaceIdToTableInfoListMap is {}", namespaceIdToTableInfoListMap);
-    Map<String, List<String>> sourceUniverseMainTableIndexTablesMap =
-        XClusterConfigTaskBase.getMainTableIndexTablesMap(sourceTableInfoList);
+    Map<String, List<String>> sourceUniverseMainTableIndexTablesMap;
+    // For universes newer than or equal to 2.21.1.0-b168, we use the following method to improve
+    // performance.
+    if (Util.compareYbVersions(
+            "2.21.1.0-b168",
+            sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            true)
+        <= 0) {
+      sourceUniverseMainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(sourceUniverse, sourceTableInfoList);
+    } else {
+      log.warn(
+          "Universe {} does not support indexed_table_id in the ListTable RPC, the response may"
+              + " take time to be generated. Please consider upgrading the universe to a newer"
+              + " version.",
+          sourceUniverseUuid);
+      sourceUniverseMainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybService,
+              sourceUniverse,
+              XClusterConfigTaskBase.getTableIds(sourceTableInfoList));
+    }
     log.debug("sourceUniverseMainTableIndexTablesMap is {}", sourceUniverseMainTableIndexTablesMap);
 
     Set<String> allTableIds = new HashSet<>(needBootstrapFormData.tables);
