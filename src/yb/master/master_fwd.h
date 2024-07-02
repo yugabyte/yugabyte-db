@@ -104,7 +104,7 @@ class AsyncTabletSnapshotOp;
 using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
 
 class CloneStateInfo;
-using CloneStateInfoPtr = scoped_refptr<CloneStateInfo>;
+using CloneStateInfoPtr = std::shared_ptr<CloneStateInfo>;
 
 class NamespaceInfo;
 using NamespaceInfoPtr = scoped_refptr<NamespaceInfo>;

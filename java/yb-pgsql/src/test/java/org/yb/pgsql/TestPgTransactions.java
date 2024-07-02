@@ -1087,4 +1087,30 @@ public class TestPgTransactions extends BasePgSQLTest {
       s1.execute("DROP TABLE test");
     }
   }
+
+  /**
+   * GHI 22837
+   * Verify that inserts into a table with identity column are executed without transaction
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testIdentityNoTransaction() throws Exception {
+    Statement statement = connection.createStatement();
+    // Identity column is a primary key
+    statement.execute("CREATE TABLE test_id_pk (" +
+                      "id int generated always as identity PRIMARY KEY, v int)");
+    verifyStatementTxnMetric(statement, "INSERT INTO test_id_pk(v) VALUES (1)", 1);
+    verifyStatementTxnMetric(statement, "INSERT INTO test_id_pk(v) VALUES (2)", 1);
+    verifyStatementTxnMetric(statement, "INSERT INTO test_id_pk(v) VALUES (3)", 1);
+    statement.execute("DROP TABLE test_id_pk");
+
+    // Identity column is not a primary key
+    statement.execute("CREATE TABLE test_id_non_pk (" +
+                      "id int generated always as identity, k int PRIMARY KEY, v int)");
+    verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (1, 1)", 1);
+    verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (2, 2)", 1);
+    verifyStatementTxnMetric(statement, "INSERT INTO test_id_non_pk(k, v) VALUES (3, 3)", 1);
+    statement.execute("DROP TABLE test_id_non_pk");
+  }
 }

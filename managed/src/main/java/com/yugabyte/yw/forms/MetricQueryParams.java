@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -67,6 +68,7 @@ public class MetricQueryParams {
 
   @ApiModelProperty(value = "YbaApi Internal. Is Recharts")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.14.0.0")
+  @JsonProperty("isRecharts")
   private boolean isRecharts;
 
   @ApiModelProperty(value = "YbaApi Internal. List of metrics with custom settings")

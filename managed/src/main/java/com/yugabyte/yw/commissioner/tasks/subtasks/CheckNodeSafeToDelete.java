@@ -31,8 +31,8 @@ public class CheckNodeSafeToDelete extends UniverseTaskBase {
 
     if (currentNode == null) {
       String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-      log.error(msg);
-      throw new RuntimeException(msg);
+      log.warn(msg);
+      return;
     }
 
     String nodeIp = Util.getNodeIp(universe, currentNode);

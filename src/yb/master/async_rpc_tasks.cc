@@ -2014,10 +2014,9 @@ void AsyncClonePgSchema::HandleResponse(int attempt) {
                  << " failed: " << resp_status;
     TransitionToFailedState(state(), resp_status);
   } else {
-    resp_status = Status::OK();
     TransitionToCompleteState();
   }
-  WARN_NOT_OK(callback_(resp_status), "Failed to execute the call back of AsyncClonePgSchema");
+  WARN_NOT_OK(callback_(resp_status), "Failed to execute the callback of AsyncClonePgSchema");
 }
 
 bool AsyncClonePgSchema::SendRequest(int attempt) {
@@ -2033,6 +2032,41 @@ bool AsyncClonePgSchema::SendRequest(int attempt) {
 }
 
 MonoTime AsyncClonePgSchema::ComputeDeadline() { return deadline_; }
+
+// ============================================================================
+//  Class AsyncEnableDbConns.
+// ============================================================================
+AsyncEnableDbConns::AsyncEnableDbConns(
+    Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& target_db_name, EnableDbConnsCallbackType callback)
+    : RetrySpecificTSRpcTask(
+          master, callback_pool, std::move(permanent_uuid), /* async_task_throttler */ nullptr),
+      target_db_name_(target_db_name),
+      callback_(std::move(callback)) {}
+
+std::string AsyncEnableDbConns::description() const {
+  return "Enable connections on cloned database " + target_db_name_;
+}
+
+void AsyncEnableDbConns::HandleResponse(int attempt) {
+  Status resp_status;
+  if (resp_.has_error()) {
+    resp_status = StatusFromPB(resp_.error().status());
+    LOG(WARNING) << "Failed to enable connections on cloned database " << target_db_name_
+                 << ". Status: " << resp_status;
+    TransitionToFailedState(state(), resp_status);
+  } else {
+    TransitionToCompleteState();
+  }
+  WARN_NOT_OK(callback_(resp_status), "Failed to execute callback of AsyncEnableDbConns");
+}
+
+bool AsyncEnableDbConns::SendRequest(int attempt) {
+  tserver::EnableDbConnsRequestPB req;
+  req.set_target_db_name(target_db_name_);
+  ts_admin_proxy_->EnableDbConnsAsync(req, &resp_, &rpc_, BindRpcCallback());
+  return true;
+}
 
 }  // namespace master
 }  // namespace yb

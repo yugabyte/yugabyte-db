@@ -487,6 +487,11 @@ uint8_t YBCGetQueryIdForCatalogRequests() {
   return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForCatalogRequests);
 }
 
+// Get a random integer between a and b
+int YBCGetRandomUniformInt(int a, int b) {
+  return RandomUniformInt<int>(a, b);
+}
+
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }

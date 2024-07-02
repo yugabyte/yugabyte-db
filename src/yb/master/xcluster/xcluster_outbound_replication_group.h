@@ -25,7 +25,7 @@ namespace yb {
 class IsOperationDoneResult;
 
 namespace client {
-class XClusterRemoteClient;
+class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
@@ -167,7 +167,7 @@ class XClusterOutboundReplicationGroup
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       const SysXClusterOutboundReplicationGroupEntryPB& pb) REQUIRES(mutex_);
 
-  virtual Result<std::shared_ptr<client::XClusterRemoteClient>> GetRemoteClient(
+  virtual Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetRemoteClient(
       const std::vector<HostPort>& remote_masters) const;
 
   // Checks if the namespace is part of this replication group. Caller must hold the read or write

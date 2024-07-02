@@ -1476,12 +1476,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       WaitForReplicationDrainResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  // Setup Universe Replication for an entire producer namespace.
-  Status SetupNSUniverseReplication(
-      const SetupNSUniverseReplicationRequestPB* req,
-      SetupNSUniverseReplicationResponsePB* resp,
-      rpc::RpcContext* rpc);
-
   // Returns the replication status.
   Status GetReplicationStatus(
       const GetReplicationStatusRequestPB* req,
@@ -1575,8 +1569,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void StartXReplParentTabletDeletionTaskIfStopped();
 
   void ScheduleXReplParentTabletDeletionTask();
-
-  void ScheduleXClusterNSReplicationAddTableTask();
 
   Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const override;
 
@@ -3029,21 +3021,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const xcluster::ReplicationGroupId& replication_group_id, bool is_enabled,
       ClusterConfigInfo::WriteLock* l);
 
-  void XClusterAddTableToNSReplication(
-      const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline);
-
-  // Find the list of producer table IDs that can be added to the current NS-level replication.
-  Status XClusterNSReplicationSyncWithProducer(
-      scoped_refptr<UniverseReplicationInfo> universe,
-      std::vector<TableId>* producer_tables_to_add,
-      bool* has_non_replicated_consumer_table);
-
-  // Compute the list of producer table IDs that have a name-matching consumer table.
-  Result<std::vector<TableId>> XClusterFindProducerConsumerOverlap(
-      std::shared_ptr<XClusterRpcTasks> producer_xcluster_rpc,
-      NamespaceIdentifierPB* producer_namespace, NamespaceIdentifierPB* consumer_namespace,
-      size_t* num_non_matched_consumer_tables);
-
   // True when the cluster is a consumer of a NS-level replication stream.
   std::atomic<bool> namespace_replication_enabled_{false};
 
@@ -3263,16 +3240,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
-
-  // Metadata on namespace-level replication setup. Map producer ID -> metadata.
-  struct NSReplicationInfo {
-    // Until after this time, no additional add table task will be scheduled.
-    // Actively modified by the background thread.
-    CoarseTimePoint next_add_table_task_time = CoarseTimePoint::max();
-    int num_accumulated_errors;
-  };
-  std::unordered_map<xcluster::ReplicationGroupId, NSReplicationInfo> namespace_replication_map_
-      GUARDED_BY(mutex_);
 
   std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
   rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;

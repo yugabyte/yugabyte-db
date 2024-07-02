@@ -4540,17 +4540,35 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 int ysql_conn_mgr_sticky_object_count = 0;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_guc` is used to denote stickiness of a connection
+ * due to the setting of GUC variables that cannot be directly supported
+ * by Connection Manager.
+ */
+bool yb_ysql_conn_mgr_sticky_guc = false;
+
+/*
+ * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not the a
+ * connection is made sticky using via specific GUC variables.
+ */
+static bool YbIsConnectionMadeStickyUsingGUC()
+{
+	return yb_ysql_conn_mgr_sticky_guc;
+}
+
+/*
  * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
  * connection and returns whether or not the client connection
  * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
  * at the end of the transaction.
+ * 
+ * Also check if any GUC variable is set that requires a sticky connection.
  */
 bool YbIsStickyConnection(int *change)
 {
 	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0; /* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
-	return (ysql_conn_mgr_sticky_object_count > 0);
+	return (ysql_conn_mgr_sticky_object_count > 0) || YbIsConnectionMadeStickyUsingGUC();
 }
 
 void**

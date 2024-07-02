@@ -14,6 +14,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/master/master_defaults.h"
@@ -26,6 +27,8 @@
 #include "yb/util/path_util.h"
 
 DECLARE_bool(use_node_to_node_encryption);
+DECLARE_string(certs_for_cdc_dir);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 #define CALL_SYNC_LEADER_MASTER_RPC(method, req) \
   VERIFY_RESULT(SyncLeaderMasterRpc<master::BOOST_PP_CAT(method, ResponsePB)>( \
@@ -33,6 +36,113 @@ DECLARE_bool(use_node_to_node_encryption);
       BOOST_PP_STRINGIZE(method), &master::MasterReplicationProxy::BOOST_PP_CAT(method, Async)))
 
 namespace yb::client {
+
+// XClusterRemoteClientHolder
+
+XClusterRemoteClientHolder::XClusterRemoteClientHolder(
+    const xcluster::ReplicationGroupId& replication_group_id)
+    : replication_group_id_(xcluster::GetOriginalReplicationGroupId(replication_group_id)) {}
+
+XClusterRemoteClientHolder::~XClusterRemoteClientHolder() { Shutdown(); }
+
+void XClusterRemoteClientHolder::Shutdown() {
+  if (yb_client_) {
+    yb_client_->Shutdown();
+  }
+  if (messenger_) {
+    messenger_->Shutdown();
+  }
+}
+
+Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_masters) {
+  SCHECK(!remote_masters.empty(), InvalidArgument, "No master addresses provided");
+  const auto master_addrs = HostPort::ToCommaSeparatedString(remote_masters);
+
+  rpc::MessengerBuilder messenger_builder("xcluster-remote");
+  std::string certs_dir;
+
+  if (FLAGS_use_node_to_node_encryption) {
+    if (!FLAGS_certs_for_cdc_dir.empty()) {
+      certs_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id_.ToString());
+    }
+    secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
+        certs_dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
+        &messenger_builder));
+  }
+  messenger_ = VERIFY_RESULT(messenger_builder.Build());
+
+  yb_client_ = VERIFY_RESULT(YBClientBuilder()
+                                 .set_client_name(kClientName)
+                                 .add_master_server_addr(master_addrs)
+                                 .default_admin_operation_timeout(
+                                     MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
+                                 .Build(messenger_.get()));
+  xcluster_client_ = std::make_unique<XClusterClient>(*yb_client_);
+
+  return Status::OK();
+}
+
+Result<std::shared_ptr<XClusterRemoteClientHolder>> XClusterRemoteClientHolder::Create(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<HostPort>& remote_masters) {
+  auto client = std::shared_ptr<XClusterRemoteClientHolder>(
+      new XClusterRemoteClientHolder(replication_group_id));
+  RETURN_NOT_OK(client->Init(remote_masters));
+  return client;
+}
+
+Status XClusterRemoteClientHolder::SetMasterAddresses(const std::vector<HostPort>& remote_masters) {
+  return yb_client_->SetMasterAddresses(HostPort::ToCommaSeparatedString(remote_masters));
+}
+
+Status XClusterRemoteClientHolder::ReloadCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  std::string cert_dir;
+  if (!FLAGS_certs_for_cdc_dir.empty()) {
+    cert_dir = JoinPathSegments(FLAGS_certs_for_cdc_dir, replication_group_id_.ToString());
+  }
+
+  return rpc::ReloadSecureContextKeysAndCertificates(
+      secure_context_.get(), cert_dir, "" /* node_name */);
+}
+
+XClusterClient& XClusterRemoteClientHolder::GetXClusterClient() {
+  CHECK_NOTNULL(xcluster_client_);
+  return *xcluster_client_.get();
+}
+
+client::YBClient& XClusterRemoteClientHolder::GetYbClient() {
+  CHECK_NOTNULL(yb_client_);
+  return *yb_client_;
+}
+
+google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB> GetXClusterStreamOptions() {
+  google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB> options;
+  options.Reserve(4);
+  auto source_type = options.Add();
+  source_type->set_key(cdc::kSourceType);
+  source_type->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
+
+  auto record_type = options.Add();
+  record_type->set_key(cdc::kRecordType);
+  record_type->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+
+  auto record_format = options.Add();
+  record_format->set_key(cdc::kRecordFormat);
+  record_format->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
+
+  auto checkpoint_type = options.Add();
+  checkpoint_type->set_key(cdc::kCheckpointType);
+  checkpoint_type->set_value(CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
+
+  return options;
+}
+
+// XClusterClient
+
 XClusterClient::XClusterClient(client::YBClient& yb_client) : yb_client_(yb_client) {}
 
 CoarseTimePoint XClusterClient::GetDeadline() const {
@@ -366,7 +476,7 @@ void XClusterClient::CreateXClusterStreamAsync(
     const TableId& table_id, bool active, cdc::StreamModeTransactional transactional,
     CreateCDCStreamCallback callback) {
   yb_client_.data_->CreateXClusterStream(
-      &yb_client_, table_id, GetXClusterStreamOptions(),
+      &yb_client_, table_id, client::GetXClusterStreamOptions(),
       (active ? master::SysCDCStreamEntryPB::ACTIVE : master::SysCDCStreamEntryPB::INITIATED),
       transactional, GetDeadline(), std::move(callback));
 }
@@ -458,61 +568,7 @@ XClusterClient::GetUniverseReplicationInfo(
   return result;
 }
 
-// XClusterRemoteClient
-
-XClusterRemoteClient::XClusterRemoteClient(const std::string& certs_for_cdc_dir, MonoDelta timeout)
-    : certs_for_cdc_dir_(certs_for_cdc_dir), timeout_(timeout) {}
-
-XClusterRemoteClient::~XClusterRemoteClient() {
-  if (messenger_) {
-    messenger_->Shutdown();
-  }
-}
-
-Status XClusterRemoteClient::Init(
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const std::vector<HostPort>& remote_masters) {
-  SCHECK(!remote_masters.empty(), InvalidArgument, "No master addresses provided");
-  const auto master_addrs = HostPort::ToCommaSeparatedString(remote_masters);
-
-  rpc::MessengerBuilder messenger_builder("xcluster-remote");
-  std::string certs_dir;
-
-  if (FLAGS_use_node_to_node_encryption) {
-    if (!certs_for_cdc_dir_.empty()) {
-      certs_dir = JoinPathSegments(certs_for_cdc_dir_, replication_group_id.ToString());
-    }
-    secure_context_ = VERIFY_RESULT(rpc::SetupSecureContext(
-        certs_dir, /*root_dir=*/"", /*name=*/"", rpc::SecureContextType::kInternal,
-        &messenger_builder));
-  }
-  messenger_ = VERIFY_RESULT(messenger_builder.Build());
-
-  yb_client_ = VERIFY_RESULT(YBClientBuilder()
-                                 .add_master_server_addr(master_addrs)
-                                 .default_admin_operation_timeout(timeout_)
-                                 .Build(messenger_.get()));
-  xcluster_client_ = std::make_unique<XClusterClient>(*yb_client_);
-
-  return Status::OK();
-}
-
-XClusterClient* XClusterRemoteClient::GetXClusterClient() {
-  CHECK_NOTNULL(xcluster_client_);
-  return xcluster_client_.get();
-}
-
-template <typename ResponsePB, typename RequestPB, typename Method>
-Result<ResponsePB> XClusterRemoteClient::SyncLeaderMasterRpc(
-    const RequestPB& req, const char* method_name, const Method& method) {
-  ResponsePB resp;
-  RETURN_NOT_OK(yb_client_->data_->SyncLeaderMasterRpc(
-      CoarseMonoClock::Now() + yb_client_->default_admin_operation_timeout(), req, &resp,
-      method_name, method));
-  return resp;
-}
-
-Result<UniverseUuid> XClusterRemoteClient::SetupDbScopedUniverseReplication(
+Result<UniverseUuid> XClusterClient::SetupDbScopedUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id,
     const std::vector<HostPort>& source_master_addresses,
     const std::vector<NamespaceName>& namespace_names,
@@ -559,7 +615,7 @@ Result<UniverseUuid> XClusterRemoteClient::SetupDbScopedUniverseReplication(
   return UniverseUuid::FromString(resp.universe_uuid());
 }
 
-Result<IsOperationDoneResult> XClusterRemoteClient::IsSetupUniverseReplicationDone(
+Result<IsOperationDoneResult> XClusterClient::IsSetupUniverseReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
@@ -610,35 +666,32 @@ GetXClusterStreamsCallback CreateXClusterStreamsCallback(BootstrapProducerCallba
   };
 }
 
-Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
+Status XClusterClient::GetXClusterTableCheckpointInfos(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
     BootstrapProducerCallback user_callback) {
   auto callback = CreateXClusterStreamsCallback(user_callback);
 
-  RETURN_NOT_OK(XClusterClient(*yb_client_)
-                    .GetXClusterStreams(
-                        CoarseMonoClock::Now() + yb_client_->default_admin_operation_timeout(),
-                        replication_group_id, namespace_id, table_names, pg_schema_names,
-                        std::move(callback)));
+  RETURN_NOT_OK(GetXClusterStreams(
+      CoarseMonoClock::Now() + yb_client_.default_admin_operation_timeout(), replication_group_id,
+      namespace_id, table_names, pg_schema_names, std::move(callback)));
 
   return Status::OK();
 }
 
-Status XClusterRemoteClient::GetXClusterTableCheckpointInfos(
+Status XClusterClient::GetXClusterTableCheckpointInfos(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
     const std::vector<TableName>& table_ids, BootstrapProducerCallback user_callback) {
   auto callback = CreateXClusterStreamsCallback(user_callback);
 
-  RETURN_NOT_OK(XClusterClient(*yb_client_)
-                    .GetXClusterStreams(
-                        CoarseMonoClock::Now() + yb_client_->default_admin_operation_timeout(),
-                        replication_group_id, namespace_id, table_ids, std::move(callback)));
+  RETURN_NOT_OK(GetXClusterStreams(
+      CoarseMonoClock::Now() + yb_client_.default_admin_operation_timeout(), replication_group_id,
+      namespace_id, table_ids, std::move(callback)));
 
   return Status::OK();
 }
 
-Status XClusterRemoteClient::AddNamespaceToDbScopedUniverseReplication(
+Status XClusterClient::AddNamespaceToDbScopedUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id,
     const UniverseUuid& target_universe_uuid, const NamespaceName& namespace_name,
     const NamespaceId& source_namespace_id, const std::vector<TableId>& source_table_ids,
@@ -672,28 +725,6 @@ Status XClusterRemoteClient::AddNamespaceToDbScopedUniverseReplication(
   }
 
   return Status::OK();
-}
-
-google::protobuf::RepeatedPtrField<yb::master::CDCStreamOptionsPB> GetXClusterStreamOptions() {
-  google::protobuf::RepeatedPtrField<::yb::master::CDCStreamOptionsPB> options;
-  options.Reserve(4);
-  auto source_type = options.Add();
-  source_type->set_key(cdc::kSourceType);
-  source_type->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
-
-  auto record_type = options.Add();
-  record_type->set_key(cdc::kRecordType);
-  record_type->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
-
-  auto record_format = options.Add();
-  record_format->set_key(cdc::kRecordFormat);
-  record_format->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::WAL));
-
-  auto checkpoint_type = options.Add();
-  checkpoint_type->set_key(cdc::kCheckpointType);
-  checkpoint_type->set_value(CDCCheckpointType_Name(cdc::CDCCheckpointType::IMPLICIT));
-
-  return options;
 }
 
 }  // namespace yb::client

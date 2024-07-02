@@ -49,3 +49,7 @@ export interface ExportLogResponse extends ExportLogPayload {
 export interface UniverseItem extends Universe {
   linkedClusters: Cluster[];
 }
+
+export interface TPItem extends ExportLogPayload {
+  linkedUniverses: UniverseItem[];
+}

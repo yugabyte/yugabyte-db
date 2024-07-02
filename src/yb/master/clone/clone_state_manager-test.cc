@@ -111,6 +111,10 @@ class CloneStateManagerTest : public YBTest {
          const std::string& target_db_name, const std::string& source_owner,
          const std::string& target_owner, HybridTime restore_ht,
          AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline), (override));
+    MOCK_METHOD(
+        Status, ScheduleEnableDbConnectionsTask,
+        (const std::string& permanent_uuid, const std::string& target_db_name,
+         AsyncEnableDbConns::EnableDbConnsCallbackType callback), (override));
 
     MOCK_METHOD(
         Status, Upsert, (const CloneStateInfoPtr& clone_state), (override));
@@ -216,7 +220,7 @@ class CloneStateManagerTest : public YBTest {
   Result<CloneStateInfoPtr> CreateCloneState(
       uint32_t seq_no, const ExternalTableSnapshotDataMap& table_snapshot_data) {
     auto clone_state = VERIFY_RESULT(clone_state_manager_->CreateCloneState(
-        seq_no, kSourceNamespaceId, kTargetNamespaceName, kRestoreTime));
+        seq_no, kSourceNamespaceId, GetDatabaseType(), kTargetNamespaceName, kRestoreTime));
 
     RETURN_NOT_OK(clone_state_manager_->UpdateCloneStateWithSnapshotInfo(
         clone_state, kSourceSnapshotId, kTargetSnapshotId, table_snapshot_data));
@@ -525,10 +529,10 @@ TEST_F(CloneStateManagerTest, HandleRestoringStateRestored) {
       .WillOnce(DoAll(SetArgPointee<1>(resp), Return(Status::OK())));
   EXPECT_CALL(MockFuncs(), Upsert);
 
-  // Should transition the clone to the RESTORED state.
+  // Should transition the clone to the COMPLETE state.
   ASSERT_OK(HandleRestoringState(clone_state));
 
-  ASSERT_EQ(clone_state->LockForRead()->pb.aggregate_state(), SysCloneStatePB::RESTORED);
+  ASSERT_EQ(clone_state->LockForRead()->pb.aggregate_state(), SysCloneStatePB::COMPLETE);
 }
 
 TEST_F(CloneStateManagerTest, AbortInStartTabletsCloning) {
@@ -625,7 +629,7 @@ TEST_F(CloneStateManagerTest, AbortInRestoringState) {
 TEST_F(CloneStateManagerTest, Load) {
   // Check that multiple clone states are all loaded and can be queried with ListClones.
   SysCloneStatePB clone_state1;
-  clone_state1.set_aggregate_state(SysCloneStatePB::RESTORED);
+  clone_state1.set_aggregate_state(SysCloneStatePB::COMPLETE);
   clone_state1.set_source_namespace_id(kSourceNamespaceId);
   clone_state1.set_target_namespace_name(kTargetNamespaceName);
   clone_state1.set_restore_time(kRestoreTime.ToUint64());
@@ -673,7 +677,7 @@ TEST_F(CloneStateManagerTest, AbortIncompleteCloneOnLoad) {
   // Check that each non-terminal state is aborted on load.
   for (int i = SysCloneStatePB::State_MIN; i <= SysCloneStatePB::State_MAX; ++i) {
     // Create a clone state in state i.
-    auto clone_state = make_scoped_refptr<CloneStateInfo>(GenerateObjectId());
+    auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
     auto state = SysCloneStatePB_State(i);
     {
       auto lock = clone_state->LockForWrite();
@@ -707,8 +711,8 @@ TEST_F(CloneStateManagerTest, AbortIncompleteCloneOnLoad) {
         ASSERT_EQ(loaded_lock->pb.aggregate_state(), SysCloneStatePB::ABORTED);
         ASSERT_EQ(loaded_lock->pb.abort_message(), kSampleAbortMessage);
         break;
-      case SysCloneStatePB_State_RESTORED:
-        ASSERT_EQ(loaded_lock->pb.aggregate_state(), SysCloneStatePB::RESTORED);
+      case SysCloneStatePB_State_COMPLETE:
+        ASSERT_EQ(loaded_lock->pb.aggregate_state(), SysCloneStatePB::COMPLETE);
         ASSERT_FALSE(loaded_lock->pb.has_abort_message());
         break;
       default:

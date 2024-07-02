@@ -124,7 +124,6 @@ DECLARE_string(certs_dir);
 DECLARE_string(certs_for_client_dir);
 DECLARE_string(cert_node_filename);
 DECLARE_string(ysql_hba_conf);
-DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(enable_ysql);

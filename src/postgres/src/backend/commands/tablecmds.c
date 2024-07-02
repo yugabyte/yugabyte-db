@@ -3398,9 +3398,12 @@ RenameConstraint(RenameStmt *stmt)
 /*
  * Execute ALTER TABLE/INDEX/SEQUENCE/VIEW/MATERIALIZED VIEW/FOREIGN TABLE
  * RENAME
+ * When yb_is_internal_clone_rename is true we don't need to do a YB rename,
+ * as this rename is a part of a table clone operation, and the relation
+ * will be dropped after the clone operation is done anyway.
  */
 ObjectAddress
-RenameRelation(RenameStmt *stmt)
+RenameRelation(RenameStmt *stmt, bool yb_is_internal_clone_rename)
 {
 	Oid           relid;
 	ObjectAddress address;
@@ -3435,7 +3438,8 @@ RenameRelation(RenameStmt *stmt)
 	needs_yb_rename = IsYBRelation(rel) &&
 					  !(rel->rd_rel->relkind == RELKIND_INDEX &&
 						rel->rd_index->indisprimary) &&
-					  rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX;
+					  rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX
+					  && !yb_is_internal_clone_rename;
 	RelationClose(rel);
 
 	/* Do the work */
@@ -7504,7 +7508,12 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	object.objectId = RelationGetRelid(rel);
 	object.objectSubId = attnum;
 
-	performDeletion(&object, behavior, 0);
+	/*
+	 * YB: Skip YB drop on the column, as that will be handled separately by
+	 * the ALTER TABLE flow.
+	 */
+	performDeletion(&object, behavior,
+		IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);
 
 	/*
 	 * If we dropped the OID column, must adjust pg_class.relhasoids and tell
@@ -18464,7 +18473,7 @@ YbATCopyIndexes(Relation old_rel, Oid new_relid, AttrNumber *new2old_attmap,
 		rename_stmt->relation = makeRangeVar(
 			pstrdup(namespace_name), pstrdup(idx_orig_name), -1 /* location */);
 		rename_stmt->newname = pstrdup(idx_temp_old_name);
-		RenameRelation(rename_stmt);
+		RenameRelation(rename_stmt, true /* yb_is_internal_clone_rename */);
 		CommandCounterIncrement();
 
 		/* Create a new index taking up the freed name. */
@@ -18888,7 +18897,7 @@ YbATCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt *stmt,
 	 */
 	rename_stmt =
 		YbATGetRenameStmt(namespace_name, orig_table_name, temp_old_table_name);
-	RenameRelation(rename_stmt);
+	RenameRelation(rename_stmt, true /* yb_is_internal_clone_rename */);
 
 	/* Make caches changes visible. */
 	CommandCounterIncrement();
@@ -19102,7 +19111,7 @@ YbATCloneRelationSetColumnType(Relation old_rel,
 	 */
 	rename_stmt =
 		YbATGetRenameStmt(namespace_name, orig_table_name, temp_old_table_name);
-	RenameRelation(rename_stmt);
+	RenameRelation(rename_stmt, true /* yb_is_internal_clone_rename */);
 
 	/* Make caches changes visible. */
 	CommandCounterIncrement();

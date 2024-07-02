@@ -2392,6 +2392,7 @@
           "type" : "boolean"
         },
         "isFullBackup" : {
+          "readOnly" : true,
           "type" : "boolean"
         },
         "isStorageConfigPresent" : {
@@ -2435,7 +2436,7 @@
           "type" : "boolean"
         }
       },
-      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -8032,9 +8033,6 @@
           "description" : "Node details (as a JSON object)",
           "example" : "{\"ip\":\"1.1.1.1\",\"sshUser\":\"centos\"}",
           "type" : "string"
-        },
-        "inUse" : {
-          "type" : "boolean"
         },
         "instanceName" : {
           "description" : "The node instance's name",
@@ -15199,9 +15197,11 @@
           "type" : "string"
         },
         "isRequired" : {
+          "readOnly" : true,
           "type" : "boolean"
         },
         "isValid" : {
+          "readOnly" : true,
           "type" : "boolean"
         },
         "type" : {
@@ -15212,7 +15212,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "description", "isRequired", "isValid", "type", "value" ],
+      "required" : [ "description", "type", "value" ],
       "type" : "object"
     },
     "VolumeDetails" : {

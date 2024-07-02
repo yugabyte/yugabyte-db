@@ -267,7 +267,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
       master::SysCloneStatePB::State_Parse(
           std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
       return state == master::SysCloneStatePB::ABORTED ||
-             state == master::SysCloneStatePB::RESTORED;
+             state == master::SysCloneStatePB::COMPLETE;
     }, timeout, "Wait for clone to complete"));
     return Status::OK();
   }

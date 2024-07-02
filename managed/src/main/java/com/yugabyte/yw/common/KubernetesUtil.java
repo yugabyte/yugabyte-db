@@ -39,6 +39,18 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class KubernetesUtil {
 
+  public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW = "2.23.0.0-b539";
+  public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE = "2024.2.0.0-b999";
+
+  public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE,
+            MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
+            true)
+        > 0;
+  }
+
   // ToDo: Old k8s provider needs to be fixed, so that we can get
   // rid of the old merging logic, & start treating them same as the
   // new providers.

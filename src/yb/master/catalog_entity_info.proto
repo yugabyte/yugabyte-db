@@ -606,13 +606,16 @@ message SysCloneStatePB {
   //     ImportSnapshot (YCQL). Clone tablet RPCs are scheduled for all tablets.
   // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
   // state. Restore snapshot is issued.
-  // RESTORING --> RESTORED: Restore snapshot completed.
+  // RESTORING --> COMPLETE (YCQL): Restore snapshot completed and DB is ready to be accessed.
+  // RESTORING --> RESTORED (YSQL): Restore snapshot completed.
+  // RESTORED --> COMPLETE (YSQL): DB is ready to be accessed.
   enum State {
     CLONE_SCHEMA_STARTED = 1;
     CREATING = 2;
     RESTORING = 3;
     RESTORED = 4;
     ABORTED = 5;
+    COMPLETE = 6;
   }
 
   optional State aggregate_state = 1;
@@ -684,10 +687,8 @@ message SysUniverseReplicationEntryPB {
   // producer table ID -> producer CDC stream ID map.
   map<string, string> table_streams = 6;
 
-  // Namespace-level replication setup.
-  optional bool is_ns_replication = 7 [default = false];
-  optional NamespaceIdentifierPB producer_namespace = 8;
-  optional NamespaceIdentifierPB consumer_namespace = 9;
+  // 7, 8, and 9 were used by Namespace-level replication but never populated in
+  // production so they are valid for reuse.
 
   // Mapping from Producer Table ID to Producer->Consumer schema version mappings
   map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;

@@ -115,7 +115,10 @@ public enum PlatformMetrics {
   UNIVERSE_OS_UPDATE_REQUIRED(
       "More recent OS version is recommended for this universe", Unit.STATUS, false),
   UNIVERSE_RELEASE_FILES_STATUS(
-      "Local filepath for universe DB version is missing", Unit.STATUS, false);
+      "Local filepath for universe DB version is missing", Unit.STATUS, false),
+  // XCluster
+  XCLUSTER_METRIC_PROCESSOR_STATUS("xCluster metrics processor status", Unit.STATUS),
+  XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS);
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;

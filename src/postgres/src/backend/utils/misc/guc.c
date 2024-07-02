@@ -12973,6 +12973,14 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
 	}
+
+	/*
+	 * If YSQL Connection Manager is enabled, make the connection sticky
+	 * for any variables that can only be set outside the context of an
+	 * explicit transaction block.
+	 */
+	if (YbIsClientYsqlConnMgr())
+		yb_ysql_conn_mgr_sticky_guc = true;
 	return true;
 }
 

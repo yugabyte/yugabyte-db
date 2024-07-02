@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"

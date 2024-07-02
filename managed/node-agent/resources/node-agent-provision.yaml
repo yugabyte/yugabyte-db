@@ -12,6 +12,7 @@ ynp:
   # Airgapped
   is_airgap: false
   use_system_level_systemd: false
+  ip_address: "127.0.0.1"
 
 yba:
   url: <url>
