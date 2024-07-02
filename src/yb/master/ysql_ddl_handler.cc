@@ -298,7 +298,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
   // TABLE and DROP COLUMN.
   auto& l = txn_data.write_lock;
   if (l->is_being_deleted_by_ysql_ddl_txn()) {
-    return YsqlDdlTxnDropTableHelper(txn_data);
+    return YsqlDdlTxnDropTableHelper(txn_data, true /* success */);
   }
 
   vector<string> cols_being_dropped;
@@ -333,8 +333,10 @@ Status CatalogManager::HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_da
   auto& mutable_pb = txn_data.write_lock.mutable_data()->pb;
   const auto& ddl_state = mutable_pb.ysql_ddl_txn_verifier_state(0);
   if (ddl_state.contains_create_table_op()) {
-    // This table was created in this aborted transaction. Drop this table.
-    return YsqlDdlTxnDropTableHelper(txn_data);
+    // This table was created in this aborted transaction. Drop the xCluster streams and the table.
+    RETURN_NOT_OK(DropXClusterStreamsOfTables({txn_data.table->id()}));
+
+    return YsqlDdlTxnDropTableHelper(txn_data, false /* success */);
   }
   if (ddl_state.contains_alter_table_op()) {
     std::vector<DdlLogEntry> ddl_log_entries;
@@ -379,6 +381,7 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   table_pb.set_state_msg(
     strings::Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
+  VLOG(3) << "Clearing ysql_ddl_txn_verifier_state from table " << txn_data.table->id();
   table_pb.clear_ysql_ddl_txn_verifier_state();
   table_pb.clear_transaction();
 
@@ -402,7 +405,8 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
   return SendAlterTableRequestInternal(table, TransactionId::Nil(), txn_data.epoch);
 }
 
-Status CatalogManager::YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data) {
+Status CatalogManager::YsqlDdlTxnDropTableHelper(
+    const YsqlTableDdlTxnState txn_data, bool success) {
   auto table = txn_data.table;
   txn_data.write_lock.Commit();
   DeleteTableRequestPB dtreq;
@@ -411,6 +415,8 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_
   dtreq.mutable_table()->set_table_name(table->name());
   dtreq.mutable_table()->set_table_id(table->id());
   dtreq.set_is_index_table(table->is_index());
+  auto action = success ? "roll forward" : "rollback";
+  LOG(INFO) << "Delete table " << table->id() << " as part of " << action;
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
 }
 
@@ -497,20 +503,32 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
       return Status::OK();
     }
 
-    table = verifier_state->tables.front();
     if (verifier_state->txn_state != TxnState::kUnknown) {
       // We already know whether this transaction is a success or a failure. We don't need to poll
       // the transaction coordinator at this point. We can simply invoke post DDL verification
       // directly.
       const bool is_committed = verifier_state->txn_state == TxnState::kCommitted;
-      const string pb_txn_id = table->LockForRead()->pb_transaction_id();
-      return background_tasks_thread_pool_->SubmitFunc(
-        [this, pb_txn_id, is_committed, epoch]() {
-            WARN_NOT_OK(YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed, epoch),
-                        "YsqlDdlTxnCompleteCallback failed");
+      string pb_txn_id;
+      vector<TableId> table_ids;
+      for (const auto& table : verifier_state->tables) {
+        table_ids.push_back(table->id());
+        pb_txn_id = table->LockForRead()->pb_transaction_id();
+        if (pb_txn_id.empty()) {
+          continue;
         }
-      );
+        return background_tasks_thread_pool_->SubmitFunc(
+          [this, table, pb_txn_id, is_committed, epoch]() {
+              WARN_NOT_OK(YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed, epoch),
+                          Format("YsqlDdlTxnCompleteCallback failed, table: ",
+                                 table->id()));
+          }
+        );
+      }
+      VLOG(3) << "All tables " << VectorToString(table_ids)
+              << " in transaction " << txn << " have pb_txn_id cleared";
+      return Status::OK();
     }
+    table = verifier_state->tables.front();
   }
 
   // Schedule transaction verification.

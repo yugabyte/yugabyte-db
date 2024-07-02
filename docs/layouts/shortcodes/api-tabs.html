@@ -9,13 +9,15 @@
 {{- if strings.Contains $path "-ycql." -}}
 {{- $active = "ycql" -}}
 {{- end -}}
-{{- $path = strings.TrimSuffix "-ysql.md" $path -}}
-{{- $path = strings.TrimSuffix "-ycql.md" $path -}}
+{{- $path = strings.TrimSuffix ".md" $path -}}
+{{- $path = strings.TrimSuffix "-ysql" $path -}}
+{{- $path = strings.TrimSuffix "-ycql" $path -}}
 {{- $page := default $path (.Get "page") -}}
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     {{- if strings.Contains $tabs "ysql" -}}
     <li >
-      <a href="{{ print "../" $page "-ysql"}}" class="nav-link {{if (eq $active "ysql")}}active{{end}}">
+        {{- $fpath := print "../" $page "-ysql" -}}
+      <a href="{{$fpath}}" class="nav-link {{if (eq $active "ysql")}}active{{end}}">
         <i class="icon-postgres" aria-hidden="true"></i>
         YSQL
       </a>

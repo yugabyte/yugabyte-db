@@ -8,8 +8,10 @@
       After=network-online.target
 
       [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
       User={{ yamlPath "service_username" }}
       Group={{ yamlPath "service_username" }}
+      {{ end }}
       Type=forking
       TimeoutSec=300
 

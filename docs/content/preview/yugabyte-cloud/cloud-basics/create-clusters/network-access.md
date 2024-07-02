@@ -8,7 +8,7 @@ private = true
 
 #### Trusted IP Addresses
 
-YugabyteDB Managed only allows access to clusters from trusted IP addresses. For applications in peered VPCs to be able to connect, you need to add the CIDR of the peered VPC to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/). You can also assign IP allow lists to your cluster any time after the cluster is created.
+YugabyteDB Aeon only allows access to clusters from trusted IP addresses. For applications in peered VPCs to be able to connect, you need to add the CIDR of the peered VPC to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/). You can also assign IP allow lists to your cluster any time after the cluster is created.
 
 ![Add Cluster Wizard - Network Access Trusted IP Addresses](/images/yb-cloud/cloud-addcluster-networkaccess.png)
 

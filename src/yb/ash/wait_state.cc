@@ -53,6 +53,16 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
     "and various background activities. This does nothing if "
     "ysql_yb_enable_ash_infra is disabled.");
 
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+    "Size (in KiBs) of ASH circular buffer that stores the samples");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
+    "Time (in milliseconds) between two consecutive sampling events");
+DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
+    "Number of samples captured from each component per sampling event");
+
 DEFINE_test_flag(bool, export_wait_state_names, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
 DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
@@ -455,7 +465,7 @@ WaitStateTracker& FlushAndCompactionWaitStatesTracker() {
   return flush_and_compaction_wait_states_tracker;
 }
 
-WaitStateTracker& RaftLogAppenderWaitStatesTracker() {
+WaitStateTracker& RaftLogWaitStatesTracker() {
   return raft_log_appender_wait_states_tracker;
 }
 

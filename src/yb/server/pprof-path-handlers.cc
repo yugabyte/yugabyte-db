@@ -64,6 +64,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/server/webserver.h"
+#include "yb/server/html_print_helper.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
@@ -76,8 +77,6 @@
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/tcmalloc_util.h"
 #include "yb/util/url-coding.h"
-
-#include "yb/common/path-handler-util.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
 DECLARE_string(heap_profile_path);
@@ -401,7 +400,7 @@ static void PprofSymbolHandler(const Webserver::WebRequest& req,
 static void PprofCallsiteProfileHandler(
     const Webserver::WebRequest& req,
     Webserver::WebResponse* resp) {
-  std::stringstream& output = resp->output;
+  HtmlPrintHelper html_print_helper(resp->output);
 
   bool reset = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "reset", ""), false);
   if (req.request_method == "GET") {
@@ -415,33 +414,27 @@ static void PprofCallsiteProfileHandler(
          [](const auto& a, const auto& b) {
            return a.count > b.count;
          });
-    HTML_PRINT_TABLE_WITH_HEADER_ROW(
-        timing_stats,
-        "File",
-        "Line number",
-        "Function",
-        "Code",
-        "Count",
-        "Cycles",
-        "Average Cycles",
-        "Microseconds",
-        "Avg Microseconds");
+
+    auto timing_stats = html_print_helper.CreateTablePrinter(
+        "timing_stats",
+          {"File",
+          "Line number",
+          "Function",
+          "Code",
+          "Count",
+          "Cycles",
+          "Average Cycles",
+          "Microseconds",
+          "Avg Microseconds"});
 
     for (const auto& entry : profile) {
-      HTML_PRINT_TABLE_ROW(
-          EscapeForHtmlToString(entry.file_path),
-          entry.line_number,
-          EscapeForHtmlToString(entry.function_name),
-          EscapeForHtmlToString(entry.code_line),
-          entry.count,
-          entry.total_cycles,
-          StringPrintf("%.3f", entry.avg_cycles),
-          entry.total_usec,
+      timing_stats.AddRow(
+          EscapeForHtmlToString(entry.file_path), entry.line_number,
+          EscapeForHtmlToString(entry.function_name), EscapeForHtmlToString(entry.code_line),
+          entry.count, entry.total_cycles, StringPrintf("%.3f", entry.avg_cycles), entry.total_usec,
           StringPrintf("%.3f", entry.avg_usec));
     }
-
-    HTML_END_TABLE;
-    HTML_ADD_SORT_AND_FILTER_TABLE_SCRIPT;
+    timing_stats.Print();
   }
 }
 

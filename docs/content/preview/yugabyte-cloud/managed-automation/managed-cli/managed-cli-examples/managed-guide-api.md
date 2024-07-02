@@ -5,7 +5,7 @@ private: true
 title: Guide for ybm API automation
 headerTitle: "Tutorial: Create a cluster using the REST API"
 linkTitle: "Tutorial: REST API"
-description: Tutorial for using YugabyteDB Managed REST API to create clusters.
+description: Tutorial for using YugabyteDB Aeon REST API to create clusters.
 headcontent: Example workflows for automation tools
 menu:
   preview_yugabyte-cloud:
@@ -15,9 +15,9 @@ menu:
 type: docs
 --->
 
-The following tutorial shows how you can use the REST API to create clusters in YugabyteDB Managed.
+The following tutorial shows how you can use the REST API to create clusters in YugabyteDB Aeon.
 
-For documentation and Postman collection, refer to [YugabyteDB Managed REST API](https://api-docs.yugabyte.com/docs/managed-apis/9u5yqnccbe8lk-yugabyte-db-managed-rest-api).
+For documentation and Postman collection, refer to [YugabyteDB Aeon REST API](https://api-docs.yugabyte.com/docs/managed-apis/9u5yqnccbe8lk-yugabyte-db-managed-rest-api).
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ YBM_ACCOUNT_ID="<account_ID>"
 YBM_PROJECT_ID="<project_ID>"
 ```
 
-To create VPCs and dedicated clusters, you also need to add a [billing profile](../../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../../managed-freetrial/).
+To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/pricing/), or you can [start a free trial](../../../managed-freetrial/).
 
 Note that you can only create one Sandbox cluster per account.
 
@@ -45,7 +45,7 @@ To create your free [sandbox](../../../cloud-basics/create-clusters/create-clust
 
 ### Determine the database version
 
-YugabyteDB Managed has [three release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Innovation or Preview for Sandbox clusters, and Innovation or Production for dedicated clusters.
+YugabyteDB Aeon has [three release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Innovation or Preview for Sandbox clusters, and Innovation or Production for dedicated clusters.
 
 To get the ID for the Preview track and add it to an environment variable, enter the following commands:
 
@@ -224,7 +224,7 @@ This loop stops when the cluster is ready.
 
 To be able to connect to the default database `yugabyte` using the database admin user you created, you need to obtain the public host address of the cluster from the list of endpoints.
 
-The following commands save the connection parameters you need to connect to a YugabyteDB Managed database to environment variables:
+The following commands save the connection parameters you need to connect to a YugabyteDB Aeon database to environment variables:
 
 ```sh
 PGDATABASE=yugabyte

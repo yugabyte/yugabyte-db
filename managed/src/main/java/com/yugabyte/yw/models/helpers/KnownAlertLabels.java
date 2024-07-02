@@ -52,8 +52,13 @@ public enum KnownAlertLabels {
   NODE_CLUSTER_TYPE,
   PARENT_TASK_TYPE,
   YBA_VERSION,
-
-  DB_VERSION;
+  DB_VERSION,
+  TASK_UUID,
+  TABLE_UUID,
+  SOURCE_UNIVERSE_UUID,
+  TARGET_UNIVERSE_UUID,
+  XCLUSTER_CONFIG_UUID,
+  XCLUSTER_REPLICATION_GROUP_NAME;
 
   public String labelName() {
     return name().toLowerCase();

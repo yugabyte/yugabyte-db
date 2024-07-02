@@ -980,6 +980,142 @@ SqlObjectsDetails:
       type: string
     objectDetails:
       type: string
+MigrationAssessmentReport:
+  title: Details of the migration assessment report
+  description: Details of the migration assessment report
+  type: object
+  properties:
+    summary:
+      $ref: '#/AssessmentReportSummary'
+    source_environment:
+      $ref: '#/SourceEnvironmentInfo'
+    source_database:
+      $ref: '#/SourceDatabaseInfo'
+    target_recommendations:
+      $ref: '#/TargetClusterRecommendationDetails'
+    recommended_refactoring:
+      $ref: '#/RecommendedRefactoringGraph'
+    unsupported_data_types:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlInfo'
+    unsupported_functions:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlInfo'
+    unsupported_features:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlInfo'
+UnsupportedSqlInfo:
+  title: Unsupported SQL Info
+  description: Unsupported SQL Info
+  type: object
+  properties:
+    unsupported_type:
+      type: string
+    count:
+      type: integer
+RecommendedRefactoringGraph:
+  title: Refectoring recommendations per SQL object type
+  description: Refectoring recommendations for migrating SQL objects
+  type: object
+  properties:
+    sql_type:
+      $ref: '#/RefactoringCount'
+    table:
+      $ref: '#/RefactoringCount'
+    view:
+      $ref: '#/RefactoringCount'
+    function:
+      $ref: '#/RefactoringCount'
+    triggers:
+      $ref: '#/RefactoringCount'
+RefactoringCount:
+  title: Count of automatic and manual refactoring
+  description: count for automatic and manual refactoring
+  type: object
+  properties:
+    manual:
+      type: integer
+    automatic:
+      type: integer
+TargetClusterRecommendationDetails:
+  title: Target YugabyteDB cluster size and schema recommendations
+  description: Recommendations for the Target YugabyteDB cluster
+  type: object
+  properties:
+    recommendation_summary:
+      type: string
+    target_cluster_recommendation:
+      $ref: '#/TargetClusterSpec'
+    target_schema_recommendation:
+      $ref: '#/TargetSchemaRecommendations'
+TargetClusterSpec:
+  title: Target cluster size recommendations
+  description: schema for target cluster cpu, memory
+  type: object
+  properties:
+    num_nodes:
+      type: integer
+    vcpu_per_node:
+      type: integer
+    memory_per_node:
+      type: integer
+    connections_per_node:
+      type: integer
+    inserts_per_node:
+      type: integer
+TargetSchemaRecommendations:
+  title: Target YugabyteDB cluster schema recommendations
+  description: Target YugabyteDB cluster schema recommendations
+  type: object
+  properties:
+    no_of_colocated_tables:
+      type: integer
+    total_size_colocated_tables:
+      type: integer
+    no_of_sharded_tables:
+      type: integer
+    total_size_sharded_tables:
+      type: integer
+AssessmentReportSummary:
+  title: Migration assessment summary
+  description: API for getting migration assessment summary
+  type: object
+  properties:
+    migration_complexity:
+      type: string
+    estimated_migration_time:
+      type: string
+    summary:
+      type: string
+SourceEnvironmentInfo:
+  title: Assessment source environment details
+  description: Assessment source environment (node/VM) details
+  type: object
+  properties:
+    total_vcpu:
+      type: string
+    total_memory:
+      type: string
+    total_disk_size:
+      type: string
+    no_of_connections:
+      type: string
+SourceDatabaseInfo:
+  title: Source Database details
+  description: Source Database details
+  type: object
+  properties:
+    table_size:
+      type: integer
+    table_row_count:
+      type: integer
+    total_table_size:
+      type: integer
+    total_index_size:
+      type: integer
 MigrationAssesmentInfo:
   title: Details for Voyager migrations assesment
   description: Details for Voyager migrations assesment
@@ -1040,7 +1176,7 @@ ConnectionStatsItem:
     queued_logical_connections:
       type: integer
       format: int64
-    idle_or_pending_logical_connections:
+    waiting_logical_connections:
       type: integer
       format: int64
     active_physical_connections:
@@ -1061,7 +1197,7 @@ ConnectionStatsItem:
   required:
     - active_logical_connections
     - queued_logical_connections
-    - idle_or_pending_logical_connections
+    - waiting_logical_connections
     - active_physical_connections
     - idle_physical_connections
     - avg_wait_time_ns

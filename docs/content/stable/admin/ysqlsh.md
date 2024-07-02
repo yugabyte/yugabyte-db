@@ -86,9 +86,9 @@ ysqlsh returns the following to the shell on exit:
 
 ### Connect to a database
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-For information on connecting to a YugabyteDB Managed cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
+For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
 
 {{< /note >}}
 
@@ -256,7 +256,7 @@ Turn on HTML tabular output. This is equivalent to [\pset format html](../ysqlsh
 
 ##### -l, --list
 
-List all available databases, then exit. Other non-connection options are ignored. This is similar to the meta-command [`\list`](../ysqlsh-meta-commands/#l-list-pattern).
+List all available databases, then exit. Other non-connection options are ignored. This is similar to the meta-command [`\list`](../ysqlsh-meta-commands/#l-list-pattern-patterns).
 
 When this option is used, ysqlsh connects to the database `yugabyte`, unless a different database is named on the command line (flag `-d` or non-option argument, possibly using a service entry, but not using an environment variable).
 

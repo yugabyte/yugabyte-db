@@ -2,7 +2,7 @@
 title: How to manage clusters
 headerTitle: Manage clusters
 linkTitle: Manage clusters
-description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Managed.
+description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Aeon.
 image: /images/section_icons/architecture/core_functions/universe.png
 headcontent: Scale clusters, configure read replicas, backups, and maintenance, and pause clusters
 menu:
@@ -14,7 +14,7 @@ type: indexpage
 showRightNav: true
 ---
 
-YugabyteDB Managed provides the following tools to manage clusters:
+YugabyteDB Aeon provides the following tools to manage clusters:
 
 | Feature | Description |
 | :--- | :--- |
@@ -48,9 +48,12 @@ Cluster infrastructure operations lock the cluster while they are in progress, a
 | [Cluster Edit](configure-clusters/) | Change vCPUs, increase disk size, or change IOPS | Yes |
 | [Read replica edit](managed-read-replica/) | Create or delete; add or remove nodes | |
 | [Read replica edit](managed-read-replica/) | Increase disk size, change IOPS | Yes |
-| [Configure metrics export](../cloud-monitor/metrics-export/) | | |
 | [Scheduled maintenance](cloud-maintenance/) | Database upgrades, certificate rotations, and cluster maintenance<br>(A backup is run automatically before a database upgrade) | Yes |
-
+| [Metrics export](../cloud-monitor/metrics-export/) | | |
+| [Database query logging](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
+<!--
+| [Database audit logging](../cloud-monitor/logging-export/) | Enable, disable, modify | Yes |
+-->
 Keep in mind the following:
 
 - For clusters with Node, Availability Zone, or Region fault tolerance, and read replicas with a replication factor greater than 1, restarts are rolling. Your database will continue to function normally during infrastructure operations, but these operations can temporarily degrade application performance.
@@ -93,7 +96,7 @@ Keep in mind the following:
 
   {{<index/item
     title="Create extensions"
-    body="Create PostgreSQL extensions in YugabyteDB Managed clusters."
+    body="Create PostgreSQL extensions in YugabyteDB Aeon clusters."
     href="add-extensions/"
     icon="/images/section_icons/explore/administer.png">}}
 

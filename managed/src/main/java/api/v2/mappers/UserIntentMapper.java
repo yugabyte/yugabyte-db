@@ -3,6 +3,7 @@ package api.v2.mappers;
 
 import api.v2.models.AvailabilityZoneGFlags;
 import api.v2.models.ClusterAddSpec;
+import api.v2.models.ClusterCustomInstanceSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterGFlags;
 import api.v2.models.ClusterNetworkingSpec;
@@ -73,23 +74,35 @@ public interface UserIntentMapper {
     return clusterGFlags;
   }
 
+  @Mapping(target = "master", source = "masterK8SNodeResourceSpec")
+  @Mapping(target = "tserver", source = "tserverK8SNodeResourceSpec")
+  ClusterCustomInstanceSpec userIntentToClusterCustomInstanceSpec(UserIntent userIntent);
+
   // inverse mapping
   @Mapping(target = "deviceInfo", source = "storageSpec")
   @Mapping(target = ".", source = "networkingSpec")
   @Mapping(target = "enableLB", source = "networkingSpec.enableLb")
   @Mapping(target = ".", source = "providerSpec")
+  @Mapping(target = "universeOverrides", source = "providerSpec.helmOverrides")
+  @Mapping(target = "azOverrides", source = "providerSpec.azHelmOverrides")
   @Mapping(target = "imageBundleUUID", source = "providerSpec.imageBundleUuid")
   @Mapping(target = "specificGFlags", source = "clusterSpec")
+  @Mapping(target = "masterK8SNodeResourceSpec", source = "customInstanceSpec.master")
+  @Mapping(target = "tserverK8SNodeResourceSpec", source = "customInstanceSpec.tserver")
   UserIntent toV1UserIntent(ClusterSpec clusterSpec);
 
   @Mapping(target = "deviceInfo", source = "storageSpec")
   @Mapping(target = ".", source = "providerSpec")
+  @Mapping(target = "masterK8SNodeResourceSpec", source = "customInstanceSpec.master")
+  @Mapping(target = "tserverK8SNodeResourceSpec", source = "customInstanceSpec.tserver")
   UserIntent toV1UserIntentFromClusterEditSpec(
       ClusterEditSpec clusterEditSpec, @MappingTarget UserIntent userIntent);
 
   @Mapping(target = "deviceInfo", source = "storageSpec")
   @Mapping(target = ".", source = "providerSpec")
   @Mapping(target = "specificGFlags", source = "clusterAddSpec")
+  @Mapping(target = "masterK8SNodeResourceSpec", source = "customInstanceSpec.master")
+  @Mapping(target = "tserverK8SNodeResourceSpec", source = "customInstanceSpec.tserver")
   UserIntent overwriteUserIntentFromClusterAddSpec(
       ClusterAddSpec clusterAddSpec, @MappingTarget UserIntent userIntent);
 

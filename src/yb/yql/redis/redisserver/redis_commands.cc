@@ -55,9 +55,9 @@ using namespace std::placeholders;
 using yb::client::YBTableName;
 
 namespace {
-static bool ValidateRedisPasswordSeparator(const char* flagname, const string& value) {
+static bool ValidateRedisPasswordSeparator(const char* flag_name, const string& value) {
   if (value.size() != 1) {
-    LOG(INFO) << "Expect " << flagname << " to be 1 character long";
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 1 character long";
     return false;
   }
   return true;

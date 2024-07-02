@@ -360,7 +360,7 @@ POST    /customers/:cUUID/xcluster_configs/sync                                c
 POST    /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.restart(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 DELETE  /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.delete(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 POST    /customers/:cUUID/xcluster_configs/:xccUUID/need_bootstrap             com.yugabyte.yw.controllers.XClusterConfigController.needBootstrap(cUUID: java.util.UUID, xccUUID: java.util.UUID, request: Request)
-POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    com.yugabyte.yw.controllers.XClusterConfigController.needBootstrapTable(cUUID: java.util.UUID, uniUUID: java.util.UUID, configType: String ?= null, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    com.yugabyte.yw.controllers.XClusterConfigController.needBootstrapTable(cUUID: java.util.UUID, uniUUID: java.util.UUID, configType: String ?= null, includeDetails: Boolean ?= false, request: Request)
 
 # Disaster Recovery API
 POST    /customers/:cUUID/dr_configs                                           com.yugabyte.yw.controllers.DrConfigController.create(cUUID: java.util.UUID, request: Request)
@@ -374,6 +374,7 @@ POST    /customers/:cUUID/dr_configs/:drUUID/set_tables                        c
 POST    /customers/:cUUID/dr_configs/:drUUID/sync                              com.yugabyte.yw.controllers.DrConfigController.sync(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.delete(cUUID: java.util.UUID, drUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 GET     /customers/:cUUID/dr_configs/:drUUID/safetime                          com.yugabyte.yw.controllers.DrConfigController.getSafetime(cUUID: java.util.UUID, drUUID: java.util.UUID)
+PUT     /customers/:cUUID/dr_configs/:drUUID/set_dbs                           com.yugabyte.yw.controllers.DrConfigController.setDatabases(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 
 # Universe upgrade API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
@@ -449,6 +450,7 @@ POST   /customers/:cUUID/tasks/:tUUID/resume                                   c
 GET    /customers/:cUUID/universes/:uniUUID/tasks                              com.yugabyte.yw.controllers.CustomerTaskController.universeTasks(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/failed                                   com.yugabyte.yw.controllers.CustomerTaskController.failedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
 GET    /customers/:cUUID/tasks/:tUUID/failed_subtasks                          com.yugabyte.yw.controllers.CustomerTaskController.listFailedSubtasks(cUUID: java.util.UUID, tUUID: java.util.UUID)
+GET    /customers/:cUUID/tasks/:tUUID/details                                  com.yugabyte.yw.controllers.CustomerTaskController.getTaskStatusWithDetails(cUUID: java.util.UUID, tUUID: java.util.UUID)
 
 # Node Management API
 GET    /customers/:cUUID/nodes/:nodeUUID/list                                  com.yugabyte.yw.controllers.NodeInstanceController.get(cUUID: java.util.UUID, nodeUUID: java.util.UUID)
@@ -543,6 +545,8 @@ GET   /metadata/version/:version/list_gflags                                   c
 POST  /metadata/version/:version/validate_gflags                               com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.validateGFlags(version: String, request: Request)
 GET   /metadata/version/:version/gflag                                         com.yugabyte.yw.controllers.GFlagsValidationUiOnlyController.getGFlagMetadata(version: String, name: String ?= "", server: String ?= "")
 
+GET   /metadata/version/:version/gflag_groups                                  com.yugabyte.yw.controllers.GFlagGroupsController.getGFlagGroups(version: String, group ?= "")
+
 # Helm Overrides Validation API
 POST    /customers/:cUUID/validate_kubernetes_overrides                        com.yugabyte.yw.controllers.KubernetesOverridesController.validateKubernetesOverrides(cUUID: java.util.UUID, request: Request)
 
@@ -633,6 +637,16 @@ GET /customers/:cUUID/telemetry_provider/:intUUID                              c
 GET /customers/:cUUID/telemetry_provider                                       com.yugabyte.yw.controllers.TelemetryProviderController.listTelemetryProviders(cUUID: java.util.UUID)
 POST /customers/:cUUID/telemetry_provider                                      com.yugabyte.yw.controllers.TelemetryProviderController.createTelemetryProvider(cUUID: java.util.UUID, request: Request)
 DELETE /customers/:cUUID/telemetry_provider/:intUUID                           com.yugabyte.yw.controllers.TelemetryProviderController.deleteTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID, request: Request)
+
+# Troubleshooting Platform APIs
+GET /customers/:cUUID/troubleshooting_platform/:tpUUID                        com.yugabyte.yw.controllers.TroubleshootingPlatformController.getTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID)
+GET /customers/:cUUID/troubleshooting_platform                                com.yugabyte.yw.controllers.TroubleshootingPlatformController.listTroubleshootingPlatforms(cUUID: java.util.UUID)
+POST /customers/:cUUID/troubleshooting_platform                               com.yugabyte.yw.controllers.TroubleshootingPlatformController.createTroubleshootingPlatform(cUUID: java.util.UUID, request: Request)
+PUT /customers/:cUUID/troubleshooting_platform/:tpUUID                        com.yugabyte.yw.controllers.TroubleshootingPlatformController.editTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
+DELETE /customers/:cUUID/troubleshooting_platform/:tpUUID                     com.yugabyte.yw.controllers.TroubleshootingPlatformController.deleteTroubleshootingPlatform(cUUID: java.util.UUID, tpUUID: java.util.UUID, force: java.lang.Boolean ?= false, request: Request)
+GET /customers/:cUUID/troubleshooting_platform/:tpUUID/universes/:uUUID       com.yugabyte.yw.controllers.TroubleshootingPlatformController.checkRegistered(cUUID: java.util.UUID, tpUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
+PUT /customers/:cUUID/troubleshooting_platform/:tpUUID/universes/:uUUID       com.yugabyte.yw.controllers.TroubleshootingPlatformController.registerUniverse(cUUID: java.util.UUID, tpUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
+DELETE /customers/:cUUID/troubleshooting_platform/:tpUUID/universes/:uUUID    com.yugabyte.yw.controllers.TroubleshootingPlatformController.unregisterUniverse(cUUID: java.util.UUID, tpUUID: java.util.UUID, uUUID: java.util.UUID, request: Request)
 
 # New Release APIs
 POST /customers/:cUUID/ybdb_release                                            com.yugabyte.yw.controllers.ReleasesController.create(cUUID: java.util.UUID, request: Request)

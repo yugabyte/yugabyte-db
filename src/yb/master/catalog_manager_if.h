@@ -69,11 +69,11 @@ class CatalogManagerIf {
   virtual void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
 
   virtual void DeleteTabletReplicas(
-      TabletInfo* tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
+      const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
       const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyPrepareDeleteTransactionTabletFinished(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& msg, HideOnly hide_only,
+      const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only,
       const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyTabletDeleteFinished(
@@ -193,7 +193,7 @@ class CatalogManagerIf {
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
   virtual Status GetTabletLocations(
-      scoped_refptr<TabletInfo> tablet_info,
+      const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
@@ -216,7 +216,7 @@ class CatalogManagerIf {
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
 
   virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
-      GenerateSnapshotInfoFromSchedule(
+  GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 
@@ -250,7 +250,7 @@ class CatalogManagerIf {
 
   virtual LeaderEpoch GetLeaderEpochInternal() const = 0;
 
-  virtual Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) = 0;
+  virtual Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) = 0;
 
   virtual bool AreTablesDeletingOrHiding() = 0;
 
@@ -273,7 +273,7 @@ class CatalogManagerIf {
   virtual Status IsInitDbDone(
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) = 0;
 
-  virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
+  virtual Status DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
 
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
 
@@ -282,7 +282,7 @@ class CatalogManagerIf {
       const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) = 0;
 
   virtual Status TEST_SplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
+      const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
 
   virtual Status TEST_SplitTablet(
       const TabletId& tablet_id, const std::string& split_encoded_key,

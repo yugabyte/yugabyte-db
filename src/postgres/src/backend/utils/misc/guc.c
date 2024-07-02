@@ -2166,12 +2166,12 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replication_commands,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
 	{
-		{"TEST_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"yb_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable consumption of changes via replication slots. "
 						 "This feature is currently in active development and "
 						 "should not be enabled."),
@@ -2179,7 +2179,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE,
 		},
 		&yb_enable_replication_slot_consumption,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2190,7 +2190,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replica_identity,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2778,6 +2778,19 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_walsender_poll_sleep_duration_empty_ms,
 		1 * 1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_reorderbuffer_max_changes_in_memory", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Maximum number of changes kept in memory per transaction "
+						 "in reorder buffer, which is used in streaming changes via "
+						 "logical replication. After that, changes are spooled to disk."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_reorderbuffer_max_changes_in_memory,
+		4096, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -12960,6 +12973,14 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
 	}
+
+	/*
+	 * If YSQL Connection Manager is enabled, make the connection sticky
+	 * for any variables that can only be set outside the context of an
+	 * explicit transaction block.
+	 */
+	if (YbIsClientYsqlConnMgr())
+		yb_ysql_conn_mgr_sticky_guc = true;
 	return true;
 }
 

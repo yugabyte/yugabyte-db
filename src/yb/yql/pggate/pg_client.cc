@@ -65,6 +65,7 @@ DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -466,13 +467,15 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      master::IncludeInactive include_inactive) {
     tserver::PgOpenTableRequestPB req;
     req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
     if (invalidate_cache_time != CoarseTimePoint()) {
       req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
     }
+    req.set_include_inactive(include_inactive);
     tserver::PgOpenTableResponsePB resp;
 
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
@@ -1132,6 +1135,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_fetch_cql_states(true);
     req.set_ignore_ash_and_perform_calls(true);
     req.set_export_wait_state_code_as_string(FLAGS_TEST_export_wait_state_names);
+    req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));
@@ -1304,8 +1308,9 @@ void PgClient::SetTimeout(MonoDelta timeout) {
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 Result<PgTableDescPtr> PgClient::OpenTable(
-    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
-  return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
+    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+    master::IncludeInactive include_inactive) {
+  return impl_->OpenTable(table_id, reopen, invalidate_cache_time, include_inactive);
 }
 
 Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(

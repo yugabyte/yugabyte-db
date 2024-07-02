@@ -366,7 +366,7 @@ yb_pclose_check(FILE *stream)
 	if (exitstatus == -1)
 	{
 		/* pclose() itself failed, and hopefully set errno */
-		fprintf(stderr, _("pclose failed: %s"), strerror(errno));
+		fprintf(stderr, _("pclose failed: %s\n"), strerror(errno));
 		return 1;
 	}
 	else
@@ -375,8 +375,8 @@ yb_pclose_check(FILE *stream)
 			fprintf(stderr, "initdb has already been run previously, nothing to do\n");
 		} else {
 			reason = wait_result_to_str(exitstatus);
-			fprintf(stderr, "%s", reason);
-			free(reason);
+			fprintf(stderr, "%s\n", reason);
+			pfree(reason);
 		}
 	}
 	return WEXITSTATUS(exitstatus);
@@ -3234,11 +3234,18 @@ initialize_data_directory(void)
 	/* Enable pg_stat_statements */
 	enable_pg_stat_statements(cmdfd);
 
-	if (!IsYugaByteGlobalClusterInitdb())
-	{
-		/* Do not need to vacuum in YB */
-		vacuum_db(cmdfd);
-	}
+	/*
+	 * YB: we used to skip the call of vacuum_db() because we don't need
+	 * to vacuum in YB. As of 04/30/2024, we want to ANALYZE catalog tables
+	 * to get initial stats.
+	 * vacuum_db() runs both ANALYZE and VACUUM. Since VACUUM is a no-op in
+	 * YB. It is safe to just call vacuum_db().
+	 * All other databases: template0, postgres, yugabyte use template1 as the
+	 * template database. The initial stats of their catalog tables is copied
+	 * from template1 stats, so we don't need to do extra work to run ANALYZE
+	 * for each of them.
+	 */
+	vacuum_db(cmdfd);
 
 	make_template0(cmdfd);
 

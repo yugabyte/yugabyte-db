@@ -51,5 +51,7 @@ extern void RemoveTablegroupById(Oid grp_oid, bool remove_implicit);
 extern char *get_implicit_tablegroup_name(Oid oidSuffix);
 extern ObjectAddress RenameTablegroup(const char *oldname, const char *newname);
 extern ObjectAddress AlterTablegroupOwner(const char *grpname, Oid newOwnerId);
+extern void ybAlterTablespaceForTablegroup(const char *grpname,
+										   Oid newTablespace);
 
 #endif							/* TABLEGROUP_H */

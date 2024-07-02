@@ -19,9 +19,14 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -194,40 +199,49 @@ public class TestYbAsh extends BasePgSQLTest {
       String get_nested_query_id = "SELECT queryid FROM pg_stat_statements " +
           "WHERE query = 'INSERT INTO " + tableName + " SELECT i, i FROM " +
           "generate_series(i, j) as i'";
-      long nested_query_id = 1096741192106424462L; // constant query id of the above INSERT query
-      String nested_query_id_samples_count = "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE query_id = " + nested_query_id ;
 
       statement.execute("TRUNCATE " + tableName);
-
-      // Track only top level queries inside pg_stat_statements
-      statement.execute("SET pg_stat_statements.track = 'TOP'");
 
       statement.execute("CREATE FUNCTION insert_into_table(i INT, j INT) " +
           "RETURNS void AS $$ INSERT INTO " + tableName + " SELECT i, i FROM " +
           "generate_series(i, j) as i $$ LANGUAGE SQL");
+
+      // Track all queries inside pg_stat_statements
+      statement.execute("SET pg_stat_statements.track = 'ALL'");
+
+      // Run the nested query
       statement.execute(String.format("SELECT insert_into_table(1, 100000)"));
+
+      long nested_query_id = getSingleRow(statement, get_nested_query_id).getLong(0).longValue();
+      String nested_query_id_samples_count = "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE query_id = " + nested_query_id ;
+      String nested_query_id_samples_count_last_second = "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE query_id = " + nested_query_id + " AND sample_time >= current_timestamp - " +
+          "interval '1 second'" ;
+
+      // Verify that there are samples of the nested query
+      assertGreaterThan(getSingleRow(statement, nested_query_id_samples_count).getLong(0), 0L);
+
+      // Track only top level queries inside pg_stat_statements
+      statement.execute("SET pg_stat_statements.track = 'TOP'");
+
+      // sleep for one second so that the circular buffer doesn't contain samples of this query id
+      // for the last one second
+      executePgSleep(statement, 1);
+
+      // reset pg_stat_statements so that the nested query is no longer there
+      statement.execute("SELECT pg_stat_statements_reset()");
+
+      // Rerun the nested query, now pg_stat_statements should not track it
+      statement.execute(String.format("SELECT insert_into_table(100001, 200000)"));
 
       // Make sure that the nested query doesn't show up in pg_stat_statements
       ResultSet rs = statement.executeQuery(get_nested_query_id);
       assertFalse(rs.next());
 
       // Make sure there are no ASH samples with the nested query id
-      assertEquals(getSingleRow(statement, nested_query_id_samples_count).getLong(0).longValue(),
-          0L);
-
-      // Track all queries inside pg_stat_statements
-      statement.execute("SET pg_stat_statements.track = 'ALL'");
-
-      // Rerun the nested query, now pg_stat_statements should track it
-      statement.execute(String.format("SELECT insert_into_table(100001, 200000)"));
-
-      // Verify that the constant nested query is correct
-      assertEquals(getSingleRow(statement, get_nested_query_id).getLong(0).longValue(),
-          nested_query_id);
-
-      // Verify that there are samples of the nested query
-      assertGreaterThan(getSingleRow(statement, nested_query_id_samples_count).getLong(0), 0L);
+      assertEquals(getSingleRow(statement, nested_query_id_samples_count_last_second).
+          getLong(0).longValue(), 0L);
     }
   }
 
@@ -269,6 +283,52 @@ public class TestYbAsh extends BasePgSQLTest {
           " WHERE query_id = " + catalog_request_query_id + " OR " +
           "wait_event = '" + catalog_read_wait_event + "'").getLong(0).intValue();
       assertGreaterThan(res1, 0);
+    }
+  }
+
+  /**
+   * Test that we don't capture more than 'ysql_yb_ash_sample_size' number of samples
+   */
+  @Test
+  public void testSampleSize() throws Exception {
+    final int sample_size = 3;
+    setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, sample_size);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+    }
+    final int NUM_THREADS = 5;
+    final int NUM_INSERTS_PER_THREAD = 100;
+    ExecutorService ecs = Executors.newFixedThreadPool(NUM_THREADS);
+    List<Future<?>> futures = new ArrayList<>();
+    for (int i = 1; i <= NUM_THREADS; ++i) {
+      final int threadIndex = i;
+      Future<?> future = ecs.submit(() -> {
+        try (Statement statement = connection.createStatement()) {
+          for (int j = 0; j < NUM_INSERTS_PER_THREAD; ++j) {
+            statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')",
+                threadIndex, j));
+          }
+        } catch (Exception e) {
+          fail(e.getMessage());
+        }
+      });
+      futures.add(future);
+    }
+    for (Future<?> future : futures) {
+      future.get();
+    }
+    ecs.shutdown();
+    ecs.awaitTermination(30, TimeUnit.SECONDS);
+    try (Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT sample_time, wait_event_component, " +
+          "count(*) FROM " + ASH_VIEW + " GROUP BY sample_time, wait_event_component");
+      while (rs.next()) {
+        assertLessThanOrEqualTo(rs.getLong("count"), Long.valueOf(sample_size));
+      }
+      rs = statement.executeQuery("SELECT sample_weight FROM " + ASH_VIEW);
+      while (rs.next()) {
+        assertGreaterThanOrEqualTo(rs.getDouble("sample_weight"), Double.valueOf(1.0));
+      }
     }
   }
 }

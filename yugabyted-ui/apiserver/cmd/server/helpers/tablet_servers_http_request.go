@@ -5,7 +5,6 @@ import (
         "errors"
         "net"
         "net/url"
-        "regexp"
 )
 
 type PathMetrics struct {
@@ -37,6 +36,7 @@ type TabletServer struct {
         Cloud                        string        `json:"cloud"`
         Region                       string        `json:"region"`
         Zone                         string        `json:"zone"`
+        PermanentUuid                string        `json:"permanent_uuid"`
 }
 
 type TabletServersFuture struct {
@@ -90,7 +90,8 @@ func (h *HelperContainer) GetTabletServersFuture(nodeHost string, future chan Ta
         }
 }
 
-// Helper for getting the hostnames of each node given a TabletServersFuture response
+// Helper for getting the hostnames of each node given a TabletServersFuture response.
+// Assumes TabletServersFuture.Error is nil.
 func (h *HelperContainer) GetNodesList(tablets TabletServersFuture) []string {
         hostNames := []string{}
         for _, obj := range tablets.Tablets {
@@ -104,32 +105,35 @@ func (h *HelperContainer) GetNodesList(tablets TabletServersFuture) []string {
         return hostNames
 }
 
-// Helper for getting a map between hostnames and uuids for tservers
-// For now, we hit the /tablet-servers endpoint and parse the html
+// Helper for getting a map between hostnames and uuids for tservers given a
+// TabletServersFuture response
 func (h *HelperContainer) GetHostToUuidMap(nodeHost string) (map[string]string, error) {
-        hostToUuidMap := map[string]string{}
-        body, err := h.BuildMasterURLsAndAttemptGetRequests(
-            "tablet-servers", // path
-            url.Values{}, // params
-            false, // expectJson
-        )
-        if err != nil {
-                return hostToUuidMap, err
+    tabletServersFuture := make(chan TabletServersFuture)
+    go h.GetTabletServersFuture(nodeHost, tabletServersFuture)
+    tabletServersResponse := <-tabletServersFuture
+    if tabletServersResponse.Error != nil {
+        return map[string]string{}, tabletServersResponse.Error
+    }
+    hostToUuid := h.GetHostToUuidMapFromFuture(tabletServersResponse)
+    return hostToUuid, nil
+}
+
+// Helper for getting a map between hostnames and uuids for tservers given a
+// TabletServersFuture response. Assumes TabletServersFuture.Error is nil.
+func (h *HelperContainer) GetHostToUuidMapFromFuture(
+    tserversFuture TabletServersFuture,
+) map[string]string {
+    hostToUuid := map[string]string{}
+    for _, obj := range tserversFuture.Tablets {
+        for hostport, tserverData := range obj {
+            host, _, err := net.SplitHostPort(hostport)
+            if err == nil {
+                hostToUuid[host] = tserverData.PermanentUuid
+            } else {
+                h.logger.Warnf("failed to split hostport %s, couldn't get uuid of node", hostport)
+            }
         }
-        // Now we parse the html to get the hostnames and uuids
-        // This regex will not work if the layout of the page changes. In the future, it would be
-        // better if this information can be found in a json endpoint.
-        regex, err := regexp.Compile(`<\/tr>\s*<tr>\s*<td><a href=.*?>(.*?)<\/a><\/br>\s*(.*?)<\/`)
-        if err != nil {
-                return hostToUuidMap, err
-        }
-        matches := regex.FindAllSubmatch(body, -1)
-        for _, v := range matches {
-                host, _, err := net.SplitHostPort(string(v[1]))
-                if err != nil {
-                        return hostToUuidMap, err
-                }
-                hostToUuidMap[host] = string(v[2])
-        }
-        return hostToUuidMap, nil
+    }
+    h.logger.Debugf("host to uuid map: %v", hostToUuid)
+    return hostToUuid
 }

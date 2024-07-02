@@ -47,6 +47,18 @@ public class ScheduleUtil {
         .orElse(null);
   }
 
+  public static Backup fetchInProgressBackupForSchedule(UUID customerUUID, UUID scheduleUUID) {
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    ScheduleTask scheduleTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
+    if (scheduleTask == null) {
+      return null;
+    }
+    return Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID()).stream()
+        .filter(bkp -> bkp.getState().equals(BackupState.InProgress))
+        .findFirst()
+        .orElse(null);
+  }
+
   public static long getIncrementalBackupFrequency(Schedule schedule) {
     BackupRequestParams scheduleParams =
         Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);

@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+{{<tip title="v2.20 and earlier">}}
+For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{</tip>}}
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../software-on-prem-auto/" class="nav-link">
@@ -39,7 +43,7 @@ In this mode, you manually install each prerequisite software component. Use thi
 
 Your responsibility now (to meet prerequisites) is to provide a VM with the following pre-installed:
 
-- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YBA uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
+- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YugabyteDB Anywhere (YBA) uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
 - [Additional software](../#additional-software)
 - [Additional software for airgapped](../#additional-software-for-airgapped-deployment)
 
@@ -180,7 +184,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
     *          soft    nproc     12000
     ```
 
-1. If running on a virtual machine, execute the following to tune kernel settings:
+1. Execute the following to tune kernel settings:
 
     1. Configure the parameter `vm.swappiness` as follows:
 

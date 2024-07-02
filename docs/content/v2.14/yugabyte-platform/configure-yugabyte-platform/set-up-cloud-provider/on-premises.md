@@ -307,7 +307,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
     For airgapped environments, make sure your Yum repository mirror contains these packages.
 
-1. If running on a virtual machine, execute the following to tune kernel settings (sudo is required):
+1. Execute the following to tune kernel settings (sudo is required):
 
     ```sh
     sudo bash -c 'sysctl vm.swappiness=0 >> /etc/sysctl.conf'

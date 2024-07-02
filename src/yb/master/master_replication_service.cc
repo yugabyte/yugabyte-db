@@ -51,12 +51,14 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetCDCDBStreamInfo)
     (IsBootstrapRequired)
     (WaitForReplicationDrain)
-    (SetupNSUniverseReplication)
     (GetReplicationStatus)
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
     (BootstrapProducer)
     (YsqlBackfillReplicationSlotNameToCDCSDKStream)
+    (DisableDynamicTableAdditionOnCDCSDKStream)
+    (RemoveUserTableFromCDCSDKStream)
+    (ValidateAndSyncCDCStateEntriesForCDCSDKStream)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

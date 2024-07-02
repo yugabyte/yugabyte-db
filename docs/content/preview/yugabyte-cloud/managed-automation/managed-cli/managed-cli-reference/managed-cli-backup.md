@@ -2,7 +2,7 @@
 title: ybm CLI backup resource
 headerTitle: ybm backup
 linkTitle: backup
-description: YugabyteDB Managed CLI reference backup resource.
+description: YugabyteDB Aeon CLI reference backup resource.
 headcontent: Manage cluster backups
 menu:
   preview_yugabyte-cloud:

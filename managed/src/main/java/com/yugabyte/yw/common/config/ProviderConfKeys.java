@@ -96,7 +96,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Min Python Version (inclusive)",
           "",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> maxPyVer =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.max_python_version",
@@ -104,7 +104,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Max Python Version (exclusive)",
           "",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> defaultAwsVolumeCount =
       new ConfKeyInfo<>(
           "yb.aws.default_volume_count",
@@ -208,7 +208,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "User",
           "",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> userGroup =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.user_group",
@@ -216,7 +216,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "User Group",
           "",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> minPrometheusSpaceMb =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_prometheus_space_mb",
@@ -224,7 +224,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Min Prometheus Space MB",
           "",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> minTempDirSpaceMb =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_tmp_dir_space_mb",
@@ -232,7 +232,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Min Temp Dir Space MB",
           "",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> minHomeDirSpaceMb =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_home_dir_space_mb",
@@ -240,7 +240,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Min Home Space MB",
           "",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> minMountPointDirSpaceMb =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_mount_point_dir_space_mb",
@@ -248,7 +248,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Min Mount Point Dir Space MB",
           "",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ulimitCore =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_core",
@@ -256,7 +256,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "ulimit core ",
           "",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ulimitOpenFiles =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_open_files",
@@ -264,7 +264,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "ulimit open files",
           "",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ulimitUserProcesses =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_user_processes",
@@ -272,7 +272,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "ulimit user processes",
           "",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> swappiness =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.swappiness",
@@ -280,7 +280,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "swappiness",
           "",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> sshTimeout =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ssh_timeout",
@@ -288,7 +288,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "SSH connection timeout",
           "",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 
   public static final ConfKeyInfo<Boolean> enableNodeAgentClient =
       new ConfKeyInfo<>(
@@ -306,7 +306,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "VM max map count",
           "Max count of memory-mapped regions allowed in the system.",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableAnsibleOffloading =
       new ConfKeyInfo<>(
           "yb.node_agent.ansible_offloading.enabled",

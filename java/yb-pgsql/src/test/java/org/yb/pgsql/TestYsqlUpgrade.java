@@ -1007,16 +1007,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     connCounter.finish();
   }
 
-  /**
-   * Verify that applying migrations to and old initdb snapshot transforms pg_catalog to a state
-   * equivalent to a fresh initdb.
-   * <p>
-   * If you see this test failing, please make sure you've added a new YSQL migration as described
-   * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
-   */
-  @Test
-  public void migratingIsEquivalentToReinitdb() throws Exception {
-    final String createPgTablegroupTable =
+  /** Ensure that pg_tablegroup table exists. */
+  private void createPgTablegroupTableIfNotExists() throws Exception {
+    final String query =
         "CREATE TABLE IF NOT EXISTS pg_catalog.pg_tablegroup (\n" +
             "  grpname    name        NOT NULL,\n" +
             "  grpowner   oid         NOT NULL,\n" +
@@ -1029,8 +1022,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             "  table_oid = 8000,\n" +
             "  row_type_oid = 8002\n" +
             ")";
-
-    final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
     try (Connection conn = customDbCb.connect();
          Statement stmt = conn.createStatement()) {
       setSystemRelsModificationGuc(stmt, true);
@@ -1042,28 +1033,71 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       // However, other system tables like pg_attribute are modified by the creation of this table,
       // and so we can't simply remove it from the snapshot. So it is much simpler to create this
       // table again than to try to remove all traces of it ever existing.
-      executeSystemTableDml(stmt, createPgTablegroupTable);
-      preSnapshotCustom = takeSysCatalogSnapshot(stmt);
+      executeSystemTableDml(stmt, query);
     }
     try (Connection conn = template1Cb.connect();
          Statement stmt = conn.createStatement()) {
       setSystemRelsModificationGuc(stmt, true);
-      executeSystemTableDml(stmt, createPgTablegroupTable);
+      executeSystemTableDml(stmt, query);
+    }
+  }
+
+
+  /**
+   * Verify that applying migrations to and old initdb snapshot transforms pg_catalog to a state
+   * equivalent to a fresh initdb.
+   * <p>
+   * If you see this test failing, please make sure you've added a new YSQL migration as described
+   * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
+   */
+  @Test
+  public void migratingIsEquivalentToReinitdb() throws Exception {
+    final SysCatalogSnapshot preSnapshotCustom, preSnapshotTemplate1;
+    createPgTablegroupTableIfNotExists();
+
+    try (Connection conn = customDbCb.connect();
+         Statement stmt = conn.createStatement()) {
+      preSnapshotCustom = takeSysCatalogSnapshot(stmt);
+    }
+    try (Connection conn = template1Cb.connect();
+         Statement stmt = conn.createStatement()) {
       preSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
     recreateWithYsqlVersion(YsqlSnapshotVersion.EARLIEST);
     createDbConnections();
 
+    boolean snapshot_has_pg_yb_tablegroup = false;
+
     try (Connection conn = template1Cb.connect();
          Statement stmt = conn.createStatement()) {
-      // Sanity check - no migrations table
-      assertNoRows(stmt,
-          "SELECT oid, relname FROM pg_class WHERE relname = '" + MIGRATIONS_TABLE + "'");
-
+      List<Row> rows = getRowList(
+          stmt, "SELECT * FROM pg_class WHERE relname = 'pg_yb_tablegroup'");
+      snapshot_has_pg_yb_tablegroup = rows.size() > 0;
+      String snapshotPath = System.getProperty("ysql_sys_catalog_snapshot_path");
+      // We expect user provided snapshot path contains the version string as part of the
+      // snapshot directory. As an example, for a 2.14.13.0 release build, it can be
+      // /tmp/initial_sys_catalog_snapshot_2.14.13.0_release. NOTE: this needs to be an
+      // absolute path because anything like $HOME and ~ are not expanded.
+      // We also assume that any initdb created sys catalog snapshot other than 2.0.9.0,
+      // migrations table is there.
+      String migrationTableQuery =
+          "SELECT oid, relname FROM pg_class WHERE relname = '" + MIGRATIONS_TABLE + "'";
+      if (snapshotPath == null || snapshotPath.contains("2.0.9.0")) {
+        // Sanity check - no migrations table
+        assertNoRows(stmt, migrationTableQuery);
+      } else {
+        List<Row> migrationTableRows = getRowList(stmt.executeQuery(migrationTableQuery));
+        assertFalse(migrationTableRows.isEmpty());
+      }
       stmt.execute("CREATE DATABASE " + customDbName);
     }
 
+    // For example, if we upgrade from initdb-created 2.14 snapshot, there
+    // is no pg_tablegroup but pg_yb_tablegroup is already there.
+    if (snapshot_has_pg_yb_tablegroup) {
+      createPgTablegroupTableIfNotExists();
+    }
     runMigrations(false /* useSingleConnection */);
 
     final SysCatalogSnapshot postSnapshotCustom, postSnapshotTemplate1;
@@ -1172,6 +1206,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
          Statement stmt = conn.createStatement()) {
       stmt.execute("CREATE DATABASE " + customDbName);
     }
+    createPgTablegroupTableIfNotExists();
     runMigrations(useSingleConnection);
 
     // Ignore pg_yb_catalog_version because we bump current_version disregarding
@@ -1496,6 +1531,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
     for (Row tableInfoRow : tablesInfo) {
       String tableName = tableInfoRow.getString(0);
+      // Different runs of ANALYZE on catalog tables can result in different statistics,
+      // and we don't know the state of existing clusters,
+      // so we don't provide YSQL migration scripts for catalog statistics.
+      // Thus, exclude capturing pg_statistic catalog from "snapshot".
+      if (tableName.equals("pg_statistic")) {
+        continue;
+      }
       String query;
       // Filter out stuff created for shared entities.
       switch (tableName) {
@@ -1643,25 +1685,28 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       assertEquals(
           "Expected \"fresh\" migrations table to have just one row, got " + reinitdbMigrations,
           1, reinitdbMigrations.size());
-      final int latestMajorVersion = reinitdbMigrations.get(0).getInt(0);
-      final int latestMinorVersion = reinitdbMigrations.get(0).getInt(1);
-      final int totalMigrations = latestMajorVersion + latestMinorVersion;
-      assertRow(new Row(latestMajorVersion, latestMinorVersion, "<baseline>", null),
-                reinitdbMigrations.get(0));
 
       // Applied migrations table has a baseline row
       // followed by rows for all migrations (up to the latest).
       List<Row> appliedMigrations = migratedSnapshot.catalog.get(MIGRATIONS_TABLE);
+      final int initialMajorVersion = appliedMigrations.get(0).getInt(0);
+      final int initialMinorVersion = appliedMigrations.get(0).getInt(1);
+      final int latestMajorVersion = reinitdbMigrations.get(0).getInt(0);
+      final int latestMinorVersion = reinitdbMigrations.get(0).getInt(1);
+      final int totalMigrations = latestMajorVersion + latestMinorVersion - initialMajorVersion;
+      assertRow(new Row(latestMajorVersion, latestMinorVersion, "<baseline>", null),
+                reinitdbMigrations.get(0));
       assertEquals(
           "Expected applied migrations table to have exactly "
               + (totalMigrations + 1) + " rows, got " + appliedMigrations,
           totalMigrations + 1, appliedMigrations.size());
-      assertRow(new Row(0, 0, "<baseline>", null), appliedMigrations.get(0));
+      assertRow(new Row(initialMajorVersion, initialMinorVersion, "<baseline>", null),
+                appliedMigrations.get(0));
       for (int ver = 1; ver <= totalMigrations; ++ver) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
         Row migrationRow = appliedMigrations.get(ver);
-        final int majorVersion = Math.min(ver, latestMajorVersion);
-        final int minorVersion = ver - majorVersion;
+        final int majorVersion = Math.min(ver, latestMajorVersion) + initialMajorVersion;
+        final int minorVersion = ver - majorVersion + initialMajorVersion;
         assertEquals(majorVersion, migrationRow.getInt(0).intValue());
         assertEquals(minorVersion, migrationRow.getInt(1).intValue());
         String migrationNamePrefix;

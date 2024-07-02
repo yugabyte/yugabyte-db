@@ -9,7 +9,7 @@ menu:
     identifier: live-fall-back
     parent: migration-types
     weight: 104
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 type: docs
 ---
 
@@ -67,7 +67,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 - [Install yb-voyager](../../install-yb-voyager/#install-yb-voyager).
 - Review the [guidelines for your migration](../../known-issues/).
-- Review [data modeling](../../../develop/learn/data-modeling-ysql) strategies.
+- Review [data modeling](../../../develop/data-modeling) strategies.
 - [Prepare the source database](#prepare-the-source-database).
 - [Prepare the target database](#prepare-the-target-database).
 
@@ -780,7 +780,7 @@ Create a user with [`SUPERUSER`](../../../api/ysql/the-sql-language/statements/d
      CREATE USER ybvoyager SUPERUSER PASSWORD 'password';
      ```
 
-- For YugabyteDB Managed, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
+- For YugabyteDB Aeon, create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following command:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
@@ -877,7 +877,7 @@ Fix all the issues listed in the generated schema analysis report by manually ed
 
 After making the manual changes, re-run the `yb-voyager analyze-schema` command. This generates a fresh report using your changes. Repeat these steps until the generated report contains no issues.
 
-To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../reference/data-modeling/).
+To learn more about modelling strategies using YugabyteDB, refer to [Data modeling](../../../develop/data-modeling).
 
 {{< note title="Manual schema changes" >}}
 
@@ -1331,7 +1331,7 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-back feature:
 
-- Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
+- Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
 - SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
 - In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

@@ -324,7 +324,7 @@ slack-invite
 : Inserts the address for community slack invitations.
 
 support-cloud
-: Inserts the address to open a YugabyteDB Managed support ticket.
+: Inserts the address to open a YugabyteDB Aeon support ticket.
 
 support-general
 : Inserts the address to open a support ticket with no pre-selected product.

@@ -2,7 +2,7 @@
 title: ybm CLI region resource
 headerTitle: ybm region
 linkTitle: region
-description: YugabyteDB Managed CLI reference Region resource.
+description: YugabyteDB Aeon CLI reference Region resource.
 headcontent: Query regions and instance types
 menu:
   preview_yugabyte-cloud:

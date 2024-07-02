@@ -547,6 +547,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--server_port=" + ybControllerPort,
         "--yb_master_webserver_port=" + masterWebPort,
         "--yb_tserver_webserver_port=" + tserverWebPort,
+        "--v=1",
         "--logtostderr");
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.YBCONTROLLER,
@@ -569,7 +570,11 @@ public class MiniYBCluster implements AutoCloseable {
       default:
         throw new IllegalArgumentException("Unknown snapshot version: " + ver);
     }
-    filename = filename + "_" + (BuildTypeUtil.isRelease() ? "release" : "debug");
+    // In the version of YugabyteDB where the EARLIEST snapshot was generated, the debug build had
+    // a column representation now used only in ASAN and TSAN builds. See src/yb/common/column_id.h
+    // file history for details.
+    filename =
+        filename + "_" + (BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN() ? "debug" : "release");
     File file = new File(YSQL_SNAPSHOTS_DIR, filename);
     Preconditions.checkState(file.exists(),
         "Snapshot %s is not found in %s, should've been downloaded by the build script!",
@@ -580,7 +585,18 @@ public class MiniYBCluster implements AutoCloseable {
   private void applyYsqlSnapshot(YsqlSnapshotVersion ver, Map<String, String> masterFlags) {
     // No need to set the flag for LATEST snapshot.
     if (ver != YsqlSnapshotVersion.LATEST) {
-      String snapshotPath = getYsqlSnapshotFilePath(ver);
+      // If the test argument provides a sys catalog snapshot path, use it.
+      // Otherwise, use the default snapshot.
+      String snapshotPath = System.getProperty("ysql_sys_catalog_snapshot_path");
+      if (snapshotPath == null) {
+        snapshotPath = getYsqlSnapshotFilePath(ver);
+      }
+      File snapshot = new File(snapshotPath);
+      assertTrue(snapshot != null);
+      if (!snapshot.isDirectory()) {
+        LOG.error("directory '{}' does not exist", snapshotPath);
+        fail();
+      }
       masterFlags.put("initial_sys_catalog_snapshot_path", snapshotPath);
     }
   }

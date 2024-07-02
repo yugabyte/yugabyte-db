@@ -14,7 +14,7 @@ rightNav:
   hideH4: true
 ---
 
-In addition to email-based accounts, you can use social logins or federated authentication via an external identity provider (IdP) to provide access to your YugabyteDB Managed account.
+In addition to email-based accounts, you can use social logins or federated authentication via an external identity provider (IdP) to provide access to your YugabyteDB Aeon account.
 
 The **Authentication** tab displays options for configuring social logins and federated authentication.
 
@@ -34,11 +34,16 @@ If you revoke a social login that is already in use, users using that social log
 
 ## Federated authentication
 
-Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Managed account.
+Using federated authentication, you can use an enterprise IdP to manage access to your YugabyteDB Aeon account.
 
 Note that after federated authentication is enabled, only Admin users can sign in using email-based login.
 
-Currently, YugabyteDB Managed supports Microsoft Entra ID, PingOne, and Okta enterprise IdPs, exclusively using the OIDC (OpenID Connect) protocol.
+Currently, YugabyteDB Aeon supports the following enterprise IdPs, exclusively using the OIDC (OpenID Connect) protocol:
+
+- Microsoft Entra ID
+- PingOne
+- Okta
+- JumpCloud
 
 ### Prerequisites
 
@@ -46,7 +51,7 @@ Before configuring federated authentication, be sure to allow pop-up requests fr
 
 ### Set up federated authentication
 
-Before enabling federated authentication in YugabyteDB Managed, you must configure your IdP and obtain the necessary credentials.
+Before enabling federated authentication in YugabyteDB Aeon, you must configure your IdP and obtain the necessary credentials.
 
 {{< tabpane text=true >}}
 
@@ -65,7 +70,7 @@ To use Entra for your IdP, you need to register an application with Microsoft En
 
 Use your own Entra account to test the connection. For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in the Microsoft documentation.
 
-In addition, to configure Entra federated authentication in YugabyteDB Managed, you need the following:
+In addition, to configure Entra federated authentication in YugabyteDB Aeon, you need the following:
 
 - Client ID of the application you registered.
 - Client secret of the application.
@@ -74,7 +79,7 @@ Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/id
 
 **Configure**
 
-To configure federated authentication in YugabyteDB Managed, do the following:
+To configure federated authentication in YugabyteDB Aeon, do the following:
 
 1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose the Microsoft Entra ID identity provider.
@@ -112,11 +117,11 @@ To use PingOne for your IdP, do the following:
 
 1. Configure **Policies** and **Attribute Mappings** as required.
 
-1. On the **Access** tab, click **Edit**, select the user groups you want to access YugabyteDB Managed, and click **Save** when you are done.
+1. On the **Access** tab, click **Edit**, select the user groups you want to access YugabyteDB Aeon, and click **Save** when you are done.
 
 1. Enable the application by turning on the slider control at the top of the page.
 
-To configure PingOne federated authentication in YugabyteDB Managed, you need the following application properties:
+To configure PingOne federated authentication in YugabyteDB Aeon, you need the following application properties:
 
 - Client ID and secret of the application you created. These are provided on the **Overview** and **Configuration** tabs.
 - Authorization URL for your application. This is displayed on the **Configuration** tab under **URLs**.
@@ -125,7 +130,7 @@ For more information, refer to the [PingOne for Enterprise](https://docs.pingide
 
 **Configure**
 
-To configure federated authentication in YugabyteDB Managed, do the following:
+To configure federated authentication in YugabyteDB Aeon, do the following:
 
 1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose PingOne identity provider.
@@ -156,12 +161,12 @@ To use Okta for your IdP, do the following:
     - Set **Grant type** to **Authorization Code** (the default).
     - For the **Sign-in redirect URIs**, enter `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback` as redirect URI.
     - Delete any **Sign-out redirect URIs** entries, if present.
-    - Under **Assignments**, select **Limit access to selected groups** and enter the names of the [user groups](https://help.okta.com/asa/en-us/content/topics/adv_server_access/docs/setup/groups.htm) you want to access YugabyteDB Managed.
+    - Under **Assignments**, select **Limit access to selected groups** and enter the names of the [user groups](https://help.okta.com/asa/en-us/content/topics/adv_server_access/docs/setup/groups.htm) you want to access YugabyteDB Aeon.
     - Click **Save**.
 
 Your application is added to the **Applications** page.
 
-To configure Okta federated authentication in YugabyteDB Managed, you need the following application properties:
+To configure Okta federated authentication in YugabyteDB Aeon, you need the following application properties:
 
 - Client ID and secret of the application you created. These are provided on the **General** tab.
 - Your Okta domain. Click your account name in the top right corner of the Okta Admin Console; the domain is displayed under your account name.
@@ -170,12 +175,70 @@ For more information, refer to [App integrations](https://help.okta.com/oie/en-u
 
 **Configure**
 
-To configure federated authentication in YugabyteDB Managed, do the following:
+To configure federated authentication in YugabyteDB Aeon, do the following:
 
 1. Navigate to **Security > Access Control > Authentication**, and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose Okta identity provider.
 1. Enter the client ID and secret of the Okta application you created.
 1. Enter the Okta domain for your application.
+1. Click **Enable**.
+
+You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.
+
+  {{% /tab %}}
+
+  {{% tab header="JumpCloud" lang="jumpcloud" %}}
+
+**Create an application in JumpCloud**
+
+To use JumpCloud for your IdP, do the following:
+
+1. Sign in to JumpCloud using an administrator account.
+
+1. Create an application.
+
+    - Under **SSO Applications**, click **Add New Application**.
+    - Select **Custom Application**, and make sure the integration supports "SSO with OIDC" on the next page.
+    - Under **Manage Single Sign-On (SSO)**, select **Configure SSO with OIDC**, and click **Next**.
+    - Under **Enter General Info**, add the application name (for **Display Label**), **Description**, and logo (for **User Portal Image**), and select **Show this application in User Portal**.
+
+      This information is displayed as a tile when users sign in to YugabyteDB Aeon.
+
+    - Click **Configure Application**.
+
+1. Configure your application.
+
+    Under **SSO > Endpoint Configuration**, configure the following:
+
+    - **Redirect URIs** - enter `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`.
+    - **Client Authentication Type** - select **Client Secret Post**.
+    - **Login URL** - enter `https://cloud.yugabyte.com/login`.
+
+    Under **Attribute Mapping**, for **Standard Scopes**, select **Email** and **Profile**.
+
+    Click **Activate** when you are done.
+
+    You will be prompted in a pop up to save the **Client ID** and **Client Secret**. Save these in a secure location, you will need to provide these credentials in YugabyteDB Aeon.
+
+1. Configure Attributes and Identity Management as required.
+
+1. Integrate the user in JumpCloud.
+
+    - Navigate to **User Groups**, select the user groups you want to access YugabyteDB Aeon, and click **Save** when you are done.
+
+To configure JumpCloud federated authentication in YugabyteDB Aeon, you need the following application properties:
+
+- **Client ID** and **Client Secret** of the application you created. These are the credentials you saved when you activated your application. The **Client ID** is also displayed on the **SSO** tab.
+
+For more information, refer to the [JumpCloud](https://jumpcloud.com/support/sso-with-oidc) documentation.
+
+**Configure**
+
+To configure federated authentication in YugabyteDB Aeon, do the following:
+
+1. Navigate to **Security > Access Control > Authentication** and click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
+1. Choose JumpCloud identity provider.
+1. Enter the client ID and secret of the JumpCloud application you created.
 1. Click **Enable**.
 
 You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.

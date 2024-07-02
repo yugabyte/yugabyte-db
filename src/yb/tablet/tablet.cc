@@ -806,7 +806,14 @@ auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
   return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
 }
 
-Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable, bool write_blocked) {
+struct Tablet::IntentsDbFlushFilterState {
+  std::optional<int64_t> largest_flushed_index;
+  std::optional<rocksdb::FlushAbility> flush_ability;
+};
+
+Result<bool> Tablet::IntentsDbFlushFilter(
+    const rocksdb::MemTable& memtable, bool write_blocked,
+    std::shared_ptr<Tablet::IntentsDbFlushFilterState> state) {
   VLOG_WITH_PREFIX(4) << __func__;
 
   auto frontiers = memtable.Frontiers();
@@ -814,33 +821,43 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable, boo
     const auto& intents_largest =
         down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
 
-    // We allow to flush intents DB only after regular DB.
-    // Otherwise we could lose applied intents when corresponding regular records were not
-    // flushed.
-    auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
-    if (regular_flushed_frontier) {
-      const auto& regular_flushed_largest =
-          static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
-      if (regular_flushed_largest.op_id().index >= intents_largest.op_id().index) {
-        VLOG_WITH_PREFIX(4) << __func__ << ", regular already flushed";
-        return true;
+    if (!state->largest_flushed_index) {
+      // We allow to flush intents DB only after regular DB.
+      // Otherwise we could lose applied intents when corresponding regular records were not
+      // flushed.
+      auto regular_flushed_frontier = regular_db_->GetFlushedFrontier();
+      if (regular_flushed_frontier) {
+        const auto& regular_flushed_largest =
+            static_cast<const docdb::ConsensusFrontier&>(*regular_flushed_frontier);
+        state->largest_flushed_index = regular_flushed_largest.op_id().index;
+      } else {
+        state->largest_flushed_index = std::numeric_limits<int64_t>::min();
       }
+    }
+
+    if (*state->largest_flushed_index >= intents_largest.op_id().index) {
+      VLOG_WITH_PREFIX(4) << __func__ << ", regular already flushed";
+      return true;
     }
   } else {
     VLOG_WITH_PREFIX(4) << __func__ << ", no frontiers";
   }
 
+  bool initial = !state->flush_ability;
+  if (initial) {
+    state->flush_ability = regular_db_->GetFlushAbility();
+  }
   // If regular db does not have anything to flush, it means that we have just added intents,
   // without apply, so it is OK to flush the intents RocksDB.
-  auto flush_intention = regular_db_->GetFlushAbility();
-  if (flush_intention == rocksdb::FlushAbility::kNoNewData) {
+  if (*state->flush_ability == rocksdb::FlushAbility::kNoNewData) {
     VLOG_WITH_PREFIX(4) << __func__ << ", no new data";
     return true;
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
-  if (flush_intention != rocksdb::FlushAbility::kAlreadyFlushing &&
+  if (initial &&
+      *state->flush_ability != rocksdb::FlushAbility::kAlreadyFlushing &&
       (shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
     VLOG_WITH_PREFIX(2) << __func__ << ", force flush";
@@ -982,7 +999,9 @@ Status Tablet::OpenKeyValueTablet() {
     intents_rocksdb_options.tablet_id = tablet_id();
 
     intents_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
-      return std::bind(&Tablet::IntentsDbFlushFilter, this, _1, _2);
+      return std::bind(
+          &Tablet::IntentsDbFlushFilter, this, _1, _2,
+          std::make_shared<IntentsDbFlushFilterState>());
     });
 
     intents_rocksdb_options.compaction_filter_factory =

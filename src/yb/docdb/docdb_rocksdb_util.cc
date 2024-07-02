@@ -107,7 +107,10 @@ DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 102
              "Threshold beyond which compaction is considered large.");
 DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
-DEFINE_UNKNOWN_int32(rocksdb_max_write_buffer_number, 2,
+
+// Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by
+// db_max_flushing_bytes will be actual default.
+DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
              "Maximum number of write buffers that are built up in memory.");
 DECLARE_int64(db_block_size_bytes);
 
@@ -125,6 +128,11 @@ DEFINE_UNKNOWN_int64(db_write_buffer_size, -1,
 
 DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
+
+// Use a value slightly less than 2 default mem store sizes.
+DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
+    "The limit for the number of bytes in immutable mem tables. "
+    "After reaching this limit new writes are blocked. 0 - unlimited.");
 
 DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
@@ -212,12 +220,12 @@ namespace docdb {
 
 namespace {
 
-bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
+bool CompressionTypeValidator(const char* flag_name, const std::string& flag_compression_type) {
   auto res = yb::GetConfiguredCompressionType(flag_compression_type);
   if (!res.ok()) {
     // Below we CHECK_RESULT on the same value returned here, and validating the result here ensures
     // that CHECK_RESULT will never fail once the process is running.
-    LOG(ERROR) << res.status().ToString();
+    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_compression_type) << res.status().ToString();
     return false;
   }
   return true;
@@ -227,7 +235,7 @@ bool KeyValueEncodingFormatValidator(const char* flag_name, const std::string& f
   auto res = yb::docdb::GetConfiguredKeyValueEncodingFormat(flag_value);
   bool ok = res.ok();
   if (!ok) {
-    LOG(ERROR) << flag_name << ": " << res.status();
+    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_value) << res.status();
   }
   return ok;
 }
@@ -727,6 +735,9 @@ void InitRocksDBOptions(
   }
 
   options->max_write_buffer_number = FLAGS_rocksdb_max_write_buffer_number;
+  if (FLAGS_db_max_flushing_bytes != 0) {
+    options->max_flushing_bytes = FLAGS_db_max_flushing_bytes;
+  }
 
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);

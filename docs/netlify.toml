@@ -388,6 +388,12 @@
   from = "/preview/deploy/reference/configuration/yb-tserver/"
   to = "/preview/reference/configuration/yb-tserver/"
 
+## develop
+
+[[redirects]]
+  from = "/preview/develop/common-patterns/*"
+  to = "/preview/develop/data-modeling/common-patterns/:splat"
+
 [[redirects]]
   from = "/preview/develop/learn/acid-transactions/"
   to = "/preview/develop/learn/acid-transactions-ysql/"
@@ -605,28 +611,52 @@
   to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
-  from = "preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
   to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
+
+[[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
+
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
   to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
+
+[[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
   to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+
+[[redirects]]
    from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
    to = "/preview/yugabyte-platform/prepare/server-yba/"
+
+# [[redirects]]
+#    from = "/stable/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+#    to = "/stable/yugabyte-platform/prepare/server-yba/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/overview/"
@@ -646,6 +676,10 @@
 
 [[redirects]]
   from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/stable/develop/realworld-apps/*"
   to = "/preview/tutorials/"
 
 [[redirects]]
@@ -1156,12 +1190,12 @@
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
-  from = ":version/quick-start/*"
+  from = "/:version/quick-start/*"
   to = "/preview/quick-start/"
   force = true
 
 [[redirects]]
-  from = ":version/quick-start-yugabytedb-managed/*"
+  from = "/:version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
@@ -1337,6 +1371,9 @@
             https://www.yugabyte.com
             https://api.segment.io/
             https://cdn.segment.com/
+            https://c.6sc.co/
+            https://ipv6.6sc.co/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1361,6 +1398,7 @@
             https://x.clearbitjs.com
             https://js.driftt.com/
             https://cdn.segment.com/
+            https://j.6sc.co/
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1395,6 +1433,7 @@
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
+            https://b.6sc.co/
         ;
 
         child-src 'self' 'unsafe-inline'

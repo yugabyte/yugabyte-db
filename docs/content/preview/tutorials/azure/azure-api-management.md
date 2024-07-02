@@ -15,7 +15,7 @@ type: docs
 
 [Azure API Management (APIM)](https://azure.microsoft.com/en-us/products/api-management/) can be used to design, manage, and protect your APIs. This service acts as a centralized hub for your APIs, providing API gateway functionality, security measures, rate limiting, analytics, and monitoring, among other features.
 
-In this tutorial, we'll walk through the steps required to develop and deploy an API using Azure API Management with Node.js and [YugabyteDB Managed](https://www.yugabyte.com/yugabytedb/). It covers the deployment of a geo-partitioned YugabyteDB cluster, the development of Azure Functions for database queries, and the creation of an API using Azure API Management.
+In this tutorial, we'll walk through the steps required to develop and deploy an API using Azure API Management with Node.js and [YugabyteDB Aeon](https://www.yugabyte.com/yugabytedb/). It covers the deployment of a geo-partitioned YugabyteDB cluster, the development of Azure Functions for database queries, and the creation of an API using Azure API Management.
 
 In the following sections, you will:
 
@@ -25,7 +25,7 @@ In the following sections, you will:
 
 ## Prerequisites
 
-- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
+- A YugabyteDB Aeon account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - An Azure Cloud account with permission to create services.
 
 ## Create a YugabyteDB cluster

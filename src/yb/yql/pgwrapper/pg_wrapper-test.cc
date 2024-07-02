@@ -52,6 +52,7 @@ using yb::rpc::RpcController;
 using namespace std::literals;
 
 DECLARE_int32(ysql_log_min_duration_statement);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb {
 namespace pgwrapper {
@@ -593,15 +594,12 @@ TEST_F(PgWrapperFlagsTest, YB_DISABLE_TEST_IN_TSAN(VerifyGFlagRuntimeTag)) {
   ASSERT_OK(SetFlagOnAllTServers("ysql_yb_locks_txn_locks_per_tablet", "500"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_txn_locks_per_tablet", "500"));
 
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "false"));
-  ASSERT_OK(SetFlagOnAllTServers(
-      "allowed_preview_flags_csv",
-      "ysql_yb_enable_replication_commands,ysql_yb_enable_replica_identity"));
-  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replication_commands", "true"));
-  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replica_identity", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "true"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replication_commands", "false"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_yb_enable_replica_identity", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "false"));
 
   // Verify changing non-runtime flag fails
   ASSERT_NOK(SetFlagOnAllTServers("max_connections", "47"));
@@ -619,9 +617,6 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_min_txn_age=100");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_max_transactions=3");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_txn_locks_per_tablet=1000");
-    options->extra_tserver_flags.emplace_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_replication_commands,ysql_yb_enable_replica_"
-        "identity");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
   }
@@ -694,6 +689,27 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
+}
+
+class ValidateYsqlPgConfCsvTest : public YBTest {};
+
+TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) {
+  // Valid values
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, ""));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a =1 ,b 2"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1, b= 'String with spaces' "));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, R"(a=1,b='Special \'String''')"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1, # Comment out the bad pattern b='This won't work'"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String # with a comment'"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1,b'String with \\n string'"));
+
+  // Invalid values
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1, "two)"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1, "two")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,two "2")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,"tw"o")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
 }
 
 }  // namespace pgwrapper

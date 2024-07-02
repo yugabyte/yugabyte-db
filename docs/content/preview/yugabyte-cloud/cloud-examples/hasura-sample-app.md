@@ -2,7 +2,7 @@
 title: Deploy a GraphQL application
 headerTitle: Deploy a GraphQL application
 linkTitle: Deploy a GraphQL application
-description: Deploy the Realtime Poll GraphQL application for Hasura Cloud and YugabyteDB Managed.
+description: Deploy the Realtime Poll GraphQL application for Hasura Cloud and YugabyteDB Aeon.
 aliases:
   - /preview/yugabyte-cloud/hasura-sample-app/
 menu:
@@ -13,14 +13,14 @@ menu:
 type: docs
 ---
 
-This page demonstrates how to deploy a GraphQL application on Hasura Cloud and YugabyteDB Managed using Hasura's Realtime Poll sample application. This application is built using React, powered by the Hasura GraphQL Engine, and backed by a YugabyteDB Managed YugabyteDB cluster. It has an interface for users to cast a vote on a poll, and results are updated in an on-screen bar chart in real time.
+This page demonstrates how to deploy a GraphQL application on Hasura Cloud and YugabyteDB Aeon using Hasura's Realtime Poll sample application. This application is built using React, powered by the Hasura GraphQL Engine, and backed by a YugabyteDB Aeon YugabyteDB cluster. It has an interface for users to cast a vote on a poll, and results are updated in an on-screen bar chart in real time.
 
 ## Prerequisites
 
 The example has the following prerequisites:
 
-* You have created a cluster on YugabyteDB Managed. For instructions, refer to [Create your cluster](../../cloud-basics/create-clusters/).
-* You have created a Hasura project and connected it to your cluster. For instructions, refer to [Connect Hasura Cloud to YugabyteDB Managed](../hasura-cloud/).
+* You have created a cluster on YugabyteDB Aeon. For instructions, refer to [Create your cluster](../../cloud-basics/create-clusters/).
+* You have created a Hasura project and connected it to your cluster. For instructions, refer to [Connect Hasura Cloud to YugabyteDB Aeon](../hasura-cloud/).
 
   You will also need the **Admin Secret** of your Hasura project.
 
@@ -59,7 +59,7 @@ To migrate the tables and views to the Yugabyte database:
     $ cd migrations
     ```
 
-1. Rename the `default` directory to the Database Display Name you assigned to your YugabyteDB Managed database in the Hasura project console; for example, if your Database Display Name is `yb-realtime-polldb`, use the following command:
+1. Rename the `default` directory to the Database Display Name you assigned to your YugabyteDB Aeon database in the Hasura project console; for example, if your Database Display Name is `yb-realtime-polldb`, use the following command:
 
     ```sh
     $ mv default yb-realtime-polldb
@@ -134,7 +134,7 @@ Open a second browser tab, navigate to <http://localhost:3000>, and cast a vote 
 
 ![Realtime Poll application](/images/deploy/yugabyte-cloud/hasura-realtime-poll.png)
 
-To verify the data being committed to the YugabyteDB Managed instance, run the following subscription query on the **API** tab of the Hasura Cloud project console to retrieve the Poll ID:
+To verify the data being committed to the YugabyteDB Aeon instance, run the following subscription query on the **API** tab of the Hasura Cloud project console to retrieve the Poll ID:
 
 ```sh
 query {

@@ -340,8 +340,6 @@ static string DescribeOneFlagInXML(
   return r;
 }
 
-namespace {
-
 struct sort_flags_by_name {
   inline bool operator()(const CommandLineFlagInfo& flag1, const CommandLineFlagInfo& flag2) {
     const auto& a = flag1.name;
@@ -353,7 +351,29 @@ struct sort_flags_by_name {
     return a.size() < b.size();
   }
 };
-}  // namespace
+
+std::vector<std::string>& FlagsWithDelayedValidation() {
+  static std::vector<std::string> flags;
+  return flags;
+}
+
+bool& CommandLineFlagsParsed() {
+  static bool parsed = false;
+  return parsed;
+}
+
+Status ValidateFlagsRequiringDelayedValidation() {
+  CommandLineFlagsParsed() = true;
+
+  for (const auto& flag_name : FlagsWithDelayedValidation()) {
+    auto flag_info = google::GetCommandLineFlagInfoOrDie(flag_name.c_str());
+    // Flag was already set without any validation. Check if the current value is valid.
+    RETURN_NOT_OK(flags_internal::ValidateFlagValue(flag_name, flag_info.current_value));
+  }
+  FlagsWithDelayedValidation().clear();
+
+  return Status::OK();
+}
 
 void DumpFlagsXMLAndExit(OnlyDisplayDefaultFlagValue only_display_default_values) {
   vector<CommandLineFlagInfo> flags;
@@ -428,7 +448,7 @@ bool ValidateAllPreviewFlags(string* err_msg, const string& allowed_flags_csv) {
       if (!ContainsKey(allowed_flags, flag.name)) {
         (*err_msg) = Format(
             "Flag '$0' protects a feature that is currently in preview. In order for it to be "
-            "modified '$0' must be set in '--allowed_preview_flags_csv'",
+            "modified, '$0' must be set in flag 'allowed_preview_flags_csv'",
             flag.name);
         return false;
       }
@@ -447,33 +467,35 @@ bool IsPreviewFlagAllowed(const CommandLineFlagInfo& flag_info, const string& ne
 }
 
 // Validates that the requested updates to vmodule can be made.
-void ValidateVmodule() {
-  auto requested_settings = strings::Split(FLAGS_vmodule, ",");
+bool ValidateVmodule(const char* flag_name, const std::string& value) {
+  auto requested_settings = strings::Split(value, ",");
   for (const auto& module_value : requested_settings) {
     if (module_value.empty()) {
       continue;
     }
     vector<string> kv = strings::Split(module_value, "=");
     if (kv.size() != 2 || kv[0].empty() || kv[1].empty()) {
-      LOG(FATAL) << Format(
-          "'$0' is not valid. vmodule should be a comma list of <module_pattern>=<logging_level>",
-          module_value);
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "'" << module_value
+          << "' is not valid. vmodule should be a comma list of <module_pattern>=<logging_level>";
+      return false;
     }
 
     char* end;
     errno = 0;
     const int64 value = strtol(kv[1].c_str(), &end, 10);
     if (*end != '\0' || errno == ERANGE || value > INT_MAX || value < INT_MIN) {
-      LOG(FATAL) << Format(
-          "'$0' is not a valid integer number. Cannot update vmodule setting for module '$1'",
-          kv[1], kv[0]);
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "Invalid logging level '" << kv[1] << "' for module '" << kv[0]
+          << "'. Only integer values between " << INT_MIN << " and " << INT_MAX << " are allowed";
+      return false;
     }
   }
+
+  return true;
 }
 
-void ValidateAndUpdateVmodule() {
-  ValidateVmodule();
-
+void UpdateVmodule() {
   // glog behavior: The first time VLOG is invoked for a file it tries to find a matching pattern in
   // vmodule list. If found it links to that pattern for the rest of the program lifetime. If not
   // found it uses the default logging level from FLAGS_v and gets added to a list of files that
@@ -536,9 +558,14 @@ void ValidateAndUpdateVmodule() {
 
 void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   static GoogleOnceType once_register_vmodule_callback = GOOGLE_ONCE_INIT;
+  // We cannot use DEFINE_validator and REGISTER_CALLBACK for vmodule since it is not DEFINED in any
+  // yb file, and we cannot guarantee the static initialization order. Instead we register them
+  // before we parse flags by which time static initialization is guaranteed to be complete.
   GoogleOnceInit(&once_register_vmodule_callback, []() {
+    CHECK(google::RegisterFlagValidator(&FLAGS_vmodule, &ValidateVmodule));  // NOLINT
+
     flags_callback_internal::RegisterGlobalFlagUpdateCallback(
-        &FLAGS_vmodule, "ValidateAndUpdateVmodule", &ValidateAndUpdateVmodule);
+        &FLAGS_vmodule, "ValidateAndUpdateVmodule", &UpdateVmodule);
   });
 
   {
@@ -552,6 +579,9 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     SetFlagDefaultsToCurrent(flag_infos);
 
     google::ParseCommandLineNonHelpFlags(argc, argv, remove_flags);
+
+    // Run validation that were previously ignored due to DELAY_FLAG_VALIDATION_ON_STARTUP.
+    CHECK_OK(ValidateFlagsRequiringDelayedValidation());
 
     // Ensure all preview flags overridden are in allow list before invoking any callbacks.
     string err_msg;
@@ -673,6 +703,55 @@ void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_
   }
 }
 
+static const std::string kMaskedFlagValue = "***";
+
+bool IsFlagSensitive(const unordered_set<FlagTag>& tags) {
+  return ContainsKey(tags, FlagTag::kSensitive_info);
+}
+
+bool IsFlagSensitive(const std::string& flag_name) {
+  unordered_set<FlagTag> tags;
+  GetFlagTags(flag_name, &tags);
+  return IsFlagSensitive(tags);
+}
+
+std::string GetMaskedValueIfSensitive(
+    const unordered_set<FlagTag>& tags, const std::string& value) {
+  if (IsFlagSensitive(tags)) {
+    return kMaskedFlagValue;
+  }
+  return value;
+}
+
+std::string GetMaskedValueIfSensitive(const std::string& flag_name, const std::string& value) {
+  unordered_set<FlagTag> tags;
+  GetFlagTags(flag_name, &tags);
+  return GetMaskedValueIfSensitive(tags, value);
+}
+
+Status ValidateFlagValue(const std::string& flag_name, const std::string& value) {
+  // Clear previous errors if any.
+  GetFlagValidatorSink().GetMessagesAndClear();
+
+  std::string error_msg;
+  if (google::ValidateCommandLineOption(flag_name.c_str(), value.c_str(), &error_msg)) {
+    return Status::OK();
+  }
+
+  auto validation_msgs = GetFlagValidatorSink().GetMessagesAndClear();
+
+  // error_msg originates from gflags, which may contain the value. Therefore, if it is sensitive,
+  // mask it.
+  // Ex: ERROR: failed validation of new value '1000' for flag 'ysql_conn_mgr_port'
+  if (!value.empty() && IsFlagSensitive(flag_name)) {
+    boost::replace_all(error_msg, Format("'$0'", value), Format("'$0'", kMaskedFlagValue));
+  }
+
+  return STATUS_FORMAT(
+      InvalidArgument, "$0 : $1", error_msg,
+      validation_msgs.empty() ? "Bad value" : JoinStrings(validation_msgs, ";"));
+}
+
 SetFlagResult SetFlag(
     const string& flag_name, const string& new_value, const SetFlagForce force, string* old_value,
     string* output_msg) {
@@ -706,17 +785,24 @@ SetFlagResult SetFlag(
   } else if (ContainsKey(tags, FlagTag::kPreview)) {
     if (!IsPreviewFlagAllowed(flag_info, new_value)) {
       *output_msg =
-          "Cannot modify Preview flags unless you acknowledge the risks "
-          "by adding their name to allowed_preview_flags_csv flag.";
+          "Cannot modify Preview flag unless you acknowledge the risks by adding it to flag "
+          "'allowed_preview_flags_csv'";
       return SetFlagResult::BAD_VALUE;
     }
   }
 
+  // Clear previous errors if any.
+  GetFlagValidatorSink().GetMessagesAndClear();
+
   string ret = flags_internal::SetFlagInternal(
       flag_info.flag_ptr, flag_name.c_str(), new_value, google::SET_FLAGS_VALUE);
+  auto validation_msgs = GetFlagValidatorSink().GetMessagesAndClear();
 
   if (ret.empty()) {
-    *output_msg = "Unable to set flag: bad value. Check stderr for more information.";
+    *output_msg = Format(
+        "Unable to set flag: $0",
+        validation_msgs.empty() ? "Bad value" : JoinStrings(validation_msgs, ";"));
+
     return SetFlagResult::BAD_VALUE;
   }
 
@@ -725,9 +811,9 @@ SetFlagResult SetFlag(
   // We have already validated the flag_name with GetCommandLineFlagInfo, so this should not fail.
   CHECK(google::GetCommandLineOption(flag_name.c_str(), &final_value));
 
-  bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
-  LOG(INFO) << "Changed flag: " << flag_name << " from '" << (is_sensitive ? "***" : old_val)
-            << "' to '" << (is_sensitive ? "***" : final_value) << "'";
+  LOG(INFO) << "Changed flag '" << flag_name << "' from '"
+            << GetMaskedValueIfSensitive(tags, old_val) << "' to '"
+            << GetMaskedValueIfSensitive(tags, final_value) << "'";
 
   *output_msg = ret;
   *old_value = old_val;
@@ -740,13 +826,41 @@ bool ValidatePercentageFlag(const char* flag_name, int value) {
   if (value >= 0 && value <= 100) {
     return true;
   }
-  LOG(WARNING) << flag_name << " must be a percentage (0 to 100), value " << value << " is invalid";
+  LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be a percentage (0 to 100)";
   return false;
 }
 
 bool IsUsageMessageSet() {
   // If it's not initialized it returns: "Warning: SetUsageMessage() never called".
   return !StringStartsWithOrEquals(google::ProgramUsage(), "Warning:");
+}
+
+void FlagValidatorSink::send(
+    google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
+    const struct ::tm* tm_time, const char* message, size_t message_len) {
+  std::lock_guard l(mutex_);
+  logged_msgs_.push_back(
+      Format("$0:$1] $2", base_filename, line, std::string(message, message_len)));
+}
+
+const std::vector<std::string> FlagValidatorSink::GetMessagesAndClear() {
+  std::lock_guard l(mutex_);
+  auto result = std::move(logged_msgs_);
+  logged_msgs_.clear();
+  return result;
+}
+
+FlagValidatorSink& GetFlagValidatorSink() {
+  static FlagValidatorSink sink;
+  return sink;
+}
+
+bool RecordFlagForDelayedValidation(const std::string& flag_name) {
+  if (CommandLineFlagsParsed()) {
+    return false;
+  }
+  FlagsWithDelayedValidation().emplace_back(flag_name);
+  return true;
 }
 
 } // namespace yb

@@ -32,13 +32,15 @@ Review the following information before starting an upgrade.
 
     For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
 
-    To view and download releases, refer to [Releases](../../releases/).
+    To view and download releases, refer to [Releases](/preview/releases/).
 
 - Upgrades are not supported between preview and stable versions.
 
 - Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
 
 - Roll back is {{<badge/ea>}} and supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](/v2.18/manage/upgrade-deployment/).
+
+- You can upgrade from any version of 2.14.x to any stable version in one go. 
 
 ## Upgrade YugabyteDB cluster
 

@@ -247,114 +247,6 @@ std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
 
 } // namespace
 
-Status RetryableRequestsManager::Init(const server::ClockPtr& clock) {
-  retryable_requests_->SetServerClock(clock);
-  retryable_requests_->SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
-  if (!fs_manager_->Exists(dir_)) {
-    LOG(INFO) << "Wal dir is not created, skip initializing RetryableRequestsManager for "
-              << tablet_id_;
-    // For first startup.
-    has_file_on_disk_ = false;
-    return Status::OK();
-  }
-  RETURN_NOT_OK(DoInit());
-  LOG(INFO) << "Initialized RetryableRequestsManager, found a file ? "
-            << (has_file_on_disk_ ? "yes" : "no")
-            << ", wal dir=" << dir_;
-  return Status::OK();
-}
-
-Status RetryableRequestsManager::SaveToDisk(std::unique_ptr<RetryableRequests> retryable_requests) {
-  if (!retryable_requests) {
-    return STATUS(IllegalState, "retryable_requests_copy_ is null,"
-        "should set it before calling SaveToDisk");
-  }
-  RetryableRequestsPB pb;
-  retryable_requests->ToPB(&pb);
-  auto path = NewFilePath();
-  LOG(INFO) << "Saving retryable requests up to " << pb.last_op_id() << " to " << path;
-  auto* env = fs_manager()->env();
-  SCOPED_WAIT_STATUS(RetryableRequests_SaveToDisk);
-  RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
-                            env, path, pb,
-                            pb_util::OVERWRITE, pb_util::SYNC),
-                            "Failed to write retryable requests to disk");
-  // Delete the current file and rename new file to current file.
-  if (has_file_on_disk_) {
-    RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
-  }
-  LOG(INFO) << "Renaming " << NewFileName() << " to " << FileName();
-  RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
-  has_file_on_disk_ = true;
-  return env->SyncDir(dir_);
-}
-
-Status RetryableRequestsManager::LoadFromDisk() {
-  if (!has_file_on_disk_) {
-    return STATUS(NotFound, "Retryable requests has not been flushed");
-  }
-  RetryableRequestsPB pb;
-  auto path = CurrentFilePath();
-  RETURN_NOT_OK_PREPEND(
-      pb_util::ReadPBContainerFromPath(fs_manager()->env(), path, &pb),
-      Format("Could not load retryable requests from $0", path));
-  retryable_requests_->FromPB(pb);
-  LOG(INFO) << Format("Loaded tablet ($0) retryable requests "
-                      "(max_replicated_op_id_=$1) from $2",
-                      tablet_id_, pb.last_op_id(), path);
-  return Status::OK();
-}
-
-Status RetryableRequestsManager::CopyTo(const std::string& dest_path) {
-  if (!has_file_on_disk_) {
-    return STATUS_FORMAT(NotFound, "Retryable requests has not been flushed");
-  }
-  auto* env = fs_manager()->env();
-  auto path = CurrentFilePath();
-  auto dest_path_tmp = pb_util::MakeTempPath(dest_path);
-  LOG(INFO) << "Copying retryable requests from " << path << " to " << dest_path;
-  DCHECK(fs_manager()->Exists(path));
-
-  WritableFileOptions options;
-  options.sync_on_close = true;
-  RETURN_NOT_OK(env_util::CopyFile(
-      fs_manager()->env(), path, dest_path_tmp, options));
-  RETURN_NOT_OK(env->RenameFile(dest_path_tmp, dest_path));
-  return env->SyncDir(dir_);
-}
-
-std::unique_ptr<RetryableRequests> RetryableRequestsManager::TakeSnapshotOfRetryableRequests() {
-  if (!HasUnflushedData()) {
-    // Simply return false if no new data to flush.
-    YB_LOG_EVERY_N_SECS(INFO, 60)
-        << "Tablet " << tablet_id_ << " has no new retryable requests to flush";
-    return nullptr;
-  }
-  return std::make_unique<RetryableRequests>(*retryable_requests_);
-}
-
-Status RetryableRequestsManager::DoInit() {
-  auto* env = fs_manager_->env();
-  // Do cleanup - dlete temp new file if it exists.
-  auto temp_file_path = pb_util::MakeTempPath(NewFilePath());
-  if (env->FileExists(temp_file_path)) {
-    RETURN_NOT_OK(env->DeleteFile(temp_file_path));
-  }
-  bool has_current = env->FileExists(CurrentFilePath());
-  bool has_new = env->FileExists(NewFilePath());
-  if (has_new) {
-    // Should always load from the new file if it exists.
-    if (has_current) {
-      // If the current file exists, should delete it and rename the
-      // new file to current file.
-      RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
-    }
-    RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
-  }
-  has_file_on_disk_ = has_new || has_current;
-  return env->SyncDir(dir_);
-}
-
 class RetryableRequests::Impl {
  public:
   explicit Impl(const MemTrackerPtr& tablet_mem_tracker, std::string log_prefix)
@@ -417,7 +309,7 @@ class RetryableRequests::Impl {
     return last_flushed_op_id_;
   }
 
-  void ToPB(RetryableRequestsPB* pb) const {
+  void ToPB(TabletBootstrapStatePB* pb) const {
     max_replicated_op_id_.ToPB(pb->mutable_last_op_id());
     for (const auto& client_requests : clients_) {
       auto* client_requests_pb = pb->add_client_requests();
@@ -437,7 +329,7 @@ class RetryableRequests::Impl {
     }
   }
 
-  void FromPB(const RetryableRequestsPB& pb) {
+  void FromPB(const TabletBootstrapStatePB& pb) {
     max_replicated_op_id_ = last_flushed_op_id_ = OpId::FromPB(pb.last_op_id());
     for (auto& reqs : pb.client_requests()) {
       ClientId client_id(reqs.client_id1(), reqs.client_id2());
@@ -881,11 +773,11 @@ OpId RetryableRequests::GetLastFlushedOpId() const {
   return impl_->GetLastFlushedOpId();
 }
 
-void RetryableRequests::ToPB(RetryableRequestsPB *pb) const {
+void RetryableRequests::ToPB(TabletBootstrapStatePB *pb) const {
   impl_->ToPB(pb);
 }
 
-void RetryableRequests::FromPB(const RetryableRequestsPB &pb) {
+void RetryableRequests::FromPB(const TabletBootstrapStatePB &pb) {
   impl_->FromPB(pb);
 }
 

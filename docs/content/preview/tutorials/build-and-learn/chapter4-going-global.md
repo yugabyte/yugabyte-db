@@ -347,4 +347,4 @@ For example, the video below demonstrates how to achieve low-latency reads acros
 
 Congratulations, you've completed Chapter 4! You learned how to take advantage of the latency-optimized geo-partitiong design pattern in a multi-region setting.
 
-Moving on to the final [Chapter 5](../chapter5-going-cloud-native), where you'll learn how to offload cluster management and operations by migrating to YugabyteDB Managed.
+Moving on to the final [Chapter 5](../chapter5-going-cloud-native), where you'll learn how to offload cluster management and operations by migrating to YugabyteDB Aeon.

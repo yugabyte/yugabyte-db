@@ -102,6 +102,7 @@ const char* const kVerifyTabletOp = "verify_tablet";
 const char* const kAreTabletsRunningOp = "are_tablets_running";
 const char* const kIsServerReadyOp = "is_server_ready";
 const char* const kSetFlagOp = "set_flag";
+const char* const kValidateFlagValueOp = "validate_flag_value";
 const char* const kRefreshFlagsOp = "refresh_flags";
 const char* const kDumpTabletOp = "dump_tablet";
 const char* const kTabletStateOp = "get_tablet_state";
@@ -199,6 +200,9 @@ class TsAdminClient {
   // safe to change at runtime.
   Status SetFlag(const string& flag, const string& val,
                  bool force);
+
+  // Validates the value of a flag without actually setting it.
+  Status ValidateFlagValue(const string& flag, const string& val);
 
   // Refreshes all gflags on the remote server to the flagfile, via RPC.
   Status RefreshFlags();
@@ -381,6 +385,18 @@ Status TsAdminClient::SetFlag(const string& flag, const string& val,
     default:
       return STATUS(RemoteError, resp.ShortDebugString());
   }
+}
+
+Status TsAdminClient::ValidateFlagValue(const string& flag, const string& val) {
+  server::ValidateFlagValueRequestPB req;
+  server::ValidateFlagValueResponsePB resp;
+  RpcController rpc;
+
+  rpc.set_timeout(timeout_);
+  req.set_flag_name(flag);
+  req.set_flag_value(val);
+
+  return generic_proxy_->ValidateFlagValue(req, &resp, &rpc);
 }
 
 Status TsAdminClient::RefreshFlags() {
@@ -727,6 +743,7 @@ void SetUsage(const char* argv0) {
       << "  " << kAreTabletsRunningOp << "\n"
       << "  " << kIsServerReadyOp << "\n"
       << "  " << kSetFlagOp << " [-force] <flag> <value>\n"
+      << "  " << kValidateFlagValueOp << " <flag> <value>\n"
       << "  " << kRefreshFlagsOp << "\n"
       << "  " << kTabletStateOp << " <tablet_id>\n"
       << "  " << kDumpTabletOp << " <tablet_id>\n"
@@ -859,6 +876,13 @@ static int TsCliMain(int argc, char** argv) {
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.SetFlag(argv[2], argv[3], FLAGS_force),
                                     "Unable to set flag");
+
+  } else if (op == kValidateFlagValueOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.ValidateFlagValue(argv[2], argv[3]), "Invalid flag value");
+    std::cout << "Flag value is valid" << std::endl;
 
   } else if (op == kRefreshFlagsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);

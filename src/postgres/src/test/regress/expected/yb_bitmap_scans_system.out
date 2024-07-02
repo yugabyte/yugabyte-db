@@ -39,7 +39,7 @@ SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER B
  yb_fdw                    | f        | t          | f             | f           | f           | f              | f            |           -1 |             |
 (11 rows)
 
-/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
                                                               QUERY PLAN
 --------------------------------------------------------------------------------------------------------------------------------------
@@ -60,14 +60,14 @@ SELECT * FROM pg_authid WHERE rolname LIKE 'pg_%' OR rolname LIKE 'yb_%' ORDER B
                        Storage Index Filter: ((rolname = 'postgres'::name) OR (rolname ~~ 'pg_%'::text) OR (rolname ~~ 'yb_%'::text))
 (15 rows)
 
-/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
  spcname
 ---------
 (0 rows)
 
 SET yb_enable_expression_pushdown = false;
-/*+ BitmapScan(pg_roles) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
                                                  QUERY PLAN
 ------------------------------------------------------------------------------------------------------------
@@ -86,7 +86,7 @@ SET yb_enable_expression_pushdown = false;
                        Index Cond: ((rolname >= 'yb'::name) AND (rolname < 'yc'::name))
 (13 rows)
 
-/*+ BitmapScan(pg_roles) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
+/*+ BitmapScan(pg_authid) */ SELECT spcname FROM pg_tablespace WHERE spcowner NOT IN (
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
  spcname
 ---------

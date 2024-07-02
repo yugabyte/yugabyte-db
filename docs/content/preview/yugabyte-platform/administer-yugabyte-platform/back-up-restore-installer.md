@@ -36,7 +36,7 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
   </li>
 </ul>
 
-If you installed YBA using [YBA installer](../../install-yugabyte-platform/install-software/installer/), use the [yba-ctl](../../install-yugabyte-platform/install-software/installer/#download-yba-installer) CLI to back up and restore your YBA installation. The CLI executes the `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
+If you installed YugabyteDB Anywhere using [YBA installer](../../install-yugabyte-platform/install-software/installer/), use the [yba-ctl](../../install-yugabyte-platform/install-software/installer/#download-yba-installer) CLI to back up and restore your YugabyteDB Anywhere installation. The CLI executes the `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 
 {{< note title="Note" >}}
 
@@ -44,7 +44,7 @@ You cannot back up and restore Prometheus metrics data.
 
 {{< /note >}}
 
-## Back up YBA
+## Back up YugabyteDB Anywhere
 
 To back up your YugabyteDB Anywhere installation, perform the following steps:
 
@@ -73,7 +73,7 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
 
 1. Upload the backup file to your preferred storage location and delete it from the local disk.
 
-## Restore YBA
+## Restore YugabyteDB Anywhere
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
 

@@ -89,7 +89,6 @@ set(COMMON_SRCS
   key_encoder.cc
   opid.cc
   pgsql_error.cc
-  path-handler-util.cc
   placement_info.cc
   pg_types.cc
   ql_protocol_util.cc
@@ -106,6 +105,7 @@ set(COMMON_SRCS
   transaction_error.cc
   wire_protocol.cc
   llvm_profile_dumper.cc
+  xcluster_util.cc
   )
 
 set(COMMON_LIBS

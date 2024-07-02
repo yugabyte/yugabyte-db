@@ -38,15 +38,29 @@
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/flags/auto_flags.h"
 
-// Redefine the macro from gflags.h with an unused attribute.
-// Note: This macro should be used in the same file that DEFINEs the flag. Using it any other file
-// can result in segfault due to indeterminate order of static initialization.
+// Macro for the registration of a flag validator.
+// The validation function should return true if the flag value is valid, and false otherwise. If
+// the function returns false for the new value of the flag, the flag will retain its current value.
+// If it returns false for the default value, the process will die. Use LOG_FLAG_VALIDATION_ERROR to
+// log error messages when returning false.
+//
+// Validator fuction should be of the form:
+// bool ValidatorFunc(const char* flag_name, <flag_type> value);
+// for strings the second argument should be `const std::string&`.
+//
+// Note:
+// If the validation depends on the value of other flags then make sure to call
+// DELAY_FLAG_VALIDATION_ON_STARTUP macro, so that we do not enforce a restriction on the order of
+// flags in command line and flags file.
+//
+// This macro should be used in the same file that DEFINEs the flag. Using it any other file can
+// result in segfault due to indeterminate order of static initialization.
 #ifdef DEFINE_validator
 #undef DEFINE_validator
 #endif
 #define DEFINE_validator(name, validator) \
   static_assert( \
-      sizeof(_DEFINE_FLAG_IN_FILE(name)), "validator must be DEFINED in the same file as the flag"); \
+    sizeof(_DEFINE_FLAG_IN_FILE(name)), "validator must be DEFINED in the same file as the flag"); \
   static const bool BOOST_PP_CAT(name, _validator_registered) __attribute__((unused)) = \
       google::RegisterFlagValidator(&BOOST_PP_CAT(FLAGS_, name), (validator))
 
@@ -121,6 +135,17 @@ SetFlagResult SetFlag(
     const std::string& flag_name, const std::string& new_value, const SetFlagForce force,
     std::string* old_value, std::string* output_msg);
 
+// If the flag is tagged as sensitive_info then returns a masked value('***').
+// Only string values are sensitive.
+std::string GetMaskedValueIfSensitive(const std::string& flag_name, const std::string& value);
+template <typename T>
+T GetMaskedValueIfSensitive(const std::string& flag_name, T value) {
+  return value;
+}
+
+// Check if the flag can be set to the new value. Does not actually set the flag.
+Status ValidateFlagValue(const std::string& flag_name, const std::string& value);
+
 }  // namespace flags_internal
 
 // In order to mark a flag as deprecated, use this macro:
@@ -148,5 +173,43 @@ bool ValidatePercentageFlag(const char* flag_name, int value);
 
 // Check if SetUsageMessage() was called. Useful for tools.
 bool IsUsageMessageSet();
+
+// GLog sink that keeps an internal buffer of messages that have been logged from DEFINE_validator
+// flag macro.
+class FlagValidatorSink : public google::LogSink {
+ public:
+  void send(
+      google::LogSeverity severity, const char* full_filename, const char* base_filename, int line,
+      const struct ::tm* tm_time, const char* message, size_t message_len) override;
+
+  const std::vector<std::string> GetMessagesAndClear();
+
+ private:
+  std::mutex mutex_;
+  std::vector<std::string> logged_msgs_ GUARDED_BY(mutex_);
+};
+
+FlagValidatorSink& GetFlagValidatorSink();
+
+// Log error message to the error log and the flag validator sink, which will ensure it is sent
+// back to the user. Also masks any sensitive values.
+#define LOG_FLAG_VALIDATION_ERROR(flag_name, value) \
+  LOG_TO_SINK(&yb::GetFlagValidatorSink(), ERROR) \
+      << "Invalid value '" << yb::flags_internal::GetMaskedValueIfSensitive(flag_name, value) \
+      << "' for flag '" << flag_name << "': "
+
+// Returns true if the flag was recorded for delayed validation, and the validation can be skipped.
+bool RecordFlagForDelayedValidation(const std::string& flag_name);
+
+// Some flag validation may depend on the value of another flag. Flags are parsed, validated and set
+// in order they are passed in via the command line, or flags file. In order to not impose a
+// restriction on the user to pass the flags in a particular obscure order, this macro delays
+// the validation until all flags have been set.
+#define DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name) \
+  do { \
+    if (yb::RecordFlagForDelayedValidation(flag_name)) { \
+      return true; \
+    } \
+  } while (false)
 
 } // namespace yb

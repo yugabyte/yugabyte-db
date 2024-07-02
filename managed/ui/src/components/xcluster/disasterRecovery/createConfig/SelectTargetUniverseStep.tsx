@@ -8,14 +8,12 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { YBReactSelectField } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
-import {
-  DOCS_URL_DR_REPLICA_SELECTION_LIMITATIONS,
-  DR_DROPDOWN_SELECT_INPUT_WIDTH_PX
-} from '../constants';
+import { DOCS_URL_DR_REPLICA_SELECTION_LIMITATIONS } from '../constants';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../../redesign/components';
+import { INPUT_FIELD_WIDTH_PX } from '../../constants';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 
@@ -126,7 +124,7 @@ export const SelectTargetUniverseStep = ({
             control={control}
             name="targetUniverse"
             options={universeOptions}
-            autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+            autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
             maxWidth="100%"
             rules={{
               validate: {

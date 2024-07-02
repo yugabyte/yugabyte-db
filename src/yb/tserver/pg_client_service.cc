@@ -481,7 +481,9 @@ class PgClientServiceImpl::Impl {
     }
 
     client::YBTablePtr table;
-    RETURN_NOT_OK(table_cache_.GetInfo(req.table_id(), &table, resp->mutable_info()));
+    RETURN_NOT_OK(table_cache_.GetInfo(
+        req.table_id(), master::IncludeInactive(req.include_inactive()), &table,
+        resp->mutable_info()));
     tserver::GetTablePartitionList(table, resp->mutable_partitions());
     return Status::OK();
   }
@@ -1387,22 +1389,34 @@ class PgClientServiceImpl::Impl {
           call.wait_state().aux_info().method() == "Perform")));
   }
 
+  void MaybeIncludeSample(
+      tserver::WaitStatesPB* resp, const WaitStateInfoPB& wait_state_pb, int sample_size,
+      int& samples_considered) {
+    if (++samples_considered <= sample_size) {
+      resp->add_wait_states()->CopyFrom(wait_state_pb);
+    } else {
+      int random_index = RandomUniformInt<int>(1, samples_considered);
+      if (random_index <= sample_size) {
+        resp->mutable_wait_states(random_index - 1)->CopyFrom(wait_state_pb);
+      }
+    }
+  }
+
   void PopulateWaitStates(
       const PgActiveSessionHistoryRequestPB& req, const yb::rpc::RpcConnectionPB& conn,
-      tserver::WaitStatesPB* resp) {
+      tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     for (const auto& call : conn.calls_in_flight()) {
       if (ShouldIgnoreCall(req, call)) {
         VLOG(3) << "Ignoring " << call.wait_state().DebugString();
         continue;
       }
-      auto* wait_state = resp->add_wait_states();
-      wait_state->CopyFrom(call.wait_state());
+      MaybeIncludeSample(resp, call.wait_state(), sample_size, samples_considered);
     }
   }
 
   void GetRpcsWaitStates(
       const PgActiveSessionHistoryRequestPB& req, ash::Component component,
-      tserver::WaitStatesPB* resp) {
+      tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     auto* messenger = tablet_server_.GetMessenger(component);
     if (!messenger) {
       LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(component);
@@ -1422,11 +1436,11 @@ class PgClientServiceImpl::Impl {
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
     for (const auto& conn : dump_resp.inbound_connections()) {
-      PopulateWaitStates(req, conn, resp);
+      PopulateWaitStates(req, conn, resp, sample_size, samples_considered);
     }
 
     if (dump_resp.has_local_calls()) {
-      PopulateWaitStates(req, dump_resp.local_calls(), resp);
+      PopulateWaitStates(req, dump_resp.local_calls(), resp, sample_size, samples_considered);
     }
 
     VLOG(3) << __PRETTY_FUNCTION__ << " wait-states: " << yb::ToString(resp->wait_states());
@@ -1434,17 +1448,23 @@ class PgClientServiceImpl::Impl {
 
   void AddWaitStatesToResponse(
       const ash::WaitStateTracker& tracker, bool export_wait_state_names,
-      tserver::WaitStatesPB* resp) {
+      tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     Result<Uuid> local_uuid = Uuid::FromHexStringBigEndian(instance_id_);
     DCHECK_OK(local_uuid);
     resp->set_component(yb::to_underlying(ash::Component::kTServer));
     for (auto& wait_state_ptr : tracker.GetWaitStates()) {
-      if (wait_state_ptr && wait_state_ptr->code() != ash::WaitStateCode::kIdle) {
-        if (local_uuid) {
-          wait_state_ptr->set_yql_endpoint_tserver_uuid(*local_uuid);
-        }
-        wait_state_ptr->ToPB(resp->add_wait_states(), export_wait_state_names);
+      if (!wait_state_ptr) {
+        continue;
       }
+      WaitStateInfoPB wait_state_pb;
+      wait_state_ptr->ToPB(&wait_state_pb, export_wait_state_names);
+      if (wait_state_pb.wait_state_code() == yb::to_underlying(ash::WaitStateCode::kIdle)) {
+        continue;
+      }
+      if (local_uuid) {
+        local_uuid->ToBytes(wait_state_pb.mutable_metadata()->mutable_yql_endpoint_tserver_uuid());
+      }
+      MaybeIncludeSample(resp, wait_state_pb, sample_size, samples_considered);
     }
     VLOG(2) << "Tracker call sending " << resp->DebugString();
   }
@@ -1452,25 +1472,35 @@ class PgClientServiceImpl::Impl {
   Status ActiveSessionHistory(
       const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
       rpc::RpcContext* context) {
+    int tserver_samples_considered = 0;
+    int cql_samples_considered = 0;
+    int sample_size = req.sample_size();
     if (req.fetch_tserver_states()) {
-      GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kTServer, resp->mutable_tserver_wait_states(),
+          sample_size, tserver_samples_considered);
       AddWaitStatesToResponse(
           ash::SharedMemoryPgPerformTracker(), req.export_wait_state_code_as_string(),
-          resp->mutable_tserver_wait_states());
+          resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     }
     if (req.fetch_flush_and_compaction_states()) {
       AddWaitStatesToResponse(
           ash::FlushAndCompactionWaitStatesTracker(), req.export_wait_state_code_as_string(),
-          resp->mutable_flush_and_compaction_wait_states());
+          resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     }
     if (req.fetch_raft_log_appender_states()) {
       AddWaitStatesToResponse(
-          ash::RaftLogAppenderWaitStatesTracker(), req.export_wait_state_code_as_string(),
-          resp->mutable_raft_log_appender_wait_states());
+          ash::RaftLogWaitStatesTracker(), req.export_wait_state_code_as_string(),
+          resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     }
     if (req.fetch_cql_states()) {
-      GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states());
+      GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states(),
+          sample_size, cql_samples_considered);
     }
+    float tserver_sample_weight =
+        std::max(tserver_samples_considered, sample_size) * 1.0 / sample_size;
+    float cql_sample_weight = std::max(cql_samples_considered, sample_size) * 1.0 / sample_size;
+    resp->mutable_tserver_wait_states()->set_sample_weight(tserver_sample_weight);
+    resp->mutable_cql_wait_states()->set_sample_weight(cql_sample_weight);
     return Status::OK();
   }
 
@@ -1945,5 +1975,68 @@ void PgClientServiceImpl::method( \
 
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+
+PgClientServiceMockImpl::PgClientServiceMockImpl(
+    const scoped_refptr<MetricEntity>& entity, PgClientServiceIf* impl)
+    : PgClientServiceIf(entity), impl_(impl) {}
+
+PgClientServiceMockImpl::Handle PgClientServiceMockImpl::SetMock(
+    const std::string& method, SharedFunctor&& mock) {
+  {
+    std::lock_guard lock(mutex_);
+    mocks_[method] = mock;
+  }
+
+  return Handle{std::move(mock)};
+}
+
+Result<bool> PgClientServiceMockImpl::DispatchMock(
+    const std::string& method, const void* req, void* resp, rpc::RpcContext* context) {
+  SharedFunctor mock;
+  {
+    SharedLock lock(mutex_);
+    auto it = mocks_.find(method);
+    if (it != mocks_.end()) {
+      mock = it->second.lock();
+    }
+  }
+
+  if (!mock) {
+    return false;
+  }
+  RETURN_NOT_OK((*mock)(req, resp, context));
+  return true;
+}
+
+#define YB_PG_CLIENT_MOCK_METHOD_DEFINE(r, data, method) \
+  void PgClientServiceMockImpl::method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB) * req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB) * resp, rpc::RpcContext context) { \
+    auto result = DispatchMock(BOOST_PP_STRINGIZE(method), req, resp, &context); \
+    if (!result.ok() || *result) { \
+      Respond(ResultToStatus(result), resp, &context); \
+      return; \
+    } \
+    impl_->method(req, resp, std::move(context)); \
+  }
+
+template <class Req, class Resp>
+auto MakeSharedFunctor(const std::function<Status(const Req*, Resp*, rpc::RpcContext*)>& func) {
+  return std::make_shared<PgClientServiceMockImpl::Functor>(
+      [func](const void* req, void* resp, rpc::RpcContext* context) {
+        return func(pointer_cast<const Req*>(req), pointer_cast<Resp*>(resp), context);
+      });
+}
+
+#define YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE(r, data, method) \
+  PgClientServiceMockImpl::Handle BOOST_PP_CAT(PgClientServiceMockImpl::Mock, method)( \
+      const std::function<Status( \
+          const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
+          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, rpc::RpcContext*)>& mock) { \
+    return SetMock(BOOST_PP_STRINGIZE(method), MakeSharedFunctor(mock)); \
+  }
+
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DEFINE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
 
 }  // namespace yb::tserver

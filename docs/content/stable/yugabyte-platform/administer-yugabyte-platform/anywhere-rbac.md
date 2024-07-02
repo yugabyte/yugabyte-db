@@ -18,7 +18,7 @@ Starting with v2.20.1, RBAC is available with fine-grained control over access t
 
 {{< note title="Fine-grained RBAC is Early Access">}}
 
-Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-availability).
+Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-maturity).
 
 During EA, by default fine-grained RBAC is not enabled. To enable the feature, use following API command:
 
@@ -53,7 +53,7 @@ The following built-in roles are available:
   - Manage all resources, including universes, nodes, backup, restore, and cloud providers.
   - Manage the user access control by creating and managing users.
 
-  For more information, see [Create admin user](../../configure-yugabyte-platform/create-admin-user/).
+  For more information, see [Create admin user](../../install-yugabyte-platform/create-admin-user/).
 
 - **Admin** has privileges that are similar to the Super Admin, except that Admin cannot manage global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 
@@ -132,7 +132,7 @@ To create a user, do the following:
 
     ![Custom role](/images/yp/authorization-platform/add-user-custom.png)
 
-1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant this user access to any universe created in the future. Click **Confirm** when you are done.
+1. To customize access to universes, assign at least one custom role, then click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant this user access to any universe created in the future. Click **Confirm** when you are done.
 
     ![Select universes](/images/yp/authorization-platform/add-user-universe.png)
 

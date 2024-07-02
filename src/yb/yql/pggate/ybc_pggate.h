@@ -224,10 +224,9 @@ YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  YBCPgOid database_oid,
                                  YBCPgOid source_database_oid,
-                                 const char *source_database_name,
                                  YBCPgOid next_oid,
                                  const bool colocated,
-                                 const int64_t clone_time,
+                                 YbCloneInfo *yb_clone_info,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
@@ -894,6 +893,9 @@ void YBCStoreTServerAshSamples(
     uint64_t sample_time);
 
 YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
+
+uint64_t YBCPgGetCurrentReadTimePoint();
+YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
 
 #ifdef __cplusplus
 }  // extern "C"

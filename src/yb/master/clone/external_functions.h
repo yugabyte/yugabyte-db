@@ -52,16 +52,25 @@ class CloneStateManagerExternalFunctionsBase {
       const TabletInfoPtr&, LeaderEpoch, tablet::CloneTabletRequestPB) = 0;
 
   virtual Status ScheduleClonePgSchemaTask(
-      const std::string& permanent_uuid, const std::string& source_db_name,
-      const std::string& target_db_name, HybridTime restore_ht,
-      AsyncClonePgSchema::ClonePgSchemaCallbackType callback, MonoTime deadline) = 0;
+      const std::string& permanent_uuid,
+      const std::string& source_db_name,
+      const std::string& target_db_name,
+      const std::string& source_owner,
+      const std::string& target_owner,
+      HybridTime restore_ht,
+      AsyncClonePgSchema::ClonePgSchemaCallbackType callback,
+      MonoTime deadline) = 0;
+
+  virtual Status ScheduleEnableDbConnectionsTask(
+      const std::string& permanent_uuid, const std::string& target_db_name,
+      AsyncEnableDbConns::EnableDbConnsCallbackType callback) = 0;
 
   virtual Status DoCreateSnapshot(
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
       CoarseTimePoint deadline, const LeaderEpoch& epoch) = 0;
 
   virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
-      GenerateSnapshotInfoFromSchedule(
+      GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 

@@ -39,13 +39,14 @@ using dockv::DocKeyDecoder;
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
 using dockv::KeyEntryValue;
+using dockv::KeyEntryTypeAsChar;
 
 bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr) {
   VLOG(3) << __PRETTY_FUNCTION__ << " checking if acceptable ? "
           << (!current_scan_target_.empty() &&
               curr.starts_with(current_scan_target_) ? "YEP" : "NOPE")
           << ": " << DocKey::DebugSliceToString(curr) << " vs "
-          << DocKey::DebugSliceToString(current_scan_target_.AsSlice());
+          << DebugDumpCurrentScanTarget();
   return is_trivial_filter_ ||
       (!current_scan_target_.empty() && curr.starts_with(current_scan_target_));
 }
@@ -537,9 +538,9 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
 
   DCHECK(VERIFY_RESULT(ValidateHashGroup(current_scan_target_)))
     << "current_scan_target_ validation failed: "
-    << DocKey::DebugSliceToString(current_scan_target_);
+    << DebugDumpCurrentScanTarget();
   VLOG(2) << "After " << __PRETTY_FUNCTION__ << " current_scan_target_ is "
-          << DocKey::DebugSliceToString(current_scan_target_);
+          << DebugDumpCurrentScanTarget();
   return true;
 }
 
@@ -686,10 +687,10 @@ Status HybridScanChoices::IncrementScanTargetAtOptionList(ssize_t start_option_l
   }
 
   VLOG_WITH_FUNC(2) << "Key after increment is "
-                    << DocKey::DebugSliceToString(current_scan_target_);
+                    << DebugDumpCurrentScanTarget();
   DCHECK(VERIFY_RESULT(ValidateHashGroup(current_scan_target_)))
     << "current_scan_target_ validation failed: "
-    << DocKey::DebugSliceToString(current_scan_target_);
+    << DebugDumpCurrentScanTarget();
   return Status::OK();
 }
 
@@ -734,7 +735,23 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) 
     ssize_t incr_idx =
         (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
     RETURN_NOT_OK(IncrementScanTargetAtOptionList(incr_idx));
-    current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+    // Do not append kGroupEnd after the prefix when the distinct index scan
+    // is backwards since otherwise we will move past the target key on a
+    // backwards seek.
+    //
+    // Example:
+    // col1 | col2
+    // -----+-----
+    //  1   |  1
+    // 10   |  1
+    // Seeking backwards to (10, kGroupEnd) will miss (10, 1) since
+    // col2(kGroupEnd) < col2(1). We should seek to (10, +Inf) instead.
+    // We append +Inf in SeekToCurrentTarget() before we seek backwards.
+    //
+    // XXX: Do we need a kGroupEnd marker even otherwise?
+    if (prefix_length_ == 0 || is_forward_scan_) {
+      current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+    }
     result = true;
   }
 
@@ -743,7 +760,7 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) 
   // if this is a backwards scan then don't clear current_scan_target and we
   // stay live
   VLOG_WITH_FUNC(2)
-      << "Current_scan_target_ is " << DocKey::DebugSliceToString(current_scan_target_)
+      << "Current_scan_target_ is " << DebugDumpCurrentScanTarget()
       << ", result: " << result;
 
   DCHECK(!finished_);
@@ -761,7 +778,7 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) 
   }
 
   VLOG_WITH_FUNC(4) << "current_scan_target_ is "
-                    << DocKey::DebugSliceToString(current_scan_target_);
+                    << DebugDumpCurrentScanTarget();
 
   return result;
 }
@@ -775,9 +792,9 @@ void HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
   }
 
   VLOG_WITH_FUNC(3)
-      << "current_scan_target_ is non-empty. " << DocKey::DebugSliceToString(current_scan_target_);
+      << "current_scan_target_ is non-empty. " << DebugDumpCurrentScanTarget();
   if (is_forward_scan_) {
-    VLOG_WITH_FUNC(3) << "Seeking to " << DocKey::DebugSliceToString(current_scan_target_);
+    VLOG_WITH_FUNC(3) << "Seeking to " << DebugDumpCurrentScanTarget();
     db_iter->SeekForward(current_scan_target_);
   } else {
     // seek to the highest key <= current_scan_target_
@@ -786,6 +803,8 @@ void HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
     // current_scan_target_
     auto tmp = current_scan_target_;
     KeyEntryValue(KeyEntryType::kHighest).AppendToKey(&tmp);
+    // Append kGroupEnd marker to avoid Corruption error when debugging the key.
+    tmp.AppendGroupEnd();
     VLOG_WITH_FUNC(3) << "Going to SeekPrevDocKey " << tmp;
     db_iter->SeekPrevDocKey(tmp);
   }
@@ -852,6 +871,22 @@ void HybridScanChoices::AppendInfToScanTarget(size_t col_idx) {
 
   current_scan_target_.AppendKeyEntryType(
       is_forward_scan_ ? dockv::KeyEntryType::kHighest : dockv::KeyEntryType::kLowest);
+}
+
+// Returns a human readable string representation of current_scan_target_.
+//
+// Appends a kGroupEnd to a copy of current_scan_target_ if it does not
+// already have that.
+std::string HybridScanChoices::DebugDumpCurrentScanTarget() const {
+  auto tmp = current_scan_target_;
+  // Trailing character can be kGroupEnd even if it is not a group end
+  // but it is a rare occurence and this logic is only for debugging purposes.
+  // We do this lousy check to skip reasoning when exactly a kGroupEnd should be
+  // added.
+  if (!tmp.AsSlice().ends_with(KeyEntryTypeAsChar::kGroupEnd)) {
+    tmp.AppendGroupEnd();
+  }
+  return DocKey::DebugSliceToString(tmp);
 }
 
 class EmptyScanChoices : public ScanChoices {

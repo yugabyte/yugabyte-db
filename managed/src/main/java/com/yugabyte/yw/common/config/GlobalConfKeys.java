@@ -1347,4 +1347,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable DB audit logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_sync_scheduler_interval",
+          ScopeType.GLOBAL,
+          "XCluster Sync Scheduler Interval",
+          "Interval at which the XCluster Sync Scheduler runs",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> xClusterMetricsSchedulerInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_metrics_scheduler_interval",
+          ScopeType.GLOBAL,
+          "XCluster Metrics Scheduler Interval",
+          "Interval at which the XCluster Metrics Scheduler runs",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

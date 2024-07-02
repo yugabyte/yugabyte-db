@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
+A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/yb-tserver/) service and the [YB-Master](../../architecture/yb-master/) service. Because the YB-Master service serves the role of the cluster metadata manager, it should be brought up first, followed by the YB-TServer service. To bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. There is a number of topics to consider and recommendations to follow when starting these services.
 
 ## Basics
 
@@ -52,9 +52,10 @@ You should allocate adequate CPU and RAM. YugabyteDB has adequate defaults for r
 
 **Production requirement**
 
-- 16+ cores
-- 32GB+ RAM
-- Add more CPU (compared to adding more RAM) to improve performance.
+- YCQL - 16+ cores and 32GB+ RAM
+- YSQL - 16+ cores and 64GB+ RAM
+
+Add more CPU (compared to adding more RAM) to improve performance.
 
 **Additional considerations**
 
@@ -103,13 +104,13 @@ YugabyteDB can also leverage multiple disks per node and has been tested beyond 
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), therefore in this case the total IOPS that a disk can support matters. On the read side, if the data does not fit into the cache and data needs to be read from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
 
-YugabyteDB uses per-tablet [size tiered compaction](../../architecture/concepts/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
+YugabyteDB uses per-tablet [size tiered compaction](../../architecture/yb-tserver/). Therefore the typical space amplification in YugabyteDB tends to be in the 10-20% range.
 
 YugabyteDB stores data compressed by default. The effectiveness of compression depends on the data set. For example, if the data has already been compressed, then the additional compression at the storage layer of YugabyteDB will not be very effective.
 
 It is recommended to plan for about 20% headroom on each node to allow space for miscellaneous overheads such as temporary additional space needed for compactions, metadata overheads, and so on.
 
-### Network
+## Network
 
 The following is a list of default ports along with the network access required for using YugabyteDB:
 
@@ -126,11 +127,10 @@ The following is a list of default ports along with the network access required 
 
   - 5433 for YSQL
   - 9042 for YCQL
-  - 6379 for YEDIS
 
 This deployment uses YugabyteDB [default ports](../../reference/configuration/default-ports/).
 
-Note that for YugabyteDB Anywhere, the SSH port is changed for added security.
+YugabyteDB Anywhere has its own port requirements. Refer to [Networking](../../yugabyte-platform/prepare/networking/).
 
 ## Clock synchronization
 
@@ -158,9 +158,9 @@ YugabyteDB can run on a number of public clouds.
 
 ### Amazon Web Services (AWS)
 
-- Use the C5 or I3 instance families.
-- Recommended types are i3.4xlarge, i3.8xlarge, c5.4xlarge, c5.8xlarge, and c6g.4xlarge/8xlarge. Use the higher CPU instance types especially for large YSQL workloads.
-- For the C5 instance family, use gp3 EBS (SSD) disks that are at least 250GB in size, larger if more IOPS are needed:
+- Use the M [instance family](https://aws.amazon.com/ec2/instance-types/).
+- Recommended type is M6i. Use the higher CPU instance types especially for large YSQL workloads.
+- Use gp3 EBS (SSD) disks that are at least 250GB in size, larger if more IOPS are needed.
   - Scale up the IOPS as you scale up the size of the disk.
   - In YugabyteDB testing, gp3 EBS SSDs provide the best performance for a given cost among the various EBS disk options.
 - Avoid running on [T2 instance types](https://aws.amazon.com/ec2/instance-types/t2/). The T2 instance types are burstable instance types. Their baseline performance and ability to burst are governed by CPU credits, which makes it hard to get steady performance.
@@ -170,7 +170,7 @@ YugabyteDB can run on a number of public clouds.
 
 - Use the N2 high-CPU instance family. As a second choice, the N2 standard instance family can be used.
 - Recommended instance types are `n2-highcpu-16` and `n2-highcpu-32`.
-- [Local SSDs](https://cloud.google.com/compute/docs/disks/#localssds) are the preferred storage option, as they provide improved performance over attached disks, but the data is not replicated and can be lost if the node fails. This option is ideal for databases such as YugabyteDB that manage their own replication and can guarantee high availability (HA). For more details on these tradeoffs, refer to [Local vs remote SSDs](../../deploy/kubernetes/best-practices/#local-vs-remote-ssds).
+- [Local SSDs](https://cloud.google.com/compute/docs/disks/#localssds) are the preferred storage option, as they provide improved performance over attached disks, but the data is not replicated and can be lost if the node fails. This option is ideal for databases such as YugabyteDB that manage their own replication and can guarantee high availability (HA). For more details on these tradeoffs, refer to [Local vs remote SSDs](../../deploy/kubernetes/best-practices/#local-versus-remote-ssds).
   - Each local SSD is 375 GB in size, but you can attach up to eight local SSD devices for 3 TB of total local SSD storage space per instance.
 - As a second choice, [remote persistent SSDs](https://cloud.google.com/compute/docs/disks/#pdspecs) perform well. Make sure the size of these SSDs are at least 250GB in size, larger if more IOPS are needed:
   - The number of IOPS scale automatically in proportion to the size of the disk.
@@ -179,6 +179,6 @@ YugabyteDB can run on a number of public clouds.
 ### Azure
 
 - Use v5 options with 16 vCPU in the Storage Optimized (preferred) or General Purpose VM types. For a busy YSQL instance, use 32 vCPU.
-- For an application that cannot tolerate P99 spikes, local SSDs (Storage Optimized instances) are the preferred option. For more details on the tradeoffs, refer to [Local vs remote SSDs](../../deploy/kubernetes/best-practices/#local-vs-remote-ssds).
+- For an application that cannot tolerate P99 spikes, local SSDs (Storage Optimized instances) are the preferred option. For more details on the tradeoffs, refer to [Local vs remote SSDs](../../deploy/kubernetes/best-practices/#local-versus-remote-ssds).
 - If local SSDs are not available, use ultra disks to eliminate expected latency on Azure premium disks. Refer to the Azure [disk recommendations](https://azure.microsoft.com/en-us/blog/azure-ultra-disk-storage-microsoft-s-service-for-your-most-i-o-demanding-workloads/) and Azure documentation on [disk types](https://docs.microsoft.com/en-us/azure/virtual-machines/disks-types) for databases.
 - Turn on Accelerated Networking, and use VNet peering for multiple VPCs and connectivity to object stores.

@@ -72,7 +72,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [Disks](../../../deploy/checklist/#disks)
 - [Amazon Web Services instance type and volume recommendations](../../../deploy/checklist/#amazon-web-services-aws)
 
-  **Note**: The ephemeral disk-based instances (such as i3) in this list come with certain restrictions for Day 2 YBA operations. Instances with EBS attached storage are recommended.
+  **Note**: The ephemeral disk-based instances (such as i3) in this list come with certain restrictions for Day 2 YugabyteDB Anywhere (YBA) operations. Instances with EBS attached storage are recommended.
 
   </div>
 

@@ -131,7 +131,8 @@ class PgClient {
   uint64_t SessionID() const;
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 

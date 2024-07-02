@@ -16,13 +16,19 @@ To access backups from a specific universe, navigate to the universe and choose 
 
 To access all universe backups, navigate to **Backups**.
 
+{{< warning title="Restoring a backup using YBC" >}}
+
+Backups from a stable track universe can only be restored to a higher version stable track YugabyteDB universe, and the same applies for preview track. Optionally, you can set a runtime flag `yb.skip_version_checks`, to skip all YugabyteDB and YBA version checks during restores. For more information, contact {{% support-platform %}}.
+
+{{< /warning >}}
+
 ## Prerequisites
 
 - The target universe must have enough nodes to accommodate the restore.
 - If the source universe is encrypted, the KMS configuration that was used to encrypt the universe. See [Back up and restore data from an encrypted at rest universe](../../security/enable-encryption-at-rest/#back-up-and-restore-data-from-an-encrypted-at-rest-universe).
 - If the source backup has tablespaces, to restore the tablespaces the target universe must have a matching topology; that is, the zones and regions in the target must be the same as the zones and regions in the source.
 
-    If the topology of the target universe does not match, none of the tablespaces are preserved and all their data is written to the primary region. After the restore, you will have to re-add all the tablespaces. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
+    If the topology of the target universe does not match, none of the tablespaces are preserved and all their data is written to the primary region. After the restore, you will have to re-add all the tablespaces. For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../explore/going-beyond-sql/tablespaces/).
 
 ## Restore an entire or incremental backup
 

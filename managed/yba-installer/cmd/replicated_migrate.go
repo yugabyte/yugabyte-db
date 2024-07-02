@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	osuser "os/user"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -42,6 +43,9 @@ The migration will stop, but not delete, all replicated app instances.
 
 NOTE: THIS FEATURE IS EARLY ACCESS
 `,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.Initialize()
 		if err != nil {
@@ -166,7 +170,7 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		// Take a backup of running YBA using replicated settings.
 		replBackupDir := filepath.Join(common.GetDataRoot(), "replBackupDir")
 		common.MkdirAllOrFail(replBackupDir, common.DirMode)
-		defer func () {
+		defer func() {
 			if err := common.RemoveAll(replBackupDir); err != nil {
 				log.Warn("error cleaning up " + replBackupDir)
 			}
@@ -279,6 +283,7 @@ var replicatedMigrateFinish = &cobra.Command{
 		"yba installer, delete replicated data, and remove all replicated containers." +
 		"\n\nNOTE: THIS FEATURE IS EARLY ACCESS",
 	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
 		prompt := `replicated-migrate finish will completely uninstall replicated, completing the
 migration to yba-installer. This involves deleting the storage directory (default /opt/yugabyte).
 Are you sure you want to continue?`
@@ -317,6 +322,9 @@ Are you sure you want to continue?`
 var replicatedMigrationConfig = &cobra.Command{
 	Use:   "config",
 	Short: "generated yba-ctl.yml equivalent of replicated config [EA]",
+	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		ctl := replicatedctl.New(replicatedctl.Config{})
 		config, err := ctl.AppConfigExport()
@@ -345,6 +353,9 @@ var replicatedRollbackCmd = &cobra.Command{
 		"rolling back to the replicated install. As this is a rollback, any changes made to YBA after " +
 		"migrate will not be reflected after the rollback completes.\n\n" +
 		"NOTE: THIS FEATURE IS EARLY ACCESS",
+	PreRun: func(cmd *cobra.Command, args []string) {
+		replicatedRootCheck()
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.Initialize()
 		if err != nil {
@@ -428,6 +439,19 @@ func rollbackMigrations(state *ybactlstate.State) error {
 	log.Info("Removing yba-installer yugaware install")
 	common.Uninstall(serviceOrder, true)
 	return nil
+}
+
+func replicatedRootCheck() {
+	user, err := osuser.Current()
+	if err != nil {
+		log.Fatal("failed to get current user: " + err.Error())
+	}
+	if user.Uid != "0" {
+		log.Fatal("cannot run replicated migration commands without root access")
+	}
+	if viper.InConfig("as_root") && !viper.GetBool("as_root") {
+		log.Fatal("running replicated migration commands with 'as_root' set to false is not supported")
+	}
 }
 
 func init() {

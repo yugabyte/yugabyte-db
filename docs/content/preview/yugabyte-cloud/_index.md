@@ -1,7 +1,7 @@
 ---
-title: YugabyteDB Managed
-headerTitle: YugabyteDB Managed
-linkTitle: YugabyteDB Managed
+title: YugabyteDB Aeon
+headerTitle: YugabyteDB Aeon
+linkTitle: YugabyteDB Aeon
 headcontent: Fully managed YugabyteDB-as-a-Service
 aliases:
   - /preview/deploy/yugabyte-cloud/
@@ -18,7 +18,7 @@ resources:
     url: /preview/yugabyte-cloud/managed-freetrial/
   - title: What's New
     url: /preview/yugabyte-cloud/release-notes/
-  - title: YugabyteDB Managed FAQ
+  - title: YugabyteDB Aeon FAQ
     url: /preview/faq/yugabytedb-managed-faq/
   - title: Video Tutorials
     url: https://www.youtube.com/playlist?list=PL8Z3vt4qJTkIAYWaUOE_CIntxTHho_pBh
@@ -26,11 +26,15 @@ cascade:
   unversioned: true
 ---
 
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
+YugabyteDB Aeon is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
 {{<tip>}}
-YugabyteDB Managed SLA service availability is [99.99%](https://www.yugabyte.com/yugabytedb-managed-service-level-agreement/#:~:text=a%20minimum%20of-,99.99,-%25%20of%20the%20time). For the current status of the service, see [YBM status](https://status.yugabyte.cloud/).
+YugabyteDB Aeon SLA service availability is [99.99%](https://www.yugabyte.com/yugabytedb-managed-service-level-agreement/#:~:text=a%20minimum%20of-,99.99,-%25%20of%20the%20time). For the current status of the service, see [Status](https://status.yugabyte.cloud/).
 {{</tip>}}
+
+{{<note>}}
+YugabyteDB Managed is now YugabyteDB Aeon! [Learn more](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/).
+{{</note>}}
 
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
@@ -120,7 +124,7 @@ YugabyteDB Managed SLA service availability is [99.99%](https://www.yugabyte.com
   linkText1="Contact Support"
   linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431"
   linkTarget1="_blank"
-  linkText2="YugabyteDB Managed Status"
+  linkText2="YugabyteDB Aeon Status"
   linkUrl2="https://status.yugabyte.cloud/"
     linkTarget2="_blank"
   linkText3="Join Our Community"
@@ -141,7 +145,7 @@ YugabyteDB Managed SLA service availability is [99.99%](https://www.yugabyte.com
 
   {{< sections/3-box-card
   title="Yugabyte University"
-  linkText1="YugabyteDB Managed Basics"
+  linkText1="YugabyteDB Aeon Basics"
   linkUrl1="https://university.yugabyte.com/courses/yugabytedb-managed-basics"
   linkTarget1="_blank"
   linkText2="YSQL Exercises: Basic queries"
@@ -151,7 +155,7 @@ YugabyteDB Managed SLA service availability is [99.99%](https://www.yugabyte.com
 
   {{< sections/3-box-card
   title="YouTube Channel"
-  description="Learn how to use YugabyteDB Managed with this series of short tutorials."
+  description="Learn how to use YugabyteDB Aeon with this series of short tutorials."
   buttonText="Watch"
   buttonUrl="https://www.youtube.com/playlist?list=PL8Z3vt4qJTkIAYWaUOE_CIntxTHho_pBh"
   buttonTarget="_blank"

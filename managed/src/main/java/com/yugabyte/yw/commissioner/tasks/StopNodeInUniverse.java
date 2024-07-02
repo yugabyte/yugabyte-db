@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -81,7 +82,10 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           null);
     } else {
       createCheckNodesAreSafeToTakeDownTask(
-          Collections.singletonList(currentNode), Collections.emptyList(), null);
+          Collections.singletonList(
+              new UpgradeTaskBase.MastersAndTservers(
+                  Collections.singletonList(currentNode), Collections.emptyList())),
+          null);
     }
     addBasicPrecheckTasks();
   }
@@ -131,8 +135,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       boolean instanceExists = instanceExists(taskParams());
       if (instanceExists) {
         if (currentNode.isTserver) {
-          stopProcessesOnNode(
-              currentNode,
+          stopProcessesOnNodes(
+              Collections.singletonList(currentNode),
               EnumSet.of(ServerType.TSERVER),
               false /* remove master from quorum */,
               true /* deconfigure */,

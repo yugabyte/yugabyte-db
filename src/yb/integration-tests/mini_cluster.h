@@ -52,6 +52,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/ts_descriptor.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -248,10 +249,8 @@ class MiniCluster : public MiniClusterBase {
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
-  Status WaitForTabletServerCount(size_t count);
-  Status WaitForTabletServerCount(size_t count,
-                                  std::vector<std::shared_ptr<master::TSDescriptor>>* descs,
-                                  bool live_only = false);
+  Result<std::vector<std::shared_ptr<master::TSDescriptor>>> WaitForTabletServerCount(
+      size_t count, bool live_only = false);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.

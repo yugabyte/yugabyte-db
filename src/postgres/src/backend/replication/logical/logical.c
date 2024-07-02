@@ -603,14 +603,27 @@ LoadOutputPlugin(OutputPluginCallbacks *callbacks, char *plugin)
 {
 	LogicalOutputPluginInit plugin_init;
 
-	plugin_init = (LogicalOutputPluginInit)
-		load_external_function(plugin, "_PG_output_plugin_init", false, NULL);
+	/* 'yboutput' is a special plugin which reuses most of the code of 'pgoutput'. */
+	if (IsYugaByteEnabled() && strcmp(plugin, YB_OUTPUT_PLUGIN) == 0)
+		plugin_init = (LogicalOutputPluginInit)
+			load_external_function(PG_OUTPUT_PLUGIN,"_PG_output_plugin_init", false, NULL);
+	else
+		plugin_init = (LogicalOutputPluginInit)
+		  load_external_function(plugin, "_PG_output_plugin_init", false, NULL);	
 
 	if (plugin_init == NULL)
 		elog(ERROR, "output plugins have to declare the _PG_output_plugin_init symbol");
 
 	/* ask the output plugin to fill the callback struct */
 	plugin_init(callbacks);
+
+	if (IsYugaByteEnabled())
+	{
+		if (strcmp(plugin, YB_OUTPUT_PLUGIN) == 0)
+			callbacks->yb_support_yb_specifc_replica_identity_cb(true);
+		else
+			callbacks->yb_support_yb_specifc_replica_identity_cb(false);
+	}
 
 	if (callbacks->begin_cb == NULL)
 		elog(ERROR, "output plugins have to register a begin callback");
@@ -669,6 +682,7 @@ startup_cb_wrapper(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool i
 
 	/* set output state */
 	ctx->accept_writes = false;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.startup_cb(ctx, opt, is_init);
@@ -696,6 +710,7 @@ shutdown_cb_wrapper(LogicalDecodingContext *ctx)
 
 	/* set output state */
 	ctx->accept_writes = false;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.shutdown_cb(ctx);
@@ -731,6 +746,7 @@ begin_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn)
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->first_lsn;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.begin_cb(ctx, txn);
@@ -762,6 +778,7 @@ commit_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn->xid;
 	ctx->write_location = txn->end_lsn; /* points to the end of the record */
+	ctx->end_xact = true;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.commit_cb(ctx, txn, commit_lsn);
@@ -800,6 +817,8 @@ change_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	 * commit to be confirmed with one message.
 	 */
 	ctx->write_location = change->lsn;
+
+	ctx->end_xact = false;
 
 	ctx->callbacks.change_cb(ctx, txn, relation, change);
 
@@ -841,6 +860,8 @@ truncate_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	 */
 	ctx->write_location = change->lsn;
 
+	ctx->end_xact = false;
+
 	ctx->callbacks.truncate_cb(ctx, txn, nrelations, relations, change);
 
 	/* Pop the error context stack */
@@ -867,6 +888,7 @@ filter_by_origin_cb_wrapper(LogicalDecodingContext *ctx, RepOriginId origin_id)
 
 	/* set output state */
 	ctx->accept_writes = false;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ret = ctx->callbacks.filter_by_origin_cb(ctx, origin_id);
@@ -904,6 +926,7 @@ message_cb_wrapper(ReorderBuffer *cache, ReorderBufferTXN *txn,
 	ctx->accept_writes = true;
 	ctx->write_xid = txn != NULL ? txn->xid : InvalidTransactionId;
 	ctx->write_location = message_lsn;
+	ctx->end_xact = false;
 
 	/* do the actual work: call callback */
 	ctx->callbacks.message_cb(ctx, txn, message_lsn, transactional, prefix,

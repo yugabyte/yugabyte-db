@@ -24,6 +24,14 @@ server_key_path: ""
 # Cannot be modified after installation.
 service_username: "yugabyte"
 
+# If the YBA install should be a root install or a non-root Install.
+# Currently, if true all yba-ctl commands should be run with root access.
+# If false, all yba-ctl commands should be run without root access, AND as the user specified
+# by service_username.
+as_root: true
+
+# Number of seconds to wait for yba to start
+wait_for_yba_ready_secs: 300
 
 # Config parameters for YB-Platform:
 # =======================================

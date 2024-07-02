@@ -4,6 +4,7 @@ headerTitle: Manage YugabyteDB releases
 linkTitle: Manage releases
 description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
 headcontent: View and import YugabyteDB releases
+badges: ea
 menu:
   preview_yugabyte-platform:
     identifier: ybdb-releases
@@ -26,9 +27,9 @@ To view the release details, select a release in the list.
 
 To delete or disable a release, click its corresponding **Actions**. Disabled releases are not available when creating universes.
 
-{{< warning title="Importing a YugabyteDB release in YBA" >}}
+{{< warning title="Importing a YugabyteDB release in YugabyteDB Anywhere" >}}
 Note that by default, you cannot import the latest stable YugabyteDB versions (v2024.1.x) in preview YugabyteDB Anywhere versions (for example, v2.23.x).
-To enable this import, you need to set the YBA runtime flag `yb.allow_db_version_more_than_yba_version` to true. See [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+To enable this import, you need to set the YugabyteDB Anywhere runtime flag `yb.allow_db_version_more_than_yba_version` to true. See [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 {{< /warning >}}
 
 ## Import a release

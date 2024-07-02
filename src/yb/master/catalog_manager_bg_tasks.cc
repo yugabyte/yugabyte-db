@@ -82,6 +82,7 @@ DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
+DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
 
 namespace yb {
 namespace master {
@@ -152,8 +153,15 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
     const auto& table_info = *table_info_result;
     // Get schema version.
     uint32_t version = table_info->LockForRead()->pb.version();
-    const auto& tablets = table_info->GetTablets();
-    for (const auto& tablet : tablets) {
+    const auto tablets_result = table_info->GetTablets();
+    if (!tablets_result) {
+      LOG(WARNING) << Format(
+          "PITR: Cannot resume backfill for table, backing TabletInfo objects have been freed. "
+          "Table id: $0",
+          table_info->id());
+      return;
+    }
+    for (const auto& tablet : *tablets_result) {
       LOG(INFO) << "PITR: Try resuming backfill for tablet " << tablet->id()
                 << ". If it is not a table for which backfill needs to be resumed"
                 << " then this is a NO-OP";
@@ -167,9 +175,7 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
 }
 
 void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
-  TSDescriptorVector descs;
-  const auto& ts_manager = catalog_manager_->master_->ts_manager();
-  ts_manager->GetAllDescriptors(&descs);
+  auto descs = catalog_manager_->master_->ts_manager()->GetAllDescriptors();
   for (auto& ts_desc : descs) {
     if (!ts_desc->IsLive()) {
       ts_desc->ClearMetrics();
@@ -218,20 +224,22 @@ void CatalogManagerBgTasks::Run() {
       if (!to_process.empty()) {
         // For those tablets which need to be created in this round, assign replicas.
         TSDescriptorVector ts_descs = catalog_manager_->GetAllLiveNotBlacklistedTServers();
-        CMGlobalLoadState global_load_state;
-        catalog_manager_->InitializeGlobalLoadState(ts_descs, &global_load_state);
-        // Transition tablet assignment state from preparing to creating, send
-        // and schedule creation / deletion RPC messages, etc.
-        // This is done table by table.
-        for (const auto& entries : to_process) {
-          LOG(INFO) << "Processing pending assignments for table: " << entries.first;
-          Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
-              entries.first, entries.second, l.epoch(), &global_load_state);
-          WARN_NOT_OK(s, "Assignment failed");
-          // Set processed_tablets as true if the call succeeds for at least one table.
-          processed_tablets = processed_tablets || s.ok();
-          // TODO Add tests for this in the revision that makes
-          // create/alter fault tolerant.
+        auto global_load_state_result = catalog_manager_->InitializeGlobalLoadState(ts_descs);
+        if (global_load_state_result.ok()) {
+          auto global_load_state = *global_load_state_result;
+          // Transition tablet assignment state from preparing to creating, send
+          // and schedule creation / deletion RPC messages, etc.
+          // This is done table by table.
+          for (const auto& [table_id, tablets] : to_process) {
+            LOG(INFO) << "Processing pending assignments for table: " << table_id;
+            Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
+                table_id, tablets, l.epoch(), &global_load_state);
+            WARN_NOT_OK(s, "Assignment failed");
+            // Set processed_tablets as true if the call succeeds for at least one table.
+            processed_tablets = processed_tablets || s.ok();
+            // TODO Add tests for this in the revision that makes
+            // create/alter fault tolerant.
+          }
         }
       }
 
@@ -294,6 +302,31 @@ void CatalogManagerBgTasks::Run() {
         } else {
           LOG(INFO) << "Skipping processing of dynamic table addition due to "
                        "cdcsdk_skip_processing_dynamic_table_addition being true";
+        }
+      }
+
+      {
+        if (FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) {
+          // Find if there are any non eligible tables (indexes, mat views) present in cdcsdk
+          // stream that are not associated with a replication slot.
+          TableStreamIdsMap non_user_tables_to_streams_map;
+          // In case of master leader restart or leadership changes, we would have scanned all
+          // streams (without replication slot) in ACTIVE/DELETING METADATA state for non eligible
+          // tables and marked such tables for removal in
+          // namespace_to_cdcsdk_non_eligible_table_map_.
+          Status s = catalog_manager_->FindCDCSDKStreamsForNonEligibleTables(
+              &non_user_tables_to_streams_map);
+
+          if (s.ok() && !non_user_tables_to_streams_map.empty()) {
+            s = catalog_manager_->RemoveNonEligibleTablesFromCDCSDKStreams(
+                non_user_tables_to_streams_map, l.epoch());
+          }
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to remove non eligible "
+                   "tables from cdc_state table: "
+                << s.ToString();
+          }
         }
       }
 

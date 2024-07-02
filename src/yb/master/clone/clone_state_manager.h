@@ -60,11 +60,13 @@ class CloneStateManager {
     const NamespaceIdentifierPB& source_namespace,
     const HybridTime& read_time,
     const std::string& target_namespace_name,
+    const std::string& pg_source_owner,
+    const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch);
 
   Result<CloneStateInfoPtr> CreateCloneState(
-      uint32_t seq_no, const NamespaceId& source_namespace_id,
+      uint32_t seq_no, const NamespaceId& source_namespace_id, YQLDatabase database_type,
       const std::string& target_namespace_name, const HybridTime& restore_time);
 
   Status UpdateCloneStateWithSnapshotInfo(
@@ -75,8 +77,12 @@ class CloneStateManager {
 
   // Create PG schema objects of the clone database.
   Status ClonePgSchemaObjects(
-      CloneStateInfoPtr clone_state, const std::string& source_db_name,
-      const std::string& target_db_name, const SnapshotScheduleId& snapshot_schedule_id,
+      CloneStateInfoPtr clone_state,
+      const std::string& source_db_name,
+      const std::string& target_db_name,
+      const std::string& pg_source_owner,
+      const std::string& pg_target_owner,
+      const SnapshotScheduleId& snapshot_schedule_id,
       const LeaderEpoch& epoch);
 
   // Starts snapshot related operations for clone (mainly generate snapshotInfoPB as of
@@ -98,6 +104,8 @@ class CloneStateManager {
       CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
       const std::string& target_namespace_name,
       CoarseTimePoint deadline, const LeaderEpoch& epoch);
+
+  Status EnableDbConnections(const CloneStateInfoPtr& clone_state);
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state);
   Status HandleRestoringState(const CloneStateInfoPtr& clone_state);

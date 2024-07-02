@@ -20,6 +20,7 @@ import com.yugabyte.yba.v2.client.models.AuditLogConfig;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneGFlags;
 import com.yugabyte.yba.v2.client.models.CloudSpecificInfo;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
+import com.yugabyte.yba.v2.client.models.ClusterCustomInstanceSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.ClusterInfo;
@@ -586,6 +587,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(v2Cluster.getNumNodes(), is(dbCluster.userIntent.numNodes));
     assertThat(v2Cluster.getReplicationFactor(), is(dbCluster.userIntent.replicationFactor));
     assertThat(v2Cluster.getInstanceType(), is(dbCluster.userIntent.instanceType));
+    validateCustomInstanceSpec(v2Cluster.getCustomInstanceSpec(), dbCluster.userIntent);
     if (v2Cluster.getUseSpotInstance() == null) {
       if (v2PrimaryCluster.getUseSpotInstance() == null) {
         assertThat(dbCluster.userIntent.useSpotInstance, is(false));
@@ -612,6 +614,32 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2PrimaryCluster.getAuditLogConfig());
   }
 
+  private void validateCustomInstanceSpec(
+      ClusterCustomInstanceSpec v2CustomInstanceSpec, UserIntent dbUserIntent) {
+    if (v2CustomInstanceSpec == null) {
+      assertThat(dbUserIntent.masterK8SNodeResourceSpec, is(nullValue()));
+      assertThat(dbUserIntent.tserverK8SNodeResourceSpec, is(nullValue()));
+      return;
+    }
+    if (v2CustomInstanceSpec.getMaster() == null || v2CustomInstanceSpec.getTserver() == null) {
+      assertThat(dbUserIntent.masterK8SNodeResourceSpec, is(nullValue()));
+      assertThat(dbUserIntent.tserverK8SNodeResourceSpec, is(nullValue()));
+      return;
+    }
+    assertThat(
+        v2CustomInstanceSpec.getMaster().getCpuCoreCount(),
+        is(dbUserIntent.masterK8SNodeResourceSpec.cpuCoreCount));
+    assertThat(
+        v2CustomInstanceSpec.getMaster().getMemoryGib(),
+        is(dbUserIntent.masterK8SNodeResourceSpec.memoryGib));
+    assertThat(
+        v2CustomInstanceSpec.getTserver().getCpuCoreCount(),
+        is(dbUserIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
+    assertThat(
+        v2CustomInstanceSpec.getTserver().getMemoryGib(),
+        is(dbUserIntent.tserverK8SNodeResourceSpec.memoryGib));
+  }
+
   private void validateProviderSpec(ClusterProviderSpec v2ProviderSpec, Cluster dbCluster) {
     assertThat(v2ProviderSpec.getProvider(), is(UUID.fromString(dbCluster.userIntent.provider)));
     assertThat(v2ProviderSpec.getImageBundleUuid(), is(dbCluster.userIntent.imageBundleUUID));
@@ -620,6 +648,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(
         v2ProviderSpec.getRegionList(),
         containsInAnyOrder(dbCluster.userIntent.regionList.toArray()));
+    assertThat(v2ProviderSpec.getHelmOverrides(), is(dbCluster.userIntent.universeOverrides));
+    assertThat(v2ProviderSpec.getAzHelmOverrides(), is(dbCluster.userIntent.azOverrides));
   }
 
   private void validatePlacementSpec(
@@ -1163,6 +1193,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     if (v2Cluster.getInstanceType() != null) {
       assertThat(v2Cluster.getInstanceType(), is(dbCluster.userIntent.instanceType));
     }
+    if (v2Cluster.getCustomInstanceSpec() != null) {
+      validateCustomInstanceSpec(v2Cluster.getCustomInstanceSpec(), dbCluster.userIntent);
+    }
     if (v2Cluster.getProviderSpec() != null) {
       validateProviderEditSpec(v2Cluster.getProviderSpec(), dbCluster);
     }
@@ -1195,6 +1228,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     validateClusterType(v2ClusterAddSpec.getClusterType(), dbCluster.clusterType);
     assertThat(v2ClusterAddSpec.getNumNodes(), is(dbCluster.userIntent.numNodes));
     assertThat(v2ClusterAddSpec.getInstanceType(), is(dbCluster.userIntent.instanceType));
+    if (v2ClusterAddSpec.getCustomInstanceSpec() != null) {
+      validateCustomInstanceSpec(v2ClusterAddSpec.getCustomInstanceSpec(), dbCluster.userIntent);
+    }
     assertThat(
         v2ClusterAddSpec.getProviderSpec().getRegionList(), is(dbCluster.userIntent.regionList));
     if (v2ClusterAddSpec.getPlacementSpec() != null) {

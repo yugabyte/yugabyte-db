@@ -21,14 +21,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -111,7 +109,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
 
       String errorStr =
           getResizeIsPossibleError(
-              cluster.uuid, currentUserIntent, newUserIntent, universe, runtimeConfGetter, true);
+              cluster.uuid, currentUserIntent, newUserIntent, universe, runtimeConfGetter);
       if (errorStr != null) {
         throw new PlatformServiceException(Status.BAD_REQUEST, errorStr);
       }
@@ -161,26 +159,16 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
    * @param universe current universe
-   * @param verifyVolumeSize whether to check volume size
    * @return
    */
   public static boolean checkResizeIsPossible(
-      UUID clusterUUID,
-      UserIntent currentUserIntent,
-      UserIntent newUserIntent,
-      Universe universe,
-      boolean verifyVolumeSize) {
+      UUID clusterUUID, UserIntent currentUserIntent, UserIntent newUserIntent, Universe universe) {
 
     RuntimeConfGetter runtimeConfGetter =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
     return checkResizeIsPossible(
-        clusterUUID,
-        currentUserIntent,
-        newUserIntent,
-        universe,
-        runtimeConfGetter,
-        verifyVolumeSize);
+        clusterUUID, currentUserIntent, newUserIntent, universe, runtimeConfGetter);
   }
 
   /**
@@ -191,7 +179,6 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
    * @param newUserIntent desired user intent
    * @param universe current universe
    * @param runtimeConfGetter config factory
-   * @param verifyVolumeSize whether to check volume size
    * @return
    */
   public static boolean checkResizeIsPossible(
@@ -199,16 +186,10 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       UserIntent currentUserIntent,
       UserIntent newUserIntent,
       Universe universe,
-      RuntimeConfGetter runtimeConfGetter,
-      boolean verifyVolumeSize) {
+      RuntimeConfGetter runtimeConfGetter) {
     String res =
         getResizeIsPossibleError(
-            clusterUUID,
-            currentUserIntent,
-            newUserIntent,
-            universe,
-            runtimeConfGetter,
-            verifyVolumeSize);
+            clusterUUID, currentUserIntent, newUserIntent, universe, runtimeConfGetter);
     if (res != null) {
       log.debug("resize is forbidden: " + res);
     }
@@ -222,7 +203,6 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
    * @param universe current universe
-   * @param verifyVolumeSize whether to check volume size
    * @return null if available, otherwise returns error message
    */
   private static String getResizeIsPossibleError(
@@ -230,8 +210,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       UserIntent currentUserIntent,
       UserIntent newUserIntent,
       Universe universe,
-      RuntimeConfGetter runtimeConfGetter,
-      boolean verifyVolumeSize) {
+      RuntimeConfGetter runtimeConfGetter) {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(currentUserIntent.provider));
     boolean allowUnsupportedInstances =
         runtimeConfGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances);
@@ -284,11 +263,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       AtomicReference<String> error = new AtomicReference<>();
       boolean nodeDiskChanged =
           checkDiskChanged(
-              currentUserIntent.providerType,
-              curDeviceInfo,
-              newDeviceInfo,
-              error::set,
-              verifyVolumeSize);
+              currentUserIntent.providerType, curDeviceInfo, newDeviceInfo, error::set);
       if (error.get() != null) {
         return error.get();
       }
@@ -307,8 +282,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         }
         hasChanges = true;
       }
-      if (currentUserIntent.providerType == Common.CloudType.aws
-          && (nodeDiskChanged || !verifyVolumeSize)) {
+      if (currentUserIntent.providerType == Common.CloudType.aws && nodeDiskChanged) {
         int cooldownInHours =
             runtimeConfGetter.getGlobalConf(GlobalConfKeys.awsDiskResizeCooldownHours);
         if (node.lastVolumeUpdateTime != null
@@ -324,36 +298,23 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         return "ResizeNode operation is not supported for instances with ephemeral drives";
       }
     }
-    if (verifyVolumeSize && !hasChanges) {
+    if (!hasChanges) {
       return "Nothing changed!";
     }
 
     return null;
   }
 
-  private static boolean isAwsCooldown(
-      Universe universe, UUID clusterUUID, boolean isTserver, int cooldownInHours) {
-    Optional<Date> lastDiskUpdate =
-        universe.getUniverseDetails().getNodesInCluster(clusterUUID).stream()
-            .filter(n -> n.isTserver == isTserver)
-            .map(n -> n.lastVolumeUpdateTime)
-            .filter(Objects::nonNull)
-            .max(Comparator.naturalOrder());
-    return lastDiskUpdate.isPresent()
-        && DateUtils.addHours(lastDiskUpdate.get(), cooldownInHours).after(new Date());
-  }
-
   private static boolean checkDiskChanged(
       Common.CloudType providerType,
       DeviceInfo currentDeviceInfo,
       DeviceInfo newDeviceInfo,
-      Consumer<String> errorConsumer,
-      boolean verifyVolumeSize) {
+      Consumer<String> errorConsumer) {
     // Disk will not be resized if the universe has no currently defined device info.
     if (currentDeviceInfo != null && newDeviceInfo != null) {
       DeviceInfo currentDeviceInfoCloned = currentDeviceInfo.clone();
       if (newDeviceInfo.volumeSize != null) {
-        if (verifyVolumeSize && currentDeviceInfo.volumeSize > newDeviceInfo.volumeSize) {
+        if (currentDeviceInfo.volumeSize > newDeviceInfo.volumeSize) {
           errorConsumer.accept(
               "Disk size cannot be decreased. It was "
                   + currentDeviceInfo.volumeSize
@@ -371,7 +332,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           errorConsumer.accept("Disk IOPS provisioning is only supported for AWS");
           return true;
         }
-        if (!currentDeviceInfo.storageType.isIopsProvisioning()) {
+        if (currentDeviceInfo.storageType == null
+            || !currentDeviceInfo.storageType.isIopsProvisioning()) {
           errorConsumer.accept(
               "Disk IOPS provisioning is not allowed for storage type: "
                   + currentDeviceInfo.storageType);
@@ -400,7 +362,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           errorConsumer.accept("Disk Throughput provisioning is only supported for AWS");
           return true;
         }
-        if (!currentDeviceInfo.storageType.isThroughputProvisioning()) {
+        if (currentDeviceInfo.storageType == null
+            || !currentDeviceInfo.storageType.isThroughputProvisioning()) {
           errorConsumer.accept(
               "Disk Throughput provisioning is not allowed for storage type: "
                   + currentDeviceInfo.storageType);

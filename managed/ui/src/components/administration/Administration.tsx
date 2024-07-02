@@ -95,14 +95,9 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     test['enableRunTimeConfig'] ||
     released['enableRunTimeConfig'];
 
-  const configTagFilter = globalRuntimeConfigs?.data?.configEntries?.find(
-    (c: any) => c.key === 'yb.runtime_conf_ui.tag_filter'
-  )?.value;
-
   const defaultTab = isAvailable(currentCustomer.data.features, 'administration.highAvailability')
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
-
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
@@ -128,9 +123,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const getHighAvailabilityTab = () => {
     return isAvailable(currentCustomer.data.features, 'administration.highAvailability') ? (
       <Tab eventKey="ha" title="High Availability" key="high-availability">
-        <RbacValidator
-          accessRequiredOn={ApiPermissionMap.GET_HA_CONFIG}
-        >
+        <RbacValidator accessRequiredOn={ApiPermissionMap.GET_HA_CONFIG}>
           <YBTabsPanel
             defaultTab={HighAvailabilityTabs.Replication}
             activeTab={params.section}
@@ -154,7 +147,8 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
               eventKey={HighAvailabilityTabs.Instances}
               title={
                 <span>
-                  <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance Configuration
+                  <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance
+                  Configuration
                 </span>
               }
               unmountOnExit
@@ -162,7 +156,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
               <HAInstancesContainer />
             </Tab>
           </YBTabsPanel>
-        </RbacValidator >
+        </RbacValidator>
       </Tab>
     ) : null;
   };
@@ -187,7 +181,6 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         <RuntimeConfigContainer
           defaultTab={defaultTab}
           activeTab={params.section}
-          configTagFilter={configTagFilter}
           routePrefix={`/admin/${id}/`}
         />
       </Tab>

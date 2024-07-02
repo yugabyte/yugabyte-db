@@ -85,7 +85,7 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### TABLESPACE clause
 
-Specify the name of the [tablespace](../../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
+Specify the name of the [tablespace](../../../../../explore/going-beyond-sql/tablespaces/) that describes the placement configuration for this index. By default, indexes are placed in the `pg_default` tablespace, which spreads the tablets of the index evenly across the cluster.
 
 ### WHERE clause
 
@@ -231,6 +231,29 @@ Consider an application maintaining shipments information. It has a `shipments` 
 yugabyte=# create table shipments(id int, delivery_status text, address text, delivery_date date);
 yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
 ```
+
+### Expression indexes
+
+An index column need not be just a column of the underlying table, but can be a function, or scalar expression computed from one or more columns of the table. You can also obtain fast access to tables based on the results of computations.
+
+A basic example is indexing unique emails in a users table similar to the following:
+
+```plpgsql
+CREATE TABLE users(id BIGSERIAL PRIMARY KEY, email TEXT NOT NULL);
+
+CREATE UNIQUE INDEX users_email_idx ON users(lower(email));
+```
+
+Creating a unique index prevents inserting duplicate email addresses using a different case.
+
+Note that index expressions are only evaluated at index time, so to use the index for a specific query the expression must match exactly.
+
+```plpgsql
+SELECT * FROM users WHERE lower(email)='user@example.com'; # will use the index created above
+SELECT * FROM users WHERE email='user@example.com'; # will NOT use the index
+```
+
+Expression indexes are often used to [index jsonb columns](../../../datatypes/type_json/create-indexes-check-constraints/).
 
 ## Troubleshooting
 

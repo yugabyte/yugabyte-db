@@ -36,8 +36,7 @@ void AutoFlagVersionInfo::SetMaxReportedVersion(uint32 max_reported_version) {
   max_reported_version_.store(max_reported_version, std::memory_order_release);
 }
 
-AutoFlagsVersionHandler::AutoFlagsVersionHandler(std::shared_ptr<client::YBClient> client)
-    : client_(std::move(client)) {}
+AutoFlagsVersionHandler::AutoFlagsVersionHandler(client::YBClient* client) : client_(client) {}
 
 void AutoFlagsVersionHandler::InsertOrUpdate(
     const xcluster::ReplicationGroupId& replication_group_id, uint32 compatible_version,

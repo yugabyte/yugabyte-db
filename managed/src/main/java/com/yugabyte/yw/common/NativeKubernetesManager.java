@@ -540,4 +540,11 @@ public class NativeKubernetesManager extends KubernetesManager {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'resourceExists'");
   }
+
+  @Override
+  public Map<ServerType, String> getServerTypeGflagsChecksumMap(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getServerTypeGflagsChecksum'");
+  }
 }

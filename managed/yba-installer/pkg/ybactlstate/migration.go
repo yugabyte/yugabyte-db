@@ -3,6 +3,7 @@ package ybactlstate
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/spf13/viper"
@@ -18,18 +19,51 @@ const postgresUserMV = 3
 const ymlTypeFixMV = 4
 const promOomConfgMV = 5
 const promTLSCipherSuites = 6
+const asRoot = 7
+const ybaWait = 8
+
+// Please do not use this in ybactlstate package, only use getSchemaVersion()
+var schemaVersionCache = -1
 
 func handleMigration(state *State) error {
-	for state._internalFields.SchemaVersion < schemaVersion {
-		nextSchema := state._internalFields.SchemaVersion + 1
+	if err := updateSchemaTracking(state); err != nil {
+		return err
+	}
+	nextSchema := 0
+	endSchema := getSchemaVersion()
+	for nextSchema < endSchema {
+		nextSchema++
+		if slices.Contains(state._internalFields.RunSchemas, nextSchema) {
+			continue
+		}
 		migrate := getMigrationHandler(nextSchema)
+		if migrate == nil {
+			log.Debug("skipping migration " + strconv.Itoa(nextSchema) + " as it is not defined")
+			continue
+		}
 		if err := migrate(state); err != nil {
 			return err
 		}
-		state._internalFields.SchemaVersion = nextSchema
+		state._internalFields.RunSchemas = append(state._internalFields.RunSchemas, nextSchema)
 	}
 	// StoreState in order to persist migration SchemaVersion
 	return StoreState(state)
+}
+
+// Update how we track the schema version. Previously, we tracked the max version with the schema
+// Version variable. Now, we want to explicitly track only the executed schemas. We will assume if
+// this transfer needs to be run, all migrations below the tracked schema version have been run, and
+// mark them as run.
+func updateSchemaTracking(state *State) error {
+	if state._internalFields.RunSchemas != nil {
+		return nil
+	}
+	// allSchemaSlice returns the list for the current max schema, but we need specifically those
+	// that have already been run - tracked previously by the state SchemaVersion
+	state._internalFields.RunSchemas = allSchemaSlice()[:state._internalFields.SchemaVersion]
+	log.DebugLF(fmt.Sprintf("updating schema tracking with run schemas of %v",
+		state._internalFields.RunSchemas))
+	return nil
 }
 
 type migrator func(state *State) error
@@ -72,8 +106,8 @@ func migratePostgresUser(state *State) error {
 		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
 		if err := common.SetYamlValue(common.InputFile(), "postgres.install.username",
 			viper.GetString("postgres.install.username")); err != nil {
-				return fmt.Errorf("Error migrating postgres user: %s", err.Error())
-			}
+			return fmt.Errorf("Error migrating postgres user: %s", err.Error())
+		}
 	}
 	common.InitViper()
 	return nil
@@ -81,27 +115,27 @@ func migratePostgresUser(state *State) error {
 
 func migrateYmlTypes(state *State) error {
 	log.Info("Entering migrateYmlTypes")
-	typeMap := map[string]string {
-		"platform.port": 													"int",
-		"platform.hsts_enabled": 									"bool",
-		"platform.useOauth": 											"bool",
-		"platform.restartSeconds": 								"int",
-		"platform.proxy.enable": 									"bool",
-		"platform.proxy.java_http_proxy_port": 		"int",
-		"platform.proxy.java_https_proxy_port": 	"int",
-		"postgres.install.enabled": 							"bool",
-		"postgres.install.port": 									"int",
-		"postgres.install.ldap_enabled": 					"bool",
-		"postgres.install.ldap_port": 						"int",
-		"postgres.install.secure_ldap": 					"bool",
-		"postgres.useExisting.enabled": 					"bool",
-		"postgres.useExisting.port": 							"int",
-		"prometheus.port": 												"int",
-		"prometheus.restartSeconds": 							"int",
-		"prometheus.maxConcurrency": 							"int",
-		"prometheus.maxSamples": 									"int",
-		"prometheus.enableHttps": 								"bool",
-		"prometheus.enableAuth": 									"bool",
+	typeMap := map[string]string{
+		"platform.port":                        "int",
+		"platform.hsts_enabled":                "bool",
+		"platform.useOauth":                    "bool",
+		"platform.restartSeconds":              "int",
+		"platform.proxy.enable":                "bool",
+		"platform.proxy.java_http_proxy_port":  "int",
+		"platform.proxy.java_https_proxy_port": "int",
+		"postgres.install.enabled":             "bool",
+		"postgres.install.port":                "int",
+		"postgres.install.ldap_enabled":        "bool",
+		"postgres.install.ldap_port":           "int",
+		"postgres.install.secure_ldap":         "bool",
+		"postgres.useExisting.enabled":         "bool",
+		"postgres.useExisting.port":            "int",
+		"prometheus.port":                      "int",
+		"prometheus.restartSeconds":            "int",
+		"prometheus.maxConcurrency":            "int",
+		"prometheus.maxSamples":                "int",
+		"prometheus.enableHttps":               "bool",
+		"prometheus.enableAuth":                "bool",
 	}
 
 	for key, typeStr := range typeMap {
@@ -128,7 +162,7 @@ func migrateYmlTypes(state *State) error {
 				log.Warn(fmt.Sprintf("Could not convert %s: %s to bool.", key, value))
 				return err
 			}
-			err  = common.SetYamlValue(common.InputFile(), key, b)
+			err = common.SetYamlValue(common.InputFile(), key, b)
 			if err != nil {
 				log.Warn("Error setting yaml value " + key + value)
 				return err
@@ -169,20 +203,63 @@ func migratePrometheusTLSCipherSuites(state *State) error {
 	return nil
 }
 
-// TODO: Also need to remember to update schemaVersion when adding migration! (automate testing?)
+func migrateAsRootConfig(state *State) error {
+	if !viper.IsSet("as_root") {
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		err := common.SetYamlValue(common.InputFile(), "as_root", viper.GetBool("as_root"))
+		if err != nil {
+			return fmt.Errorf("Error migrating as_root config: %s", err.Error())
+		}
+	}
+
+	common.InitViper()
+	return nil
+}
+
+func migrateYbaWait(state *State) error {
+	if !viper.IsSet("wait_for_yba_ready_secs") {
+		log.Info("wait for ready not set")
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		log.Info(fmt.Sprintf("setting to %d", viper.GetInt("wait_for_yba_ready_secs")))
+		err := common.SetYamlValue(common.InputFile(), "wait_for_yba_ready_secs",
+			viper.GetInt("wait_for_yba_ready_secs"))
+		if err != nil {
+			return fmt.Errorf("Error migrating yb_wait config: %s", err.Error())
+		}
+	} else {
+		log.Info("wait for ready set")
+	}
+
+	common.InitViper()
+	return nil
+}
+
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
-	promConfigMV: migratePrometheus,
-	postgresUserMV: migratePostgresUser,
-	ymlTypeFixMV: migrateYmlTypes,
-	promOomConfgMV: migratePrometheusOOMConfig,
-	promTLSCipherSuites: migratePrometheusTLSCipherSuites,
+	promConfigMV:         migratePrometheus,
+	postgresUserMV:       migratePostgresUser,
+	ymlTypeFixMV:         migrateYmlTypes,
+	promOomConfgMV:       migratePrometheusOOMConfig,
+	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
+	asRoot:               migrateAsRootConfig,
+	ybaWait:              migrateYbaWait,
 }
 
 func getMigrationHandler(toSchema int) migrator {
 	m, ok := migrations[toSchema]
 	if !ok {
-		m = migrations[defaultMigratorValue]
+		return nil
 	}
 	return m
+}
+
+func getSchemaVersion() int {
+	if schemaVersionCache == -1 {
+		for k := range migrations {
+			if k > schemaVersionCache {
+				schemaVersionCache = k
+			}
+		}
+	}
+	return schemaVersionCache
 }

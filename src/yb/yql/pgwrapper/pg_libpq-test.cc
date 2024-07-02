@@ -3975,6 +3975,24 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
+class PgLibPqDropIndexDelayTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back(
+        "--TEST_delay_clearing_fully_applied_ms=5000");
+  }
+};
+
+TEST_F(PgLibPqDropIndexDelayTest, DropIndexDelayUpdateTableTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+    "CREATE TABLE IF NOT EXISTS tb_1 "
+    "(k varchar PRIMARY KEY, v1 VARCHAR, v2 integer)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx1_tb_1 ON tb_1 (k)"));
+  ASSERT_OK(conn.Execute("DROP INDEX idx1_tb_1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tempTable2 AS SELECT * FROM tb_1 limit 1000000"));
+}
+
 class PgBackendsSessionExpireTest : public LibPqTestBase {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {

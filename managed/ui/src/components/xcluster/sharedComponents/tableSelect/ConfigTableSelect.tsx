@@ -115,7 +115,7 @@ export const ConfigTableSelect = ({
     nodeAggregation: NodeAggregation.MAX,
     splitType: SplitType.TABLE
   };
-  const replciationLagMetricRequestParams: MetricsQueryParams = {
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     xClusterConfigUuid: xClusterConfig.uuid,
@@ -124,11 +124,11 @@ export const ConfigTableSelect = ({
   };
   const tableReplicationLagQuery = useQuery(
     metricQueryKey.live(
-      replciationLagMetricRequestParams,
+      replicationLagMetricRequestParams,
       liveMetricTimeRangeValue,
       liveMetricTimeRangeUnit
     ),
-    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
@@ -280,7 +280,6 @@ export const ConfigTableSelect = ({
               tables={row.xClusterTables}
               selectedTableUUIDs={selectedTableUUIDs}
               tableType={configTableType}
-              sourceUniverseUUID={sourceUniverseUUID}
               handleTableSelect={handleTableToggle}
               handleAllTableSelect={handleTableGroupToggle}
             />

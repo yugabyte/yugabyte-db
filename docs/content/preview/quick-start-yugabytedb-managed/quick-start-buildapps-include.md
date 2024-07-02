@@ -35,15 +35,15 @@ To build and run the application, do the following:
 
     - Set the following configuration parameters:
 
-        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **database** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslMode** - the SSL mode to use; use `verify-full`.
-        - **sslRootCert** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **sslRootCert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -108,15 +108,15 @@ To build and run the application, do the following:
 
     - Set the following configuration parameter constants:
 
-        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslMode** - the SSL mode to use; use `verify-full`.
-        - **sslRootCert** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **sslRootCert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -184,15 +184,15 @@ To build and run the application, do the following:
 
     - Set the following configuration parameter constants:
 
-        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **dbName** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslMode** - the SSL mode to use; use `verify-full`.
-        - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
+        - **sslRootCert** - the full path to the YugabyteDB Aeon cluster CA certificate.
 
     - Save the file.
 
@@ -254,14 +254,14 @@ To build and run the application, do the following:
 
     - Set the following configuration parameter constants:
 
-        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **database** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
-        - **ssl** - To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **ssl** - To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -332,15 +332,15 @@ To build and run the application, do the following:
 
     - Set the following configuration-related macros:
 
-        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `verify-full`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -408,15 +408,15 @@ To build and run the application, do the following:
 
     - Set the following configuration-related constants:
 
-        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `verify-full`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -488,13 +488,13 @@ To build and run the application, do the following:
 
     - Set the following configuration-related parameters:
 
-        - **urlBuilder.Host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **urlBuilder.Host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **urlBuilder.Port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **urlBuilder.Database** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+        - **urlBuilder.Username** and **urlBuilder.Password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
         - **urlBuilder.SslMode** - the SSL mode to use; use `SslMode.VerifyFull`.
-        - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **urlBuilder.RootCertificate** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -559,15 +559,15 @@ To build and run the application, do the following:
 
     - Set the following configuration-related parameters:
 
-        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **dbname** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **sslmode** - the SSL mode to use; use `verify-full`.
-        - **sslrootcert** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **sslrootcert** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -629,15 +629,15 @@ To build and run the application, do the following:
 
     - Set the following configuration-related constants:
 
-        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database you are connecting to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `SslMode::Require`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 
@@ -699,15 +699,15 @@ To build and run the application, do the following:
 
     - Set the following configuration-related constants:
 
-        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+        - **HOST** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
         - **PORT** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
         - **DB_NAME** - the name of the database to connect to (the default is `yugabyte`).
-        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
+        - **USER** and **PASSWORD** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
 
-    - YugabyteDB Managed [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
+    - YugabyteDB Aeon [requires SSL connections](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql), so you need to set the following additional parameters:
 
         - **SSL_MODE** - the SSL mode to use; use `verify-full`.
-        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Managed [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+        - **SSL_ROOT_CERT** - the full path to the YugabyteDB Aeon [cluster CA certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
     - Save the file.
 

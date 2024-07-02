@@ -1,92 +1,83 @@
-import {
-  TroubleshootAdvisor,
-  TroubleshootAPI,
-  QUERY_KEY,
-  AttachUniverse
-} from '@yugabytedb/troubleshoot-ui';
-import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
-import { useQuery } from 'react-query';
-import { useState } from 'react';
-import { YBErrorIndicator, YBLoading } from '../../common/indicators';
+import { toast } from 'react-toastify';
+import { useTranslation } from 'react-i18next';
+import { useMutation } from 'react-query';
 import { Box, makeStyles } from '@material-ui/core';
-import { useSelector } from 'react-redux';
-import { api, QUERY_KEY as TOKEN_KEY } from '../../../redesign/utils/api';
-import { IN_DEVELOPMENT_MODE, ROOT_URL } from '../../../config';
+import { TroubleshootAdvisor } from '@yugabytedb/troubleshoot-ui';
+import { YBPanelItem } from '../../panels';
+import { YBButton } from '../../../redesign/components';
+import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
+import { TroubleshootingAPI } from '../../../redesign/features/Troubleshooting/api';
+
+const useStyles = makeStyles((theme) => ({
+  button: {
+    marginLeft: theme.spacing(2),
+    marginTop: theme.spacing(-0.5),
+    float: 'right'
+  }
+}));
 
 interface TroubleshootUniverseProps {
   universeUuid: string;
+  tpUuid: string;
   appName: AppName;
   timezone: string;
+  apiUrl: string;
+  registrationStatus: boolean;
+  refetchUniverseRegistration: any;
 }
-
-const useStyles = makeStyles((theme) => ({
-  register: {
-    cursor: 'pointer'
-  }
-}));
 
 export const TroubleshootUniverse = ({
   universeUuid,
   appName,
-  timezone
+  tpUuid,
+  timezone,
+  apiUrl,
+  registrationStatus,
+  refetchUniverseRegistration
 }: TroubleshootUniverseProps) => {
   const helperClasses = useStyles();
-  const [showAttachUniverseDialog, setShowAttachUniverseDialog] = useState<boolean>(false);
-  const baseUrl = ROOT_URL.split('/api/');
-  const { currentCustomer } = useSelector((state: any) => state.customer);
+  const { t } = useTranslation();
 
-  const sessionInfo = useQuery(TOKEN_KEY.getSessionInfo, () => api.getSessionInfo());
-  const troubleshootingUniverseMetadata = useQuery(QUERY_KEY.fetchUniverseMetadataList, () =>
-    TroubleshootAPI.fetchUniverseMetadataList()
+  const onMonitorUniverse = () => {
+    monitorUniverse.mutateAsync();
+  };
+
+  // PUT API call to monitor universe
+  const monitorUniverse = useMutation(
+    () => TroubleshootingAPI.monitorUniverse(tpUuid, universeUuid),
+    {
+      onSuccess: () => {
+        toast.success(t('clusterDetail.troubleshoot.monitorUniverseSuccess'));
+        refetchUniverseRegistration();
+      },
+      onError: () => {
+        toast.error(t('clusterDetail.troubleshoot.monitorUniverseFailure'));
+      }
+    }
   );
 
-  if (troubleshootingUniverseMetadata.isError) {
-    return <YBErrorIndicator />;
-  }
-  if (
-    troubleshootingUniverseMetadata.isLoading ||
-    (troubleshootingUniverseMetadata.isIdle && troubleshootingUniverseMetadata.data === undefined)
-  ) {
-    return <YBLoading />;
-  }
-
-  const currentUniverseMetadata = troubleshootingUniverseMetadata?.data?.find(
-    (metadata) => metadata.id === universeUuid
-  );
-
-  const onAttachUniverseButtonClick = () => {
-    troubleshootingUniverseMetadata.refetch();
-    setShowAttachUniverseDialog(true);
-  };
-
-  const onAttachUniverseDialogClose = () => {
-    troubleshootingUniverseMetadata.refetch();
-    setShowAttachUniverseDialog(false);
-  };
-
-  const onAttachUniverse = () => {
-    onAttachUniverseButtonClick();
-  };
-
-  return currentUniverseMetadata ? (
-    <TroubleshootAdvisor universeUuid={universeUuid} appName={appName} timezone={timezone} />
+  return registrationStatus ? (
+    <TroubleshootAdvisor
+      universeUuid={universeUuid}
+      appName={appName}
+      timezone={timezone}
+      apiUrl={apiUrl}
+    />
   ) : (
-    <Box>
-      {'Universe is currently not registered to the troubleshooting service,'}
-      <a onClick={onAttachUniverse} className={helperClasses.register}>
-        {' please register here'}
-      </a>
-      {showAttachUniverseDialog && (
-        <AttachUniverse
-          universeUuid={universeUuid}
-          customerUuid={currentCustomer.data.uuid}
-          baseUrl={baseUrl[0]}
-          apiToken={sessionInfo?.data?.apiToken}
-          open={showAttachUniverseDialog}
-          onClose={onAttachUniverseDialogClose}
-          isDevMode={IN_DEVELOPMENT_MODE}
-        />
-      )}
-    </Box>
+    <YBPanelItem
+      body={
+        <Box>
+          {t('clusterDetail.troubleshoot.startMonitoring')}
+          <YBButton
+            variant="primary"
+            size="medium"
+            className={helperClasses.button}
+            onClick={onMonitorUniverse}
+          >
+            {t('clusterDetail.troubleshoot.monitor')}
+          </YBButton>
+        </Box>
+      }
+    />
   );
 };
