@@ -247,9 +247,6 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 		if (tle->resjunk)
 			continue;			/* ignore junk tlist items */
 
-		if (IsYsqlUpgrade && tle->resno == ObjectIdAttributeNumber)
-			continue;			/* ignore oid system column used in YSQL upgrade */
-
 		if (attno >= resultDesc->natts)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),

@@ -270,49 +270,6 @@ CreateTableAddColumns(YBCPgStatement handle, TupleDesc desc,
 	ListCell  *cell;
 	IndexElem *index_elem;
 
-#ifdef YB_TODO
-	/* OID is now a regular column */
-	/* For tables created WITH (oids = true), we expect oid column to be the only PK. */
-	if (desc->tdhasoid)
-	{
-		if (!primary_key ||
-			list_length(primary_key->yb_index_params) != 1 ||
-			strcmp(linitial_node(IndexElem, primary_key->yb_index_params)->name,
-				   "oid") != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("OID should be the only primary key column")));
-
-		index_elem = linitial_node(IndexElem, primary_key->yb_index_params);
-		/*
-		 * We can only have OID columns on system catalog tables
-		 * and we disallow hash partitioning on those, so OID is not allowed
-		 * to be a hash column - but that will be caught normally.
-		 */
-
-		SortByDir yb_order = YbSortOrdering(index_elem->ordering, colocated,
-											is_tablegroup,
-											true /* is_first_key */);
-		bool is_hash = (yb_order == SORTBY_HASH);
-		bool is_desc = false;
-		bool is_nulls_first = false;
-
-		ColumnSortingOptions(yb_order,
-							 index_elem->nulls_ordering,
-							 &is_desc,
-							 &is_nulls_first);
-		const YBCPgTypeEntity *col_type =
-			YbDataTypeFromOidMod(ObjectIdAttributeNumber, OIDOID);
-		HandleYBStatus(YBCPgCreateTableAddColumn(handle,
-												 "oid",
-												 ObjectIdAttributeNumber,
-												 col_type,
-												 is_hash,
-												 true /* is_primary */,
-												 is_desc,
-												 is_nulls_first));
-	}
-#endif
 	if (primary_key != NULL)
 	{
 		/* Add all key columns first with respect to compound key order */

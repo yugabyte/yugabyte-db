@@ -40,11 +40,6 @@
 
 #define YBIdxBaseTupleIdAttributeNumber			(-101)
 #define YBUniqueIdxKeySuffixAttributeNumber		(-102)
-/*
- * Previously, OID is a column in Postgres structure with value (-2).
- * Temporarily use (-103) as this column is removed from Postgres.
- */
 #define YBSystemFirstLowInvalidAttributeNumber	(-103)
 
-#define ObjectIdAttributeNumber					(-104) /*YB_TODO: remove it*/
 #endif							/* SYSATTR_H */

@@ -1997,10 +1997,6 @@ ExecTypeFromTLInternal(List *targetList, bool skipjunk)
 		if (skipjunk && tle->resjunk)
 			continue;
 
-		/* System columns shouldn't be processed here. */
-		if (IsYsqlUpgrade && tle->resno == ObjectIdAttributeNumber)
-			continue;
-
 		TupleDescInitEntry(typeInfo,
 						   cur_resno,
 						   tle->resname,
