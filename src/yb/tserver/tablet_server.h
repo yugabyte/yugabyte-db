@@ -314,7 +314,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 
-  const TserverXClusterContextIf& GetXClusterContext() const;
+  TserverXClusterContextIf& GetXClusterContext() const;
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 

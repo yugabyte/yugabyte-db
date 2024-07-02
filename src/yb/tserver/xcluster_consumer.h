@@ -68,7 +68,7 @@ class XClusterConsumer : public XClusterConsumerIf {
       std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
       client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
       GetNamespaceInfoFunc get_namespace_info_func,
-      const TserverXClusterContextIf& xcluster_context,
+      TserverXClusterContextIf& xcluster_context,
       const scoped_refptr<MetricEntity>& server_metric_entity);
 
   ~XClusterConsumer();
@@ -255,7 +255,7 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   GetNamespaceInfoFunc get_namespace_info_func_;
 
-  const TserverXClusterContextIf& xcluster_context_;
+  TserverXClusterContextIf& xcluster_context_;
 
   scoped_refptr<Counter> metric_apply_failure_count_;
 

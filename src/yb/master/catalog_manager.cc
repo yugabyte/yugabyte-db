@@ -4220,6 +4220,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  if (!req.xcluster_source_table_id().empty()) {
+    table->mutable_metadata()->mutable_dirty()->pb.set_xcluster_source_table_id(
+        req.xcluster_source_table_id());
+  }
+
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
       req.table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     LOG(INFO) << "Simulating slow table creation";

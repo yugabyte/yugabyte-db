@@ -150,11 +150,12 @@ void XClusterPoller::Init(bool use_local_tserver, rocksdb::RateLimiter* rate_lim
 
 void XClusterPoller::InitDDLQueuePoller(
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter, const NamespaceName& namespace_name,
-    ConnectToPostgresFunc connect_to_pg_func) {
+    TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func) {
   Init(use_local_tserver, rate_limiter);
 
   ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
-      &local_client_, namespace_name, consumer_namespace_id_, std::move(connect_to_pg_func));
+      &local_client_, namespace_name, consumer_namespace_id_, xcluster_context,
+      std::move(connect_to_pg_func));
 }
 
 void XClusterPoller::StartShutdown() {

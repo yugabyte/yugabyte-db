@@ -82,7 +82,7 @@ typedef std::function<Result<std::pair<NamespaceId, NamespaceName>>(const Tablet
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
     std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
     client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
-    GetNamespaceInfoFunc get_namespace_info_func, const TserverXClusterContextIf& xcluster_context,
+    GetNamespaceInfoFunc get_namespace_info_func, TserverXClusterContextIf& xcluster_context,
     const scoped_refptr<MetricEntity>& server_metric_entity);
 
 }  // namespace tserver

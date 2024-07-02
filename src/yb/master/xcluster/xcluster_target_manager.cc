@@ -522,4 +522,14 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   return GetUniverseReplicationInfo(l->pb, cluster_config);
 }
 
+Status XClusterTargetManager::ClearXClusterSourceTableId(
+    TableInfoPtr table_info, const LeaderEpoch& epoch) {
+  auto table_l = table_info->LockForWrite();
+  table_l.mutable_data()->pb.clear_xcluster_source_table_id();
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_.Upsert(epoch, table_info), "clearing xCluster source table id from table");
+  table_l.Commit();
+  return Status::OK();
+}
+
 }  // namespace yb::master

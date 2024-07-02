@@ -562,4 +562,9 @@ XClusterManager::GetInboundTransactionalReplicationGroups() const {
   return XClusterTargetManager::GetTransactionalReplicationGroups();
 }
 
+Status XClusterManager::ClearXClusterSourceTableId(
+    TableInfoPtr table_info, const LeaderEpoch& epoch) {
+  return XClusterTargetManager::ClearXClusterSourceTableId(table_info, epoch);
+}
+
 }  // namespace yb::master
