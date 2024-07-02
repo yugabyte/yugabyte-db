@@ -20,7 +20,7 @@ public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegres
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_pg_conf", "shared_preload_libraries='pg_stat_monitor'");
+    appendToYsqlPgConf(flagMap, "shared_preload_libraries='pg_stat_monitor'");
     return flagMap;
   }
 
