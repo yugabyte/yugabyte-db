@@ -107,22 +107,25 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-To grant access to YugabyteDB Anywhere to manage Azure resources such as VMs, you can do one of the following:
+#### Credential type
+
+YugabyteDB Anywhere requires cloud permissions to create VMs. You can grant access to YugabyteDB Anywhere to manage Azure resources such as VMs in one of the following ways:
 
 - [Register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
 
-  - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory needs to be provided in both cases.
+    Select **Specify Client Secret**.
 
-  - Select "Specify Client Secret" and provide the [additional fields](#additional-fields).
+    For information on assigning roles to applications, see [Assign a role to an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#assign-a-role-to-the-application).
 
-- [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) to the Azure VM hosting YugabyteDB Anywhere.
+- [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) to the Azure VM hosting YugabyteDB Anywhere. Azure will use the managed identity assigned to your instance to authenticate.
 
-  - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory needs to be provided in both cases.
+    Select **Use Managed Identity from this YBA host's instance**.
 
-  - Select "Use Managed Identity" from this YBA host's instance, and provide the [additional fields](#additional-fields).
+    For information on assigning roles for managed identities, see [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
 
 #### Additional fields
 
+- **Client ID** represents the ID of an application registered in your Azure Active Directory.
 - **Client Secret** represents the secret of an application registered in your Azure Active Directory. You need to enter the `Value` of the secret (not the `Secret ID`).
 - **Resource Group** represents the group in which YugabyteDB nodes compute and network resources are created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription.
