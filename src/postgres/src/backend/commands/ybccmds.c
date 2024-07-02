@@ -1788,3 +1788,19 @@ YBCValidatePlacement(const char *placement_info)
 {
 	HandleYBStatus(YBCPgValidatePlacement(placement_info));
 }
+
+void
+YBCDropColumn(Relation rel, AttrNumber attnum)
+{
+	TupleDesc tupleDesc = RelationGetDescr(rel);
+	Form_pg_attribute attr = TupleDescAttr(tupleDesc, attnum - 1);
+	YBCPgStatement handle = NULL;
+	HandleYBStatus(YBCPgNewAlterTable(
+		YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
+		YbGetStorageRelid(rel),
+		&handle));
+	HandleYBStatus(YBCPgAlterTableDropColumn(
+		handle,
+		attr->attname.data));
+	HandleYBStatus(YBCPgExecAlterTable(handle));
+}

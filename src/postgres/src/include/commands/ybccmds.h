@@ -101,3 +101,5 @@ extern void YBCDropSequence(Oid sequence_oid);
 
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);
+
+extern void YBCDropColumn(Relation rel, AttrNumber attnum);

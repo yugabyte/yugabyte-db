@@ -1162,8 +1162,19 @@ doDeletion(const ObjectAddress *object, int flags)
 				else
 				{
 					if (object->objectSubId != 0)
+					{
+						Relation yb_rel =
+							RelationIdGetRelation(object->objectId);
+
+						if (IsYBRelation(yb_rel) &&
+							!(flags & YB_SKIP_YB_DROP_COLUMN))
+							YBCDropColumn(yb_rel, object->objectSubId);
+
+						RelationClose(yb_rel);
+
 						RemoveAttributeById(object->objectId,
 											object->objectSubId);
+					}
 					else
 					{
 						Relation rel = RelationIdGetRelation(object->objectId);

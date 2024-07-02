@@ -363,3 +363,12 @@ SELECT * FROM foo_part ORDER BY a, b;
 -- null.
 ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;
 ERROR:  column "g" contains null values
+--
+-- Test for cascaded drops on columns
+--
+CREATE TABLE test_dropcolumn(a int, b int, c int);
+CREATE TYPE test_dropcolumn_type AS (a int, b int);
+ALTER TABLE test_dropcolumn ADD COLUMN d test_dropcolumn_type;
+DROP TYPE test_dropcolumn_type CASCADE; -- should drop the column d
+NOTICE:  drop cascades to column d of table test_dropcolumn
+ALTER TABLE test_dropcolumn ADD COLUMN d int;
