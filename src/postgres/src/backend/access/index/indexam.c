@@ -795,7 +795,7 @@ index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap)
  * ----------------
  */
 int64
-yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm, bool recheck)
+yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 {
 	int64		ntids;
 
@@ -805,7 +805,7 @@ yb_index_getbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm, bool recheck)
 	/*
 	 * have the am's getbitmap proc do all the work.
 	 */
-	ntids = scan->indexRelation->rd_indam->yb_amgetbitmap(scan, ybtbm, recheck);
+	ntids = scan->indexRelation->rd_indam->yb_amgetbitmap(scan, ybtbm);
 
 	pgstat_count_index_tuples(scan->indexRelation, ntids);
 

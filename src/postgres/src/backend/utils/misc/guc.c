@@ -9130,7 +9130,7 @@ set_config_option_ext(const char *name, const char *value,
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
 
-	/* 
+	/*
 	 * role_oid and session_authorization_oid are provisions made for YSQL
 	 * Connection Manager to handle scenarios around "ALTER ROLE RENAME"
 	 * queries as it only caches the previously used role by that client.

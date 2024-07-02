@@ -1,5 +1,7 @@
 -- YB AGGREGATES TEST (for pushdown)
 
+SET yb_enable_bitmapscan = true;
+
 --
 -- Test basic aggregates and verify overflow is handled properly.
 --
@@ -35,9 +37,10 @@ INSERT INTO ybaggtest
 \set ss '/*+SeqScan(ybaggtest)*/'
 \set ios '/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/'
 \set is '/*+IndexScan(ybaggtest ybaggtestindexsimple)*/'
+\set bs '/*+BitmapScan(ybaggtest)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest'
 \set isquery ':query WHERE int_4 > 0'
-\set run ':explain :query; :explain :ss :query; :explain :ios :query; :explain :is :isquery; :query; :ss :query; :ios :query; :is :isquery'
+\set run ':explain :query; :explain :ss :query; :explain :ios :query; :explain :is :isquery; :explain :bs :isquery; :query; :ss :query; :ios :query; :is :isquery; :bs :isquery'
 :run;
 \set query 'SELECT COUNT(0) FROM ybaggtest'
 :run;
@@ -77,15 +80,17 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 :run;
 
 -- In case indexquals are planned to be rechecked, pushdown should be avoided.
-\set runnois ':explain :query; :explain :ss :query; :explain :ios :query; :query; :ss :query; :ios :query;'
+-- These queries skip Index Scan because the Index Scan hint forces using ybaggtestindexsimple,
+-- which only contains int_4.
+\set run_ss_ios_bs ':explain :query; :explain :ss :query; :explain :ios :query; :explain :bs :query; :query; :ss :query; :ios :query; :bs :query'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE float_4 > 0'
-:runnois;
+:run_ss_ios_bs;
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_4 > 0 AND float_8 > 0'
-:runnois;
+:run_ss_ios_bs;
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807'
-:runnois;
+:run_ss_ios_bs;
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
-:runnois;
+:run_ss_ios_bs;
 
 -- In case preliminary check might happen, pushdown should be avoided.
 \set query 'SELECT MAX(a.int_4) FROM ybaggtest AS a LEFT JOIN ybaggtest AS b ON a.id = b.id WHERE a.int_4 = 1 AND a.int_4 BETWEEN 7 AND 14'
@@ -118,26 +123,29 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set ss '/*+SeqScan(ybaggtest2)*/'
 \set ios '/*+IndexOnlyScan(ybaggtest2 ybaggtest2index)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
-:runnois;
+-- tests using run_ss_ios cannot use a plain index scan (so they also cannot use a bitmap index scan)
+-- adding a hint would just re-test sequential scan
+\set run_ss_ios ':explain :query; :explain :ss :query; :explain :ios :query; :ss :query; :ios :query;'
+:run_ss_ios;
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
 \set query 'SELECT COUNT(*), COUNT(a) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
 
 -- Verify MAX/MIN respect NULL values.
 \set query 'SELECT MAX(a), MIN(a) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
 
 -- Verify SUM/MAX/MIN work as expected with constant arguments.
 \set query 'SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
 \set query 'SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
 -- Verify IS NULL, IS NOT NULL quals.
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NULL'
-:runnois;
+:run_ss_ios;
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NOT NULL'
-:runnois;
+:run_ss_ios;
 
 --
 -- Test column created with default value.
@@ -152,6 +160,7 @@ INSERT INTO test VALUES(1), (2), (3);
 \set ss '/*+SeqScan(test)*/'
 \set ios '/*+IndexOnlyScan(test testindex)*/'
 \set is '/*+IndexScan(test testindex)*/'
+\set bs '/*+BitmapScan(test)*/'
 \set query 'SELECT COUNT(*) FROM test'
 \set isquery ':query WHERE k > 0'
 :run;
@@ -221,6 +230,7 @@ INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625
 \set ss '/*+SeqScan(t1)*/'
 \set ios '/*+IndexOnlyScan(t1 t1index)*/'
 \set is '/*+IndexScan(t1 t1index)*/'
+\set bs '/*+BitmapScan(t1)*/'
 \set outerquery1 'SELECT SUM(count) FROM'
 \set innerquery 'SELECT (CAST(((((''[-1962327130,2000870418)''::int4range)*(''(-1293215916,183586536]''::int4range)))-(((''[-545024026,526859443]''::int4range)*(NULL)))) AS VARCHAR)~current_query())::INT as count FROM ONLY t1'
 \set outerquery2 'as res'
@@ -235,6 +245,7 @@ INSERT INTO t2 VALUES(1), (2), (3);
 \set ss '/*+SeqScan(t2)*/'
 \set ios '/*+IndexOnlyScan(t2 t2index)*/'
 \set is '/*+IndexScan(t2 t2index)*/'
+\set bs '/*+BitmapScan(t2)*/'
 \set outerquery1 'SELECT SUM(r) < 6 from'
 \set innerquery 'SELECT random() as r from t2'
 :run;
@@ -246,6 +257,7 @@ INSERT INTO t3 VALUES(1), (2), (3);
 \set ss '/*+SeqScan(t3)*/'
 \set ios '/*+IndexOnlyScan(t3 t3index)*/'
 \set is '/*+IndexScan(t3 t3index)*/'
+\set bs '/*+BitmapScan(t3)*/'
 \set outerquery1 'SELECT SUM(r) from'
 \set innerquery 'SELECT (NULL=random())::int as r from t3'
 :run;
@@ -257,6 +269,7 @@ INSERT INTO t4 VALUES(1), (2), (3);
 \set ss '/*+SeqScan(t4)*/'
 \set ios '/*+IndexOnlyScan(t4 t4index)*/'
 \set is '/*+IndexScan(t4 t4index)*/'
+\set bs '/*+BitmapScan(t4)*/'
 \set outerquery1 'SELECT SUM(r) = 6 from'
 \set innerquery 'SELECT random() as r from t4'
 :run;
@@ -270,6 +283,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 \set ss '/*+SeqScan(rsplit)*/'
 \set ios '/*+IndexOnlyScan(rsplit rsplit_i_idx)*/'
 \set is '/*+IndexScan(rsplit rsplit_i_idx)*/'
+\set bs '/*+BitmapScan(rsplit)*/'
 \set query 'SELECT SUM(i) FROM rsplit WHERE i = 2'
 \set isquery ':query'
 :run;
@@ -282,6 +296,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 \set ss '/*+SeqScan(pg_type)*/'
 \set ios '/*+IndexOnlyScan(pg_type pg_type_typname_nsp_index)*/'
 \set is '/*+IndexScan(pg_type pg_type_typname_nsp_index)*/'
+\set bs '/*+BitmapScan(pg_type)*/'
 \set query 'SELECT MIN(typnamespace) FROM pg_type'
 \set isquery ':query WHERE typname > '''''
 :run;
@@ -298,7 +313,7 @@ INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
 \set query 'SELECT SUM(j), AVG(j), COUNT(*), MAX(j) FROM tmp'
 \set isquery ':query WHERE j < 0'
 -- TODO(#18619): change the following to :run;
-:runnois;
+:run_ss_ios;
 
 --
 -- Prepared statements.
@@ -347,12 +362,14 @@ DROP TABLE nlptest;
 --
 CREATE DATABASE co COLOCATION TRUE;
 \c co
+SET yb_enable_bitmapscan = true;
 CREATE TABLE t (i int, j int, k int);
 CREATE INDEX NONCONCURRENTLY i ON t (j, k DESC, i);
 INSERT INTO t VALUES (1, 2, 3), (4, 2, 6);
 \set ss '/*+SeqScan(t)*/'
 \set ios '/*+IndexOnlyScan(t i)*/'
 \set is '/*+IndexScan(t i)*/'
+\set bs '/*+BitmapScan(t)*/'
 \set query 'SELECT MAX(k), AVG(i), COUNT(*), SUM(j) FROM t'
 \set isquery ':query WHERE j = 2'
 :run;
