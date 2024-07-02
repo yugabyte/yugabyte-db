@@ -31,6 +31,10 @@
 
 #include "yb/util/scope_exit.h"
 
+DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup and are currently being bootstrapped for xCluster.");
+
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 
@@ -1155,6 +1159,19 @@ XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
     result[namespace_id] = std::move(ns_info);
   }
   return result;
+}
+
+Status XClusterSourceManager::ValidateSplitCandidateTable(const TableId& table_id) const {
+  if (!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables &&
+      DoesTableHaveAnyBootstrappingStream(table_id)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a bootstrapping CDC stream, table_id: $0",
+        table_id);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

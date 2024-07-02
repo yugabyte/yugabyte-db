@@ -37,6 +37,10 @@ DEFINE_RUNTIME_bool(disable_xcluster_db_scoped_new_table_processing, false,
     "table to inbound replication group on target");
 TAG_FLAG(disable_xcluster_db_scoped_new_table_processing, advanced);
 
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup");
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
@@ -492,6 +496,8 @@ Status XClusterManager::GetXClusterOutboundReplicationGroupInfo(
 Status XClusterManager::GetUniverseReplications(
     const GetUniverseReplicationsRequestPB* req, GetUniverseReplicationsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
   const auto& namespace_filter = req->namespace_id();
 
   const auto replication_groups = XClusterTargetManager::GetUniverseReplications(namespace_filter);
@@ -502,9 +508,18 @@ Status XClusterManager::GetUniverseReplications(
   return Status::OK();
 }
 
+Status XClusterManager::GetReplicationStatus(
+    const GetReplicationStatusRequestPB* req, GetReplicationStatusResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterTargetManager::GetReplicationStatus(req, resp);
+}
+
 Status XClusterManager::GetUniverseReplicationInfo(
     const GetUniverseReplicationInfoRequestPB* req, GetUniverseReplicationInfoResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
 
   const auto replication_info = VERIFY_RESULT(XClusterTargetManager::GetUniverseReplicationInfo(
@@ -530,6 +545,19 @@ Status XClusterManager::GetUniverseReplicationInfo(
   }
 
   return Status::OK();
+}
+
+Status XClusterManager::XClusterReportNewAutoFlagConfigVersion(
+    const XClusterReportNewAutoFlagConfigVersionRequestPB* req,
+    XClusterReportNewAutoFlagConfigVersionResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  const xcluster::ReplicationGroupId replication_group_id(req->replication_group_id());
+  const auto new_version = req->auto_flag_config_version();
+
+  return XClusterTargetManager::ReportNewAutoFlagConfigVersion(
+      replication_group_id, new_version, epoch);
 }
 
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostTabletCreateTasks(
@@ -565,6 +593,88 @@ XClusterManager::GetInboundTransactionalReplicationGroups() const {
 Status XClusterManager::ClearXClusterSourceTableId(
     TableInfoPtr table_info, const LeaderEpoch& epoch) {
   return XClusterTargetManager::ClearXClusterSourceTableId(table_info, epoch);
+}
+
+void XClusterManager::NotifyAutoFlagsConfigChanged() {
+  XClusterTargetManager::NotifyAutoFlagsConfigChanged();
+}
+
+void XClusterManager::StoreConsumerReplicationStatus(
+    const XClusterConsumerReplicationStatusPB& consumer_replication_status) {
+  XClusterTargetManager::StoreReplicationStatus(consumer_replication_status);
+}
+
+void XClusterManager::SyncConsumerReplicationStatusMap(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map) {
+  XClusterTargetManager::SyncReplicationStatusMap(replication_group_id, producer_map);
+}
+
+Result<bool> XClusterManager::HasReplicationGroupErrors(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  return XClusterTargetManager::HasReplicationGroupErrors(replication_group_id);
+}
+
+void XClusterManager::RecordTableConsumerStream(
+    const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) {
+  XClusterTargetManager::RecordTableStream(table_id, replication_group_id, stream_id);
+}
+
+void XClusterManager::RemoveTableConsumerStream(
+    const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) {
+  XClusterTargetManager::RemoveTableStream(table_id, replication_group_id);
+}
+
+void XClusterManager::RemoveTableConsumerStreams(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::set<TableId>& tables_to_clear) {
+  XClusterTargetManager::RemoveTableStreams(replication_group_id, tables_to_clear);
+}
+
+Result<TableId> XClusterManager::GetConsumerTableIdForStreamId(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) const {
+  return XClusterTargetManager::GetTableIdForStreamId(replication_group_id, stream_id);
+}
+
+bool XClusterManager::IsTableReplicationConsumer(const TableId& table_id) const {
+  return XClusterTargetManager::IsTableReplicated(table_id);
+}
+
+bool XClusterManager::IsTableReplicated(const TableId& table_id) const {
+  return XClusterSourceManager::IsTableReplicated(table_id) ||
+         XClusterTargetManager::IsTableReplicated(table_id);
+}
+
+Status XClusterManager::HandleTabletSplit(
+    const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::HandleTabletSplit(consumer_table_id, split_tablet_ids, epoch);
+}
+
+Status XClusterManager::ValidateNewSchema(
+    const TableInfo& table_info, const Schema& consumer_schema) const {
+  return XClusterTargetManager::ValidateNewSchema(table_info, consumer_schema);
+}
+
+Status XClusterManager::ValidateSplitCandidateTable(const TableId& table_id) const {
+  if (!FLAGS_enable_tablet_split_of_xcluster_replicated_tables && IsTableReplicated(table_id)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for table $0 since it is part of xCluster replication",
+        table_id);
+  }
+
+  RETURN_NOT_OK(XClusterSourceManager::ValidateSplitCandidateTable(table_id));
+
+  return Status::OK();
+}
+
+Status XClusterManager::HandleTabletSchemaVersionReport(
+    const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch) {
+  return XClusterTargetManager::ResumeStreamsAfterNewSchema(
+      table_info, consumer_schema_version, epoch);
 }
 
 }  // namespace yb::master

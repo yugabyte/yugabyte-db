@@ -344,9 +344,6 @@ class CatalogManagerIf {
 
   virtual Status XReplValidateSplitCandidateTable(const TableId& table_id) const = 0;
 
-  virtual Status UpdateXClusterConsumerOnTabletSplit(
-      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
-
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
   virtual Status ShouldSplitValidCandidate(
