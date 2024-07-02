@@ -4,7 +4,6 @@
 -- Assorted tests using SQL-language functions
 --
 
-SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 -- All objects made in this test are in temp_func_test schema
 
 CREATE USER regress_unpriv_user;

@@ -4,7 +4,6 @@
 -- Clean up in case a prior regression run failed
 -- Suppress NOTICE messages when users/groups don't exist
 SET client_min_messages TO 'warning';
-SET compute_query_id to regress; -- YB: disable query IDs in EXPLAIN VERBOSE output
 DROP USER IF EXISTS regress_rls_alice;
 DROP USER IF EXISTS regress_rls_bob;
 DROP USER IF EXISTS regress_rls_carol;
