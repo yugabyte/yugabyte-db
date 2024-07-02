@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,32 +14,19 @@ package org.yb.pgsql;
 
 import java.util.Map;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.yb.YBTestRunner;
-
 /**
- * Runs the pg_regress test suite on YB code.
+ * Regress test schedules should either contain only YB original tests or upstream PG ported tests.
+ * Subclass this class in case of ported tests in order to provide a similar environment to upstream
+ * PG and reduce differences with upstream's expectations.  At the time of writing (2024-07-02),
+ * some schedules hav a mix of test types, and the subclassing has yet to be applied for certain
+ * schedules.
  */
-@RunWith(value=YBTestRunner.class)
-public class TestPgRegressPgMiscIndependent extends BasePgRegressTestPorted {
-
-  private static final int TURN_OFF_SEQUENCE_CACHE_FLAG = 0;
-
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
-  }
-
+public class BasePgRegressTestPorted extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_sequence_cache_minval", Integer.toString(TURN_OFF_SEQUENCE_CACHE_FLAG));
+    flagMap.put("TEST_generate_ybrowid_sequentially", "true");
+    appendToYsqlPgConf(flagMap, "yb_use_hash_splitting_by_default=false");
     return flagMap;
-  }
-
-  @Test
-  public void testPgRegressPgMiscIndependent() throws Exception {
-    runPgRegressTest("yb_pg_misc_independent_serial_schedule");
   }
 }

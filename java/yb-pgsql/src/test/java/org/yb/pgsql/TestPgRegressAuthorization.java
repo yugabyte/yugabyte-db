@@ -22,7 +22,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress authorization-related tests on YB code.
  */
 @RunWith(value = YBTestRunner.class)
-public class TestPgRegressAuthorization extends BasePgRegressTestSequentialYbrowid {
+public class TestPgRegressAuthorization extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;

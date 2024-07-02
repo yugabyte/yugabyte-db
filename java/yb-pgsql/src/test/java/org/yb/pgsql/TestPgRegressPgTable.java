@@ -12,13 +12,22 @@
 //
 package org.yb.pgsql;
 
-import java.util.Map;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
-public class BasePgRegressTestSequentialYbrowid extends BasePgRegressTest {
+/**
+ * Runs the pg_regress test suite on YB code.
+ */
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
+public class TestPgRegressPgTable extends BasePgRegressTestPorted {
   @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_generate_ybrowid_sequentially", "true");
-    return flagMap;
+  public int getTestMethodTimeoutSec() {
+    return 1800;
+  }
+
+  @Test
+  public void schedule() throws Exception {
+    runPgRegressTest("yb_pg_table_schedule");
   }
 }
