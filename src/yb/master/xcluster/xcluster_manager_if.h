@@ -61,6 +61,8 @@ class XClusterManagerIf {
   virtual std::unordered_set<xcluster::ReplicationGroupId>
   GetInboundTransactionalReplicationGroups() const = 0;
 
+  virtual Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
+
  protected:
   virtual ~XClusterManagerIf() = default;
 };

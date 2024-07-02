@@ -175,6 +175,8 @@ class XClusterManager : public XClusterManagerIf,
   std::unordered_set<xcluster::ReplicationGroupId> GetInboundTransactionalReplicationGroups()
       const override;
 
+  Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch) override;
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;

@@ -111,6 +111,8 @@ class XClusterTargetManager {
   Result<XClusterInboundReplicationGroupStatus> GetUniverseReplicationInfo(
       const xcluster::ReplicationGroupId& replication_group_id) const;
 
+  Status ClearXClusterSourceTableId(TableInfoPtr table_info, const LeaderEpoch& epoch);
+
  private:
   // Gets the replication group status for the given replication group id. Does not populate the
   // table statuses.

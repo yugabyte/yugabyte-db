@@ -16,6 +16,7 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/schema.h"
 
 namespace yb {
 
@@ -95,6 +96,34 @@ inline size_t hash_value(const PgObjectId& id) {
   size_t value = 0;
   boost::hash_combine(value, id.database_oid);
   boost::hash_combine(value, id.object_oid);
+  return value;
+}
+
+// A struct for complete PG table names.
+struct YsqlFullTableName {
+  NamespaceName namespace_name;
+  PgSchemaName schema_name;
+  TableName table_name;
+
+  bool operator==(const YsqlFullTableName& other) const {
+    return namespace_name == other.namespace_name && schema_name == other.schema_name &&
+           table_name == other.table_name;
+  }
+
+  std::string ToString() const;
+
+  struct Hash {
+    std::size_t operator()(const YsqlFullTableName& p) const noexcept;
+  };
+};
+
+using YsqlFullTableNameHash = boost::hash<YsqlFullTableName>;
+
+inline size_t hash_value(const YsqlFullTableName& table) {
+  size_t value = 0;
+  boost::hash_combine(value, table.namespace_name);
+  boost::hash_combine(value, table.schema_name);
+  boost::hash_combine(value, table.table_name);
   return value;
 }
 

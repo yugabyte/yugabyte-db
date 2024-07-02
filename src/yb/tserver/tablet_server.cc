@@ -1458,7 +1458,7 @@ Status TabletServer::SetCDCServiceEnabled() {
   return Status::OK();
 }
 
-const TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
+TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
 }
 
