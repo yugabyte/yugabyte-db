@@ -458,12 +458,444 @@ The value portion of a change event for a change to this table varies according 
 
 [REPLICA IDENTITY](#reminder) is a YugabyteDB-specific table-level setting that determines the amount of information that is available to the logical decoding plug-in for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
 
-<!-- YB Note changes ahead -->
 There are 4 possible values for `REPLICA IDENTITY`:
 * `CHANGE` - Emitted events for `UPDATE` operations will only contain the value of the changed column along with the primary key column with no previous values present. `DELETE` operations will only contain the previous value of the primary key column in the table.
-* `DEFAULT` - The default behavior is that only `DELETE` events contain the previous values for the primary key columns of a table. For an `UPDATE` event, no previous values will be present.
+* `DEFAULT` - The default behavior is that only `DELETE` events contain the previous values for the primary key columns of a table. For an `UPDATE` event, no previous values will be present and the new values will be present for all the columns in the table.
 * `NOTHING` - Emitted events for `UPDATE` and `DELETE` operations do not contain any information about the previous value of any table column.
 * `FULL` - Emitted events for `UPDATE` and `DELETE` operations contain the previous values of all columns in the table.
+
+{{< note title="CHANGE only supported with plugin yboutput">}}
+
+YugabyteDB supports the replica identity CHANGE only with the plugin `yboutput`.
+
+{{< /note >}}
+
+#### Message formats for replica identities
+
+Consider the following employee table into which a row is inserted, subsequently updated, and deleted:
+
+```sql
+create table employee (employee_id int primary key, employee_name varchar, employee_dept text);
+
+insert into employee values(1001, 'Alice', 'Packaging');
+
+update employee set employee_name='Bob' where employee_id=1001;
+
+delete from employee where employee_id=1001;
+```
+
+##### CHANGE
+
+<table>
+<tr>
+<td> Plugin </td> <td> INSERT </td> <td> UPDATE: </td> <td> DELETE: </td>
+</tr>
+
+<tr>
+<td> `yboutput` </td>
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+        "value": "Packaging",
+        "set": true
+    }
+  }
+  "op": "c"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": null
+  }
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": null,
+    "employee_dept": null
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+</td>
+</tr> 
+
+</table>
+
+##### DEFAULT
+
+<table>
+<tr>
+<td> Plugin </td> <td> INSERT: </td> <td> UPDATE: </td> <td> DELETE: </td>
+</tr>
+
+<tr>
+<td> `yboutput` </td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+        "value": "Packaging",
+        "set": true
+    }
+  }
+  "op": "c"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": null
+  }
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": {
+    "employee_id": {
+      "value": 1001,
+      "set": true
+    },
+    "employee_name": null,
+    "employee_dept": null
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+</td>
+</tr> 
+
+<tr>
+<td> `pgoutput` </td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": 1001,
+    "employee_name": "Alice",
+    "employee_dept": "Packaging"
+  }
+  "op": "c"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": 1001,
+    "employee_name": "Bob",
+    "employee_dept": "Packaging"
+  }
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": {
+    "employee_id": 1001
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+</td>
+</tr> 
+
+</table>
+
+##### FULL
+
+<table>
+<tr>
+<td> Plugin </td> <td> INSERT: </td> <td> UPDATE: </td> <td> DELETE: </td>
+</tr>
+
+<tr>
+<td> `yboutput` </td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+        "value": "Packaging",
+        "set": true
+    }
+  }
+  "op": "c"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  }
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": {
+    "employee_id": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Bob",
+      "set": true
+    },
+    "employee_dept": {
+      "value": "Packaging",
+      "set": true
+    }
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+</td>
+</tr> 
+
+<tr>
+<td> `pgoutput` </td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+        "value": "Packaging",
+        "set": true
+    }
+  }
+  "op": "c"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": {
+    "employee_id": 1001,
+    "employee_name": "Alice",
+    "employee_dept": "Packaging"
+  },
+  "after": {
+    "employee_id": 1001,
+    "employee_name": "Bob",
+    "employee_dept": "Packaging"
+  }
+  "op": "u"
+}
+</pre>
+</td>
+
+<td>
+<pre>
+{
+  "before": {
+    "employee_id": 1001,
+    "employee_name": "Bob",
+    "employee_dept": "Packaging"
+  },
+  "after": null,
+  "op": "d"
+}
+</pre>
+</td>
+</tr> 
+
+</table>
+
+##### NOTHING
+
+<table>
+<tr>
+<td> Plugin </td> <td> INSERT: </td>
+</tr>
+
+<tr>
+<td> `yboutput` </td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+        "value": "Packaging",
+        "set": true
+    }
+  }
+  "op": "c"
+}
+</pre>
+</td>
+</tr> 
+
+<tr>
+<td> `pgoutput` </td>
+
+<td>
+<pre>
+{
+  "before": null,
+  "after": {
+    "employee_id": {
+        "value": 1001,
+        "set": true
+    },
+    "employee_name": {
+      "value": "Alice",
+      "set": true
+    },
+    "employee_dept": {
+        "value": "Packaging",
+        "set": true
+    }
+  }
+  "op": "c"
+}
+</pre>
+</td>
+</tr> 
+
+</table>
+
+{{< note title="Note" >}}
+
+If `UPDATE` and `DELETE` operations will be performed on a table in publication without any replica identity i.e. `REPLICA IDENTITY` set to `NOTHING` then the operations will cause an error on the publisher. For more details, see [Publication](https://www.postgresql.org/docs/current/logical-replication-publication.html).
+
+{{< /note >}}
 
 ### *create* events
 
