@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
-import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -23,7 +22,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -203,36 +201,6 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
                     + universe.getUniverseUUID());
           }
         });
-  }
-
-  public void processGFlagGroupsOnUpgrades(Universe universe) {
-    if (!isUsingSpecificGFlags(universe)) {
-      return;
-    }
-    Cluster currentPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    SpecificGFlags currentSpecificGFlags = new SpecificGFlags();
-    if (currentPrimaryCluster.userIntent.specificGFlags != null) {
-      currentSpecificGFlags = currentPrimaryCluster.userIntent.specificGFlags;
-    }
-    Map<UUID, Cluster> newClusters =
-        clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
-    for (Cluster curCluster : universe.getUniverseDetails().clusters) {
-      Cluster newCluster = newClusters.get(curCluster.uuid);
-      if (newCluster == null
-          || (Objects.equals(
-                  newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)
-              && !skipMatchWithUserIntent)) {
-        continue;
-      }
-      if (newCluster.userIntent.specificGFlags != null) {
-        newCluster.userIntent.specificGFlags =
-            GFlagsUtil.processGFlagGroupsOnUpgrade(
-                newCluster.userIntent.specificGFlags,
-                currentSpecificGFlags,
-                newCluster.userIntent.ybSoftwareVersion,
-                gFlagsValidation);
-      }
-    }
   }
 
   public static class Converter extends BaseConverter<GFlagsUpgradeParams> {}
