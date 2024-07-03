@@ -108,10 +108,14 @@ To import an updated version of the same file (that is, having the same file nam
 yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
 ```
 
-After new rows are added to `orders.csv`, use the following command to load them with `--start-clean`:
+After new rows are added to `orders.csv`, use the following command to load them with the flags `--start-clean` and `--enable-upsert`.
+Note: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `--enable-upsert true` may lead to corruption of the indexes.
 
 ```sh
-yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' --start-clean ...`
+yb-voyager import data file --data-dir /dir/data-dir \
+        --file-table-map 'orders.csv:orders' \
+        --start-clean true \
+        --enable-upsert true
 ```
 
 For details about the argument, refer to the [arguments table](../../reference/bulk-data-load/import-data-file/#arguments).
