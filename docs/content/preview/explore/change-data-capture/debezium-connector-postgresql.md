@@ -8,7 +8,7 @@ aliases:
 #   - /preview/explore/change-data-capture/debezium-connector
 #   - /preview/explore/change-data-capture/debezium
   - /preview/explore/change-data-capture/debezium-connector-postgres
-  - /preview/explore/change-data-capture/debezium-postgresql
+  - /preview/explore/change-data-capture/debezium-YugabyteDB
   - /preview/explore/change-data-capture/replication
 menu:
   preview:
@@ -20,40 +20,40 @@ rightNav:
   hideH4: true
 ---
 
-The Debezium PostgreSQL connector captures row-level changes in the schemas of a PostgreSQL database.
+The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database.
 
-The first time it connects to a PostgreSQL server or cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a PostgreSQL database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
+The first time it connects to a YugabyteDB server or cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 
 ## Overview
 
-PostgreSQL’s [logical decoding](#reminder) feature was introduced in version 9.4. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
+YugabyteDB’s [logical decoding](#reminder) feature was introduced in version 9.4. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
 
-The PostgreSQL connector contains two main parts that work together to read and process database changes:
+The YugabyteDB connector contains two main parts that work together to read and process database changes:
 
 <!-- todo vaibhav: need sub-bullets -->
-* A logical decoding output plug-in. You might need to install the output plug-in that you choose to use. You must configure a replication slot that uses your chosen output plug-in before running the PostgreSQL server. The plug-in can be one of the following:
+* A logical decoding output plug-in. You might need to install the output plug-in that you choose to use. You must configure a replication slot that uses your chosen output plug-in before running the YugabyteDB server. The plug-in can be one of the following:
 
     <!-- YB specific -->
     * `yboutput` is the plugin packaged with YugabyteDB. 
 
-    * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. This plug-in is always present so no additional libraries need to be installed. The Debezium connector interprets the raw replication event stream directly into change events.
+    * `pgoutput` is the standard logical decoding output plug-in in YugabyteDB 10+. It is maintained by the YugabyteDB community, and used by YugabyteDB itself for logical replication. This plug-in is always present so no additional libraries need to be installed. The Debezium connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
-* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses PostgreSQL’s [streaming replication protocol](#reminder), by means of the YugabyteDB JDBC driver
+* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses YugabyteDB’s [streaming replication protocol](#reminder), by means of the YugabyteDB JDBC driver
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
 
-PostgreSQL normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the PostgreSQL connector first connects to a particular PostgreSQL database, it starts by performing a consistent snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
+YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
 The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off. This includes snapshots. If the connector stops during a snapshot, the connector begins a new snapshot when it restarts.
 
 {{< tip title="Behaviour with Logical Decoding" >}}
 
-The connector relies on and reflects the PostgreSQL logical decoding feature, which has the following limitations:
+The connector relies on and reflects the YugabyteDB logical decoding feature, which has the following limitations:
 
 * Logical decoding does not support DDL changes. This means that the connector is unable to report DDL change events back to consumers.
 
-* Logical decoding replication slots are supported on only primary servers. When there is a cluster of PostgreSQL servers, the connector can run on only the active primary server. It cannot run on hot or warm standby replicas. If the primary server fails or is demoted, the connector stops. After the primary server has recovered, you can restart the connector. If a different PostgreSQL server has been promoted to primary, adjust the connector configuration before restarting the connector.
+* Logical decoding replication slots are supported on only primary servers. When there is a cluster of YugabyteDB servers, the connector can run on only the active primary server. It cannot run on hot or warm standby replicas. If the primary server fails or is demoted, the connector stops. After the primary server has recovered, you can restart the connector. If a different YugabyteDB server has been promoted to primary, adjust the connector configuration before restarting the connector.
 
 Additionally, the pgoutput logical decoding output plug-in does not capture values for generated columns, resulting in missing data for these columns in the connector’s output.
 
@@ -73,17 +73,17 @@ Reminder that the clicked link is an empty link and should be replaced with an a
 
 ## How the connector works
 
-To optimally configure and run a Debezium PostgreSQL connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
+To optimally configure and run a Debezium YugabyteDB connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
 
 ### Security
 
-To use the Debezium connector to stream changes from a PostgreSQL database, the connector must operate with specific privileges in the database. Although one way to grant the necessary privileges is to provide the user with `superuser` privileges, doing so potentially exposes your PostgreSQL data to unauthorized access. Rather than granting excessive privileges to the Debezium user, it is best to create a dedicated Debezium replication user to which you grant specific privileges.
+To use the Debezium connector to stream changes from a YugabyteDB database, the connector must operate with specific privileges in the database. Although one way to grant the necessary privileges is to provide the user with `superuser` privileges, doing so potentially exposes your YugabyteDB data to unauthorized access. Rather than granting excessive privileges to the Debezium user, it is best to create a dedicated Debezium replication user to which you grant specific privileges.
 
-For more information about configuring privileges for the Debezium PostgreSQL user, see [Setting up permissions](#reminder). For more information about PostgreSQL logical replication security, see the [PostgreSQL documentation](#reminder).
+For more information about configuring privileges for the Debezium YugabyteDB user, see [Setting up permissions](#reminder). For more information about YugabyteDB logical replication security, see the [YugabyteDB documentation](#reminder).
 
 ### Snapshots
 
-Most PostgreSQL servers are configured to not retain the complete history of the database in the WAL segments. This means that the PostgreSQL connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database.
+Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugabyteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database.
 
 #### Default workflow behavior of initial snapshots
 
@@ -95,17 +95,17 @@ The default behavior for performing a snapshot consists of the following steps. 
 4. Commit the transaction.
 5. Record the successful completion of the snapshot in the connector offsets.
 
-If the connector fails, is rebalanced, or stops after Step 1 begins but before Step 5 completes, upon restart the connector begins a new snapshot. After the connector completes its initial snapshot, the PostgreSQL connector continues streaming from the position that it read in Step 2. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
+If the connector fails, is rebalanced, or stops after Step 1 begins but before Step 5 completes, upon restart the connector begins a new snapshot. After the connector completes its initial snapshot, the YugabyteDB connector continues streaming from the position that it read in Step 2. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
 
 *Options for the **snapshot.mode** connector configuration property:*
 
 | Option | Description |
 | :--- | :--- |
 | `always` | The connector always performs a snapshot when it starts. After the snapshot completes, the connector continues streaming changes from step 3 in the above sequence. This mode is useful in these situations:<br/><br/> <ul><li>It is known that some WAL segments have been deleted and are no longer available.</li> <li>After a cluster failure, a new primary has been promoted. The always snapshot mode ensures that the connector does not miss any changes that were made after the new primary had been promoted but before the connector was restarted on the new primary.</li></ul> |
-| `never` | The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the PostgreSQL logical replication slot was created on the server. The `never` snapshot mode is useful only when you know all data of interest is still reflected in the WAL. |
+| `never` | The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The `never` snapshot mode is useful only when you know all data of interest is still reflected in the WAL. |
 | `initial` (default) | The connector performs a database snapshot when no Kafka offsets topic exists. After the database snapshot completes the Kafka offsets topic is written. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. |
 | `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector restarts the snapshot process and stops when the snapshot completes. |
-| `custom` | The `custom` snapshot mode lets you inject your own implementation of the `io.debezium.connector.postgresql.spi.Snapshotter` interface. Set the `snapshot.custom.class` configuration property to the class on the classpath of your Kafka Connect cluster or included in the JAR if using the `EmbeddedEngine`. For more details, see [custom snapshotter SPI](#reminder). |
+| `custom` | The `custom` snapshot mode lets you inject your own implementation of the `io.debezium.connector.YugabyteDB.spi.Snapshotter` interface. Set the `snapshot.custom.class` configuration property to the class on the classpath of your Kafka Connect cluster or included in the JAR if using the `EmbeddedEngine`. For more details, see [custom snapshotter SPI](#reminder). |
 
 <!-- YB note Skip the section for incremental snapshots -->
 
@@ -142,7 +142,7 @@ The connector repeats the process for each snapshot chunk.
 
 {{< warning title="Warning" >}}
 
-The Debezium connector for PostgreSQL does not support schema changes while an incremental snapshot is running. If a schema change is performed *before* the incremental snapshot start but *after* sending the signal then passthrough config option `database.autosave` is set to `conservative` to correctly process the schema change.
+The Debezium connector for YugabyteDB does not support schema changes while an incremental snapshot is running. If a schema change is performed *before* the incremental snapshot start but *after* sending the signal then passthrough config option `database.autosave` is set to `conservative` to correctly process the schema change.
 
 {{< /warning >}}
 
@@ -181,19 +181,19 @@ Prerequisites:
 
 ### Streaming changes
 
-The PostgreSQL connector typically spends the vast majority of its time streaming changes from the PostgreSQL server to which it is connected. This mechanism relies on [PostgreSQL’s replication protocol](#reminder). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction log at certain positions, which are referred to as Log Sequence Numbers (LSNs).
+The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [YugabyteDB’s replication protocol](#reminder). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction log at certain positions, which are referred to as Log Sequence Numbers (LSNs).
 
 Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plug-in](#reminder). This function processes the changes from the transaction, converts them to a specific format (Protobuf or JSON in the case of Debezium plug-in) and writes them on an output stream, which can then be consumed by clients.
 
-The Debezium PostgreSQL connector acts as a PostgreSQL client. When the connector receives changes it transforms the events into Debezium *create*, *update*, or *delete* events that include the LSN of the event. The PostgreSQL connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
+The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium *create*, *update*, or *delete* events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
-Periodically, Kafka Connect records the most recent *offset* in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event. For the PostgreSQL connector, the LSN recorded in each change event is the offset.
+Periodically, Kafka Connect records the most recent *offset* in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event. For the YugabyteDB connector, the LSN recorded in each change event is the offset.
 
-When Kafka Connect gracefully shuts down, it stops the connectors, flushes all event records to Kafka, and records the last offset received from each connector. When Kafka Connect restarts, it reads the last recorded offset for each connector, and starts each connector at its last recorded offset. When the connector restarts, it sends a request to the PostgreSQL server to send the events starting just after that position.
+When Kafka Connect gracefully shuts down, it stops the connectors, flushes all event records to Kafka, and records the last offset received from each connector. When Kafka Connect restarts, it reads the last recorded offset for each connector, and starts each connector at its last recorded offset. When the connector restarts, it sends a request to the YugabyteDB server to send the events starting just after that position.
 
 {{< note title="Note" >}}
 
-The PostgreSQL connector retrieves schema information as part of the events sent by the logical decoding plug-in. However, the connector does not retrieve information about which columns compose the primary key. The connector obtains this information from the JDBC metadata (side channel). If the primary key definition of a table changes (by adding, removing or renaming primary key columns), there is a tiny period of time when the primary key information from JDBC is not synchronized with the change event that the logical decoding plug-in generates. During this tiny period, a message could be created with an inconsistent key structure. To prevent this inconsistency, update primary key structures as follows:
+The YugabyteDB connector retrieves schema information as part of the events sent by the logical decoding plug-in. However, the connector does not retrieve information about which columns compose the primary key. The connector obtains this information from the JDBC metadata (side channel). If the primary key definition of a table changes (by adding, removing or renaming primary key columns), there is a tiny period of time when the primary key information from JDBC is not synchronized with the change event that the logical decoding plug-in generates. During this tiny period, a message could be created with an inconsistent key structure. To prevent this inconsistency, update primary key structures as follows:
 1. Put the database or an application into a read-only mode.
 2. Let Debezium process all remaining events.
 3. Stop Debezium.
@@ -203,15 +203,15 @@ The PostgreSQL connector retrieves schema information as part of the events sent
 
 {{< /note >}}
 
-### PostgreSQL 10+ logical decoding support (pgoutput)
+### YugabyteDB 10+ logical decoding support (pgoutput)
 
-As of PostgreSQL 10+, there is a logical replication stream mode, called pgoutput that is natively supported by PostgreSQL. This means that a Debezium PostgreSQL connector can consume that replication stream without the need for additional plug-ins. This is particularly valuable for environments where installation of plug-ins is not supported or not allowed.
+As of YugabyteDB 10+, there is a logical replication stream mode, called pgoutput that is natively supported by YugabyteDB. This means that a Debezium YugabyteDB connector can consume that replication stream without the need for additional plug-ins. This is particularly valuable for environments where installation of plug-ins is not supported or not allowed.
 
-For more information, see [Setting up PostgreSQL](#reminder).
+For more information, see [Setting up YugabyteDB](#reminder).
 
 ### Topic names
 
-By default, the PostgreSQL connector writes change events for all `INSERT`, `UPDATE`, and `DELETE` operations that occur in a table to a single Apache Kafka topic that is specific to that table. The connector names change event topics as _topicPrefix.schemaName.tableName_.
+By default, the YugabyteDB connector writes change events for all `INSERT`, `UPDATE`, and `DELETE` operations that occur in a table to a single Apache Kafka topic that is specific to that table. The connector names change event topics as _topicPrefix.schemaName.tableName_.
 
 The components of a topic name are as follows:
 
@@ -318,7 +318,7 @@ Following is an example of a message:
 
 ## Data change events
 
-The Debezium PostgreSQL connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
+The Debezium YugabyteDB connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
 
 Debezium and Kafka Connect are designed around *continuous streams of event messages*. However, the structure of these events may change over time, which can be difficult for consumers to handle. To address this, each event contains the schema for its content or, if you are using a schema registry, a schema ID that a consumer can use to obtain the schema from the registry. This makes each event self-contained.
 
@@ -360,7 +360,7 @@ Starting with Kafka 0.10, Kafka can optionally record the event key and value wi
 
 {{< warning title="Warning" >}}
 
-The PostgreSQL connector ensures that all Kafka Connect schema names adhere to the Avro schema name format. This means that the logical server name must start with a Latin letter or an underscore, that is, a-z, A-Z, or _. Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore, that is, a-z, A-Z, 0-9, or \_. If there is an invalid character it is replaced with an underscore character.
+The YugabyteDB connector ensures that all Kafka Connect schema names adhere to the Avro schema name format. This means that the logical server name must start with a Latin letter or an underscore, that is, a-z, A-Z, or _. Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore, that is, a-z, A-Z, 0-9, or \_. If there is an invalid character it is replaced with an underscore character.
 
 This can lead to unexpected conflicts if the logical server name, a schema name, or a table name contains invalid characters, and the only characters that distinguish names from one another are invalid and thus replaced with underscores.
 
@@ -386,13 +386,13 @@ CREATE TABLE customers (
 
 #### Example change event key
 
-If the `topic.prefix` connector configuration property has the value `PostgreSQL_server`, every change event for the `customers` table while it has this definition has the same key structure, which in JSON looks like this:
+If the `topic.prefix` connector configuration property has the value `YugabyteDB_server`, every change event for the `customers` table while it has this definition has the same key structure, which in JSON looks like this:
 
 ```output.json
 {
   "schema": { --> 1
     "type": "struct",
-    "name": "PostgreSQL_server.public.customers.Key", --> 2
+    "name": "YugabyteDB_server.public.customers.Key", --> 2
     "optional": false, --> 3
     "fields": [ --> 4
           {
@@ -416,7 +416,7 @@ If the `topic.prefix` connector configuration property has the value `PostgreSQL
 | Item | Field name | Description |
 | :--- | :--------- | :---------- |
 | 1 | schema | The schema portion of the key specifies a Kafka Connect schema that describes what is in the key's `payload` portion. |
-| 2 | PostgreSQL_server.public.customers.Key | Name of the schema that defines the structure of the key's payload. This schema describes the structure of the primary key for the table that was changed. Key schema names have the format _connector-name.database-name.table-name.Key_. In this example: <br/> `PostgreSQL_server` is the name of the connector that generated this event. <br/> `public` is the schema which contains the table that was changed. <br/> `customers` is the table that was updated. |
+| 2 | YugabyteDB_server.public.customers.Key | Name of the schema that defines the structure of the key's payload. This schema describes the structure of the primary key for the table that was changed. Key schema names have the format _connector-name.database-name.table-name.Key_. In this example: <br/> `YugabyteDB_server` is the name of the connector that generated this event. <br/> `public` is the schema which contains the table that was changed. <br/> `customers` is the table that was updated. |
 | 3 | optional | Indicates whether the event key must contain a value in its `payload` field. In this example, a value in the key's payload is required. |
 | 4 | fields | Specifies each field that is expected in the payload, including each field's name, index, and schema. |
 | 5 | payload | Contains the key for the row for which this change event was generated. In this example, the key, contains a single `id` field whose value is `1`. |
@@ -454,7 +454,7 @@ The value portion of a change event for a change to this table varies according 
 
 ### Replica Identity
 
-[REPLICA IDENTITY](#reminder) is a PostgreSQL-specific table-level setting that determines the amount of information that is available to the logical decoding plug-in for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
+[REPLICA IDENTITY](#reminder) is a YugabyteDB-specific table-level setting that determines the amount of information that is available to the logical decoding plug-in for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
 
 <!-- YB Note changes ahead -->
 There are 4 possible values for `REPLICA IDENTITY`:
@@ -497,7 +497,7 @@ The following example shows the value portion of a change event that the connect
                     }
                 ],
                 "optional": true,
-                "name": "PostgreSQL_server.inventory.customers.Value", --> 2
+                "name": "YugabyteDB_server.inventory.customers.Value", --> 2
                 "field": "before"
             },
             {
@@ -525,7 +525,7 @@ The following example shows the value portion of a change event that the connect
                     }
                 ],
                 "optional": true,
-                "name": "PostgreSQL_server.inventory.customers.Value",
+                "name": "YugabyteDB_server.inventory.customers.Value",
                 "field": "after"
             },
             {
@@ -589,7 +589,7 @@ The following example shows the value portion of a change event that the connect
                     }
                 ],
                 "optional": false,
-                "name": "io.debezium.connector.postgresql.Source", --> 3
+                "name": "io.debezium.connector.YugabyteDB.Source", --> 3
                 "field": "source"
             },
             {
@@ -604,7 +604,7 @@ The following example shows the value portion of a change event that the connect
             }
         ],
         "optional": false,
-        "name": "PostgreSQL_server.public.customers.Envelope" --> 4
+        "name": "YugabyteDB_server.public.customers.Envelope" --> 4
     },
     "payload": { --> 5
         "before": null, --> 6 
@@ -616,8 +616,8 @@ The following example shows the value portion of a change event that the connect
         },
         "source": { --> 8
             "version": "2.5.2.Final",
-            "connector": "postgresql",
-            "name": "PostgreSQL_server",
+            "connector": "YugabyteDB",
+            "name": "YugabyteDB_server",
             "ts_ms": 1559033904863,
             "snapshot": true,
             "db": "postgres",
@@ -639,9 +639,9 @@ The following example shows the value portion of a change event that the connect
 | Item | Field name | Description |
 | :---- | :------ | :------------ |
 | 1 | schema | The value’s schema, which describes the structure of the value’s payload. A change event’s value schema is the same in every change event that the connector generates for a particular table. |
-| 2 | name | In the schema section, each name field specifies the schema for a field in the value’s payload.<br/><br/>`PostgreSQL_server.inventory.customers.Value` is the schema for the payload’s *before* and *after* fields. This schema is specific to the customers table.<br/><br/>Names of schemas for *before* and *after* fields are of the form *logicalName.tableName.Value*, which ensures that the schema name is unique in the database. This means that when using the [Avro converter](#reminder), the resulting Avro schema for each table in each logical source has its own evolution and history. |
-| 3 | name | `io.debezium.connector.postgresql.Source` is the schema for the payload’s `source` field. This schema is specific to the PostgreSQL connector. The connector uses it for all events that it generates. |
-| 4 | name | `PostgreSQL_server.inventory.customers.Envelope` is the schema for the overall structure of the payload, where `PostgreSQL_server` is the connector name, `public` is the schema, and `customers` is the table. |
+| 2 | name | In the schema section, each name field specifies the schema for a field in the value’s payload.<br/><br/>`YugabyteDB_server.inventory.customers.Value` is the schema for the payload’s *before* and *after* fields. This schema is specific to the customers table.<br/><br/>Names of schemas for *before* and *after* fields are of the form *logicalName.tableName.Value*, which ensures that the schema name is unique in the database. This means that when using the [Avro converter](#reminder), the resulting Avro schema for each table in each logical source has its own evolution and history. |
+| 3 | name | `io.debezium.connector.YugabyteDB.Source` is the schema for the payload’s `source` field. This schema is specific to the YugabyteDB connector. The connector uses it for all events that it generates. |
+| 4 | name | `YugabyteDB_server.inventory.customers.Envelope` is the schema for the overall structure of the payload, where `YugabyteDB_server` is the connector name, `public` is the schema, and `customers` is the table. |
 | 5 | payload | The value’s actual data. This is the information that the change event is providing.<br/><br/>It may appear that the JSON representations of the events are much larger than the rows they describe. This is because the JSON representation must include the schema and the payload portions of the message. However, by using the [Avro converter](#reminder), you can significantly decrease the size of the messages that the connector streams to Kafka topics. |
 | 6 | before | An optional field that specifies the state of the row before the event occurred. When the op field is `c` for create, as it is in this example, the `before` field is `null` since this change event is for new content.<br/>{{< note title="Note" >}}Whether or not this field is available is dependent on the [REPLICA IDENTITY](#replica-identity) setting for each table.{{< /note >}} |
 | 7 | after | An optional field that specifies the state of the row after the event occurred. In this example, the `after` field contains the values of the new row’s `id`, `first_name`, `last_name`, and `email` columns. |
@@ -668,8 +668,8 @@ The value of a change event for an update in the sample `customers` table has th
         },
         "source": { --> 3
             "version": "2.5.2.Final",
-            "connector": "postgresql",
-            "name": "PostgreSQL_server",
+            "connector": "YugabyteDB",
+            "name": "YugabyteDB_server",
             "ts_ms": 1559033904863,
             "snapshot": false,
             "db": "postgres",
@@ -719,8 +719,8 @@ The value in a *delete* change event has the same `schema` portion as create and
         "after": null, --> 2
         "source": { --> 3
             "version": "2.5.4.Final",
-            "connector": "postgresql",
-            "name": "PostgreSQL_server",
+            "connector": "YugabyteDB",
+            "name": "YugabyteDB_server",
             "ts_ms": 1559033904863,
             "snapshot": false,
             "db": "postgres",
@@ -748,11 +748,11 @@ The value in a *delete* change event has the same `schema` portion as create and
 
 A *delete* change event record provides a consumer with the information it needs to process the removal of this row.
 
-PostgreSQL connector events are designed to work with [Kafka log compaction](https://kafka.apache.org/documentation#compaction). Log compaction enables removal of some older messages as long as at least the most recent message for every key is kept. This lets Kafka reclaim storage space while ensuring that the topic contains a complete data set and can be used for reloading key-based state.
+YugabyteDB connector events are designed to work with [Kafka log compaction](https://kafka.apache.org/documentation#compaction). Log compaction enables removal of some older messages as long as at least the most recent message for every key is kept. This lets Kafka reclaim storage space while ensuring that the topic contains a complete data set and can be used for reloading key-based state.
 
 #### Tombstone events
 
-When a row is deleted, the *delete* event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the PostgreSQL connector follows a *delete* event with a special tombstone event that has the same key but a `null` value.
+When a row is deleted, the *delete* event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a *delete* event with a special tombstone event that has the same key but a `null` value.
 
 <!-- YB Note skipping content for truncate and message events -->
 
@@ -763,23 +763,23 @@ When a row is deleted, the *delete* event value still works with log compaction,
 
 ## Deployment
 
-To deploy a Debezium PostgreSQL connector, you install the Debezium PostgreSQL connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
+To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
 
 Prerequisites
 * [Zookeeper](https://zookeeper.apache.org/), [Kafka](http://kafka.apache.org/), and [Kafka Connect](https://kafka.apache.org/documentation.html#connect) are installed.
-* PostgreSQL is installed and is [set up to run the Debezium connector](#reminder).
+* YugabyteDB is installed and is [set up to run the Debezium connector](#reminder).
 
 Procedure
-1. Download the [Debezium PostgreSQL connector plug-in archive](#reminder).
+1. Download the [Debezium YugabyteDB connector plug-in archive](#reminder).
 2. Extract the files into your Kafka Connect environment.
 3. Add the directory with the JAR files to [Kafka Connect’s `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
 
-If you are working with immutable containers, see [Debezium’s Container images](#reminder) for Zookeeper, Kafka, PostgreSQL and Kafka Connect with the PostgreSQL connector already installed and ready to run. You can also [run Debezium on Kubernetes and OpenShift](#reminder).
+If you are working with immutable containers, see [Debezium’s Container images](#reminder) for Zookeeper, Kafka, YugabyteDB and Kafka Connect with the YugabyteDB connector already installed and ready to run. You can also [run Debezium on Kubernetes and OpenShift](#reminder).
 
 ### Connector configuration example
 
-Following is an example of the configuration for a PostgreSQL connector that connects to a PostgreSQL server on port `5433` at `192.168.99.100`, whose logical name is `fulfillment`. Typically, you configure the Debezium PostgreSQL connector in a JSON file by setting the configuration properties available for the connector.
+Following is an example of the configuration for a YugabyteDB connector that connects to a YugabyteDB server on port `5433` at `192.168.99.100`, whose logical name is `fulfillment`. Typically, you configure the Debezium YugabyteDB connector in a JSON file by setting the configuration properties available for the connector.
 
 You can choose to produce events for a subset of the schemas and tables in a database. Optionally, you can ignore, mask, or truncate columns that contain sensitive data, are larger than a specified size, or that you do not need.
 
@@ -787,7 +787,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 {
   "name": "fulfillment-connector",  --> 1
   "config": {
-    "connector.class": "io.debezium.connector.postgresql.PostgresConnector", --> 2
+    "connector.class": "io.debezium.connector.YugabyteDB.PostgresConnector", --> 2
     "database.hostname": "192.168.99.100", --> 3
     "database.port": "5432", --> 4
     "database.user": "postgres", --> 5
@@ -800,42 +800,42 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 ```
 
 1. The name of the connector when registered with a Kafka Connect service.
-2. The name of this PostgreSQL connector class.
-3. The address of the PostgreSQL server.
-4. The port number of the PostgreSQL server.
-5. The name of the PostgreSQL user that has the [required privileges](#reminder).
-6. The password for the PostgreSQL user that has the [required privileges](#reminder).
-7. The name of the PostgreSQL database to connect to
-8. The topic prefix for the PostgreSQL server/cluster, which forms a namespace and is used in all the names of the Kafka topics to which the connector writes, the Kafka Connect schema names, and the namespaces of the corresponding Avro schema when the Avro converter is used.
+2. The name of this YugabyteDB connector class.
+3. The address of the YugabyteDB server.
+4. The port number of the YugabyteDB server.
+5. The name of the YugabyteDB user that has the [required privileges](#reminder).
+6. The password for the YugabyteDB user that has the [required privileges](#reminder).
+7. The name of the YugabyteDB database to connect to
+8. The topic prefix for the YugabyteDB server/cluster, which forms a namespace and is used in all the names of the Kafka topics to which the connector writes, the Kafka Connect schema names, and the namespaces of the corresponding Avro schema when the Avro converter is used.
 9. A list of all tables hosted by this server that this connector will monitor. This is optional, and there are other properties for listing the schemas and tables to include or exclude from monitoring.
 
-See the [complete list of PostgreSQL connector properties](#reminder) that can be specified in these configurations.
+See the [complete list of YugabyteDB connector properties](#reminder) that can be specified in these configurations.
 
 You can send this configuration with a `POST` command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
-* Connects to the PostgreSQL database.
+* Connects to the YugabyteDB database.
 * Reads the transaction log.
 * Streams change event records to Kafka topics.
 
 ### Adding connector configuration
 
-To run a Debezium PostgreSQL connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
+To run a Debezium YugabyteDB connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
 
 Prerequisites
-* [PostgreSQL is configured to support logical replication.](#setting-up-yugabytedb)
+* [YugabyteDB is configured to support logical replication.](#setting-up-yugabytedb)
 * The [logical decoding plug-in](#reminder) is installed.
-* The PostgreSQL connector is installed.
+* The YugabyteDB connector is installed.
 
 Procedure
-1. Create a configuration for the PostgreSQL connector.
+1. Create a configuration for the YugabyteDB connector.
 2. Use the [Kafka Connect REST API](https://kafka.apache.org/documentation/#connect_rest) to add that connector configuration to your Kafka Connect cluster.
 
 #### Results
 
-After the connector starts, it [performs a consistent snapshot](#reminder) of the PostgreSQL server databases that the connector is configured for. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
+After the connector starts, it [performs a consistent snapshot](#reminder) of the YugabyteDB server databases that the connector is configured for. The connector then starts generating data change events for row-level operations and streaming change event records to Kafka topics.
 
 ### Connector properties
 
-The Debezium PostgreSQL connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values. Information about the properties is organized as follows:
+The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values. Information about the properties is organized as follows:
 * [Required configuration properties](#required-configuration-properties)
 * [Advanced configuration properties](#advanced-configuration-properties)
 * [Pass-through configuration properties](#pass-through-configuration-properties)
@@ -847,18 +847,18 @@ The following configuration properties are *required* unless a default value is 
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
 | name | No default | Unique name for the connector. Attempting to register again with the same name will fail. This property is required by all Kafka Connect connectors. |
-| connector.class | No default | The name of the Java class for the connector. Always use a value of `io.debezium.connector.postgresql.YBPostgresConnector` for the PostgreSQL connector. |
-| tasks.max | 1 | The maximum number of tasks that should be created for this connector. The PostgreSQL connector always uses a single task and therefore does not use this value, so the default is always acceptable. |
-| plugin.name | decoderbufs | The name of the PostgreSQL [logical decoding plug-in](#reminder) installed on the PostgreSQL server.<br/>Supported values are `yboutput`, and `pgoutput`. |
-| slot.name | debezium | The name of the PostgreSQL logical decoding slot that was created for streaming changes from a particular plug-in for a particular database/schema. The server uses this slot to stream events to the Debezium connector that you are configuring.<br/>Slot names must conform to [PostgreSQL replication slot naming rules](#reminder), which state: *"Each replication slot has a name, which can contain lower-case letters, numbers, and the underscore character."* |
+| connector.class | No default | The name of the Java class for the connector. Always use a value of `io.debezium.connector.YugabyteDB.YBPostgresConnector` for the YugabyteDB connector. |
+| tasks.max | 1 | The maximum number of tasks that should be created for this connector. The YugabyteDB connector always uses a single task and therefore does not use this value, so the default is always acceptable. |
+| plugin.name | decoderbufs | The name of the YugabyteDB [logical decoding plug-in](#reminder) installed on the YugabyteDB server.<br/>Supported values are `yboutput`, and `pgoutput`. |
+| slot.name | debezium | The name of the YugabyteDB logical decoding slot that was created for streaming changes from a particular plug-in for a particular database/schema. The server uses this slot to stream events to the Debezium connector that you are configuring.<br/>Slot names must conform to [YugabyteDB replication slot naming rules](#reminder), which state: *"Each replication slot has a name, which can contain lower-case letters, numbers, and the underscore character."* |
 | slot.drop.on.stop | false | Whether or not to delete the logical replication slot when the connector stops in a graceful, expected way. The default behavior is that the replication slot remains configured for the connector when the connector stops. When the connector restarts, having the same replication slot enables the connector to start processing where it left off.<br/>Set to true in only testing or development environments. Dropping the slot allows the database to discard WAL segments. When the connector restarts it performs a new snapshot or it can continue from a persistent offset in the Kafka Connect offsets topic. |
-| publication.name | dbz_publication | The name of the PostgreSQL publication created for streaming changes when using pgoutput.<br/>This publication is created at start-up if it does not already exist and it includes all tables. Debezium then applies its own include/exclude list filtering, if configured, to limit the publication to change events for the specific tables of interest. The connector user must have superuser permissions to create this publication, so it is usually preferable to create the publication before starting the connector for the first time.<br/>If the publication already exists, either for all tables or configured with a subset of tables, Debezium uses the publication as it is defined. |
-| database.hostname | No default | IP address or hostname of the PostgreSQL database server. |
-| database.port | 5433 | Integer port number of the PostgreSQL database server. |
-| database.user | No default | Name of the PostgreSQL database user for connecting to the PostgreSQL database server. |
-| database.password | No default | Password to use when connecting to the PostgreSQL database server. |
-| database.dbname | No default | The name of the PostgreSQL database from which to stream the changes. |
-| topic.prefix | No default | Topic prefix that provides a namespace for the particular PostgreSQL database server or cluster in which Debezium is capturing changes. The prefix should be unique across all other connectors, since it is used as a topic name prefix for all Kafka topics that receive records from this connector. Only alphanumeric characters, hyphens, dots and underscores must be used in the database server logical name. {{< warning title="Warning" >}} Do not change the value of this property. If you change the name value, after a restart, instead of continuing to emit events to the original topics, the connector emits subsequent events to topics whose names are based on the new value. {{< /warning >}} |
+| publication.name | dbz_publication | The name of the YugabyteDB publication created for streaming changes when using pgoutput.<br/>This publication is created at start-up if it does not already exist and it includes all tables. Debezium then applies its own include/exclude list filtering, if configured, to limit the publication to change events for the specific tables of interest. The connector user must have superuser permissions to create this publication, so it is usually preferable to create the publication before starting the connector for the first time.<br/>If the publication already exists, either for all tables or configured with a subset of tables, Debezium uses the publication as it is defined. |
+| database.hostname | No default | IP address or hostname of the YugabyteDB database server. |
+| database.port | 5433 | Integer port number of the YugabyteDB database server. |
+| database.user | No default | Name of the YugabyteDB database user for connecting to the YugabyteDB database server. |
+| database.password | No default | Password to use when connecting to the YugabyteDB database server. |
+| database.dbname | No default | The name of the YugabyteDB database from which to stream the changes. |
+| topic.prefix | No default | Topic prefix that provides a namespace for the particular YugabyteDB database server or cluster in which Debezium is capturing changes. The prefix should be unique across all other connectors, since it is used as a topic name prefix for all Kafka topics that receive records from this connector. Only alphanumeric characters, hyphens, dots and underscores must be used in the database server logical name. {{< warning title="Warning" >}} Do not change the value of this property. If you change the name value, after a restart, instead of continuing to emit events to the original topics, the connector emits subsequent events to topics whose names are based on the new value. {{< /warning >}} |
 | schema.include.list | No default | An optional, comma-separated list of regular expressions that match names of schemas for which you **want** to capture changes. Any schema name not included in `schema.include.list` is excluded from having its changes captured. By default, all non-system schemas have their changes captured.<br/>To match the name of a schema, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire identifier for the schema; it does not match substrings that might be present in a schema name.<br/>If you include this property in the configuration, do not also set the `schema.exclude.list` property. |
 | schema.exclude.list | No default | An optional, comma-separated list of regular expressions that match names of schemas for which you **do not** want to capture changes. Any schema whose name is not included in `schema.exclude.list` has its changes captured, with the exception of system schemas.<br/>To match the name of a schema, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire identifier for the schema; it does not match substrings that might be present in a schema name.<br/>If you include this property in the configuration, do not set the `schema.include.list` property. |
 | table.include.list | No default | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you want to capture. When this property is set, the connector captures changes only from the specified tables. Each identifier is of the form *schemaName.tableName*. By default, the connector captures changes in every non-system table in each schema whose changes are being captured.<br/>To match the name of a table, Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire identifier for the table; it does not match substrings that might be present in a table name.<br/>If you include this property in the configuration, do not also set the `table.exclude.list` property. |
@@ -868,26 +868,26 @@ The following configuration properties are *required* unless a default value is 
 | skip.messages.without.change | false | Specifies whether to skip publishing messages when there is no change in included columns. This would essentially filter messages if there is no change in columns included as per `column.include.list` or `column.exclude.list` properties.<br/>Note: Only works when REPLICA IDENTITY of the table is set to FULL |
 | time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision:<br/><br/>`adaptive` captures the time and timestamp values exactly as in the database using either millisecond, microsecond, or nanosecond precision values based on the database column’s type.<br/><br/>`adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using either millisecond, microsecond, or nanosecond precision values based on the database column’s type. An exception is `TIME` type fields, which are always captured as microseconds.<br/><br/>`connect` always represents time and timestamp values by using Kafka Connect’s built-in representations for `Time`, `Date`, and `Timestamp`, which use millisecond precision regardless of the database columns' precision. For more information, see [temporal values](#reminder). |
 | decimal.handling.mode | precise | Specifies how the connector should handle values for `DECIMAL` and `NUMERIC` columns:<br/><br/>`precise` represents values by using `java.math.BigDecimal` to represent values in binary form in change events.<br/><br/>`double` represents values by using double values, which might result in a loss of precision but which is easier to use.<br/><br/>`string` encodes values as formatted strings, which are easy to consume but semantic information about the real type is lost. For more information, see Decimal types. |
-| interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/>`numeric` represents intervals using approximate number of microseconds.<br/><br/>`string` represents intervals exactly by using the string pattern representation `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`. For example: `P1Y2M3DT4H5M6.78S`. For more information, see [PostgreSQL basic types](#reminder). |
-| database.sslmode | prefer | Whether to use an encrypted connection to the PostgreSQL server. Options include:<br/><br/>`disable` uses an unencrypted connection.<br/><br/>`allow` attempts to use an unencrypted connection first and, failing that, a secure (encrypted) connection.<br/><br/>`prefer` attempts to use a secure (encrypted) connection first and, failing that, an unencrypted connection.<br/><br/>`require` uses a secure (encrypted) connection, and fails if one cannot be established.<br/><br/>`verify-ca` behaves like require but also verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, or fails if no valid matching CA certificates are found.<br/><br/>`verify-full` behaves like verify-ca but also verifies that the server certificate matches the host to which the connector is trying to connect. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/libpq-connect.html). |
-| database.sslcert | No default | The path to the file that contains the SSL certificate for the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/libpq-connect.html). |
-| database.sslkey | No default | The path to the file that contains the SSL private key of the client. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/libpq-connect.html). |
-| database.sslpassword | No default | The password to access the client private key from the file specified by `database.sslkey`. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/libpq-connect.html). |
-| database.sslrootcert | No default | The path to the file that contains the root certificate(s) against which the server is validated. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/libpq-connect.html). |
-| database.tcpKeepAlive | true | Enable TCP keep-alive probe to verify that the database connection is still alive. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/current/static/libpq-connect.html). |
+| interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/>`numeric` represents intervals using approximate number of microseconds.<br/><br/>`string` represents intervals exactly by using the string pattern representation `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`. For example: `P1Y2M3DT4H5M6.78S`. For more information, see [YugabyteDB basic types](#reminder). |
+| database.sslmode | prefer | Whether to use an encrypted connection to the YugabyteDB server. Options include:<br/><br/>`disable` uses an unencrypted connection.<br/><br/>`allow` attempts to use an unencrypted connection first and, failing that, a secure (encrypted) connection.<br/><br/>`prefer` attempts to use a secure (encrypted) connection first and, failing that, an unencrypted connection.<br/><br/>`require` uses a secure (encrypted) connection, and fails if one cannot be established.<br/><br/>`verify-ca` behaves like require but also verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, or fails if no valid matching CA certificates are found.<br/><br/>`verify-full` behaves like verify-ca but also verifies that the server certificate matches the host to which the connector is trying to connect. For more information, see the [YugabyteDB documentation](https://www.YugabyteDB.org/docs/current/static/libpq-connect.html). |
+| database.sslcert | No default | The path to the file that contains the SSL certificate for the client. For more information, see the [YugabyteDB documentation](https://www.YugabyteDB.org/docs/current/static/libpq-connect.html). |
+| database.sslkey | No default | The path to the file that contains the SSL private key of the client. For more information, see the [YugabyteDB documentation](https://www.YugabyteDB.org/docs/current/static/libpq-connect.html). |
+| database.sslpassword | No default | The password to access the client private key from the file specified by `database.sslkey`. For more information, see the [YugabyteDB documentation](https://www.YugabyteDB.org/docs/current/static/libpq-connect.html). |
+| database.sslrootcert | No default | The path to the file that contains the root certificate(s) against which the server is validated. For more information, see the [YugabyteDB documentation](https://www.YugabyteDB.org/docs/current/static/libpq-connect.html). |
+| database.tcpKeepAlive | true | Enable TCP keep-alive probe to verify that the database connection is still alive. For more information, see the [YugabyteDB documentation](https://www.YugabyteDB.org/docs/current/static/libpq-connect.html). |
 | tombstones.on.delete | true | Controls whether a delete event is followed by a tombstone event.<br/><br/>`true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/>`false` - only a delete event is emitted.<br/><br/>After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | column.truncate.to.length.chars | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Set this property if you want to truncate the data in a set of columns when it exceeds the number of characters specified by the length in the property name. Set `length` to a positive integer value, for example, `column.truncate.to.20.chars`.<br/><br/>The fully-qualified name of a column observes the following format: *<schemaName>.<tableName>.<columnName>*. To match the name of a column, Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name.<br/><br/>You can specify multiple properties with different lengths in a single configuration. |
 | column.mask.with.length.chars | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Set this property if you want the connector to mask the values for a set of columns, for example, if they contain sensitive data. Set `length` to a positive integer to replace data in the specified columns with the number of asterisk (`*`) characters specified by the length in the property name. Set length to `0` (zero) to replace data in the specified columns with an empty string.<br/><br/>The fully-qualified name of a column observes the following format: schemaName.tableName.columnName. To match the name of a column, Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name.<br/><br/>You can specify multiple properties with different lengths in a single configuration. |
 | column.mask.hash.hashAlgorithm.with.salt.*salt*;<br/>column.mask.hash.v2.hashAlgorithm.with.salt.*salt* | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form *<schemaName>.<tableName>.<columnName>*.<br/>To match the name of a column Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name. In the resulting change event record, the values for the specified columns are replaced with pseudonyms.<br/>A pseudonym consists of the hashed value that results from applying the specified hashAlgorithm and salt. Based on the hash function that is used, referential integrity is maintained, while column values are replaced with pseudonyms. Supported hash functions are described in the [MessageDigest](https://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#MessageDigest) section of the Java Cryptography Architecture Standard Algorithm Name Documentation.<br/><br/>In the following example, `CzQMA0cB5K` is a randomly selected salt.<br/><br/>```column.mask.hash.SHA-256.with.salt.CzQMA0cB5K = inventory.orders.customerName, inventory.shipment.customerName```<br/>If necessary, the pseudonym is automatically shortened to the length of the column. The connector configuration can include multiple properties that specify different hash algorithms and salts.<br/><br/>Depending on the `hashAlgorithm` used, the salt selected, and the actual data set, the resulting data set might not be completely masked.<br/><br/>Hashing strategy version 2 should be used to ensure fidelity if the value is being hashed in different places or systems. |
 | column.propagate.source.type | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns for which you want the connector to emit extra parameters that represent column metadata. When this property is set, the connector adds the following fields to the schema of event records:<ul><li><span style="font-family: monospace;">__debezium.source.column.type</span></li><li><span style="font-family: monospace;">__debezium.source.column.length</span></li><li><span style="font-family: monospace;">__debezium.source.column.scale</span></li></ul>These parameters propagate a column’s original type name and length (for variable-width types), respectively.<br/>Enabling the connector to emit this extra data can assist in properly sizing specific numeric or character-based columns in sink databases.<br/>The fully-qualified name of a column observes one of the following formats: *databaseName.tableName.columnName*, or *databaseName.schemaName.tableName.columnName*.<br/>To match the name of a column, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name. |
-| datatype.propagate.source.type | n/a | An optional, comma-separated list of regular expressions that specify the fully-qualified names of data types that are defined for columns in a database. When this property is set, for columns with matching data types, the connector emits event records that include the following extra fields in their schema:<ul><li><span style="font-family: monospace;">__debezium.source.column.type</span></li><li><span style="font-family: monospace;">__debezium.source.column.length</span></li><li><span style="font-family: monospace;">__debezium.source.column.scale</span></li></ul>These parameters propagate a column’s original type name and length (for variable-width types), respectively.<br/>Enabling the connector to emit this extra data can assist in properly sizing specific numeric or character-based columns in sink databases.<br/>The fully-qualified name of a column observes one of the following formats: *databaseName.tableName.typeName*, or *databaseName.schemaName.tableName.typeName*.<br/>To match the name of a data type, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the data type; the expression does not match substrings that might be present in a type name.<br/>For the list of PostgreSQL-specific data type names, see the [PostgreSQL data type mappings](#reminder). |
+| datatype.propagate.source.type | n/a | An optional, comma-separated list of regular expressions that specify the fully-qualified names of data types that are defined for columns in a database. When this property is set, for columns with matching data types, the connector emits event records that include the following extra fields in their schema:<ul><li><span style="font-family: monospace;">__debezium.source.column.type</span></li><li><span style="font-family: monospace;">__debezium.source.column.length</span></li><li><span style="font-family: monospace;">__debezium.source.column.scale</span></li></ul>These parameters propagate a column’s original type name and length (for variable-width types), respectively.<br/>Enabling the connector to emit this extra data can assist in properly sizing specific numeric or character-based columns in sink databases.<br/>The fully-qualified name of a column observes one of the following formats: *databaseName.tableName.typeName*, or *databaseName.schemaName.tableName.typeName*.<br/>To match the name of a data type, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the data type; the expression does not match substrings that might be present in a type name.<br/>For the list of YugabyteDB-specific data type names, see the [YugabyteDB data type mappings](#reminder). |
 
 #### Advanced configuration properties
 #### Pass-through configuration properties
 
 ## Monitoring
 
-The Debezium PostgreSQL connector provides two types of metrics that are in addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide.
+The Debezium YugabyteDB connector provides two types of metrics that are in addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide.
 
 * [Snapshot metrics](#snapshot-metrics) provide information about connector operation while performing a snapshot.
 * [Streaming metrics](#streaming-metrics) provide information about connector operation when the connector is capturing changes and streaming change event records.
@@ -970,18 +970,18 @@ The rest of this section describes how Debezium handles various kinds of faults 
 In the following situations, the connector fails when trying to start, reports an error/exception in the log, and stops running:
 
 * The connector’s configuration is invalid.
-* The connector cannot successfully connect to PostgreSQL by using the specified connection parameters.
-* The connector is restarting from a previously-recorded position in the PostgreSQL WAL (by using the LSN) and PostgreSQL no longer has that history available.
+* The connector cannot successfully connect to YugabyteDB by using the specified connection parameters.
+* The connector is restarting from a previously-recorded position in the YugabyteDB WAL (by using the LSN) and YugabyteDB no longer has that history available.
 
-In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the PostgreSQL problem, restart the connector.
+In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the YugabyteDB problem, restart the connector.
 
-### PostgreSQL becomes unavailable
+### YugabyteDB becomes unavailable
 
 <!-- todo Vaibhav: what will be the behavior of the connector when tserver goes down. talk about the resiliency in terms of smart driver -->
 
-When the connector is running, the PostgreSQL server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
+When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
 
-The PostgreSQL connector externally stores the last processed offset in the form of a PostgreSQL LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact. Never drop a replication slot on the primary server or you will lose data.
+The YugabyteDB connector externally stores the last processed offset in the form of a YugabyteDB LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact. Never drop a replication slot on the primary server or you will lose data.
 
 <!-- YB Note removed from above: For information about failure cases in which a slot has been removed, see the next section. -->
 
@@ -993,11 +993,11 @@ Suppose that Kafka Connect is being run in distributed mode and a Kafka Connect 
 
 ### Kafka Connect process crashes
 
-If the Kafka Connector process stops unexpectedly, any connector tasks it was running terminate without recording their most recently processed offsets. When Kafka Connect is being run in distributed mode, Kafka Connect restarts those connector tasks on other processes. However, PostgreSQL connectors resume from the last offset that was recorded by the earlier processes. This means that the new replacement tasks might generate some of the same change events that were processed just prior to the crash. The number of duplicate events depends on the offset flush period and the volume of data changes just before the crash.
+If the Kafka Connector process stops unexpectedly, any connector tasks it was running terminate without recording their most recently processed offsets. When Kafka Connect is being run in distributed mode, Kafka Connect restarts those connector tasks on other processes. However, YugabyteDB connectors resume from the last offset that was recorded by the earlier processes. This means that the new replacement tasks might generate some of the same change events that were processed just prior to the crash. The number of duplicate events depends on the offset flush period and the volume of data changes just before the crash.
 
 Because there is a chance that some events might be duplicated during a recovery from failure, consumers should always anticipate some duplicate events. Debezium changes are idempotent, so a sequence of events always results in the same state.
 
-In each change event record, Debezium connectors insert source-specific information about the origin of the event, including the PostgreSQL server’s time of the event, the ID of the server transaction, and the position in the write-ahead log where the transaction changes were written. Consumers can keep track of this information, especially the LSN, to determine whether an event is a duplicate.
+In each change event record, Debezium connectors insert source-specific information about the origin of the event, including the YugabyteDB server’s time of the event, the ID of the server transaction, and the position in the write-ahead log where the transaction changes were written. Consumers can keep track of this information, especially the LSN, to determine whether an event is a duplicate.
 
 ### Kafka becomes unavailable
 
@@ -1005,7 +1005,7 @@ As the connector generates change events, the Kafka Connect framework records th
 
 ### Connector is stopped for a duration
 
-If the connector is gracefully stopped, the database can continue to be used. Any changes are recorded in the PostgreSQL WAL. When the connector restarts, it resumes streaming changes where it left off. That is, it generates change event records for all database changes that were made while the connector was stopped.
+If the connector is gracefully stopped, the database can continue to be used. Any changes are recorded in the YugabyteDB WAL. When the connector restarts, it resumes streaming changes where it left off. That is, it generates change event records for all database changes that were made while the connector was stopped.
 
-A properly configured Kafka cluster is able to handle massive throughput. Kafka Connect is written according to Kafka best practices, and given enough resources a Kafka Connect connector can also handle very large numbers of database change events. Because of this, after being stopped for a while, when a Debezium connector restarts, it is very likely to catch up with the database changes that were made while it was stopped. How quickly this happens depends on the capabilities and performance of Kafka and the volume of changes being made to the data in PostgreSQL.
+A properly configured Kafka cluster is able to handle massive throughput. Kafka Connect is written according to Kafka best practices, and given enough resources a Kafka Connect connector can also handle very large numbers of database change events. Because of this, after being stopped for a while, when a Debezium connector restarts, it is very likely to catch up with the database changes that were made while it was stopped. How quickly this happens depends on the capabilities and performance of Kafka and the volume of changes being made to the data in YugabyteDB.
 
