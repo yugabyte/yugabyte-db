@@ -565,7 +565,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   # Digest the package.
   digest_package "${YB_PACKAGE_PATH}"
 
-  if grep -q "CentOS Linux 7" /etc/os-release || (
+  if (
       # We only do this test with AlmaLinux 8 for the Linuxbrew-enabled Clang-based build, because
       # we still need to set up Docker properly on aarch64 VM images, and the AlmaLinux 8 based test
       # for the GCC fastdebug build requires locale setup inside the Docker image.
