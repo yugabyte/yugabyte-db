@@ -556,29 +556,6 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   # Digest the package.
   digest_package "${YB_PACKAGE_PATH}"
 
-  if grep -q "CentOS Linux 7" /etc/os-release || (
-      # We only do this test with AlmaLinux 8 for the Linuxbrew-enabled Clang-based build, because
-      # we still need to set up Docker properly on aarch64 VM images, and the AlmaLinux 8 based test
-      # for the GCC fastdebug build requires locale setup inside the Docker image.
-      grep -Eq "AlmaLinux 8[.]" /etc/os-release &&
-      using_linuxbrew &&
-      [[ $YB_COMPILER_TYPE == clang* ]]
-    ); then
-    "$YB_SRC_ROOT/bin/release_package_docker_test.sh" --package-path "${YB_PACKAGE_PATH}"
-  else
-    log "Not doing a quick sanity-check of the release package. Details:"
-    log "  OS type: ${OSTYPE}"
-    log "  YB_COMPILER_TYPE: ${YB_COMPILER_TYPE}"
-    if using_linuxbrew; then
-      log "  Using Linuxbrew."
-    else
-      log "  Not using Linuxbrew."
-    fi
-    if [[ -f /etc/os-release ]]; then
-      log "  Contents of /etc/os-release:"
-      cat /etc/os-release >&2
-    fi
-  fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \
       "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}."

@@ -263,7 +263,14 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
-DEFINE_RUNTIME_bool(reject_writes_when_disk_full, true,
+#if defined ADDRESS_SANITIZER
+// ASAN tests run on machines with limited disk space, so disable disk full checks.
+constexpr bool kRejectWritesWhenDiskFullDefault = false;
+#else
+constexpr bool kRejectWritesWhenDiskFullDefault = true;
+#endif
+
+DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
     "Reject incoming writes to the tablet if we are running out of disk space.");
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
