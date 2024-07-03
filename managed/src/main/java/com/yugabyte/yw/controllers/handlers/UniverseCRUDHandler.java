@@ -631,10 +631,6 @@ public class UniverseCRUDHandler {
           // Apply group uniformly to all clusters
           c.userIntent.specificGFlags.setGflagGroups(gflagGroups);
         }
-        // check gflag groups
-        c.userIntent.specificGFlags =
-            GFlagsUtil.processGFlagGroups(
-                c.userIntent.specificGFlags, c.userIntent.ybSoftwareVersion, gFlagsValidation);
         c.userIntent.masterGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
         c.userIntent.tserverGFlags =
@@ -1479,11 +1475,6 @@ public class UniverseCRUDHandler {
       List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
       clusters.add(readOnlyCluster);
       readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGflagGroups);
-      readOnlyCluster.userIntent.specificGFlags =
-          GFlagsUtil.processGFlagGroups(
-              readOnlyCluster.userIntent.specificGFlags,
-              readOnlyCluster.userIntent.ybSoftwareVersion,
-              gFlagsValidation);
       readOnlyCluster.userIntent.masterGFlags =
           GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, readOnlyCluster, clusters);
       readOnlyCluster.userIntent.tserverGFlags =
