@@ -6,12 +6,12 @@ jobs:
     build_type: asan
     release_artifact: false
 
-  - os: centos7
+  - os: alma8
     compiler: clang12
     build_type: tsan
     release_artifact: false
 
-  - os: centos7
+  - os: alma8
     compiler: clang12
     build_type: debug
     release_artifact: false
