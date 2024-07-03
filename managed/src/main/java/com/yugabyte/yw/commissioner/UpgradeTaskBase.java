@@ -274,7 +274,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (context.processInactiveMaster) {
       createRollingUpgradeTaskFlow(
           rollingUpgradeLambda,
-          getInactiveMasters(masterNodes, tServerNodes),
+          getNonMasterNodes(masterNodes, tServerNodes),
           ServerType.MASTER,
           context,
           false,
@@ -477,7 +477,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (context.processInactiveMaster) {
       createNonRollingUpgradeTaskFlow(
           nonRollingUpgradeLambda,
-          getInactiveMasters(masterNodes, tServerNodes),
+          getNonMasterNodes(masterNodes, tServerNodes),
           ServerType.MASTER,
           context,
           false,
@@ -498,7 +498,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  private List<NodeDetails> getInactiveMasters(
+  private List<NodeDetails> getNonMasterNodes(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
     Universe universe = getUniverse();
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -506,6 +506,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         ? tServerNodes.stream()
             .filter(node -> node.placementUuid.equals(primaryClusterUuid))
             .filter(node -> masterNodes == null || !masterNodes.contains(node))
+            // masterNodes is a subset of masters that are yet to be updated in this rolling op.
+            .filter(node -> !node.isMaster)
             .collect(Collectors.toList())
         : null;
   }
