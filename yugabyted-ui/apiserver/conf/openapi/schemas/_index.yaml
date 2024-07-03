@@ -1058,14 +1058,19 @@ TargetClusterSpec:
   properties:
     num_nodes:
       type: integer
+      format: int64
     vcpu_per_node:
       type: integer
+      format: int64
     memory_per_node:
       type: integer
+      format: int64
     connections_per_node:
       type: integer
+      format: int64
     inserts_per_node:
       type: integer
+      format: int64
 TargetSchemaRecommendations:
   title: Target YugabyteDB cluster schema recommendations
   description: Target YugabyteDB cluster schema recommendations
@@ -1073,12 +1078,16 @@ TargetSchemaRecommendations:
   properties:
     no_of_colocated_tables:
       type: integer
+      format: int64
     total_size_colocated_tables:
       type: integer
+      format: int64
     no_of_sharded_tables:
       type: integer
+      format: int64
     total_size_sharded_tables:
       type: integer
+      format: int64
 AssessmentReportSummary:
   title: Migration assessment summary
   description: API for getting migration assessment summary
@@ -1110,12 +1119,16 @@ SourceDatabaseInfo:
   properties:
     table_size:
       type: integer
+      format: int64
     table_row_count:
       type: integer
+      format: int64
     total_table_size:
       type: integer
+      format: int64
     total_index_size:
       type: integer
+      format: int64
 MigrationAssesmentInfo:
   title: Details for Voyager migrations assesment
   description: Details for Voyager migrations assesment

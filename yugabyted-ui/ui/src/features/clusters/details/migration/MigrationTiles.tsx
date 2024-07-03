@@ -8,6 +8,8 @@ import { MigrationPhase, MigrationStep, migrationSteps } from "./migration";
 import {
   MigrateSchemaTaskInfo,
   MigrationAssesmentInfo,
+  MigrationAssessmentReport,
+  useGetMigrationAssessmentInfoQuery,
   useGetVoyagerDataMigrationMetricsQuery,
   useGetVoyagerMigrateSchemaTasksQuery,
   useGetVoyagerMigrationAssesmentDetailsQuery,
@@ -78,6 +80,12 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
+  const { data: newMigrationAPIData } = useGetMigrationAssessmentInfoQuery({
+    uuid: migration.migration_uuid || "migration_uuid_not_found",
+  });
+
+  const mNewAssessment = (newMigrationAPIData as MigrationAssessmentReport | undefined)/* ?.data */;
+
   const mAssessmentData = migrationAssessmentData as MigrationAssesmentInfo;
   const mSchemaData = migrationSchemaData as MigrateSchemaTaskInfo;
 
@@ -112,8 +120,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
             if (stepIndex === MigrationStep["Assessment"]) {
               if (
                 mAssessmentData?.assesment_status === true ||
-                (migration.migration_phase === MigrationPhase["Assess Migration"] &&
-                  migration.invocation_sequence === 2)
+                mNewAssessment?.summary?.migration_complexity
               ) {
                 completed = true;
               } else {

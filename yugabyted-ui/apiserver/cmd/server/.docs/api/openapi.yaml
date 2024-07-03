@@ -1418,12 +1418,16 @@ components:
         total_table_size: 1
       properties:
         table_size:
+          format: int64
           type: integer
         table_row_count:
+          format: int64
           type: integer
         total_table_size:
+          format: int64
           type: integer
         total_index_size:
+          format: int64
           type: integer
       title: Source Database details
       type: object
@@ -1437,14 +1441,19 @@ components:
         num_nodes: 5
       properties:
         num_nodes:
+          format: int64
           type: integer
         vcpu_per_node:
+          format: int64
           type: integer
         memory_per_node:
+          format: int64
           type: integer
         connections_per_node:
+          format: int64
           type: integer
         inserts_per_node:
+          format: int64
           type: integer
       title: Target cluster size recommendations
       type: object
@@ -1457,12 +1466,16 @@ components:
         no_of_sharded_tables: 7
       properties:
         no_of_colocated_tables:
+          format: int64
           type: integer
         total_size_colocated_tables:
+          format: int64
           type: integer
         no_of_sharded_tables:
+          format: int64
           type: integer
         total_size_sharded_tables:
+          format: int64
           type: integer
       title: Target YugabyteDB cluster schema recommendations
       type: object
