@@ -39,9 +39,6 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
-/* Yugabyte includes */
-#include "pg_yb_utils.h"
-
 static Datum ExecHashSubPlan(SubPlanState *node,
 							 ExprContext *econtext,
 							 bool *isNull);
@@ -684,16 +681,10 @@ execTuplesUnequal(TupleTableSlot *slot1,
 		if (isNull2)
 			continue;			/* can't prove anything here */
 
-		/* YB_TODO(review): Can YB code reach here at all? */
-		Datum equal;
-		if (IsYugaByteEnabled())
-			equal = FunctionCall2(&eqfunctions[i], attr1, attr2);
-		else
-			equal = FunctionCall2Coll(&eqfunctions[i],
-									  collations[i],
-									  attr1, attr2);
 		/* Apply the type-specific equality function */
-		if (!DatumGetBool(equal))
+		if (!DatumGetBool(FunctionCall2Coll(&eqfunctions[i],
+											collations[i],
+											attr1, attr2)))
 		{
 			result = true;		/* they are unequal */
 			break;
