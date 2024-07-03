@@ -1,0 +1,5 @@
+# src/test/regress/yb_auth_schedule
+# This schedule is for non-ported tests only.
+
+test: yb_roles
+test: yb_rowsecurity

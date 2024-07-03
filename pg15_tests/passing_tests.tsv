@@ -38,7 +38,7 @@ JAVA	org.yb.pgsql.TestPgPushdown#in_primaryKeySimple
 JAVA	org.yb.pgsql.TestPgRegressAggregates
 JAVA	org.yb.pgsql.TestPgRegressAnalyze
 JAVA	org.yb.pgsql.TestPgRegressArrays
-JAVA	org.yb.pgsql.TestPgRegressAuthorization
+JAVA	org.yb.pgsql.TestPgRegressAuth
 JAVA	org.yb.pgsql.TestPgRegressBackfillIndex
 JAVA	org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
 JAVA	org.yb.pgsql.TestPgRegressColocation
@@ -71,6 +71,7 @@ JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscIndependent
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
+JAVA	org.yb.pgsql.TestPgRegressPgAuth
 JAVA	org.yb.pgsql.TestPgRegressPgForeignData
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
