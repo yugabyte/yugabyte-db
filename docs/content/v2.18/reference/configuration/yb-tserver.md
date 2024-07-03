@@ -1050,7 +1050,7 @@ Default: `86400`
 
 Stop retaining logs if the space available for the logs falls below this limit, specified in megabytes. As with `log_max_seconds_to_retain`, this flag is ignored if a log segment contains unflushed entries.
 
-Default: `102400`
+Default: `100`
 
 ##### --cdc_intent_retention_ms
 
