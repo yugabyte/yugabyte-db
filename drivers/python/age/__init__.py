@@ -24,12 +24,14 @@ def version():
     return VERSION.VERSION
 
 
-def connect(dsn=None, graph=None, connection_factory=None, cursor_factory=ClientCursor, **kwargs):
+def connect(dsn=None, graph=None, connection_factory=None, cursor_factory=ClientCursor, load_from_plugins=False,
+            **kwargs):
 
     dsn = conninfo.make_conninfo('' if dsn is None else dsn, **kwargs)
 
     ag = Age()
-    ag.connect(dsn=dsn, graph=graph, connection_factory=connection_factory, cursor_factory=cursor_factory, **kwargs)
+    ag.connect(dsn=dsn, graph=graph, connection_factory=connection_factory, cursor_factory=cursor_factory,
+               load_from_plugins=load_from_plugins, **kwargs)
     return ag
 
 # Dummy ResultHandler
