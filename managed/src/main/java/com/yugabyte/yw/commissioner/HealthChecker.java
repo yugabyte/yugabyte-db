@@ -710,12 +710,15 @@ public class HealthChecker {
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
       for (NodeDetails nodeDetails : sortedDetails) {
         NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
+        String nodeIdentifier = StringUtils.EMPTY;
+        if (nodeInstance != null && nodeInstance.getDetails().instanceName != null) {
+          nodeIdentifier = nodeInstance.getDetails().instanceName;
+        }
         NodeInfo nodeInfo =
             new NodeInfo()
                 .setNodeHost(nodeDetails.cloudInfo.private_ip)
                 .setNodeName(nodeDetails.nodeName)
-                .setNodeIdentifier(
-                    nodeInstance != null ? nodeInstance.getDetails().instanceName : "")
+                .setNodeIdentifier(nodeIdentifier)
                 .setYbSoftwareVersion(userIntent.ybSoftwareVersion)
                 .setEnableYSQL(userIntent.enableYSQL)
                 .setEnableYCQL(userIntent.enableYCQL)
