@@ -54,7 +54,7 @@ typedef struct InverseMatchArgs
 	bson_value_t defaultResult;
 } InverseMatchArgs;
 
-static void ParseInverseMatchSpec(InverseMatchArgs *args, bson_iter_t *specIter);
+static void PopulateInverseMatchArgs(InverseMatchArgs *args, bson_iter_t *specIter);
 static void ValidateQueryInput(const bson_value_t *value);
 static bool EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args);
 static bool InverseMatchVisitTopLevelField(pgbsonelement *element, const
@@ -95,14 +95,14 @@ bson_dollar_inverse_match(PG_FUNCTION_ARGS)
 		args,
 		InverseMatchArgs,
 		argPosition,
-		ParseInverseMatchSpec,
+		PopulateInverseMatchArgs,
 		&specIter);
 
 	bool result;
 	if (args == NULL)
 	{
 		InverseMatchArgs inverseMatchArgs;
-		ParseInverseMatchSpec(&inverseMatchArgs, &specIter);
+		PopulateInverseMatchArgs(&inverseMatchArgs, &specIter);
 		result = EvaluateInverseMatch(document, &inverseMatchArgs);
 	}
 	else
@@ -217,15 +217,19 @@ EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args)
 
 
 /*
- * Parses and validates the inverse match spec {"path": <document>, "input": <document or array of documents> }
- * and stores it into the args parameter.
+ * Parses the {"path": <document>, "input": <document or array of documents>, "defaultResult": <bool> }
+ * and stores it into the args parameter. It just validates the input as the rest of validation is done at the top level query and transformed to the
+ * expected spec at this stage of the query.
  */
 static void
-ParseInverseMatchSpec(InverseMatchArgs *args, bson_iter_t *specIter)
+PopulateInverseMatchArgs(InverseMatchArgs *args, bson_iter_t *specIter)
 {
 	bson_value_t pathValue = { 0 };
 	bson_value_t queryInput = { 0 };
-	bson_value_t defaultResult = { 0 };
+	bson_value_t defaultResult = {
+		.value_type = BSON_TYPE_BOOL,
+		.value.v_bool = false,
+	};
 
 	while (bson_iter_next(specIter))
 	{
@@ -242,51 +246,14 @@ ParseInverseMatchSpec(InverseMatchArgs *args, bson_iter_t *specIter)
 		{
 			defaultResult = *bson_iter_value(specIter);
 		}
-		else
-		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
-							errmsg("unrecognized argument to $inverseMatch: '%s'", key)));
-		}
-	}
-
-	if (pathValue.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
-							"Missing 'path' parameter to $inverseMatch")));
-	}
-
-	if (pathValue.value_type != BSON_TYPE_UTF8)
-	{
-		ereport(ERROR, (errcode(MongoBadValue),
-						errmsg(
-							"$inverseMatch requires that 'path' be a string, found: %s",
-							BsonTypeName(
-								pathValue.value_type)),
-						errhint(
-							"$inverseMatch requires that 'path' be a string, found: %s",
-							BsonTypeName(
-								pathValue.value_type))));
 	}
 
 	args->path.length = pathValue.value.v_utf8.len;
 	args->path.string = pathValue.value.v_utf8.str;
 
-	if (args->path.length == 0 || args->path.string == NULL)
-	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
-							"Missing 'path' parameter to $inverseMatch")));
-	}
-
-	if (queryInput.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
-							"Missing 'input' parameter to $inverseMatch")));
-	}
-
-	/* TODO: we currently parse this as an expression to allow path references from input into the document for
-	 * scenarios where the input can come from another collection via a lookup stage. That is not very performant
-	 * as lookup does too much, rewrites the document and that adds overhead in perf.
-	 * Once we support specifying a from collection in the inverse match spec, remove this support.
+	/*
+	 * We support parsing as an expression to support cases where the input might come from a previous stage,
+	 * i.e: $project in order to build the input in a specific shape and reference it via a path expression.
 	 */
 	ParseAggregationExpressionData(&args->queryInputExpression, &queryInput);
 
@@ -294,7 +261,6 @@ ParseInverseMatchSpec(InverseMatchArgs *args, bson_iter_t *specIter)
 	if (expressionKind != AggregationExpressionKind_Constant &&
 		expressionKind != AggregationExpressionKind_Path)
 	{
-		/* TODO: can we/should we support more expressions kinds? */
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
 							"$inverseMatch expects 'input' to be a constant value or a string path expression.")));
 	}
@@ -304,16 +270,8 @@ ParseInverseMatchSpec(InverseMatchArgs *args, bson_iter_t *specIter)
 		ValidateQueryInput(&args->queryInputExpression.value);
 	}
 
-	args->defaultResult.value_type = BSON_TYPE_EOD;
 	if (defaultResult.value_type != BSON_TYPE_EOD)
 	{
-		if (defaultResult.value_type != BSON_TYPE_BOOL)
-		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
-								"$inverseMatch expects 'defaultResult' to be a constant bool found: %s.",
-								BsonTypeName(defaultResult.value_type))));
-		}
-
 		args->defaultResult.value_type = BSON_TYPE_BOOL;
 		args->defaultResult.value.v_bool = defaultResult.value.v_bool;
 	}

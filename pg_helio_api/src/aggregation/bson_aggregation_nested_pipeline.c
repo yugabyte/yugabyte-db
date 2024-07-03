@@ -4,7 +4,7 @@
  * src/planner/bson_aggregation_nested_pipeline.c
  *
  * Implementation of the backend query generation for pipelines that have
- * nested pipelines (such as $lookup, $facet).
+ * nested pipelines (such as $lookup, $facet, $inverseMatch).
  *
  *-------------------------------------------------------------------------
  */
@@ -42,6 +42,7 @@
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
 #include "utils/feature_counter.h"
+#include "utils/version_utils.h"
 #include "operators/bson_expression.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
@@ -119,6 +120,27 @@ typedef struct
 	bson_value_t connectFromFieldExpression;
 } GraphLookupArgs;
 
+/*
+ * Args processed from the $inverseMatch stage.
+ */
+typedef struct InverseMatchArgs
+{
+	/* The specified path. */
+	StringView path;
+
+	/* The from collection to run the aggregation pipeline provided in the args. */
+	StringView fromCollection;
+
+	/* The specified input. */
+	bson_value_t input;
+
+	/* The aggregation pipeline specified to run on the fromCollection. */
+	bson_value_t pipeline;
+
+	/* The default result to use if a query in a document is not found. */
+	bson_value_t defaultResult;
+} InverseMatchArgs;
+
 
 static bool CanInlineInnerLookupPipeline(LookupArgs *lookupArgs);
 static int ValidateFacet(const bson_value_t *facetValue);
@@ -136,6 +158,10 @@ static Query * AddBsonObjectAggFunction(Query *baseQuery,
 static void ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args);
 static void ParseGraphLookupStage(const bson_value_t *existingValue,
 								  GraphLookupArgs *args);
+static Query * CreateInverseMatchFromCollectionQuery(InverseMatchArgs *inverseMatchArgs,
+													 AggregationPipelineBuildContext *
+													 context, ParseState *parseState);
+static bool ParseInverseMatchSpec(const bson_value_t *spec, InverseMatchArgs *args);
 static Query * CreateCteSelectQuery(CommonTableExpr *baseCte, const char *prefix,
 									int stageNum, int levelsUp);
 static Query * ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
@@ -397,6 +423,318 @@ HandleDocumentsStage(const bson_value_t *existingValue, Query *query,
 
 	context->requiresSubQuery = true;
 	return query;
+}
+
+
+/* Handles the $inverseMatch stage.
+ * It generates a query like:
+ * SELECT document FROM collection WHERE
+ * bson_dollar_inverse_match(document, '{"path": <path>, "input": <input>}')
+ */
+Query *
+HandleInverseMatch(const bson_value_t *existingValue, Query *query,
+				   AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_INVERSEMATCH);
+
+	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"$inverseMatch requires a document as an input instead got: %s",
+							BsonTypeName(
+								existingValue->value_type)),
+						errhint(
+							"$inverseMatch requires a document as an input instead got: %s",
+							BsonTypeName(
+								existingValue->value_type))));
+	}
+
+	if (query->limitOffset != NULL || query->limitCount != NULL ||
+		query->sortClause != NULL)
+	{
+		query = MigrateQueryToSubQuery(query, context);
+	}
+
+	InverseMatchArgs arguments;
+	memset(&arguments, 0, sizeof(InverseMatchArgs));
+
+	bool useFromCollection = ParseInverseMatchSpec(existingValue, &arguments);
+
+	/* The first projector is the document */
+	TargetEntry *firstEntry = linitial(query->targetList);
+
+	Expr *currentProjection = firstEntry->expr;
+
+	/* build WHERE helio_api.bson_dollar_inverse_match clause */
+	Expr *specArgument = NULL;
+	ParseState *parseState = make_parsestate(NULL);
+	parseState->p_expr_kind = EXPR_KIND_SELECT_TARGET;
+	parseState->p_next_resno = list_length(query->targetList) + 1;
+
+	if (!useFromCollection)
+	{
+		pgbson *specBson = PgbsonInitFromBuffer(
+			(char *) existingValue->value.v_doc.data,
+			existingValue->value.v_doc.data_len);
+		specArgument = (Expr *) MakeBsonConst(specBson);
+	}
+	else
+	{
+		/* if from collection is specified we generate a query like:
+		 * SELECT document
+		 * FROM mongo_data.documents_963002 collection
+		 * WHERE helio_api_internal.bson_dollar_inverse_match(
+		 *  document,
+		 *  (
+		 *      SELECT mongo_catalog.bson_dollar_add_fields(
+		 *          '{ "path" : "rule", "defaultResult" : false }'::mongo_catalog.bson,
+		 *          (
+		 *              SELECT COALESCE(
+		 *                  mongo_catalog.bson_array_agg(collection_0_1.document, 'input'::text),
+		 *                  '{ "input" : [  ] }'::mongo_catalog.bson
+		 *              ) AS document
+		 *              FROM mongo_data.documents_963001_9630019 collection_0_1
+		 *              WHERE mongo_catalog.bson_dollar_ne(
+		 *                  collection_0_1.document,
+		 *                  '{ "user_id" : { "$numberInt" : "200" } }'::mongo_catalog.bson
+		 *              )
+		 *              AND collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '963001'::bigint
+		 *              LIMIT '1'::bigint
+		 *          )
+		 *      ) AS spec
+		 *  )
+		 * )
+		 * AND shard_key_value OPERATOR(pg_catalog.=) '963002'::bigint;
+		 */
+		if (StringViewEquals(&context->collectionNameView, &arguments.fromCollection))
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"'from' collection should be a different collection than the base collection the inverseMatch is running against.")));
+		}
+
+		/* Generate add_fields subquery to pass down as an argument. */
+		Query *addFieldsQuery = CreateInverseMatchFromCollectionQuery(&arguments, context,
+																	  parseState);
+
+		SubLink *addFieldsSubLink = makeNode(SubLink);
+		addFieldsSubLink->subLinkType = EXPR_SUBLINK;
+		addFieldsSubLink->subLinkId = 1; /* addFieldsQuery has a sublink already. */
+		addFieldsSubLink->subselect = (Node *) addFieldsQuery;
+
+		query->hasSubLinks = true;
+		specArgument = (Expr *) addFieldsSubLink;
+	}
+
+	FuncExpr *inverseMatchFuncExpr = makeFuncExpr(
+		BsonDollarInverseMatchFunctionId(), BOOLOID,
+		list_make2(currentProjection, specArgument),
+		InvalidOid, InvalidOid,
+		COERCE_EXPLICIT_CALL);
+
+	List *quals = list_make1(inverseMatchFuncExpr);
+	if (query->jointree->quals != NULL)
+	{
+		quals = lappend(quals, query->jointree->quals);
+	}
+
+	free_parsestate(parseState);
+
+	query->jointree->quals = (Node *) make_ands_explicit(quals);
+	return query;
+}
+
+
+/* Helper method to generate the sub query used as an argument to the bson_inverse_match UDF.
+ * When from collection is specified we need to generate the spec we pass down to inverse match,
+ * using the result of the pipeline executed on the from collection. For that we need to generate
+ * a subquery used as the parameter to inverse match, i.e:
+ * (SELECT bson_dollar_add_fields(spec, (SELECT COALESCE(bson_array_agg(document, "input"), '{"input": []}')) as spec FROM collection))
+ *
+ * The query passed to bson_dollar_add_fields will vary depending on  the pipeline specified.
+ */
+static Query *
+CreateInverseMatchFromCollectionQuery(InverseMatchArgs *inverseMatchArgs,
+									  AggregationPipelineBuildContext *context,
+									  ParseState *parseState)
+{
+	pg_uuid_t *collectionUuid = NULL;
+	AggregationPipelineBuildContext subPipelineContext = { 0 };
+	subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
+	subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+
+	Query *nestedPipeline = GenerateBaseTableQuery(context->databaseNameDatum,
+												   &inverseMatchArgs->fromCollection,
+												   collectionUuid, &subPipelineContext);
+
+	if (subPipelineContext.mongoCollection == NULL)
+	{
+		ereport(ERROR, (errcode(MongoNamespaceNotFound),
+						errmsg(
+							"'from' collection: '%s.%s' doesn't exist.",
+							TextDatumGetCString(context->databaseNameDatum),
+							inverseMatchArgs->fromCollection.string)));
+	}
+
+	nestedPipeline = MutateQueryWithPipeline(nestedPipeline, &inverseMatchArgs->pipeline,
+											 &subPipelineContext);
+
+	bool requiresSubQuery = false;
+	Aggref **aggrefPtr = NULL;
+	nestedPipeline = AddBsonArrayAggFunction(nestedPipeline, &subPipelineContext,
+											 parseState, "input", 5, requiresSubQuery,
+											 aggrefPtr);
+
+	/* once we have the bson with the input, we should append this to the spec with bson_add_fields. */
+	Query *addFieldsQuery = makeNode(Query);
+	addFieldsQuery->commandType = CMD_SELECT;
+	addFieldsQuery->querySource = QSRC_ORIGINAL;
+	addFieldsQuery->canSetTag = true;
+	addFieldsQuery->hasSubLinks = true;
+
+	SubLink *subLink = makeNode(SubLink);
+	subLink->subLinkType = EXPR_SUBLINK;
+	subLink->subLinkId = 0;
+	subLink->subselect = (Node *) nestedPipeline;
+
+	/* Write new spec with the path and defaultResult arguments. */
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	PgbsonWriterAppendUtf8(&writer, "path", -1, inverseMatchArgs->path.string);
+	PgbsonWriterAppendValue(&writer, "defaultResult", -1,
+							&inverseMatchArgs->defaultResult);
+
+	pgbson *specBson = PgbsonWriterGetPgbson(&writer);
+
+	List *addFieldsArgs = list_make2(MakeBsonConst(specBson), subLink);
+	FuncExpr *projectorFunc = makeFuncExpr(
+		GetMergeDocumentsFunctionOid(), BsonTypeId(),
+		addFieldsArgs,
+		InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+
+	TargetEntry *specProjector = makeTargetEntry((Expr *) projectorFunc,
+												 1,
+												 "spec", false);
+
+	addFieldsQuery->targetList = list_make1(specProjector);
+	addFieldsQuery->jointree = makeNode(FromExpr);
+
+	return addFieldsQuery;
+}
+
+
+/* Parses and validates the inverse match spec.
+ * The only validation it doesn't do is enforcing that input is a document or an array of documents.
+ * We leave that validation to the bson_dollar_inverse_match UDF since a path expression is valid in this context
+ * and we can't validate it at this stage.
+ * Returns true if it is from collection is specified, false other-wise
+ */
+static bool
+ParseInverseMatchSpec(const bson_value_t *spec, InverseMatchArgs *args)
+{
+	bson_iter_t docIter;
+	BsonValueInitIterator(spec, &docIter);
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "path") == 0)
+		{
+			EnsureTopLevelFieldType("$inverseMatch.path", &docIter, BSON_TYPE_UTF8);
+			const bson_value_t pathValue = *bson_iter_value(&docIter);
+			args->path.length = pathValue.value.v_utf8.len;
+			args->path.string = pathValue.value.v_utf8.str;
+		}
+		else if (strcmp(key, "input") == 0)
+		{
+			args->input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "defaultResult") == 0)
+		{
+			EnsureTopLevelFieldType("$inverseMatch.defaultResult", &docIter,
+									BSON_TYPE_BOOL);
+			args->defaultResult = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "from") == 0)
+		{
+			EnsureTopLevelFieldType("$inverseMatch.from", &docIter,
+									BSON_TYPE_UTF8);
+			args->fromCollection.string = bson_iter_utf8(&docIter,
+														 &args->fromCollection.length);
+		}
+		else if (strcmp(key, "pipeline") == 0)
+		{
+			EnsureTopLevelFieldType("$inverseMatch.pipeline", &docIter,
+									BSON_TYPE_ARRAY);
+			args->pipeline = *bson_iter_value(&docIter);
+
+			bson_iter_t pipelineArray;
+			BsonValueInitIterator(&args->pipeline, &pipelineArray);
+
+			/* These are the allowed nested stages in an $inverseMatch */
+			while (bson_iter_next(&pipelineArray))
+			{
+				pgbsonelement stageElement = GetPipelineStage(&pipelineArray,
+															  "inverseMatch",
+															  "pipeline");
+				const char *nestedPipelineStage = stageElement.path;
+				if (strcmp(nestedPipelineStage, "$match") != 0 &&
+					strcmp(nestedPipelineStage, "$project") != 0 &&
+					strcmp(nestedPipelineStage, "$limit") != 0)
+				{
+					ereport(ERROR, (errcode(MongoBadValue),
+									errmsg(
+										"%s is not allowed to be used within an $inverseMatch stage, only $match, $project or $limit are allowed",
+										nestedPipelineStage)));
+				}
+			}
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoFailedToParse),
+							errmsg("unrecognized argument to $inverseMatch: '%s'", key)));
+		}
+	}
+
+	if (args->path.length == 0 || args->path.string == NULL)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+							"Missing 'path' parameter to $inverseMatch")));
+	}
+
+	bool useFromCollection = false;
+	if (args->fromCollection.length > 0)
+	{
+		if (args->input.value_type != BSON_TYPE_EOD)
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"'input' and 'from' can't be used together in an $inverseMatch stage.")));
+		}
+
+		if (args->pipeline.value_type == BSON_TYPE_EOD)
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"'pipeline' argument is required when 'from' is specified in an $inverseMatch stage.")));
+		}
+
+		useFromCollection = true;
+	}
+	else if (args->input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse), errmsg(
+							"Missing 'input' and 'from' parameter to $inverseMatch, one should be provided.")));
+	}
+
+	if (args->defaultResult.value_type == BSON_TYPE_EOD)
+	{
+		/* if not provided, default to false. */
+		args->defaultResult.value_type = BSON_TYPE_BOOL;
+		args->defaultResult.value.v_bool = false;
+	}
+
+	return useFromCollection;
 }
 
 

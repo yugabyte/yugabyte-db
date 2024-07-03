@@ -128,6 +128,9 @@ Query * HandleUnionWith(const bson_value_t *existingValue, Query *query,
 Query * HandleInternalInhibitOptimization(const bson_value_t *existingValue, Query *query,
 										  AggregationPipelineBuildContext *context);
 
+Query * HandleInverseMatch(const bson_value_t *existingValue, Query *query,
+						   AggregationPipelineBuildContext *context);
+
 /* Metadata based query stages */
 Query * HandleCollStats(const bson_value_t *existingValue, Query *query,
 						AggregationPipelineBuildContext *context);

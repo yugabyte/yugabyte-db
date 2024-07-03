@@ -83,7 +83,7 @@ SELECT helio_api.insert_one('invmatch','airports','{ "_id": 8, "airport_id": 134
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "specialRule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
 ERROR:  unknown operator: $allValues
 HINT:  unknown operator: $allValues
--- if we query "rule" path without defaultResult in the spec it should fail for the Everet airport which doesn't define it
+-- if we query "rule" path without defaultResult in the spec it should not match for the Everet airport which doesn't define the rule as the default value is false
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
 ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
 -- with defaultResult true should return all documents that don't define the path and false shouldn't return them
@@ -136,3 +136,99 @@ SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sale
 ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 102} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
 ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+-- use from collection instead of lookup (new feature)
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 101}}]}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}, {"$project": {"roles": 1, "_id": 0}}]}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lt": 102 }}}, {"$limit": 1}]}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lte": 102 }}}, {"$limit": 2}]}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}} ], "cursor": {} }');
+ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }'); 
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on helio_data.documents_3902 collection
+   Output: collection.document
+   Recheck Cond: (collection.shard_key_value = '3902'::bigint)
+   Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, $1)
+   InitPlan 2 (returns $1)
+     ->  Result
+           Output: helio_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::bson, $0)
+           InitPlan 1 (returns $0)
+             ->  Limit
+                   Output: (COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson))
+                   ->  Aggregate
+                         Output: COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson)
+                         ->  Bitmap Heap Scan on helio_data.documents_3901 collection_0_1
+                               Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                               Recheck Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+                               Filter: (collection_0_1.document @!= '{ "user_id" : { "$numberInt" : "200" } }'::bson)
+                               ->  Bitmap Index Scan on _id_
+                                     Index Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '3902'::bigint)
+(20 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}]}} ], "cursor": {} }'); 
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on helio_data.documents_3902 collection
+   Output: collection.document
+   Recheck Cond: (collection.shard_key_value = '3902'::bigint)
+   Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, $1)
+   InitPlan 2 (returns $1)
+     ->  Result
+           Output: helio_api_internal.bson_dollar_merge_documents('{ "path" : "rule", "defaultResult" : false }'::bson, $0)
+           InitPlan 1 (returns $0)
+             ->  Aggregate
+                   Output: COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson)
+                   ->  Bitmap Heap Scan on helio_data.documents_3901 collection_0_1
+                         Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
+                         Recheck Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+                         Filter: (collection_0_1.document @!= '{ "user_id" : { "$numberInt" : "200" } }'::bson)
+                         ->  Bitmap Index Scan on _id_
+                               Index Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '3902'::bigint)
+(18 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}}} ], "cursor": {} }'); 
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on helio_data.documents_3902 collection
+   Output: collection.document
+   Recheck Cond: (collection.shard_key_value = '3902'::bigint)
+   Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, '{ "path" : "rule", "input" : {  } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (collection.shard_key_value = '3902'::bigint)
+(6 rows)
+
+-- negative cases
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": {}, "input": "$roles"}} ], "cursor": {} }');
+ERROR:  BSON field '$inverseMatch.path' is the wrong type 'object', expected type 'string'
+HINT:  BSON field '$inverseMatch.path' is the wrong type 'object', expected type 'string'
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "", "input": "$roles"}} ], "cursor": {} }');
+ERROR:  Missing 'path' parameter to $inverseMatch
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": [true]}} ], "cursor": {} }');
+ERROR:  $inverseMatch requires that if 'input' is an array its contents be documents, found: bool
+HINT:  $inverseMatch requires that if 'input' is an array its contents be documents, found: bool
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": true}} ], "cursor": {} }');
+ERROR:  $inverseMatch requires that 'input' be a document or an array of documents, found: bool
+HINT:  $inverseMatch requires that 'input' be a document or an array of documents, found: bool
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}, "from": "collection"}} ], "cursor": {} }');
+ERROR:  'input' and 'from' can't be used together in an $inverseMatch stage.
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "collection"}} ], "cursor": {} }');
+ERROR:  'pipeline' argument is required when 'from' is specified in an $inverseMatch stage.
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"rule": "rule"}} ], "cursor": {} }');
+ERROR:  unrecognized argument to $inverseMatch: 'rule'
+SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "mycoll", "pipeline": []}} ], "cursor": {} }');
+ERROR:  'from' collection: 'invmatch.mycoll' doesn't exist.
