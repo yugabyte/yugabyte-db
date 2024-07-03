@@ -40,7 +40,7 @@ The following stable and preview releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.16](v2.16/) | December 14, 2022 | December 14, 2023 | June 14, 2024 |
+| [v2.16](end-of-life/v2.16/) | December 14, 2022 | December 14, 2023 | June 14, 2024 |
 | [v2.19](v2.19/) | March 8, 2024 | n/a | n/a |
 | [v2.17](v2.17/) | December 8, 2022 | n/a | n/a |
 | [v2.15](v2.15/) | June 27, 2022 | n/a | n/a |
