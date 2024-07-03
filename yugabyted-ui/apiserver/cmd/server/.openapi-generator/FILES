@@ -9,6 +9,7 @@ models/model_api_error_error.go
 models/model_api_for_migration_assessment_page.go
 models/model_api_for_plan_and_asses_page.go
 models/model_assesment_complexity_info.go
+models/model_assessment_report_summary.go
 models/model_cloud_enum.go
 models/model_cloud_info.go
 models/model_cluster_data.go
@@ -55,6 +56,8 @@ models/model_placement_block.go
 models/model_placement_cloud_info.go
 models/model_placement_info.go
 models/model_raft_config.go
+models/model_recommended_refactoring_graph.go
+models/model_refactoring_count.go
 models/model_slow_query_response_data.go
 models/model_slow_query_response_schema.go
 models/model_slow_query_response_ysql_data.go

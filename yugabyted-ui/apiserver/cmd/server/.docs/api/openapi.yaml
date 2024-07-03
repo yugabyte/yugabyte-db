@@ -769,6 +769,80 @@ paths:
       summary: Get the node address for the current node
       tags:
       - cluster-info
+  /cluster:
+    delete:
+      description: Submit task to delete a Yugabyte Cluster
+      operationId: deleteCluster
+      responses:
+        "200":
+          description: Successfully submitted delete cluster request
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Submit task to delete a cluster
+      tags:
+      - cluster
+    get:
+      description: Get a Yugabyte Cluster
+      operationId: getCluster
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_Response'
+          description: Cluster response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get a cluster
+      tags:
+      - cluster
+    put:
+      description: Submit task to edit a Yugabyte Cluster
+      operationId: editCluster
+      requestBody:
+        $ref: '#/components/requestBodies/ClusterSpec'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_Response'
+          description: Cluster response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Submit task to edit a cluster
+      tags:
+      - cluster
 components:
   requestBodies:
     ClusterSpec:
@@ -898,6 +972,12 @@ components:
           schema:
             type: string
       description: Node address
+    ClusterResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Cluster_Response'
+      description: Cluster response
   schemas:
     VoyagerMigrationDetails:
       description: Information regarding a specific voyager migration task
@@ -1231,12 +1311,16 @@ components:
         total_table_size: 1
       properties:
         table_size:
+          format: int64
           type: integer
         table_row_count:
+          format: int64
           type: integer
         total_table_size:
+          format: int64
           type: integer
         total_index_size:
+          format: int64
           type: integer
       title: Source Database details
       type: object
@@ -1250,14 +1334,19 @@ components:
         num_nodes: 5
       properties:
         num_nodes:
+          format: int64
           type: integer
         vcpu_per_node:
+          format: int64
           type: integer
         memory_per_node:
+          format: int64
           type: integer
         connections_per_node:
+          format: int64
           type: integer
         inserts_per_node:
+          format: int64
           type: integer
       title: Target cluster size recommendations
       type: object
@@ -1270,12 +1359,16 @@ components:
         no_of_sharded_tables: 7
       properties:
         no_of_colocated_tables:
+          format: int64
           type: integer
         total_size_colocated_tables:
+          format: int64
           type: integer
         no_of_sharded_tables:
+          format: int64
           type: integer
         total_size_sharded_tables:
+          format: int64
           type: integer
       title: Target YugabyteDB cluster schema recommendations
       type: object
@@ -2475,6 +2568,328 @@ components:
           type: object
       title: YSQL connection manager stats
       type: object
+    CloudEnum:
+      default: MANUAL
+      description: Which cloud the cluster is deployed in
+      enum:
+      - AWS
+      - GCP
+      - MANUAL
+      title: Cloud Enum
+      type: string
+    CloudInfo:
+      description: Cloud deployment information
+      example:
+        region: us-west2
+      properties:
+        code:
+          $ref: '#/components/schemas/CloudEnum'
+        region:
+          default: us-west2
+          minLength: 1
+          type: string
+      required:
+      - code
+      - region
+      title: Cloud Info
+      type: object
+    ClusterFaultTolerance:
+      default: ZONE
+      description: The level of fault tolerance for the cluster
+      enum:
+      - NONE
+      - NODE
+      - ZONE
+      - REGION
+      title: Cluster Fault Tolerance
+      type: string
+    ClusterNodeInfo:
+      description: Node level information
+      example:
+        disk_size_used_gb: 5.637376656633329
+        num_cores: 7
+        memory_mb: 1.4658129805029452
+        ram_provisioned_gb: 9.301444243932576
+        cpu_usage: 2.3021358869347655
+        disk_size_gb: 5.962133916683182
+      properties:
+        memory_mb:
+          default: 0
+          description: The total amount of RAM (MB) used by all nodes
+          format: double
+          type: number
+        disk_size_gb:
+          default: 0
+          description: The total size of disk (GB)
+          format: double
+          type: number
+        disk_size_used_gb:
+          default: 0
+          description: The total size of used disk space (GB)
+          format: double
+          type: number
+        cpu_usage:
+          default: 0
+          description: The average CPU usage over all nodes
+          format: double
+          type: number
+        num_cores:
+          default: 0
+          description: The number of CPU cores per node
+          type: integer
+        ram_provisioned_gb:
+          default: 0
+          description: The total size of provisioned ram (GB)
+          format: double
+          type: number
+      required:
+      - disk_size_gb
+      - memory_mb
+      - num_cores
+      - ram_provisioned_gb
+      title: Cluster Node Info
+      type: object
+    ClusterInfo:
+      description: Cluster level information
+      example:
+        replication_factor: 14
+        node_info:
+          disk_size_used_gb: 5.637376656633329
+          num_cores: 7
+          memory_mb: 1.4658129805029452
+          ram_provisioned_gb: 9.301444243932576
+          cpu_usage: 2.3021358869347655
+          disk_size_gb: 5.962133916683182
+        is_production: false
+        version: 3
+        num_nodes: 2
+      properties:
+        num_nodes:
+          default: 3
+          description: How many nodes are in the cluster
+          maximum: 24
+          minimum: 1
+          type: integer
+        fault_tolerance:
+          $ref: '#/components/schemas/ClusterFaultTolerance'
+        replication_factor:
+          description: The replication factor applied on the cluster
+          maximum: 24
+          minimum: 1
+          type: integer
+        node_info:
+          $ref: '#/components/schemas/ClusterNodeInfo'
+        is_production:
+          default: false
+          description: Describes if the cluster is a production cluster
+          type: boolean
+        version:
+          description: cluster data version
+          nullable: true
+          type: integer
+      required:
+      - cluster_tier
+      - fault_tolerance
+      - is_production
+      - node_info
+      - num_nodes
+      title: Cluster Info
+      type: object
+    PlacementInfo:
+      example:
+        cloud_info:
+          region: us-west2
+        num_nodes: 5
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        num_nodes:
+          default: 3
+          description: How many nodes are in the region
+          maximum: 24
+          minimum: 1
+          type: integer
+      required:
+      - cloud_info
+      - num_nodes
+      type: object
+    ClusterRegionInfo:
+      description: Cluster region info list
+      example:
+        placement_info:
+          cloud_info:
+            region: us-west2
+          num_nodes: 5
+      properties:
+        placement_info:
+          $ref: '#/components/schemas/PlacementInfo'
+      required:
+      - placement_info
+      title: Cluster Region Info
+      type: object
+    EncryptionInfo:
+      description: Cluster encryption info
+      example:
+        encryption_in_transit: false
+        encryption_at_rest: false
+      properties:
+        encryption_at_rest:
+          default: false
+          type: boolean
+        encryption_in_transit:
+          default: false
+          type: boolean
+      title: Encryption Info
+      type: object
+    ClusterSpec:
+      description: Cluster spec
+      example:
+        cluster_region_info:
+        - placement_info:
+            cloud_info:
+              region: us-west2
+            num_nodes: 5
+        - placement_info:
+            cloud_info:
+              region: us-west2
+            num_nodes: 5
+        name: name
+        cloud_info:
+          region: us-west2
+        encryption_info:
+          encryption_in_transit: false
+          encryption_at_rest: false
+        cluster_info:
+          replication_factor: 14
+          node_info:
+            disk_size_used_gb: 5.637376656633329
+            num_cores: 7
+            memory_mb: 1.4658129805029452
+            ram_provisioned_gb: 9.301444243932576
+            cpu_usage: 2.3021358869347655
+            disk_size_gb: 5.962133916683182
+          is_production: false
+          version: 3
+          num_nodes: 2
+      properties:
+        name:
+          description: The name of the cluster
+          maxLength: 63
+          minLength: 3
+          pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
+          type: string
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        cluster_info:
+          $ref: '#/components/schemas/ClusterInfo'
+        cluster_region_info:
+          items:
+            $ref: '#/components/schemas/ClusterRegionInfo'
+          nullable: true
+          type: array
+          uniqueItems: true
+        encryption_info:
+          $ref: '#/components/schemas/EncryptionInfo'
+      required:
+      - cloud_info
+      - cluster_info
+      - encryption_info
+      - name
+      - network_info
+      - software_info
+      title: Cluster Specification
+      type: object
+    EntityMetadata:
+      description: Common metadata for entities
+      example:
+        updated_on: updated_on
+        created_on: created_on
+      properties:
+        created_on:
+          description: Timestamp when the entity was created (UTC)
+          nullable: true
+          type: string
+        updated_on:
+          description: Timestamp when the entity was last updated (UTC)
+          nullable: true
+          type: string
+      title: Entity Metadata
+      type: object
+    ClusterDataInfo:
+      example:
+        metadata:
+          updated_on: updated_on
+          created_on: created_on
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        state: state
+        software_version: software_version
+      properties:
+        id:
+          description: The UUID of the cluster
+          format: uuid
+          type: string
+        state:
+          description: The current state of the cluster
+          type: string
+        software_version:
+          description: The current version of YugabyteDB installed on the cluster
+          type: string
+        metadata:
+          $ref: '#/components/schemas/EntityMetadata'
+      required:
+      - id
+      - metadata
+      - project_id
+      - state
+      type: object
+    ClusterData:
+      description: Cluster data
+      example:
+        spec:
+          cluster_region_info:
+          - placement_info:
+              cloud_info:
+                region: us-west2
+              num_nodes: 5
+          - placement_info:
+              cloud_info:
+                region: us-west2
+              num_nodes: 5
+          name: name
+          cloud_info:
+            region: us-west2
+          encryption_info:
+            encryption_in_transit: false
+            encryption_at_rest: false
+          cluster_info:
+            replication_factor: 14
+            node_info:
+              disk_size_used_gb: 5.637376656633329
+              num_cores: 7
+              memory_mb: 1.4658129805029452
+              ram_provisioned_gb: 9.301444243932576
+              cpu_usage: 2.3021358869347655
+              disk_size_gb: 5.962133916683182
+            is_production: false
+            version: 3
+            num_nodes: 2
+        info:
+          metadata:
+            updated_on: updated_on
+            created_on: created_on
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          state: state
+          software_version: software_version
+      properties:
+        spec:
+          $ref: '#/components/schemas/ClusterSpec'
+        info:
+          $ref: '#/components/schemas/ClusterDataInfo'
+      required:
+      - info
+      - spec
+      title: Cluster Data
+      type: object
     API_for_Plan_and_Asses_page:
       example:
         data:
@@ -2841,6 +3256,49 @@ components:
       required:
       - data
       title: Alerts Response
+      type: object
+    Cluster_Response:
+      example:
+        data:
+          spec:
+            cluster_region_info:
+            - placement_info:
+                cloud_info:
+                  region: us-west2
+                num_nodes: 5
+            - placement_info:
+                cloud_info:
+                  region: us-west2
+                num_nodes: 5
+            name: name
+            cloud_info:
+              region: us-west2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
+            cluster_info:
+              replication_factor: 14
+              node_info:
+                disk_size_used_gb: 5.637376656633329
+                num_cores: 7
+                memory_mb: 1.4658129805029452
+                ram_provisioned_gb: 9.301444243932576
+                cpu_usage: 2.3021358869347655
+                disk_size_gb: 5.962133916683182
+              is_production: false
+              version: 3
+              num_nodes: 2
+          info:
+            metadata:
+              updated_on: updated_on
+              created_on: created_on
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            state: state
+            software_version: software_version
+      properties:
+        data:
+          $ref: '#/components/schemas/ClusterData'
+      title: Cluster Response
       type: object
     ApiError_error:
       properties:

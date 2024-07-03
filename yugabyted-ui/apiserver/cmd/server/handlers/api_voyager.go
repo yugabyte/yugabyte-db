@@ -38,7 +38,7 @@ const RETRIEVE_ANALYZE_SCHEMA_PAYLOAD string = "SELECT payload " +
 const RETRIEVE_MIGRATE_SCHEMA_PHASES_INFO string = "SELECT migration_UUID, " +
     "migration_phase, MAX(invocation_sequence) AS invocation_sequence " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
-    "WHERE migration_uuid=$1 AND migration_phase IN (0,1,3) " +
+    "WHERE migration_uuid=$1 AND migration_phase IN (2,3,5) " +
     "GROUP BY migration_uuid, migration_phase;"
 
 const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
@@ -49,6 +49,10 @@ const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
 const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
     "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED'"
+
+const RETRIEVE_IMPORT_SCHEMA_STATUS string = "SELECT status " +
+    "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
+    "WHERE migration_UUID=$1 AND migration_phase=$2 AND invocation_sequence=$3"
 
 type VoyagerMigrationsQueryFuture struct {
     Migrations []models.VoyagerMigrationDetails
@@ -239,10 +243,10 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
             }
 
             rowStruct.Status = "In Progress"
-            if allVoygaerMigration.migrationPhase == 4 &&
+            if allVoygaerMigration.migrationPhase == 6 &&
                 allVoygaerMigration.invocationSeq >= 2 {
                 rowStruct.Status = "Complete"
-                rowStruct.MigrationPhase = 5
+                rowStruct.MigrationPhase = 6
             }
 
             rand.Seed(time.Now().UnixNano())
@@ -375,6 +379,12 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
     for _, phaseInfo := range *schemaPhaseInfoList {
         switch phaseInfo.migrationPhase {
         case 2:
+            if phaseInfo.invocationSeq%2 == 0 {
+                migrateSchemaTaskInfo.ExportSchema = "complete"
+            } else {
+                migrateSchemaTaskInfo.ExportSchema = "in-progress"
+            }
+        case 3:
             if phaseInfo.invocationSeq >= 2 {
                 var invocationSqToBeUsed int
                 if phaseInfo.invocationSeq%2 == 0 {
@@ -399,8 +409,13 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
             } else {
                 migrateSchemaTaskInfo.ExportSchema = "in-progress"
             }
-        case 3:
-            if phaseInfo.invocationSeq%2 == 0 {
+        case 5:
+            future := make(chan string)
+            go fetchSchemaImportStatus(log, conn, phaseInfo.migrationUuid,
+                phaseInfo.migrationPhase, phaseInfo.invocationSeq, future)
+            importSchemaStatus := <- future
+
+            if importSchemaStatus == "COMPLETED" {
                 migrateSchemaTaskInfo.ImportSchema = "complete"
                 migrateSchemaTaskInfo.OverallStatus = "complete"
             } else {
@@ -413,6 +428,25 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
         }
     }
 }
+
+func fetchSchemaImportStatus(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
+    migrationPhase int, invocationSq int, future chan string) {
+        log.Infof(fmt.Sprintf("[%s] Executing Query: [%s]", LOGGER_FILE_NAME,
+            RETRIEVE_IMPORT_SCHEMA_STATUS))
+        var schemaImportStatus string
+        row := conn.QueryRow(context.Background(), RETRIEVE_IMPORT_SCHEMA_STATUS, migrationUuid,
+                                migrationPhase, invocationSq)
+        err := row.Scan(&schemaImportStatus)
+        log.Infof(fmt.Sprintf("schema import status: [%s]", schemaImportStatus))
+        if err != nil {
+            log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
+                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+            log.Errorf(err.Error())
+            future <- "none"
+            return
+        }
+        future <- schemaImportStatus
+    }
 
 func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
     migrationPhase int, invocationSq int, future chan MigrateSchemaUIDetailFuture) {
@@ -600,47 +634,47 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     voyagerAssessmentReportResponse.SourceEnvironment.NoOfConnections = ""
 
     voyagerAssessmentReportResponse.SourceDatabase.TableSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize
     voyagerAssessmentReportResponse.SourceDatabase.TableRowCount =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount
     voyagerAssessmentReportResponse.SourceDatabase.TotalTableSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize
     voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize
 
 
     voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary =
         assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.NumNodes =
-        int32(assessmentReport.Sizing.SizingRecommendation.NumNodes)
+        int64(assessmentReport.Sizing.SizingRecommendation.NumNodes)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.VcpuPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.VCPUsPerInstance)
+        int64(assessmentReport.Sizing.SizingRecommendation.VCPUsPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.MemoryPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.MemoryPerInstance)
+        int64(assessmentReport.Sizing.SizingRecommendation.MemoryPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.InsertsPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.OptimalInsertConnectionsPerNode)
+        assessmentReport.Sizing.SizingRecommendation.OptimalInsertConnectionsPerNode
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.ConnectionsPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.OptimalSelectConnectionsPerNode)
+        assessmentReport.Sizing.SizingRecommendation.OptimalSelectConnectionsPerNode
 
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfColocatedTables =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
+            int64(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfShardedTables =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
+            int64(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeColocatedTables =
-            int32(assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalColocatedSize)
+            assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalColocatedSize
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeShardedTables =
-            int32(assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalShardedSize)
+            assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalShardedSize
 
     dbObjectsMap := map[string]int{}
     for _, dbObject := range assessmentReport.SchemaSummary.DBObjects {
