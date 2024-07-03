@@ -461,10 +461,10 @@ The value portion of a change event for a change to this table varies according 
 There are 4 possible values for `REPLICA IDENTITY`:
 * `CHANGE` - Emitted events for `UPDATE` operations will only contain the value of the changed column along with the primary key column with no previous values present. `DELETE` operations will only contain the previous value of the primary key column in the table.
 * `DEFAULT` - The default behavior is that only `DELETE` events contain the previous values for the primary key columns of a table. For an `UPDATE` event, no previous values will be present and the new values will be present for all the columns in the table.
-* `NOTHING` - Emitted events for `UPDATE` and `DELETE` operations do not contain any information about the previous value of any table column.
 * `FULL` - Emitted events for `UPDATE` and `DELETE` operations contain the previous values of all columns in the table.
+* `NOTHING` - Emitted events for `UPDATE` and `DELETE` operations do not contain any information about the previous value of any table column.
 
-{{< note title="CHANGE only supported with plugin yboutput">}}
+{{< note title="Note">}}
 
 YugabyteDB supports the replica identity CHANGE only with the plugin `yboutput`.
 
@@ -475,24 +475,27 @@ YugabyteDB supports the replica identity CHANGE only with the plugin `yboutput`.
 Consider the following employee table into which a row is inserted, subsequently updated, and deleted:
 
 ```sql
-create table employee (employee_id int primary key, employee_name varchar, employee_dept text);
+CREATE TABLE employee (
+  employee_id INT PRIMARY KEY,
+  employee_name VARCHAR,
+  employee_dept TEXT);
 
-insert into employee values(1001, 'Alice', 'Packaging');
+INSERT INTO employee VALUES (1001, 'Alice', 'Packaging');
 
-update employee set employee_name='Bob' where employee_id=1001;
+UPDATE employee SET employee_name = 'Bob' WHERE employee_id = 1001;
 
-delete from employee where employee_id=1001;
+DELETE FROM employee WHERE employee_id = 1001;
 ```
 
 ##### CHANGE
 
 <table>
 <tr>
-<td> Plugin </td> <td> INSERT </td> <td> UPDATE: </td> <td> DELETE: </td>
+<td> <b>Plugin</b> </td> <td> <b>INSERT</b> </td> <td> <b>UPDATE:</b> </td> <td> <b>DELETE:</b> </td>
 </tr>
 
 <tr>
-<td> `yboutput` </td>
+<td> <em>yboutput</em> </td>
 <td>
 <pre>
 {
@@ -560,11 +563,11 @@ delete from employee where employee_id=1001;
 
 <table>
 <tr>
-<td> Plugin </td> <td> INSERT: </td> <td> UPDATE: </td> <td> DELETE: </td>
+<td> <b>Plugin</b> </td> <td> <b>INSERT</b> </td> <td> <b>UPDATE:</b> </td> <td> <b>DELETE:</b> </td>
 </tr>
 
 <tr>
-<td> `yboutput` </td>
+<td> <em>yboutput</em> </td>
 
 <td>
 <pre>
@@ -628,7 +631,7 @@ delete from employee where employee_id=1001;
 </tr> 
 
 <tr>
-<td> `pgoutput` </td>
+<td> <em>pgoutput</em> </td>
 
 <td>
 <pre>
@@ -677,11 +680,11 @@ delete from employee where employee_id=1001;
 
 <table>
 <tr>
-<td> Plugin </td> <td> INSERT: </td> <td> UPDATE: </td> <td> DELETE: </td>
+<td> <b>Plugin</b> </td> <td> <b>INSERT</b> </td> <td> <b>UPDATE:</b> </td> <td> <b>DELETE:</b> </td>
 </tr>
 
 <tr>
-<td> `yboutput` </td>
+<td> <em>yboutput</em> </td>
 
 <td>
 <pre>
@@ -768,7 +771,7 @@ delete from employee where employee_id=1001;
 </tr> 
 
 <tr>
-<td> `pgoutput` </td>
+<td> <em>pgoutput</em> </td>
 
 <td>
 <pre>
@@ -832,11 +835,11 @@ delete from employee where employee_id=1001;
 
 <table>
 <tr>
-<td> Plugin </td> <td> INSERT: </td>
+<td> <b>Plugin</b> </td> <td> <b>INSERT:</b> </td>
 </tr>
 
 <tr>
-<td> `yboutput` </td>
+<td> <em>yboutput</em> </td>
 
 <td>
 <pre>
@@ -863,7 +866,7 @@ delete from employee where employee_id=1001;
 </tr> 
 
 <tr>
-<td> `pgoutput` </td>
+<td> <em>pgoutput</em> </td>
 
 <td>
 <pre>
