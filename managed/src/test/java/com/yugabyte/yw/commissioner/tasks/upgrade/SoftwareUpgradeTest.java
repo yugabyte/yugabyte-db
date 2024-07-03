@@ -875,7 +875,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
             .collect(Collectors.toSet());
 
     // We do process inactive masters, so for each tserver we also process masters
+    // (but not for "onlyMasterUpdated" node)
     expectedMasters.addAll(expectedTservers);
+    expectedMasters.remove(onlyMasterUpdated.getNodeName());
 
     assertEquals("Upgraded masters", expectedMasters, configuredMasters);
     assertEquals("Upgraded tservers", expectedTservers, configuredTservers);
