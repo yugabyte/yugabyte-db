@@ -500,17 +500,22 @@ func WaitForYBAReady(version string) {
 
 		var resp *http.Response
 		var err error
-		// Check YBA version every 10 seconds
-		retriesCount := 20
 
-		for i := 0; i < retriesCount; i++ {
+		waitSecs := viper.GetInt("wait_for_yba_ready_secs")
+		endTime := time.Now().Add(time.Duration(waitSecs) * time.Second)
+		success := false
+		for time.Now().Before(endTime) {
 			resp, err = http.Get(url)
 			if err != nil {
 				log.Info(fmt.Sprintf("YBA at %s not ready. Checking again in 10 seconds.", url))
 				time.Sleep(10 * time.Second)
 			} else {
+				success = true
 				break
 			}
+		}
+		if !success {
+			log.Fatal(fmt.Sprintf("YBA at %s not ready after %d minutes", url, waitSecs/60))
 		}
 
 		if resp != nil {

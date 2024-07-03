@@ -25,6 +25,9 @@ server_key_path: ""
 service_username: "yugabyte"
 
 
+# Number of seconds to wait for yba to start
+wait_for_yba_ready_secs: 300
+
 # Config parameters for YB-Platform:
 # =======================================
 
