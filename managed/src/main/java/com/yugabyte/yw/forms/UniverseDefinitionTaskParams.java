@@ -1532,13 +1532,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public T convert(T taskParams) {
-      // If there is universe level communication port set then push it down to node level
-      if (taskParams.communicationPorts != null && taskParams.nodeDetailsSet != null) {
-        taskParams.nodeDetailsSet.forEach(
-            nodeDetails ->
-                CommunicationPorts.setCommunicationPorts(
-                    taskParams.communicationPorts, nodeDetails));
-      }
       if (taskParams.expectedUniverseVersion == null) {
         taskParams.expectedUniverseVersion = -1;
       }
