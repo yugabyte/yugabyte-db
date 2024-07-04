@@ -153,7 +153,7 @@ A sample Migration Assessment report for PostgreSQL is as follows:
         --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
         ```
 
-    1. **Without source database connectivity**: In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for both PostgreSQL and Oracle present at `/etc/yb-voyager/gather-assessment-metadata`. You can perform the following steps for PostgreSQL with these scripts (similar for Oracle).
+    1. **Without source database connectivity** (only PostgreSQL): In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`. You can perform the following steps with these scripts:
 
         1. On a machine which has access to the source database, copy the scripts and install dependencies psql, and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
         1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example,
