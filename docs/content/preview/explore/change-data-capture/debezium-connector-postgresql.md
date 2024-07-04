@@ -1204,6 +1204,36 @@ If the default data type conversions do not meet your needs, you can [create a c
 
 ### Basic types
 
+| YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) and Notes |
+| :------------------ | :------------------------- | :-------------------------- |
+| BOOLEAN | BOOLEAN | N/A |
+| BIT(1) | BOOLEAN | N/A |
+| BIT( > 1) | BYTES | `io.debezium.data.Bits`<br/>The `length` schema parameter contains an integer that represents the number of bits. The resulting `byte[]` contains the bits in little-endian form and is sized to contain the specified number of bits. For example, `numBytes = n/8 + (n % 8 == 0 ? 0 : 1)` where `n` is the number of bits. |
+| BIT VARYING[(M)] | BYTES | `io.debezium.data.Bits`<br/>The `length` schema parameter contains an integer that represents the number of bits (2^31 - 1 in case no length is given for the column). The resulting `byte[]` contains the bits in little-endian form and is sized based on the content. The specified size (`M`) is stored in the length parameter of the `io.debezium.data.Bits` type. |
+| SMALLINT, SMALLSERIAL | INT16 | N/A |
+| INTEGER, SERIAL | INT32 | N/A |
+| BIGINT, BIGSERIAL, OID | INT64 | N/A |
+| REAL | FLOAT32 | N/A |
+| DOUBLE PRECISION | FLOAT64 | N/A |
+| CHAR [(M)] | STRING | N/A |
+| VARCHAR [(M)] | STRING | N/A |
+| CHARACTER [(M)] | STRING | N/A |
+| CHARACTER VARYING [(M)] | STRING | N/A |
+| TIMESTAMPTZ, TIMESTAMP WITH TIME ZONE | STRING | `io.debezium.time.ZonedTimestamp` <br/> A string representation of a timestamp with timezone information, where the timezone is GMT. |
+| TIMETZ, TIME WITH TIME ZONE | STRING | `io.debezium.time.ZonedTime` <br/> A string representation of a time value with timezone information, where the timezone is GMT. |
+| INTERVAL [P] | INT64 | `io.debezium.time.MicroDuration` (default) <br/> The approximate number of microseconds for a time interval using the 365.25 / 12.0 formula for days per month average. |
+| INTERVAL [P] | STRING | `io.debezium.time.Interval` <br/> (when `interval.handling.mode` is `string`) <br/> The string representation of the interval value that follows the pattern <br/> P\<years>Y\<months>M\<days>DT\<hours>H\<minutes>M\<seconds>S. <br/> For example, `P1Y2M3DT4H5M6.78S`. |
+| BYTEA | BYTES or STRING | n/a<br/><br/>Either the raw bytes (the default), a base64-encoded string, or a base64-url-safe-encoded String, or a hex-encoded string, based on the connector’s `binary handling mode` setting.<br/><br/>Debezium only supports Yugabyte `bytea_output` configuration of value `hex`. For more information about PostgreSQL binary data types, see the [YugabyteDB documentation](#reminder). |
+| JSON, JSONB | STRING | `io.debezium.data.Json` <br/> Contains the string representation of a JSON document, array, or scalar. |
+| UUID | STRING | `io.debezium.data.Uuid` <br/> Contains the string representation of a YugabyteDB UUID value. |
+| INT4RANGE | STRING | Range of integer. |
+| INT8RANGE | STRING | Range of `bigint`. |
+| NUMRANGE | STRING | Range of `numeric`. |
+| TSRANGE | STRING | n/a<br/><br/>The string representation of a timestamp range without a time zone. |
+| TSTZRANGE | STRING | n/a<br/><br/>The string representation of a timestamp range with the local system time zone. |
+| DATERANGE | STRING | n/a<br/><br/>The string representation of a date range. Always has an _exclusive_ upper bound. |
+| ENUM | STRING | `io.debezium.data.Enum`<br/><br/>Contains the string representation of the YugabyteDB `ENUM` value. The set of allowed values is maintained in the allowed schema parameter. |
+
 ### Temporal types
 
 Other than YugabyteDB's `TIMESTAMPTZ` and `TIMETZ` data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
@@ -1254,13 +1284,35 @@ YugabyteDB supports using +/-infinite values in `TIMESTAMP` columns. These speci
 
 ### Decimal types
 
-### Domain types
+The setting of the YugabyteDB connector configuration property `decimal.handling.mode` determines how the connector maps decimal types.
+
+#### decimal.handling.mode=double
+
+When the `decimal.handling.mode` property is set to `double`, the connector represents all `DECIMAL`, `NUMERIC` and `MONEY` values as Java double values and encodes them as shown in the following table.
+
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) and Notes |
+| :----- | :----- | :----- |
+| `NUMERIC[(M[,D])]` | `FLOAT64` | |
+| `DECIMAL[(M[,D])]` | `FLOAT64` | |
+| `MONEY[(M[,D])]` | `FLOAT64` | |
+
+#### decimal.handling.mode=string
+
+The last possible setting for the `decimal.handling.mode` configuration property is `string`. In this case, the connector represents `DECIMAL`, `NUMERIC` and `MONEY` values as their formatted string representation, and encodes them as shown in the following table.
+
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) and Notes |
+| :----- | :----- | :----- |
+| `NUMERIC[(M[,D])]` | `STRING` | |
+| `DECIMAL[(M[,D])]` | `STRING` | |
+| `MONEY[(M[,D])]` | `STRING` | |
+
+YugabyteDB supports `NaN` (not a number) as a special value to be stored in `DECIMAL`/`NUMERIC` values when the setting of `decimal.handling.mode` is string or `double`. In this case, the connector encodes `NaN` as either `Double.NaN` or the string constant `NAN`.
 
 ### Network address types
 
 YugabyteDB has data types that can store IPv4, IPv6, and MAC addresses. It is better to use these types instead of plain text types to store network addresses. Network address types offer input error checking and specialized operators and functions.
 
-| PostgreSQL data type | Literal type (schema type) | Semantic type (schema name) and Notes |
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) and Notes |
 | :----- | :----- | :----- |
 | `INET` | `STRING` | n/a<br/><br/> IPv4 and IPv6 networks |
 | `CIDR` | `STRING` | n/a<br/><br/>IPv4 and IPv6 hosts and networks |
@@ -1675,17 +1727,25 @@ In the following situations, the connector fails when trying to start, reports a
 
 In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the YugabyteDB problem, restart the connector.
 
-### YugabyteDB becomes unavailable
+### tserver node becomes unavailable
 
 <!-- todo Vaibhav: what will be the behavior of the connector when tserver goes down. talk about the resiliency in terms of smart driver -->
 
-When the connector is running, the YugabyteDB server that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and stops. When the server is available again, restart the connector.
+When the connector is running, the tserver that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Since the connector uses [YugabyteDB Java driver](#reminder), the connection is handled internally and the connector restores the connection to another running node.
 
-The YugabyteDB connector externally stores the last processed offset in the form of a YugabyteDB LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact. Never drop a replication slot on the primary server or you will lose data.
+The YugabyteDB connector externally stores the last processed offset in the form of a YugabyteDB LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact.
 
-<!-- YB Note removed from above: For information about failure cases in which a slot has been removed, see the next section. -->
+{{< warning title="Warning" >}}
+
+Never drop a replication slot on the server or you will lose data.
+
+{{< /warning >}}
 
 ### Cluster failures
+
+When the connector is running, it is possible that the YugabyteDB server becomes unavailable for any number of reasons. If that happens, the connector fails with and error and initiates retries but since the complete YugabyteDB server is unavailable, all the retries will fail.
+
+When the YugabyteDB server is back up, restart the connector to continue streaming where it left off.
 
 ### Kafka Connect process stops gracefully
 
