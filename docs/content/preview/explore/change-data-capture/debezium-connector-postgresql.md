@@ -1539,7 +1539,14 @@ For Debezium to specify the capture configuration, the value of `publication.aut
 
 ### Configuring YugabyteDB to allow replication with the Debezium connector host
 
-To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](https://docs.yugabyte.com/preview/secure/authentication/host-based-authentication/#ysql-hba-conf-file).
+To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](../../secure/authentication/host-based-authentication#ysql_hbaconf-file)).
+
+Procedure
+* Add entries to the `ysql_hba.conf` file to specify the Debezium connector hosts that can replicate with the database host. For example,
+
+```
+--ysql_hba_conf_csv="local replication <yourUser> trust, local replication <yourUser> 127.0.0.1/32 trust, host replication <yourUser> ::1/128 trust"
+```
 
 ### Supported YugabyteDB topologies
 
