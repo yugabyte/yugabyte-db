@@ -147,6 +147,9 @@ public class Audit extends Model {
     @EnumValue("Telemetry Provider")
     TelemetryProvider,
 
+    @EnumValue("Troubleshooting Platform")
+    TroubleshootingPlatform,
+
     @EnumValue("GFlags")
     GFlags,
 
@@ -295,6 +298,21 @@ public class Audit extends Model {
 
     @EnumValue("Delete Telemetry Provider Config")
     DeleteTelemetryConfig,
+
+    @EnumValue("Create Troubleshooting Platform Config")
+    CreateTroubleshootingConfig,
+
+    @EnumValue("Edit Troubleshooting Platform Config")
+    EditTroubleshootingConfig,
+
+    @EnumValue("Delete Troubleshooting Platform Config")
+    DeleteTroubleshootingConfig,
+
+    @EnumValue("Register Universe with Troubleshooting Platform")
+    TroubleshootingPlatformRegister,
+
+    @EnumValue("Unregister Universe from Troubleshooting Platform")
+    TroubleshootingPlatformUnregister,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,
