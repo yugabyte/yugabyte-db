@@ -1,14 +1,21 @@
 Parsed test spec with 2 sessions
 
 starting permutation: s1a s1b s2a s2b s1c s1d s2c
+s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s1a: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1b: SELECT * FROM foo WHERE k = 1 FOR UPDATE;
-k              v              
+k|v
+-+-
+1|0
+(1 row)
 
-1              0              
 step s2a: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2b: update foo set v=10 where k=1; <waiting ...>
-step s1c: 
+s1: NOTICE:  found wait event Timeout YBTxnConflictBackoff
+step s1c:
   DO $$DECLARE r record;
   BEGIN
       WHILE true LOOP

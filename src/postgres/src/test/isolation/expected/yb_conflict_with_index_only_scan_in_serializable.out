@@ -3,15 +3,23 @@ Parsed test spec with 2 sessions
 starting permutation: s1_explain_idx_only_scan s1_high_pri s2_low_pri s1_begin_serializable s2_begin s1_idx_only_scan s2_insert c1 c2
 step s1_explain_idx_only_scan: EXPLAIN (COSTS OFF) SELECT v1 FROM test WHERE v1 = 1;
 QUERY PLAN
-
+---------------------------------
 Index Only Scan using idx on test
   Index Cond: (v1 = 1)
+(2 rows)
+
+s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s1_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
+s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s2_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;
 step s1_idx_only_scan: SELECT v1 FROM test WHERE v1 = 1;
 v1
+--
+(0 rows)
 
 step s2_insert: INSERT INTO test VALUES (1, 1, 1); <waiting ...>
 step c1: commit;
@@ -21,10 +29,16 @@ step c2: commit;
 starting permutation: s1_explain_idx_only_scan s2_high_pri s1_low_pri s1_begin_serializable s2_begin s2_insert s1_idx_only_scan c2 c1
 step s1_explain_idx_only_scan: EXPLAIN (COSTS OFF) SELECT v1 FROM test WHERE v1 = 1;
 QUERY PLAN
-
+---------------------------------
 Index Only Scan using idx on test
   Index Cond: (v1 = 1)
+(2 rows)
+
+s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s2_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
+s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s1_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;
@@ -33,22 +47,32 @@ step s1_idx_only_scan: SELECT v1 FROM test WHERE v1 = 1; <waiting ...>
 step c2: commit;
 step s1_idx_only_scan: <... completed>
 v1
+--
+ 1
+(1 row)
 
-1
 step c1: commit;
 
 starting permutation: s1_explain_unq_idx_only_scan s1_high_pri s2_low_pri s1_begin_serializable s2_begin s1_unq_idx_only_scan s2_insert c1 c2
 step s1_explain_unq_idx_only_scan: EXPLAIN (COSTS OFF) SELECT v2 FROM test WHERE v2 = 1;
 QUERY PLAN
-
+-------------------------------------
 Index Only Scan using unq_idx on test
   Index Cond: (v2 = 1)
+(2 rows)
+
+s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s1_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
+s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s2_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;
 step s1_unq_idx_only_scan: SELECT v2 FROM test WHERE v2 = 1;
 v2
+--
+(0 rows)
 
 step s2_insert: INSERT INTO test VALUES (1, 1, 1); <waiting ...>
 step c1: commit;
@@ -58,10 +82,16 @@ step c2: commit;
 starting permutation: s1_explain_unq_idx_only_scan s2_high_pri s1_low_pri s1_begin_serializable s2_begin s2_insert s1_unq_idx_only_scan c2 c1
 step s1_explain_unq_idx_only_scan: EXPLAIN (COSTS OFF) SELECT v2 FROM test WHERE v2 = 1;
 QUERY PLAN
-
+-------------------------------------
 Index Only Scan using unq_idx on test
   Index Cond: (v2 = 1)
+(2 rows)
+
+s2: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s2_high_pri: SET yb_transaction_priority_lower_bound = 0.9; -- only for Fail-on-Conflict mode
+s1: NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 step s1_low_pri: SET yb_transaction_priority_upper_bound = 0.1; -- only for Fail-on-Conflict mode
 step s1_begin_serializable: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2_begin: BEGIN;
@@ -70,6 +100,8 @@ step s1_unq_idx_only_scan: SELECT v2 FROM test WHERE v2 = 1; <waiting ...>
 step c2: commit;
 step s1_unq_idx_only_scan: <... completed>
 v2
+--
+ 1
+(1 row)
 
-1
 step c1: commit;
