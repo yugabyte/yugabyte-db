@@ -181,6 +181,132 @@ Prerequisites:
 
 ### Custom snapshotter SPI
 
+For more advanced uses, you can provide an implementation of the `io.debezium.connector.postgresql.spi.Snapshotter` interface. This interface allows control of most of the aspects of how the connector performs snapshots. This includes whether or not to take a snapshot, the options for opening the snapshot transaction, and whether to take locks.
+
+Following is the full API for the interface. All built-in snapshot modes implement this interface.
+
+```java
+/**
+ * This interface is used to determine details about the snapshot process:
+ *
+ * Namely:
+ * - Should a snapshot occur at all
+ * - Should streaming occur
+ * - What queries should be used to snapshot
+ *
+ * While many default snapshot modes are provided with Debezium,
+ * a custom implementation of this interface can be provided by the implementor, which
+ * can provide more advanced functionality, such as partial snapshots.
+ *
+ * Implementations must return true for either {@link #shouldSnapshot()} or {@link #shouldStream()}
+ * or true for both.
+ */
+@Incubating
+public interface Snapshotter {
+
+    void init(PostgresConnectorConfig config, OffsetState sourceInfo,
+              SlotState slotState);
+
+    /**
+     * @return true if the snapshotter should take a snapshot
+     */
+    boolean shouldSnapshot();
+
+    /**
+     * @return true if the snapshotter should stream after taking a snapshot
+     */
+    boolean shouldStream();
+
+    /**
+     *
+     * @return true if streaming should resume from the start of the snapshot
+     * transaction, or false for when a connector resumes and takes a snapshot,
+     * streaming should resume from where streaming previously left off.
+     */
+    default boolean shouldStreamEventsStartingFromSnapshot() {
+        return true;
+    }
+    /**
+     * Generate a valid postgres query string for the specified table, or an empty {@link Optional}
+     * to skip snapshotting this table (but that table will still be streamed from)
+     *
+     * @param tableId the table to generate a query for
+     * @param snapshotSelectColumns the columns to be used in the snapshot select based on the column
+     *                              include/exclude filters
+     * @return a valid query string, or none to skip snapshotting this table
+     */
+    Optional<String> buildSnapshotQuery(TableId tableId, List<String> snapshotSelectColumns);
+
+    /**
+     * Return a new string that set up the transaction for snapshotting
+     *
+     * @param newSlotInfo if a new slow was created for snapshotting, this contains information from
+     *                    the `create_replication_slot` command
+     */
+    default String snapshotTransactionIsolationLevelStatement(SlotCreationResult newSlotInfo) {
+        // we're using the same isolation level that pg_backup uses
+        return "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE;";
+    }
+
+    /**
+     * Returns a SQL statement for locking the given tables during snapshotting, if required by the specific snapshotter
+     * implementation.
+     */
+    default Optional<String> snapshotTableLockingStatement(Duration lockTimeout, Set<TableId> tableIds) {
+        String lineSeparator = System.lineSeparator();
+        StringBuilder statements = new StringBuilder();
+        statements.append("SET lock_timeout = ").append(lockTimeout.toMillis()).append(";").append(lineSeparator);
+        // we're locking in ACCESS SHARE MODE to avoid concurrent schema changes while we're taking the snapshot
+        // this does not prevent writes to the table, but prevents changes to the table's schema....
+        // DBZ-298 Quoting name in case it has been quoted originally; it doesn't do harm if it hasn't been quoted
+        tableIds.forEach(tableId -> statements.append("LOCK TABLE ")
+                .append(tableId.toDoubleQuotedString())
+                .append(" IN ACCESS SHARE MODE;")
+                .append(lineSeparator));
+        return Optional.of(statements.toString());
+    }
+
+    /**
+     * Lifecycle hook called once the snapshot phase is finished.
+     */
+    default void snapshotCompleted() {
+        // no operation
+    }
+}
+```
+
+#### Blocking snapshots
+
+To provide more flexibility in managing snapshots, Debezium includes a supplementary ad hoc snapshot mechanism, known as a blocking snapshot. Blocking snapshots rely on the Debezium mechanism for [sending signals to a Debezium connector](#reminder).
+
+A blocking snapshot behaves just like an *initial snapshot*, except that you can trigger it at run time.
+
+You might want to run a blocking snapshot rather than use the standard initial snapshot process in the following situations:
+* You add a new table and you want to complete the snapshot while the connector is running.
+* You add a large table, and you want the snapshot to complete in less time than is possible with an incremental snapshot.
+
+#### Blocking snapshot process
+
+When you run a blocking snapshot, Debezium stops streaming, and then initiates a snapshot of the specified table, following the same process that it uses during an initial snapshot. After the snapshot completes, the streaming is resumed.
+
+#### Configure snapshot
+
+You can set the following properties in the data component of a signal:
+
+* `data-collections`: to specify which tables must be snapshot
+* `additional-conditions`: You can specify different filters for different table.
+    * The `data-collection` property is the fully-qualified name of the table for which the filter will be applied.
+    * The `filter` property will have the same value used in the `snapshot.select.statement.overrides`
+
+For example:
+```json
+  {"type": "blocking", "data-collections": ["schema1.table1", "schema1.table2"], "additional-conditions": [{"data-collection": "schema1.table1", "filter": "SELECT * FROM [schema1].[table1] WHERE column1 = 0 ORDER BY column2 DESC"}, {"data-collection": "schema1.table2", "filter": "SELECT * FROM [schema1].[table2] WHERE column2 > 0"}]}
+```
+
+#### Possible duplicates
+
+A delay might exist between the time that you send the signal to trigger the snapshot, and the time when streaming stops and the snapshot starts. As a result of this delay, after the snapshot completes, the connector might emit some event records that duplicate records captured by the snapshot.
+
 ### Streaming changes
 
 The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [YugabyteDB’s replication protocol](#reminder). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction log at certain positions, which are referred to as Log Sequence Numbers (LSNs).
@@ -1206,33 +1332,33 @@ If the default data type conversions do not meet your needs, you can [create a c
 
 | YugabyteDB data type| Literal type (schema type) | Semantic type (schema name) and Notes |
 | :------------------ | :------------------------- | :-------------------------- |
-| BOOLEAN | BOOLEAN | N/A |
-| BIT(1) | BOOLEAN | N/A |
-| BIT( > 1) | BYTES | `io.debezium.data.Bits`<br/>The `length` schema parameter contains an integer that represents the number of bits. The resulting `byte[]` contains the bits in little-endian form and is sized to contain the specified number of bits. For example, `numBytes = n/8 + (n % 8 == 0 ? 0 : 1)` where `n` is the number of bits. |
-| BIT VARYING[(M)] | BYTES | `io.debezium.data.Bits`<br/>The `length` schema parameter contains an integer that represents the number of bits (2^31 - 1 in case no length is given for the column). The resulting `byte[]` contains the bits in little-endian form and is sized based on the content. The specified size (`M`) is stored in the length parameter of the `io.debezium.data.Bits` type. |
-| SMALLINT, SMALLSERIAL | INT16 | N/A |
-| INTEGER, SERIAL | INT32 | N/A |
-| BIGINT, BIGSERIAL, OID | INT64 | N/A |
-| REAL | FLOAT32 | N/A |
-| DOUBLE PRECISION | FLOAT64 | N/A |
-| CHAR [(M)] | STRING | N/A |
-| VARCHAR [(M)] | STRING | N/A |
-| CHARACTER [(M)] | STRING | N/A |
-| CHARACTER VARYING [(M)] | STRING | N/A |
-| TIMESTAMPTZ, TIMESTAMP WITH TIME ZONE | STRING | `io.debezium.time.ZonedTimestamp` <br/> A string representation of a timestamp with timezone information, where the timezone is GMT. |
-| TIMETZ, TIME WITH TIME ZONE | STRING | `io.debezium.time.ZonedTime` <br/> A string representation of a time value with timezone information, where the timezone is GMT. |
-| INTERVAL [P] | INT64 | `io.debezium.time.MicroDuration` (default) <br/> The approximate number of microseconds for a time interval using the 365.25 / 12.0 formula for days per month average. |
-| INTERVAL [P] | STRING | `io.debezium.time.Interval` <br/> (when `interval.handling.mode` is `string`) <br/> The string representation of the interval value that follows the pattern <br/> P\<years>Y\<months>M\<days>DT\<hours>H\<minutes>M\<seconds>S. <br/> For example, `P1Y2M3DT4H5M6.78S`. |
-| BYTEA | BYTES or STRING | n/a<br/><br/>Either the raw bytes (the default), a base64-encoded string, or a base64-url-safe-encoded String, or a hex-encoded string, based on the connector’s `binary handling mode` setting.<br/><br/>Debezium only supports Yugabyte `bytea_output` configuration of value `hex`. For more information about PostgreSQL binary data types, see the [YugabyteDB documentation](#reminder). |
-| JSON, JSONB | STRING | `io.debezium.data.Json` <br/> Contains the string representation of a JSON document, array, or scalar. |
-| UUID | STRING | `io.debezium.data.Uuid` <br/> Contains the string representation of a YugabyteDB UUID value. |
-| INT4RANGE | STRING | Range of integer. |
-| INT8RANGE | STRING | Range of `bigint`. |
-| NUMRANGE | STRING | Range of `numeric`. |
-| TSRANGE | STRING | n/a<br/><br/>The string representation of a timestamp range without a time zone. |
-| TSTZRANGE | STRING | n/a<br/><br/>The string representation of a timestamp range with the local system time zone. |
-| DATERANGE | STRING | n/a<br/><br/>The string representation of a date range. Always has an _exclusive_ upper bound. |
-| ENUM | STRING | `io.debezium.data.Enum`<br/><br/>Contains the string representation of the YugabyteDB `ENUM` value. The set of allowed values is maintained in the allowed schema parameter. |
+| `BOOLEAN` | `BOOLEAN` | N/A |
+| `BIT(1)` | `BOOLEAN` | N/A |
+| `BIT( > 1)` | `BYTES` | `io.debezium.data.Bits`<br/>The `length` schema parameter contains an integer that represents the number of bits. The resulting `byte[]` contains the bits in little-endian form and is sized to contain the specified number of bits. For example, `numBytes = n/8 + (n % 8 == 0 ? 0 : 1)` where `n` is the number of bits. |
+| `BIT VARYING[(M)]` | `BYTES` | `io.debezium.data.Bits`<br/>The `length` schema parameter contains an integer that represents the number of bits (2^31 - 1 in case no length is given for the column). The resulting `byte[]` contains the bits in little-endian form and is sized based on the content. The specified size (`M`) is stored in the length parameter of the `io.debezium.data.Bits` type. |
+| `SMALLINT`, `SMALLSERIAL` | `INT16` | N/A |
+| `INTEGER`, `SERIAL` | `INT32` | N/A |
+| `BIGINT`, `BIGSERIAL`, `OID` | `INT64` | N/A |
+| `REAL` | `FLOAT32` | N/A |
+| `DOUBLE PRECISION` | `FLOAT64` | N/A |
+| `CHAR [(M)]` | `STRING` | N/A |
+| `VARCHAR [(M)]` | `STRING` | N/A |
+| `CHARACTER [(M)]` | `STRING` | N/A |
+| `CHARACTER VARYING [(M)]` | `STRING` | N/A |
+| `TIMESTAMPTZ`, `TIMESTAMP WITH TIME ZONE` | `STRING` | `io.debezium.time.ZonedTimestamp` <br/> A string representation of a timestamp with timezone information, where the timezone is GMT. |
+| `TIMETZ`, `TIME WITH TIME ZONE` | `STRING` | `io.debezium.time.ZonedTime` <br/> A string representation of a time value with timezone information, where the timezone is GMT. |
+| `INTERVAL [P]` | `INT64` | `io.debezium.time.MicroDuration` (default) <br/> The approximate number of microseconds for a time interval using the 365.25 / 12.0 formula for days per month average. |
+| `INTERVAL [P]` | `STRING` | `io.debezium.time.Interval` <br/> (when `interval.handling.mode` is `string`) <br/> The string representation of the interval value that follows the pattern <br/> P\<years>Y\<months>M\<days>DT\<hours>H\<minutes>M\<seconds>S. <br/> For example, `P1Y2M3DT4H5M6.78S`. |
+| `BYTEA` | `BYTES` or `STRING` | n/a<br/><br/>Either the raw bytes (the default), a base64-encoded string, or a base64-url-safe-encoded String, or a hex-encoded string, based on the connector’s `binary handling mode` setting.<br/><br/>Debezium only supports Yugabyte `bytea_output` configuration of value `hex`. For more information about PostgreSQL binary data types, see the [YugabyteDB documentation](#reminder). |
+| `JSON`, `JSONB` | `STRING` | `io.debezium.data.Json` <br/> Contains the string representation of a JSON document, array, or scalar. |
+| `UUID` | `STRING` | `io.debezium.data.Uuid` <br/> Contains the string representation of a YugabyteDB UUID value. |
+| `INT4RANGE` | `STRING` | Range of integer. |
+| `INT8RANGE` | `STRING` | Range of `bigint`. |
+| `NUMRANGE` | `STRING` | Range of `numeric`. |
+| `TSRANGE` | `STRING` | n/a<br/><br/>The string representation of a timestamp range without a time zone. |
+| `TSTZRANGE` | `STRING` | n/a<br/><br/>The string representation of a timestamp range with the local system time zone. |
+| `DATERANGE` | `STRING` | n/a<br/><br/>The string representation of a date range. Always has an _exclusive_ upper bound. |
+| `ENUM` | `STRING` | `io.debezium.data.Enum`<br/><br/>Contains the string representation of the YugabyteDB `ENUM` value. The set of allowed values is maintained in the allowed schema parameter. |
 
 ### Temporal types
 
@@ -1248,10 +1374,10 @@ When the `time.precision.mode` property is set to `adaptive`, the default, the c
 | YugabyteDB data type | Literal type (schema type) | Semantic type (schame name) and Notes |
 | :----- | :----- | :----- |
 | `DATE` | `INT32` | `io.debezium.time.Date`<br/>Represents the number of days since the epoch. |
-| `TIME(1), TIME(2), TIME(3)` | `INT32` | `io.debezium.time.Time`<br/>Represents the number of milliseconds past midnight, and does not include timezone information. |
-| `TIME(4), TIME(5), TIME(6)` | `INT64` | `io.debezium.time.MicroTime`<br/>Represents the number of microseconds past midnight, and does not include timezone information. |
-| `TIMESTAMP(1), TIMESTAMP(2), TIMESTAMP(3)` | `INT64` | `io.debezium.time.Timestamp`<br/>Represents the number of milliseconds since the epoch, and does not include timezone information. |
-| `TIMESTAMP(4), TIMESTAMP(5), TIMESTAMP(6), TIMESTAMP` | `INT64` | `io.debezium.time.MicroTimestamp`<br/>Represents the number of microseconds since the epoch, and does not include timezone information. |
+| `TIME(1)`, `TIME(2)`, `TIME(3)` | `INT32` | `io.debezium.time.Time`<br/>Represents the number of milliseconds past midnight, and does not include timezone information. |
+| `TIME(4)`, `TIME(5)`, `TIME(6)` | `INT64` | `io.debezium.time.MicroTime`<br/>Represents the number of microseconds past midnight, and does not include timezone information. |
+| `TIMESTAMP(1)`, `TIMESTAMP(2)`, `TIMESTAMP(3)` | `INT64` | `io.debezium.time.Timestamp`<br/>Represents the number of milliseconds since the epoch, and does not include timezone information. |
+| `TIMESTAMP(4)`, `TIMESTAMP(5)`, `TIMESTAMP(6)`, `TIMESTAMP` | `INT64` | `io.debezium.time.MicroTimestamp`<br/>Represents the number of microseconds since the epoch, and does not include timezone information. |
 
 #### time.precision.mode=adaptive_time_microseconds
 
@@ -1261,8 +1387,8 @@ When the `time.precision.mode` configuration property is set to `adaptive_time_m
 | :----- | :----- | :----- |
 | `DATE` | `INT32` | `io.debezium.time.Date`<br/>Represents the number of days since the epoch. |
 | `TIME([P])` | `INT64` | `io.debezium.time.MicroTime`<br/>Represents the time value in microseconds and does not include timezone information. YugabyteDB allows precision `P` to be in the range 0-6 to store up to microsecond precision. |
-| `TIMESTAMP(1) , TIMESTAMP(2), TIMESTAMP(3)` | `INT64` | `io.debezium.time.Timestamp`<br/>Represents the number of milliseconds past the epoch, and does not include timezone information. |
-| `TIMESTAMP(4) , TIMESTAMP(5), TIMESTAMP(6), TIMESTAMP` | `INT64` | `io.debezium.time.MicroTimestamp`<br/>Represents the number of microseconds past the epoch, and does not include timezone information. |
+| `TIMESTAMP(1)` , `TIMESTAMP(2)`, `TIMESTAMP(3)` | `INT64` | `io.debezium.time.Timestamp`<br/>Represents the number of milliseconds past the epoch, and does not include timezone information. |
+| `TIMESTAMP(4)`, `TIMESTAMP(5)`, `TIMESTAMP(6)`, `TIMESTAMP` | `INT64` | `io.debezium.time.MicroTimestamp`<br/>Represents the number of microseconds past the epoch, and does not include timezone information. |
 
 #### time.precision.mode=connect
 
