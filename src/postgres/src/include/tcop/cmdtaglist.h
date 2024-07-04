@@ -23,10 +23,6 @@
  * textual name, so that we can bsearch on it; see GetCommandTagEnum().
  */
 
-/*
- * YB_TODO: Define Yugabyte statement tag here
- */
-
 /* symbol name, textual name, event_trigger_ok, table_rewrite_ok, rowcount */
 PG_CMDTAG(CMDTAG_UNKNOWN, "???", false, false, false)
 PG_CMDTAG(CMDTAG_ALTER_ACCESS_METHOD, "ALTER ACCESS METHOD", true, false, false)
