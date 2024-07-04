@@ -310,7 +310,6 @@ public class XClusterScheduler {
             CommonUtils.nowPlusWithoutMillis(
                 MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
         .setKeyLabel(KnownAlertLabels.TABLE_UUID, xClusterTableConfig.getTableId())
-        .setSourceUuid(xClusterConfig.getUuid())
         .setLabel(
             KnownAlertLabels.SOURCE_UNIVERSE_UUID,
             xClusterConfig.getSourceUniverseUUID().toString())
@@ -318,6 +317,8 @@ public class XClusterScheduler {
             KnownAlertLabels.TARGET_UNIVERSE_UUID,
             xClusterConfig.getTargetUniverseUUID().toString())
         .setLabel(KnownAlertLabels.TABLE_TYPE, xClusterConfig.getTableType().toString())
+        .setLabel(KnownAlertLabels.XCLUSTER_CONFIG_UUID, xClusterConfig.getUuid().toString())
+        .setLabel(KnownAlertLabels.XCLUSTER_CONFIG_NAME, xClusterConfig.getName())
         .setLabel(
             KnownAlertLabels.XCLUSTER_REPLICATION_GROUP_NAME,
             xClusterConfig.getReplicationGroupName())
