@@ -77,9 +77,18 @@ bool IsShardTableForMongoTable(const char *relName, const char *numEndPointer);
 /*
  * Distributes a given postgres table with the provided distribution column.
  * Optionally supports colocating the distributed table with another distributed table.
+ * Returns the distribution column used (may be equal to the one passed on or NULL).
  */
-void DistributePostgresTable(const char *postgresTable, const char *distributionColumn,
-							 const char *colocateWith, bool isUnsharded);
+const char * DistributePostgresTable(const char *postgresTable, const
+									 char *distributionColumn,
+									 const char *colocateWith, bool isUnsharded);
+
+
+/*
+ * Given a Mongo Database, finds a table within that database that a new unsharded table
+ * should be colocated with.
+ */
+const char * GetColocatedTableBasedOnDatabase(text *databaseDatum);
 
 /*
  * Given a current table schema built up to create a postgres table, adds a hook to

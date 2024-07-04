@@ -22,9 +22,12 @@
 
 #include "api_hooks.h"
 
-static const char * CreatePostgresDataTable(uint64_t collectionId);
-static uint64_t InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum);
+extern bool EnableNativeColocation;
+extern bool EnableNativeTableColocation;
 
+static const char * CreatePostgresDataTable(uint64_t collectionId, const
+											char *colocateWith);
+static uint64_t InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum);
 
 PG_FUNCTION_INFO_V1(command_create_collection_core);
 
@@ -37,8 +40,8 @@ PG_FUNCTION_INFO_V1(command_create_collection_core);
 Datum
 command_create_collection_core(PG_FUNCTION_ARGS)
 {
-	text *databaseDatum = PG_GETARG_TEXT_P(0);
-	text *collectionDatum = PG_GETARG_TEXT_P(1);
+	text *databaseDatum = PG_GETARG_TEXT_PP(0);
+	text *collectionDatum = PG_GETARG_TEXT_PP(1);
 	if (!IsMetadataCoordinator())
 	{
 		StringInfo createCollectionQuery = makeStringInfo();
@@ -118,7 +121,13 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
-	const char *tableName = CreatePostgresDataTable(collectionId);
+	const char *colocateWith = NULL;
+	if (EnableNativeColocation && !EnableNativeTableColocation)
+	{
+		colocateWith = GetColocatedTableBasedOnDatabase(databaseDatum);
+	}
+
+	const char *tableName = CreatePostgresDataTable(collectionId, colocateWith);
 
 	PostProcessCreateTable(tableName, collectionId, databaseDatum, collectionDatum);
 	PG_RETURN_BOOL(true);
@@ -132,7 +141,7 @@ command_create_collection_core(PG_FUNCTION_ARGS)
  * Returns the name of the Postgres table
  */
 static const char *
-CreatePostgresDataTable(uint64_t collectionId)
+CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith)
 {
 	StringInfo dataTableNameInfo = makeStringInfo();
 	appendStringInfo(dataTableNameInfo, "%s.documents_%lu",
@@ -196,9 +205,10 @@ CreatePostgresDataTable(uint64_t collectionId)
 	ExtensionExecuteQueryViaSPI(createTableStringInfo->data, readOnly, SPI_OK_SELECT,
 								&isNull);
 
-	const char *colocateWith = NULL;
-	DistributePostgresTable(dataTableNameInfo->data, "shard_key_value", colocateWith,
-							isUnsharded);
+	const char *distributionColumnUsed = DistributePostgresTable(dataTableNameInfo->data,
+																 "shard_key_value",
+																 colocateWith,
+																 isUnsharded);
 
 	resetStringInfo(createTableStringInfo);
 	appendStringInfo(createTableStringInfo,
@@ -254,7 +264,8 @@ CreatePostgresDataTable(uint64_t collectionId)
 								&isNull);
 
 	colocateWith = dataTableNameInfo->data;
-	DistributePostgresTable(retryTableNameInfo->data, "shard_key_value", colocateWith,
+	DistributePostgresTable(retryTableNameInfo->data, distributionColumnUsed,
+							colocateWith,
 							isUnsharded);
 	return dataTableNameInfo->data;
 }

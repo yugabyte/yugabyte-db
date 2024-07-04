@@ -269,6 +269,12 @@ char *BackgroundWorkerDatabaseName = DEFAULT_BG_DATABASE_NAME;
 #define DEFAULT_BG_LATCH_TIMEOUT_SEC 10
 int LatchTimeOutSec = DEFAULT_BG_LATCH_TIMEOUT_SEC;
 
+#define DEFAULT_ENABLE_NATIVE_COLOCATION false
+bool EnableNativeColocation = DEFAULT_ENABLE_NATIVE_COLOCATION;
+
+#define DEFAULT_ENABLE_NATIVE_TABLE_COLOCATION false
+bool EnableNativeTableColocation = DEFAULT_ENABLE_NATIVE_TABLE_COLOCATION;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -715,6 +721,20 @@ InitApiConfigurations(char *prefix)
 		gettext_noop("Enable Helio Background worker."),
 		NULL, &EnableBackgroundWorker, DEFAULT_ENABLE_BG_WORKER,
 		PGC_SUSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableNativeColocation", prefix),
+		gettext_noop(
+			"Determines whether to turn on colocation of tables in a given mongo database (and disabled outside the database)"),
+		NULL, &EnableNativeColocation, DEFAULT_ENABLE_NATIVE_COLOCATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableNativeTableColocation", prefix),
+		gettext_noop(
+			"Determines whether to turn on colocation of tables across all tables (requires enableNativeColocation to be on)"),
+		NULL, &EnableNativeTableColocation, DEFAULT_ENABLE_NATIVE_TABLE_COLOCATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 
 

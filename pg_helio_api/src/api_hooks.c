@@ -26,6 +26,8 @@ RunQueryWithCommutativeWrites_HookType run_query_with_commutative_writes_hook = 
 RunQueryWithSequentialModification_HookType
 	run_query_with_sequential_modification_mode_hook = NULL;
 DistributePostgresTable_HookType distribute_postgres_table_hook = NULL;
+GetColocatedTableBasedOnDatabase_HookType get_colocated_table_based_on_database_hook =
+	NULL;
 ModifyCreateTableSchema_HookType modify_create_table_schema_hook = NULL;
 PostProcessCreateTable_HookType post_process_create_table_hook = NULL;
 PostProcessShardCollection_HookType post_process_shard_collection_hook = NULL;
@@ -165,16 +167,35 @@ IsShardTableForMongoTable(const char *relName, const char *numEndPointer)
  * Distributes a Postgres table across all the available node based on the
  * specified distribution column.
  */
-void
+const char *
 DistributePostgresTable(const char *postgresTable, const char *distributionColumn,
 						const char *colocateWith, bool isUnsharded)
 {
 	/* Noop for single node scenarios: Don't do anything unless overriden */
 	if (distribute_postgres_table_hook != NULL)
 	{
-		distribute_postgres_table_hook(postgresTable, distributionColumn, colocateWith,
-									   isUnsharded);
+		return distribute_postgres_table_hook(postgresTable, distributionColumn,
+											  colocateWith,
+											  isUnsharded);
 	}
+
+	return distributionColumn;
+}
+
+
+/*
+ * Given a Mongo Database, finds a table within that database that a new unsharded table
+ * should be colocated with.
+ */
+const char *
+GetColocatedTableBasedOnDatabase(text *databaseDatum)
+{
+	if (get_colocated_table_based_on_database_hook != NULL)
+	{
+		return get_colocated_table_based_on_database_hook(databaseDatum);
+	}
+
+	return NULL;
 }
 
 

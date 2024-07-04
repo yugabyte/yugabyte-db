@@ -67,11 +67,16 @@ extern RunQueryWithSequentialModification_HookType
  * Distributes a given postgres table with the provided distribution column.
  * Optionally supports colocating the distributed table with another distributed table.
  */
-typedef void (*DistributePostgresTable_HookType)(const char *postgresTable, const
-												 char *distributionColumn,
-												 const char *colocateWith,
-												 bool isUnsharded);
+typedef const char *(*DistributePostgresTable_HookType)(const char *postgresTable, const
+														char *distributionColumn,
+														const char *colocateWith,
+														bool isUnsharded);
 extern DistributePostgresTable_HookType distribute_postgres_table_hook;
+
+
+typedef const char *(*GetColocatedTableBasedOnDatabase_HookType)(text *databaseDatum);
+extern GetColocatedTableBasedOnDatabase_HookType
+	get_colocated_table_based_on_database_hook;
 
 /*
  * Given a current table schema built up to create a postgres table, adds a hook to
