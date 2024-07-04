@@ -17,6 +17,9 @@
 #define MAX_FEATURE_NAME_LENGTH 255
 #define MAX_FEATURE_COUNT 230
 
+/* Internal features that are not exposed */
+#define INTERNAL_FEATURE_TYPE MAX_FEATURE_COUNT
+
 /*
  * IMP: Keep this alphabetically sorted while adding new feature types. Sorting is done for better reability.
  * #CodeSync: Keep this in sync with FeatureMapping array in feature_counter.c
@@ -225,6 +228,7 @@ typedef enum
 
 	/* Feature counter region - Aggregation stages */
 	FEATURE_STAGE_ADD_FIELDS,
+	FEATURE_STAGE_BUCKET,
 	FEATURE_STAGE_COLLSTATS,
 	FEATURE_STAGE_COUNT,
 	FEATURE_STAGE_CURRENTOP,

@@ -409,6 +409,8 @@ void HandlePreParsedDollarBitOr(pgbson *doc, void *arguments,
 								ExpressionResult *expressionResult);
 void HandlePreParsedDollarBitXor(pgbson *doc, void *arguments,
 								 ExpressionResult *expressionResult);
+void HandlePreParsedDollarBucketInternal(pgbson *doc, void *arguments,
+										 ExpressionResult *expressionResult);
 void HandlePreParsedDollarCmp(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarDateAdd(pgbson *doc, void *arguments,
@@ -494,6 +496,8 @@ void ParseDollarBitAnd(const bson_value_t *argument, AggregationExpressionData *
 void ParseDollarBitNot(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBitOr(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarBitXor(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarBucketInternal(const bson_value_t *argument,
+							   AggregationExpressionData *data);
 void ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *data);

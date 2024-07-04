@@ -56,6 +56,7 @@
 #include "aggregation/bson_aggregation_pipeline_private.h"
 #include "vector/vector_common.h"
 #include "aggregation/bson_project.h"
+#include "operators/bson_expression_bucket_operator.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "utils/version_utils.h"
@@ -130,6 +131,8 @@ static List * AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *
 /* Stage functions */
 static Query * HandleAddFields(const bson_value_t *existingValue, Query *query,
 							   AggregationPipelineBuildContext *context);
+static Query * HandleBucket(const bson_value_t *existingValue, Query *query,
+							AggregationPipelineBuildContext *context);
 static Query * HandleCount(const bson_value_t *existingValue, Query *query,
 						   AggregationPipelineBuildContext *context);
 static Query * HandleLimit(const bson_value_t *existingValue, Query *query,
@@ -184,7 +187,6 @@ static bool CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr);
 
 static void ValidateQueryTreeForMatchStage(const Query *query);
 
-
 /* Stages and their definitions sorted by name.
  * Please keep this list sorted.
  */
@@ -214,7 +216,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$bucket",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleBucket,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
@@ -1879,6 +1881,25 @@ HandleAddFields(const bson_value_t *existingValue, Query *query,
 	ReportFeatureUsage(FEATURE_STAGE_ADD_FIELDS);
 	return HandleSimpleProjectionStage(existingValue, query, context, "$addFields",
 									   BsonDollarAddFieldsFunctionOid());
+}
+
+
+/*
+ * Handles the $bucket stage.
+ * Converts to a $group stage with $_bucketInternal operator to handle bucket specific logics.
+ * See bucket.md for more details.
+ */
+static Query *
+HandleBucket(const bson_value_t *existingValue, Query *query,
+			 AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_BUCKET);
+
+	bson_value_t groupSpec = { 0 };
+	RewriteBucketGroupSpec(existingValue, &groupSpec);
+	query = HandleGroup(&groupSpec, query, context);
+
+	return query;
 }
 
 

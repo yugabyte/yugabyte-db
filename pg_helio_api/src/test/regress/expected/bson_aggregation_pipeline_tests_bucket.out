@@ -1,0 +1,427 @@
+SET search_path TO helio_api,helio_core,helio_api_catalog;
+SET helio_api.next_collection_id TO 5100;
+SET helio_api.next_collection_index_id TO 5100;
+/* Insert data */
+SELECT helio_api.insert_one('db','dollarBucket',' { "_id" : 1, "item" : "almonds", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 2, "year": 2020 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 2, "item" : "pecans", "pricing" : { "wholesale": 10, "retail": 9 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucket',' { "_id" : 3, "item" : "bread", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 5 , "year": 2020}', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucket',' { "_id" : 4, "item" : "meat", "pricing" : { "wholesale": 4, "retail": 10 }, "quantity" : 3 , "year": 2022}', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 5, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 6, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucket','{ "_id" : 7, "item" : "bread", "pricing" : { "retail": 15, "wholesale": 10 }, "quantity" : 1, "year": 2020 }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* positive cases: */
+-- $bucket with only required fields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+-- $bucket with default value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others" } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+-- $bucket with output fields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
+                                                                  document                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
+(3 rows)
+
+-- $bucket with output fields and default value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
+                                                                  document                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
+(3 rows)
+
+-- $bucket with nested field path in groupBy field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$pricing.wholesale", "boundaries": [10, 20, 30], "default": "unknown" } } ] }');
+                               document                                
+-----------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "count" : { "$numberInt" : "4" } }
+ { "_id" : "unknown", "count" : { "$numberInt" : "3" } }
+(2 rows)
+
+-- $bucket with expression in groupBy field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": { "$subtract": ["$year", 2019] }, "boundaries": [1, 2, 3, 4] } } ] }');
+                               document                               
+----------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+-- $bucket with another stage before it
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$match": { "item": "bread" } }, { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- $bucket without count in output fields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "averageQuantity": { "$avg": "$quantity" }, "totalQuantity": { "$sum": "$quantity" } } } } ] }');
+                                                                      document                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" }, "totalQuantity" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "2021" }, "averageQuantity" : { "$numberDouble" : "1.0" }, "totalQuantity" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2022" }, "averageQuantity" : { "$numberDouble" : "3.0" }, "totalQuantity" : { "$numberInt" : "3" } }
+(3 rows)
+
+-- $bucket with default value equals to the highest boundaries value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021], "default": 2021 } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "4" } }
+(2 rows)
+
+-- groupBy non-integar field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$item", "boundaries": ["a", "c", "n"], "default": "others" } } ] }');
+                        document                        
+--------------------------------------------------------
+ { "_id" : "a", "count" : { "$numberInt" : "5" } }
+ { "_id" : "c", "count" : { "$numberInt" : "1" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+/* groupBy array or document field */
+SELECT helio_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 1, "valueArray" : [1, 2, 3], "valueDocument" : { "a": 1, "b": 2 } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 2, "valueArray" : [4, 5, 6], "valueDocument" : { "a": 3, "b": 4 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarBucketGroupBy', '{ "_id" : 3, "valueArray" : [9, 8], "valueDocument" : { "a": 5, "b": 6 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketGroupBy", "pipeline": [ { "$bucket": { "groupBy": "$valueArray", "boundaries": [[0], [5], [10]] } } ] }');
+                                 document                                 
+--------------------------------------------------------------------------
+ { "_id" : [ { "$numberInt" : "0" } ], "count" : { "$numberInt" : "2" } }
+ { "_id" : [ { "$numberInt" : "5" } ], "count" : { "$numberInt" : "1" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucketGroupBy", "pipeline": [ { "$bucket": { "groupBy": "$valueDocument", "boundaries": [{"a": 0}, {"a": 5}, {"a": 10}] } } ] }');
+                                    document                                    
+--------------------------------------------------------------------------------
+ { "_id" : { "a" : { "$numberInt" : "0" } }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "a" : { "$numberInt" : "5" } }, "count" : { "$numberInt" : "1" } }
+(2 rows)
+
+/* negative cases, validations: */
+-- required fields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "boundaries": [2020, 2021,2022,2023] } } ] }');
+ERROR:  $bucket requires 'groupBy' and 'boundaries' to be specified.
+HINT:  The $bucket stage requires 'groupBy' and 'boundaries' to be specified.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year"} } ] }');
+ERROR:  $bucket requires 'groupBy' and 'boundaries' to be specified.
+HINT:  The $bucket stage requires 'groupBy' and 'boundaries' to be specified.
+-- groupBy must be a path with prefix $ or expression
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+ERROR:  $bucket could not find a bucket for an input value "year", and no default was specified.
+HINT:  The input value must fall into one of the bucket boundaries, or specify a default value.
+-- boundaries is acsending constant array, more than one element, same type.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": 2020 } } ] }');
+ERROR:  The $bucket 'boundaries' field must be an array of values. But found: int
+HINT:  The $bucket 'boundaries' field must be an array of values. But found: int
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020] } } ] }');
+ERROR:  The $bucket 'boundaries' field must have at least 2 values, but found: 1
+HINT:  The $bucket 'boundaries' field must have at least 2 values, but found: 1
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2020, 2022, 2023] } } ] }');
+ERROR:  The $bucket 'boundaries' field must be an array of values in ascending order.
+HINT:  The $bucket 'boundaries' field must be an array of values in ascending order.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 1999, 2023] } } ] }');
+ERROR:  The $bucket 'boundaries' field must be an array of values in ascending order.
+HINT:  The $bucket 'boundaries' field must be an array of values in ascending order.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, "a", 2022, 2023] } } ] }');
+ERROR:  The $bucket 'boundaries' field must be an array of values of the same type. Found different types: int and string
+HINT:  The $bucket 'boundaries' field must be an array of values of the same type.
+-- default must be a constant, the default value must be less than the lowest boundaries value, or greater than or equal to the highest boundaries value, if having same type.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "$pricing"  } } ] }');
+ERROR:  The $bucket 'default' field must be a constant. Input value: "$pricing"
+HINT:  The $bucket 'default' field must be a constant. Input value: "$pricing"
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021], "default": 2020 } } ] }');
+ERROR:  The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2022, 2023], "default": 2021 } } ] }');
+ERROR:  The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.
+-- output must be document
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "output": 1 } } ] }');
+ERROR:  The $bucket 'output' field must be a document. But found: int
+HINT:  The $bucket 'output' field must be a document. But found: int
+-- More validations
+-- unknown argument of $bucket
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "averageQuantity": { "$avg": "$quantity" }}, "unknown": 1 } } ] }');
+ERROR:  Unrecognized option to $bucket: unknown
+HINT:  Unrecognized option to $bucket: unknown
+-- document cannot fall into any bucket with no default being set.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021] } } ] }');
+ERROR:  $bucket could not find a bucket for an input value 2021, and no default was specified.
+HINT:  The input value must fall into one of the bucket boundaries, or specify a default value.
+/* Explain */
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true)), 'count'::text, bsonsum(bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_5100 collection
+                     Output: bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '5100'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '5100'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
+                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4, agg_stage_0.c5, agg_stage_0.c6)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true)), 'count'::text, bsonsum(bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::bson, true)), 'averageQuantity'::text, bsonaverage(bson_expression_get(collection.document, '{ "" : "$quantity" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_5100 collection
+                     Output: bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '5100'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '5100'::bigint)
+(13 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": { "$subtract": ["$year", 2019] }, "boundaries": [1, 2, 3, 4] } } ] }');
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true)), 'count'::text, bsonsum(bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true))
+               ->  Bitmap Heap Scan on helio_data.documents_5100 collection
+                     Output: bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true), collection.document
+                     Recheck Cond: (collection.shard_key_value = '5100'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '5100'::bigint)
+(13 rows)
+
+/* running $bucket with intermediate size of more than 100mb */
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "%s": 5 MB - ~5.5 MB & there's 50 of them
+FOR i IN 1..50 LOOP
+PERFORM helio_api.insert_one('db', 'bucket_sizes_test', FORMAT('{ "_id": %s, "groupName": "ABC", "tag": { "%s": [ %s "d" ] } }', i, i, repeat('"' || i || repeat('a', 1000) || '", ', 5000))::helio_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+/* should fail with intermediate size error */
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "bucket_sizes_test", "pipeline": [ { "$bucket": { "groupBy": "$_id", "boundaries": [0, 10, 20, 50, 100], "output": { "allTags" : { "$push" : "$tag" } } } } ] }');
+ERROR:  Size 106342383 is larger than maximum size allowed for an intermediate document 104857600
+/* sharded collection */
+SELECT helio_api.shard_collection('db', 'dollarBucket', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- $bucket with only required fields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+-- $bucket with default value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others" } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+-- $bucket with output fields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
+                                                                  document                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
+(3 rows)
+
+-- $bucket with output fields and default value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
+                                                                  document                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
+(3 rows)
+
+-- $bucket with nested field path in groupBy field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$pricing.wholesale", "boundaries": [10, 20, 30], "default": "unknown" } } ] }');
+                               document                                
+-----------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "count" : { "$numberInt" : "4" } }
+ { "_id" : "unknown", "count" : { "$numberInt" : "3" } }
+(2 rows)
+
+-- $bucket with expression in groupBy field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": { "$subtract": ["$year", 2019] }, "boundaries": [1, 2, 3, 4] } } ] }');
+                               document                               
+----------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+-- $bucket with another stage before it
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$match": { "item": "bread" } }, { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- $bucket without count in output fields
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "averageQuantity": { "$avg": "$quantity" }, "totalQuantity": { "$sum": "$quantity" } } } } ] }');
+                                                                      document                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" }, "totalQuantity" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "2021" }, "averageQuantity" : { "$numberDouble" : "1.0" }, "totalQuantity" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2022" }, "averageQuantity" : { "$numberDouble" : "3.0" }, "totalQuantity" : { "$numberInt" : "3" } }
+(3 rows)
+
+-- $bucket with default value equals to the highest boundaries value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021], "default": 2021 } } ] }');
+                                document                                 
+-------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "4" } }
+(2 rows)
+
+-- groupBy non-integar field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$item", "boundaries": ["a", "c", "n"], "default": "others" } } ] }');
+                        document                        
+--------------------------------------------------------
+ { "_id" : "a", "count" : { "$numberInt" : "5" } }
+ { "_id" : "c", "count" : { "$numberInt" : "1" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" } }
+(3 rows)
+
+/* Explain */
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true)), 'count'::text, bsonsum(bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true))
+               ->  Seq Scan on helio_data.documents_5100 collection
+                     Output: bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" }, { "$numberInt" : "2023" } ] } } }'::bson, true), collection.document
+(10 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
+                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                    
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4, agg_stage_0.c5, agg_stage_0.c6)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true)), 'count'::text, bsonsum(bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::bson, true)), 'averageQuantity'::text, bsonaverage(bson_expression_get(collection.document, '{ "" : "$quantity" }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true))
+               ->  Seq Scan on helio_data.documents_5100 collection
+                     Output: bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ { "$numberInt" : "2020" }, { "$numberInt" : "2021" }, { "$numberInt" : "2022" } ], "default" : "others" } } }'::bson, true), collection.document
+(10 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": { "$subtract": ["$year", 2019] }, "boundaries": [1, 2, 3, 4] } } ] }');
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_0
+   Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
+   ->  GroupAggregate
+         Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true)), 'count'::text, bsonsum(bson_expression_get(collection.document, '{ "" : { "$numberInt" : "1" } }'::bson, true))
+         Group Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true))
+         ->  Sort
+               Output: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true)), collection.document
+               Sort Key: (bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true))
+               ->  Seq Scan on helio_data.documents_5100 collection
+                     Output: bson_expression_get(collection.document, '{ "" : { "$_bucketInternal" : { "groupBy" : { "$subtract" : [ "$year", { "$numberInt" : "2019" } ] }, "boundaries" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } } }'::bson, true), collection.document
+(10 rows)
+

@@ -240,6 +240,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 
 	/* Feature Mapping region - Aggregation stages */
 	[FEATURE_STAGE_ADD_FIELDS] = "add_fields",
+	[FEATURE_STAGE_BUCKET] = "bucket",
 	[FEATURE_STAGE_COLLSTATS] = "collstats_agg",
 	[FEATURE_STAGE_COUNT] = "count",
 	[FEATURE_STAGE_CURRENTOP] = "current_op_agg",

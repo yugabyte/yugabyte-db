@@ -156,6 +156,9 @@ static int VariableHashEntryCompareFunc(const void *obj1, const void *obj2, Size
  *  as it is binary searched on the key to find the handler.
  */
 static MongoOperatorExpression OperatorExpressions[] = {
+	{ "$_bucketInternal", NULL, &ParseDollarBucketInternal,
+	  &HandlePreParsedDollarBucketInternal,
+	  INTERNAL_FEATURE_TYPE },
 	{ "$abs", &HandleDollarAbs, NULL, NULL, FEATURE_AGG_OPERATOR_ABS },
 	{ "$accumulator", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ACCUMULATOR },
 	{ "$acos", NULL, NULL, NULL, FEATURE_AGG_OPERATOR_ACOS },
@@ -2932,7 +2935,10 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 							errhint("Unknown expression %s", searchKey.operatorName)));
 		}
 
-		ReportFeatureUsage(pItem->featureCounterId);
+		if (pItem->featureCounterId >= 0 && pItem->featureCounterId < MAX_FEATURE_INDEX)
+		{
+			ReportFeatureUsage(pItem->featureCounterId);
+		}
 
 		if (pItem->parseAggregationExpressionFunc != NULL)
 		{
