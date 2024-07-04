@@ -109,7 +109,10 @@ yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.cs
 ```
 
 After new rows are added to `orders.csv`, use the following command to load them with the flags `--start-clean` and `--enable-upsert`.
-Note: Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `--enable-upsert true` may lead to corruption of the indexes.
+
+{{<warning title="Note">}}
+Ensure that tables on the target YugabyteDB database do not have secondary indexes. If a table has secondary indexes, using `--enable-upsert true` may lead to corruption of the indexes.
+{{</warning>}}
 
 ```sh
 yb-voyager import data file --data-dir /dir/data-dir \

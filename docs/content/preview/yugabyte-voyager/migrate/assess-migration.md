@@ -33,7 +33,7 @@ When you run an assessment, Voyager collects metadata or metrics from the source
 The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 {{< /warning >}}
 
-Note that if providing database access to the client machine running Voyager is not possible, you can gather metadata from the source database using the provided bash scripts and then use Voyager to assess the migration. Currently, these scripts require the machine to have Voyager installed due to dependencies (like psql, sqlplus clients, and so on) included with Voyager. Standalone installers are planned to be provided for these dependencies in the future.
+Note that if providing database access to the client machine running Voyager is not possible, you can gather metadata from the source database using the provided bash scripts and then use Voyager to assess the migration.
 
 The following table describes the type of data that is collected during a migration assessment.
 
@@ -138,12 +138,6 @@ A sample Migration Assessment report for PostgreSQL is as follows:
    GRANT <SCHEMA_NAME>_reader_role TO ybvoyager;
    ```
 
-   If you're using [accelerated data export](#accelerate-data-export-for-mysql-and-oracle), run the additional grant as follows:
-
-   ```sql
-   GRANT FLASHBACK ANY TABLE TO ybvoyager;
-   ```
-
     {{% /tab %}}
 
 {{< /tabpane >}}
@@ -161,7 +155,7 @@ A sample Migration Assessment report for PostgreSQL is as follows:
 
     1. **Without source database connectivity**: In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for both PostgreSQL and Oracle present at `/etc/yb-voyager/gather-assessment-metadata`. You can perform the following steps for PostgreSQL with these scripts (similar for Oracle).
 
-        1. Copy the scripts to a machine which has access to the source database.
+        1. On a machine which has access to the source database, copy the scripts and install dependencies psql, and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
         1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example,
 
             ```sh
@@ -183,7 +177,7 @@ For the most accurate migration assessment, the source database must be actively
 
 1. Create a target YugabyteDB cluster as follows:
 
-    1. Create a cluster in [Enhanced Postgres Compatibility Mode](/preview/releases/ybdb-releases/v2024.1/#highlights) based on the sizing recommendations in the assessment report.
+    1. Create a cluster in [Enhanced Postgres Compatibility Mode](/preview/releases/ybdb-releases/v2024.1/#highlights) based on the sizing recommendations in the assessment report. For a universe in YugabyteDB Anywhere, [enable the compatibility mode](/preview/releases/yba-releases/v2024.1/#highlights) by setting some flags on the universe.
     1. Create a database with colocation set to TRUE.
 
         ```sql

@@ -17,7 +17,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 ### New features
 
-- Support for running [Assess Migration](../migrate/assess-migration/) against Oracle source database.
+- Support for [Oracle Assess Migration Assessment](../migrate/assess-migration/) using assess-migration command.
 
 ### Enhancements
 
@@ -31,6 +31,8 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
   - Minimum recommendation for node cores is now 4.
   - Improved recommendation logic based on experiments.
+
+- Optimized execution time of [get data-migration-report](../reference/data-migration/import-data/#get-data-migration-report) by 90% for large databases.
 
 ### Bug fixes
 
