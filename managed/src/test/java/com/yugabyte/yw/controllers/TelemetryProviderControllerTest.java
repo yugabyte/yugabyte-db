@@ -45,7 +45,6 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
   private Customer customer;
   private String authToken;
   private Users user;
-  private TelemetryProviderServiceTest telemetryProviderServiceTest;
 
   @Before
   public void setup() {
@@ -84,7 +83,7 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
   @Test
   public void testCreateTelemetryProvider() {
     TelemetryProvider provider =
-        telemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
+        TelemetryProviderServiceTest.createTestProvider(customer.getUuid(), "Test");
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
