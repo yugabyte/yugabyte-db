@@ -144,13 +144,13 @@ GeonearDistanceWithinRange(const GeonearDistanceState *state,
 	float8 distance = GeonearDistanceFromDocument(state, document);
 
 	if (state->maxDistance != NULL && distance > *(state->maxDistance) &&
-		fabs(distance - *(state->maxDistance)) > DBL_EPSILON)
+		!DOUBLE_EQUALS(distance, *(state->maxDistance)))
 	{
 		return false;
 	}
 
 	if (state->minDistance != NULL && distance < *(state->minDistance) &&
-		fabs(distance - *(state->minDistance)) > DBL_EPSILON)
+		!DOUBLE_EQUALS(distance, *(state->minDistance)))
 	{
 		return false;
 	}

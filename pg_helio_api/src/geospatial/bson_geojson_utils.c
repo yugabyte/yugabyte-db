@@ -1198,7 +1198,7 @@ IsRingStraightLine(char *pointsStart, int32 numPoints)
 	float8 *point = (float8 *) pointsStart;
 	float8 *nextPoint = (float8 *) (pointsStart + WKB_BYTE_SIZE_POINT);
 
-	bool isEdgeVertical = fabs(nextPoint[0] - point[0]) < DBL_EPSILON;
+	bool isEdgeVertical = DOUBLE_EQUALS(nextPoint[0], point[0]);
 	float8 slope = (nextPoint[1] - point[1]) / (nextPoint[0] - point[0]);
 	for (int i = 1; i < numPoints - 1; i++)
 	{
@@ -1208,7 +1208,7 @@ IsRingStraightLine(char *pointsStart, int32 numPoints)
 
 		if (isEdgeVertical)
 		{
-			isEdgeVertical = fabs(nextPoint[0] - point[0]) < DBL_EPSILON;
+			isEdgeVertical = DOUBLE_EQUALS(nextPoint[0], point[0]);
 
 			if (isEdgeVertical)
 			{
@@ -1216,7 +1216,7 @@ IsRingStraightLine(char *pointsStart, int32 numPoints)
 			}
 		}
 
-		if (fabs(newSlope - slope) > DBL_EPSILON)
+		if (!DOUBLE_EQUALS(newSlope, slope))
 		{
 			return false;
 		}

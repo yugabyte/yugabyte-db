@@ -340,14 +340,29 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 								BsonTypeName(shapeValue->value_type))));
 	}
 
-	/* First pass to just check if all points are same */
-	bool allPointsSame = true;
+	/*
+	 * MongoDB doesn't have strict validation rules for 2d $polygon.
+	 * e.g.
+	 * $polygon: [[1, 1], [1, 1], [1, 1]] is invalid in Postgis but this still returns Point[1, 1] in mongodb
+	 * $polygon: [[0, 0], [0, 2], [1, 1], [-1, 1]] is an invalid self intersecting polygon which is treated normally in mongodb
+	 *
+	 * So for all these cases we will just try to create a valid geometry polygon if it is not valid
+	 * We are not concerned about checking the validity first and then call make valid because it anyway
+	 * does it and returns geometry unchanged in case it is valid.
+	 */
+	StringInfo wkbBuffer = makeStringInfo();
+	WriteHeaderToWKBBuffer(wkbBuffer, WKBGeometryType_Polygon);
+	int32 numOfRings = 1;
+	WriteNumToWKBBuffer(wkbBuffer, numOfRings);
+	int32 totalPointsOffset = WKBBufferAppend4EmptyBytesForNums(wkbBuffer);
+
+	int32 totalPoints = 0;
+	Point firstPoint, currentPoint;
+	memset(&firstPoint, 0, sizeof(Point));
+	memset(&currentPoint, 0, sizeof(Point));
 
 	bson_iter_t valueIter;
 	BsonValueInitIterator(shapeValue, &valueIter);
-	double lastLong = 0;
-	double lastLat = 0;
-	int index = 0;
 	while (bson_iter_next(&valueIter))
 	{
 		const bson_value_t *value = bson_iter_value(&valueIter);
@@ -368,65 +383,20 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 		errCtxt.errCode = MongoBadValue;
 
 		ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
-		if (index == 0)
+		if (totalPoints == 0)
 		{
-			lastLong = point.x;
-			lastLat = point.y;
-		}
-		else if (lastLong != point.x || lastLat != point.y)
-		{
-			allPointsSame = false;
-			break;
-		}
-		index++;
-	}
-
-	BsonValueInitIterator(shapeValue, &valueIter);
-	double firstLong = 0;
-	double firstLat = 0;
-	index = 0;
-	List *pointsList = NIL;
-	while (bson_iter_next(&valueIter))
-	{
-		const bson_value_t *value = bson_iter_value(&valueIter);
-		if (value->value_type != BSON_TYPE_ARRAY &&
-			value->value_type != BSON_TYPE_DOCUMENT)
-		{
-			ereport(ERROR, (errcode(MongoBadValue),
-							errmsg("Point must be an array or object")));
-		}
-
-		Point point;
-		memset(&point, 0, sizeof(Point));
-
-		bool throwError = true;
-
-		GeospatialErrorContext errCtxt;
-		memset(&errCtxt, 0, sizeof(GeospatialErrorContext));
-		errCtxt.errCode = MongoBadValue;
-
-		ParseBsonValueAsPoint(value, throwError, &errCtxt, &point);
-		if (index == 0)
-		{
-			firstLong = point.x;
-			firstLat = point.y;
+			firstPoint = point;
 		}
 		else
 		{
-			lastLong = point.x;
-			lastLat = point.y;
+			currentPoint = point;
 		}
 
-		/* Make a point and insert in list */
-		Datum pointGeometry = OidFunctionCall2(PostgisMakePointFunctionId(),
-											   Float8GetDatum(point.x),
-											   Float8GetDatum(point.y));
-		pointsList = lappend(pointsList, DatumGetPointer(pointGeometry));
-
-		index++;
+		WritePointToWKBBuffer(wkbBuffer, &point);
+		totalPoints++;
 	}
 
-	if (index < 3)
+	if (totalPoints < 3)
 	{
 		/* If 3 points are not given, the polygon is not defined
 		 */
@@ -434,32 +404,27 @@ BsonValueGetPolygon(const bson_value_t *shapeValue, ShapeOperatorInfo *opInfo)
 						errmsg("Polygon must have at least 3 points")));
 	}
 
-	/* Check if last and first points are not same then add first point implicitly */
-	if (firstLong != lastLong || firstLat != lastLat)
+	/* Check if last and first points are not same then add first point implicitly,
+	 * Add the first point always if total points are 3, postgis requires at least 4 points
+	 */
+	if (totalPoints == 3 || !DOUBLE_EQUALS(firstPoint.x, currentPoint.x) ||
+		!DOUBLE_EQUALS(firstPoint.y, currentPoint.y))
 	{
-		Datum point = OidFunctionCall2(PostgisMakePointFunctionId(),
-									   Float8GetDatum(firstLong),
-									   Float8GetDatum(firstLat));
-		pointsList = lappend(pointsList,
-							 DatumGetPointer(point));
+		WritePointToWKBBuffer(wkbBuffer, &firstPoint);
+		totalPoints++;
 	}
 
-	/*
-	 * If all points are same just return a LINESTRING, polygon with only one point
-	 * does not cover that same point
-	 * e.g. Polygon [[10, 10], [10, 10], [10, 10], [10, 10]]
-	 * Point [10, 10] => This is not treated as covered by the polygon
-	 */
-	ArrayType *pointsArray = PointerListGetPgArray(pointsList, GeometryTypeId());
-	Datum lineStringDatum = OidFunctionCall1(PostgisMakeLineFunctionId(),
-											 PointerGetDatum(pointsArray));
-	if (allPointsSame)
-	{
-		return DatumWithDefaultSRID(lineStringDatum);
-	}
-	return DatumWithDefaultSRID(OidFunctionCall1(
-									PostgisMakePolygonFunctionId(),
-									lineStringDatum));
+	/* Update total number of points in the polygon */
+	WriteNumToWKBBufferAtPosition(wkbBuffer, totalPointsOffset, totalPoints);
+
+	bytea *wkbBytea = WKBBufferGetByteaWithSRID(wkbBuffer);
+	Datum result = GetGeometryFromWKB(wkbBytea);
+	pfree(wkbBytea);
+	DeepFreeWKB(wkbBuffer);
+
+	/* Make the polygon always valid */
+	result = OidFunctionCall1(PostgisGeometryMakeValidFunctionId(), result);
+	return result;
 }
 
 

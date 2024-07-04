@@ -720,6 +720,9 @@ typedef struct HelioApiOidCacheData
 	/* Oid of the ST_IsValidReason function  */
 	Oid PostgisGeometryIsValidDetailFunctionId;
 
+	/* Oid of the ST_makeValid function */
+	Oid PostgisGeometryMakeValidFunctionId;
+
 	/* Oid of bson_validate_geometry function */
 	Oid BsonValidateGeometryFunctionId;
 
@@ -4087,6 +4090,22 @@ PostgisGeometryIsValidDetailFunctionId(void)
 	return GetSchemaFunctionIdWithNargs(
 		&Cache.PostgisGeometryIsValidDetailFunctionId,
 		PostgisSchemaName, "st_isvaliddetail", nargs,
+		argTypes, missingOk);
+}
+
+
+/*
+ * PostgisGeometryMakeValidFunctionId returns the OID of the PostgisSchemaName.st_makevalid function.
+ */
+Oid
+PostgisGeometryMakeValidFunctionId(void)
+{
+	int nargs = 1;
+	Oid argTypes[1] = { GeometryTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(
+		&Cache.PostgisGeometryMakeValidFunctionId,
+		PostgisSchemaName, "st_makevalid", nargs,
 		argTypes, missingOk);
 }
 

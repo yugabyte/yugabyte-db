@@ -995,13 +995,13 @@ GeonearRangeConsistent(PG_FUNCTION_ARGS)
 	}
 
 	if (state->maxDistance != NULL && gistBoxDistance > *(state->maxDistance) &&
-		fabs(gistBoxDistance - *(state->maxDistance)) > DBL_EPSILON)
+		!DOUBLE_EQUALS(gistBoxDistance, *(state->maxDistance)))
 	{
 		return false;
 	}
 
 	if (state->minDistance != NULL && gistBoxDistance < *(state->minDistance) &&
-		fabs(gistBoxDistance - *(state->minDistance)) > DBL_EPSILON)
+		!DOUBLE_EQUALS(gistBoxDistance, *(state->minDistance)))
 	{
 		return false;
 	}

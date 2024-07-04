@@ -209,6 +209,7 @@ Oid PostgisGeometryAreaFunctionId(void);
 Oid PostgisGeometryFromEWKBFunctionId(void);
 Oid PostgisGeometryAsGeography(void);
 Oid PostgisGeometryIsValidDetailFunctionId(void);
+Oid PostgisGeometryMakeValidFunctionId(void);
 Oid PostgisGeometryGistCompress2dFunctionId(void);
 Oid PostgisGeometryGistConsistent2dFunctionId(void);
 Oid PostgisGeographyFromWKBFunctionId(void);

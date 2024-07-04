@@ -13,6 +13,7 @@
 #define BSON_GEOSPATIAL_COMMON_H
 
 #include "postgres.h"
+#include "float.h"
 
 #include "io/helio_bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
@@ -24,6 +25,8 @@
 #define DEFAULT_2D_INDEX_MIN_BOUND -180.0
 #define DEFAULT_2D_INDEX_MAX_BOUND 180.0
 
+/* Utility macro to check equality of double value */
+#define DOUBLE_EQUALS(a, b) (fabs((a) - (b)) < DBL_EPSILON)
 
 /*
  * helio_api.enableGeospatial GUC determines geospatial indexes
