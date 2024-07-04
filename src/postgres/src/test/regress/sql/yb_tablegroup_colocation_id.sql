@@ -114,4 +114,4 @@ DROP TABLE tg1_table1;
 
 \c yugabyte
 DROP DATABASE test_tablegroups_colocation_id;
-\c test_tablegroups_colocation_id
+SELECT count(*) FROM pg_database WHERE datname = 'test_tablegroups_colocation_id';

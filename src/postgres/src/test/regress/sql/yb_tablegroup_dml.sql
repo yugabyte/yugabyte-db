@@ -141,4 +141,4 @@ DROP TABLEGROUP tg_test2;
 -- drop database
 \c yugabyte
 DROP DATABASE test_tablegroups;
-\c test_tablegroups
+SELECT count(*) FROM pg_database WHERE datname = 'test_tablegroups';

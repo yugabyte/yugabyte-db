@@ -7,6 +7,8 @@ Description: define a new tablegroup
 Syntax:
 CREATE TABLEGROUP tablegroup_name
 
+URL: https://www.postgresql.org/docs/15/sql-createtablegroup.html
+
 \h ALTER TABLEGROUP
 Command:     ALTER TABLEGROUP
 Description: change the definition of a tablegroup
@@ -14,11 +16,15 @@ Syntax:
 ALTER TABLEGROUP name RENAME TO new_name
 ALTER TABLEGROUP name OWNER TO { new_owner | CURRENT_USER | SESSION_USER }
 
+URL: https://www.postgresql.org/docs/15/sql-altertablegroup.html
+
 \h DROP TABLEGROUP
 Command:     DROP TABLEGROUP
 Description: remove a tablegroup
 Syntax:
 DROP TABLEGROUP name
+
+URL: https://www.postgresql.org/docs/15/sql-droptablegroup.html
 
 --
 -- pg_catalog alterations. Validate columns of pg_yb_tablegroup and oids.
@@ -27,18 +33,19 @@ DROP TABLEGROUP name
             Table "pg_catalog.pg_yb_tablegroup"
     Column     |   Type    | Collation | Nullable | Default
 ---------------+-----------+-----------+----------+---------
+ oid           | oid       |           | not null |
  grpname       | name      |           | not null |
  grpowner      | oid       |           | not null |
  grptablespace | oid       |           | not null |
  grpacl        | aclitem[] |           |          |
- grpoptions    | text[]    |           |          |
+ grpoptions    | text[]    | C         |          |
 Indexes:
     "pg_yb_tablegroup_oid_index" PRIMARY KEY, lsm (oid ASC)
 
 SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_tablegroup', 'pg_yb_tablegroup_oid_index');
  oid  |          relname           | reltype | relnatts
 ------+----------------------------+---------+----------
- 8036 | pg_yb_tablegroup           |    8038 |        5
+ 8036 | pg_yb_tablegroup           |    8038 |        6
  8037 | pg_yb_tablegroup_oid_index |       0 |        1
 (2 rows)
 
