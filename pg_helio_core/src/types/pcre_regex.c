@@ -133,9 +133,6 @@ RegexCompileForAggregation(char *regexPatternStr, char *options, bool enableNoAu
 
 	int pcreErrorCode = 0;
 
-	/* Create a match context */
-	pcreData->matchContext = pcre2_match_context_create(NULL);
-	pcre2_set_recursion_limit(pcreData->matchContext, PCRE2_RECURSION_LIMIT);
 	uint32_t compileOptions = enableNoAutoCapture ? PCRE2_NO_AUTO_CAPTURE : 0;
 	if (!RegexCompileCore(regexPatternStr, options, &pcreData, &pcreErrorCode,
 						  REGEX_MAX_PATTERN_LENGTH_AGGREGATION, compileOptions))
@@ -143,6 +140,10 @@ RegexCompileForAggregation(char *regexPatternStr, char *options, bool enableNoAu
 		InvalidRegexError(MongoLocation51111, regexInvalidErrorMessage, pcreErrorCode,
 						  pcreData);
 	}
+
+	/* we pass pcre2_general_context to the input so for memory allocation we use custom function of general context : palloc and pfree */
+	pcreData->matchContext = pcre2_match_context_create(pcreData->generalContext);
+	pcre2_set_recursion_limit(pcreData->matchContext, PCRE2_RECURSION_LIMIT);
 
 	/* create a stack for use by the code compiled by the JIT compiler */
 	pcreData->jitStack = pcre2_jit_stack_create(MIN_JIT_STACK_SIZE, MAX_JIT_STACK_SIZE,
@@ -376,6 +377,7 @@ FreePcreData(PcreData *pcreData)
 		return;
 	}
 
+	/* below all functions : If the argument is NULL, the function returns immediately without doing anything. */
 	pcre2_compile_context_free(pcreData->compileContext);
 	pcre2_general_context_free(pcreData->generalContext);
 	pcre2_match_context_free(pcreData->matchContext);
