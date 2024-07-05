@@ -148,12 +148,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
     drConfigQuery.data ?? {};
   // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
-  const participantUniveresUuid =
+  const participantUniverseUuid =
     currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
   const participantUniverseQuery = useQuery(
-    universeQueryKey.detail(participantUniveresUuid),
-    () => api.fetchUniverse(participantUniveresUuid),
-    { enabled: !!participantUniveresUuid }
+    universeQueryKey.detail(participantUniverseUuid),
+    () => api.fetchUniverse(participantUniverseUuid),
+    { enabled: !!participantUniverseUuid }
   );
 
   const [sourceUniverse, targetUniverse] =
@@ -187,7 +187,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     return (
       <YBErrorIndicator
         customErrorMessage={t('error.failToFetchUniverse', {
-          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniveresUuid
+          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniverseUuid
         })}
       />
     );
