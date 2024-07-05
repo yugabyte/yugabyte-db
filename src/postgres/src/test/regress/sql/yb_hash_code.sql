@@ -216,4 +216,6 @@ INSERT INTO tt VALUES (1, 2);
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
 /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
 /*+SeqScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 2^31 - 1; 
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 2^31; 
 DROP TABLE tt;
