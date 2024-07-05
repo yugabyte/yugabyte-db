@@ -975,4 +975,16 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)/*+IndexScan(tt)*/ SELECT *
  1 | 2
 (1 row)
 
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >  2^31 - 1;
+ i | j 
+---+---
+(0 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >  2^31;
+ i | j 
+---+---
+(0 rows)
+
+
+
 DROP TABLE tt;
