@@ -25,19 +25,3 @@ You can do this in the following ways:
 - [Scrape directly from universe nodes](prometheus-scrape/)
 
     Your independent Prometheus instance can scrape data from database nodes directly (in the case of VM-based universes) or scrape data from a Kubernetes Prometheus Operator Service Monitor (in the case of K8s-based universes). This data scraping runs in parallel to and independently from the YugabyteDB Anywhere-embedded Prometheus.
-
-{{<index/block>}}
-
-  {{<index/item
-    title="Federated"
-    body="Scrape metrics from the YugabyteDB Anywhere Prometheus server."
-    href="prometheus-federate/"
-    icon="/images/section_icons/explore/planet_scale.png">}}
-
-  {{<index/item
-    title="Scrape nodes directly"
-    body="Scrape metrics directly from universe nodes."
-    href="prometheus-scrape/"
-    icon="/images/section_icons/deploy/public-clouds.png">}}
-
-{{</index/block>}}
