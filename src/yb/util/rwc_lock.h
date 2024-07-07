@@ -31,9 +31,7 @@
 //
 #pragma once
 
-#ifndef NDEBUG
 #include <unordered_map>
-#endif // NDEBUG
 
 #include "yb/gutil/macros.h"
 
@@ -105,9 +103,8 @@ class RWCLock {
 
   // Return true if the current thread holds the write lock.
   //
-  // In DEBUG mode this is accurate -- we track the current holder's tid.
-  // In non-DEBUG mode, this may sometimes return true even if another thread
-  // is in fact the holder.
+  // If FLAGS_enable_rwc_lock_debugging is true this is accurate; we track the current holder's tid.
+  // Else, this may sometimes return true even if another thread is in fact the holder.
   // Thus, this is only really useful in the context of a DCHECK assertion.
   bool HasWriteLock() const;
 
@@ -147,19 +144,21 @@ class RWCLock {
   int reader_count_;
   bool write_locked_;
 
-#ifndef NDEBUG
-  int64_t last_writer_tid_;
-  ThreadIdForStack last_writer_tid_for_stack_;
-  int64_t last_writelock_acquire_time_;
-  StackTrace last_writer_stacktrace_;
+  struct DebugInfo {
+    int64_t last_writer_tid = 0;
+    ThreadIdForStack last_writer_tid_for_stack;
+    int64_t last_writelock_acquire_time = 0;
+    StackTrace last_writer_stacktrace;
 
-  // thread id --> (thread's reader count, stack trace of first reader).
-  struct CountStack {
-    int count; // reader count
-    StackTrace stack; // stack trace of first reader
+    struct CountStack {
+      int count;
+      StackTrace stack;
+    };
+    // Thread id --> (thread's reader count, stack trace of first reader).
+    std::unordered_map<int64_t, CountStack> reader_stacks;
   };
-  std::unordered_map<int64_t, CountStack> reader_stacks_;
-#endif // NDEBUG
+
+  std::unique_ptr<DebugInfo> debug_info_;
 
   DISALLOW_COPY_AND_ASSIGN(RWCLock);
 };

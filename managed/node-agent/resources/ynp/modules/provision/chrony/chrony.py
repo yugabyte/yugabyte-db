@@ -1,7 +1,4 @@
 from ...base_module import BaseYnpModule
-import jinja2
-from jinja2 import Environment, FileSystemLoader
-from utils.filters import split_servers
 
 
 class ConfigureChrony(BaseYnpModule):

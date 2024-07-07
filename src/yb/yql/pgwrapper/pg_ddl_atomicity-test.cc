@@ -739,8 +739,6 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
 }
 
 TEST_F(PgDdlAtomicitySanityTest, AddReplicaIdentityTest) {
-  ASSERT_OK(
-      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("set yb_enable_replica_identity = true"));

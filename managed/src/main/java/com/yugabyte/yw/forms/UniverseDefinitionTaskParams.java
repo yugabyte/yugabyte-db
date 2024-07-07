@@ -323,6 +323,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public List<Region> regions;
 
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Kubernetes per AZ statefulset gflags checksum map")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+    private Map<UUID, Map<ServerType, String>> perAZServerTypeGflagsChecksumMap = new HashMap<>();
+
     /** Default to PRIMARY. */
     private Cluster() {
       this(ClusterType.PRIMARY, new UserIntent());

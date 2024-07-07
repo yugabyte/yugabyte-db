@@ -30,6 +30,7 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
   private final Set<HostPortPB> sourceMasterAddresses;
   private final String newReplicationGroupName;
   private final boolean removeTableIgnoreErrors;
+  // Must be null for table level remove to be used.
   private final String producerNamespaceIdToRemove;
 
   AlterUniverseReplicationRequest(
@@ -62,7 +63,7 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
     this.sourceMasterAddresses = sourceMasterAddresses;
     this.newReplicationGroupName = newReplicationGroupName;
     this.removeTableIgnoreErrors = removeTableIgnoreErrors;
-    this.producerNamespaceIdToRemove = "";
+    this.producerNamespaceIdToRemove = null;
   }
 
   @Override

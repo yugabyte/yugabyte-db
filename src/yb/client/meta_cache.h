@@ -621,7 +621,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   void InvalidateTableCache(const YBTable& table);
 
-  void AddAllTabletInfo(JsonWriter* writer);
+  void AddAllTabletInfo(JsonWriter* writer) const;
 
   const std::string& LogPrefix() const { return log_prefix_; }
 
@@ -736,7 +736,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   YBClient* const client_;
 
-  std::shared_timed_mutex mutex_;
+  mutable std::shared_timed_mutex mutex_;
 
   // Cache of Tablet Server locations: TS UUID -> RemoteTabletServer*.
   //

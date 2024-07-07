@@ -52,7 +52,11 @@ const StatusComponent = () => (status: string) => {
   return (
     <Box>
       <YBBadge
-        variant={status === "Complete" ? BadgeVariant.Success : BadgeVariant.InProgress}
+        variant={
+          status.toLowerCase().startsWith("complete")
+            ? BadgeVariant.Success
+            : BadgeVariant.InProgress
+        }
         text={status}
         icon={false}
       />

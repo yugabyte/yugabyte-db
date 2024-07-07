@@ -65,6 +65,10 @@ CREATE TABLE ft_r_tab_bool (feature_col BOOLEAN, PRIMARY KEY(feature_col ASC))
 -- Enumerated Types
 CREATE TYPE feature_r_enum AS ENUM('one', 'two', 'three');
 CREATE TABLE ft_r_tab_enum (feature_col feature_r_enum, PRIMARY KEY(feature_col ASC));
+-- YB(fizaa): Work-around for the test cleanup code that drops the enum type.
+-- Dropping the enum type will cause an error because a key column depends on it (GH #22902).
+-- By dropping the table now, the clean up code will succeed.
+DROP TABLE ft_r_tab_enum;
 --
 -- Geometric Types
 CREATE TABLE ft_r_tab_point (feature_col POINT, PRIMARY KEY(feature_col ASC));

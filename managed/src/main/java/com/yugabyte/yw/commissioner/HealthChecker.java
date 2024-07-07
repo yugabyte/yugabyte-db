@@ -760,6 +760,15 @@ public class HealthChecker {
         if (!provider.getCode().equals(CloudType.onprem.toString())
             && !provider.getCode().equals(CloudType.kubernetes.toString())) {
           nodeInfo.setCheckClock(true);
+          if (confGetter.getConfForScope(params.universe, UniverseConfKeys.healthCheckTimeDrift)) {
+            nodeInfo.setCheckTimeDrift(true);
+            nodeInfo.setTimeDriftWrnThreshold(
+                confGetter.getConfForScope(
+                    params.universe, UniverseConfKeys.healthCheckTimeDriftWrnThreshold));
+            nodeInfo.setTimeDriftErrThreshold(
+                confGetter.getConfForScope(
+                    params.universe, UniverseConfKeys.healthCheckTimeDriftErrThreshold));
+          }
         }
         if (params.universe.isYbcEnabled()) {
           nodeInfo
@@ -773,6 +782,7 @@ public class HealthChecker {
                           GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
                       : nodeInfo.getYbHomeDir());
         }
+        nodeInfo.setOtelCollectorEnabled(params.universe.getUniverseDetails().otelCollectorEnabled);
         nodeMetadata.add(nodeInfo);
       }
     }
@@ -1083,6 +1093,9 @@ public class HealthChecker {
     private int tserverHttpPort = 9000;
     private int ysqlServerHttpPort = 13000;
     private boolean checkClock = false;
+    private boolean checkTimeDrift = true;
+    private int timeDriftWrnThreshold = 250;
+    private int timeDriftErrThreshold = 400;
     private Long nodeStartTime = null;
     private boolean testReadWrite = true;
     private boolean testYsqlshConnectivity = true;
@@ -1090,6 +1103,7 @@ public class HealthChecker {
     private boolean enableYbc = false;
     private int ybcPort = 18018;
     private UUID universeUuid;
+    private boolean otelCollectorEnabled;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
   }
 

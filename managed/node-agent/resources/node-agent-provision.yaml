@@ -12,19 +12,22 @@ ynp:
   # Airgapped
   is_airgap: false
   use_system_level_systemd: false
+  ip_address: "127.0.0.1"
 
 yba:
-  url: http://yba.foo.bar.com
-  customer_uuid: 550e8400-e29b-41d4-a716-446655440000
-  api-key: 123e4567-e89b-12d3-a456-426614174000
+  url: <url>
+  customer_uuid: <customer_uuid>
+  api_key: <api_key>
+  node_name: <name>
+  node_ip: <ip>
   provider:
-    name: provider-name
+    name: provider_name
     region:
-      name: region-name
+      name: region_name
       zone:
-        name: zone-name
+        name: zone_name
   instance_type:
-    name: instance-name
+    name: instance_name
     cores: cores
     memory_size: size
     volume_size: size

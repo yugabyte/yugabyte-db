@@ -217,8 +217,10 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
   const [numVolumesDisable, setNumVolumesDisable] = useState(false);
   const [volumeSizeDisable, setVolumeSizeDisable] = useState(false);
   const [userTagsDisable, setUserTagsDisable] = useState(false);
+  const [disableIops, setDisableIops] = useState(false);
+  const [disableThroughput, setDisableThroughput] = useState(false);
+  const [disableStorageType, setDisableStorageType] = useState(false);
   const [minVolumeSize, setMinVolumeSize] = useState(1);
-  const { setValue } = useFormContext<UniverseFormData>();
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -227,28 +229,16 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
 
-  const initialCombination = useRef({
-    totalNodes: Number(totalNodes),
-    placements,
-    instanceType,
-    deviceInfo
-  });
-
   useUpdateEffect(() => {
     if (isEditMode && provider.code !== CloudType.kubernetes) {
-      if (isNonEmptyArray(updateOptions) && updateOptions.includes(UpdateActions.UPDATE)) {
-      setNumVolumesDisable(true);
-      setVolumeSizeDisable(true);
-      setUserTagsDisable(true);
-      setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
-      //  Volume Size Increase,  Other device Info changes (Count, Storage type, provisioned IOPS) , Instance Type Change
-      } else {
-        setNumVolumesDisable(false);
-        setVolumeSizeDisable(false);
-        setUserTagsDisable(false);
-      }
+      setNumVolumesDisable(false);
+      setVolumeSizeDisable(false);
+      setUserTagsDisable(false);
+      setDisableIops(false);
+      setDisableThroughput(false);
+      setDisableStorageType(false);
     }
   }, [totalNodes, placements, instanceType, deviceInfo?.volumeSize]);
 
-  return { numVolumesDisable, volumeSizeDisable, userTagsDisable, minVolumeSize };
+  return { numVolumesDisable, volumeSizeDisable, userTagsDisable, minVolumeSize, disableIops, disableThroughput, disableStorageType };
 };

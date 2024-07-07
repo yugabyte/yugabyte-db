@@ -34,8 +34,10 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     // Set max_replication_slots to a large value so that we don't run out of them during tests
     // and don't have to do cleanups after every test case.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) = "ysql_yb_enable_replica_identity";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
+
+    // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
 
     MiniClusterOptions opts;
     opts.num_masters = num_masters;
@@ -92,6 +94,7 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
 // reflected in the records for the stream.
 TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestReplicaIdentityWithStreamCreation)) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
@@ -103,24 +106,20 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestReplicaIdentityWit
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY FULL"));
 
-  xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   // These alter replica identity will have no effect on records streamed for stream_id_1
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY DEFAULT"));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table REPLICA IDENTITY CHANGE"));
 
   // stream_id_2 will have replica identity CHANGE for test_table
-  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
-  set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
   WriteUpdateDelete(kTableName);
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {10, 2, 2, 2, 0, 0};
-  const uint32_t expected_count_with_packed_row[] = {10, 4, 0, 2, 0, 0};
+  const uint32_t expected_count[] = {3, 2, 2, 2, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {3, 4, 0, 2, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records_1[] = {{1, 2}, {1, 3}, {1, 3}};
@@ -587,8 +586,13 @@ TEST_F(
     YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndReplicaIdentity)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  // This test does not use virtual wal for consumption. Hence
+  // 'ysql_yb_enable_replication_slot_consumption' is set to false. TODO (#22985) port the replica
+  // identity tests to use virtual wal for consumption.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = false;
+
   ASSERT_OK(SetUpWithParams(3, 1, false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));

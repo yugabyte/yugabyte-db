@@ -7,7 +7,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 
-@Mapper
+@Mapper(config = CentralConfig.class)
 public interface UpgradeOptionEnumMapper {
   @ValueMappings({
     @ValueMapping(target = "ROLLING_UPGRADE", source = "ROLLING"),

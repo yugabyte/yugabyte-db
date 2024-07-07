@@ -15,7 +15,7 @@ import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
+import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -104,7 +104,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
-  private final XClusterSyncScheduler xClusterSyncScheduler;
+  private final XClusterScheduler xClusterScheduler;
 
   @Inject
   public XClusterConfigController(
@@ -116,7 +116,7 @@ public class XClusterConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterSyncScheduler xClusterSyncScheduler) {
+      XClusterScheduler xClusterScheduler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -125,7 +125,7 @@ public class XClusterConfigController extends AuthenticatedController {
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
-    this.xClusterSyncScheduler = xClusterSyncScheduler;
+    this.xClusterScheduler = xClusterScheduler;
   }
 
   /**
@@ -324,7 +324,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
 
-    xClusterSyncScheduler.syncXClusterConfig(xClusterConfig);
+    xClusterScheduler.syncXClusterConfig(xClusterConfig);
     xClusterConfig.refresh();
 
     // Set tableType if it is UNKNOWN. This is useful for xCluster configs that were created in old
@@ -380,7 +380,8 @@ public class XClusterConfigController extends AuthenticatedController {
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
 
-    XClusterConfigTaskBase.setReplicationStatus(this.xClusterUniverseService, xClusterConfig);
+    XClusterConfigTaskBase.setReplicationStatus(
+        this.xClusterUniverseService, this.ybService, xClusterConfig);
 
     // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();

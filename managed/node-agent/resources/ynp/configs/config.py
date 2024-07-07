@@ -1,7 +1,9 @@
+import time
 import os
 import configparser
 from jinja2 import Environment, FileSystemLoader
 from collections import defaultdict
+from pathlib import Path
 import copy
 
 
@@ -24,13 +26,18 @@ def convert_dotted_keys_to_nested(config_dict):
 def parse_config(ynp_config):
     # Determine the directory containing the current script
     module_dir = os.path.dirname(__file__)
+    ynp_dir = Path(module_dir).parent
+    start_time = int(time.time())
 
     # Setup Jinja2 environment and load template
     env = Environment(loader=FileSystemLoader(module_dir))
     template = env.get_template("config.j2")
 
     # Render the template with the configuration data
-    output = template.render(ynp=ynp_config['ynp'], yba=ynp_config['yba'])
+    output = template.render(ynp=ynp_config['ynp'],
+                             yba=ynp_config['yba'],
+                             ynp_dir=ynp_dir,
+                             start_time=start_time)
 
     # Determine the absolute path of the config.ini file
     config_file = os.path.join(module_dir, 'config.ini')

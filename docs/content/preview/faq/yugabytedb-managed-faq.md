@@ -63,11 +63,9 @@ rightNav:
 
 ### What is YugabyteDB Aeon?
 
-YugabyteDB Aeon is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
+[YugabyteDB Aeon](https://www.yugabyte.com/blog/introducing-yugabytedb-aeon/) (previously known as YugabyteDB Managed) is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
-You access your YugabyteDB Aeon clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using [YugabyteDB Aeon](https://cloud.yugabyte.com/login).
-
-See also YugabyteDB Aeon at yugabyte.com.
+You access your YugabyteDB Aeon clusters via [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/) client APIs, and administer your clusters using the [YugabyteDB Aeon UI](https://cloud.yugabyte.com/login).
 
 YugabyteDB Aeon runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 
@@ -75,7 +73,7 @@ YugabyteDB Aeon runs on top of [YugabyteDB Anywhere](../../yugabyte-platform/).
 
 Yugabyte bills for its services as follows:
 
-- Charges by the minute for your YugabyteDB Aeon clusters.
+- Charges by the minute for your YugabyteDB Aeon clusters, based on your pricing plan.
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Usage & Billing** tab.
 

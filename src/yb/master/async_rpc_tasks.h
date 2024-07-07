@@ -1068,6 +1068,7 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
   AsyncClonePgSchema(
       Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
       const std::string& source_db_name, const std::string& target_db_name, HybridTime restore_time,
+      const std::string& source_owner, const std::string& target_owner,
       ClonePgSchemaCallbackType callback, MonoTime deadline);
 
   server::MonitoredTaskType type() const override {
@@ -1087,10 +1088,39 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
 
  private:
   std::string source_db_name_;
-  std::string target_db_name;
+  std::string target_db_name_;
+  std::string source_owner_;
+  std::string target_owner_;
   HybridTime restore_ht_;
   tserver::ClonePgSchemaResponsePB resp_;
   ClonePgSchemaCallbackType callback_;
+};
+
+class AsyncEnableDbConns : public RetrySpecificTSRpcTask {
+ public:
+  using EnableDbConnsCallbackType = std::function<Status(Status)>;
+  AsyncEnableDbConns(
+      Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& target_db_name, EnableDbConnsCallbackType callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kEnableDbConns;
+  }
+
+  std::string type_name() const override { return "Enable DB connections"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+ private:
+  std::string target_db_name_;
+  tserver::EnableDbConnsResponsePB resp_;
+  EnableDbConnsCallbackType callback_;
 };
 
 } // namespace master

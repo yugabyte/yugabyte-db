@@ -40,7 +40,12 @@ export const XClusterTableStatus = {
   UNABLE_TO_FETCH: 'UnableToFetch',
   // DROPPPED - Client internal status. Does not exist on the backend.
   //            Used to mark tables which are dropped on the source universe.
-  DROPPED: 'Dropped'
+  DROPPED: 'Dropped',
+  EXTRA_TABLE_ON_SOURCE: 'ExtraTableOnSource',
+  EXTRA_TABLE_ON_TARGET: 'DroppedFromSource',
+  DROPPED_FROM_SOURCE: 'DroppedFromSource',
+  DROPPED_FROM_TARGET: 'DroppedFromTarget',
+  REPLICATION_ERROR: 'ReplicationError'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 //------------------------------------------------------------------------------------

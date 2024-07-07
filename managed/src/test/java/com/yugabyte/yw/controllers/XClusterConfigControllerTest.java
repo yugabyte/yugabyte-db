@@ -729,7 +729,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     setupMockMetricQueryHelperResponse();
 
-    Mockito.doNothing().when(mockXClusterSyncScheduler).syncXClusterConfig(any());
+    Mockito.doNothing().when(mockXClusterScheduler).syncXClusterConfig(any());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 

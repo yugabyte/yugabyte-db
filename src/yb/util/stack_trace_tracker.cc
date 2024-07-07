@@ -22,6 +22,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/unique_lock.h"
 
@@ -35,6 +36,8 @@ class ThreadStackTraceTracker;
 
 class GlobalStackTraceTracker {
  public:
+  GlobalStackTraceTracker(): last_reset_(MonoTime::Now()) {}
+
   void RegisterThread(std::thread::id id, ThreadStackTraceTracker* tracker) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     thread_trackers_[id] = tracker;
@@ -71,17 +74,31 @@ class GlobalStackTraceTracker {
     return tracked;
   }
 
+  MonoTime GetLastStackTraceTrackerResetTime() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    return last_reset_;
+  }
+
   void ResetTrackedStackTraces() EXCLUDES(mutex_);
 
  private:
   void MergeLocalTracker(ThreadStackTraceTracker* tracker) REQUIRES(mutex_);
 
   std::mutex mutex_;
+  MonoTime last_reset_ GUARDED_BY(mutex_);
   UnorderedStringMap<StackTraceEntry> traces_ GUARDED_BY(mutex_);
   std::unordered_map<std::thread::id, ThreadStackTraceTracker*> thread_trackers_ GUARDED_BY(mutex_);
 };
 
 static GlobalStackTraceTracker global_tracker;
+
+void TrackStackTraceToggleCallback() {
+  if (GetAtomicFlag(&FLAGS_track_stack_traces)) {
+    global_tracker.ResetTrackedStackTraces();
+  }
+}
+
+REGISTER_CALLBACK(track_stack_traces, "Stack Trace Toggle Callback", TrackStackTraceToggleCallback);
 
 // This class is thread local and accessed by one thread only, except for when we
 // MergeToGlobal/Reset.
@@ -149,6 +166,8 @@ void GlobalStackTraceTracker::ResetTrackedStackTraces() {
     entry.count = 0;
     entry.weight = 0;
   }
+
+  last_reset_ = MonoTime::Now();
 }
 
 void GlobalStackTraceTracker::MergeLocalTracker(ThreadStackTraceTracker* tracker) {
@@ -178,6 +197,10 @@ void TrackStackTrace(StackTraceTrackingGroup group, size_t weight) {
 
 void ResetTrackedStackTraces() {
   global_tracker.ResetTrackedStackTraces();
+}
+
+MonoTime GetLastStackTraceTrackerResetTime() {
+  return global_tracker.GetLastStackTraceTrackerResetTime();
 }
 
 std::vector<StackTraceEntry> GetTrackedStackTraces() {

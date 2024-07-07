@@ -366,7 +366,7 @@ yb_pclose_check(FILE *stream)
 	if (exitstatus == -1)
 	{
 		/* pclose() itself failed, and hopefully set errno */
-		fprintf(stderr, _("pclose failed: %s"), strerror(errno));
+		fprintf(stderr, _("pclose failed: %s\n"), strerror(errno));
 		return 1;
 	}
 	else
@@ -375,8 +375,8 @@ yb_pclose_check(FILE *stream)
 			fprintf(stderr, "initdb has already been run previously, nothing to do\n");
 		} else {
 			reason = wait_result_to_str(exitstatus);
-			fprintf(stderr, "%s", reason);
-			free(reason);
+			fprintf(stderr, "%s\n", reason);
+			pfree(reason);
 		}
 	}
 	return WEXITSTATUS(exitstatus);

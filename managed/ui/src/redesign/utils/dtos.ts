@@ -18,7 +18,7 @@ export enum RunTimeConfigScope {
 }
 
 export interface RuntimeConfigScopeProps {
-  configTagFilter: string[];
+  getRuntimeConfig: (key: string, scope?: string) => void;
   fetchRuntimeConfigs: (scope?: string) => void;
   setRuntimeConfig: (key: string, value: string, scope?: string) => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;

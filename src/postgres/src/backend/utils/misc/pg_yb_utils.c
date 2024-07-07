@@ -96,6 +96,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
@@ -1554,7 +1555,7 @@ YBResetEnableNonBreakingDDLMode()
 	/*
 	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
 	 * effect that may not be intended.
-	 * 
+	 *
 	 * Also, reset Connection Manager cache if the value was cached to begin
 	 * with.
 	 */
@@ -3200,7 +3201,7 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	 *
 	 * For YB backup, if an error is thrown from a PG backend, ysql_dump will
 	 * exit, generate an empty YSQLDUMP file, and block YB backup workflow.
-	 * Currently, we don't have the functionality to adjust options used for 
+	 * Currently, we don't have the functionality to adjust options used for
 	 * ysql_dump on YBA and YBM, so we don't have a way to to turn on/off
 	 * a backup-related feature used in ysql_dump.
 	 * There are known cases which caused decoding of split points to fail in
@@ -4539,17 +4540,35 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 int ysql_conn_mgr_sticky_object_count = 0;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_guc` is used to denote stickiness of a connection
+ * due to the setting of GUC variables that cannot be directly supported
+ * by Connection Manager.
+ */
+bool yb_ysql_conn_mgr_sticky_guc = false;
+
+/*
+ * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not the a
+ * connection is made sticky using via specific GUC variables.
+ */
+static bool YbIsConnectionMadeStickyUsingGUC()
+{
+	return yb_ysql_conn_mgr_sticky_guc;
+}
+
+/*
  * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
  * connection and returns whether or not the client connection
  * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
  * at the end of the transaction.
+ * 
+ * Also check if any GUC variable is set that requires a sticky connection.
  */
 bool YbIsStickyConnection(int *change)
 {
 	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0; /* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
-	return (ysql_conn_mgr_sticky_object_count > 0);
+	return (ysql_conn_mgr_sticky_object_count > 0) || YbIsConnectionMadeStickyUsingGUC();
 }
 
 void**
@@ -4925,4 +4944,18 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
 						&microsecs);
 	return secs * USECS_PER_SEC + microsecs;
+}
+
+bool YbIsReadCommittedTxn()
+{
+	return IsYBReadCommitted() &&
+		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
+}
+
+YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
+{
+	return YbIsReadCommittedTxn()
+		? (YbReadTimePointHandle){
+			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
+		: (YbReadTimePointHandle){};
 }

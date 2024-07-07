@@ -23,7 +23,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
   }
@@ -3184,7 +3184,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // Keep the flags for consistent snapshot streams and replication slot consumption disabled,
   // simulating a cluster before upgrade.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = false;
 
   // These arrays store counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, and COMMIT in
   // that order.
@@ -3209,7 +3209,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   // Enable the flags for consistent snapshot streams and replication slot consumption, simulating
   // an upgrade.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_TEST_enable_replication_slot_consumption) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
 
   // Create a new DB and a replication slot stream.
   std::string kNamespaceName_2 = "upgraded_test_namespace";
@@ -3371,6 +3371,33 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDiffe
   ASSERT_NOK(CreateConsistentSnapshotStreamWithReplicationSlot(
       "test_slot_2", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
       kNamespaceName_2));
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/23096.
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestPgReplicationSlotsWithReplicationCommandsDisabled) {
+  ASSERT_OK(SetUpWithParams(
+      /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // View must work when the commands are disabled.
+  auto slots = ASSERT_RESULT(conn.Fetch("SELECT * FROM pg_replication_slots"));
+  ASSERT_EQ(PQntuples(slots.get()), 0);
+
+  // Enable so that we can create the replication slot. It isn't sufficient to just set the GFlag
+  // value since PG GUC values are passed on from the Tserver at the postmaster creation. So we need
+  // to also set the GUC value directly using the `SET` statement.
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands TO true"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot("pg_replication_slots_without_replcmds"));
+
+  // Disable again and ensure that the view returns an empty response.
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands TO false"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+  slots = ASSERT_RESULT(conn.Fetch("SELECT * FROM pg_replication_slots"));
+  ASSERT_EQ(PQntuples(slots.get()), 0);
 }
 
 }  // namespace cdc

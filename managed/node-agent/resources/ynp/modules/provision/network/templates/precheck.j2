@@ -1,0 +1,44 @@
+# List of ports to check
+# Note: this precheck only checks this node,
+#       if there are any other firewalls,configured this will need to be
+#       verified from Yugabyte Anywhere or outside the universe from the client side.
+#
+ports=({{ports}})
+
+
+# IP address of the VM (assuming localhost)
+vm_ip="{{ ip_address }}"
+
+# Function to start a server on a specific port using Python
+start_server() {
+    local port=$1
+    python3 -m http.server $port >/dev/null 2>&1 &
+    echo $!  # Return the PID of the background server process
+}
+
+# Function to check if a port is open
+check_port() {
+    local ip=$1
+    local port=$2
+    (echo > /dev/tcp/$ip/$port) >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "Port $port is open on $ip"
+    else
+        echo "Port $port is closed or filtered on $ip"
+    fi
+}
+
+# Iterate through the list of ports, start server, check port, and stop server
+for port in "${ports[@]}"; do
+    # Start the server and get its PID
+    server_pid=$(start_server $port)
+
+    # Give the server a moment to start
+    sleep 2
+
+    # Check if the port is open
+    check_port "$vm_ip" "$port"
+
+    # Stop the server
+    kill $server_pid
+done

@@ -61,6 +61,7 @@ using std::string;
 using strings::Substitute;
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 
 DEFINE_RUNTIME_AUTO_bool(
     use_parent_table_id_field, kLocalPersisted, false, true,
@@ -1262,6 +1263,16 @@ const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity>
 CDCStreamInfo::GetReplicaIdentityMap() const {
   auto l = LockForRead();
   return l->pb.replica_identity_map();
+}
+
+bool CDCStreamInfo::IsDynamicTableAdditionDisabled() const {
+  if (!FLAGS_cdcsdk_enable_dynamic_tables_disable_option) {
+    return false;
+  }
+
+  auto l = LockForRead();
+  return l->pb.has_cdcsdk_disable_dynamic_table_addition() &&
+         l->pb.cdcsdk_disable_dynamic_table_addition();
 }
 
 std::string CDCStreamInfo::ToString() const {

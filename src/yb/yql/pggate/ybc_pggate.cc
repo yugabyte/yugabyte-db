@@ -348,7 +348,7 @@ void AshCopyAuxInfo(
 
 void AshCopyTServerSample(
     YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
-    uint64_t sample_time) {
+    uint64_t sample_time, float sample_weight) {
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
@@ -358,7 +358,7 @@ void AshCopyTServerSample(
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_state_code());
-  cb_sample->sample_weight = 1; // TODO: Change this once sampling is done at tserver side
+  cb_sample->sample_weight = sample_weight;
   cb_sample->sample_time = sample_time;
 
   std::memcpy(cb_metadata->root_request_id,
@@ -381,7 +381,8 @@ void AshCopyTServerSamples(
     YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
     uint64_t sample_time) {
   for (const auto& sample : samples.wait_states()) {
-    AshCopyTServerSample(get_cb_slot_fn(), samples.component(), sample, sample_time);
+    AshCopyTServerSample(get_cb_slot_fn(), samples.component(), sample, sample_time,
+        samples.sample_weight());
   }
 }
 
@@ -510,7 +511,7 @@ bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data) 
 void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data) {
   CHECK_NOTNULL(pgapi);
   DCHECK_EQ(pgapi->GetSessionId(), session_data->session_id);
-  pgapi->RestoreSessionParallelData(session_data);
+  pgapi->RestoreSessionParallelData(*session_data);
 }
 
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
@@ -748,11 +749,11 @@ YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
 
 YBCStatus YBCPgNewCreateDatabase(
     const char* database_name, const YBCPgOid database_oid, const YBCPgOid source_database_oid,
-    const char* source_database_name, const YBCPgOid next_oid, const bool colocated,
-    const int64_t clone_time, YBCPgStatement* handle) {
+    const YBCPgOid next_oid, const bool colocated, YbCloneInfo *yb_clone_info,
+    YBCPgStatement* handle) {
   return ToYBCStatus(pgapi->NewCreateDatabase(
-      database_name, database_oid, source_database_oid, source_database_name, next_oid, colocated,
-      clone_time, handle));
+      database_name, database_oid, source_database_oid, next_oid, colocated,
+      yb_clone_info, handle));
 }
 
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
@@ -2325,8 +2326,6 @@ void YBCStoreTServerAshSamples(
     LOG(ERROR) << result.status();
   } else {
     AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
-    AshCopyTServerSamples(get_cb_slot_fn, result->flush_and_compaction_wait_states(), sample_time);
-    AshCopyTServerSamples(get_cb_slot_fn, result->raft_log_appender_wait_states(), sample_time);
     AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);
   }
 }
@@ -2423,7 +2422,7 @@ YBCStatus YBCPgGetCDCConsistentChanges(
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
     auto row_message_pb = row_pb.row_message();
-    auto commit_time = row_message_pb.commit_time();
+    auto commit_time_ht = HybridTime::FromPB(row_message_pb.commit_time());
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
@@ -2521,12 +2520,14 @@ YBCStatus YBCPgGetCDCConsistentChanges(
     new (&resp_rows[row_idx]) YBCPgRowMessage{
         .col_count = col_count,
         .cols = cols,
-        .commit_time = commit_time,
+        // Convert the physical component of the HT to PG epoch.
+        .commit_time = static_cast<uint64_t>(
+            YBCGetPgCallbacks()->UnixEpochToPostgresEpoch(commit_time_ht.GetPhysicalValueMicros())),
+        .commit_time_ht = commit_time_ht.ToUint64(),
         .action = GetRowMessageAction(row_message_pb),
         .table_oid = table_oid,
         .lsn = row_message_pb.pg_lsn(),
-        .xid = row_message_pb.pg_transaction_id()
-    };
+        .xid = row_message_pb.pg_transaction_id()};
 
     min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
     max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());
@@ -2603,6 +2604,14 @@ YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count) {
 }
 
 bool YBCIsCronLeader() { return pgapi->IsCronLeader(); }
+
+uint64_t YBCPgGetCurrentReadTimePoint() {
+  return pgapi->GetCurrentReadTimePoint();
+}
+
+YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle) {
+  return ToYBCStatus(pgapi->RestoreReadTimePoint(read_time_point_handle));
+}
 
 } // extern "C"
 

@@ -94,6 +94,7 @@
 
 /* YB includes */
 #include "replication/walsender_private.h"
+#include "utils/guc_tables.h"
 
 /* ----------------
  *		global variables
@@ -3324,6 +3325,44 @@ check_stack_depth(void)
 bool
 stack_is_too_deep(void)
 {
+#ifdef ADDRESS_SANITIZER
+	// Postgres analyzes/limits stack depth based on local variables address
+	// offset.
+	// This method works well in case of regular call stack (i.e. when all
+	// stack frames are allocated in stack).
+	// But for the detect_stack_use_after_return ASAN uses fake stack. In case
+	// of using it stack frames are allocated in the heap. As a result it is
+	// not possible to estimate stack depth base on local variables address
+	// offset.
+	// To make stack_is_too_deep return predictable results in case of ASAN it
+	// is reasonable to return false all the time.
+	// Note:
+	// YSQL has some unit tests which checks that Postgres can detect too
+	// deep recursion. These tests change the `max_stack_depth` GUC variable
+	// to lower value. And later restore the original value with the
+	// `RESET max_stack_depth` statement.
+	// To make these tests works under the ASAN the function returns true in
+	// case the `max_stack_depth` GUC contains non default value and number of
+	// call stack frames is huge enough.
+	// The check of call stack frames is required to avoid undesired failure on
+	// attempt to restore original value for the `max_stack_depth` GUC with
+	// the `RESET max_stack_depth` statement.
+	if (get_guc_variables()) {
+		const char* max_stack_depth_GUC = "max_stack_depth";
+		const char* current_value =
+			GetConfigOption(max_stack_depth_GUC, false, false);
+		const char* default_value =
+			GetConfigOptionResetString(max_stack_depth_GUC);
+		if (strcmp(current_value, default_value) != 0) {
+			static const int MAX_STACK_FRAMES = 64;
+			void* frames[MAX_STACK_FRAMES];
+			int frames_count =
+				YBCGetCallStackFrames(frames, MAX_STACK_FRAMES, 0);
+			return frames_count >= MAX_STACK_FRAMES;
+		}
+	}
+	return false;
+#endif
 	char		stack_top_loc;
 	long		stack_depth;
 
