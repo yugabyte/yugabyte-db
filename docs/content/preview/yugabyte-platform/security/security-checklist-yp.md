@@ -20,7 +20,7 @@ You need to ensure that YugabyteDB Anywhere and the database run in a trusted ne
 - Servers running YugabyteDB services are directly accessible only by YugabyteDB Anywhere, servers running the application, and database administrators.
 - Only YugabyteDB Anywhere and servers running applications can connect to YugabyteDB services on the RPC ports. Access to the YugabyteDB ports should be denied to everybody else.
 
-For information on configuring ports, refer to [Configure ports](../customize-ports/).
+For information on networking and port requirements, refer to [Networking](../../prepare/networking/).
 
 ## Database authentication
 
@@ -42,7 +42,7 @@ For information on how to manage database roles and users, see [Database authori
 
 ## Encryption in transit
 
-Encryption in transit (TLS) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. You should enable encryption in transit in YugabyteDB universes and clients to ensure the privacy and integrity of data transferred over the network.
+Encryption in transit (TLS) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster (Node-to-Node) and client to server (Client-to-Node) network communication. You should enable encryption in transit in YugabyteDB universes and clients to ensure the privacy and integrity of data transferred over the network.
 
 For more information, see [Encryption in transit](../enable-encryption-in-transit).
 

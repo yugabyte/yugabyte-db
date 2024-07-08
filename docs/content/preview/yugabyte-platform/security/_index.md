@@ -22,8 +22,8 @@ type: indexpage
     icon="/images/section_icons/secure/checklist.png">}}
 
   {{<index/item
-    title="Configure ports"
-    body="Configure YugabyteDB ports for security purposes."
+    title="Customize ports"
+    body="Customize universe ports."
     href="customize-ports/"
     icon="/images/section_icons/index/secure.png">}}
 
@@ -40,7 +40,7 @@ type: indexpage
     icon="/images/section_icons/secure/authorization.png">}}
 
   {{<index/item
-    title="Encryption in transit (TLS)"
+    title="Encryption in transit"
     body="Use encryption in transit to secure data in transit."
     href="enable-encryption-in-transit/"
     icon="/images/section_icons/secure/tls-encryption.png">}}

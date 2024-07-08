@@ -1,8 +1,9 @@
 ---
-title: Configure ports
-headerTitle: Configure ports
-linkTitle: Configure ports
-description: Configure ports
+title: Customize ports
+headerTitle: Customize ports
+linkTitle: Customize ports
+description: Customize ports used by YugabyteDB Anywhere universes
+headcontent: Change the ports used by your universe
 menu:
   preview_yugabyte-platform:
     parent: security
@@ -13,7 +14,7 @@ type: docs
 
 YugabyteDB Anywhere and the universes it manages use a set of [default ports](../../prepare/networking/) to manage access to services.
 
-When deploying a universe, YugabyteDB Anywhere allows you to customize these ports.
+When [deploying a universe](../../create-deployments/), YugabyteDB Anywhere allows you to customize some of these ports.
 
 ## Customize ports
 

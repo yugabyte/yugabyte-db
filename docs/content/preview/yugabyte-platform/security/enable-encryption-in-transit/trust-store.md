@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere uses TLS to protect data in transit when connecting to other services, including:
+YugabyteDB Anywhere uses certificates to validate connections between YugabyteDB Anywhere and other services, including:
 
 - [LDAP](../../../administer-yugabyte-platform/ldap-authentication/)
 - [OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
