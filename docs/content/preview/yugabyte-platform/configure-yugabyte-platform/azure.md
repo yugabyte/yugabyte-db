@@ -107,13 +107,15 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
+**Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
+
 #### Credential type
 
 YugabyteDB Anywhere requires cloud permissions to create VMs. You can grant access to YugabyteDB Anywhere to manage Azure resources such as VMs in one of the following ways:
 
 - [Register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
 
-    Select **Specify Client Secret**.
+    Select **Specify Client Secret** and enter the Client Secret of the application associated with the Client ID you provided. You need to enter the `Value` of the secret (not the `Secret ID`).
 
     For information on assigning roles to applications, see [Assign a role to an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#assign-a-role-to-the-application).
 
@@ -125,8 +127,6 @@ YugabyteDB Anywhere requires cloud permissions to create VMs. You can grant acce
 
 #### Additional fields
 
-- **Client ID** represents the ID of an application registered in your Azure Active Directory.
-- **Client Secret** represents the secret of an application registered in your Azure Active Directory. You need to enter the `Value` of the secret (not the `Secret ID`).
 - **Resource Group** represents the group in which YugabyteDB nodes compute and network resources are created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription.
 - **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Azure Active Directory tenant ID](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/how-to-find-tenant).
