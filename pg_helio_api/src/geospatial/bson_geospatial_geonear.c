@@ -28,11 +28,15 @@
 #include "query/query_operator.h"
 #include "utils/fmgr_utils.h"
 #include "utils/version_utils.h"
+#include "aggregation/bson_aggregation_pipeline_private.h"
 
 static bool GeonearDistanceWithinRange(const GeonearDistanceState *state,
 									   const pgbson *document);
 
 static double GetDoubleValueForDistance(const bson_value_t *value, const char *opName);
+
+static void ValidateGeoNearWithIndexBounds(const Bson2dGeometryPathOptions *options,
+										   Point referencePoint);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -40,7 +44,6 @@ static double GetDoubleValueForDistance(const bson_value_t *value, const char *o
 
 PG_FUNCTION_INFO_V1(bson_geonear_distance);
 PG_FUNCTION_INFO_V1(bson_geonear_within_range);
-
 
 /*
  * Calculates the distance between the document and a reference point
@@ -60,13 +63,14 @@ bson_geonear_distance(PG_FUNCTION_ARGS)
 		GeonearDistanceState,
 		argPosition,
 		BuildGeoNearDistanceState,
-		queryBson);
+		queryBson,
+		NULL);
 
 	if (state == NULL)
 	{
 		GeonearDistanceState projectionState;
 		memset(&projectionState, 0, sizeof(GeonearDistanceState));
-		BuildGeoNearDistanceState(&projectionState, queryBson);
+		BuildGeoNearDistanceState(&projectionState, queryBson, NULL);
 		PG_RETURN_FLOAT8(GeonearDistanceFromDocument(&projectionState, document));
 	}
 
@@ -164,7 +168,8 @@ GeonearDistanceWithinRange(const GeonearDistanceState *state,
  */
 void
 BuildGeoNearDistanceState(GeonearDistanceState *state,
-						  const pgbson *geoNearQuery)
+						  const pgbson *geoNearQuery,
+						  const GeonearIndexValidationState *indexValidationState)
 {
 	GeonearRequest *request = ParseGeonearRequest(geoNearQuery);
 
@@ -223,6 +228,18 @@ BuildGeoNearDistanceState(GeonearDistanceState *state,
 		fmgr_info(PostgisGeographyDistanceKNNFunctionId(), state->distanceFnInfo);
 	}
 
+	/* validate query document to check if reference point is within index bounds */
+	if (indexValidationState != NULL)
+	{
+		if (indexValidationState->validationLevel == GeospatialValidationLevel_Index &&
+			indexValidationState->options->type == IndexOptionsType_2d)
+		{
+			const Bson2dGeometryPathOptions *options2d =
+				(const Bson2dGeometryPathOptions *) (indexValidationState->options);
+			ValidateGeoNearWithIndexBounds(options2d, request->referencePoint);
+		}
+	}
+
 	DeepFreeWKB(wkbBuffer);
 	wkbBuffer = NULL;
 
@@ -250,7 +267,7 @@ BuildGeoNearRangeDistanceState(GeonearDistanceState *state,
 		(char *) filterElement.bsonValue.value.v_doc.data,
 		filterElement.bsonValue.value.v_doc.
 		data_len);
-	BuildGeoNearDistanceState(state, geoNearDoc);
+	BuildGeoNearDistanceState(state, geoNearDoc, NULL);
 
 	/* Free the buffer, this additional buffer is only allocated once per query for building function cache */
 	pfree((void *) geoNearDoc);
@@ -531,11 +548,16 @@ ValidateQueryOperatorsForGeoNear(Node *node, void *state)
 
 
 /*
- * Parse query doc for $near and $nearSphere to generate queryDoc for geoNear.
+ * Parse query doc for $near and $nearSphere to generate queryDoc for geoNear. All cases listed below -
+ * 1. {geo: { $near: [1, 1], $maxDistance: 1 }} - { key: "geo", near: [1, 1], distanceField: "dist", maxDistance: 1 } - Will use 2d index
+ * 2. {geo: { $near: { x: 1, y: 1 }, $maxDistance: 1}} - { key: "geo", near: { x: 1, y: 1 }, distanceField: "dist", maxDistance: 1 } - Will use 2d index
+ * 3. {geo: { $near: {type: "Point", coordinates: [1, 1] }, $maxDistance: 1}} - { key: "geo", near: {type: "Point", coordinates: [1, 1]}, maxDistance: 1, distanceField: "dist", spherical: true } - Will use 2dsphere index
+ * 4. {geo: { $near: {{$geometry: {type: "Point", coordinates: [1, 1] }, $maxDistance: 1}}} - { key: "geo", near: {type: "Point", coordinates: [1, 1]}, maxDistance: 1, distanceField: "dist", spherical: true } - Will use 2dsphere index
+ * $nearSphere queries also get converted to similar geoNear specs with spherical set to true in all cases.
  */
 pgbson *
-ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
-						   const char *mongoOperatorName)
+GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
+							const char *mongoOperatorName)
 {
 	const bson_value_t *value = bson_iter_value(operatorDocIterator);
 
@@ -562,6 +584,7 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 							errmsg("$geometry is required for geo near query")));
 		}
 
+		/* Write the array as is it to be parsed later, and extract min and max distance from iterator. */
 		PgbsonWriterAppendValue(&writer, "near", 4, value);
 
 		while (bson_iter_next(operatorDocIterator))
@@ -570,18 +593,18 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 
 			if (strcmp(op, "$minDistance") == 0)
 			{
-				value = bson_iter_value(operatorDocIterator);
-				PgbsonWriterAppendValue(&writer, "minDistance", 11, value);
+				PgbsonWriterAppendValue(&writer, "minDistance", 11,
+										bson_iter_value(operatorDocIterator));
 			}
 			else if (strcmp(op, "$maxDistance") == 0)
 			{
-				value = bson_iter_value(operatorDocIterator);
-				PgbsonWriterAppendValue(&writer, "maxDistance", 11, value);
+				PgbsonWriterAppendValue(&writer, "maxDistance", 11,
+										bson_iter_value(operatorDocIterator));
 			}
 			else
 			{
 				ereport(ERROR, (errcode(MongoBadValue),
-								errmsg("invalid argument in geo near query")));
+								errmsg("invalid argument in geo near query: %s", op)));
 			}
 		}
 	}
@@ -594,6 +617,7 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 
 			if (iterValue->value_type == BSON_TYPE_DOCUMENT)
 			{
+				/* Query looks like {$near: {$geometry: {coordinates: [0, 0]}}} */
 				bson_iter_t geoJsonIter;
 				bson_iter_recurse(&valueIter, &geoJsonIter);
 
@@ -615,27 +639,27 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 
 					if (strcmp(op, "$minDistance") == 0)
 					{
-						value = bson_iter_value(&valueIter);
+						const bson_value_t *distValue = bson_iter_value(&valueIter);
 
-						if (IsBsonValueInfinity(value))
+						if (IsBsonValueInfinity(distValue))
 						{
 							ereport(ERROR, (errcode(MongoBadValue),
 											errmsg("minDistance must be non-negative")));
 						}
 
-						PgbsonWriterAppendValue(&writer, "minDistance", 11, value);
+						PgbsonWriterAppendValue(&writer, "minDistance", 11, distValue);
 					}
 					else if (strcmp(op, "$maxDistance") == 0)
 					{
-						value = bson_iter_value(&valueIter);
+						const bson_value_t *distValue = bson_iter_value(&valueIter);
 
-						if (IsBsonValueInfinity(value))
+						if (IsBsonValueInfinity(distValue))
 						{
 							ereport(ERROR, (errcode(MongoBadValue),
 											errmsg("maxDistance must be non-negative")));
 						}
 
-						PgbsonWriterAppendValue(&writer, "maxDistance", 11, value);
+						PgbsonWriterAppendValue(&writer, "maxDistance", 11, distValue);
 					}
 					else
 					{
@@ -648,6 +672,7 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 			}
 			else if (BsonValueIsNumber(iterValue))
 			{
+				/* Query looks like {$near: {x: 1, y: 1}} */
 				if (!bson_iter_next(&valueIter))
 				{
 					ereport(ERROR,
@@ -668,6 +693,7 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 			}
 			else
 			{
+				/* Query looks like {$near: {coordinates: [0, 0]}} */
 				if (strcmp(op, "coordinates") != 0 && !bson_iter_find(&valueIter,
 																	  "coordinates"))
 				{
@@ -702,13 +728,13 @@ ConvertQueryToGeoNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 
 		if (strcmp(op, "$minDistance") == 0)
 		{
-			value = bson_iter_value(operatorDocIterator);
-			PgbsonWriterAppendValue(&writer, "minDistance", 11, value);
+			const bson_value_t *distValue = bson_iter_value(operatorDocIterator);
+			PgbsonWriterAppendValue(&writer, "minDistance", 11, distValue);
 		}
 		else if (strcmp(op, "$maxDistance") == 0)
 		{
-			value = bson_iter_value(operatorDocIterator);
-			PgbsonWriterAppendValue(&writer, "maxDistance", 11, value);
+			const bson_value_t *distValue = bson_iter_value(operatorDocIterator);
+			PgbsonWriterAppendValue(&writer, "maxDistance", 11, distValue);
 		}
 		else
 		{
@@ -755,13 +781,9 @@ CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 								  SortGroupClause **sortClause)
 {
 	List *quals = NIL;
-	Const *keyConst = makeConst(TEXTOID, -1, InvalidOid, -1, CStringGetTextDatum(
-									request->key),
-								false, false);
+	Const *keyConst = MakeTextConst(request->key, strlen(request->key));
 
-	Const *queryConst = makeConst(BsonTypeId(), -1, InvalidOid, -1, PointerGetDatum(
-									  queryDoc),
-								  false, false);
+	Const *queryConst = MakeBsonConst((pgbson *) queryDoc);
 
 	/* GeoJSON point enforces 2dsphere index and legacy enforces 2d index usage */
 	Oid bsonValidateFunctionId = request->isGeoJsonPoint ?
@@ -770,7 +792,7 @@ CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 
 	Expr *validateExpr = (Expr *) makeFuncExpr(bsonValidateFunctionId,
 											   BsonTypeId(),
-											   list_make2((Expr *) docExpr,
+											   list_make2(docExpr,
 														  keyConst),
 											   InvalidOid,
 											   InvalidOid,
@@ -796,9 +818,7 @@ CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 		PgbsonWriterAppendDocument(&writer, request->key, strlen(request->key),
 								   queryDoc);
 		pgbson *rangeQueryDoc = PgbsonWriterGetPgbson(&writer);
-		Const *rangeQueryDocConst = makeConst(BsonTypeId(), -1, InvalidOid, -1,
-											  PointerGetDatum(rangeQueryDoc),
-											  false, false);
+		Const *rangeQueryDocConst = MakeBsonConst(rangeQueryDoc);
 		Expr *distanceRangeOpExpr = make_opclause(BsonGeonearDistanceRangeOperatorId(),
 												  BOOLOID, false,
 												  (Expr *) validateExpr,
@@ -855,4 +875,19 @@ GetDoubleValueForDistance(const bson_value_t *value, const char *opName)
 	}
 
 	return distValue;
+}
+
+
+/* Validate reference point to be within index bounds */
+static void
+ValidateGeoNearWithIndexBounds(const Bson2dGeometryPathOptions *options,
+							   Point referencePoint)
+{
+	if (referencePoint.x < options->minBound || referencePoint.x > options->maxBound ||
+		referencePoint.y < options->minBound || referencePoint.y > options->maxBound)
+	{
+		ereport(ERROR, (errcode(MongoLocation16433),
+						errmsg("point not in interval of [ %g, %g ]",
+							   options->minBound, options->maxBound)));
+	}
 }

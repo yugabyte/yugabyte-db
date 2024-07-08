@@ -245,18 +245,24 @@ bson_gist_geometry_distance_2d(PG_FUNCTION_ARGS)
 		ereport(ERROR, errmsg("Strategy not supported for geonear"));
 	}
 
+	/* Build state to validate query doc with index state */
+	GeonearIndexValidationState validationState = { 0 };
+	validationState.validationLevel = GeospatialValidationLevel_Index;
+	validationState.options = (BsonGinIndexOptionsBase *) PG_GET_OPCLASS_OPTIONS();
+
 	SetCachedFunctionState(
 		state,
 		GeonearDistanceState,
 		argPosition,
 		BuildGeoNearDistanceState,
-		query);
+		query,
+		&validationState);
 
 	if (state == NULL)
 	{
 		GeonearDistanceState distanceState;
 		memset(&distanceState, 0, sizeof(GeonearDistanceState));
-		BuildGeoNearDistanceState(&distanceState, query);
+		BuildGeoNearDistanceState(&distanceState, query, &validationState);
 		PG_RETURN_FLOAT8(GeonearGISTDistanceWithState(fcinfo, &distanceState));
 	}
 
@@ -573,13 +579,14 @@ bson_gist_geography_distance(PG_FUNCTION_ARGS)
 		GeonearDistanceState,
 		argPosition,
 		BuildGeoNearDistanceState,
-		query);
+		query,
+		NULL);
 
 	if (state == NULL)
 	{
 		GeonearDistanceState distanceState;
 		memset(&distanceState, 0, sizeof(GeonearDistanceState));
-		BuildGeoNearDistanceState(&distanceState, query);
+		BuildGeoNearDistanceState(&distanceState, query, NULL);
 		PG_RETURN_FLOAT8(GeonearGISTDistanceWithState(fcinfo, &distanceState));
 	}
 
@@ -890,7 +897,8 @@ GeonearGISTDistanceWithState(PG_FUNCTION_ARGS, const GeonearDistanceState *state
 	}
 	else
 	{
-		/* We are using a 2d index here in this case
+		/*
+		 * We are using a 2d index here in this case
 		 */
 		if (state->mode == DistanceMode_Radians)
 		{

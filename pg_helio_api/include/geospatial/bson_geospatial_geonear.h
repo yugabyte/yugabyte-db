@@ -16,6 +16,8 @@
 
 #include "io/helio_bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
+#include "opclass/helio_gin_index_mgmt.h"
+#include "geospatial/bson_geospatial_common.h"
 
 
 /*
@@ -99,8 +101,21 @@ typedef struct GeonearDistanceState
 	DistanceMode mode;
 } GeonearDistanceState;
 
+/*
+ * State to store validation level and type of index for geonear index validation
+ */
+typedef struct GeonearIndexValidationState
+{
+	/* Index or runtime validation */
+	GeospatialValidationLevel validationLevel;
+
+	/* To get index type for validation; may be typecasted to Bson2dGeometryPathOptions for 2d index */
+	BsonGinIndexOptionsBase *options;
+} GeonearIndexValidationState;
+
 GeonearRequest * ParseGeonearRequest(const pgbson *geoNearQuery);
-void BuildGeoNearDistanceState(GeonearDistanceState *state, const pgbson *geoNearQuery);
+void BuildGeoNearDistanceState(GeonearDistanceState *state, const pgbson *geoNearQuery,
+							   const GeonearIndexValidationState *validationState);
 void BuildGeoNearRangeDistanceState(GeonearDistanceState *state, const
 									pgbson *geoNearQuery);
 float8 GeonearDistanceFromDocument(const GeonearDistanceState *state, const
@@ -112,7 +127,8 @@ List * CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 										 const GeonearRequest *request,
 										 TargetEntry **targetEntry,
 										 SortGroupClause **sortClause);
-
+pgbson * GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
+									 const char *mongoOperatorName);
 
 inline static bool
 Is2dWithSphericalDistance(const GeonearRequest *request)

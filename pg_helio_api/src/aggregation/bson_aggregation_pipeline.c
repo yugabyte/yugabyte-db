@@ -4806,6 +4806,7 @@ static bool
 CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr)
 {
 	CHECK_FOR_INTERRUPTS();
+	check_stack_depth();
 	bool isGeoNearProject = false;
 
 	if (funcExpr->funcid == BsonDollarProjectGeonearFunctionOid())

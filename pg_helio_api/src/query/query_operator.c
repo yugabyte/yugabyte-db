@@ -4439,8 +4439,8 @@ ParseBsonValueForNearAndCreateOpExpr(bson_iter_t *operatorDocIterator,
 									 BsonQueryOperatorContext *context, const char *path,
 									 const char *mongoOperatorName)
 {
-	const pgbson *queryDoc = ConvertQueryToGeoNearQuery(operatorDocIterator, path,
-														mongoOperatorName);
+	const pgbson *queryDoc = GetGeonearSpecFromNearQuery(operatorDocIterator, path,
+														 mongoOperatorName);
 
 	/* Check if this is not the 1st $near or $nearSphere occurrence in same query. */
 	if (context->targetEntries)

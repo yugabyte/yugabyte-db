@@ -284,13 +284,14 @@ bson_dollar_project_geonear(PG_FUNCTION_ARGS)
 		GeonearDistanceState,
 		argPosition,
 		BuildGeoNearDistanceState,
-		geoNearQuery);
+		geoNearQuery,
+		NULL);
 
 	if (state == NULL)
 	{
 		GeonearDistanceState projectionState;
 		memset(&projectionState, 0, sizeof(GeonearDistanceState));
-		BuildGeoNearDistanceState(&projectionState, geoNearQuery);
+		BuildGeoNearDistanceState(&projectionState, geoNearQuery, NULL);
 		PG_RETURN_POINTER(ProjectGeonearDocument(&projectionState, document));
 	}
 
