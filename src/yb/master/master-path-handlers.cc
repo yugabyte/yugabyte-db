@@ -42,7 +42,7 @@
 
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"

@@ -16,7 +16,7 @@
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/callback.h"
 

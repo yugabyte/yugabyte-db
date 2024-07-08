@@ -15,7 +15,7 @@
 
 #include <gmock/gmock.h>
 
-#include "yb/client/xcluster_client.h"
+#include "yb/client/xcluster_client_mock.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
@@ -39,40 +39,11 @@ using testing::Return;
 
 namespace yb::master {
 
-const UniverseUuid kTargetUniverseUuid = UniverseUuid::GenerateRandom();
-const LeaderEpoch kEpoch = LeaderEpoch(1, 1);
+const auto kEpoch = master::LeaderEpoch(1, 1);
 
 inline bool operator==(const NamespaceCheckpointInfo& lhs, const NamespaceCheckpointInfo& rhs) {
   return YB_STRUCT_EQUALS(initial_bootstrap_required, table_infos);
 }
-
-class XClusterRemoteClientMocked : public client::XClusterRemoteClient {
- public:
-  XClusterRemoteClientMocked() : client::XClusterRemoteClient("na", MonoDelta::kMax) {
-    DefaultValue<Result<UniverseUuid>>::Set(kTargetUniverseUuid);
-    DefaultValue<Result<IsOperationDoneResult>>::Set(IsOperationDoneResult::Done());
-  }
-
-  MOCK_METHOD2(Init, Status(const xcluster::ReplicationGroupId&, const std::vector<HostPort>&));
-  MOCK_METHOD6(
-      SetupDbScopedUniverseReplication,
-      Result<UniverseUuid>(
-          const xcluster::ReplicationGroupId&, const std::vector<HostPort>&,
-          const std::vector<NamespaceName>&, const std::vector<NamespaceId>&,
-          const std::vector<TableId>&, const std::vector<xrepl::StreamId>&));
-
-  MOCK_METHOD1(
-      IsSetupUniverseReplicationDone,
-      Result<IsOperationDoneResult>(const xcluster::ReplicationGroupId&));
-
-  MOCK_METHOD6(
-      AddNamespaceToDbScopedUniverseReplication,
-      Status(
-          const xcluster::ReplicationGroupId& replication_group_id,
-          const UniverseUuid& target_universe_uuid, const NamespaceName& namespace_name,
-          const NamespaceId& source_namespace_id, const std::vector<TableId>& source_table_ids,
-          const std::vector<xrepl::StreamId>& bootstrap_ids));
-};
 
 Status ValidateEpoch(const LeaderEpoch& epoch) {
   SCHECK_EQ(epoch, kEpoch, IllegalState, "Epoch does not match");
@@ -96,11 +67,11 @@ class XClusterOutboundReplicationGroupMocked : public XClusterOutboundReplicatio
       : XClusterOutboundReplicationGroup(
             replication_group_id, {}, std::move(helper_functions), /*tasks_tracker=*/nullptr,
             task_factory) {
-    remote_client_ = std::make_shared<XClusterRemoteClientMocked>();
+    remote_client_ = std::make_shared<client::MockXClusterRemoteClientHolder>();
   }
 
-  void SetRemoteClient(std::shared_ptr<XClusterRemoteClientMocked> remote_client) {
-    remote_client_ = remote_client;
+  client::MockXClusterClient& GetMockXClusterClient() {
+    return remote_client_->GetMockXClusterClient();
   }
 
   bool IsDeleted() const {
@@ -151,16 +122,17 @@ class XClusterOutboundReplicationGroupMocked : public XClusterOutboundReplicatio
   }
 
  private:
-  virtual Result<std::shared_ptr<client::XClusterRemoteClient>> GetRemoteClient(
+  virtual Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetRemoteClient(
       const std::vector<HostPort>& remote_masters) const override {
     return remote_client_;
   }
 
-  std::shared_ptr<XClusterRemoteClientMocked> remote_client_;
+  std::shared_ptr<client::MockXClusterRemoteClientHolder> remote_client_;
 };
 
 class XClusterOutboundReplicationGroupMockedTest : public YBTest {
  public:
+  const UniverseUuid kTargetUniverseUuid = UniverseUuid::GenerateRandom();
   const NamespaceName kNamespaceName = "db1";
   const NamespaceId kNamespaceId = "db1_id";
   const PgSchemaName kPgSchemaName = "public", kPgSchemaName2 = "public2";
@@ -171,6 +143,9 @@ class XClusterOutboundReplicationGroupMockedTest : public YBTest {
 
   XClusterOutboundReplicationGroupMockedTest() {
     google::SetVLOGLevel("*", 4);
+
+    DefaultValue<Result<UniverseUuid>>::Set(kTargetUniverseUuid);
+    DefaultValue<Result<IsOperationDoneResult>>::Set(IsOperationDoneResult::Done());
 
     ThreadPoolBuilder thread_pool_builder("Test");
     CHECK_OK(thread_pool_builder.Build(&thread_pool));
@@ -473,14 +448,13 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
 
   auto outbound_rg_ptr = CreateReplicationGroup();
   auto& outbound_rg = *outbound_rg_ptr;
-  auto remote_client = std::make_shared<XClusterRemoteClientMocked>();
-  outbound_rg.SetRemoteClient(remote_client);
+  auto& xcluster_client = outbound_rg.GetMockXClusterClient();
 
   ASSERT_OK(outbound_rg.AddNamespaceSync(kEpoch, kNamespaceId, kTimeout));
 
   std::vector<xrepl::StreamId> streams{xcluster_streams.begin(), xcluster_streams.end()};
   EXPECT_CALL(
-      *remote_client,
+      xcluster_client,
       SetupDbScopedUniverseReplication(
           kReplicationGroupId, _, std::vector<NamespaceName>{kNamespaceName},
           std::vector<NamespaceId>{kNamespaceId}, std::vector<TableId>{kTableId1}, streams))
@@ -488,7 +462,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
 
   ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));
 
-  EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
+  EXPECT_CALL(xcluster_client, IsSetupUniverseReplicationDone(_))
       .WillOnce(Return(IsOperationDoneResult::NotDone()));
 
   auto create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
@@ -496,7 +470,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
 
   // Fail the Setup.
   const auto error_str = "Failed by test";
-  EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
+  EXPECT_CALL(xcluster_client, IsSetupUniverseReplicationDone(_))
       .WillOnce(Return(STATUS(IllegalState, error_str)));
   auto result = outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch);
   ASSERT_NOK(result);
@@ -509,7 +483,7 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
       pb.target_universe_info().state(),
       SysXClusterOutboundReplicationGroupEntryPB::TargetUniverseInfoPB::CREATING_REPLICATION_GROUP);
 
-  EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
+  EXPECT_CALL(xcluster_client, IsSetupUniverseReplicationDone(_))
       .WillOnce(Return(IsOperationDoneResult::Done(STATUS(IllegalState, error_str))));
   create_result = ASSERT_RESULT(outbound_rg.IsCreateXClusterReplicationDone({}, kEpoch));
   ASSERT_TRUE(create_result.done());
@@ -519,10 +493,10 @@ TEST_F(XClusterOutboundReplicationGroupMockedTest, CreateTargetReplicationGroup)
   ASSERT_FALSE(pb.has_target_universe_info());
 
   // Success case.
-  EXPECT_CALL(*remote_client, IsSetupUniverseReplicationDone(_))
+  EXPECT_CALL(xcluster_client, IsSetupUniverseReplicationDone(_))
       .WillOnce(Return(IsOperationDoneResult::Done()));
 
-  EXPECT_CALL(*remote_client, SetupDbScopedUniverseReplication(_, _, _, _, _, _));
+  EXPECT_CALL(xcluster_client, SetupDbScopedUniverseReplication(_, _, _, _, _, _));
 
   // Calling create again should not do anything.
   ASSERT_OK(outbound_rg.CreateXClusterReplication({}, {}, kEpoch));

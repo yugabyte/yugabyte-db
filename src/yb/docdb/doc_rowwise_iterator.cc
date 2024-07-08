@@ -52,9 +52,6 @@ DEFINE_RUNTIME_PREVIEW_bool(use_fast_backward_scan, false,
     "Use backward scan optimization to build a row in the reverse order. "
     "Applicable for YSQL flat doc reader only.");
 
-// TODO(#22556): Remove when fast backward scan will be supported for packed row V2.
-DECLARE_bool(ysql_use_packed_row_v2);
-
 DEFINE_test_flag(int32, fetch_next_delay_ms, 0, "Amount of time to delay inside FetchNext");
 DEFINE_test_flag(string, fetch_next_delay_column, "", "Only delay when schema has specific column");
 
@@ -104,9 +101,8 @@ void DocRowwiseIterator::InitIterator(
 
   // Configure usage of fast backward scan. This must be done before creating of the intent
   // aware iterator and when doc_mode_ is already set.
-  // TODO(#22371, #22556): Fast backward scan is supported for flat doc reader and packed row V2.
-  if (FLAGS_use_fast_backward_scan && !is_forward_scan_ &&
-      doc_mode_ == DocMode::kFlat && !FLAGS_ysql_use_packed_row_v2) {
+  // TODO(#22371): Fast backward scan is supported for flat doc reader only.
+  if (FLAGS_use_fast_backward_scan && !is_forward_scan_ && doc_mode_ == DocMode::kFlat) {
     use_fast_backward_scan_ = true;
     VLOG_WITH_FUNC(1) << "Using FAST BACKWARD scan";
   }

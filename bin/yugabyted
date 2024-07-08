@@ -5145,7 +5145,7 @@ class ControlScript(object):
             user_configs = Configs.parse_user_config_file(args.config)
             # User should not be able to override data_dir
             if (self.configs.saved_data.get("cluster_member")
-                                    and args.data_dir is None):
+                and args.data_dir is None and user_configs.get("data_dir")):
                 user_configs_data_dir = [
                     path for path in user_configs.get("data_dir").split(',')
                 ]

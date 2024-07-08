@@ -1096,6 +1096,7 @@ help(const char *progname)
 	printf(_("  --no-tablegroup-creations    do not dump tablegroup creations\n"));
 	printf(_("  --no-unlogged-table-data     do not dump unlogged table data\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
+	printf(_("  --read-time=TIMEPOINT        dump data/schema as of provided TIMEPOINT. Takes linux timestamp in microseconds\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
 	printf(_("  --no-serializable-deferrable disable serializable-deferrable mode\n"

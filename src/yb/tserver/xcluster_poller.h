@@ -41,6 +41,10 @@ class CDCServiceProxy;
 
 } // namespace cdc
 
+namespace client {
+class XClusterRemoteClientHolder;
+}  // namespace client
+
 namespace tserver {
 
 class AutoFlagsCompatibleVersion;
@@ -55,15 +59,16 @@ class XClusterPoller : public XClusterAsyncExecutor {
       const NamespaceId& consumer_namespace_id,
       std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
       rpc::Rpcs* rpcs, client::YBClient& local_client,
-      const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
-      SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
-      std::function<int64_t(const TabletId&)> get_leader_term);
+      const std::shared_ptr<client::XClusterRemoteClientHolder>& source_client,
+      XClusterConsumer* xcluster_consumer, SchemaVersion last_compatible_consumer_schema_version,
+      int64_t leader_term, std::function<int64_t(const TabletId&)> get_leader_term);
   ~XClusterPoller();
 
   void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
   void InitDDLQueuePoller(
       bool use_local_tserver, rocksdb::RateLimiter* rate_limiter,
-      const NamespaceName& namespace_name, ConnectToPostgresFunc connect_to_pg_func);
+      const NamespaceName& namespace_name, TserverXClusterContextIf& xcluster_context,
+      ConnectToPostgresFunc connect_to_pg_func);
 
   void StartShutdown() override;
   void CompleteShutdown() override;
@@ -161,7 +166,7 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   client::YBClient& local_client_;
   std::shared_ptr<XClusterOutputClient> output_client_;
-  std::shared_ptr<XClusterClient> producer_client_;
+  std::shared_ptr<client::XClusterRemoteClientHolder> source_client_;
   std::shared_ptr<XClusterDDLQueueHandler> ddl_queue_handler_;
 
   // Unsafe to use after shutdown.

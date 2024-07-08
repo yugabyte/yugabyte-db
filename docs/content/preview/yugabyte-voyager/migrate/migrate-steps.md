@@ -23,7 +23,7 @@ The following page describes the steps to perform and verify a successful offlin
 | Phase | Step | Description |
 |:---- |:--- | :---|
 | PREPARE | [Install voyager](../../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
-| | [Prepare&nbsp;source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
+| | [Prepare source DB](#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | | [Prepare target DB](#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
 | EXPORT | [Export schema](#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
 | |[Analyze schema](#analyze-schema) | Generate a *Schema&nbsp;Analysis&nbsp;Report* using the `yb-voyager analyze-schema` command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB. |
@@ -31,7 +31,7 @@ The following page describes the steps to perform and verify a successful offlin
 | |[Export data](#export-data) | Dump the source database to the target machine (where yb-voyager is installed), using the `yb-voyager export data` command. |
 | IMPORT | [Import schema](#import-schema) | Import the modified schema to the target YugabyteDB database using the `yb-voyager import schema` command. |
 | | [Import data](#import-data) | Import the data to the target YugabyteDB database using the `yb-voyager import data` command. |
-| | [Import indexes and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-snapshot-import` flag. |
+| | [Refresh&nbsp;materialized&nbsp;views](#refresh-materialized-views) | Refresh materialized views (if any) in the target YugabyteDB database using the `yb-voyager import schema` command with additional flags `--post-snapshot-import` and `--refresh-mviews` . |
 | |[Verify](#verify-migration) | Check if the offline migration is successful. |
 | END |[End migration](#end-migration) | Clean up the migration information stored in the export directory and databases (source and target). |
 
@@ -294,12 +294,6 @@ Refer to [import schema](../../reference/schema-migration/import-schema/) for de
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target YugabyteDB database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
-{{< note title="Importing indexes and triggers" >}}
-
-Because the presence of indexes and triggers can slow down the rate at which data is imported, by default `import schema` does not import indexes and triggers (with the exception of UNIQUE indexes, to avoid any issues during import of schema because of foreign key dependencies on the index). You should complete the data import without creating indexes and triggers. After data import is complete, create indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag.
-
-{{< /note >}}
-
 ### Import data
 
 After you have successfully exported the source data and imported the schema in the target YugabyteDB database, you can import the data using the `yb-voyager import data` command with required arguments as follows:
@@ -335,9 +329,9 @@ Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get
 
 Refer to [import data status](../../reference/data-migration/import-data/#import-data-status) for details about the arguments.
 
-### Import indexes and triggers
+### Refresh materialized views
 
-Import indexes and triggers using the `import schema` command with an additional `--post-snapshot-import` flag as follows:
+If there are [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) in the target YugabyteDB, you can refresh them using the following command:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
@@ -347,7 +341,8 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
         --target-db-name <TARGET_DB_NAME> \
         --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
-        --post-snapshot-import true
+        --post-snapshot-import true \
+        --refresh-mviews true
 ```
 
 Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.

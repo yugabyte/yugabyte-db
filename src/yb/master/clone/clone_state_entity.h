@@ -24,7 +24,7 @@ namespace yb::master {
 struct PersistentCloneStateInfo :
     public Persistent<SysCloneStatePB, SysRowEntryType::CLONE_STATE> {
   bool IsDone() const {
-    return pb.aggregate_state() == SysCloneStatePB::RESTORED ||
+    return pb.aggregate_state() == SysCloneStatePB::COMPLETE ||
            pb.aggregate_state() == SysCloneStatePB::ABORTED;
   }
 };
@@ -45,6 +45,9 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
   std::vector<TabletData> GetTabletData();
   void AddTabletData(CloneStateInfo::TabletData tablet_data);
 
+  YQLDatabase DatabaseType();
+  void SetDatabaseType(YQLDatabase database_type);
+
   const TxnSnapshotId& SourceSnapshotId();
   void SetSourceSnapshotId(const TxnSnapshotId& source_snapshot_id);
 
@@ -57,6 +60,8 @@ class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
  private:
   // The ID field is used in the sys_catalog table.
   const std::string clone_request_id_;
+
+  YQLDatabase database_type_ GUARDED_BY(mutex_);
 
   // These fields are set before the clone state is set to CREATING.
   std::vector<TabletData> tablet_data_ GUARDED_BY(mutex_);

@@ -8,6 +8,7 @@
 import time
 
 from azure.core.exceptions import HttpResponseError
+from azure.core.pipeline.policies import RetryPolicy
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
@@ -398,10 +399,15 @@ class AzureCloudAdmin():
     def __init__(self, metadata):
         self.metadata = metadata
         self.credentials = get_credentials()
-        self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
-        self.network_client = NetworkManagementClient(self.credentials, NETWORK_SUBSCRIPTION_ID)
+        self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID,
+                                                      retry_policy=self.get_retry_policy())
+        self.network_client = NetworkManagementClient(self.credentials, NETWORK_SUBSCRIPTION_ID,
+                                                      retry_policy=self.get_retry_policy())
 
         self.dns_client = None
+
+    def get_retry_policy(self):
+        return RetryPolicy(retry_backoff_max=60, retry_total=5, retry_backoff_factor=5)
 
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
@@ -842,7 +848,7 @@ class AzureCloudAdmin():
                 local_compute_client = self.compute_client
             else:
                 local_compute_client = ComputeManagementClient(
-                    self.credentials, fields['subscription_id'])
+                    self.credentials, fields['subscription_id'], self.get_retry_policy())
 
             image_identifier = local_compute_client.gallery_images.get(
                 fields['resource_group'],

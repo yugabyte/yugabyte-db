@@ -1151,7 +1151,7 @@ Status YBClient::Data::IsCloneNamespaceInProgress(
   }
   auto state = resp.entries(0).aggregate_state();
   *create_in_progress =
-      !(state == master::SysCloneStatePB::ABORTED || state == master::SysCloneStatePB::RESTORED);
+      !(state == master::SysCloneStatePB::ABORTED || state == master::SysCloneStatePB::COMPLETE);
 
   if (state == master::SysCloneStatePB_State_ABORTED) {
     return STATUS_FORMAT(

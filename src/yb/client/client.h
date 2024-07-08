@@ -313,7 +313,7 @@ class YBClientBuilder {
 // This class is thread-safe.
 class YBClient {
  public:
-  ~YBClient();
+  virtual ~YBClient();
 
   std::unique_ptr<YBTableCreator> NewTableCreator();
 
@@ -1007,7 +1007,7 @@ class YBClient {
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
-  void AddMetaCacheInfo(JsonWriter* writer);
+  void AddMetaCacheInfo(JsonWriter* writer) const;
 
   void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
@@ -1032,6 +1032,7 @@ class YBClient {
  private:
   class Data;
 
+  friend class MockYBClient;
   friend class YBClientBuilder;
   friend class YBNoOp;
   friend class YBTable;
@@ -1051,7 +1052,7 @@ class YBClient {
   friend class internal::ClientMasterRpcBase;
   friend class PlacementInfoTest;
   friend class XClusterClient;
-  friend class XClusterRemoteClient;
+  friend class XClusterRemoteClientHolder;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
@@ -1093,6 +1094,15 @@ class YBClient {
   std::unique_ptr<Data> data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
+};
+
+// A mock YBClient that can be used for testing.
+// Currently it only allows us to create a MockYBClient object , and does not mock any member
+// functions.
+class MockYBClient : public YBClient {
+ public:
+  MockYBClient() = default;
+  virtual ~MockYBClient() = default;
 };
 
 Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);

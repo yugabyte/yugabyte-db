@@ -22,7 +22,8 @@
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/client/xcluster_client.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client-test-util.h"
@@ -3310,25 +3311,28 @@ Status VerifyMetaCacheObjectIsValid(
   return json_reader.ExtractObjectArray(meta_cache, "tablets", &tablets);
 }
 
-void VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
+Status VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
   JsonReader json_reader(produced_json);
-  EXPECT_OK(json_reader.Init());
+  RETURN_NOT_OK(json_reader.Init());
   const rapidjson::Value* object = nullptr;
-  EXPECT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(object)->GetType());
+  RETURN_NOT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
+  SCHECK_EQ(
+      CHECK_NOTNULL(object)->GetType(), rapidjson::kObjectType, IllegalState, "Not an JSON object");
 
-  EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
+  RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
   bool found_xcluster_member = false;
-  for (auto it = object->MemberBegin(); it != object->MemberEnd();
-       ++it) {
+  for (auto it = object->MemberBegin(); it != object->MemberEnd(); ++it) {
     std::string member_name = it->name.GetString();
-    if (member_name.starts_with("XClusterConsumerRemote_")) {
+    if (member_name.starts_with(client::XClusterRemoteClientHolder::kClientName)) {
       found_xcluster_member = true;
     }
-    EXPECT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
+    RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
   }
-  EXPECT_TRUE(found_xcluster_member)
-      << "No member name starting with XClusterConsumerRemote_ is found";
+  SCHECK_FORMAT(
+      found_xcluster_member, IllegalState, "No member name starting with $0 found",
+      client::XClusterRemoteClientHolder::kClientName);
+
+  return Status::OK();
 }
 
 TEST_F_EX(XClusterTest, ListMetaCacheAfterXClusterSetup, XClusterTestNoParam) {
@@ -3352,8 +3356,21 @@ TEST_F_EX(XClusterTest, ListMetaCacheAfterXClusterSetup, XClusterTestNoParam) {
     auto tserver_endpoint = tserver->bound_http_addr();
     auto query_endpoint = "http://" + AsString(tserver_endpoint) + "/api/v1/meta-cache";
     faststring result;
-    ASSERT_OK(EasyCurl().FetchURL(query_endpoint, &result));
-    VerifyMetaCacheWithXClusterConsumerSetUp(result.ToString());
+
+    // Attempts to fetch url until a response with status OK, or until timeout.
+    // On mac the curl command fails with error "A libcurl function was given a bad argument", but
+    // succeeds on retries.
+    ASSERT_OK(WaitFor(
+        [&]() -> bool {
+          EasyCurl curl;
+          auto status = curl.FetchURL(query_endpoint, &result);
+          YB_LOG_IF_EVERY_N(WARNING, !status.ok(), 5) << status;
+
+          return status.ok();
+        },
+        30s, "Wait for curl response to return with status OK"));
+
+    ASSERT_OK(VerifyMetaCacheWithXClusterConsumerSetUp(result.ToString()));
   }
   ASSERT_OK(DeleteUniverseReplication());
 }

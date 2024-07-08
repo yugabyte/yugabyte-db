@@ -348,7 +348,7 @@ void AshCopyAuxInfo(
 
 void AshCopyTServerSample(
     YBCAshSample* cb_sample, uint32_t component, const WaitStateInfoPB& tserver_sample,
-    uint64_t sample_time) {
+    uint64_t sample_time, float sample_weight) {
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
@@ -358,7 +358,7 @@ void AshCopyTServerSample(
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       AshEncodeWaitStateCodeWithComponent(component, tserver_sample.wait_state_code());
-  cb_sample->sample_weight = 1; // TODO: Change this once sampling is done at tserver side
+  cb_sample->sample_weight = sample_weight;
   cb_sample->sample_time = sample_time;
 
   std::memcpy(cb_metadata->root_request_id,
@@ -381,7 +381,8 @@ void AshCopyTServerSamples(
     YBCAshGetNextCircularBufferSlot get_cb_slot_fn, const tserver::WaitStatesPB& samples,
     uint64_t sample_time) {
   for (const auto& sample : samples.wait_states()) {
-    AshCopyTServerSample(get_cb_slot_fn(), samples.component(), sample, sample_time);
+    AshCopyTServerSample(get_cb_slot_fn(), samples.component(), sample, sample_time,
+        samples.sample_weight());
   }
 }
 
@@ -2325,8 +2326,6 @@ void YBCStoreTServerAshSamples(
     LOG(ERROR) << result.status();
   } else {
     AshCopyTServerSamples(get_cb_slot_fn, result->tserver_wait_states(), sample_time);
-    AshCopyTServerSamples(get_cb_slot_fn, result->flush_and_compaction_wait_states(), sample_time);
-    AshCopyTServerSamples(get_cb_slot_fn, result->raft_log_appender_wait_states(), sample_time);
     AshCopyTServerSamples(get_cb_slot_fn, result->cql_wait_states(), sample_time);
   }
 }

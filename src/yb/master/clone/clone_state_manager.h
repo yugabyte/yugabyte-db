@@ -66,7 +66,7 @@ class CloneStateManager {
     const LeaderEpoch& epoch);
 
   Result<CloneStateInfoPtr> CreateCloneState(
-      uint32_t seq_no, const NamespaceId& source_namespace_id,
+      uint32_t seq_no, const NamespaceId& source_namespace_id, YQLDatabase database_type,
       const std::string& target_namespace_name, const HybridTime& restore_time);
 
   Status UpdateCloneStateWithSnapshotInfo(
@@ -104,6 +104,8 @@ class CloneStateManager {
       CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
       const std::string& target_namespace_name,
       CoarseTimePoint deadline, const LeaderEpoch& epoch);
+
+  Status EnableDbConnections(const CloneStateInfoPtr& clone_state);
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state);
   Status HandleRestoringState(const CloneStateInfoPtr& clone_state);

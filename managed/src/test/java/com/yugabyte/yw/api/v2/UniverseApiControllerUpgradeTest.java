@@ -1,6 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.api.v2;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.emptyCollectionOf;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -15,6 +19,7 @@ import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.UniverseRollbackUpgradeReq;
+import com.yugabyte.yba.v2.client.models.UniverseSoftwareFinalizeImpactedXCluster;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeFinalize;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeFinalizeInfo;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradePrecheckReq;
@@ -151,7 +156,9 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
 
     UniverseSoftwareUpgradeFinalizeInfo resp =
         apiClient.getFinalizeSoftwareUpgradeInfo(customer.getUuid(), universe.getUniverseUUID());
-    assertTrue(resp.getImpactedXclusters().isEmpty());
+    assertThat(
+        resp.getImpactedXclusters(),
+        anyOf(nullValue(), emptyCollectionOf(UniverseSoftwareFinalizeImpactedXCluster.class)));
   }
 
   @Test

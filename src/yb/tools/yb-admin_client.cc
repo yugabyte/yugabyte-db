@@ -46,7 +46,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
