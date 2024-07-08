@@ -728,6 +728,9 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       --mount "type=bind,source=$YB_SRC_ROOT/build,target=/mnt/dir_with_package" centos:7 \
       bash -c '
         set -euo pipefail -x
+        sed -i 's/mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/CentOS-*
+        sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' \
+            /etc/yum.repos.d/CentOS-*
         yum install -y libatomic
         package_name=${YB_PACKAGE_PATH##*/}
         package_path=/mnt/dir_with_package/$package_name
