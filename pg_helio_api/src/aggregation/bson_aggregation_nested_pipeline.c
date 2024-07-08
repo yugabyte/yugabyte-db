@@ -306,7 +306,7 @@ HandleLookup(const bson_value_t *existingValue, Query *query,
 	LookupArgs lookupArgs;
 	memset(&lookupArgs, 0, sizeof(LookupArgs));
 
-	if (context->nestedPipelineLevel > MaximumLookupPipelineDepth)
+	if (context->nestedPipelineLevel >= MaximumLookupPipelineDepth)
 	{
 		ereport(ERROR, (errcode(MongoMaxSubPipelineDepthExceeded),
 						errmsg(
@@ -814,6 +814,15 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 				AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_UNIONWITH);
+
+	/* This is as per the jstest max_subpipeline_depth.*/
+	if (context->nestedPipelineLevel >= MaximumLookupPipelineDepth)
+	{
+		ereport(ERROR, (errcode(MongoMaxSubPipelineDepthExceeded),
+						errmsg(
+							"Maximum number of nested sub-pipelines exceeded. Limit is %d",
+							MaximumLookupPipelineDepth)));
+	}
 
 	Query *leftQuery = query;
 	Query *rightQuery = NULL;
