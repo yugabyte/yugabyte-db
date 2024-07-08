@@ -278,8 +278,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
   // Test failure of alter statement with multiple subcommands.
   ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_table ALTER COLUMN key TYPE text USING key::text,"
       " ALTER COLUMN num TYPE text USING num::text"));
-  VerifyTableNotExists(client.get(), "yugabyte", table_name + "_temp_old", 10);
-  VerifyTableExists(client.get(), "yugabyte", table_name, 20);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(table_name)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
 
   // Verify that the data and schema is intact.
@@ -321,8 +324,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify failure case.
   ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for new DocDB table to be dropped."));
   // Insert duplicate rows.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                alter_test));
@@ -330,8 +336,11 @@ TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
 
   // Verify success case.
   ASSERT_OK(conn.Execute(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
-  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
-  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      if (VERIFY_RESULT(client->ListTables(alter_test)).size() == 1)
+        return true;
+      return false;
+  }, MonoDelta::FromSeconds(60), "Wait for old DocDB table to be dropped."));
   ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
                                 alter_test));
 }
