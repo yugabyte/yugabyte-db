@@ -601,16 +601,17 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 				 * In YB, we only use the command, index_relid, phase,
 				 * tuples_total, tuples_done, partitions_total, partitions_done
 				 * columns for YB indexes. For temp indexes, tuples_total and
-				 * tuples_done aren't computed (the beentry progress params
-				 * are set to an invalid value (-1)) so we set those to null
-				 * too.
+				 * tuples_done are never computed (the beentry progress params
+				 * are set to an invalid value (YB_PROGRESS_CREATEIDX_INVALID)
+				 * so we set those to null too.
 				 */
 				if (i == PROGRESS_CREATEIDX_COMMAND ||
 					i == PROGRESS_CREATEIDX_INDEX_OID ||
 					i == PROGRESS_CREATEIDX_PHASE ||
 					i == PROGRESS_CREATEIDX_PARTITIONS_TOTAL ||
 					i == PROGRESS_CREATEIDX_PARTITIONS_DONE ||
-					(beentry->st_progress_param[i] != -1 &&
+					(beentry->st_progress_param[i] !=
+					 YB_PROGRESS_CREATEIDX_INVALID &&
 					 (i == PROGRESS_CREATEIDX_TUPLES_TOTAL ||
 					  i == PROGRESS_CREATEIDX_TUPLES_DONE)))
 					continue;
