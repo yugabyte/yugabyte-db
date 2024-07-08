@@ -303,7 +303,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) =
             />
           </Box>
           <Box display="flex" mt={1} flexDirection={'row'} width="100%">
-            <YBLabel width="225px">Maximum core file size (in bytes)</YBLabel>
+            <YBLabel width="225px">Maximum core file size (in GB)</YBLabel>
             <YBInput
               onChange={(e) => {
                 const updatedObj = {
