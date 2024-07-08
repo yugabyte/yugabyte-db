@@ -631,6 +631,16 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 		return fmt.Errorf("unable to parse config file %s: %s", filePath, err.Error())
 	}
 
+	// handle case where we read empty file, initialize to blank document
+	if root.Kind == 0 {
+		root = yaml.Node{
+			Kind: yaml.DocumentNode,
+			Content: []*yaml.Node{&yaml.Node{
+					Kind: yaml.MappingNode,
+			}},
+		}
+	}
+
 	before, after, _ := strings.Cut(yamlPath, ".")
 	err = setYamlValue(&root, before, after, value)
 	if err != nil {
