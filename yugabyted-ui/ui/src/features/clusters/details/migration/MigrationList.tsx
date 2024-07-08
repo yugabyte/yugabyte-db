@@ -1,5 +1,14 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, Grid, Link, MenuItem, Typography, makeStyles } from "@material-ui/core";
+import {
+  Box,
+  Divider,
+  Grid,
+  Link,
+  MenuItem,
+  Typography,
+  makeStyles,
+  useTheme,
+} from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
@@ -10,12 +19,15 @@ import RefreshIcon from "@app/assets/refresh.svg";
 import SearchIcon from "@app/assets/search.svg";
 import clsx from "clsx";
 import { MigrationListSourceDBSidePanel, SourceDBProps } from "./MigrationListSourceDBSidePanel";
+import CaretRightIcon from "@app/assets/caret-right.svg";
+import CaretDownIcon from "@app/assets/caret-down.svg";
 import {
   MigrationListVoyagerSidePanel,
   VoyagerInstanceProps,
 } from "./MigrationListVoyagerSidePanel";
 import { MigrationListColumns } from "./MigrationListColumns";
 import EditIcon from "@app/assets/edit.svg";
+import { useLocalStorage } from "react-use";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -35,7 +47,7 @@ const useStyles = makeStyles((theme) => ({
     borderColor: theme.palette.warning[500],
   },
   heading: {
-    marginBottom: theme.spacing(4),
+    marginBottom: theme.spacing(2),
   },
   stat: {
     display: "flex",
@@ -106,12 +118,40 @@ interface MigrationListProps {
 
 export const MigrationList: FC<MigrationListProps> = ({
   migrationData: migrationDataProp,
-  /* onSelectMigration, */
+  onSelectMigration,
   hasError,
   onRefresh,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+  const theme = useTheme();
+
+  const [selectedMigrations, setSelectedMigrations] = React.useState<number[]>([]);
+  const [showArchived, setShowArchived] = React.useState<boolean>(false);
+  const [archiveMode, setArchiveMode] = React.useState<boolean>(false);
+  const [unarchiveMode, setUnarchiveMode] = React.useState<boolean>(false);
+
+  const [archivedMigrationsLS, setArchivedMigrationsLS] =
+    useLocalStorage<Migration["migration_uuid"][]>("archived-migrations");
+  const [archivedMigrations, setArchivedMigrations] = React.useState<Migration["migration_uuid"][]>(
+    archivedMigrationsLS || []
+  );
+
+  React.useEffect(() => {
+    setArchivedMigrationsLS(archivedMigrations);
+  }, [archivedMigrations]);
+
+  React.useEffect(() => {
+    if (!archiveMode) {
+      setSelectedMigrations([]);
+    }
+  }, [archiveMode]);
+
+  React.useEffect(() => {
+    if (!unarchiveMode) {
+      setSelectedMigrations([]);
+    }
+  }, [unarchiveMode]);
 
   const [sourceDBSelection, setSourceDBSelection] = React.useState<SourceDBProps>();
   const [voyagerSelection, setVoyagerSelection] = React.useState<VoyagerInstanceProps>();
@@ -148,6 +188,7 @@ export const MigrationList: FC<MigrationListProps> = ({
       complexity: "Easy",
       progress: "Assessment",
       activeIdle: "Idle",
+      landing_step: 0,
     },
     {
       migration_uuid: "a728a3d7-486c-11ee-8b83-42010a97001a",
@@ -178,6 +219,7 @@ export const MigrationList: FC<MigrationListProps> = ({
       complexity: "Hard",
       progress: "Schema migration",
       activeIdle: "Active",
+      landing_step: 1,
     },
   ];
 
@@ -186,7 +228,7 @@ export const MigrationList: FC<MigrationListProps> = ({
     {}
   );
 
-  const migrationColumns = [
+  const migrationColumns = (migrations: typeof migrationNewData, mode: boolean) => [
     {
       name: "migration_name",
       label: t("clusterDetail.voyager.migration"),
@@ -194,13 +236,9 @@ export const MigrationList: FC<MigrationListProps> = ({
         customBodyRenderLite: (dataIndex: number) => {
           return (
             <Box>
-              <Typography variant="body1">
-                {filteredMigrations[dataIndex].migration_name}
-              </Typography>
+              <Typography variant="body1">{migrations[dataIndex].migration_name}</Typography>
               {migrationColSettings.migration_type && (
-                <Typography variant="body2">
-                  {filteredMigrations[dataIndex].migration_type}
-                </Typography>
+                <Typography variant="body2">{migrations[dataIndex].migration_type}</Typography>
               )}
             </Box>
           );
@@ -317,6 +355,8 @@ export const MigrationList: FC<MigrationListProps> = ({
                 ? BadgeVariant.Light
                 : progress === "Schema migration"
                 ? BadgeVariant.InProgress
+                : progress === "Completed"
+                ? BadgeVariant.Success
                 : undefined
             }
             text={progress}
@@ -331,10 +371,15 @@ export const MigrationList: FC<MigrationListProps> = ({
       name: "activeIdle",
       label: t("clusterDetail.voyager.activeOrIdle"),
       options: {
-        customBodyRender: (activeIdle: (typeof migrationNewData)[number]["activeIdle"]) => (
+        customBodyRenderLite: (dataIndex: number) => (
           <Box display="flex" alignItems="center" justifyContent="space-between" gridGap={10}>
-            {activeIdle}
-            <ArrowRightIcon className={classes.linkBox} />
+            {migrations[dataIndex].activeIdle}
+            {!mode && (
+              <ArrowRightIcon
+                className={classes.linkBox}
+                onClick={() => onSelectMigration(migrations[dataIndex])}
+              />
+            )}
           </Box>
         ),
         setCellHeaderProps: () => ({ style: { padding: "24px 16px" } }),
@@ -370,6 +415,22 @@ export const MigrationList: FC<MigrationListProps> = ({
         return true;
       }),
     [search, migrationType, sourceEngine]
+  );
+
+  const migrationData = React.useMemo(
+    () => ({
+      unarchivedMigrations: !filteredMigrations
+        ? []
+        : filteredMigrations.filter(
+            (m) => !archivedMigrations.find((uuid) => uuid === m.migration_uuid)
+          ),
+      archivedMigrations: !filteredMigrations
+        ? []
+        : filteredMigrations.filter((m) =>
+            archivedMigrations.find((uuid) => uuid === m.migration_uuid)
+          ),
+    }),
+    [filteredMigrations, archivedMigrations]
   );
 
   if (!migrationDataProp?.length && !hasError) {
@@ -504,15 +565,24 @@ export const MigrationList: FC<MigrationListProps> = ({
             </Box>
 
             <YBTable
-              data={filteredMigrations}
-              columns={migrationColumns}
+              data={migrationData.unarchivedMigrations}
+              columns={migrationColumns(migrationData.unarchivedMigrations, archiveMode)}
               options={{
-                pagination: false,
+                pagination: !!(migrationData.unarchivedMigrations.length >= 10),
+                selectableRows: archiveMode ? "multiple" : undefined,
+                rowsSelected: selectedMigrations,
+                onRowSelectionChange: (
+                  _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
+                  _allRowsSelected: { index: number; dataIndex: number }[],
+                  rowsSelected: undefined | number[]
+                ) => {
+                  setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
+                },
               }}
               touchBorder
-              alternateRowShading
+              alternateRowShading={!archiveMode}
               cellBorder
-              noCellBottomBorder
+              noCellBottomBorder={!archiveMode}
               withBorder
             />
 
@@ -545,6 +615,142 @@ export const MigrationList: FC<MigrationListProps> = ({
               onClose={() => setOpenColSettings(false)}
               onUpdateColumns={(cols) => setMigrationColSettings(cols)}
             />
+
+            <Box display="flex" justifyContent="end" gridGap={theme.spacing(1)} mt={2}>
+              {!archiveMode && (
+                <>
+                  {migrationData.unarchivedMigrations.length > 0 && (
+                    <YBButton
+                      variant="ghost"
+                      onClick={() => {
+                        setUnarchiveMode(false);
+                        setArchiveMode(true);
+                      }}
+                    >
+                      {t("clusterDetail.voyager.archiveMigrations")}
+                    </YBButton>
+                  )}
+                  {!!archivedMigrations.length && (
+                    <YBButton
+                      variant="ghost"
+                      endIcon={showArchived ? <CaretDownIcon /> : <CaretRightIcon />}
+                      onClick={() => setShowArchived((s) => !s)}
+                    >
+                      {showArchived
+                        ? t("clusterDetail.voyager.hideArchived")
+                        : t("clusterDetail.voyager.showArchived")}
+                    </YBButton>
+                  )}
+                </>
+              )}
+              {archiveMode && (
+                <>
+                  <YBButton
+                    variant="ghost"
+                    onClick={() => {
+                      setArchiveMode(false);
+                    }}
+                  >
+                    {t("common.cancel")}
+                  </YBButton>
+                  <YBButton
+                    variant="primary"
+                    disabled={!selectedMigrations.length}
+                    onClick={() => {
+                      setArchivedMigrations((m) => [
+                        ...(m ? m : []),
+                        ...selectedMigrations.map(
+                          (index) => migrationData.unarchivedMigrations[index].migration_uuid
+                        ),
+                      ]);
+                      setShowArchived(true);
+                      setArchiveMode(false);
+                    }}
+                  >
+                    {t("clusterDetail.voyager.archiveSelected")}
+                  </YBButton>
+                </>
+              )}
+            </Box>
+          </Box>
+        )}
+
+        {showArchived && !hasError && (
+          <Box mt={2}>
+            <Box>
+              <Typography variant="h4" className={classes.heading}>
+                {t("clusterDetail.voyager.archivedMigrations")}
+              </Typography>
+              <YBTable
+                data={migrationData.archivedMigrations}
+                columns={migrationColumns(migrationData.archivedMigrations, unarchiveMode)}
+                options={{
+                  pagination: !!(migrationData.archivedMigrations.length >= 10),
+                  selectableRows: unarchiveMode ? "multiple" : undefined,
+                  rowsSelected: selectedMigrations,
+                  onRowSelectionChange: (
+                    _currentRowsSelected: { index: number; dataIndex: number }[], // Single item array?
+                    _allRowsSelected: { index: number; dataIndex: number }[],
+                    rowsSelected: undefined | number[]
+                  ) => {
+                    setSelectedMigrations(rowsSelected ? [...rowsSelected] : []);
+                  },
+                }}
+                touchBorder
+                alternateRowShading={!unarchiveMode}
+                cellBorder
+                noCellBottomBorder={!unarchiveMode}
+                withBorder
+              />
+              <Box display="flex" justifyContent="end" gridGap={theme.spacing(1)} mt={2}>
+                {!unarchiveMode && migrationData.archivedMigrations.length > 0 && (
+                  <YBButton
+                    variant="ghost"
+                    onClick={() => {
+                      setArchiveMode(false);
+                      setUnarchiveMode(true);
+                    }}
+                  >
+                    {t("clusterDetail.voyager.unarchiveMigrations")}
+                  </YBButton>
+                )}
+                {unarchiveMode && (
+                  <>
+                    <YBButton
+                      variant="ghost"
+                      onClick={() => {
+                        setUnarchiveMode(false);
+                      }}
+                    >
+                      {t("common.cancel")}
+                    </YBButton>
+                    <YBButton
+                      variant="primary"
+                      disabled={!selectedMigrations.length}
+                      onClick={() => {
+                        const newArchivedMigraions =
+                          archivedMigrations.filter(
+                            (uuid) =>
+                              uuid &&
+                              !selectedMigrations
+                                .map(
+                                  (index) => migrationData.archivedMigrations[index].migration_uuid
+                                )
+                                ?.includes(uuid)
+                          ) || [];
+                        setArchivedMigrations(newArchivedMigraions);
+                        setUnarchiveMode(false);
+                        if (newArchivedMigraions.length === 0) {
+                          setShowArchived(false);
+                        }
+                      }}
+                    >
+                      {t("clusterDetail.voyager.unarchiveSelected")}
+                    </YBButton>
+                  </>
+                )}
+              </Box>
+            </Box>
           </Box>
         )}
       </Box>
