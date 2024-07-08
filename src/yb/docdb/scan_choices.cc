@@ -913,14 +913,19 @@ ScanChoicesPtr ScanChoices::Create(
   auto prefixlen = doc_spec.prefix_length();
   auto num_hash_cols = schema.num_hash_key_columns();
   auto num_key_cols = schema.num_key_columns();
+  // Do not count system columns.
+  if (num_key_cols > 0 && schema.column(num_key_cols - 1).order() < 0) {
+    num_key_cols--;
+  }
   auto valid_prefixlen =
     prefixlen > 0 && prefixlen >= num_hash_cols && prefixlen <= num_key_cols;
   // Prefix must span at least all the hash columns since the first column is a hash code of all
   // hash columns in a hash partitioned table. And the hash code column cannot be skip'ed without
   // skip'ing all hash columns as well.
-  if (prefixlen > 0 && !valid_prefixlen) {
-    LOG(WARNING) << "Prefix length: " << prefixlen << " is invalid for schema: "
-                  << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
+  if (prefixlen != 0 && !valid_prefixlen) {
+    LOG(ERROR)
+      << "Prefix length: " << prefixlen << " is invalid for schema: "
+      << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
   }
 
   auto test_scan_trivial_expectation = ANNOTATE_UNPROTECTED_READ(TEST_scan_trivial_expectation);
