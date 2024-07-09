@@ -3579,6 +3579,8 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 static char *ybReadFile(const char *outer_filename, const char *inc_filename,
 						int elevel);
 
+static char *ybReadFromUrl(const char *url);
+
 static void
 ybGetJwtAuthOptionsFromPortAndJwks(Port *port, char *jwks,
 								   YBCPgJwtAuthOptions *opt)
@@ -3609,8 +3611,12 @@ YbCheckJwtAuth(Port *port)
 	/*
 	 * Read the jwks file before the password prompt so that we fail fast if we
 	 * fail to read the jwks file or the content is invalid.
+	 * Check if jwt_jwks_url is provided then use that otherwise use jwt_jwks_path
 	 */
-	jwks = ybReadFile(HbaFileName, port->hba->yb_jwt_jwks_path, LOG);
+	if(port->hba->yb_jwt_jwks_url)
+		jwks = ybReadFromUrl(port->hba->yb_jwt_jwks_url);
+	else
+		jwks = ybReadFile(HbaFileName, port->hba->yb_jwt_jwks_path, LOG);
 	if (jwks == NULL)
 		return STATUS_ERROR;
 
@@ -3709,4 +3715,34 @@ ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
 
 	pfree(file_fullname);
 	return file_contents;
+}
+
+static char *
+ybReadFromUrl(const char *url)
+{
+	char *url_contents = NULL;
+	int len;
+	YBCStatus status;
+	
+	status = YBCFetchFromUrl(url, &url_contents);
+	if (status) /* !ok */
+	{
+		ereport(LOG,
+				(errmsg("Fetching from JWT_JWKS_URL failed with error: %s",
+						YBCStatusMessageBegin(status))));
+		YBCFreeStatus(status);
+		return NULL;
+	} 
+	if(!url_contents)
+		return NULL;
+
+	len = strlen(url_contents);
+	if(!pg_verifymbstr(url_contents, len, true))
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+				 errmsg("invalid encoding of contents at \"%s\"", url)));
+		return NULL;
+	}
+	return url_contents;
 }
