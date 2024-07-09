@@ -1492,6 +1492,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               .equals(cluster.userIntent.instanceTags.get(NODE_NAME_KEY))) {
             throw new IllegalArgumentException("'Name' tag value cannot be changed.");
           }
+          if (cluster.clusterType == ClusterType.PRIMARY
+              && univCluster.userIntent.replicationFactor > cluster.userIntent.replicationFactor) {
+            throw new UnsupportedOperationException("Replication factor cannot be decreased.");
+          }
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(

@@ -609,24 +609,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   private void validateEditParams(Cluster newCluster, Cluster curCluster) {
-    // TODO we should look for y(c)sql auth, gflags changes and so on.
     // Move this logic to UniverseDefinitionTaskBase.
-    boolean isPrimaryCluster =
-        (newCluster.clusterType == curCluster.clusterType)
-            && (newCluster.clusterType == ClusterType.PRIMARY);
-    if (isPrimaryCluster
-        && newCluster.userIntent.replicationFactor != curCluster.userIntent.replicationFactor) {
-      String msg =
-          String.format(
-              "Replication factor can't be changed during the edit operation. "
-                  + "Previous rep factor: %d, current rep factor %d for cluster type: %s",
-              newCluster.userIntent.replicationFactor,
-              curCluster.userIntent.replicationFactor,
-              newCluster.clusterType);
-      log.error(msg);
-      throw new IllegalArgumentException(msg);
-    }
-
     String newProviderStr = newCluster.userIntent.provider;
     String currProviderStr = curCluster.userIntent.provider;
 
