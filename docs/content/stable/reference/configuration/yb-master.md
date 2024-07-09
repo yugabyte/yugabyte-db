@@ -637,7 +637,7 @@ Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tabl
 
 ##### --max_create_tablets_per_ts
 
-The maximum number of tablets per tablet server that can be specified when creating a table. This does not limit the number of tablets that can be created through tablet splitting.
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
 
 Default: `50`
 

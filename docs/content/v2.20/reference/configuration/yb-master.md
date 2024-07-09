@@ -504,6 +504,12 @@ Default: `false`
 
 ## Tablet splitting flags
 
+##### --max_create_tablets_per_ts
+
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
+
+Default: `50`
+
 ##### --enable_automatic_tablet_splitting
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.

@@ -58,7 +58,7 @@ At creation time, you can presplit a table into the desired number of tablets. Y
 
 To presplit a table into a desired number of tablets, you need the start key and end key for each tablet. This makes presplitting slightly different for hash-sharded and range-sharded tables.
 
-The maximum number of tablets allowed at table creation time is controlled by [`max_create_tablets_per_ts`](../../../reference/configuration/yb-master/#max_create_tablets_per_ts). This does not limit the number of tablets that can be created by tablet splitting.
+The maximum number of tablets allowed at table creation time is controlled by [`max_create_tablets_per_ts`](../../../reference/configuration/yb-master/#max-create-tablets-per-ts). This also limits the number of tablets that can be created by tablet splitting.
 
 #### Hash-sharded tables
 
@@ -243,7 +243,7 @@ In the high phase, each node has fewer than [`tablet_split_high_phase_shard_coun
 
 ##### Final phase
 
-When the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GiB by default).
+When the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GiB by default). The maximum number of tablets is still limited by [`max_create_tablets_per_ts`](../../../reference/configuration/yb-master/#max-create-tablets-per-ts).
 
 #### Post-split compactions
 
