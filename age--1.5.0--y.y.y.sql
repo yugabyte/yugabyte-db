@@ -125,3 +125,7 @@ CREATE FUNCTION ag_catalog.age_graph_stats(agtype)
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
+CREATE FUNCTION ag_catalog.graph_exists(graph_name name)
+    RETURNS agtype
+    LANGUAGE c
+    AS 'MODULE_PATHNAME', 'age_graph_exists';

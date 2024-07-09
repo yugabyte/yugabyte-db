@@ -1060,3 +1060,7 @@ CREATE OPERATOR CLASS graphid_ops_hash
   OPERATOR 1 =,
   FUNCTION 1 ag_catalog.graphid_hash_cmp(graphid);
 
+CREATE FUNCTION ag_catalog.graph_exists(graph_name name)
+    RETURNS agtype
+    LANGUAGE c
+    AS 'MODULE_PATHNAME', 'age_graph_exists';

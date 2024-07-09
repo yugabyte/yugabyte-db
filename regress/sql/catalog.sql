@@ -166,7 +166,32 @@ SELECT create_elabel(NULL, 'r');
 SELECT create_vlabel(NULL, NULL);
 SELECT create_elabel(NULL, NULL);
 
+-- age_graph_exists()
+CREATE FUNCTION raise_notice(graph_name TEXT)
+RETURNS void AS $$
+DECLARE
+    res BOOLEAN;
+BEGIN
+    -- this tests whether graph_exists works with IF-ELSE.
+    SELECT graph_exists('graph1') INTO res;
+    IF res THEN
+        RAISE NOTICE 'graph exists';
+    ELSE
+        RAISE NOTICE 'graph does not exist';
+    END IF;
+END  $$ LANGUAGE plpgsql;
+
+SELECT graph_exists('graph1');
+
+SELECT create_graph('graph1');
+SELECT graph_exists('graph1');
+SELECT raise_notice('graph1');
+
+SELECT drop_graph('graph1', true);
+SELECT graph_exists('graph1');
+SELECT raise_notice('graph1');
+
+DROP FUNCTION raise_notice(TEXT);
+
 -- dropping the graph
 SELECT drop_graph('graph', true);
-
-

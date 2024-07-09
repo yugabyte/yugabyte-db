@@ -393,6 +393,70 @@ SELECT create_vlabel(NULL, NULL);
 ERROR:  graph name must not be NULL
 SELECT create_elabel(NULL, NULL);
 ERROR:  graph name must not be NULL
+-- age_graph_exists()
+CREATE FUNCTION raise_notice(graph_name TEXT)
+RETURNS void AS $$
+DECLARE
+    res BOOLEAN;
+BEGIN
+    -- this tests whether graph_exists works with IF-ELSE.
+    SELECT graph_exists('graph1') INTO res;
+    IF res THEN
+        RAISE NOTICE 'graph exists';
+    ELSE
+        RAISE NOTICE 'graph does not exist';
+    END IF;
+END  $$ LANGUAGE plpgsql;
+SELECT graph_exists('graph1');
+ graph_exists 
+--------------
+ false
+(1 row)
+
+SELECT create_graph('graph1');
+NOTICE:  graph "graph1" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT graph_exists('graph1');
+ graph_exists 
+--------------
+ true
+(1 row)
+
+SELECT raise_notice('graph1');
+NOTICE:  graph exists
+ raise_notice 
+--------------
+ 
+(1 row)
+
+SELECT drop_graph('graph1', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table graph1._ag_label_vertex
+drop cascades to table graph1._ag_label_edge
+NOTICE:  graph "graph1" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT graph_exists('graph1');
+ graph_exists 
+--------------
+ false
+(1 row)
+
+SELECT raise_notice('graph1');
+NOTICE:  graph does not exist
+ raise_notice 
+--------------
+ 
+(1 row)
+
+DROP FUNCTION raise_notice(TEXT);
 -- dropping the graph
 SELECT drop_graph('graph', true);
 NOTICE:  drop cascades to 2 other objects
