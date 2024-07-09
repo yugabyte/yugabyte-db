@@ -39,10 +39,10 @@ import DisableExportIcon from '../../../../assets/disable_export.svg';
 
 interface AuditLogProps {
   universeData: Universe;
-  nodePrefix: string;
+  universePaused: boolean;
 }
 
-export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
+export const AuditLog: FC<AuditLogProps> = ({ universeData, universePaused }) => {
   const classes = auditLogStyles();
   const { t } = useTranslation();
   const tasks = useSelector((state: any) => state.tasks);
@@ -68,7 +68,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
   const isExportEnabled = auditLogInfo?.exportActive;
   const exporterID = _.get(auditLogInfo, 'universeLogsExporterConfig[0].exporterUuid');
 
-  const { data: exportLogData, isLoading, refetch } = useQuery<ExportLogResponse>(
+  const { data: exportLogData, isLoading } = useQuery<ExportLogResponse>(
     [QUERY_KEY.getTelemetryProviderByID],
     () => api.getTelemetryProviderByID(exporterID)
   );
@@ -156,7 +156,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
       <Box mb={4}>
         <Box display={'flex'} flexDirection={'row'} justifyContent={'space-between'}>
           <Typography className={classes.mainTitle}>{t('dbAuitLog.header')}</Typography>
-          {isAuditLogEnabled && (
+          {!universePaused && isAuditLogEnabled && (
             <YBButton
               variant="primary"
               size="large"
@@ -165,6 +165,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
               aria-controls="edit-menu"
               aria-haspopup="true"
               disabled={isTaskInProgress}
+              data-testid="AuditLog-EditMenu"
             >
               {t('dbAuitLog.editMenuTitle')}
             </YBButton>
@@ -191,6 +192,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
                 setOpenModal(true);
                 handleMenuClose();
               }}
+              data-testid="AuditLog-EditLogAndExport"
             >
               <img src={EditLogIcon} alt="--" /> &nbsp; {t('dbAuitLog.editLogAndExport')}
             </MenuItem>
@@ -202,6 +204,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
                   setDisableExportDialog(true);
                   handleMenuClose();
                 }}
+                data-testid="AuditLog-DisableExport"
               >
                 <img src={DisableExportIcon} alt="--" /> &nbsp; {t('dbAuitLog.disableAuditExport')}
               </MenuItem>
@@ -213,6 +216,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
                   setDisableLogDialog(true);
                   handleMenuClose();
                 }}
+                data-testid="AuditLog-DisableLog"
               >
                 <img src={DeleteIcon} alt="--" /> &nbsp; {t('dbAuitLog.disableAuditLog')}
               </MenuItem>
@@ -233,7 +237,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
             <Typography className={classes.cardSubtitle}>
               {t('dbAuitLog.auditLogCardLocation')}
             </Typography>
-            <Typography variant="body2">postgres.conf</Typography>
+            <Typography variant="body2">postgres.log</Typography>
           </Box>
           {/* Divider */}
           <Box className={classes.divider} mt={4} mb={4}></Box>
@@ -275,6 +279,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
                     size="large"
                     onClick={() => setOpenModal(true)}
                     disabled={isTaskInProgress}
+                    data-testid="AuditLog-EmptyExport"
                   >
                     {t('dbAuitLog.exportButton')}
                   </YBButton>
@@ -296,6 +301,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, nodePrefix }) => {
                   size="large"
                   onClick={() => setOpenModal(true)}
                   disabled={isTaskInProgress}
+                  data-testid="AuditLog-EnableExport"
                 >
                   {t('dbAuitLog.enableDatabaseLog')}
                 </YBButton>
