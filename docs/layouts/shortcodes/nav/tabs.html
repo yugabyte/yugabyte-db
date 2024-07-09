@@ -9,7 +9,7 @@
     {{if strings.Contains $tabs "local"}}
     {{$name = printf "%s%s" "local" $suffix}}
     <li>
-        <a href="#{{$name}}" class="nav-link {{if (eq $active "local")}}active{{end}}" id="{{$name}}-tab" data-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "local")}}true{{end}}">
+        <a href="#{{$name}}" class="nav-link {{if (eq $active "local")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "local")}}true{{end}}">
         <img src="/icons/database.svg" alt="Local Cluster"/>
         Local
         </a>
@@ -18,7 +18,7 @@
     {{if strings.Contains $tabs "cloud"}}
     {{$name = printf "%s%s" "cloud" $suffix}}
     <li>
-        <a href="#{{$name}}" class="nav-link {{if (eq $active "cloud")}}active{{end}}" id="{{$name}}-tab" data-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "cloud")}}true{{end}}">
+        <a href="#{{$name}}" class="nav-link {{if (eq $active "cloud")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "cloud")}}true{{end}}">
         <img src="/icons/cloud.svg" alt="Cloud Cluster"/>
         YugabyteDB Aeon
         </a>
@@ -27,7 +27,7 @@
     {{if strings.Contains $tabs "anywhere"}}
     <li>
         {{$name = printf "%s%s" "anywhere" $suffix}}
-        <a href="#{{$name}}" class="nav-link {{if (eq $active "anywhere")}}active{{end}}" id="{{$name}}-tab" data-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "anywhere")}}true{{end}}">
+        <a href="#{{$name}}" class="nav-link {{if (eq $active "anywhere")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "anywhere")}}true{{end}}">
         <img src="/icons/server.svg" alt="Anywhere Cluster"/>
         YugabyteDB Anywhere
         </a>

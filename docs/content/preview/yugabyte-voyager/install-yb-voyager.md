@@ -48,37 +48,37 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#rhel" class="nav-link active" id="rhel-tab" data-toggle="tab" role="tab" aria-controls="rhel" aria-selected="true">
+    <a href="#rhel" class="nav-link active" id="rhel-tab" data-bs-toggle="tab" role="tab" aria-controls="rhel" aria-selected="true">
       <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       RHEL
     </a>
   </li>
   <li>
-    <a href="#ubuntu" class="nav-link" id="ubuntu-tab" data-toggle="tab" role="tab" aria-controls="ubuntu" aria-selected="true">
+    <a href="#ubuntu" class="nav-link" id="ubuntu-tab" data-bs-toggle="tab" role="tab" aria-controls="ubuntu" aria-selected="true">
       <i class="fa-brands fa-ubuntu" aria-hidden="true"></i>
       Ubuntu
     </a>
   </li>
     <li >
-    <a href="#macos" class="nav-link" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+    <a href="#macos" class="nav-link" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="#airgapped" class="nav-link" id="airgapped-tab" data-toggle="tab" role="tab" aria-controls="airgapped" aria-selected="true">
+    <a href="#airgapped" class="nav-link" id="airgapped-tab" data-bs-toggle="tab" role="tab" aria-controls="airgapped" aria-selected="true">
       <i class="fa-solid fa-link-slash" aria-hidden="true"></i>
       Airgapped
     </a>
   </li>
   <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li>
-    <a href="#github" class="nav-link" id="github-tab" data-toggle="tab" role="tab" aria-controls="github" aria-selected="true">
+    <a href="#github" class="nav-link" id="github-tab" data-bs-toggle="tab" role="tab" aria-controls="github" aria-selected="true">
       <i class="fab fa-github" aria-hidden="true"></i>
       Source
     </a>
