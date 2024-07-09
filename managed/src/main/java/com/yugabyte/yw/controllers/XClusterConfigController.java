@@ -543,6 +543,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
   static XClusterConfigTaskParams getSetDatabasesTaskParams(
       XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       Set<String> databaseIds,
       Set<String> databaseIdsToAdd,
       Set<String> databaseIdsToRemove) {
@@ -551,7 +552,7 @@ public class XClusterConfigController extends AuthenticatedController {
     editForm.databases = databaseIds;
 
     return new XClusterConfigTaskParams(
-        xClusterConfig, editForm, databaseIdsToAdd, databaseIdsToRemove);
+        xClusterConfig, bootstrapParams, editForm, databaseIdsToAdd, databaseIdsToRemove);
   }
 
   static XClusterConfigTaskParams getSetTablesTaskParams(
