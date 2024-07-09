@@ -73,6 +73,17 @@ if(IS_CLANG)
   endif()
 endif()
 
+if(APPLE)
+  # To silence warning from stdio.h
+  # https://gist.github.com/hari90/3480c6073dd5a92ff1e7027295bc2bf3
+  # and malloc.h
+  # https://gist.github.com/hari90/11c8d5cf89056b3c730eab62d216023b
+  add_pg_c_cxx_flags(
+    -Wno-nullability-completeness
+    -Wno-availability
+  )
+endif()
+
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   add_pg_c_cxx_flags(-DUSE_SSE42_CRC32C=1)
 endif()
