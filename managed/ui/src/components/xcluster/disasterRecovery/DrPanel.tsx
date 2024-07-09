@@ -182,6 +182,9 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
     }
   }, PollingIntervalMs.DR_CONFIG_STATE_TRANSITIONS);
+  useInterval(() => {
+    queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
+  }, PollingIntervalMs.DR_CONFIG);
 
   if (currentUniverseQuery.isError || participantUniverseQuery.isError) {
     return (
@@ -542,7 +545,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         )}
         {isEditTablesModalOpen && (
           <EditTablesModal
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}
             storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
@@ -562,7 +565,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             drConfig={drConfig}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
           />
         )}
         {isDbSyncModalOpen && (
