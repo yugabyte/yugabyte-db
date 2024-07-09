@@ -132,7 +132,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           bootstrapRequiredTableUUIDs.length > 0 && {
             bootstrapParams: {
               tables: bootstrapRequiredTableUUIDs,
-              allowBootstrapping: true,
+              allowBootstrap: true,
 
               backupRequestParams: {
                 storageConfigUUID: formValues.storageConfig.value.uuid

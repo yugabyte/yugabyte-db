@@ -20,18 +20,13 @@ import {
 import {
   fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
+  fetchXClusterConfig,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import { XClusterConfig } from '../dtos';
-import {
-  AllowedTasks,
-  TableType,
-  Universe,
-  UniverseNamespace,
-  YBTable
-} from '../../../redesign/helpers/dtos';
+import { AllowedTasks, TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
 import { DrConfig } from '../disasterRecovery/dtos';
 import {
   XClusterConfigStatus,
@@ -68,7 +63,7 @@ interface CommonRestartConfigModalProps {
   isVisible: boolean;
   onHide: () => void;
   allowedTasks: AllowedTasks;
-  xClusterConfig: XClusterConfig;
+  xClusterConfigUuid: string;
 }
 type RestartConfigModalProps =
   | (CommonRestartConfigModalProps & {
@@ -78,6 +73,11 @@ type RestartConfigModalProps =
   | (CommonRestartConfigModalProps & { isDrInterface: false });
 
 export const FormStep = {
+  // Uninitialized step is used as a temporary step while
+  // the xCluster config is still being fetched.
+  // The actual first step of the form depends on the state of the
+  // xCluster config.
+  UNINITIALIZED: 'uninitialized',
   SELECT_TABLES: 'selectTables',
   CONFIGURE_BOOTSTRAP: 'configureBootstrap'
 } as const;
@@ -88,35 +88,40 @@ const TRANSLATION_KEY_PREFIX_QUERY_ERROR = 'queryError';
 const TRANSLATION_KEY_PREFIX_XCLUSTER = 'clusterDetail.xCluster';
 
 export const RestartConfigModal = (props: RestartConfigModalProps) => {
-  const { isVisible, onHide, xClusterConfig } = props;
-  // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
-  // Allowing partial restarts when the xCluster config is in initialized status is not expected behavior.
-  // Thus, we skip table selection for the xCluster config setup failed scenario.
-  const isFullConfigRestartRequired =
-    xClusterConfig.status === XClusterConfigStatus.FAILED ||
-    xClusterConfig.status === XClusterConfigStatus.INITIALIZED;
-  const firstFormStep = isFullConfigRestartRequired
-    ? FormStep.CONFIGURE_BOOTSTRAP
-    : FormStep.SELECT_TABLES;
-  const [currentStep, setCurrentStep] = useState<FormStep>(firstFormStep);
+  const { isVisible, onHide, xClusterConfigUuid } = props;
+
+  const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FormStep.UNINITIALIZED);
   const [formWarnings, setFormWarnings] = useState<RestartXClusterConfigFormWarnings>();
 
   const queryClient = useQueryClient();
   const formik = useRef({} as FormikProps<RestartXClusterConfigFormValues>);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
+  // We always want to fetch a fresh xCluster config before presenting the user with
+  // xCluster table actions (add/remove/restart). This is because it gives the backend
+  // an opportunity to sync with the DB and add/drop tables as needed.
+  const xClusterConfigQuery = useQuery(
+    xClusterQueryKey.detail(xClusterConfigUuid),
+    () => fetchXClusterConfig(xClusterConfigUuid),
+    { refetchOnMount: 'always' }
+  );
   const sourceUniverseQuery = useQuery<Universe>(
-    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
-    () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+    universeQueryKey.detail(xClusterConfigQuery.data?.sourceUniverseUUID),
+    () => api.fetchUniverse(xClusterConfigQuery.data?.sourceUniverseUUID),
+    { enabled: !!xClusterConfigQuery.data }
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    universeQueryKey.tables(
+      xClusterConfigQuery.data?.sourceUniverseUUID,
+      XCLUSTER_UNIVERSE_TABLE_FILTERS
+    ),
     () =>
       fetchTablesInUniverse(
-        xClusterConfig.sourceUniverseUUID,
+        xClusterConfigQuery.data?.sourceUniverseUUID,
         XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((response) => response.data)
+      ).then((response) => response.data),
+    { enabled: !!xClusterConfigQuery.data }
   );
 
   const restartConfigMutation = useMutation(
@@ -125,7 +130,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
         ? api.restartDrConfig(props.drConfig.uuid, {
             dbs: formValues.namespaceUuids
           })
-        : restartXClusterConfig(xClusterConfig.uuid, formValues.tableUuids, {
+        : restartXClusterConfig(xClusterConfigUuid, formValues.tableUuids, {
             backupRequestParams: {
               storageConfigUUID: formValues.storageConfig.value
             }
@@ -173,7 +178,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   );
 
   const resetModalState = () => {
-    setCurrentStep(firstFormStep);
+    setCurrentFormStep(FormStep.UNINITIALIZED);
     setFormWarnings({});
   };
   const closeModal = () => {
@@ -183,6 +188,8 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
 
   const getFormSubmitLabel = (formStep: FormStep) => {
     switch (formStep) {
+      case FormStep.UNINITIALIZED:
+        return '';
       case FormStep.SELECT_TABLES:
         return t(`step.selectTables.submitButton.${props.isDrInterface ? 'dr' : 'xCluster'}`);
       case FormStep.CONFIGURE_BOOTSTRAP:
@@ -193,6 +200,8 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   };
   const modalTitle = t(`title.${props.isDrInterface ? 'dr' : 'xCluster'}`);
   if (
+    xClusterConfigQuery.isLoading ||
+    xClusterConfigQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     sourceUniverseTablesQuery.isLoading ||
@@ -212,6 +221,26 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
     );
   }
 
+  if (xClusterConfigQuery.isError) {
+    return (
+      <YBModal
+        title={modalTitle}
+        visible={isVisible}
+        onHide={() => {
+          closeModal();
+        }}
+      >
+        <YBErrorIndicator
+          customErrorMessage={t('failedToFetchXClusterConfig', {
+            keyPrefix: TRANSLATION_KEY_PREFIX_QUERY_ERROR,
+            xClusterConfigUuid: xClusterConfigUuid
+          })}
+        />
+      </YBModal>
+    );
+  }
+
+  const xClusterConfig = xClusterConfigQuery.data;
   const configTableType = getXClusterConfigTableType(
     xClusterConfig,
     sourceUniverseTablesQuery.data
@@ -257,22 +286,36 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
       </YBModal>
     );
   }
+  // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
+  // Allowing partial restarts when the xCluster config is in initialized status is not expected behavior.
+  // Thus, we skip table selection for the xCluster config setup failed scenario.
+  const isTableSelectionAllowed = !(
+    xClusterConfig.status === XClusterConfigStatus.FAILED ||
+    xClusterConfig.status === XClusterConfigStatus.INITIALIZED
+  );
+  const firstFormStep = !isTableSelectionAllowed
+    ? FormStep.CONFIGURE_BOOTSTRAP
+    : FormStep.SELECT_TABLES;
+  if (currentFormStep === FormStep.UNINITIALIZED) {
+    setCurrentFormStep(firstFormStep);
+  }
 
   const handleFormSubmit = async (
-    formValues: RestartXClusterConfigFormValues,
+    values: RestartXClusterConfigFormValues,
     actions: FormikActions<RestartXClusterConfigFormValues>
   ) => {
-    switch (currentStep) {
+    switch (currentFormStep) {
+      case FormStep.UNINITIALIZED:
+        return;
       case FormStep.SELECT_TABLES:
-        setCurrentStep(FormStep.CONFIGURE_BOOTSTRAP);
+        setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         actions.setSubmitting(false);
         return;
-      case FormStep.CONFIGURE_BOOTSTRAP: {
-        restartConfigMutation.mutate(formValues, { onSettled: () => actions.setSubmitting(false) });
+      case FormStep.CONFIGURE_BOOTSTRAP:
+        restartConfigMutation.mutate(values, { onSettled: () => actions.setSubmitting(false) });
         return;
-      }
       default:
-        assertUnreachableCase(currentStep);
+        assertUnreachableCase(currentFormStep);
     }
   };
 
@@ -291,14 +334,14 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   const isButtonDisabled = props.isDrInterface
     ? isActionFrozen(props.allowedTasks, UNIVERSE_TASKS.RESTART_DR)
     : isActionFrozen(props.allowedTasks, UNIVERSE_TASKS.RESTART_REPLICATION);
-  const submitLabel = getFormSubmitLabel(currentStep);
+  const submitLabel = getFormSubmitLabel(currentFormStep);
   return (
     <YBModalForm
       size="large"
       title={modalTitle}
       visible={isVisible}
       validate={(values: RestartXClusterConfigFormValues) =>
-        validateForm(values, currentStep, props.isDrInterface, configTableType)
+        validateForm(values, currentFormStep, props.isDrInterface, configTableType)
       }
       onFormSubmit={handleFormSubmit}
       initialValues={initialValues}
@@ -312,7 +355,12 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
 
-        switch (currentStep) {
+        switch (currentFormStep) {
+          case FormStep.UNINITIALIZED:
+            // This is unreachable because we initialize the form step after fetching the xCluster config.
+            // We also display an error or loading page before reaching this return if the xCluster config
+            // query is not successfully completed.
+            return <></>;
           case FormStep.SELECT_TABLES: {
             // Casting because FormikValues and FormikError have different types.
             const errors = formik.current.errors as FormikErrors<RestartXClusterConfigFormErrors>;
@@ -368,7 +416,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
             );
           }
           default:
-            return assertUnreachableCase(currentStep);
+            return assertUnreachableCase(currentFormStep);
         }
       }}
     />
