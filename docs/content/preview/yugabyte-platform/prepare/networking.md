@@ -45,6 +45,7 @@ When deploying a universe, you can customize the following ports:
 - YSQL API
 - YCQL server
 - YCQL API
+- Prometheus Node Exporter HTTP
 
 If you intend to customize these port numbers, replace the default port assignments with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned.
 
