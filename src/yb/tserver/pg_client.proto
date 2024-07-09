@@ -173,6 +173,7 @@ message PgRenameColumnPB {
 message PgRenameTablePB {
   string database_name = 1;
   string table_name = 2;
+  string schema_name = 3;
 }
 
 // Available replica identity modes for use in CDC

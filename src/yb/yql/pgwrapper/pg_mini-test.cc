@@ -193,6 +193,8 @@ class PgMiniTest : public PgMiniTestBase {
   void ValidateAbortedTxnMetric();
 
   int64_t GetBloomFilterCheckedMetric();
+
+  PgSchemaName GetPgSchema(const string& tbl_name);
 };
 
 class PgMiniTestSingleNode : public PgMiniTest {
@@ -1562,6 +1564,65 @@ TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
       ->skip_table_tombstone_check);
 }
 
+PgSchemaName PgMiniTest::GetPgSchema(const string& tbl_name) {
+  const auto tbl_id = EXPECT_RESULT(GetTableIDFromTableName(tbl_name));
+  master::TableInfoPtr table = EXPECT_RESULT(catalog_manager())->GetTableInfo(tbl_id);
+  const auto schema_name = table->pgschema_name();
+  LOG(INFO) << "Table name = " << tbl_name << ", id =" << tbl_id << ", schema = " << schema_name;
+  return schema_name;
+}
+
+TEST_F(PgMiniTest, AlterTableSetSchema) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S1"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S2"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S3"));
+  ASSERT_OK(conn.Execute("CREATE TABLE S1.TBL (a1 INT PRIMARY KEY, a2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX IDX ON S1.TBL(a2)"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE S1.TBL SET SCHEMA S2"));
+  // Check PG schema name in the CatalogManager.
+  ASSERT_EQ("s2", GetPgSchema("tbl"));
+  ASSERT_EQ("s2", GetPgSchema("idx"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE IF EXISTS S2.TBL SET SCHEMA S3"));
+  // Check PG schema name in the CatalogManager.
+  ASSERT_EQ("s3", GetPgSchema("tbl"));
+  ASSERT_EQ("s3", GetPgSchema("idx"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE S3.TBL"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S3"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S2"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S1"));
+
+  // The command is successful for the deleted table due to IF EXISTS.
+  ASSERT_OK(conn.Execute("ALTER TABLE IF EXISTS S1.TBL SET SCHEMA S3"));
+}
+
+TEST_F(PgMiniTest, AlterPartitionedTableSetSchema) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S1"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S2"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE S1.P_TBL (k INT PRIMARY KEY, v TEXT)  PARTITION BY RANGE(k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE S1.P_TBL_1 PARTITION OF S1.P_TBL FOR VALUES FROM (1) TO (3)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE S1.P_TBL_DEFAULT PARTITION OF S1.P_TBL DEFAULT"));
+  ASSERT_OK(conn.Execute("CREATE INDEX P_TBL_IDX on S1.P_TBL(k)"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE S1.P_TBL SET SCHEMA S2"));
+  // Check PG schema name in the CatalogManager.
+  ASSERT_EQ("s2", GetPgSchema("p_tbl"));
+  ASSERT_EQ("s2", GetPgSchema("p_tbl_idx"));
+
+  ASSERT_EQ("s1", GetPgSchema("p_tbl_1"));
+  ASSERT_EQ("s1", GetPgSchema("p_tbl_default"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE S2.P_TBL"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S2"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S1"));
+}
+
 // ------------------------------------------------------------------------------------------------
 // Tablet Splitting Tests
 // ------------------------------------------------------------------------------------------------
@@ -1669,7 +1730,7 @@ T* GetMetricOpt(const tablet::Tablet& tablet, const MetricPrototype& prototype) 
 }
 
 template <class T>
-T& GetMetric(tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
+T& GetMetric(const tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
   return *CHECK_NOTNULL(GetMetricOpt<T>(server, prototype));
 }
 

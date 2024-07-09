@@ -777,11 +777,23 @@ Status PgClientSession::AlterTable(
   for (const auto& drop_column : req.drop_columns()) {
     alterer->DropColumn(drop_column);
   }
+
   if (!req.rename_table().table_name().empty()) {
     client::YBTableName new_table_name(
         YQL_DATABASE_PGSQL, req.rename_table().database_name(), req.rename_table().table_name());
+    if (!req.rename_table().schema_name().empty()) {
+      new_table_name.set_pgschema_name(req.rename_table().schema_name());
+    }
+    alterer->RenameTo(new_table_name);
+  } else if (!req.rename_table().schema_name().empty()) {
+    client::YBTableName new_table_name(YQL_DATABASE_PGSQL);
+    new_table_name.set_pgschema_name(req.rename_table().schema_name());
+    new_table_name.set_table_id(table_id);
+    const auto ns_id = PgObjectId::GetYbNamespaceIdFromPB(req.table_id());
+    new_table_name.set_namespace_id(ns_id);
     alterer->RenameTo(new_table_name);
   }
+
   if (req.has_replica_identity()) {
     client::YBTablePtr yb_table;
     RETURN_NOT_OK(GetTable(table_id, &table_cache_, &yb_table));
