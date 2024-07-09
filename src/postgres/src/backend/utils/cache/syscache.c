@@ -35,6 +35,7 @@
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
@@ -1000,6 +1001,17 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		4
 	},
+	{ConstraintRelationId,		/* YBCONSTRAINTRELIDTYPIDNAME */
+		ConstraintRelidTypidNameIndexId,
+		3,
+		{
+			Anum_pg_constraint_conrelid,
+			Anum_pg_constraint_contypid,
+			Anum_pg_constraint_conname,
+			0,
+		},
+		16
+	}
 };
 
 typedef struct YbPinnedObjectKey
