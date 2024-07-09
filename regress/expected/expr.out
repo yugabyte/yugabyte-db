@@ -8419,6 +8419,15 @@ SELECT * FROM cypher('expanded_map', $$ MATCH (u) RETURN u $$) as (result agtype
 (8 rows)
 
 --
+-- Issue 1956 - null key
+--
+SELECT agtype_build_map('null'::agtype, 1);
+ERROR:  argument 1: key must not be null
+SELECT agtype_build_map(null, 1);
+ERROR:  argument 1: key must not be null
+SELECT agtype_build_map('name', 'John', 'null'::agtype, 1);
+ERROR:  argument 3: key must not be null
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expanded_map', true);

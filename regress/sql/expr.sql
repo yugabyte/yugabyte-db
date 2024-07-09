@@ -3426,6 +3426,13 @@ SELECT * FROM cypher('expanded_map', $$ CREATE (u {n0: 0, n1: 1, n2: 2, n3: 3, n
 SELECT * FROM cypher('expanded_map', $$ MATCH (u) RETURN u $$) as (result agtype);
 
 --
+-- Issue 1956 - null key
+--
+SELECT agtype_build_map('null'::agtype, 1);
+SELECT agtype_build_map(null, 1);
+SELECT agtype_build_map('name', 'John', 'null'::agtype, 1);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('expanded_map', true);

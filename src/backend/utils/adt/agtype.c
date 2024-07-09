@@ -2401,6 +2401,14 @@ static agtype_value *agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo)
 
             agtv = tostring_helper(args[i], types[i],
                                    "agtype_build_map_as_agtype_value");
+            if (agtv == NULL)
+            {
+                ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("argument %d: key must not be null", i + 1)));
+
+            }
+
             result.res = push_agtype_value(&result.parse_state, WAGT_KEY, agtv);
 
             /* free the agtype_value from tostring_helper */
@@ -6831,7 +6839,7 @@ Datum age_tostring(PG_FUNCTION_ARGS)
 
 /*
  * Helper function to take any valid type and convert it to an agtype string.
- * Returns NULL for NULL output.
+ * Returns NULL for NULL input.
  */
 static agtype_value *tostring_helper(Datum arg, Oid type, char *msghdr)
 {
