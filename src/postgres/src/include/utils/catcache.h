@@ -180,6 +180,11 @@ typedef struct catclist
 	CatCTup    *members[FLEXIBLE_ARRAY_MEMBER]; /* members */
 } CatCList;
 
+typedef struct yb_catclist_iterator
+{
+	CatCList *list;
+	int index;
+} YbCatCListIterator;
 
 typedef struct catcacheheader
 {
@@ -238,4 +243,7 @@ extern void PrintCatCacheListLeakWarning(CatCList *list);
 
 extern long GetCatCacheMisses();
 
+extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
+extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);
+extern void YbCatCListIteratorFree(YbCatCListIterator *iterator);
 #endif							/* CATCACHE_H */
