@@ -10045,7 +10045,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TABLE relation_expr SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TABLE;
 					n->relation = $3;
@@ -10055,7 +10054,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER TABLE IF_P EXISTS relation_expr SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_TABLE;
 					n->relation = $5;

@@ -897,18 +897,8 @@ NOTICE:  AUDIT: SESSION,38,1,DDL,ALTER TABLE,TABLE,public.test2,"ALTER TABLE pub
 	RENAME TO test2;",<none>
 ALTER TABLE public.test2
 	SET SCHEMA test;
-ERROR:  ALTER TABLE SET SCHEMA not supported yet at character 1
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
-NOTICE:  AUDIT: SESSION,39,1,READ,SELECT,,,SELECT 'yb';,<none>
- ?column?
-----------
- yb
-(1 row)
-
-ALTER TABLE test.test2
-	ADD COLUMN description TEXT;
-ERROR:  relation "test.test2" does not exist
+NOTICE:  AUDIT: SESSION,39,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE public.test2
+	SET SCHEMA test;",<none>
 -- YB note: bump audit number to stay same with upstream.
 SELECT 'yb';
 NOTICE:  AUDIT: SESSION,40,1,READ,SELECT,,,SELECT 'yb';,<none>
@@ -918,21 +908,38 @@ NOTICE:  AUDIT: SESSION,40,1,READ,SELECT,,,SELECT 'yb';,<none>
 (1 row)
 
 ALTER TABLE test.test2
-	DROP COLUMN description;
-ERROR:  relation "test.test2" does not exist
+	ADD COLUMN description TEXT;
+NOTICE:  AUDIT: SESSION,41,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
+	ADD COLUMN description TEXT;",<none>
 -- YB note: bump audit number to stay same with upstream.
 SELECT 'yb';
-NOTICE:  AUDIT: SESSION,41,1,READ,SELECT,,,SELECT 'yb';,<none>
+NOTICE:  AUDIT: SESSION,42,1,READ,SELECT,,,SELECT 'yb';,<none>
+ ?column?
+----------
+ yb
+(1 row)
+
+ALTER TABLE test.test2
+	DROP COLUMN description;
+NOTICE:  AUDIT: SESSION,43,1,DDL,ALTER TABLE,TABLE COLUMN,test.test2.description,"ALTER TABLE test.test2
+	DROP COLUMN description;",<none>
+NOTICE:  AUDIT: SESSION,43,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
+	DROP COLUMN description;",<none>
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
+NOTICE:  AUDIT: SESSION,44,1,READ,SELECT,,,SELECT 'yb';,<none>
  ?column?
 ----------
  yb
 (1 row)
 
 DROP TABLE test.test2;
-ERROR:  table "test2" does not exist
+NOTICE:  AUDIT: SESSION,45,1,DDL,DROP TABLE,TABLE,test.test2,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,45,1,DDL,DROP TABLE,TABLE CONSTRAINT,test_pkey on test.test2,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,45,1,DDL,DROP TABLE,INDEX,test.test_pkey,DROP TABLE test.test2;,<none>
 -- YB note: bump audit number to stay same with upstream.
 SELECT 'yb';
-NOTICE:  AUDIT: SESSION,42,1,READ,SELECT,,,SELECT 'yb';,<none>
+NOTICE:  AUDIT: SESSION,46,1,READ,SELECT,,,SELECT 'yb';,<none>
  ?column?
 ----------
  yb
@@ -946,7 +953,7 @@ CREATE SCHEMA foo
 ERROR:  CREATE SCHEMA with elements not supported yet at character 20
 -- YB note: bump audit number to stay same with upstream.
 SELECT 'yb';
-NOTICE:  AUDIT: SESSION,43,1,READ,SELECT,,,SELECT 'yb';,<none>
+NOTICE:  AUDIT: SESSION,47,1,READ,SELECT,,,SELECT 'yb';,<none>
  ?column?
 ----------
  yb
@@ -963,7 +970,7 @@ CREATE FUNCTION public.int_add
 BEGIN
 	return a + b;
 END $$;
-NOTICE:  AUDIT: SESSION,44,1,DDL,CREATE FUNCTION,FUNCTION,"public.int_add(integer,integer)","CREATE FUNCTION public.int_add
+NOTICE:  AUDIT: SESSION,48,1,DDL,CREATE FUNCTION,FUNCTION,"public.int_add(integer,integer)","CREATE FUNCTION public.int_add
 (
 	a INT,
 	b INT
@@ -973,24 +980,24 @@ BEGIN
 	return a + b;
 END $$;",<none>
 SELECT int_add(1, 1);
-NOTICE:  AUDIT: SESSION,45,1,READ,SELECT,,,"SELECT int_add(1, 1);",<none>
-NOTICE:  AUDIT: SESSION,45,2,FUNCTION,EXECUTE,FUNCTION,public.int_add,"SELECT int_add(1, 1);",<none>
+NOTICE:  AUDIT: SESSION,49,1,READ,SELECT,,,"SELECT int_add(1, 1);",<none>
+NOTICE:  AUDIT: SESSION,49,2,FUNCTION,EXECUTE,FUNCTION,public.int_add,"SELECT int_add(1, 1);",<none>
  int_add
 ---------
        2
 (1 row)
 
 CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');
-NOTICE:  AUDIT: SESSION,46,1,DDL,CREATE AGGREGATE,AGGREGATE,public.sum_test(integer),"CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');",<none>
+NOTICE:  AUDIT: SESSION,50,1,DDL,CREATE AGGREGATE,AGGREGATE,public.sum_test(integer),"CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');",<none>
 ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;
-NOTICE:  AUDIT: SESSION,47,1,DDL,ALTER AGGREGATE,AGGREGATE,public.sum_test2(integer),ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;,<none>
+NOTICE:  AUDIT: SESSION,51,1,DDL,ALTER AGGREGATE,AGGREGATE,public.sum_test2(integer),ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;,<none>
 --
 -- Test conversion
 CREATE CONVERSION public.conversion_test FOR 'latin1' TO 'utf8' FROM pg_catalog.iso8859_1_to_utf8;
 ERROR:  CREATE CONVERSION not supported yet at character 1
 -- YB note: bump audit number to stay same with upstream.
 SELECT 'yb';
-NOTICE:  AUDIT: SESSION,48,1,READ,SELECT,,,SELECT 'yb';,<none>
+NOTICE:  AUDIT: SESSION,52,1,READ,SELECT,,,SELECT 'yb';,<none>
  ?column?
 ----------
  yb
@@ -1000,7 +1007,7 @@ ALTER CONVERSION public.conversion_test RENAME TO conversion_test2;
 ERROR:  ALTER CONVERSION not supported yet at character 1
 -- YB note: bump audit number to stay same with upstream.
 SELECT 'yb';
-NOTICE:  AUDIT: SESSION,49,1,READ,SELECT,,,SELECT 'yb';,<none>
+NOTICE:  AUDIT: SESSION,53,1,READ,SELECT,,,SELECT 'yb';,<none>
  ?column?
 ----------
  yb
@@ -1009,16 +1016,16 @@ NOTICE:  AUDIT: SESSION,49,1,READ,SELECT,,,SELECT 'yb';,<none>
 --
 -- Test create/alter/drop database
 CREATE DATABASE contrib_regression_pgaudit;
-NOTICE:  AUDIT: SESSION,50,1,DDL,CREATE DATABASE,,,CREATE DATABASE contrib_regression_pgaudit;,<none>
+NOTICE:  AUDIT: SESSION,54,1,DDL,CREATE DATABASE,,,CREATE DATABASE contrib_regression_pgaudit;,<none>
 ALTER DATABASE contrib_regression_pgaudit RENAME TO contrib_regression_pgaudit2;
-NOTICE:  AUDIT: SESSION,51,1,DDL,ALTER DATABASE,,,ALTER DATABASE contrib_regression_pgaudit RENAME TO contrib_regression_pgaudit2;,<none>
+NOTICE:  AUDIT: SESSION,55,1,DDL,ALTER DATABASE,,,ALTER DATABASE contrib_regression_pgaudit RENAME TO contrib_regression_pgaudit2;,<none>
 DROP DATABASE contrib_regression_pgaudit2;
-NOTICE:  AUDIT: SESSION,52,1,DDL,DROP DATABASE,,,DROP DATABASE contrib_regression_pgaudit2;,<none>
+NOTICE:  AUDIT: SESSION,56,1,DDL,DROP DATABASE,,,DROP DATABASE contrib_regression_pgaudit2;,<none>
 -- Test role as a substmt
 SET pgaudit.log = 'ROLE';
 CREATE TABLE t ();
 CREATE ROLE alice;
-NOTICE:  AUDIT: SESSION,53,1,ROLE,CREATE ROLE,,,CREATE ROLE alice;,<none>
+NOTICE:  AUDIT: SESSION,57,1,ROLE,CREATE ROLE,,,CREATE ROLE alice;,<none>
 CREATE SCHEMA foo2
 	GRANT SELECT
 	   ON public.t
@@ -1026,10 +1033,10 @@ CREATE SCHEMA foo2
 ERROR:  CREATE SCHEMA with elements not supported yet at character 21
 -- YB note: bump audit number to stay same with upstream.
 ALTER ROLE alice CONNECTION LIMIT -1;
-NOTICE:  AUDIT: SESSION,54,1,ROLE,ALTER ROLE,,,ALTER ROLE alice CONNECTION LIMIT -1;,<none>
+NOTICE:  AUDIT: SESSION,58,1,ROLE,ALTER ROLE,,,ALTER ROLE alice CONNECTION LIMIT -1;,<none>
 drop table public.t;
 drop role alice;
-NOTICE:  AUDIT: SESSION,55,1,ROLE,DROP ROLE,,,drop role alice;,<none>
+NOTICE:  AUDIT: SESSION,59,1,ROLE,DROP ROLE,,,drop role alice;,<none>
 --
 -- Test for non-empty stack error
 CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
@@ -1069,12 +1076,12 @@ END;
 --
 -- Test that frees a memory context earlier than expected
 SET pgaudit.log = 'ALL';
-NOTICE:  AUDIT: SESSION,56,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>
+NOTICE:  AUDIT: SESSION,60,1,MISC,SET,,,SET pgaudit.log = 'ALL';,<none>
 CREATE TABLE hoge
 (
 	id int
 );
-NOTICE:  AUDIT: SESSION,57,1,DDL,CREATE TABLE,TABLE,public.hoge,"CREATE TABLE hoge
+NOTICE:  AUDIT: SESSION,61,1,DDL,CREATE TABLE,TABLE,public.hoge,"CREATE TABLE hoge
 (
 	id int
 );",<none>
@@ -1089,7 +1096,7 @@ BEGIN
 	RETURN tmp;
 END $$
 LANGUAGE plpgsql ;
-NOTICE:  AUDIT: SESSION,58,1,DDL,CREATE FUNCTION,FUNCTION,public.test(),"CREATE FUNCTION test()
+NOTICE:  AUDIT: SESSION,62,1,DDL,CREATE FUNCTION,FUNCTION,public.test(),"CREATE FUNCTION test()
 	RETURNS INT AS $$
 DECLARE
 	cur1 cursor for select * from hoge;
@@ -1101,9 +1108,9 @@ BEGIN
 END $$
 LANGUAGE plpgsql ;",<none>
 SELECT test();
-NOTICE:  AUDIT: SESSION,59,1,READ,SELECT,,,SELECT test();,<none>
-NOTICE:  AUDIT: SESSION,59,2,FUNCTION,EXECUTE,FUNCTION,public.test,SELECT test();,<none>
-NOTICE:  AUDIT: SESSION,59,3,READ,SELECT,TABLE,public.hoge,select * from hoge,<none>
+NOTICE:  AUDIT: SESSION,63,1,READ,SELECT,,,SELECT test();,<none>
+NOTICE:  AUDIT: SESSION,63,2,FUNCTION,EXECUTE,FUNCTION,public.test,SELECT test();,<none>
+NOTICE:  AUDIT: SESSION,63,3,READ,SELECT,TABLE,public.hoge,select * from hoge,<none>
  test
 ------
 
@@ -1122,29 +1129,29 @@ grant delete
    to auditor;
 insert into bar (col)
 		 values (1);
-NOTICE:  AUDIT: SESSION,60,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
+NOTICE:  AUDIT: SESSION,64,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
 		 values (1);",<none>
 delete from bar;
-NOTICE:  AUDIT: OBJECT,61,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
-NOTICE:  AUDIT: SESSION,61,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
+NOTICE:  AUDIT: OBJECT,65,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
+NOTICE:  AUDIT: SESSION,65,1,WRITE,DELETE,TABLE,public.bar,delete from bar;,<none>
 insert into bar (col)
 		 values (1);
-NOTICE:  AUDIT: SESSION,62,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
+NOTICE:  AUDIT: SESSION,66,1,WRITE,INSERT,TABLE,public.bar,"insert into bar (col)
 		 values (1);",<none>
 delete from bar
  where col = 1;
-NOTICE:  AUDIT: OBJECT,63,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
+NOTICE:  AUDIT: OBJECT,67,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
  where col = 1;",<none>
-NOTICE:  AUDIT: SESSION,63,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
+NOTICE:  AUDIT: SESSION,67,1,WRITE,DELETE,TABLE,public.bar,"delete from bar
  where col = 1;",<none>
 drop table bar;
 --
 -- Grant roles to each other
 SET pgaudit.log = 'role';
 GRANT user1 TO user2;
-NOTICE:  AUDIT: SESSION,64,1,ROLE,GRANT ROLE,,,GRANT user1 TO user2;,<none>
+NOTICE:  AUDIT: SESSION,68,1,ROLE,GRANT ROLE,,,GRANT user1 TO user2;,<none>
 REVOKE user1 FROM user2;
-NOTICE:  AUDIT: SESSION,65,1,ROLE,REVOKE ROLE,,,REVOKE user1 FROM user2;,<none>
+NOTICE:  AUDIT: SESSION,69,1,ROLE,REVOKE ROLE,,,REVOKE user1 FROM user2;,<none>
 --
 -- Test that FK references do not log but triggers still do
 SET pgaudit.log = 'READ,WRITE';
@@ -1174,12 +1181,12 @@ GRANT UPDATE
    ON bbb
    TO auditor;
 INSERT INTO aaa VALUES (generate_series(1,100));
-NOTICE:  AUDIT: SESSION,66,1,WRITE,INSERT,TABLE,public.aaa,"INSERT INTO aaa VALUES (generate_series(1,100));",<none>
+NOTICE:  AUDIT: SESSION,70,1,WRITE,INSERT,TABLE,public.aaa,"INSERT INTO aaa VALUES (generate_series(1,100));",<none>
 SET pgaudit.log_parameter TO OFF;
 INSERT INTO bbb VALUES (1);
-NOTICE:  AUDIT: SESSION,67,1,WRITE,INSERT,TABLE,public.bbb,INSERT INTO bbb VALUES (1);,<not logged>
-NOTICE:  AUDIT: OBJECT,67,2,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
-NOTICE:  AUDIT: SESSION,67,2,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
+NOTICE:  AUDIT: SESSION,71,1,WRITE,INSERT,TABLE,public.bbb,INSERT INTO bbb VALUES (1);,<not logged>
+NOTICE:  AUDIT: OBJECT,71,2,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
+NOTICE:  AUDIT: SESSION,71,2,WRITE,UPDATE,TABLE,public.bbb,UPDATE bbb set id = new.id + 1,<not logged>
 SET pgaudit.log_parameter TO ON;
 DROP TABLE bbb;
 DROP TABLE aaa;
@@ -1187,8 +1194,8 @@ DROP TABLE aaa;
 DROP EXTENSION pgaudit;
 CREATE TABLE tmp (id int, data text);
 CREATE TABLE tmp2 AS (SELECT * FROM tmp);
-NOTICE:  AUDIT: SESSION,68,1,READ,SELECT,TABLE,public.tmp,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
-NOTICE:  AUDIT: SESSION,68,1,WRITE,INSERT,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
+NOTICE:  AUDIT: SESSION,72,1,READ,SELECT,TABLE,public.tmp,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
+NOTICE:  AUDIT: SESSION,72,1,WRITE,INSERT,TABLE,public.tmp2,CREATE TABLE tmp2 AS (SELECT * FROM tmp);,<none>
 DROP TABLE tmp;
 DROP TABLE tmp2;
 --
@@ -1197,16 +1204,16 @@ CREATE TABLE h(x int ,y int) PARTITION BY HASH(x);
 CREATE TABLE h_0 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 0);
 CREATE TABLE h_1 partition OF h FOR VALUES WITH ( MODULUS 2, REMAINDER 1);
 INSERT INTO h VALUES(1,1);
-NOTICE:  AUDIT: SESSION,69,1,WRITE,INSERT,TABLE,public.h,"INSERT INTO h VALUES(1,1);",<none>
+NOTICE:  AUDIT: SESSION,73,1,WRITE,INSERT,TABLE,public.h,"INSERT INTO h VALUES(1,1);",<none>
 SELECT * FROM h;
-NOTICE:  AUDIT: SESSION,70,1,READ,SELECT,TABLE,public.h,SELECT * FROM h;,<none>
+NOTICE:  AUDIT: SESSION,74,1,READ,SELECT,TABLE,public.h,SELECT * FROM h;,<none>
  x | y
 ---+---
  1 | 1
 (1 row)
 
 SELECT * FROM h_0;
-NOTICE:  AUDIT: SESSION,71,1,READ,SELECT,TABLE,public.h_0,SELECT * FROM h_0;,<none>
+NOTICE:  AUDIT: SESSION,75,1,READ,SELECT,TABLE,public.h_0,SELECT * FROM h_0;,<none>
  x | y
 ---+---
  1 | 1

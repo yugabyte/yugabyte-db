@@ -347,6 +347,8 @@ class PgApiImpl {
 
   Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
 
+  Status AlterTableSetSchema(PgStatement *handle, const char *schema_name);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status AlterTableInvalidateTableCacheEntry(PgStatement *handle);

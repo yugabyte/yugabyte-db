@@ -324,6 +324,8 @@ YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
 YBCStatus YBCPgAlterTableSetTableId(
     YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
 
+YBCStatus YBCPgAlterTableSetSchema(YBCPgStatement handle, const char *schema_name);
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);

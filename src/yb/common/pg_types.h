@@ -56,6 +56,10 @@ struct PgObjectId {
     return GetPgsqlTablespaceId(object_oid);
   }
 
+  NamespaceId GetYbNamespaceId() const {
+    return GetPgsqlNamespaceId(database_oid);
+  }
+
   std::string ToString() const;
 
   template <class PB>
@@ -72,6 +76,11 @@ struct PgObjectId {
   template <class PB>
   static TableId GetYbTableIdFromPB(const PB& pb) {
     return FromPB(pb).GetYbTableId();
+  }
+
+  template <class PB>
+  static NamespaceId GetYbNamespaceIdFromPB(const PB& pb) {
+    return FromPB(pb).GetYbNamespaceId();
   }
 };
 

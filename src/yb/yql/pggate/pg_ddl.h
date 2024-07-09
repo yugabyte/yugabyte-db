@@ -267,6 +267,8 @@ class PgAlterTable : public PgDdl {
 
   Status SetReplicaIdentity(const char identity_type);
 
+  Status SetSchema(const char *schema_name);
+
   Status Exec();
 
   void InvalidateTableCacheEntry();

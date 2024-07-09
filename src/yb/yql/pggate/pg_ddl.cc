@@ -417,6 +417,12 @@ Status PgAlterTable::SetTableId(const PgObjectId& table_id) {
   return Status::OK();
 }
 
+Status PgAlterTable::SetSchema(const char *schema_name) {
+  auto& rename = *req_.mutable_rename_table();
+  rename.set_schema_name(schema_name);
+  return Status::OK();
+}
+
 Status PgAlterTable::Exec() {
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
