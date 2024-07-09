@@ -81,7 +81,7 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
     // Set up the storage config.
     CustomerConfig customerConfig =
         ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
-    log.info("Customer config here: {}", customerConfig.toString());
+    log.info("Customer config here: {}", customerConfig);
 
     // Get the table info for the source universe.
     List<TableInfoForm.NamespaceInfoResp> resp =
@@ -92,7 +92,7 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
     formData.targetUniverseUUID = target.getUniverseUUID();
     formData.name = "DisasterRecovery-1";
     formData.dbScoped = false;
-    formData.dbs = new HashSet<String>();
+    formData.dbs = new HashSet<>();
     for (TableInfoForm.NamespaceInfoResp namespaceInfo : resp) {
       if (namespaceInfo.name.equals("yugabyte")) {
         formData.dbs.add(namespaceInfo.namespaceUUID.toString());
@@ -100,7 +100,7 @@ public class DRLocalTest extends LocalProviderUniverseTestBase {
     }
     formData.bootstrapParams = new XClusterConfigRestartFormData.RestartBootstrapParams();
     formData.bootstrapParams.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
     formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
 
     Result result = createDrConfig(formData);

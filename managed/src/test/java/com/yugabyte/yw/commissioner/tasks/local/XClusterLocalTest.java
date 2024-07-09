@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -92,8 +93,7 @@ public class XClusterLocalTest extends LocalProviderUniverseTestBase {
     }
     formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
     formData.bootstrapParams.tables = formData.tables;
-    formData.bootstrapParams.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
     formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
 
     Result result = createXClusterConfig(formData);
@@ -160,8 +160,7 @@ public class XClusterLocalTest extends LocalProviderUniverseTestBase {
     }
     formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
     formData.bootstrapParams.tables = formData.tables;
-    formData.bootstrapParams.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
     formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
 
     Result result = createXClusterConfig(formData);

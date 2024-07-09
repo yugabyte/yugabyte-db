@@ -275,7 +275,6 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     sourceCertificate.ifPresent(
         cert ->
             createTransferXClusterCertsCopyTasks(
-                xClusterConfig,
                 targetUniverse.getNodes(),
                 xClusterConfig.getReplicationGroupName(),
                 cert,
@@ -396,8 +395,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
     // Set up PITRs for txn/db scoped xCluster.
     if (xClusterConfig.getType() != (ConfigType.Basic)) {
+      Set<MasterTypes.NamespaceIdentifierPB> namespaces;
 
-      Set<MasterTypes.NamespaceIdentifierPB> namespaces = null;
       if (xClusterConfig.getType() == ConfigType.Db) {
         namespaces = getNamespaces(sourceUniverse, sourceDbIds);
         if (namespaces.size() != sourceDbIds.size()) {
@@ -645,16 +644,16 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                         tableInfo.getRelationType()
                             != MasterTypes.RelationType.INDEX_TABLE_RELATION)
                 .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
-                .collect(Collectors.toList());
+                .toList();
         List<String> tableNamesToDeleteOnTargetUniverse =
             getTableInfoList(targetUniverse).stream()
                 .filter(
                     tableInfo ->
-                        tableType.equals(tableInfo.getTableType())
+                        tableType == tableInfo.getTableType()
                             && tableNamesNeedBootstrap.contains(tableInfo.getName())
                             && tableInfo.getNamespace().getName().equals(namespaceName))
                 .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
-                .collect(Collectors.toList());
+                .toList();
         createDeleteTablesFromUniverseTask(
                 targetUniverse.getUniverseUUID(),
                 Collections.singletonMap(namespaceName, tableNamesToDeleteOnTargetUniverse))
@@ -861,7 +860,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Use the last storage config used for a successful backup as the default one.
       Optional<Backup> latestCompletedBackupOptional =
           Backup.fetchLatestByState(backupRequestParams.customerUUID, Backup.BackupState.Completed);
-      if (!latestCompletedBackupOptional.isPresent()) {
+      if (latestCompletedBackupOptional.isEmpty()) {
         throw new RuntimeException(
             "bootstrapParams in XClusterConfigCreateFormData is null, and storageConfigUUID "
                 + "cannot be determined based on the latest successful backup");
@@ -897,7 +896,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               .filter(
                   tableInfo ->
                       tableInfo.getRelationType() != MasterTypes.RelationType.INDEX_TABLE_RELATION)
-              .collect(Collectors.toList());
+              .toList();
       keyspaceTable.tableNameList =
           tablesNeedBootstrapInfoList.stream()
               .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
