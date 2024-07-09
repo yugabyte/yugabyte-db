@@ -2063,11 +2063,6 @@ class ControlScript(object):
                 mandatory_port_available, recommended_port_available)
 
     def is_port_available(self, advertise_ip, port):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            return s.connect_ex((advertise_ip, int(port))) != 0
-        finally:
-            s.close()
         addr_info = socket.getaddrinfo(advertise_ip, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
         for family, socktype, proto, canonname, sockaddr in addr_info:
             try:
