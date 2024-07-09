@@ -84,7 +84,7 @@ export const MigrationTiles: FC<MigrationTilesProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const mNewAssessment = (newMigrationAPIData as MigrationAssessmentReport | undefined)/* ?.data */;
+  const mNewAssessment = newMigrationAPIData as MigrationAssessmentReport | undefined;
 
   const mAssessmentData = migrationAssessmentData as MigrationAssesmentInfo;
   const mSchemaData = migrationSchemaData as MigrateSchemaTaskInfo;
