@@ -1,0 +1,20 @@
+title: NodeProxyConfig
+description: The Proxy Settings for the nodes in the Universe. NodeProxyConfig is part of NodeSpec.
+type: object
+properties:
+  http_proxy:
+    description: The HTTP_PROXY to use
+    type: string
+    example: 'http://10.9.131.7:3128'
+  https_proxy:
+    description: The HTTPS_PROXY to use
+    type: string
+    example: 'http://10.9.131.7:3128'
+  no_proxy_list:
+    description: The NO_PROXY settings. Should follow cURL no_proxy format
+    type: array
+    items:
+      type: string
+    example:
+      - 10.150.0.26
+      - .amazonaws.com

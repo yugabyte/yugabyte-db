@@ -782,6 +782,7 @@ public class HealthChecker {
                           GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
                       : nodeInfo.getYbHomeDir());
         }
+        nodeInfo.setOtelCollectorEnabled(params.universe.getUniverseDetails().otelCollectorEnabled);
         nodeMetadata.add(nodeInfo);
       }
     }
@@ -1102,6 +1103,7 @@ public class HealthChecker {
     private boolean enableYbc = false;
     private int ybcPort = 18018;
     private UUID universeUuid;
+    private boolean otelCollectorEnabled;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
   }
 

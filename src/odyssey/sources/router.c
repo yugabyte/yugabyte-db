@@ -10,6 +10,19 @@
 #include <odyssey.h>
 #include <time.h>
 
+static void clear_stats(struct ConnectionStats *yb_stats) {
+    for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
+        yb_stats[i].active_clients = 0;
+		yb_stats[i].queued_clients = 0;
+		yb_stats[i].waiting_clients = 0;
+		yb_stats[i].active_servers = 0;
+		yb_stats[i].idle_servers = 0;
+		yb_stats[i].query_rate = 0;
+		yb_stats[i].transaction_rate = 0;
+		yb_stats[i].avg_wait_time_ns = 0;
+    }
+}
+
 void od_router_init(od_router_t *router, od_global_t *global)
 {
 	pthread_mutex_init(&router->lock, NULL);
@@ -340,6 +353,8 @@ void od_router_stat(od_router_t *router, uint64_t prev_time_us,
 		    od_route_pool_stat_cb_t callback, void **argv)
 {
 	od_router_lock(router);
+	od_instance_t *instance = argv[0];
+	clear_stats(instance->yb_stats);
 	od_route_pool_stat(&router->route_pool, prev_time_us,
 #ifdef PROM_FOUND
 			   metrics,

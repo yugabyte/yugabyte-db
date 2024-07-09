@@ -33,6 +33,7 @@
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -431,7 +432,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
 
     for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
-      catalog_manager_->StoreXClusterConsumerReplicationStatus(
+      catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
           consumer_replication_state);
     }
 

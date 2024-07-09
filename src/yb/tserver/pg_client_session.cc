@@ -661,6 +661,15 @@ Status PgClientSession::CreateTable(
     const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
   PgCreateTable helper(req);
   RETURN_NOT_OK(helper.Prepare());
+
+  if (xcluster_context_) {
+    const auto& source_table_id = xcluster_context_->GetXClusterSourceTableId(
+        {req.database_name(), req.schema_name(), req.table_name()});
+    if (source_table_id.IsValid()) {
+      helper.SetXClusterSourceTableId(source_table_id);
+    }
+  }
+
   const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
       req.use_transaction(), context->GetClientDeadline()));
   RETURN_NOT_OK(helper.Exec(&client(), metadata, context->GetClientDeadline()));

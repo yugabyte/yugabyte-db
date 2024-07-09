@@ -505,7 +505,7 @@ export enum OnPremNodeState {
 }
 
 // ---------------------------------------------------------------------------
-// Metric Respose Types
+// Metric Response Types
 // Source:
 // - Response JSON from MetricsQueryExecutor.java
 export interface MetricTrace {

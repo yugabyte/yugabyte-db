@@ -922,7 +922,7 @@ public class DrConfigController extends AuthenticatedController {
   @ApiOperation(
       nickname = "getDrConfig",
       value = "Get disaster recovery config",
-      response = DrConfig.class)
+      response = DrConfigGetResp.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

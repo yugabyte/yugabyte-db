@@ -471,10 +471,6 @@ DEFINE_RUNTIME_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating YCQL tables currently in xCluster replication. "
             "For YSQL tables, deletion is always allowed and TRUNCATE is always disallowed.");
 
-DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
-    "When xCluster replication sends a DDL change, wait for the user to enter a "
-    "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
-
 DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "When set, colocation IDs will be assigned sequentially (starting from 20001) "
                  "rather than at random. This is especially useful for making pg_regress "
@@ -514,14 +510,6 @@ DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
 DEFINE_RUNTIME_bool(
     enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
-
-DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
-    "When set, it enables automatic tablet splitting for tables that are part of an "
-    "xCluster replication setup");
-
-DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
-    "When set, it enables automatic tablet splitting for tables that are part of an "
-    "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of a "
@@ -2221,7 +2209,7 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_tablespace_info_task_.StartShutdown();
 
-  cdc_parent_tablet_deletion_task_.StartShutdown();
+  xrepl_parent_tablet_deletion_task_.StartShutdown();
 
   refresh_ysql_pg_catalog_versions_task_.StartShutdown();
 
@@ -2236,7 +2224,7 @@ void CatalogManager::CompleteShutdown() {
   snapshot_coordinator_.Shutdown();
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
-  cdc_parent_tablet_deletion_task_.CompleteShutdown();
+  xrepl_parent_tablet_deletion_task_.CompleteShutdown();
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
   xcluster_manager_->Shutdown();
 
@@ -3098,8 +3086,7 @@ Status CatalogManager::DoSplitTablet(
     .children = { child_tablet_ids_sorted[0], child_tablet_ids_sorted[1] }
   };
   RETURN_NOT_OK(tablet_split_manager_.ProcessSplitTabletResult(
-      source_tablet_info->table()->id(),
-      split_tablet_ids));
+      source_tablet_info->table()->id(), split_tablet_ids, epoch));
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
@@ -3213,24 +3200,8 @@ Status CatalogManager::XReplValidateSplitCandidateTable(const TableId& table_id)
 }
 
 Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const {
-  // Check if this table is part of a cdc stream.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      IsTablePartOfXClusterUnlocked(table_id)) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a CDC stream, table_id: $0",
-        table_id);
-  }
-  // Check if the table is in the bootstrapping phase of xCluster.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
-      xcluster_manager_->DoesTableHaveAnyBootstrappingStream(table_id)) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a bootstrapping CDC stream, table_id: $0",
-        table_id);
-  }
+  RETURN_NOT_OK(xcluster_manager_->ValidateSplitCandidateTable(table_id));
+
   // Check if this table is part of a cdcsdk stream.
   if (!FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables && IsTablePartOfCDCSDK(table_id)) {
     return STATUS_FORMAT(
@@ -3769,8 +3740,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     SharedLock lock(mutex_);
     // Fail rewrites on tables that are part of CDC or XCluster replication, except for
     // TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
-    if (IsTablePartOfXClusterUnlocked(table_id) || (IsTablePartOfCDCSDK(table_id) &&
-        (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
+    if (xcluster_manager_->IsTableReplicated(table_id) ||
+        (IsTablePartOfCDCSDK(table_id) &&
+         (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
       return STATUS(
           NotSupported,
           "cannot rewrite a table that is a part of CDC or XCluster replication."
@@ -4218,6 +4190,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         set_contains_create_table_op(true);
       schedule_ysql_txn_verifier = true;
     }
+  }
+
+  if (!req.xcluster_source_table_id().empty()) {
+    table->mutable_metadata()->mutable_dirty()->pb.set_xcluster_source_table_id(
+        req.xcluster_source_table_id());
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
@@ -5778,7 +5755,8 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   }
 
   SCHECK_EC_FORMAT(
-      FLAGS_enable_delete_truncate_xcluster_replicated_table || !IsTablePartOfXCluster(table_id),
+      FLAGS_enable_delete_truncate_xcluster_replicated_table ||
+          !xcluster_manager_->IsTableReplicated(table_id),
       NotSupported, MasterError(MasterErrorPB::INVALID_REQUEST),
       "Cannot truncate table $0 that is in xCluster replication", table_id);
 
@@ -6278,7 +6256,8 @@ Status CatalogManager::DeleteTable(
   }
 
   // For now, only disable dropping YCQL tables under xCluster replication.
-  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsTablePartOfXCluster(table->id());
+  bool result =
+      table->GetTableType() == YQL_TABLE_TYPE && xcluster_manager_->IsTableReplicated(table->id());
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",
@@ -7286,11 +7265,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
-  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && IsTableXClusterConsumer(table->id())) {
-    // If we're waiting for a Schema because we saw the a replication source with a change,
-    // ensure this alter is compatible with what we're expecting.
-    RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
-  }
+  // If we're waiting for a Schema because we saw the a replication source with a change,
+  // ensure this alter is compatible with what we're expecting.
+  RETURN_NOT_OK(xcluster_manager_->ValidateNewSchema(*table, new_schema));
 
   // Only increment the version number if it is a schema change (AddTable change goes through a
   // different path and it's not processed here).
@@ -7457,9 +7434,6 @@ Status CatalogManager::RegisterNewTabletForSplit(
   // This has to be done while the table lock is held since TableInfo::partitions_ must be updated
   // at the same time as the partition list version.
   RETURN_NOT_OK(table->AddTablet(new_tablet));
-  // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
-  // committed TabletInfo from the `table` ?
-  new_tablet->mutable_metadata()->CommitMutation();
 
   const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
   LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
@@ -7471,6 +7445,9 @@ Status CatalogManager::RegisterNewTabletForSplit(
             << ") for table " << table->ToString()
             << ", new partition_list_version: " << new_partition_list_version;
 
+  // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
+  // committed TabletInfo from the `table` ?
+  new_tablet->mutable_metadata()->CommitMutation();
   return Status::OK();
 }
 
@@ -8709,7 +8686,7 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
     if (ltm->namespace_id() != database->id() || ltm->started_deleting()) {
       continue;
     }
-    if (IsTablePartOfXClusterUnlocked(table->id())) {
+    if (xcluster_manager_->IsTableReplicated(table->id())) {
       LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
                  << " is under replication"
                  << ". Cannot delete a database that contains tables under replication.";
@@ -9911,7 +9888,7 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  cdc_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
+  xrepl_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
   return Status::OK();
 }
@@ -10598,13 +10575,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   // Clean up any DDL verification state that is waiting for this Alter to complete.
   RemoveDdlTransactionState(table->id(), table->EraseDdlTxnsWaitingForSchemaVersion(version));
 
-  // With Replication Enabled, verify that we've finished applying the New Schema.
-  // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
-  if (IsTableXClusterConsumer(table->id())) {
-    // If we're waiting for a Schema because we saw the a replication source with a change,
-    // resume replication now that the alter is complete.
-    RETURN_NOT_OK(ResumeXClusterConsumerAfterNewSchema(*table, version));
-  }
+  RETURN_NOT_OK(xcluster_manager_->HandleTabletSchemaVersionReport(*table, version, epoch));
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version, epoch);
 }

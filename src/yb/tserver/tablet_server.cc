@@ -1333,10 +1333,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
 
   if (xcluster_consumer) {
     int32_t cluster_config_version = -1;
-    if (!resp.has_cluster_config_version()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 30)
-          << "Invalid heartbeat response without a cluster config version";
-    } else {
+    if (resp.has_cluster_config_version()) {
       cluster_config_version = resp.cluster_config_version();
     }
 
@@ -1458,7 +1455,7 @@ Status TabletServer::SetCDCServiceEnabled() {
   return Status::OK();
 }
 
-const TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
+TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
 }
 

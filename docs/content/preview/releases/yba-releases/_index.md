@@ -18,7 +18,6 @@ cascade:
 | [v2.21](v2.21/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.21" release >}} | n/a | n/a |
 | [v2.20](v2.20/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 | [v2.18](v2.18/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
-| [v2.16](v2.16/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.16" release >}} | {{< yb-eol-dates "v2.16" EOM >}} | {{< yb-eol-dates "v2.16" EOL >}} |
 | [v2.14](../ybdb-releases/v2.14/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 
 For end-of-life releases, see [Releases at end of life](../ybdb-releases/#eol-releases).
@@ -39,7 +38,7 @@ YugabyteDB Anywhere v2.20.x supports the following YugabyteDB release series:
 
 - [v2.20.x](../ybdb-releases/v2.20/) (LTS)
 - [v2.18.x](../ybdb-releases/v2.18/) (STS)
-- [v2.16.x](../ybdb-releases/v2.16/) (STS)
+- [v2.16.x](../ybdb-releases/end-of-life/v2.16/) (STS)
 - [v2.14.x](../ybdb-releases/v2.14/) (LTS)
 
 Qualification tests for each new version of YugabyteDB Anywhere are run on the latest version of YugabyteDB in each release series.

@@ -171,15 +171,15 @@ Result<bool> IsSafeTimeReady(
 }
 
 Result<bool> IsReplicationGroupReady(
-    const UniverseReplicationInfo& universe, CatalogManager& catalog_manager) {
+    const UniverseReplicationInfo& universe, XClusterManagerIf& xcluster_manager) {
   // The replication group must be in a healthy state.
   if (!FLAGS_xcluster_skip_health_check_on_replication_setup &&
-      VERIFY_RESULT(catalog_manager.HasReplicationGroupErrors(universe.ReplicationGroupId()))) {
+      VERIFY_RESULT(xcluster_manager.HasReplicationGroupErrors(universe.ReplicationGroupId()))) {
     return false;
   }
 
   auto l = universe.LockForRead();
-  return IsSafeTimeReady(l->pb, *catalog_manager.GetXClusterManager());
+  return IsSafeTimeReady(l->pb, xcluster_manager);
 }
 
 }  // namespace
@@ -329,9 +329,7 @@ Result<bool> ShouldAddTableToReplicationGroup(
     }
 
     const auto& indexed_table_id = GetIndexedTableId(table_pb);
-    auto indexed_table_stream_ids =
-        catalog_manager.GetXClusterConsumerStreamIdsForTable(indexed_table_id);
-    if (indexed_table_stream_ids.empty()) {
+    if (!catalog_manager.GetXClusterManager()->IsTableReplicationConsumer(indexed_table_id)) {
       return false;
     }
   }
@@ -447,7 +445,8 @@ Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
 
   bool is_done = false;
   if (!is_alter_request && state == SysUniverseReplicationEntryPB::ACTIVE) {
-    is_done = VERIFY_RESULT(IsReplicationGroupReady(*universe, catalog_manager));
+    is_done =
+        VERIFY_RESULT(IsReplicationGroupReady(*universe, *catalog_manager.GetXClusterManager()));
   }
 
   return is_done ? IsOperationDoneResult::Done() : IsOperationDoneResult::NotDone();
@@ -599,9 +598,10 @@ Status RemoveTablesFromReplicationGroupInternal(
   RETURN_NOT_OK(catalog_manager.sys_catalog()->Upsert(epoch, &universe, cluster_config.get()));
 
   // 4. Clear in-mem maps.
-  catalog_manager.SyncXClusterConsumerReplicationStatusMap(replication_group_id, producer_map);
+  catalog_manager.GetXClusterManager()->SyncConsumerReplicationStatusMap(
+      replication_group_id, producer_map);
 
-  catalog_manager.ClearXClusterConsumerTableStreams(
+  catalog_manager.GetXClusterManager()->RemoveTableConsumerStreams(
       replication_group_id, consumer_table_ids_to_remove);
 
   l.Commit();

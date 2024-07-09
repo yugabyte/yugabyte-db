@@ -3209,11 +3209,14 @@ class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotSchedul
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
     std::string build_type;
-    if (DEBUG_MODE) {
-      build_type = "debug";
-    } else {
-      build_type = "release";
-    }
+#if defined ADDRESS_SANITIZER || defined THREAD_SANITIZER
+    // In the version of YugabyteDB where the old sys catalog snapshot was generated, the debug
+    // build had a column representation now used only in ASAN and TSAN builds. See
+    // src/yb/common/column_id.h file history for details.
+    build_type = "debug";
+#else
+    build_type = "release";
+#endif
     std::string old_sys_catalog_snapshot_full_path =
         old_sys_catalog_snapshot_path + old_sys_catalog_snapshot_name + "_" + build_type;
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",

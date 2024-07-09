@@ -1068,12 +1068,12 @@ public class PlacementInfoUtil {
     }
 
     if (oldCluster.clusterType == PRIMARY
-        && existingIntent.replicationFactor != userIntent.replicationFactor) {
+        && existingIntent.replicationFactor > userIntent.replicationFactor) {
       LOG.error(
-          "Replication factor for primary cluster cannot be changed from {} to {}",
+          "Replication factor for primary cluster cannot be decreased from {} to {}",
           existingIntent.replicationFactor,
           userIntent.replicationFactor);
-      throw new UnsupportedOperationException("Replication factor cannot be modified.");
+      throw new UnsupportedOperationException("Replication factor cannot be decreased.");
     }
 
     if (!existingIntent.universeName.equals(userIntent.universeName)) {
@@ -1605,6 +1605,8 @@ public class PlacementInfoUtil {
         if (ephemeralDedicatedMasters.contains(removedMaster)) {
           taskParams.nodeDetailsSet.remove(removedMaster);
           maxIdx.decrementAndGet();
+        } else {
+          removedMaster.state = NodeState.ToBeRemoved;
         }
       }
       for (NodeDetails addedMaster : selectMastersResult.addedMasters) {

@@ -130,8 +130,8 @@ public class XClusterAddNamespaceToOutboundReplicationGroup extends XClusterConf
                 return false;
               }
               log.debug(
-                  "Checkpointing status is complete: {}, for universe: {}, xClusterConfig: {},"
-                      + " dbId: {}",
+                  "AddNamespaceToOutboundReplicationGroup, Checkpointing status is complete: {},"
+                      + " for universe: {}, xClusterConfig: {}, dbId: {}",
                   !completionResponse.isNotReady(),
                   sourceUniverse.getUniverseUUID(),
                   xClusterConfig.getName(),

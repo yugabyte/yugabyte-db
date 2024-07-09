@@ -155,7 +155,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Delete the table
   loader->Reset();
-  ASSERT_OK(sys_catalog_->Delete(epoch, table));
+  {
+    auto l = table->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(epoch, table));
+    l.Commit();
+  }
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(kNumSystemTables, loader->tables.size());
 }
@@ -244,7 +248,13 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet3.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
+    {
+      auto l1 = tablet1->LockForWrite();
+      auto l3 = tablet3->LockForWrite();
+      ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
+      l1.Commit();
+      l3.Commit();
+    }
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
     ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
@@ -417,7 +427,11 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
 
   // 4. CHECK DELETE_NAMESPACE
   // Delete the namespace
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, ns));
+  {
+    auto l = ns->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, ns));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -497,7 +511,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_METADATA_EQ(rci2.get(), loader->config_entries[1]);
 
     // 2. CHECK DELETE RedisConfig
-    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci2));
+    {
+      auto l = rci2->LockForWrite();
+      ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci2));
+      l.Commit();
+    }
 
     // Verify the result.
     loader->Reset();
@@ -505,7 +523,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_EQ(1, loader->config_entries.size());
   }
   // 2. CHECK DELETE RedisConfig
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci));
+  {
+    auto l = rci->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -569,7 +591,11 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[3]);
 
   // 2. Remove the SysConfigEntry and verify that it got removed.
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, test_config));
+  {
+    auto l = test_config->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, test_config));
+    l.Commit();
+  }
   loader->Reset();
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(3, loader->sys_configs.size());
@@ -640,7 +666,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   ASSERT_METADATA_EQ(rl.get(), loader->roles[1]);
 
   // 2. CHECK DELETE Role
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rl));
+  {
+    auto l = rl->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rl));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -672,7 +702,11 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   ASSERT_METADATA_EQ(tp.get(), loader->udtypes[0]);
 
   // 2. CHECK DELETE_UDTYPE
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, tp));
+  {
+    auto l = tp->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, tp));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
