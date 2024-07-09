@@ -57,7 +57,14 @@ typedef enum IndexAMProperty
 	AMPROP_CAN_UNIQUE,
 	AMPROP_CAN_MULTI_COL,
 	AMPROP_CAN_EXCLUDE,
-	AMPROP_CAN_INCLUDE
+	AMPROP_CAN_INCLUDE,
+	YB_AMPROP_IS_FOR_YBRELATION,
+	YB_AMPROP_INSERT,
+	YB_AMPROP_DELETE,
+	YB_AMPROP_BACKFILL,
+	YB_AMPROP_MIGHT_RECHECK,
+	YB_AMPROP_GET_BITMAP,
+	YB_AMPROP_BIND_SCHEMA,
 } IndexAMProperty;
 
 
@@ -171,7 +178,8 @@ typedef int64 (*amgetbitmap_function) (IndexScanDesc scan,
 
 /* YB: fetch all valid tuples */
 typedef int64 (*yb_amgetbitmap_function) (IndexScanDesc scan,
-										  YbTIDBitmap *ybtbm);
+										  YbTIDBitmap *ybtbm,
+										  bool recheck);
 
 typedef void (*yb_ambindschema_function) (YBCPgStatement handle,
 										  struct IndexInfo *indexInfo,

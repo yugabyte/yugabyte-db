@@ -84,6 +84,27 @@ static const struct am_propname am_propnames[] =
 	{
 		"can_include", AMPROP_CAN_INCLUDE
 	},
+	{
+		"is_for_ybrelation", YB_AMPROP_IS_FOR_YBRELATION
+	},
+	{
+		"insert", YB_AMPROP_INSERT
+	},
+	{
+		"delete", YB_AMPROP_DELETE
+	},
+	{
+		"backfill", YB_AMPROP_BACKFILL
+	},
+	{
+		"might_recheck", YB_AMPROP_MIGHT_RECHECK
+	},
+	{
+		"get_bitmap", YB_AMPROP_GET_BITMAP
+	},
+	{
+		"bind_schema", YB_AMPROP_BIND_SCHEMA
+	}
 };
 
 static IndexAMProperty
