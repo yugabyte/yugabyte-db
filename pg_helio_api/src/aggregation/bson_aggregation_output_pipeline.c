@@ -103,6 +103,9 @@ extern bool EnableMergeStage;
 /* GUC to enable $merge target collection creatation if not exist */
 extern bool EnableMergeTargetCreation;
 
+/* GUC to enable $merge across databases */
+extern bool EnableMergeAcrossDB;
+
 static void ParseMergeStage(const bson_value_t *existingValue, const
 							char *currentNameSpace, MergeArgs *args);
 static void VaildateMergeOnFieldValues(const bson_value_t *onArray, uint64
@@ -333,8 +336,8 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 	ParseMergeStage(existingValue, context->namespaceName, &mergeArgs);
 
 	/* Look for target collection details */
-	Datum databaseNameDatum = CStringGetTextDatum(mergeArgs.targetDB.string);
-	Datum collectionNameDatum = CStringGetTextDatum(mergeArgs.targetCollection.string);
+	Datum databaseNameDatum = StringViewGetTextDatum(&mergeArgs.targetDB);
+	Datum collectionNameDatum = StringViewGetTextDatum(&mergeArgs.targetCollection);
 
 	MongoCollection *targetCollection =
 		GetMongoCollectionOrViewByNameDatumWithLocalShard(databaseNameDatum,
@@ -570,10 +573,12 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			.string = existingValue->value.v_utf8.str
 		};
 
-
 		args->on.value_type = BSON_TYPE_UTF8;
 		args->on.value.v_utf8.len = 3;
 		args->on.value.v_utf8.str = "_id";
+
+		StringView currentNameSpaceView = CreateStringViewFromString(currentNameSpace);
+		args->targetDB = StringViewFindPrefix(&currentNameSpaceView, '.');
 		return;
 	}
 
@@ -661,17 +666,19 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 									BsonTypeName(value->value_type))));
 			}
 
+			StringView nameSpaceView = CreateStringViewFromString(currentNameSpace);
+			StringView currentDBName = StringViewFindPrefix(&nameSpaceView, '.');
+
 			/* if target database name not mentioned in input let's use source database */
 			if (args->targetDB.length == 0)
 			{
-				const char *dotPtr = strchr(currentNameSpace, '.');
-				Size dbLen = dotPtr - currentNameSpace;
-				char *dbName = palloc0(dbLen + 1);
-				memcpy(dbName, currentNameSpace, dbLen);
-				args->targetDB = (StringView) {
-					.length = dbLen,
-					.string = dbName,
-				};
+				args->targetDB = currentDBName;
+			}
+			else if (!EnableMergeAcrossDB && !StringViewEquals(&currentDBName,
+															   &args->targetDB))
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("merge is not supported across databases")));
 			}
 		}
 		else if (strcmp(key, "on") == 0)

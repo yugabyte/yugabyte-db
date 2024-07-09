@@ -245,6 +245,9 @@ bool EnableMergeStage = DEFAULT_ENABLE_MERGE_STAGE;
 #define DEFAULT_ENABLE_MERGE_TARGET_CREATION false
 bool EnableMergeTargetCreation = DEFAULT_ENABLE_MERGE_TARGET_CREATION;
 
+#define DEFAULT_ENABLE_MERGE_ACROSS_DB false
+bool EnableMergeAcrossDB = DEFAULT_ENABLE_MERGE_ACROSS_DB;
+
 #define DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE false
 bool EnableCursorsOnAggregationQueryRewrite =
 	DEFAULT_ENABLE_CURSORS_ON_AGGREGATION_QUERY_REWRITE;
@@ -672,6 +675,13 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Enables support for target collection creation in pg_helio_api."),
 		NULL, &EnableMergeTargetCreation, DEFAULT_ENABLE_MERGE_TARGET_CREATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableMergeAcrossDB",
+		gettext_noop(
+			"Enables support for merge stage in pg_helio_api."),
+		NULL, &EnableMergeAcrossDB, DEFAULT_ENABLE_MERGE_ACROSS_DB,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

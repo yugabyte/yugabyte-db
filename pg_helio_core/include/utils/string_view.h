@@ -9,6 +9,7 @@
  *-------------------------------------------------------------------------
  */
 #include <postgres.h>
+#include <utils/builtins.h>
 
 #ifndef STRING_VIEW_H
 #define STRING_VIEW_H
@@ -206,6 +207,13 @@ StringViewContains(const StringView *source, char character)
 {
 	return source != NULL && source->length > 0 && memchr(source->string, character,
 														  source->length) != NULL;
+}
+
+
+inline static Datum
+StringViewGetTextDatum(const StringView *string)
+{
+	return PointerGetDatum(cstring_to_text_with_len(string->string, string->length));
 }
 
 
