@@ -2068,6 +2068,17 @@ class ControlScript(object):
             return s.connect_ex((advertise_ip, int(port))) != 0
         finally:
             s.close()
+        addr_info = socket.getaddrinfo(advertise_ip, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        for family, socktype, proto, canonname, sockaddr in addr_info:
+            try:
+                s = socket.socket(family, socktype, proto)
+                try:
+                    return s.connect_ex(sockaddr) != 0
+                finally:
+                    s.close()
+            except OSError:
+                continue
+        return False
 
     def get_mandatory_ports(self):
         mandatory_ports = []
