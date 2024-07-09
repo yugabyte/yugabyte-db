@@ -76,6 +76,8 @@ pgbson * GetObjectIdFilterFromQueryDocument(pgbson *queryDoc);
 
 pgbson * RewriteDocumentAddObjectId(pgbson *document);
 pgbson * RewriteDocumentValueAddObjectId(const bson_value_t *value);
+pgbson * RewriteDocumentWithCustomObjectId(pgbson *document,
+										   pgbson *objectIdToWrite);
 
 void ValidateIdField(const bson_value_t *idValue);
 

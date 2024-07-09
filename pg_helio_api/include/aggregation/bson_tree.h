@@ -233,6 +233,8 @@ const BsonLeafPathNode * AddValueNodeToLeafArrayWithField(
 	CreateLeafNodeFunc createFunc,
 	bool treatLeafDataAsConstant);
 
+void BuildTreeFromPgbson(BsonIntermediatePathNode *tree, pgbson *document);
+
 /*
  * Helper function to create the Root node of a Bson Path Tree.
  */

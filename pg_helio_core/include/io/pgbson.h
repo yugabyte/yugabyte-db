@@ -129,4 +129,18 @@ PgbsonFreeIfNotNull(pgbson *value)
 }
 
 
+/*
+ * Generate a new ObjectID document.
+ * e.g, { "" : ObjectId("5f3e3b3b1d9f3b0001f3b3b1")}
+ */
+static inline pgbson *
+PgbsonGenerateOidDocument()
+{
+	bson_value_t objectidValue;
+	objectidValue.value_type = BSON_TYPE_OID;
+	bson_oid_init(&(objectidValue.value.v_oid), NULL);
+	return BsonValueToDocumentPgbson(&objectidValue);
+}
+
+
 #endif

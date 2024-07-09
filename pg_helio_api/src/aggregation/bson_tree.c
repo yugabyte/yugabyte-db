@@ -1001,3 +1001,37 @@ CreateLeafNodeWithArrayField(const StringView *fieldPath, const char *relativePa
 		sizeof(BsonLeafArrayWithFieldPathNode));
 	return &leafNode->leafData;
 }
+
+
+/*
+ * Builds a BsonIntermediatePathNode tree from a pgbson document.
+ *
+ * Parameters:
+ *  - tree : The root node of the BsonIntermediatePathNode tree.
+ *  - document : The pgbson document to build the tree from.
+ */
+void
+BuildTreeFromPgbson(BsonIntermediatePathNode *tree, pgbson *document)
+{
+	bson_iter_t documentIterator;
+	PgbsonInitIterator(document, &documentIterator);
+
+	bool treatLeafDataAsConstant = true;
+	while (bson_iter_next(&documentIterator))
+	{
+		StringView pathView = bson_iter_key_string_view(&documentIterator);
+		const bson_value_t *docValue = bson_iter_value(&documentIterator);
+
+		/* we assume the _id has already been added to the writer before calling this function */
+		if (strcmp(pathView.string, "_id") == 0)
+		{
+			continue;
+		}
+
+		bool nodeCreated = false;
+		TraverseDottedPathAndGetOrAddLeafFieldNode(
+			&pathView, docValue,
+			tree, BsonDefaultCreateLeafNode,
+			treatLeafDataAsConstant, &nodeCreated);
+	}
+}

@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_merge_handle_when_matc
  RETURNS __CORE_SCHEMA__.bson
  LANGUAGE c
  IMMUTABLE STRICT
-AS 'MODULE_PATHNAME', $function$command_bson_dollar_merge_handle_when_matched$function$;
+AS 'MODULE_PATHNAME', $function$bson_dollar_merge_handle_when_matched$function$;
 
 /*
 Description:  * The runtime implementation of this is identical to $eq. so we just make a direct function call to the function.
@@ -35,14 +35,15 @@ AS 'MODULE_PATHNAME', $function$bson_dollar_merge_join_filter$function$;
 Description: This function adds object ID in a bson document if it not present.
 Arguments:
   - @bson: input document
+  - @bson: object id to add
 Returns: 
   @bson: output bson with object id.
 */
-CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_merge_add_object_id(__CORE_SCHEMA__.bson)
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_merge_add_object_id(__CORE_SCHEMA__.bson,  __CORE_SCHEMA__.bson)
  RETURNS __CORE_SCHEMA__.bson
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
-AS 'MODULE_PATHNAME', $function$command_bson_dollar_merge_add_object_id$function$;
+AS 'MODULE_PATHNAME', $function$bson_dollar_merge_add_object_id$function$;
 
 /*
 Description: This function is use in $merge stage aggregation to fail in case of user wants to fail in `whenNotMatced`.
@@ -52,4 +53,18 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_merge_fail_when_not_ma
  RETURNS __CORE_SCHEMA__.bson
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
-AS 'MODULE_PATHNAME', $function$command_bson_dollar_merge_fail_when_not_matched$function$;
+AS 'MODULE_PATHNAME', $function$bson_dollar_merge_fail_when_not_matched$function$;
+
+/*
+Description: This function generates object ID.
+Arguments:
+  - @bson: this is a dummy input as Non Immutable function are not supported in citus MERGE command.
+           passing dummy input to prevent PostgreSQL from treating it as a constant function and evaluating it prematurely.
+Returns: 
+  @bson: output bson with object id.
+*/
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_merge_generate_object_id(__CORE_SCHEMA__.bson)
+ RETURNS __CORE_SCHEMA__.bson
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bson_dollar_merge_generate_object_id$function$;

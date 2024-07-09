@@ -259,6 +259,7 @@ Oid BsonDollarInverseMatchFunctionId(void);
 Oid BsonDollarProjectFunctionOid(void);
 Oid BsonDollarMergeHandleWhenMatchedFunctionOid(void);
 Oid BsonDollarMergeAddObjectIdFunctionOid(void);
+Oid BsonDollarMergeGenerateObjectId(void);
 Oid BsonDollarMergeFailWhenNotMatchedFunctionOid(void);
 Oid BsonDollarMergeJoinFunctionOid(void);
 Oid BsonDollarProjectFindFunctionOid(void);

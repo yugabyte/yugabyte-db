@@ -82,8 +82,8 @@ static int NumberOfIgnoredFields = sizeof(IgnoredCommonSpecFields) / sizeof(char
 
 /* Forward declartion */
 static int CompareStringsCaseInsensitive(const void *a, const void *b);
-
-static pgbson * RewriteDocumentAddObjectIdCore(const bson_value_t *docValue);
+static pgbson * RewriteDocumentAddObjectIdCore(const bson_value_t *docValue,
+											   bson_value_t *objectIdToWrite);
 
 /*
  * FindShardKeyValueForDocumentId queries the collection for the shard key value that
@@ -312,7 +312,8 @@ ValidateIdField(const bson_value_t *idValue)
 pgbson *
 RewriteDocumentValueAddObjectId(const bson_value_t *value)
 {
-	pgbson *result = RewriteDocumentAddObjectIdCore(value);
+	bson_value_t *objectIdToWrite = NULL;
+	pgbson *result = RewriteDocumentAddObjectIdCore(value, objectIdToWrite);
 	if (result == NULL)
 	{
 		return PgbsonInitFromDocumentBsonValue(value);
@@ -332,8 +333,33 @@ RewriteDocumentValueAddObjectId(const bson_value_t *value)
 pgbson *
 RewriteDocumentAddObjectId(pgbson *document)
 {
+	bson_value_t *objectIdToWrite = NULL;
 	bson_value_t value = ConvertPgbsonToBsonValue(document);
-	pgbson *result = RewriteDocumentAddObjectIdCore(&value);
+	pgbson *result = RewriteDocumentAddObjectIdCore(&value, objectIdToWrite);
+	if (result == NULL)
+	{
+		return document;
+	}
+
+	return result;
+}
+
+
+/*
+ * This function closely resembles `RewriteDocumentValueAddObjectId`
+ * Additionally accepts an object ID as input, allowing it to insert the same object ID into the document if it is absent.
+ */
+pgbson *
+RewriteDocumentWithCustomObjectId(pgbson *document,
+								  pgbson *objectIdToWrite)
+{
+	pgbsonelement objectIdElement;
+	TryGetSinglePgbsonElementFromPgbson(objectIdToWrite, &objectIdElement);
+
+	Assert(objectIdElement.bsonValue.value_type == BSON_TYPE_OID);
+
+	bson_value_t value = ConvertPgbsonToBsonValue(document);
+	pgbson *result = RewriteDocumentAddObjectIdCore(&value, &objectIdElement.bsonValue);
 	if (result == NULL)
 	{
 		return document;
@@ -348,10 +374,12 @@ RewriteDocumentAddObjectId(pgbson *document)
  * Traverses the document pointed by the docValue,
  * if the _id is the first field, then returns NULL.
  * If the _id is found, rewrites it to be the first field.
- * If the _id is not found, generates one and concats the remaining doc.
+ * If the _id is not found, and objectIdToWrite is not null, then use objectIdToWrite as the _id field and concatenate the remaining doc.
+ * If the _id is not found, and objectIdToWrite is null, then generate one and concatenate the remaining doc.
  */
 static pgbson *
-RewriteDocumentAddObjectIdCore(const bson_value_t *docValue)
+RewriteDocumentAddObjectIdCore(const bson_value_t *docValue,
+							   bson_value_t *objectIdToWrite)
 {
 	bson_iter_t it;
 	BsonValueInitIterator(docValue, &it);
@@ -405,10 +433,18 @@ RewriteDocumentAddObjectIdCore(const bson_value_t *docValue)
 	}
 	else
 	{
-		/* generate new object_id and set objectid. */
 		bson_value_t objectidValue;
 		objectidValue.value_type = BSON_TYPE_OID;
-		bson_oid_init(&(objectidValue.value.v_oid), NULL);
+		if (objectIdToWrite)
+		{
+			/* if objectId is passed by caller then we should write that */
+			objectidValue = *objectIdToWrite;
+		}
+		else
+		{
+			/* generate new object_id and set objectid. */
+			bson_oid_init(&(objectidValue.value.v_oid), NULL);
+		}
 
 		/* set the content now and add the object_id. */
 		PgbsonWriterAppendValue(&writer, "_id", 3, &objectidValue);

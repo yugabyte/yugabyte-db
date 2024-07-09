@@ -3,8 +3,7 @@
  *
  * src/planner/bson_aggregation_output_pipeline.c
  *
- * Implementation of the backend query generation for pipelines that have
- * nested pipelines (such as $out, $merge).
+ * Implementation of the backend query generation for output pipelines that have (such as $out, $merge).
  *
  *-------------------------------------------------------------------------
  */
@@ -49,6 +48,8 @@
 #include "operators/bson_expression.h"
 #include "metadata/index.h"
 #include "utils/hashset_utils.h"
+#include "aggregation/bson_tree.h"
+#include "aggregation/bson_tree_write.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
 
@@ -113,7 +114,8 @@ static void VaildateMergeOnFieldValues(const bson_value_t *onArray, uint64
 static void RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 										bool isSourceAndTargetAreSame,
 										int *sourceShardKeyValueAttrNo);
-static void WriteJoinConditionToQueryDollarMerge(Query *query, Var *sourceDocVar,
+static void WriteJoinConditionToQueryDollarMerge(Query *query,
+												 Var *sourceDocVar,
 												 Var *targetDocVar,
 												 Var *sourceShardKeyValueVar,
 												 Var *targetShardKeyValueVar, MergeArgs
@@ -122,11 +124,16 @@ static MergeAction * MakeActionWhenMatched(WhenMatchedAction whenMatched,
 										   Var *sourceDocVar,
 										   Var *targetDocVar);
 static MergeAction * MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched,
-											  Var *sourceDocVar, Var *sourceShardKeyVar,
+											  Var *sourceDocVar,
+											  Var *generatedObjectIdVar,
+											  Var *sourceShardKeyVar,
 											  MongoCollection *targetCollection);
 static bool IsCompoundUniqueIndexPresent(const bson_value_t *onValues,
 										 bson_iter_t *indexKeyDocumnetIter,
 										 const int totalIndexKeys);
+static void ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
+										   pgbson *sourceDocument,
+										   pgbson *targetDocument);
 static inline bool IsSingleUniqueIndexPresent(const char *onValue,
 											  bson_iter_t *indexKeyDocumnetIter);
 static inline void AddTargetCollectionRTEDollarMerge(Query *query,
@@ -137,24 +144,39 @@ static inline bool ValidatePreviousStagesOfDollarMerge(Query *query);
 static bool MergeQueryCTEWalker(Node *node, void *context);
 static inline void ValidateFinalPgbsonBeforeWriting(const pgbson *sourceDocument);
 
-PG_FUNCTION_INFO_V1(command_bson_dollar_merge_handle_when_matched);
-PG_FUNCTION_INFO_V1(command_bson_dollar_merge_add_object_id);
-PG_FUNCTION_INFO_V1(command_bson_dollar_merge_fail_when_not_matched);
-
+PG_FUNCTION_INFO_V1(bson_dollar_merge_handle_when_matched);
+PG_FUNCTION_INFO_V1(bson_dollar_merge_add_object_id);
+PG_FUNCTION_INFO_V1(bson_dollar_merge_fail_when_not_matched);
+PG_FUNCTION_INFO_V1(bson_dollar_merge_generate_object_id);
 
 /*
  * In the `$merge` stage, this function is utilized to add the '_id' field to the source document if it is missing.
  * Stages such as $project have the potential to eliminate the _id field, which is essential for inserting into the target collection.
  */
 Datum
-command_bson_dollar_merge_add_object_id(PG_FUNCTION_ARGS)
+bson_dollar_merge_add_object_id(PG_FUNCTION_ARGS)
 {
 	pgbson *sourceDocument = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *generatedObjectID = PG_GETARG_PGBSON(1);
 
 	/* Add and validate _id */
-	pgbson *outputBson = RewriteDocumentAddObjectId(sourceDocument);
+	pgbson *outputBson = RewriteDocumentWithCustomObjectId(sourceDocument,
+														   generatedObjectID);
 	ValidateFinalPgbsonBeforeWriting(outputBson);
+
+	PG_FREE_IF_COPY(sourceDocument, 0);
 	PG_RETURN_POINTER(outputBson);
+}
+
+
+/*
+ * In the `$merge` stage, this function is utilized to generate object id field.
+ * we use generated object id in case source document does not have object id.
+ */
+Datum
+bson_dollar_merge_generate_object_id(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_POINTER(PgbsonGenerateOidDocument());
 }
 
 
@@ -162,7 +184,7 @@ command_bson_dollar_merge_add_object_id(PG_FUNCTION_ARGS)
  * In the `$merge` stage, this function is utilized to handle the `whenMatched` actions of the `$merge` stage.
  */
 Datum
-command_bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
+bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 {
 	pgbson *sourceDocument = PG_GETARG_PGBSON(0);
 	pgbson *targetDocument = PG_GETARG_PGBSON(1);
@@ -174,29 +196,9 @@ command_bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 	{
 		case WhenMatched_REPLACE:
 		{
-			bson_iter_t targetDocumentIterator;
-			bson_value_t idFromTargetDocument = { 0 };
-
-			/* replaced document should have `_id` field from target document */
-			if (PgbsonInitIteratorAtPath(targetDocument, "_id",
-										 &targetDocumentIterator))
-			{
-				idFromTargetDocument = *bson_iter_value(&targetDocumentIterator);
-
-				/* let's validate ID */
-				if (idFromTargetDocument.value_type == BSON_TYPE_ARRAY)
-				{
-					ereport(ERROR, (errcode(MongoNotSingleValueField),
-									errmsg(
-										"After applying the update to the document, the (immutable) field"
-										" '_id' was found to be an array or array descendant.")));
-				}
-				ValidateIdField(&idFromTargetDocument);
-			}
-
 			pgbson_writer writer;
-			PgbsonWriterInit(&writer);
-			PgbsonWriterAppendValue(&writer, "_id", 3, &idFromTargetDocument);
+			ValidateAndAddObjectIdToWriter(&writer, sourceDocument, targetDocument);
+
 			bson_iter_t sourceDocumentIterator;
 			PgbsonInitIterator(sourceDocument, &sourceDocumentIterator);
 
@@ -216,6 +218,27 @@ command_bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 			}
 
 			finalDocument = PgbsonWriterGetPgbson(&writer);
+			break;
+		}
+
+		case WhenMatched_MERGE:
+		{
+			pgbson_writer writer;
+			ValidateAndAddObjectIdToWriter(&writer, sourceDocument, targetDocument);
+
+			/*
+			 * Project the key-value pairs of both the source and target documents onto the BsonIntermediatePathNode Tree.
+			 * The source document is projected first because its values are prioritized; if a target document's key already exists in the tree,
+			 * its values will not override the existing ones.
+			 */
+			BsonIntermediatePathNode *tree = MakeRootNode();
+			BuildTreeFromPgbson(tree, sourceDocument);
+			BuildTreeFromPgbson(tree, targetDocument);
+
+			TraverseTreeAndWrite(tree, &writer, targetDocument);
+			finalDocument = PgbsonWriterGetPgbson(&writer);
+
+			FreeTree(tree);
 			break;
 		}
 
@@ -239,7 +262,6 @@ command_bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 
 		case WhenMatched_PIPELINE:
 		case WhenMatched_LET:
-		case WhenMatched_MERGE:
 		{
 			ereport(ERROR, (errcode(MongoCommandNotSupported),
 							errmsg(
@@ -268,7 +290,7 @@ command_bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
  * This function accepts dummy arguments and has return type to prevent PostgreSQL from treating it as a constant function and evaluating it prematurely.
  */
 Datum
-command_bson_dollar_merge_fail_when_not_matched(PG_FUNCTION_ARGS)
+bson_dollar_merge_fail_when_not_matched(PG_FUNCTION_ARGS)
 {
 	ereport(ERROR, (errcode(MongoMergeStageNoMatchingDocument),
 					errmsg(
@@ -288,8 +310,9 @@ command_bson_dollar_merge_fail_when_not_matched(PG_FUNCTION_ARGS)
  *
  * MERGE INTO ONLY mongo_data.documents_2 documents_2
  * USING (
- *          SELECT bson_dollar_merge_add_object_id(collection.document) AS document,
- *					'2'::bigint AS target_shard_key_value
+ *          SELECT collection.document AS document,
+ *                 '2'::bigint AS target_shard_key_value,  -- (2 is collection_id of target collection)
+ *                  bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
  *			FROM mongo_data.documents_1 collection
  *			WHERE collection.shard_key_value = '1'::bigint
  *		 ) agg_stage_0
@@ -416,7 +439,8 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 	query->commandType = CMD_MERGE;
 	AddTargetCollectionRTEDollarMerge(query, targetCollection);
 
-	Var *sourceDocVar = makeVar(sourceCollectionVarNo, sourceDocAttrNo, BsonTypeId(), -1,
+	Var *sourceDocVar = makeVar(sourceCollectionVarNo, sourceDocAttrNo,
+								BsonTypeId(), -1,
 								InvalidOid, 0);
 	Var *targetDocVar = makeVar(targetCollectionVarNo, targetDocAttrNo, BsonTypeId(), -1,
 								InvalidOid, 0);
@@ -425,18 +449,22 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 	Var *sourceShardKeyValueVar = makeVar(sourceCollectionVarNo,
 										  sourceShardKeyValueAttrNo, INT8OID, -1, 0, 0);
 
-	/* Add the MergeAction node to the mergeActionList field of the Query node */
+	/* we will append generated object_id in source query at 3rd position after shard_key_value column */
+	const int generatedObjectIdAttrNo = sourceShardKeyValueAttrNo + 1;
+	Var *generatedObjectIdVar = makeVar(sourceCollectionVarNo,
+										generatedObjectIdAttrNo, BsonTypeId(), -1, 0, 0);
+
 	query->mergeActionList = list_make2(MakeActionWhenMatched(mergeArgs.whenMatched,
 															  sourceDocVar, targetDocVar),
 										MakeActionWhenNotMatched(mergeArgs.whenNotMatched,
 																 sourceDocVar,
+																 generatedObjectIdVar,
 																 sourceShardKeyValueVar,
 																 targetCollection));
 
 	WriteJoinConditionToQueryDollarMerge(query, sourceDocVar, targetDocVar,
 										 sourceShardKeyValueVar, targetShardKeyValueVar,
 										 mergeArgs);
-
 	return query;
 }
 
@@ -482,10 +510,14 @@ MakeActionWhenMatched(WhenMatchedAction whenMatched, Var *sourceDocVar, Var *tar
  * This function is responsible for constructing the following segment of the merge query :
  * WHEN NOT MATCHED THEN
  * INSERT (shard_key_value, object_id, document, creation_time)
- * VALUE (source.target_shard_key_value, bson_get_value(source.document, '_id'::text), source.document, <current-time>)
+ * VALUE (source.target_shard_key_value,
+ *        COALESCE(bson_get_value(source.document, '_id'::text),
+ *        source.document), bson_dollar_merge_add_object_id(source.document),
+ *        <current-time>)
  */
 static MergeAction *
 MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
+						 Var *generatedObjectIdVar,
 						 Var *sourceShardKeyVar, MongoCollection *targetCollection)
 {
 	MergeAction *action = makeNode(MergeAction);
@@ -502,18 +534,31 @@ MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
 	Const *nowValue = makeConst(TIMESTAMPTZOID, -1, InvalidOid, 8,
 								TimestampTzGetDatum(nowValueTime), false, true);
 
+	/* let's build func expr for `object_id` column */
 	const char *objectIdField = "_id";
 	StringView objectIdFieldStringView = CreateStringViewFromString(objectIdField);
 	Const *objectIdConst = MakeTextConst(objectIdFieldStringView.string,
 										 objectIdFieldStringView.length);
 
-	List *argsforObjectIdExtractionForInsertion = list_make2(sourceDocVar, objectIdConst);
+	List *argsBsonGetValueFunc = list_make2(sourceDocVar, objectIdConst);
 	Oid functionOid = (whenNotMatched == WhenNotMatched_INSERT) ?
 					  BsonGetValueFunctionOid() :
 					  BsonDollarMergeFailWhenNotMatchedFunctionOid();
 
-	FuncExpr *addObjectIdExtractFuncExpr = makeFuncExpr(
-		functionOid, BsonTypeId(), argsforObjectIdExtractionForInsertion, InvalidOid,
+	FuncExpr *bsonGetValueFuncExpr = makeFuncExpr(
+		functionOid, BsonTypeId(), argsBsonGetValueFunc, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	CoalesceExpr *coalesce = makeNode(CoalesceExpr);
+	coalesce->coalescetype = BsonTypeId();
+	coalesce->coalescecollid = InvalidOid;
+	coalesce->args = list_make2(bsonGetValueFuncExpr, generatedObjectIdVar);
+
+	/* let's build func expr for `document` column */
+	List *argsForAddObjecIdFunc = list_make2(sourceDocVar, generatedObjectIdVar);
+	FuncExpr *addObjecIdFuncExpr = makeFuncExpr(
+		BsonDollarMergeAddObjectIdFunctionOid(), BsonTypeId(), argsForAddObjecIdFunc,
+		InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	/* for insert operation */
@@ -521,9 +566,9 @@ MakeActionWhenNotMatched(WhenNotMatchedAction whenNotMatched, Var *sourceDocVar,
 		makeTargetEntry((Expr *) sourceShardKeyVar,
 						MONGO_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER,
 						"target_shard_key_value", false),
-		makeTargetEntry((Expr *) addObjectIdExtractFuncExpr,
+		makeTargetEntry((Expr *) coalesce,
 						MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER, "object_id", false),
-		makeTargetEntry((Expr *) sourceDocVar,
+		makeTargetEntry((Expr *) addObjecIdFuncExpr,
 						MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER, "document", false),
 		makeTargetEntry((Expr *) nowValue,
 						targetCollection->mongoDataCreationTimeVarAttrNumber,
@@ -637,7 +682,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 					}
 					else
 					{
-						ereport(ERROR, (errcode(MongoLocation40415),
+						ereport(ERROR, (errcode(MongoUnknownBsonField),
 										errmsg("BSON field 'into.%s' is an unknown field",
 											   innerKey),
 										errhint(
@@ -771,11 +816,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 			}
 			else if (strcmp(value->value.v_utf8.str, "merge") == 0)
 			{
-				ereport(ERROR, (errcode(MongoCommandNotSupported),
-								errmsg(
-									"$merge 'whenMatched' with 'merge' option not supported yet"),
-								errhint(
-									"$merge 'whenMatched' with 'merge' option not supported yet")));
+				args->whenMatched = WhenMatched_MERGE;
 			}
 			else if (strcmp(value->value.v_utf8.str, "fail") == 0)
 			{
@@ -856,12 +897,13 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 
 /*
  * Before $merge stage for existing query we need to modify target list for :
- * 1. Add `BsonDollarMergeAddObjectIdFunctionOid` Func Expr to add `_id` field to the source document if missing.
+ * 1. Generate a object id and add it to the target list, if an object ID is missing during insertion, use the one generated one.
  * 2. Add target collection_id to source tuples so that we can achieve a TRUE equi-join condition. As Citus does not support joins without have equi-join condition on distributed table.
  *
  * After this function new targetList of query will be like :
- * SELECT bson_dollar_merge_add_object_id(collection.document) AS document,
- *        '2'::bigint AS target_shard_key_value  -- (2 is collection_id of target collection)
+ * SELECT  collection.document AS document,
+ *        '2'::bigint AS target_shard_key_value,  -- (2 is collection_id of target collection)
+ *         bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
  * FROM   mongo_data.documents_1 collection
  * WHERE collection.shard_key_value = '1'::bigint
  */
@@ -870,23 +912,12 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 							bool isSourceAndTargetAreSame,
 							int *sourceShardKeyValueAttrNo)
 {
-	/* 1. In Existing query first entry of targetList should be document, use same var and pass it to 1BsonDollarMergeAddObjectIdFunctionOid` */
-	TargetEntry *sourceDocTE = (TargetEntry *) linitial(query->targetList);
-	Node *sourceDocVar = (Node *) sourceDocTE->expr;
-	List *argsForAddObjectIdFuncExpr = list_make1(sourceDocVar);
-	FuncExpr *addObjectIdFuncExpr = makeFuncExpr(BsonDollarMergeAddObjectIdFunctionOid(),
-												 BsonTypeId(),
-												 argsForAddObjectIdFuncExpr, InvalidOid,
-												 InvalidOid,
-												 COERCE_EXPLICIT_CALL);
-	sourceDocTE->expr = (Expr *) addObjectIdFuncExpr;
-
-	/* 2. collection is not sharded so add target collection_id to source tuples so that we can achieve
-	 * a TRUE equi-join condition. As Citus does not support joins without have equi-join condition on distributed table. */
-
 	if (isSourceAndTargetAreSame)
 	{
-		/* TODO : if source and target collection are same we need to add actual shard_key_value column to the query but need to be careful when there are nested stages */
+		/* TODO :
+		 * 1. if source and target collection are same we need to add actual shard_key_value column to the query but need to be careful when there are nested stages
+		 * 2. Remove this check when all clusters are on citus v12.1.5
+		 */
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg(
 							"The source and target tables cannot be the same, as this functionality is not yet supported."),
@@ -894,42 +925,18 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 							"The source and target tables cannot be the same, as this functionality is not yet supported.")));
 	}
 
+	/* Let's create a new target list */
 
-	/* Scan targetList for the last real data column before junk columns to insert target_shard_key_column afterwards. */
-	ListCell *cell;
-	int indexToInsertShardKeyColumn = 0;
-	bool foundResJunk = false;
-	foreach(cell, query->targetList)
-	{
-		TargetEntry *entry = (TargetEntry *) lfirst(cell);
+	/* 1. Start by adding the first 'TE' from the existing query, which is a document field.
+	 *  target collection is unsharded so add target collection_id to source tuples so that we can achieve
+	 *  a TRUE equi-join condition. As Citus does not support joins without have equi-join condition on distributed table.
+	 */
 
-		/* No real columns are expected after a resjunk column is encountered. */
-		if (foundResJunk && entry->resjunk == false)
-		{
-			ereport(ERROR, (errcode(MongoInternalError),
-							errmsg(
-								"$merge stage internal error occurred while query construction"),
-							errhint(
-								"$merge stage internal error occurred while query construction")));
-		}
-		else if (entry->resjunk)
-		{
-			foundResJunk = true;
-		}
+	List *newTargetList = NIL;
+	TargetEntry *sourceDocTE = (TargetEntry *) linitial(query->targetList);
+	newTargetList = lappend(newTargetList, sourceDocTE);
 
-		if (foundResJunk)
-		{
-			entry->resno += 1;
-			entry->resname = NULL;
-		}
-		else
-		{
-			indexToInsertShardKeyColumn++;
-			continue;
-		}
-	}
-
-	*sourceShardKeyValueAttrNo = indexToInsertShardKeyColumn + 1;
+	/* 2. append TE : target_shard_key_value. */
 	Expr *exprShardKeyValueCol = (Expr *) makeConst(INT8OID, -1, InvalidOid,
 													sizeof(int64),
 													Int64GetDatum(
@@ -940,8 +947,44 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 															  *sourceShardKeyValueAttrNo,
 															  "target_shard_key_value",
 															  false);
-	query->targetList = list_insert_nth(query->targetList, indexToInsertShardKeyColumn,
-										dummySourceShardKeyValueTE);
+	newTargetList = lappend(newTargetList, dummySourceShardKeyValueTE);
+
+	/* 3. append TE : generated_object_id : we can use it while insertion */
+	Node *sourceDocVar = (Node *) sourceDocTE->expr;
+	List *argsForAddObjectIdFuncExpr = list_make1(sourceDocVar);
+	FuncExpr *addObjectIdFuncExpr = makeFuncExpr(BsonDollarMergeGenerateObjectId(),
+												 BsonTypeId(),
+												 argsForAddObjectIdFuncExpr, InvalidOid,
+												 InvalidOid,
+												 COERCE_EXPLICIT_CALL);
+
+	TargetEntry *generatedObjectIdTE = makeTargetEntry((Expr *) addObjectIdFuncExpr,
+													   *sourceShardKeyValueAttrNo + 1,
+													   "generated_object_id",
+													   false);
+
+	newTargetList = lappend(newTargetList, generatedObjectIdTE);
+
+	/* 4. Move all Remaining entries from the existing target list to the new target list. */
+	int targetEntryIndex = 0;
+	const int numNewColumnAdded = 2;
+	ListCell *cell;
+
+	foreach(cell, query->targetList)
+	{
+		TargetEntry *entry = (TargetEntry *) lfirst(cell);
+		if (targetEntryIndex == 0)
+		{
+			targetEntryIndex++;
+			continue;
+		}
+
+		entry->resno += numNewColumnAdded;
+		newTargetList = lappend(newTargetList, entry);
+		targetEntryIndex++;
+	}
+
+	query->targetList = newTargetList;
 }
 
 
@@ -987,7 +1030,8 @@ AddTargetCollectionRTEDollarMerge(Query *query, MongoCollection *targetCollectio
  * AND bson_dollar_merge_join(target.document, source.docuemnt, 'b'::text)
  */
 static void
-WriteJoinConditionToQueryDollarMerge(Query *query, Var *sourceDocVar, Var *targetDocVar,
+WriteJoinConditionToQueryDollarMerge(Query *query, Var *sourceDocVar,
+									 Var *targetDocVar,
 									 Var *sourceShardKeyValueVar,
 									 Var *targetShardKeyValueVar, MergeArgs mergeArgs)
 {
@@ -1342,4 +1386,62 @@ ValidateFinalPgbsonBeforeWriting(const pgbson *finalBson)
 								   size, BSON_MAX_ALLOWED_SIZE)));
 		}
 	}
+}
+
+
+/*
+ * This function Validate the ObjectId fields and write it in the writer.
+ *
+ * During validation, it addresses the following MongoDB behavior:
+ * 1. If the ObjectId of the source and target documents differ, an error is thrown because the target ObjectId cannot be replaced with the source ObjectId, as the ObjectId field is immutable.
+ * 2. If the ObjectId of the source and target documents are the same, the ObjectId field is written to the writer.
+ * 3. If the source ObjectId is missing we write the target ObjectId to the writer.
+ *
+ * Parameters:
+ *   - writer: The pgbson_writer to which the "_id" field will be added.
+ *   - sourceDocument: The source pgbson document.
+ *   - targetDocument: The target pgbson document.
+ */
+static void
+ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
+							   pgbson *sourceDocument,
+							   pgbson *targetDocument)
+{
+	/* Here we expect _id to be the first field of the target document because while inserting we make sure to move _id to the first field and write to the table */
+	pgbsonelement objectIdFromTargetDocument;
+
+	if (!TryGetSinglePgbsonElementFromPgbson(targetDocument,
+											 &objectIdFromTargetDocument) &&
+		strcmp(objectIdFromTargetDocument.path, "_id") != 0)
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg(
+							"Something went wrong, Expecting object ID to be the first field in the target document"),
+						errhint(
+							"Something went wrong, Expecting object ID to be the first field in the target document of type %s",
+							BsonTypeName(
+								objectIdFromTargetDocument.bsonValue.value_type))));
+	}
+
+	bson_iter_t sourceIter;
+	if (PgbsonInitIteratorAtPath(sourceDocument, "_id", &sourceIter))
+	{
+		const bson_value_t *value = bson_iter_value(&sourceIter);
+
+		/* compare source _id value with target's _id value, As object id is Immutable both field should match */
+		bool ignoreIsCmpValid = true;
+		if (CompareBsonValueAndType(value, &objectIdFromTargetDocument.bsonValue,
+									&ignoreIsCmpValid) != 0)
+		{
+			/* We validate the object ID in failure scenarios to ensure that if the ID is incorrect, we return the appropriate error code initially. */
+			ValidateIdField(value);
+			ereport(ERROR, (errcode(MongoImmutableField),
+							errmsg(
+								"$merge failed to update the matching document, did you attempt to modify the _id or the shard key?")));
+		}
+	}
+
+	/* Everything looks good, we can write the `_id` field to the writer */
+	PgbsonWriterInit(writer);
+	PgbsonWriterAppendValue(writer, "_id", 3, &objectIdFromTargetDocument.bsonValue);
 }

@@ -1291,6 +1291,12 @@ bson_dollar_merge_join_filter(PG_FUNCTION_ARGS)
 	bson_iter_t sourceIter;
 	if (!PgbsonInitIteratorAtPath(sourceDocument, joinField, &sourceIter))
 	{
+		/* If the source lacks an object ID, we return false and generate a new one during the document's insertion into the target. */
+		if (strcmp(joinField, "_id") == 0)
+		{
+			PG_RETURN_BOOL(false);
+		}
+
 		ereport(ERROR, (errcode(MongoLocation51132),
 						errmsg(
 							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),

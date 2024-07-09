@@ -3935,7 +3935,13 @@ MakeSubQueryRte(Query *subQuery, int stageNum, int pipelineDepth,
 		foreach(cell, subQuery->targetList)
 		{
 			TargetEntry *tle = lfirst(cell);
-			colnames = lappend(colnames, makeString(tle->resname ? tle->resname : ""));
+
+			/* append only non-junk columns */
+			if (!tle->resjunk)
+			{
+				colnames = lappend(colnames, makeString(tle->resname ? tle->resname :
+														""));
+			}
 		}
 
 		rte->eref = makeAlias(s->data, colnames);
