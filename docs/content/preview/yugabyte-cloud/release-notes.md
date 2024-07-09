@@ -19,6 +19,12 @@ On this page:
 
 ## Change log
 
+### July 10, 2024
+
+**Database**
+
+- Ability to choose the latest [stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) when creating a dedicated or Sandbox cluster using the new Early Access track. Early Access has more frequent updates for faster access to the most recent stable version of YugabyteDB. Currently features YugabyteDB v2024.1.0.0.
+
 ### June 24, 2024
 
 **New Features**
