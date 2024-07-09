@@ -76,7 +76,6 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           sourceCertificate.ifPresent(
               cert ->
                   createTransferXClusterCertsCopyTasks(
-                      xClusterConfig,
                       targetUniverse.getNodes(),
                       xClusterConfig.getNewReplicationGroupName(
                           xClusterConfig.getSourceUniverseUUID(), editFormData.name),
@@ -278,7 +277,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 tableIdsNeedBootstrap.addAll(getTableIds(tablesInfo));
               } else {
                 groupByNamespaceName(requestedTableInfoList).get(namespaceName).stream()
-                    .map(tableInfo -> getTableId(tableInfo))
+                    .map(XClusterConfigTaskBase::getTableId)
                     .forEach(tableIdsNeedBootstrap::add);
               }
             }

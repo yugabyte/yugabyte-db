@@ -1325,7 +1325,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     params.allowBootstrap = false;
     params.tables = Collections.singleton(exampleTableID2);
     params.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
     params.backupRequestParams.storageConfigUUID =
         ModelFactory.createS3StorageConfig(customer, "s3-config").getConfigUUID();
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
