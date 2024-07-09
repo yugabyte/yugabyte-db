@@ -3575,6 +3575,14 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 			continue;
 		}
 
+		if (StringViewContains(&keyView, '.'))
+		{
+			/* Paths here cannot be dotted paths */
+			ereport(ERROR, (errcode(MongoLocation40235),
+							errmsg("The field name %.*s cannot contain '.'",
+								   keyView.length, keyView.string)));
+		}
+
 		Const *accumulatorText = MakeTextConst(keyView.string, keyView.length);
 
 		bson_iter_t accumulatorIterator;
