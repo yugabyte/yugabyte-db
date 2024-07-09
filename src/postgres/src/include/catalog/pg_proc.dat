@@ -10496,4 +10496,9 @@
   proargnames => '{tablet_id,table_id,table_type,namespace_name,ysql_schema_name,table_name,partition_key_start,partition_key_end}',
   proargmodes => '{o,o,o,o,o,o,o,o}',
   prosrc => 'yb_local_tablets'},
+
+{ oid => '8067',
+  descr => 'Reset the statistics collected by the ANALYZE command.',
+  proname => 'yb_reset_analyze_statistics', prolang => '14', provolatile => 'v',
+  prorettype => 'void', proargtypes => 'oid', prosrc => 'see yb_system_views.sql' },
 ]

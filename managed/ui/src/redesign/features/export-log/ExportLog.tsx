@@ -164,6 +164,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 onRowClick: handleRowClick
               }}
               hover
+              pagination
             >
               <TableHeaderColumn
                 width="250"

@@ -74,6 +74,7 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
   yb_client_ = VERIFY_RESULT(YBClientBuilder()
                                  .set_client_name(kClientName)
                                  .add_master_server_addr(master_addrs)
+                                 .skip_master_flagfile()
                                  .default_admin_operation_timeout(
                                      MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
                                  .Build(messenger_.get()));
