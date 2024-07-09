@@ -34,14 +34,12 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
     uuid: migration.migration_uuid || "migration_uuid_not_found",
   });
 
-  const newMigrationAPI = (newMigrationAPIData as MigrationAssessmentReport | undefined)/* ?.data */;
+  const newMigrationAPI = newMigrationAPIData as MigrationAssessmentReport | undefined;
 
   return (
     <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-        <Typography variant="h4">
-          {t("clusterDetail.voyager.planAndAssess.heading")}
-        </Typography>
+        <Typography variant="h4">{t("clusterDetail.voyager.planAndAssess.heading")}</Typography>
         <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={onRefetch}>
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
