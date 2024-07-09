@@ -74,46 +74,6 @@ typedef const char *(*DistributePostgresTable_HookType)(const char *postgresTabl
 extern DistributePostgresTable_HookType distribute_postgres_table_hook;
 
 
-typedef const char *(*GetColocatedTableBasedOnDatabase_HookType)(text *databaseDatum);
-extern GetColocatedTableBasedOnDatabase_HookType
-	get_colocated_table_based_on_database_hook;
-
-/*
- * Given a current table schema built up to create a postgres table, adds a hook to
- * modify the schema if needed.
- */
-typedef void (*ModifyCreateTableSchema_HookType)(StringInfo currentSchema, const
-												 char *tableName);
-extern ModifyCreateTableSchema_HookType modify_create_table_schema_hook;
-
-
-/*
- * Handle any post actions after the table is created
- */
-typedef void (*PostProcessCreateTable_HookType)(const char *postgresTable, uint64_t
-												collectionId,
-												text *databaseName, text *collectionName);
-extern PostProcessCreateTable_HookType post_process_create_table_hook;
-
-/*
- * Handle any post actions after the table is sharded
- */
-typedef void (*PostProcessShardCollection_HookType)(const char *tableName, uint64_t
-													collectionId,
-													text *databaseName,
-													text *collectionName,
-													pgbson *shardKey);
-extern PostProcessShardCollection_HookType post_process_shard_collection_hook;
-
-/*
- * Handle any post action after the collection is drop
- */
-typedef void (*PostProcessCollectionDrop_HookType)(uint64_t collectionId,
-												   text *databaseName,
-												   text *collectionName, bool
-												   trackChanges);
-extern PostProcessCollectionDrop_HookType post_process_drop_collection_hook;
-
 /*
  * Entrypoint to modify a list of column names for queries
  * For a base RTE (table)

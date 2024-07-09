@@ -87,10 +87,10 @@ static const char CharactersNotAllowedInCollectionNames[2] = { '$', '\0' };
 static const int CharactersNotAllowedInCollectionNamesLength =
 	sizeof(CharactersNotAllowedInCollectionNames);
 
-static const char *ValidSystemCollectionNames[4] = {
-	"system.users", "system.js", "system.views", "system.profile"
+static const char *ValidSystemCollectionNames[5] = {
+	"system.users", "system.js", "system.views", "system.profile", "system.dbSentinel"
 };
-static const int ValidSystemCollectionNamesLength = 4;
+static const int ValidSystemCollectionNamesLength = 5;
 
 /* Not allowing any writes to the below system namespaces */
 static const char *NonWritableSystemCollectionNames[4] = {

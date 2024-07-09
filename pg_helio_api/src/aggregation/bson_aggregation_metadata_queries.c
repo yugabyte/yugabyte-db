@@ -513,7 +513,18 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 								 (Expr *) makeConst(TEXTOID, -1, InvalidOid, -1,
 													databaseDatum, false, false),
 								 DEFAULT_COLLATION_OID, DEFAULT_COLLATION_OID);
-	query->jointree = makeFromExpr(list_make1(rtr), (Node *) opExpr);
+
+	/* Remove system collections */
+	Var *collectionVar = makeVar(1, 2, TEXTOID, -1, InvalidOid, 0);
+	StringView sentinelCollection = CreateStringViewFromString("system.dbSentinel");
+	Const *systemCollection = MakeTextConst(sentinelCollection.string,
+											sentinelCollection.length);
+	Expr *notExpr = make_opclause(TextNotEqualOperatorId(), BOOLOID, false,
+								  (Expr *) collectionVar, (Expr *) systemCollection,
+								  DEFAULT_COLLATION_OID, DEFAULT_COLLATION_OID);
+
+	query->jointree = makeFromExpr(list_make1(rtr), (Node *) make_ands_explicit(
+									   list_make2(opExpr, notExpr)));
 
 	/* Add a row_get_bson to make it a single bson document */
 	Var *rowExpr = makeVar(1, 0, MongoCatalogCollectionsTypeOid(), -1, InvalidOid, 0);

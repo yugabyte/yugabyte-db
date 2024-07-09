@@ -110,6 +110,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the <text> OPERATOR(pg_catalog.=) <text> operator */
 	Oid TextEqualOperatorId;
 
+	/* OID of the <text> OPERATOR(pg_catalog.<>) <text> operator */
+	Oid TextNotEqualOperatorId;
+
 	/* OID of the <text> OPERATOR(pg_catalog.<) <text> operator */
 	Oid TextLessOperatorId;
 
@@ -1096,6 +1099,24 @@ TextEqualOperatorId(void)
 	}
 
 	return Cache.TextEqualOperatorId;
+}
+
+
+Oid
+TextNotEqualOperatorId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.TextNotEqualOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString("<>"));
+
+		Cache.TextNotEqualOperatorId =
+			OpernameGetOprid(operatorNameList, TEXTOID, TEXTOID);
+	}
+
+	return Cache.TextNotEqualOperatorId;
 }
 
 

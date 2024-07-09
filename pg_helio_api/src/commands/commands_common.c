@@ -209,8 +209,16 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 	}
 
 	WriteError *writeError = palloc0(sizeof(WriteError));
-	if (errorData->sqlerrcode == ERRCODE_EXCLUSION_VIOLATION ||
-		errorData->sqlerrcode == ERRCODE_UNIQUE_VIOLATION)
+	if (errorData->sqlerrcode == ERRCODE_CHECK_VIOLATION)
+	{
+		ereport(LOG, (errmsg("Check constraint error %s", errorData->message)));
+		writeError->index = writeErrorIdx;
+		writeError->code = MongoDuplicateKey;
+		writeError->errmsg =
+			"Invalid write detected. Please validate the collection and/or shard key being written to";
+	}
+	else if (errorData->sqlerrcode == ERRCODE_EXCLUSION_VIOLATION ||
+			 errorData->sqlerrcode == ERRCODE_UNIQUE_VIOLATION)
 	{
 		const char *mongoIndexName = NULL;
 		bool useLibPq = true;

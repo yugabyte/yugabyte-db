@@ -85,38 +85,6 @@ const char * DistributePostgresTable(const char *postgresTable, const
 
 
 /*
- * Given a Mongo Database, finds a table within that database that a new unsharded table
- * should be colocated with.
- */
-const char * GetColocatedTableBasedOnDatabase(text *databaseDatum);
-
-/*
- * Given a current table schema built up to create a postgres table, adds a hook to
- * modify the schema if needed.
- */
-void ModifyCreateTableSchema(StringInfo currentSchema, const char *tableName);
-
-
-/*
- * Handle any post actions after the table is created
- */
-void PostProcessCreateTable(const char *postgresTable, uint64_t collectionId,
-							text *databaseName, text *collectionName);
-
-/*
- * Handle any post actions after the table is sharded
- */
-void PostProcessShardCollection(const char *tableName, uint64_t collectionId,
-								text *databaseName, text *collectionName,
-								pgbson *shardKey);
-
-/*
- * Handle any post actions after the collection is dropped
- */
-void PostProcessCollectionDrop(uint64_t collectionId, text *databaseName,
-							   text *collectionName, bool trackChanges);
-
-/*
  * Entrypoint to modify a list of column names for queries
  * For a base RTE (table)
  */

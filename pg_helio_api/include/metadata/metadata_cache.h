@@ -104,6 +104,7 @@ Oid BsonNotGreaterThanEqualFunctionId(void);
 /* operators */
 Oid BigintEqualOperatorId(void);
 Oid TextEqualOperatorId(void);
+Oid TextNotEqualOperatorId(void);
 Oid TextLessOperatorId(void);
 Oid BsonArrowOperatorId(void);
 Oid BsonEqualOperatorId(void);

@@ -175,11 +175,6 @@ command_shard_collection(PG_FUNCTION_ARGS)
 	bool isUnsharded = false;
 	DistributePostgresTable(tmpDataTableName, "shard_key_value", colocateWith,
 							isUnsharded);
-	PostProcessShardCollection(tmpDataTableName,
-							   collection->collectionId,
-							   DatumGetTextP(databaseDatum),
-							   DatumGetTextP(collectionDatum),
-							   shardKey);
 
 	/* apply the new shard key by re-inserting all data */
 	resetStringInfo(queryInfo);

@@ -187,11 +187,6 @@ command_drop_collection(PG_FUNCTION_ARGS)
 
 	DeleteAllCollectionIndexRecords(collection->collectionId);
 
-	text *databaseNameText = DatumGetTextP(databaseNameDatum);
-	text *collectionNameText = DatumGetTextP(collectionNameDatum);
-	PostProcessCollectionDrop(collection->collectionId, databaseNameText,
-							  collectionNameText, trackChanges);
-
 	PG_RETURN_BOOL(true);
 }
 

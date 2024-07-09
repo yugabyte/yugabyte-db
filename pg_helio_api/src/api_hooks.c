@@ -26,12 +26,6 @@ RunQueryWithCommutativeWrites_HookType run_query_with_commutative_writes_hook = 
 RunQueryWithSequentialModification_HookType
 	run_query_with_sequential_modification_mode_hook = NULL;
 DistributePostgresTable_HookType distribute_postgres_table_hook = NULL;
-GetColocatedTableBasedOnDatabase_HookType get_colocated_table_based_on_database_hook =
-	NULL;
-ModifyCreateTableSchema_HookType modify_create_table_schema_hook = NULL;
-PostProcessCreateTable_HookType post_process_create_table_hook = NULL;
-PostProcessShardCollection_HookType post_process_shard_collection_hook = NULL;
-PostProcessCollectionDrop_HookType post_process_drop_collection_hook = NULL;
 ModifyTableColumnNames_HookType modify_table_column_names_hook = NULL;
 RunQueryWithNestedDistribution_HookType run_query_with_nested_distribution_hook = NULL;
 IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook = NULL;
@@ -180,92 +174,6 @@ DistributePostgresTable(const char *postgresTable, const char *distributionColum
 	}
 
 	return distributionColumn;
-}
-
-
-/*
- * Given a Mongo Database, finds a table within that database that a new unsharded table
- * should be colocated with.
- */
-const char *
-GetColocatedTableBasedOnDatabase(text *databaseDatum)
-{
-	if (get_colocated_table_based_on_database_hook != NULL)
-	{
-		return get_colocated_table_based_on_database_hook(databaseDatum);
-	}
-
-	return NULL;
-}
-
-
-/*
- * Hook for modifying table schema as necessary.
- * This is Noop for the Single node case.
- *
- */
-void
-ModifyCreateTableSchema(StringInfo schema, const char *tableName)
-{
-	/* Noop for single node scenarios: Don't do anything unless overriden */
-	if (modify_create_table_schema_hook != NULL)
-	{
-		modify_create_table_schema_hook(schema, tableName);
-	}
-}
-
-
-/*
- * Handles any post processing for the table.
- * Noop for a single node scenario
- *
- */
-void
-PostProcessCreateTable(const char *tableName, uint64_t collectionId,
-					   text *databaseName, text *collectionName)
-{
-	/* Noop for single node scenarios: Don't do anything unless overriden */
-	if (post_process_create_table_hook != NULL)
-	{
-		post_process_create_table_hook(tableName, collectionId, databaseName,
-									   collectionName);
-	}
-}
-
-
-/*
- * Handles any post processing for the table that is being sharded.
- * Noop for a single node scenario
- *
- */
-void
-PostProcessShardCollection(const char *tableName, uint64_t collectionId,
-						   text *databaseName, text *collectionName, pgbson *shardKey)
-{
-	/* Noop for single node scenarios: Don't do anything unless overriden */
-	if (post_process_shard_collection_hook != NULL)
-	{
-		post_process_shard_collection_hook(tableName, collectionId, databaseName,
-										   collectionName, shardKey);
-	}
-}
-
-
-/*
- * Handles any post processing for a collection being dropped.
- * Noop for a single node scenario
- *
- */
-void
-PostProcessCollectionDrop(uint64_t collectionId, text *databaseName,
-						  text *collectionName, bool trackChanges)
-{
-	/* Noop for single node scenarios: Don't do anything unless overriden */
-	if (post_process_drop_collection_hook != NULL)
-	{
-		post_process_drop_collection_hook(collectionId, databaseName,
-										  collectionName, trackChanges);
-	}
 }
 
 

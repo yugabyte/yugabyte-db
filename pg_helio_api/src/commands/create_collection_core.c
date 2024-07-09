@@ -29,6 +29,11 @@ static const char * CreatePostgresDataTable(uint64_t collectionId, const
 											char *colocateWith);
 static uint64_t InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum);
 
+static uint64_t InsertMetadataIntoCollections(text *databaseDatum, text *collectionDatum,
+											  bool *collectionExists);
+
+static const char * GetOrCreateDatabaseConfigCollection(text *databaseDatum);
+
 PG_FUNCTION_INFO_V1(command_create_collection_core);
 
 
@@ -77,13 +82,42 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
+	const char *colocateWith = NULL;
+	if (EnableNativeColocation && !EnableNativeTableColocation)
+	{
+		/* To ensure colocation across tables, we get or create
+		 * a special config table per database so that all tables
+		 * can be colocated with this table.
+		 */
+		colocateWith = GetOrCreateDatabaseConfigCollection(databaseDatum);
+	}
+
+	bool collectionExists = false;
+	uint64_t collectionId = InsertMetadataIntoCollections(databaseDatum, collectionDatum,
+														  &collectionExists);
+
+	if (collectionExists)
+	{
+		PG_RETURN_BOOL(false);
+	}
+
+	ereport(NOTICE, (errmsg("creating collection")));
+	CreatePostgresDataTable(collectionId, colocateWith);
+	PG_RETURN_BOOL(true);
+}
+
+
+static uint64_t
+InsertMetadataIntoCollections(text *databaseDatum, text *collectionDatum,
+							  bool *collectionExists)
+{
 	/* Insert row into the collections table */
 	MemoryContext savedMemoryContext = CurrentMemoryContext;
 	ResourceOwner oldOwner = CurrentResourceOwner;
 	BeginInternalSubTransaction(NULL);
 
-	uint64_t collectionId = 0;
-	bool collectionExists = false;
+	volatile uint64_t collectionId = 0;
+	*collectionExists = false;
 	PG_TRY();
 	{
 		collectionId = InsertIntoCollectionTable(databaseDatum, collectionDatum);
@@ -107,7 +141,7 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 		{
 			ereport(LOG, (errmsg(
 							  "Skipping creating collection because there was a unique key violation.")));
-			collectionExists = true;
+			*collectionExists = true;
 		}
 		else
 		{
@@ -116,21 +150,7 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 	}
 	PG_END_TRY();
 
-	if (collectionExists)
-	{
-		PG_RETURN_BOOL(false);
-	}
-
-	const char *colocateWith = NULL;
-	if (EnableNativeColocation && !EnableNativeTableColocation)
-	{
-		colocateWith = GetColocatedTableBasedOnDatabase(databaseDatum);
-	}
-
-	const char *tableName = CreatePostgresDataTable(collectionId, colocateWith);
-
-	PostProcessCreateTable(tableName, collectionId, databaseDatum, collectionDatum);
-	PG_RETURN_BOOL(true);
+	return collectionId;
 }
 
 
@@ -151,7 +171,6 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith)
 	appendStringInfo(retryTableNameInfo, "%s.retry_%lu", ApiDataSchemaName, collectionId);
 
 	StringInfo createTableStringInfo = makeStringInfo();
-	ereport(NOTICE, (errmsg("creating collection")));
 
 	/* Create the actual table */
 	appendStringInfo(createTableStringInfo,
@@ -176,9 +195,6 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith)
 					 "creation_time timestamptz not null default now()"
 					 ")", dataTableNameInfo->data,
 					 CoreSchemaName, CoreSchemaName);
-
-	/* Allow modifying the core schema */
-	ModifyCreateTableSchema(createTableStringInfo, dataTableNameInfo->data);
 
 	bool readOnly = false;
 	bool isNull = false;
@@ -307,4 +323,78 @@ InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum)
 	}
 
 	return DatumGetUInt64(resultDatum);
+}
+
+
+/*
+ * Creates a database wide sentinel collection that is used for colocating other collections against.
+ * This is a single collection per database.
+ *
+ * This is primarily needed if N writers are concurrently trying to create collections.
+ * With native colocation they'll each get a separate colocation Id due to concurrent transactions
+ * and produce N independently colocated tables.
+ *
+ * By forcing a unique collection per database, all N writers will queue waiting to create this one table
+ * and then resume creating tables colocated with this.
+ *
+ * Across databases, concurrent creates will still work since they will lock on their own tables.
+ */
+static const char *
+GetOrCreateDatabaseConfigCollection(text *databaseDatum)
+{
+	const char *systemCollectionTable = "system.dbSentinel";
+	text *systemCollectionsText = cstring_to_text(systemCollectionTable);
+	bool dbCollectionExists = false;
+	MongoCollection *collection = GetMongoCollectionByNameDatum(
+		PointerGetDatum(databaseDatum), PointerGetDatum(systemCollectionsText),
+		AccessShareLock);
+
+	if (collection != NULL)
+	{
+		/* This already exists - we're good */
+		elog(INFO, "Returning existing %s for the sentinel table for %s.%s",
+			 collection->tableName, collection->name.databaseName,
+			 collection->name.collectionName);
+		return psprintf("%s.%s", ApiDataSchemaName, collection->tableName);
+	}
+
+	uint64_t databaseCollectionId =
+		InsertMetadataIntoCollections(databaseDatum, systemCollectionsText,
+									  &dbCollectionExists);
+
+	if (dbCollectionExists)
+	{
+		collection = GetMongoCollectionByNameDatum(
+			PointerGetDatum(databaseDatum), PointerGetDatum(systemCollectionsText),
+			AccessShareLock);
+		if (collection == NULL)
+		{
+			/* Weird case, insert failed, but cannot read it? */
+			ereport(ERROR, (errcode(MongoInternalError),
+							errmsg(
+								"Unable to create metadata database sentinel collection.")));
+		}
+
+		elog(INFO, "Returning %s for the sentinel table for %s.%s",
+			 collection->tableName, collection->name.databaseName,
+			 collection->name.collectionName);
+		return psprintf("%s.%s", ApiDataSchemaName, collection->tableName);
+	}
+
+	const char *colocateWith = NULL;
+	const char *tableName = CreatePostgresDataTable(databaseCollectionId, colocateWith);
+	elog(INFO, "Creating and returning %s for the sentinel database %s",
+		 tableName, text_to_cstring(databaseDatum));
+
+	/* Add a policy to disallow writes on this table (TODO: Investigate why RLS didn't work here) */
+	StringInfo createCheckStringInfo = makeStringInfo();
+	appendStringInfo(createCheckStringInfo,
+					 "ALTER TABLE %s ADD CONSTRAINT disallow_writes_check CHECK (false)",
+					 tableName);
+	bool readOnly = false;
+	bool isNull = false;
+	ExtensionExecuteQueryViaSPI(createCheckStringInfo->data, readOnly, SPI_OK_UTILITY,
+								&isNull);
+
+	return tableName;
 }
