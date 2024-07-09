@@ -627,7 +627,7 @@ YbAshMain(Datum main_arg)
 		int 		rc;
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   yb_ash_sampling_interval_ms, PG_WAIT_EXTENSION);
+					   yb_ash_sampling_interval_ms, WAIT_EVENT_YB_ASH_MAIN);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */
