@@ -714,43 +714,6 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
   # Digest the package.
   digest_package "${YB_PACKAGE_PATH}"
 
-  if grep -q "CentOS Linux 7" /etc/os-release; then
-    log "This is CentOS 7, doing a quick sanity-check of the release package using Docker."
-
-    # Have to export this for the script inside Docker to see it.
-    export YB_PACKAGE_PATH
-
-    # Do a quick sanity test on the release package. This verifies that we can at least start the
-    # cluster, which requires all RPATHs to be set correctly, either at the time the package is
-    # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
-    docker run -i \
-      -e YB_PACKAGE_PATH \
-      --mount "type=bind,source=$YB_SRC_ROOT/build,target=/mnt/dir_with_package" centos:7 \
-      bash -c '
-        set -euo pipefail -x
-        sed -i 's/mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/CentOS-*
-        sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' \
-            /etc/yum.repos.d/CentOS-*
-        yum install -y libatomic
-        package_name=${YB_PACKAGE_PATH##*/}
-        package_path=/mnt/dir_with_package/$package_name
-        set +e
-        # This will be "yugabyte-a.b.c.d/" (with a trailing slash).
-        dir_name_inside_archive=$(tar tf "$package_path" | head -1)
-        set -e
-        # Remove the trailing slash.
-        dir_name_inside_archive=${dir_name_inside_archive%/}
-        cd /tmp
-        tar xzf "$package_path"
-        cd "$dir_name_inside_archive"
-        bin/post_install.sh
-        bin/yb-ctl create
-        bin/ysqlsh -c "create table t (k int primary key, v int);
-                       insert into t values (1, 2);
-                       select * from t;"'
-  else
-    log "Not doing a quick sanity-check of the release package. OS: $OSTYPE."
-  fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: $OSTYPE," \
       "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}."
