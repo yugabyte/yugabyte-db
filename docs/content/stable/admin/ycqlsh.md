@@ -28,17 +28,57 @@ The YCQL shell was previously named `cqlsh`. Although the `cqlsh` binary is avai
 
 ycqlsh is installed as part of YugabyteDB and is located in the `bin` directory of YugabyteDB home. You can also download it from the [cqlsh GitHub repository](https://github.com/yugabyte/cqlsh/releases).
 
-If you prefer, you can install a standalone version using a shell script:
+If you prefer, you can install a standalone version using any of the following methods:
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux x86
+    </a>
+  </li>
+  <li>
+    <a href="#linuxarm" class="nav-link" id="linuxarm-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxarm" aria-selected="true">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux ARM
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
 
 ```sh
-curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
 ```
 
-If you have `wget`, you can use the following:
+  </div>
+  <div id="linuxx86" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-tab">
 
 ```sh
-wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
 ```
+
+  </div>
+  <div id="linuxarm" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxarm-tab">
+
+```sh
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-el8-aarch64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
+```
+
+  </div>
+</div>
+
+&nbsp;
 
 ### Starting ycqlsh
 
