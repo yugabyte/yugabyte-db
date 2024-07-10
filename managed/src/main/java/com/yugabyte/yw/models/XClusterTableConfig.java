@@ -194,16 +194,6 @@ public class XClusterTableConfig extends Model {
     this.setStatus(Status.Validated);
   }
 
-  public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {
-    XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("stream_id", streamId).findOne();
-    if (xClusterTableConfig == null) {
-      log.info("Cannot find an xClusterTableConfig with streamId {}", streamId);
-      return Optional.empty();
-    }
-    return Optional.of(xClusterTableConfig);
-  }
-
   /**
    * Retrieves an XClusterTableConfig object based on the provided tableId.
    *
@@ -213,7 +203,7 @@ public class XClusterTableConfig extends Model {
    */
   public static Optional<XClusterTableConfig> maybeGetByTableId(String tableId) {
     XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("table_id", tableId).findOne();
+        find.query().where().eq("table_id", tableId).findOne();
     if (xClusterTableConfig == null) {
       log.info("Cannot find an xClusterTableConfig with tableId {}", tableId);
       return Optional.empty();

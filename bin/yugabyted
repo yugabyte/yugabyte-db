@@ -87,7 +87,7 @@ YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yug
 GENERATE_SERVER_CERTS = "https://docs.yugabyte.com/preview/secure/tls-encryption/\
 server-certificates/#create-the-server-certificates"
 YBC_DOWNLOAD_LINK = "https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/" + \
-"2.0.0.0-b20/ybc-2.0.0.0-b20-linux-x86_64.tar.gz"
+"2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz"
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
 DEFAULT_START_FAULT_TOLERANCE = "none"
@@ -491,7 +491,7 @@ def download_ybc_package():
     try:
         response = urlopen(YBC_DOWNLOAD_LINK)
         CHUNK_SIZE = 1 << 20
-        fileName = 'ybc-2.0.0.0-b20-linux-x86_64.tar.gz'
+        fileName = 'ybc-2.1.0.0-b9-linux-x86_64.tar.gz'
         Output.log('Downloading YBC Package: {}', YBC_DOWNLOAD_LINK)
         with open(fileName, 'wb') as f:
             while True:
@@ -648,6 +648,8 @@ class ControlScript(object):
             return
         else:
             YBControllerCLIProxy.init()
+            YBControllerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
+                self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
         ybc_task_type = "backup"
@@ -877,6 +879,8 @@ class ControlScript(object):
             return
         else:
             YBControllerCLIProxy.init()
+            YBControllerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
+                self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
         ybc_task_type = "restore"
@@ -3024,6 +3028,24 @@ class ControlScript(object):
             yb_tserver_cmd.extend(["--use_client_to_server_encryption=true",
                 "--certs_for_client_dir={}".format(certs_dir),])
 
+            hba_conf_updated = False
+            for i, flag in enumerate(yb_tserver_cmd):
+                if flag.startswith("--ysql_hba_conf_csv="):
+                    pattern = re.compile(r'--ysql_hba_conf_csv=(["\']?)(.*)\1$')
+                    match = pattern.match(flag)
+                    # Extract the original ysql_hba_conf
+                    quote_char = match.group(1)  # This will be '' if there are no quotes
+                    original_hba_conf = match.group(2)
+                    # Append 'local all yugabyte trust' to the original_hba_conf
+                    updated_hba_conf = original_hba_conf + ',local all yugabyte trust'
+
+                    yb_tserver_cmd[i] = f'--ysql_hba_conf_csv={quote_char}' +\
+                                f'{updated_hba_conf}{quote_char}'
+                    hba_conf_updated = True
+
+            if not hba_conf_updated:
+                yb_tserver_cmd.extend(["--ysql_hba_conf_csv=local all yugabyte trust",])
+
         if self.configs.saved_data.get("ysql_enable_auth"):
             yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
 
@@ -3063,6 +3085,13 @@ class ControlScript(object):
                 "--ycqlsh={}".format(find_binary_location("ycqlsh")),
                 "--redis_cli={}".format(find_binary_location("redis-cli")),
             ]
+
+        if self.configs.saved_data.get("secure"):
+            ybc_cmd.extend([
+                "--cert_node_filename={}".format(advertise_ip),
+                "--certs_dir_name={}".format(self.configs.saved_data.get("certs_dir")),
+            ])
+
         return ybc_cmd
 
 

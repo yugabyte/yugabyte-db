@@ -128,7 +128,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
               setDeleteModalProps({ name: row.name, uuid: row.uuid });
               setDeleteModal(true);
             }}
-            data-testid="DeleteConfiguration-button"
+            data-testid="ExportLog-DeleteConfiguration"
             disabled={!isEmpty(row.linkedUniverses)}
           >
             <YBLabelWithIcon icon="fa fa-trash">{t('exportAuditLog.deleteConfig')}</YBLabelWithIcon>
@@ -147,7 +147,12 @@ export const ExportLog: FC<ExportLogProps> = () => {
       {!isEmpty(finalData) ? (
         <Box className={classes.exportListContainer}>
           <Box display={'flex'} flexDirection={'row'} justifyContent={'flex-end'}>
-            <YBButton variant="primary" size="large" onClick={() => setOpenExportModal(true)}>
+            <YBButton
+              variant="primary"
+              size="large"
+              onClick={() => setOpenExportModal(true)}
+              data-testid="ExportLog-AddConfig"
+            >
               <i className="fa fa-plus" />
               {t('exportAuditLog.addConfiguration')}
             </YBButton>
@@ -159,6 +164,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 onRowClick: handleRowClick
               }}
               hover
+              pagination
             >
               <TableHeaderColumn
                 width="250"
@@ -196,7 +202,12 @@ export const ExportLog: FC<ExportLogProps> = () => {
           <Box display={'flex'} flexDirection={'column'} alignItems={'center'}>
             <img src={AuditBackupIcon} alt="--" height={48} width={48} />
             <Box mt={3} mb={2}>
-              <YBButton variant="primary" size="large" onClick={() => setOpenExportModal(true)}>
+              <YBButton
+                variant="primary"
+                size="large"
+                onClick={() => setOpenExportModal(true)}
+                data-testid="ExportLog-CreateExport"
+              >
                 {t('exportAuditLog.createExport')}
               </YBButton>
             </Box>
@@ -226,6 +237,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
           open={openExportModal}
           formProps={exportModalProps}
           onClose={() => {
+            setExportModalProps(null);
             setOpenExportModal(false);
             refetch();
           }}

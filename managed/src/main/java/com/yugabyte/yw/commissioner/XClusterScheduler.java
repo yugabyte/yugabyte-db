@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -91,13 +92,13 @@ public class XClusterScheduler {
       Collection<String> filterTableIds) {
     return allTableInfoList.stream()
         .filter(tableInfo -> filterTableIds.contains(XClusterConfigTaskBase.getTableId(tableInfo)))
-        .filter(tableInfo -> TableInfoUtil.isIndexTable(tableInfo))
-        .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
+        .filter(TableInfoUtil::isIndexTable)
+        .map(XClusterConfigTaskBase::getTableId)
         .collect(Collectors.toSet());
   }
 
-  public boolean isXClusterEligibleForScheduledSync(XClusterConfig xClusterConfig) {
-    if (!xClusterConfig.getStatus().equals(XClusterConfigStatusType.Running)) {
+  private boolean isXClusterEligibleForScheduledSync(XClusterConfig xClusterConfig) {
+    if (xClusterConfig.getStatus() != XClusterConfigStatusType.Running) {
       return false;
     }
 
@@ -111,25 +112,20 @@ public class XClusterScheduler {
         || targetUniverse.getUniverseDetails().universePaused) {
       return false;
     }
-    if (!confGetter.getConfForScope(targetUniverse, UniverseConfKeys.xClusterSyncOnUniverse)
-        || !confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xClusterSyncOnUniverse)) {
-      return false;
-    }
-    return true;
+    return confGetter.getConfForScope(targetUniverse, UniverseConfKeys.xClusterSyncOnUniverse)
+        && confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xClusterSyncOnUniverse);
   }
 
   private Set<String> getTableIdsToAdd(
       Set<String> tableIdsInReplication,
       Set<String> tableIdsInYbaXClusterConfig,
       Set<String> sourceUniverseTableIds) {
-    Set<String> tableIdsToAdd =
-        tableIdsInReplication.stream()
-            .filter(
-                tableId ->
-                    !tableIdsInYbaXClusterConfig.contains(tableId)
-                        && sourceUniverseTableIds.contains(tableId))
-            .collect(Collectors.toSet());
-    return tableIdsToAdd;
+    return tableIdsInReplication.stream()
+        .filter(
+            tableId ->
+                !tableIdsInYbaXClusterConfig.contains(tableId)
+                    && sourceUniverseTableIds.contains(tableId))
+        .collect(Collectors.toSet());
   }
 
   private Set<String> getTableIdsToRemove(
@@ -141,36 +137,40 @@ public class XClusterScheduler {
     Set<String> cdcStreamsInUniverse =
         xClusterUniverseService.getAllCDCStreamIdsInUniverse(ybClientService, sourceUniverse);
 
-    Set<String> tableIdsToRemove =
-        tableIdsInYbaXClusterConfig.stream()
-            .filter(
-                tableId -> {
-                  // Exclude tables that are still present in the replication group.
-                  if (tableIdsInReplication.contains(tableId)) {
-                    return false;
-                  }
-                  // Exclude tables that are still present in the source universe.
-                  if (sourceUniverseTableIds.contains(tableId)) {
-                    return false;
-                  }
-                  // Exclude tables that have no associated xClusterTableConfig or have a null
-                  // streamId.
-                  Optional<XClusterTableConfig> xClusterTableConfig =
-                      XClusterTableConfig.maybeGetByTableId(tableId);
-                  if (!xClusterTableConfig.isPresent()
-                      || xClusterTableConfig.get().getStreamId() == null) {
-                    return false;
-                  }
-                  // Exclude tables that have a streamId present in the source universe's CDC
-                  // streams.
-                  if (cdcStreamsInUniverse.contains(xClusterTableConfig.get().getStreamId())) {
-                    return false;
-                  }
-                  return true;
-                })
-            .collect(Collectors.toSet());
+    return tableIdsInYbaXClusterConfig.stream()
+        .filter(
+            tableId -> {
+              // Exclude tables that are still present in the replication group.
+              if (tableIdsInReplication.contains(tableId)) {
+                return false;
+              }
+              // Exclude tables that are still present in the source universe.
+              if (sourceUniverseTableIds.contains(tableId)) {
+                return false;
+              }
+              // Exclude tables that have no associated xClusterTableConfig or have a null
+              // streamId.
+              Optional<XClusterTableConfig> xClusterTableConfig =
+                  XClusterTableConfig.maybeGetByTableId(tableId);
+              if (xClusterTableConfig.isEmpty()
+                  || xClusterTableConfig.get().getStreamId() == null) {
+                return false;
+              }
+              // Exclude tables that have a streamId present in the source universe's CDC
+              // streams.
+              return !cdcStreamsInUniverse.contains(xClusterTableConfig.get().getStreamId());
+            })
+        .collect(Collectors.toSet());
+  }
 
-    return tableIdsToRemove;
+  private void updateXClusterConfig(
+      XClusterConfig config, CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
+    updateXClusterConfig(
+        config,
+        clusterConfig,
+        Collections.emptyList(),
+        Collections.emptySet(),
+        Collections.emptySet());
   }
 
   private void updateXClusterConfig(
@@ -203,9 +203,10 @@ public class XClusterScheduler {
         log.info("Non index Tables to add {}", nonIndexTableIdsToAdd);
         config.addTablesIfNotExist(nonIndexTableIdsToAdd, null, false);
       }
-      XClusterConfigTaskBase.syncXClusterConfigWithReplicationGroup(
-          clusterConfig, config, tableIdsToAdd);
     }
+
+    XClusterConfigTaskBase.syncXClusterConfigWithReplicationGroup(
+        clusterConfig, config, tableIdsToAdd);
   }
 
   public void compareTablesAndSyncXClusterConfig(XClusterConfig config) {
@@ -220,42 +221,46 @@ public class XClusterScheduler {
       clusterConfig =
           XClusterConfigTaskBase.getClusterConfig(client, config.getTargetUniverseUUID());
     } catch (Exception e) {
-      log.error("Error getting cluster config for xCluster config: {}", e);
+      log.error("Error getting cluster config for xCluster config:", e);
       return;
     }
 
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceUniverseTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybClientService, sourceUniverse);
+    if (config.getType() != XClusterConfig.ConfigType.Db) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceUniverseTableInfoList =
+          XClusterConfigTaskBase.getTableInfoList(ybClientService, sourceUniverse);
 
-    Set<String> sourceUniverseTableIds =
-        sourceUniverseTableInfoList.stream()
-            .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
-            .collect(Collectors.toSet());
+      Set<String> sourceUniverseTableIds =
+          sourceUniverseTableInfoList.stream()
+              .map(XClusterConfigTaskBase::getTableId)
+              .collect(Collectors.toSet());
 
-    Set<String> tableIdsInReplication =
-        XClusterConfigTaskBase.getProducerTableIdsFromClusterConfig(
-            clusterConfig, config.getReplicationGroupName());
+      Set<String> tableIdsInReplication =
+          XClusterConfigTaskBase.getProducerTableIdsFromClusterConfig(
+              clusterConfig, config.getReplicationGroupName());
 
-    Set<String> tableIdsInYbaXClusterConfig = config.getTableIds();
+      Set<String> tableIdsInYbaXClusterConfig = config.getTableIds();
 
-    Set<String> tableIdsToAdd =
-        getTableIdsToAdd(
-            tableIdsInReplication, tableIdsInYbaXClusterConfig, sourceUniverseTableIds);
+      Set<String> tableIdsToAdd =
+          getTableIdsToAdd(
+              tableIdsInReplication, tableIdsInYbaXClusterConfig, sourceUniverseTableIds);
 
-    Set<String> tableIdsToRemove =
-        getTableIdsToRemove(
-            tableIdsInReplication,
-            tableIdsInYbaXClusterConfig,
-            sourceUniverseTableIds,
-            sourceUniverse);
+      Set<String> tableIdsToRemove =
+          getTableIdsToRemove(
+              tableIdsInReplication,
+              tableIdsInYbaXClusterConfig,
+              sourceUniverseTableIds,
+              sourceUniverse);
 
-    if (CollectionUtils.isEmpty(tableIdsToRemove) && CollectionUtils.isEmpty(tableIdsToAdd)) {
-      log.debug("No tables to add or remove for xCluster config {}", config.getName());
-      return;
+      if (CollectionUtils.isEmpty(tableIdsToRemove) && CollectionUtils.isEmpty(tableIdsToAdd)) {
+        log.debug("No tables to add or remove for xCluster config {}", config.getName());
+        return;
+      }
+
+      updateXClusterConfig(
+          config, clusterConfig, sourceUniverseTableInfoList, tableIdsToAdd, tableIdsToRemove);
+    } else {
+      updateXClusterConfig(config, clusterConfig);
     }
-
-    updateXClusterConfig(
-        config, clusterConfig, sourceUniverseTableInfoList, tableIdsToAdd, tableIdsToRemove);
   }
 
   public synchronized void syncXClusterConfig(XClusterConfig config) {
@@ -266,8 +271,7 @@ public class XClusterScheduler {
       }
       compareTablesAndSyncXClusterConfig(config);
     } catch (Exception e) {
-      log.error("Error syncing xCluster config: {}", e);
-    } finally {
+      log.error("Error syncing xCluster config:", e);
     }
   }
 
@@ -279,12 +283,9 @@ public class XClusterScheduler {
     log.info("Running xCluster Sync Scheduler...");
     try {
       List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
-      xClusterConfigs.forEach(
-          config -> {
-            syncXClusterConfig(config);
-          });
+      xClusterConfigs.forEach(this::syncXClusterConfig);
     } catch (Exception e) {
-      log.error("Error running xCluster Sync Scheduler: {}", e);
+      log.error("Error running xCluster Sync Scheduler:", e);
     }
   }
 
@@ -310,7 +311,6 @@ public class XClusterScheduler {
             CommonUtils.nowPlusWithoutMillis(
                 MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
         .setKeyLabel(KnownAlertLabels.TABLE_UUID, xClusterTableConfig.getTableId())
-        .setSourceUuid(xClusterConfig.getUuid())
         .setLabel(
             KnownAlertLabels.SOURCE_UNIVERSE_UUID,
             xClusterConfig.getSourceUniverseUUID().toString())
@@ -318,6 +318,8 @@ public class XClusterScheduler {
             KnownAlertLabels.TARGET_UNIVERSE_UUID,
             xClusterConfig.getTargetUniverseUUID().toString())
         .setLabel(KnownAlertLabels.TABLE_TYPE, xClusterConfig.getTableType().toString())
+        .setLabel(KnownAlertLabels.XCLUSTER_CONFIG_UUID, xClusterConfig.getUuid().toString())
+        .setLabel(KnownAlertLabels.XCLUSTER_CONFIG_NAME, xClusterConfig.getName())
         .setLabel(
             KnownAlertLabels.XCLUSTER_REPLICATION_GROUP_NAME,
             xClusterConfig.getReplicationGroupName())

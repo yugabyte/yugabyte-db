@@ -11,19 +11,22 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.production.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
@@ -1382,7 +1385,7 @@
             https://app.clearbit.com
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
-            https://code.jquery.com/jquery-3.6.0.min.js
+            https://code.jquery.com/jquery-3.7.1.min.js
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/

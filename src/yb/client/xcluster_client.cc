@@ -29,6 +29,7 @@
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_bool(TEST_running_test);
 
 #define CALL_SYNC_LEADER_MASTER_RPC(method, req) \
   VERIFY_RESULT(SyncLeaderMasterRpc<master::BOOST_PP_CAT(method, ResponsePB)>( \
@@ -70,10 +71,14 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
         &messenger_builder));
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
+  if (FLAGS_TEST_running_test) {
+    messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
+  }
 
   yb_client_ = VERIFY_RESULT(YBClientBuilder()
                                  .set_client_name(kClientName)
                                  .add_master_server_addr(master_addrs)
+                                 .skip_master_flagfile()
                                  .default_admin_operation_timeout(
                                      MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
                                  .Build(messenger_.get()));

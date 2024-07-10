@@ -2141,10 +2141,26 @@ public class YBClient implements AutoCloseable {
     return deleteUniverseReplication(replicationGroupName, false /* ignoreErrors */);
   }
 
-  public GetUniverseReplicationResponse getUniverseReplication(String replicationGrouopName)
+  public GetUniverseReplicationResponse getUniverseReplication(String replicationGroupName)
       throws Exception {
     Deferred<GetUniverseReplicationResponse> d =
-        asyncClient.getUniverseReplication(replicationGrouopName);
+        asyncClient.getUniverseReplication(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /** @see {@link AsyncYBClient#getUniverseReplicationInfo(String)} */
+  public GetUniverseReplicationInfoResponse getUniverseReplicationInfo(String replicationGroupName)
+    throws Exception {
+    Deferred<GetUniverseReplicationInfoResponse> d =
+      asyncClient.getUniverseReplicationInfo(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /** @see {@link AsyncYBClient#getXClusterOutboundReplicationGroupInfo(String)} */
+  public GetXClusterOutboundReplicationGroupInfoResponse getXClusterOutboundReplicationGroupInfo(
+      String replicationGroupName) throws Exception {
+    Deferred<GetXClusterOutboundReplicationGroupInfoResponse> d =
+        asyncClient.getXClusterOutboundReplicationGroupInfo(replicationGroupName);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

@@ -47,7 +47,7 @@
       "viewDetails": "View Details"
     },
     "queryError": {
-      "failedToFetchUniverselist": "Error fetching universe list.",
+      "failedToFetchUniverseList": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
       "failedToFetchUniverseRuntimeConfig": "Failed to fetch runtime configurations for the current universe.",
       "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
@@ -61,6 +61,7 @@
       "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{universeUuid}}",
       "failedToFetchSourceUniverseTables": "Unable to fetch tables for source universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryTables": "Unable to fetch tables for DR primary universe UUID: {{universeUuid}}",
+      "failedToFetchXClusterConfig": "Unable to fetch xCluster config UUID: {{xClusterConfigUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
@@ -1114,6 +1115,8 @@
           }
         },
         "selectTable": {
+          "tablesSearchBarPlaceholder": "Search tables...",
+          "selectUnreplicatedTablesButton": "Select Unreplicated Tables",
           "selectionDescriptorDr": "List of databases and tables in the DR primary universe.",
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
@@ -1122,6 +1125,12 @@
           "droppedTablesInfoTextXCluster": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster replication configuration have been dropped on the source universe. These tables will be removed from the configuration upon submission of this select table request.",
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
+          "tablePill": {
+            "unreplicatedTableInReplicatedNamespace": "Unreplicated",
+            "eligible": "Eligible",
+            "inCurrentConfig": "In Current Config",
+            "inUse": "In Use - Not Available"
+          },
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",

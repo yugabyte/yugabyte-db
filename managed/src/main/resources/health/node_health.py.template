@@ -130,6 +130,10 @@ HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS = MetricDefinition(
     "ybp_health_check_n2n_cert_validity_days",
     "Remaining Node to Node certificate validity days",
     "days")
+HEALTH_CHECK_N2N_RUNTIME_CERT_VALIDITY_DAYS = MetricDefinition(
+    "ybp_health_check_n2n_runtime_cert_validity_days",
+    "Remaining Node to Node Runtime certificate validity days",
+    "days")
 HEALTH_CHECK_C2N_CA_CERT_VALIDITY_DAYS = MetricDefinition(
     "ybp_health_check_c2n_ca_cert_validity_days",
     "Remaining Client to Node CA certificate validity days",
@@ -612,10 +616,47 @@ class NodeChecker():
 
         return e.fill_and_return_entry(msgs, has_error=found_error)
 
-    def get_certificate_expiration_date(self, cert_path):
-        cmd = 'if [ -f {} ]; then openssl x509 -enddate -noout -in {} 2>/dev/null;' \
-                     ' else echo \"File not found\"; fi;'.format(cert_path, cert_path)
+    def get_certificate_expiration_date_from_string(self, cert_string):
+        cmd = 'echo "{}" | openssl x509 -enddate -noout'.format(cert_string.replace('"', '\\"'))
         return self._check_output(cmd)
+
+    def get_certificate_expiration_date(self, cert_path):
+        cmd = 'if [ -f "{}" ]; then openssl x509 -enddate -noout -in "{}"; ' \
+              'else echo "File not found"; fi'.format(cert_path, cert_path)
+        return self._check_output(cmd)
+
+
+    def retrieve_host_certs(self, host, port):
+        """Retrieve certificates from the specified host and port."""
+        cmd = f'echo | openssl s_client -showcerts -connect {host}:{port}'
+        return self._check_output(cmd)
+
+    def parse_certs(self, cert_output):
+        """Extract certificates from the openssl output."""
+        certs = re.findall(r'-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----',
+                           cert_output, re.DOTALL)
+        return certs
+
+    def read_cert_from_file(self, cert_path):
+        """Read the certificate from the given file path."""
+        with open(cert_path, 'r') as cert_file:
+            cert_data = cert_file.read()
+        return cert_data
+
+    def normalize_cert(self, cert):
+        """Normalize certificate by removing unnecessary whitespace."""
+        return re.sub(r'\s+', '', cert)
+
+    def are_certs_same(self, certs, cert_path):
+        """Compare parsed certificates with the certificate from the file."""
+        file_cert = self.read_cert_from_file(cert_path)
+        normalized_file_cert = self.normalize_cert(file_cert)
+
+        for cert in certs:
+            if not self.normalize_cert(cert) == normalized_file_cert:
+                return False
+
+        return True
 
     def check_certificate_expiration(self, cert_name, cert_path, metric_definition,
                                      fail_if_not_found=True):
@@ -647,16 +688,56 @@ class NodeChecker():
         delta = expiry_date - datetime.now()
         days_till_expiry = delta.days
         metric = Metric.from_definition(metric_definition).add_value(days_till_expiry)
-        if days_till_expiry >=0 and days_till_expiry < 30:
+
+        if cert_name == "Node To Node Runtime":
+            if days_till_expiry > 30:
+                # We will extract the runtime certificates serving tserver/master.
+                # In case the runtime certs are different from the on-disk certs
+                # & they are about to expire <= 30 days, we will raise the alerts
+                # for users to restart the services.
+                try:
+                    cert_output = self.retrieve_host_certs(self.node, self.tserver_http_port)
+                except Exception as e:
+                    logging.info("Failed to retrieve tserver certs, trying with master")
+                    cert_output = self.retrieve_host_certs(self.node, self.master_http_port)
+                certs = self.parse_certs(cert_output)
+                if not self.are_certs_same(certs, cert_path):
+                    for cert in certs:
+                        output = self.get_certificate_expiration_date_from_string(cert)
+                        try:
+                            ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
+                            date = output.replace('notAfter=', '')
+                            expiry_date = datetime.strptime(date, ssl_date_fmt)
+                        except Exception as ex:
+                            message = str(ex)
+                            return e.fill_and_return_entry([message], has_error=True)
+
+                        delta = expiry_date - datetime.now()
+                        if delta.days < days_till_expiry:
+                            days_till_expiry = delta.days
+
+                    if days_till_expiry >=0 and days_till_expiry < 30:
+                        return e.fill_and_return_entry(
+                            ['{} certificate expires in {} days. Consider running rolling restart'
+                            .format(cert_name, days_till_expiry)],
+                            has_error=True,
+                            metrics=[metric])
+
             return e.fill_and_return_entry(
-                ['{} certificate will expire in {} days'.format(cert_name, days_till_expiry)],
-                has_error=True,
+                ['{} days'.format(days_till_expiry)],
+                has_error=False,
                 metrics=[metric])
-        if days_till_expiry < 0:
-            return e.fill_and_return_entry(
-                ['{} certificate expired {} day(s) ago'.format(cert_name, -days_till_expiry)],
-                has_error=True,
-                metrics=[metric])
+        else:
+            if days_till_expiry >= 0 and days_till_expiry < 30:
+                return e.fill_and_return_entry(
+                    ['{} certificate will expire in {} days'.format(cert_name, days_till_expiry)],
+                    has_error=True,
+                    metrics=[metric])
+            if days_till_expiry < 0:
+                return e.fill_and_return_entry(
+                    ['{} certificate expired {} day(s) ago'.format(cert_name, -days_till_expiry)],
+                    has_error=True,
+                    metrics=[metric])
         return e.fill_and_return_entry(
             ['{} days'.format(days_till_expiry)],
             has_error=False,
@@ -713,6 +794,12 @@ class NodeChecker():
         return self.check_certificate_expiration("Node To Node",
                                                  self.get_node_to_node_certificate_path(),
                                                  HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS
+                                                 )
+
+    def check_node_to_node_runtime_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node Runtime",
+                                                 self.get_node_to_node_certificate_path(),
+                                                 HEALTH_CHECK_N2N_RUNTIME_CERT_VALIDITY_DAYS
                                                  )
 
     def check_client_to_node_ca_certificate_expiration(self):
@@ -1864,6 +1951,7 @@ def main():
     if n.enable_tls:
         coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
         coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
+        coordinator.add_check(checker, "check_node_to_node_runtime_certificate_expiration")
     if n.enable_tls_client:
         coordinator.add_check(checker, "check_client_ca_certificate_expiration")
         if not n.root_and_client_root_ca_same:

@@ -110,7 +110,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           <TotalNodesField disabled={isViewMode} />
         </Box>
         <Box mt={2}>
-          <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} isViewMode={isViewMode} />
+          <ReplicationFactor disabled={isViewMode} isPrimary={isPrimary} isViewMode={isViewMode} />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">
