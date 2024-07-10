@@ -17,7 +17,6 @@ import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CON
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -35,7 +34,6 @@ import com.google.common.collect.ImmutableSet;
 import com.nimbusds.oauth2.sdk.ParseException;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.typesafe.config.Config;
-import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -203,6 +201,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     setKey(PROVIDER_KEY, "true", GLOBAL_SCOPE_UUID);
     res = getKey(defaultProvider.getUuid(), PROVIDER_KEY);
     assertEquals("true", contentAsString(res));
+
+    // Make sure GET works on object keys.
+    res = getKey(GLOBAL_SCOPE_UUID, "yb.runtime_conf_ui.tag_filter");
+    assertEquals(OK, res.status());
+    assertEquals("[\"PUBLIC\"]", contentAsString(res));
   }
 
   // Multiline json should be posted as triple quoted string
@@ -287,11 +290,6 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         "Delete of the object key should work",
         OK,
         deleteKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY).status());
-
-    // Expect ConfigException since default value in reference.conf is null
-    assertThrows(
-        ConfigException.WrongType.class,
-        () -> getKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY));
   }
 
   private Result setExtScriptObject(String schedule, String content, UUID scopeUUID) {
