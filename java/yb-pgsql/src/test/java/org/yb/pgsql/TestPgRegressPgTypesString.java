@@ -20,7 +20,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressTypesString extends BasePgRegressTest {
+public class TestPgRegressPgTypesString extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -28,6 +28,6 @@ public class TestPgRegressTypesString extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest("yb_types_string_schedule");
+    runPgRegressTest("yb_pg_types_string_schedule");
   }
 }
