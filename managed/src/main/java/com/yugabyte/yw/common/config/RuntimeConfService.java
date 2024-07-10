@@ -146,8 +146,7 @@ public class RuntimeConfService extends AuthenticatedController {
       log.trace(
           "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
 
-      String value = fullConfig.getValue(k).render(ConfigRenderOptions.concise());
-      value = unwrap(value);
+      String value = getValueFromConfig(fullConfig, k);
       if (sensitiveKeys.contains(k)) {
         value = CommonUtils.getEmptiableMaskedValue(k, value);
       }
@@ -171,6 +170,11 @@ public class RuntimeConfService extends AuthenticatedController {
     return maybeQuoted;
   }
 
+  private String getValueFromConfig(Config config, String path) {
+    String value = config.getValue(path).render(ConfigRenderOptions.concise());
+    return unwrap(value);
+  }
+
   public String getKeyOrBadRequest(
       UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
     Optional<String> value = maybeGetKey(customerUUID, scopeUUID, path, isSuperAdmin);
@@ -180,20 +184,19 @@ public class RuntimeConfService extends AuthenticatedController {
       ScopeType scope = getScopeType(scopeUUID);
       switch (scope) {
         case GLOBAL:
-          return settableRuntimeConfigFactory.globalRuntimeConf().getString(path);
+          return getValueFromConfig(settableRuntimeConfigFactory.globalRuntimeConf(), path);
         case CUSTOMER:
-          return settableRuntimeConfigFactory.forCustomer(Customer.get(scopeUUID)).getString(path);
+          return getValueFromConfig(
+              settableRuntimeConfigFactory.forCustomer(Customer.get(scopeUUID)), path);
         case PROVIDER:
-          return settableRuntimeConfigFactory
-              .forProvider(Provider.maybeGet(scopeUUID).get())
-              .getString(path);
+          return getValueFromConfig(
+              settableRuntimeConfigFactory.forProvider(Provider.maybeGet(scopeUUID).get()), path);
         case UNIVERSE:
-          return settableRuntimeConfigFactory
-              .forUniverse(Universe.maybeGet(scopeUUID).get())
-              .getString(path);
+          return getValueFromConfig(
+              settableRuntimeConfigFactory.forUniverse(Universe.maybeGet(scopeUUID).get()), path);
         default:
           // should never reach here.
-          return settableRuntimeConfigFactory.staticApplicationConf().getString(path);
+          return getValueFromConfig(settableRuntimeConfigFactory.staticApplicationConf(), path);
       }
     } else {
       throw new PlatformServiceException(
