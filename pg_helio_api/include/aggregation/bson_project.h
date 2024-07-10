@@ -52,6 +52,9 @@ typedef struct BsonProjectionContext
 
 	/* Query spec for positional projection. It all cases this is null when `isFindProjection` is false */
 	pgbson *querySpec;
+
+	/* The variable spec for let scenarios if applicable */
+	pgbson *variableSpec;
 } BsonProjectionContext;
 
 /*

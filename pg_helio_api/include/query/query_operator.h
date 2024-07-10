@@ -95,6 +95,9 @@ typedef struct BsonQueryOperatorContext
 	 * based on the overall query structure later
 	 */
 	List *targetEntries;
+
+	/* Any let variable context for this query operator */
+	pgbson *variableContext;
 } BsonQueryOperatorContext;
 
 Var * MakeSimpleDocumentVar(void);

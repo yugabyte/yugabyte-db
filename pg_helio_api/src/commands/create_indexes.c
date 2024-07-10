@@ -3326,6 +3326,7 @@ ParseIndexDefPartFilterDocument(const bson_iter_t *indexDefDocIter)
 	context.inputType = MongoQueryOperatorInputType_Bson;
 	context.simplifyOperators = false;
 	context.coerceOperatorExprIfApplicable = true;
+	context.variableContext = NULL;
 	List *partialFilterQuals = CreateQualsFromQueryDocIterator(&partFilterExprIter,
 															   &context);
 

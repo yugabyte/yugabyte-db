@@ -191,6 +191,7 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 		.allowInclusionExclusion = false,
 		.pathSpecIter = &pathSpecIter,
 		.querySpec = NULL,
+		.variableSpec = NULL,
 	};
 	SetCachedFunctionState(
 		state,
@@ -220,7 +221,13 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
-	pgbson *querySpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
+	pgbson *querySpec = NULL;
+	pgbson *variableSpec = NULL;
+
+	if (PG_NARGS() > 2)
+	{
+		querySpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
+	}
 
 	if (querySpec == NULL)
 	{
@@ -235,7 +242,16 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 
 	const BsonProjectionQueryState *state;
 
-	int argPosition = 1;
+	int argPosition[2] = { 1, 0 };
+	int numArgs = 1;
+
+	if (PG_NARGS() > 3)
+	{
+		/* If a let spec is specified modify argPositions/numArgs */
+		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
+		argPosition[1] = 3;
+		numArgs = 2;
+	}
 
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
@@ -245,12 +261,14 @@ bson_dollar_project_find(PG_FUNCTION_ARGS)
 		.allowInclusionExclusion = false,
 		.pathSpecIter = &pathSpecIter,
 		.querySpec = querySpec,
+		.variableSpec = variableSpec
 	};
 
-	SetCachedFunctionState(
+	SetCachedFunctionStateMultiArgs(
 		state,
 		BsonProjectionQueryState,
 		argPosition,
+		numArgs,
 		BuildBsonPathTreeForDollarProjectFind,
 		&context);
 
@@ -315,6 +333,7 @@ GetProjectionStateForBsonProject(bson_iter_t *projectionSpecIter,
 		.forceProjectId = forceProjectId,
 		.allowInclusionExclusion = allowInclusionExclusion,
 		.querySpec = NULL,
+		.variableSpec = NULL,
 	};
 	BuildBsonPathTreeForDollarProject(projectionState, &context);
 
@@ -891,6 +910,7 @@ TryInlineProjection(Node *currentExprNode, Oid functionOid, const
 			.allowInclusionExclusion = false,
 			.pathSpecIter = &pathSpecIter,
 			.querySpec = NULL,
+			.variableSpec = NULL,
 		};
 		BsonProjectionQueryState projectionState = { 0 };
 		BuildBsonPathTreeForDollarProject(&projectionState, &projectContext);
@@ -1047,8 +1067,17 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 	state->hasExclusion = pathTreeContext->hasExclusion;
 	state->projectNonMatchingFields = pathTreeContext->hasExclusion;
 
-	/* TODO VARIABLE parse variable spec and set from there */
 	state->variableContext = NULL;
+	if (projectionContext->variableSpec != NULL)
+	{
+		bson_value_t varsValue = ConvertPgbsonToBsonValue(
+			projectionContext->variableSpec);
+		ExpressionVariableContext *variableContext =
+			palloc0(sizeof(ExpressionVariableContext));
+
+		ParseVariableSpec(&varsValue, variableContext);
+		state->variableContext = variableContext;
+	}
 }
 
 
@@ -1552,7 +1581,7 @@ ProjectCurrentIteratorFieldToWriter(bson_iter_t *documentIterator,
 	const BsonPathNode *child;
 	int index = 0;
 	bool isNullOnEmpty = false;
-	ExpressionVariableContext *variableContext = NULL;
+	const ExpressionVariableContext *variableContext = projectDocState->variableContext;
 	foreach_child(child, pathSpecTree)
 	{
 		/* check if a field matches against a filter. */

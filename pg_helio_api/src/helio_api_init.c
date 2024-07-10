@@ -278,6 +278,12 @@ bool EnableNativeColocation = DEFAULT_ENABLE_NATIVE_COLOCATION;
 #define DEFAULT_ENABLE_NATIVE_TABLE_COLOCATION false
 bool EnableNativeTableColocation = DEFAULT_ENABLE_NATIVE_TABLE_COLOCATION;
 
+#define DEFAULT_ENABLE_LET_SUPPORT false
+bool EnableLetSupport = DEFAULT_ENABLE_LET_SUPPORT;
+
+#define DEFAULT_IGNORE_LET_ON_QUERY false
+bool IgnoreLetOnQuerySupport = DEFAULT_IGNORE_LET_ON_QUERY;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -744,6 +750,20 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Determines whether to turn on colocation of tables across all tables (requires enableNativeColocation to be on)"),
 		NULL, &EnableNativeTableColocation, DEFAULT_ENABLE_NATIVE_TABLE_COLOCATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableLetSupport",
+		gettext_noop(
+			"Determines whether to enable support for the let in commands and $lookup"),
+		NULL, &EnableLetSupport, DEFAULT_ENABLE_LET_SUPPORT,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.ignoreLetOnQuerySpec",
+		gettext_noop(
+			"Determines whether to ignore the spec let in commands and $lookup"),
+		NULL, &IgnoreLetOnQuerySupport, DEFAULT_IGNORE_LET_ON_QUERY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 

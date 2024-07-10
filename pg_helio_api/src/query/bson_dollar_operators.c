@@ -154,6 +154,23 @@ typedef struct TraverseRangeValidateState
 	bool isMaxConditionSet;
 } TraverseRangeValidateState;
 
+
+/*
+ * Shared query state for $expr
+ */
+typedef struct BsonDollarExprQueryState
+{
+	/*
+	 * The cached expression context for the query
+	 */
+	AggregationExpressionData *expression;
+
+	/*
+	 * Any variable context for let.
+	 */
+	ExpressionVariableContext *variableContext;
+} BsonDollarExprQueryState;
+
 /*
  * Holds intermediate state needed to handle regex matches
  * during bson document traversal for comparisons
@@ -290,6 +307,8 @@ static void PopulateDollarAllValidationState(PG_FUNCTION_ARGS,
 											 pgbsonelement *filterElement);
 static void PopulateDollarAllStateFromQuery(BsonDollarAllQueryState *state, const
 											pgbson *filter);
+static void PopulateExprStateFromQuery(BsonDollarExprQueryState *state,
+									   const pgbson *filter, const pgbson *variableSpec);
 
 static bool IsQueryFilterNullForValue(const TraverseValidateState *filterElement);
 static bool IsQueryFilterNullForArray(const TraverseValidateState *filterElement);
@@ -1049,12 +1068,11 @@ bson_dollar_range(PG_FUNCTION_ARGS)
 		PopulateRangeStateFromQuery,
 		filter);
 
+	DollarRangeParams localState = {
+		{ 0 }, { 0 }, false, false
+	};
 	if (cachedRangeParamsState == NULL)
 	{
-		DollarRangeParams localState = {
-			{ 0 }, { 0 }, false, false
-		};
-
 		PopulateRangeStateFromQuery(&localState, filter);
 		cachedRangeParamsState = &localState;
 	}
@@ -1511,16 +1529,43 @@ bson_dollar_expr(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *filter = PG_GETARG_PGBSON(1);
+	pgbson *variablesContext = NULL;
 
-	pgbsonelement element;
-	PgbsonToSinglePgbsonElement(filter, &element);
+	int argPositions[2] = { 1, 2 };
+	int numArgs = 1;
+
+	if (PG_NARGS() > 2)
+	{
+		variablesContext = PG_GETARG_MAYBE_NULL_PGBSON(2);
+		numArgs = 2;
+	}
+
+	const BsonDollarExprQueryState *cachedExprQueryState = NULL;
+	BsonDollarExprQueryState localState = { 0 };
+	SetCachedFunctionStateMultiArgs(
+		cachedExprQueryState,
+		BsonDollarExprQueryState,
+		argPositions,
+		numArgs,
+		PopulateExprStateFromQuery,
+		filter,
+		variablesContext);
+
+	if (cachedExprQueryState == NULL)
+	{
+		PopulateExprStateFromQuery(&localState, filter, variablesContext);
+		cachedExprQueryState = &localState;
+	}
 
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 	bool isNullOnEmpty = false;
-	ExpressionVariableContext *variableContext = NULL;
-	EvaluateExpressionToWriter(document, &element, &writer, variableContext,
-							   isNullOnEmpty);
+	StringView emptyPathView = { .length = 0, .string = "" };
+	EvaluateAggregationExpressionDataToWriter(
+		cachedExprQueryState->expression,
+		document, emptyPathView, &writer,
+		cachedExprQueryState->variableContext,
+		isNullOnEmpty);
 
 	bson_iter_t resultIterator;
 	PgbsonWriterGetIterator(&writer, &resultIterator);
@@ -1530,14 +1575,15 @@ bson_dollar_expr(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
-	BsonIterToPgbsonElement(&resultIterator, &element);
-	if (BsonValueIsNumberOrBool(&element.bsonValue))
+	pgbsonelement resultElement;
+	BsonIterToPgbsonElement(&resultIterator, &resultElement);
+	if (BsonValueIsNumberOrBool(&resultElement.bsonValue))
 	{
-		PG_RETURN_BOOL(BsonValueAsInt32(&element.bsonValue) != 0);
+		PG_RETURN_BOOL(BsonValueAsInt32(&resultElement.bsonValue) != 0);
 	}
 
-	bool result = element.bsonValue.value_type != BSON_TYPE_NULL &&
-				  element.bsonValue.value_type != BSON_TYPE_UNDEFINED;
+	bool result = resultElement.bsonValue.value_type != BSON_TYPE_NULL &&
+				  resultElement.bsonValue.value_type != BSON_TYPE_UNDEFINED;
 	PG_RETURN_BOOL(result);
 }
 
@@ -3070,6 +3116,34 @@ PopulateDollarAllStateFromQuery(BsonDollarAllQueryState *dollarAllState,
 								 arrayValue->value.v_regex.options);
 			}
 		}
+	}
+}
+
+
+/*
+ * Parses the expr document from $filter and constructs an aggregation expression data
+ * Also if the variableSpec is not null, parses and stores it in state.
+ */
+static void
+PopulateExprStateFromQuery(BsonDollarExprQueryState *state,
+						   const pgbson *filter, const pgbson *variableSpec)
+{
+	pgbsonelement element;
+	PgbsonToSinglePgbsonElement(filter, &element);
+
+	AggregationExpressionData *exprData = (AggregationExpressionData *) palloc0(
+		sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(exprData, &element.bsonValue);
+	state->expression = exprData;
+
+	if (variableSpec != NULL)
+	{
+		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
+		ExpressionVariableContext *variableContext =
+			palloc0(sizeof(ExpressionVariableContext));
+
+		ParseVariableSpec(&varsValue, variableContext);
+		state->variableContext = variableContext;
 	}
 }
 

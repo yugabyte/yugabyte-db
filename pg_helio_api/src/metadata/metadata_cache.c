@@ -64,6 +64,15 @@ static Oid GetCoreBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *opera
 								   Oid rightTypeOid);
 static Oid GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 									   Oid leftTypeOid, Oid rightTypeOid);
+static Oid GetOperatorFunctionIdThreeArgs(Oid *operatorFuncId, char *schemaName,
+										  char *operatorName,
+										  Oid arg0TypeOid, Oid arg1TypeOid, Oid
+										  arg2TypeOid);
+static Oid GetOperatorFunctionIdFourArgs(Oid *operatorFuncId, char *schemaName,
+										 char *operatorName,
+										 Oid arg0TypeOid, Oid arg1TypeOid, Oid
+										 arg2TypeOid,
+										 Oid arg3TypeOid);
 static Oid GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId,
 													char *operatorName,
 													Oid leftTypeOid, Oid rightTypeOid,
@@ -115,9 +124,6 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the <text> OPERATOR(pg_catalog.<) <text> operator */
 	Oid TextLessOperatorId;
-
-	/* OID of the <bson> OPERATOR(ApiCatalogSchemaName.->) <bson> operator */
-	Oid BsonArrowOperatorId;
 
 	/* OID of the vector type */
 	Oid VectorTypeId;
@@ -359,6 +365,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the $expr function for bson */
 	Oid BsonExprFunctionId;
 
+	/* OID of the $expr function for bson with let */
+	Oid BsonExprWithLetFunctionId;
+
 	/* OID of the $text function for bson */
 	Oid BsonTextFunctionId;
 
@@ -575,6 +584,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_dollar_project_find function */
 	Oid ApiCatalogBsonDollarProjectFindFunctionOid;
+
+	/* OID of the bson_dollar_project_find with let args function */
+	Oid ApiCatalogBsonDollarProjectFindWithLetFunctionOid;
 
 	/* OID of the bson_dollar_unwind(bson, text) function */
 	Oid ApiCatalogBsonDollarUnwindFunctionOid;
@@ -1663,6 +1675,19 @@ BsonExprFunctionId(void)
 	return GetBinaryOperatorFunctionId(&Cache.BsonExprFunctionId,
 									   "bson_dollar_expr", BsonTypeId(),
 									   BsonTypeId());
+}
+
+
+/*
+ * Returns the OID of ApiCatalogSchemaName.bson_dollar_expr function.
+ */
+Oid
+BsonExprWithLetFunctionId(void)
+{
+	return GetOperatorFunctionIdThreeArgs(&Cache.BsonExprWithLetFunctionId,
+										  "helio_api_internal",
+										  "bson_dollar_expr", HelioCoreBsonTypeId(),
+										  HelioCoreBsonTypeId(), HelioCoreBsonTypeId());
 }
 
 
@@ -2791,6 +2816,18 @@ BsonDollarProjectFindFunctionOid(void)
 
 
 Oid
+BsonDollarProjectFindWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdFourArgs(
+		&Cache.ApiCatalogBsonDollarProjectFindWithLetFunctionOid,
+		"helio_api_internal",
+		"bson_dollar_project_find",
+		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
+		HelioCoreBsonTypeId());
+}
+
+
+Oid
 BsonDollarMergeHandleWhenMatchedFunctionOid(void)
 {
 	InitializeHelioApiExtensionCache();
@@ -3332,17 +3369,6 @@ BsonExpressionMapFunctionOid(void)
 	}
 
 	return Cache.ApiCatalogBsonExpressionMapFunctionOid;
-}
-
-
-/*
- * BsonArrowOperatorId returns the OID of the <bson> -> <text> operator.
- */
-Oid
-BsonArrowOperatorId(void)
-{
-	return GetBinaryOperatorId(&Cache.BsonQueryOperatorId,
-							   BsonTypeId(), "->", TEXTOID);
 }
 
 
@@ -4812,6 +4838,49 @@ GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 
 		*operatorFuncId =
 			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return *operatorFuncId;
+}
+
+
+static Oid
+GetOperatorFunctionIdThreeArgs(Oid *operatorFuncId, char *schemaName, char *operatorName,
+							   Oid arg0TypeOid, Oid arg1TypeOid, Oid arg2TypeOid)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (*operatorFuncId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(schemaName),
+											makeString(operatorName));
+		Oid paramOids[3] = { arg0TypeOid, arg1TypeOid, arg2TypeOid };
+		bool missingOK = false;
+
+		*operatorFuncId =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return *operatorFuncId;
+}
+
+
+static Oid
+GetOperatorFunctionIdFourArgs(Oid *operatorFuncId, char *schemaName, char *operatorName,
+							  Oid arg0TypeOid, Oid arg1TypeOid, Oid arg2TypeOid,
+							  Oid arg3TypeOid)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (*operatorFuncId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(schemaName),
+											makeString(operatorName));
+		Oid paramOids[4] = { arg0TypeOid, arg1TypeOid, arg2TypeOid, arg3TypeOid };
+		bool missingOK = false;
+
+		*operatorFuncId =
+			LookupFuncName(functionNameList, 4, paramOids, missingOK);
 	}
 
 	return *operatorFuncId;

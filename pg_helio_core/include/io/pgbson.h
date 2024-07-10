@@ -82,7 +82,7 @@ const char * PgbsonToLegacyJson(const pgbson *bsonDocument);
 const char * PgbsonToHexadecimalString(const pgbson *bsonDocument);
 
 bytea * CastPgbsonToBytea(pgbson *bsonDocument);
-bson_value_t ConvertPgbsonToBsonValue(pgbson *document);
+bson_value_t ConvertPgbsonToBsonValue(const pgbson *document);
 
 /* pgbon bson_iter functions */
 bool PgbsonInitIteratorAtPath(const pgbson *bson, const char *path,

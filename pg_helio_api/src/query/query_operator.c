@@ -330,6 +330,7 @@ query_match_support(PG_FUNCTION_ARGS)
 			context.simplifyOperators = true;
 			context.coerceOperatorExprIfApplicable = true;
 			context.requiredFilterPathNameHashSet = NULL;
+			context.variableContext = NULL;
 
 			/* convert the Mongo query to a list of Postgres quals */
 			List *quals = CreateQualsFromQueryDocIterator(&queryDocIter, &context);
@@ -427,6 +428,7 @@ CreateQualForBsonValueExpression(const bson_value_t *expression)
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
 	context.requiredFilterPathNameHashSet = NULL;
+	context.variableContext = NULL;
 
 	const char *traversedPath = NULL;
 	const char *basePath = "";
@@ -458,6 +460,7 @@ CreateQualForBsonValueArrayExpression(const bson_value_t *expression)
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
 	context.requiredFilterPathNameHashSet = NULL;
+	context.variableContext = NULL;
 
 	const char *traversedPath = NULL;
 	const char *basePath = "";
@@ -509,6 +512,7 @@ CreateQualsForBsonValueTopLevelQuery(const pgbson *query)
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
 	context.requiredFilterPathNameHashSet = NULL;
+	context.variableContext = NULL;
 
 	bson_iter_t queryDocIterator;
 	PgbsonInitIterator(query, &queryDocIterator);
@@ -542,6 +546,7 @@ CreateQualForBsonExpression(const bson_value_t *expression, const
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = false;
 	context.requiredFilterPathNameHashSet = NULL;
+	context.variableContext = NULL;
 
 	const char *traversedPath = queryPath;
 	const char *basePath = queryPath;
@@ -815,6 +820,7 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 	context.simplifyOperators = true;
 	context.coerceOperatorExprIfApplicable = true;
 	context.requiredFilterPathNameHashSet = NULL;
+	context.variableContext = NULL;
 
 	Node *queryExpr = queryNode;
 
@@ -970,6 +976,7 @@ ValidateQueryDocument(pgbson *queryDocument)
 		.simplifyOperators = false,
 		.coerceOperatorExprIfApplicable = false,
 		.requiredFilterPathNameHashSet = NULL,
+		.variableContext = NULL,
 	};
 
 	CreateQualsFromQueryDocIterator(&queryDocIter, &context);
@@ -993,6 +1000,7 @@ QueryDocumentsAreEquivalent(const pgbson *leftQueryDocument,
 		.simplifyOperators = false,
 		.coerceOperatorExprIfApplicable = false,
 		.requiredFilterPathNameHashSet = NULL,
+		.variableContext = NULL,
 	};
 
 	List *leftDocumentQuals = CreateQualsFromQueryDocIterator(&leftDocumentIter,
@@ -1007,6 +1015,7 @@ QueryDocumentsAreEquivalent(const pgbson *leftQueryDocument,
 		.simplifyOperators = false,
 		.coerceOperatorExprIfApplicable = false,
 		.requiredFilterPathNameHashSet = NULL,
+		.variableContext = NULL,
 	};
 
 	List *rightDocumentQuals = CreateQualsFromQueryDocIterator(&rightDocumentIter,
@@ -1141,6 +1150,18 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 			ereport(ERROR, (errcode(MongoBadValue),
 							errmsg(
 								"$expr can only be applied to the top-level document")));
+		}
+
+		if (context->variableContext != NULL)
+		{
+			/* $expr with let */
+			Const *constValue = CreateConstFromBsonValue("", bson_iter_value(
+															 queryDocIterator));
+			return (Expr *) makeFuncExpr(BsonExprWithLetFunctionId(), BOOLOID,
+										 list_make3(context->documentExpr, constValue,
+													MakeBsonConst(
+														context->variableContext)),
+										 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 		}
 
 		/* Special case for $expr */

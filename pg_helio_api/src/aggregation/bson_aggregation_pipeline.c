@@ -61,6 +61,11 @@
 #include "geospatial/bson_geospatial_geonear.h"
 #include "utils/version_utils.h"
 
+extern bool EnableLetSupport;
+extern bool IgnoreLetOnQuerySupport;
+extern bool EnableGroupMergeObjectsSupport;
+extern bool EnableCursorsOnAggregationQueryRewrite;
+
 /*
  * The mutation function that modifies a given query with a pipeline stage's value.
  */
@@ -179,9 +184,6 @@ static bool CanInlineLookupStageUnwind(const bson_value_t *stageValue, const
 									   StringView *lookupPath);
 static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
 									 StringView *lookupPath);
-
-extern bool EnableGroupMergeObjectsSupport;
-extern bool EnableCursorsOnAggregationQueryRewrite;
 
 static bool CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr);
 
@@ -1112,6 +1114,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	StringView collectionName = { 0 };
 	bson_value_t pipelineValue = { 0 };
+	bson_value_t let = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
 	bool explain = false;
@@ -1163,6 +1166,11 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		{
 			/* We ignore this for now (TODO Support this) */
 		}
+		else if (StringViewEqualsCString(&keyView, "let"))
+		{
+			EnsureTopLevelFieldType("let", &aggregationIterator, BSON_TYPE_DOCUMENT);
+			let = *value;
+		}
 		else if (StringViewEqualsCString(&keyView, "collectionUUID"))
 		{
 			EnsureTopLevelFieldType("collectionUUID", &aggregationIterator,
@@ -1195,6 +1203,19 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	{
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
 							"Required variables aggregate must be valid")));
+	}
+
+	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
+	{
+		if (EnableLetSupport && IsClusterVersionAtleastThis(1, 19, 0))
+		{
+			context.variableSpec = PgbsonInitFromDocumentBsonValue(&let);
+		}
+		else if (!IgnoreLetOnQuerySupport)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg("let in find is not supported yet")));
+		}
 	}
 
 	Query *query;
@@ -1268,6 +1289,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	bson_value_t projection = { 0 };
 	bson_value_t sort = { 0 };
 	bson_value_t skip = { 0 };
+	bson_value_t let = { 0 };
 	pg_uuid_t *collectionUuid = NULL;
 
 	/* For finds, we can generally query the shard directly if available. */
@@ -1324,6 +1346,11 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		{
 			SetBatchSize("ntoreturn", value, queryData);
 		}
+		else if (StringViewEqualsCString(&keyView, "let"))
+		{
+			EnsureTopLevelFieldType("let", &findIterator, BSON_TYPE_DOCUMENT);
+			let = *value;
+		}
 		else if (StringViewEqualsCString(&keyView, "hint") ||
 				 StringViewEqualsCString(&keyView, "min") ||
 				 StringViewEqualsCString(&keyView, "max") ||
@@ -1377,6 +1404,19 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		else if (intValue == 0)
 		{
 			limit.value_type = BSON_TYPE_EOD;
+		}
+	}
+
+	if (let.value_type != BSON_TYPE_EOD && !IsBsonValueEmptyDocument(&let))
+	{
+		if (EnableLetSupport && IsClusterVersionAtleastThis(1, 19, 0))
+		{
+			context.variableSpec = PgbsonInitFromDocumentBsonValue(&let);
+		}
+		else if (!IgnoreLetOnQuerySupport)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg("let in aggregate is not supported yet")));
 		}
 	}
 
@@ -1939,23 +1979,29 @@ HandleProjectFind(const bson_value_t *existingValue, const bson_value_t *queryVa
 	Const *projectProcessed = MakeBsonConst(docBson);
 
 	List *args;
-	if (queryValue->value_type == BSON_TYPE_EOD)
+	Oid funcOid = BsonDollarProjectFindFunctionOid();
+	if (context->variableSpec != NULL)
+	{
+		pgbson *queryDoc = queryValue->value_type == BSON_TYPE_EOD ? PgbsonInitEmpty() :
+						   PgbsonInitFromDocumentBsonValue(queryValue);
+		args = list_make4(currentProjection, projectProcessed, MakeBsonConst(queryDoc),
+						  MakeBsonConst(context->variableSpec));
+		funcOid = BsonDollarProjectFindWithLetFunctionOid();
+	}
+	else if (queryValue->value_type == BSON_TYPE_EOD)
 	{
 		args = list_make2(currentProjection, projectProcessed);
 	}
 	else
 	{
-		pgbson *queryDoc = PgbsonInitFromBuffer(
-			(char *) queryValue->value.v_doc.data,
-			queryValue->value.v_doc.data_len);
+		pgbson *queryDoc = PgbsonInitFromDocumentBsonValue(queryValue);
 		Const *queryDocProcessed = MakeBsonConst(queryDoc);
 		args = list_make3(currentProjection, projectProcessed, queryDocProcessed);
 	}
 
 
-	FuncExpr *resultExpr = makeFuncExpr(
-		BsonDollarProjectFindFunctionOid(), BsonTypeId(), args, InvalidOid,
-		InvalidOid, COERCE_EXPLICIT_CALL);
+	FuncExpr *resultExpr = makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
+										InvalidOid, COERCE_EXPLICIT_CALL);
 
 	firstEntry->expr = (Expr *) resultExpr;
 	return query;
@@ -2141,6 +2187,7 @@ HandleMatch(const bson_value_t *existingValue, Query *query,
 	filterContext.simplifyOperators = true;
 	filterContext.coerceOperatorExprIfApplicable = true;
 	filterContext.requiredFilterPathNameHashSet = context->requiredFilterPathNameHashSet;
+	filterContext.variableContext = context->variableSpec;
 
 	bson_iter_t queryDocIterator;
 	BsonValueInitIterator(existingValue, &queryDocIterator);

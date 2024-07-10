@@ -616,7 +616,7 @@ CastPgbsonToBytea(pgbson *bsonDocument)
  * bson value view for it.
  */
 bson_value_t
-ConvertPgbsonToBsonValue(pgbson *document)
+ConvertPgbsonToBsonValue(const pgbson *document)
 {
 	bson_value_t value = {
 		.value_type = BSON_TYPE_DOCUMENT,

@@ -77,6 +77,11 @@ typedef struct
 	 * this can be extended to other types of queries.
 	 */
 	bool allowShardBaseTable;
+
+	/*
+	 * The variable spec expression that preceds it.
+	 */
+	pgbson *variableSpec;
 } AggregationPipelineBuildContext;
 
 

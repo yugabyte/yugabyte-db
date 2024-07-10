@@ -66,6 +66,15 @@ IsSafeToReuseFmgrFunctionExtraMultiArgs(PG_FUNCTION_ARGS, int *argLocations, int
 
 		Node *node = (Node *) lfirst(list_nth_cell(args, argLocations[i]));
 
+		if (IsA(node, RelabelType))
+		{
+			RelabelType *relabeled = (RelabelType *) node;
+			if (relabeled->relabelformat == COERCE_IMPLICIT_CAST)
+			{
+				node = (Node *) relabeled->arg;
+			}
+		}
+
 		/* Only allow reusing if the parameter requested is a const or a Param of type extern */
 		if (!IsA(node, Const) &&
 			(!IsA(node, Param) || (((Param *) node)->paramkind != PARAM_EXTERN)))
