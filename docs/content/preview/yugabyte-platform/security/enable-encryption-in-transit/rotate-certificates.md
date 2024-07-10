@@ -48,8 +48,6 @@ To modify encryption in transit settings and rotate certificates for a universe,
 
     ![Rotate certificates](/images/yp/encryption-in-transit/rotate-cert.png)
 
-1. Enable or disable encryption in transit.
-
 1. To rotate the root certificate, on the **Certificate Authority** tab, select the new root certificate(s).
 
     Delete the root certificate to create a new [self-signed certificate](../auto-certificate/).
