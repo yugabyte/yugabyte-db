@@ -1114,6 +1114,8 @@
           }
         },
         "selectTable": {
+          "tablesSearchBarPlaceholder": "Search tables...",
+          "selectUnreplicatedTablesButton": "Select Unreplicated Tables",
           "selectionDescriptorDr": "List of databases and tables in the DR primary universe.",
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
@@ -1122,6 +1124,12 @@
           "droppedTablesInfoTextXCluster": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster replication configuration have been dropped on the source universe. These tables will be removed from the configuration upon submission of this select table request.",
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
+          "tablePill": {
+            "unreplicatedTableInReplicatedNamespace": "Unreplicated",
+            "eligible": "Eligible",
+            "inCurrentConfig": "In Current Config",
+            "inUse": "In Use - Not Available"
+          },
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",

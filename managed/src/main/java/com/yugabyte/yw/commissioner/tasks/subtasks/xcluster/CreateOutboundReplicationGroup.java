@@ -71,7 +71,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
       validateCheckpointingCompleted(client, sourceUniverse, xClusterConfig);
 
       log.debug(
-          "Checkpointing for xClusterConfig {} completed for source db ids:",
+          "Checkpointing for xClusterConfig {} completed for source db ids: {}",
           xClusterConfig.getUuid(),
           taskParams().getDbs());
     } catch (Exception e) {
@@ -120,8 +120,8 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
                   return false;
                 }
                 log.debug(
-                    "Checkpointing status is complete: {}, for universe: {}, xClusterConfig: {},"
-                        + " dbId: {}",
+                    "CreateOutboundReplicationGroup, checkpointing status is complete: {}, for"
+                        + " universe: {}, xClusterConfig: {}, dbId: {}",
                     !completionResponse.isNotReady(),
                     sourceUniverse.getUniverseUUID(),
                     xClusterConfig.getName(),

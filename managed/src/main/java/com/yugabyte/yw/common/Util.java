@@ -76,6 +76,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -222,6 +223,13 @@ public class Util {
           id.replaceAll("(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})", "$1-$2-$3-$4-$5");
       return UUID.fromString(uuidWithHyphens);
     }
+  }
+
+  public static String getIdRepresentation(UUID uuid) {
+    if (uuid == null) {
+      return null;
+    }
+    return uuid.toString().replace("-", "");
   }
 
   /**
@@ -1351,5 +1359,9 @@ public class Util {
       }
     }
     return clone;
+  }
+
+  public static <T> Predicate<T> not(Predicate<T> t) {
+    return t.negate();
   }
 }

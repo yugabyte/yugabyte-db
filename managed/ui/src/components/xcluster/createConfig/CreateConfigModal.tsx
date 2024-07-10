@@ -14,11 +14,7 @@ import {
   fetchUniverseDiskUsageMetric
 } from '../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import {
-  formatUuidForXCluster,
-  getTablesForBootstrapping,
-  parseFloatIfDefined
-} from '../ReplicationUtils';
+import { getTablesForBootstrapping, parseFloatIfDefined } from '../ReplicationUtils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import {
   api,
@@ -38,7 +34,13 @@ import {
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import { XClusterTableType } from '../XClusterTypes';
-import { TableType, TableTypeLabel, Universe, YBTable } from '../../../redesign/helpers/dtos';
+import {
+  TableType,
+  TableTypeLabel,
+  Universe,
+  UniverseNamespace,
+  YBTable
+} from '../../../redesign/helpers/dtos';
 
 import toastStyles from '../../../redesign/styles/toastStyles.module.scss';
 
@@ -124,7 +126,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         configType: formValues.isTransactionalConfig
           ? XClusterConfigType.TXN
           : XClusterConfigType.BASIC,
-        tables: formValues.tableUuids.map(formatUuidForXCluster),
+        tables: formValues.tableUuids,
 
         ...(!skipBootstrapping &&
           bootstrapRequiredTableUUIDs.length > 0 && {
@@ -405,7 +407,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           if (bootstrapTableUuids?.length && bootstrapTableUuids?.length > 0) {
             setBootstrapRequiredTableUUIDs(bootstrapTableUuids);
 
-            // Validate that the source universe has at least the recommeneded amount of
+            // Validate that the source universe has at least the recommended amount of
             // disk space if bootstrapping is required.
             const currentUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
             const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
@@ -443,8 +445,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentFormStep(FormStep.CONFIRM_ALERT);
         return;
-      case FormStep.CONFIRM_ALERT:
+      case FormStep.CONFIRM_ALERT: {
         return xClusterConfigMutation.mutateAsync(formValues);
+      }
       default:
         return assertUnreachableCase(currentFormStep);
     }
