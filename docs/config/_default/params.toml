@@ -63,13 +63,10 @@ version_menu_pagelinks = true
   url = "/v2.18"
   version = "v2.18 (STS)"
 [[versions]]
-  url = "/v2.16"
-  version = "v2.16 (STS)"
-[[versions]]
   url = "/v2.14"
   version = "v2.14 (LTS)"
 [[versions]]
-  url = "https://docs-archive.yugabyte.com/v2.12"
+  url = "https://docs-archive.yugabyte.com/v2.16"
   version = "Unsupported versions"
   newTab = true
 

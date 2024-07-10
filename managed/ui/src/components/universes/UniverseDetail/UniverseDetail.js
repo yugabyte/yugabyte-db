@@ -675,10 +675,7 @@ class UniverseDetail extends Component {
                 mountOnEnter={true}
                 unmountOnExit={true}
               >
-                <AuditLog
-                  universeData={currentUniverse.data}
-                  nodePrefix={currentUniverse.data.universeDetails.nodePrefix}
-                />
+                <AuditLog universeData={currentUniverse.data} universePaused={universePaused} />
               </Tab.Pane>
             ),
             isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (

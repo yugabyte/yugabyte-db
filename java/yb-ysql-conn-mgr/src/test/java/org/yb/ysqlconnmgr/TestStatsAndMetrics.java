@@ -160,4 +160,32 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     testNumPhysicalConnections("yugabyte", "yugabyte", 1);
     testNumLogicalConnections("yugabyte", "yugabyte", 0);
   }
+
+  @Test
+  public void testSingleStickyConnectionClose() throws Exception {
+    // Create a connection on the Ysql Connection Manager port
+    try (Connection conn = getConnectionBuilder().withTServer(TSERVER_IDX)
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .connect();
+         Statement stmt = conn.createStatement()) {
+        stmt.execute("CREATE TEMP TABLE names(id int)");
+
+        Thread.sleep(4000);
+        testStatsFields();
+
+        testNumPhysicalConnections("control_connection", "control_connection", 1);
+        testNumLogicalConnections("control_connection", "control_connection", 0);
+
+        testNumPhysicalConnections("yugabyte", "yugabyte", 1);
+        testNumLogicalConnections("yugabyte", "yugabyte", 1);
+    }
+
+    Thread.sleep(4000);
+
+    JsonObject pool = getPool("yugabyte", "yugabyte");
+    if (pool != null) {
+        testNumPhysicalConnections("yugabyte", "yugabyte", 0);
+        testNumLogicalConnections("yugabyte", "yugabyte", 0);
+    }
+  }
 }

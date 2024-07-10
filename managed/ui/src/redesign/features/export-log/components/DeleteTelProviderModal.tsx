@@ -57,6 +57,8 @@ export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
       overrideHeight={'250px'}
       onSubmit={onSubmit}
       onClose={onClose}
+      submitTestId="DeleteTelProviderModal-Submit"
+      cancelTestId="DeleteTelProviderModal-Cancel"
     >
       <Trans
         i18nKey={'exportAuditLog.deleteModalMsg'}
