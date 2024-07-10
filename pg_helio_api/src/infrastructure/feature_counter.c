@@ -270,6 +270,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_SEARCH_VECTOR_HNSW] = "search_vector_hnsw",
 	[FEATURE_STAGE_SEARCH_VECTOR_PRE_FILTER] = "search_vector_pre_filter",
 	[FEATURE_STAGE_SET] = "set",
+	[FEATURE_STAGE_SETWINDOWFIELDS] = "setWindowFields",
 	[FEATURE_STAGE_SKIP] = "skip",
 	[FEATURE_STAGE_SORT] = "sort",
 	[FEATURE_STAGE_SORT_BY_COUNT] = "sort_by_count",

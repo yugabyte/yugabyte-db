@@ -31,6 +31,7 @@ bool IsBsonValue32BitInteger(const bson_value_t *value, bool checkFixedInteger);
 bool IsBsonValue64BitInteger(const bson_value_t *value, bool checkFixedInteger);
 bool IsBsonValueDateTimeFormat(const bson_type_t valueType);
 bool IsBsonValueFixedInteger(const bson_value_t *value);
+bool IsBsonValueNegativeNumber(const bson_value_t *value);
 bool IsBsonValueNaN(const bson_value_t *value);
 int IsBsonValueInfinity(const bson_value_t *value);
 

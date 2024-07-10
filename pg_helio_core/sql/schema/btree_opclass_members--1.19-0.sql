@@ -1,0 +1,2 @@
+ALTER OPERATOR FAMILY bson_btree_ops USING btree ADD FUNCTION 3 bson_in_range_numeric(bson, bson, bson, bool, bool); -- To check RANGE with numeric values for Partition by
+ALTER OPERATOR FAMILY bson_btree_ops USING btree ADD FUNCTION 3 bson_in_range_interval(bson, bson, interval, bool, bool); -- To check RANGE with interval value for Partition by

@@ -76,6 +76,8 @@ Oid IndexBuildIsInProgressFunctionId(void);
 Oid ApiCursorStateFunctionId(void);
 Oid ApiCurrentCursorStateFunctionId(void);
 Oid ExtensionTableSampleSystemRowsFunctionId(void);
+Oid BsonInRangeNumericFunctionId(void);
+Oid BsonInRangeIntervalFunctionId(void);
 
 /* bson_value functions */
 Oid BsonValueEqualMatchFunctionId(void);
@@ -138,6 +140,7 @@ Oid ApiCatalogCollectionIndexIdSequenceId(void);
 
 /* order by */
 Oid BsonOrderByFunctionOid(void);
+Oid BsonOrderByPartitionFunctionOid(void);
 
 /* Postgres internal functions */
 Oid PostgresDrandomFunctionId(void);
@@ -272,6 +275,7 @@ Oid BsonSumAggregateFunctionOid(void);
 Oid BsonAvgAggregateFunctionOid(void);
 Oid BsonRepathAndBuildFunctionOid(void);
 Oid BsonExpressionGetFunctionOid(void);
+Oid BsonExpressionPartitionGetFunctionOid(void);
 Oid BsonExpressionMapFunctionOid(void);
 Oid BsonMaxAggregateFunctionOid(void);
 Oid BsonMinAggregateFunctionOid(void);

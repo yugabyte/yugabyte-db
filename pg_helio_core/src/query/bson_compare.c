@@ -12,12 +12,14 @@
 #include <miscadmin.h>
 #include <utils/array.h>
 #include <utils/builtins.h>
+#include <utils/timestamp.h>
 #include <math.h>
 
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
 #include "types/decimal128.h"
 #include "utils/mongo_errors.h"
+#include "utils/date_utils.h"
 #include "utils/hashset_utils.h"
 
 /* --------------------------------------------------------- */
@@ -50,6 +52,8 @@ PG_FUNCTION_INFO_V1(extension_bson_gte);
 PG_FUNCTION_INFO_V1(extension_bson_lt);
 PG_FUNCTION_INFO_V1(extension_bson_lte);
 PG_FUNCTION_INFO_V1(bson_unique_index_equal);
+PG_FUNCTION_INFO_V1(bson_in_range_interval);
+PG_FUNCTION_INFO_V1(bson_in_range_numeric);
 
 Datum
 extension_bson_compare(PG_FUNCTION_ARGS)
@@ -161,6 +165,130 @@ bson_unique_index_equal(PG_FUNCTION_ARGS)
 {
 	ereport(ERROR, errmsg(
 				"Unique equal should only be an operator pushed to the index."));
+}
+
+
+/* in_range Comparision of two bson date times.
+ * Range is defined by an PG Interval type
+ */
+Datum
+bson_in_range_interval(PG_FUNCTION_ARGS)
+{
+	pgbson *val = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *base = PG_GETARG_PGBSON_PACKED(1);
+	Interval *offset = PG_GETARG_INTERVAL_P(2);
+	bool sub = PG_GETARG_BOOL(3);
+	bool less = PG_GETARG_BOOL(4);
+
+	pgbsonelement valElement, baseElement;
+	if (!TryGetSinglePgbsonElementFromPgbson(val, &valElement) ||
+		!TryGetSinglePgbsonElementFromPgbson(base, &baseElement))
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg(
+							"Unexpected error during in_range interval comparision, expected single value bson")));
+	}
+
+	if (valElement.bsonValue.value_type != BSON_TYPE_DATE_TIME ||
+		baseElement.bsonValue.value_type != BSON_TYPE_DATE_TIME)
+	{
+		bson_type_t conflictingType = valElement.bsonValue.value_type ==
+									  BSON_TYPE_DATE_TIME ?
+									  baseElement.bsonValue.value_type :
+									  valElement.bsonValue.value_type;
+		ereport(ERROR, (errcode(MongoLocation5429513),
+						errmsg(
+							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
+							"Expected the sortBy field to be a Date, but it was %s",
+							BsonTypeName(conflictingType)),
+						errhint(
+							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
+							"Expected the sortBy field to be a Date, but it was %s",
+							BsonTypeName(conflictingType))));
+	}
+
+	Datum valStampDatum = GetPgTimestampFromUnixEpoch(
+		valElement.bsonValue.value.v_datetime);
+	Datum baseStampDatum = GetPgTimestampFromUnixEpoch(
+		baseElement.bsonValue.value.v_datetime);
+
+	PG_FREE_IF_COPY(val, 0);
+	PG_FREE_IF_COPY(base, 1);
+
+	return DirectFunctionCall5(in_range_timestamp_interval,
+							   valStampDatum,
+							   baseStampDatum,
+							   IntervalPGetDatum(offset),
+							   BoolGetDatum(sub),
+							   BoolGetDatum(less));
+}
+
+
+/* in_range Comparision of two bson numeric values.
+ * Range is also a bson type that should be strictly numeric.
+ */
+Datum
+bson_in_range_numeric(PG_FUNCTION_ARGS)
+{
+	pgbson *val = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *base = PG_GETARG_PGBSON_PACKED(1);
+	pgbson *offset = PG_GETARG_PGBSON_PACKED(2);
+	bool less = PG_GETARG_BOOL(4);
+
+	pgbsonelement valElement, baseElement, offsetElement;
+	if (!TryGetSinglePgbsonElementFromPgbson(val, &valElement) ||
+		!TryGetSinglePgbsonElementFromPgbson(base, &baseElement) ||
+		!TryGetSinglePgbsonElementFromPgbson(offset, &offsetElement))
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg(
+							"Unexpected error during in_range numeric comparision, expected single value bson")));
+	}
+
+	if (!BsonTypeIsNumber(valElement.bsonValue.value_type) ||
+		!BsonTypeIsNumber(baseElement.bsonValue.value_type))
+	{
+		bson_type_t conflictingType = BsonTypeIsNumber(valElement.bsonValue.value_type) ?
+									  baseElement.bsonValue.value_type :
+									  valElement.bsonValue.value_type;
+		ereport(ERROR, (errcode(MongoLocation5429414),
+						errmsg(
+							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
+							"Expected the sortBy field to be a number, but it was %s",
+							BsonTypeName(conflictingType)),
+						errhint(
+							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
+							"Expected the sortBy field to be a number, but it was %s",
+							BsonTypeName(conflictingType))));
+	}
+
+	/*
+	 * Ignore int overflow for now because type is implicitly promoted
+	 */
+	bool isIntOverflow;
+
+	/*
+	 * For `sub` flag true or not we never really have to subtract because the bson is in -ve.
+	 * We can just add the offset to the base and compare.
+	 */
+	AddNumberToBsonValue(&baseElement.bsonValue, &offsetElement.bsonValue,
+						 &isIntOverflow);
+
+	bool isComparisonValid;
+	int result = CompareBsonValue(&valElement.bsonValue, &baseElement.bsonValue,
+								  &isComparisonValid);
+
+	PG_FREE_IF_COPY(val, 0);
+	PG_FREE_IF_COPY(base, 1);
+
+	if (less)
+	{
+		PG_RETURN_BOOL(result <= 0);
+	}
+	else
+	{
+		PG_RETURN_BOOL(result >= 0);
+	}
 }
 
 
@@ -690,6 +818,42 @@ IsBsonValueFixedInteger(const bson_value_t *value)
 			};
 
 			return IsDecimal128AFixedInteger(&decimalValue);
+		}
+
+		default:
+			return false;
+	}
+}
+
+
+bool
+IsBsonValueNegativeNumber(const bson_value_t *value)
+{
+	if (!BsonTypeIsNumber(value->value_type))
+	{
+		return false;
+	}
+
+	switch (value->value_type)
+	{
+		case BSON_TYPE_INT32:
+		{
+			return value->value.v_int32 < 0;
+		}
+
+		case BSON_TYPE_INT64:
+		{
+			return value->value.v_int64 < 0;
+		}
+
+		case BSON_TYPE_DOUBLE:
+		{
+			return value->value.v_double < 0.0;
+		}
+
+		case BSON_TYPE_DECIMAL128:
+		{
+			return (value->value.v_decimal128.high & (((int64) 1) << 63)) > 0;
 		}
 
 		default:

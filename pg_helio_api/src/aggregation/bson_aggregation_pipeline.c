@@ -46,6 +46,7 @@
 #include "query/query_operator.h"
 #include "planner/helio_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
+#include "aggregation/bson_aggregation_window_operators.h"
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
 #include "commands/defrem.h"
@@ -562,8 +563,8 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$setWindowFields",
-		.mutateFunc = NULL,
-		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
+		.mutateFunc = &HandleSetWindowFields,
+		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = false,

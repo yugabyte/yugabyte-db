@@ -441,13 +441,6 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		int len = VARSIZE_ANY_EXHDR(pathText);
 		StringView pathView = { .length = len, .string = path };
 
-		if (StringViewContains(&pathView, '.'))
-		{
-			/* Paths here cannot be dotted paths */
-			ereport(ERROR, (errcode(MongoLocation40235),
-							errmsg("The field name %.*s cannot contain '.'", len, path)));
-		}
-
 		if (pathView.length == 0 || StringViewStartsWith(&pathView, '$'))
 		{
 			/* We don't support dollar prefixed-paths here */

@@ -27,6 +27,21 @@
 #include "opclass/helio_bson_text_gin.h"
 #include "types/decimal128.h"
 
+/*
+ * Custom bson_orderBy options to allow specific types when sorting.
+ */
+typedef enum CustomOrderByOptions
+{
+	/* Default options where all types are allowed */
+	CustomOrderByOptions_Default = 0x0,
+
+	/* Allow only date types, required for ORDER BY in $setWindowFields */
+	CustomOrderByOptions_AllowOnlyDates = 0x1,
+
+	/* Allow only numbers, required for ORDER BY in $setWindowFields */
+	CustomOrderByOptions_AllowOnlyNumbers = 0x2,
+} CustomOrderByOptions;
+
 /* --------------------------------------------------------- */
 /* Data-types */
 /* --------------------------------------------------------- */
@@ -86,6 +101,7 @@ typedef struct TraverseOrderByValidateState
 	TraverseValidateState traverseState; /* must be the first field */
 	bool isOrderByMin;
 	bson_value_t orderByValue;
+	CustomOrderByOptions options;
 } TraverseOrderByValidateState;
 
 /* State for comparison operations of simple dollar operators
@@ -333,6 +349,8 @@ static bool DollarRangeVisitTopLevelField(pgbsonelement *element, const
 static bool DollarRangeVisitArrayField(pgbsonelement *element, const
 									   StringView *filterPath,
 									   int arrayIndex, void *state);
+static Datum BsonOrderbyCore(pgbson *leftBson, pgbson *rightBson, bool validateSort,
+							 const CustomOrderByOptions options);
 
 /*
  * Standard execution functions for traversing bson and evaluating queries for $ops.
@@ -445,6 +463,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_ne);
 PG_FUNCTION_INFO_V1(bson_dollar_nin);
 PG_FUNCTION_INFO_V1(bson_dollar_exists);
 PG_FUNCTION_INFO_V1(command_bson_orderby);
+PG_FUNCTION_INFO_V1(bson_orderby_partition);
 PG_FUNCTION_INFO_V1(bson_vector_orderby);
 PG_FUNCTION_INFO_V1(bson_dollar_bits_all_clear);
 PG_FUNCTION_INFO_V1(bson_dollar_bits_any_clear);
@@ -1613,7 +1632,33 @@ command_bson_orderby(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
 	pgbson *filter = PG_GETARG_PGBSON_PACKED(1);
 	bool validateSort = true;
-	Datum returnedBson = BsonOrderby(document, filter, validateSort);
+	CustomOrderByOptions options = CustomOrderByOptions_Default;
+	Datum returnedBson = BsonOrderbyCore(document, filter, validateSort, options);
+
+	PG_FREE_IF_COPY(document, 0);
+	PG_FREE_IF_COPY(filter, 1);
+	PG_RETURN_DATUM(returnedBson);
+}
+
+
+/*
+ * bson_orderby_partition traverses a document for a range based window
+ * and ensures every value is either number (regular range) or date time value
+ * (time based range) for the the window.
+ */
+Datum
+bson_orderby_partition(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON_PACKED(0);
+	pgbson *filter = PG_GETARG_PGBSON_PACKED(1);
+	bool isTimeRangeWindow = PG_GETARG_BOOL(2);
+	bool validateSort = true;
+
+	CustomOrderByOptions options = isTimeRangeWindow ?
+								   CustomOrderByOptions_AllowOnlyDates :
+								   CustomOrderByOptions_AllowOnlyNumbers;
+	Datum returnedBson = BsonOrderbyCore(document, filter, validateSort,
+										 options);
 
 	PG_FREE_IF_COPY(document, 0);
 	PG_FREE_IF_COPY(filter, 1);
@@ -1649,56 +1694,8 @@ bson_vector_orderby(PG_FUNCTION_ARGS)
 Datum
 BsonOrderby(pgbson *document, pgbson *filter, bool validateSort)
 {
-	bson_iter_t documentIterator;
-	pgbsonelement filterElement;
-	TraverseOrderByValidateState state = {
-		{ 0 }, NULL, { 0 }
-	};
-
-	pgbson_writer writer;
-	PgbsonInitIterator(document, &documentIterator);
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
-	uint32_t filterPathLength = filterElement.pathLength;
-	filterElement.pathLength = 0;
-
-	if (TryCheckMetaScoreOrderBy(&filterElement.bsonValue))
-	{
-		PgbsonWriterInit(&writer);
-		double ranking = EvaluateMetaTextScore(document);
-		PgbsonWriterAppendDouble(&writer, "rank", 4, ranking);
-		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
-	}
-
-	if (!BsonValueIsNumber(&filterElement.bsonValue) && validateSort)
-	{
-		ereport(ERROR, (errcode(MongoBadValue),
-						errmsg("Invalid sort direction %s",
-							   BsonValueToJsonForLogging(
-								   &filterElement.bsonValue))));
-	}
-
-	int32_t orderBy = BsonValueAsInt32(&filterElement.bsonValue);
-	state.isOrderByMin = orderBy == 1;
-
-	TraverseBson(&documentIterator, filterElement.path, &state.traverseState,
-				 &OrderByExecutionFuncs);
-
-	/* Match order by outputs similar to what the index produces for terms */
-	PgbsonWriterInit(&writer);
-	if (state.orderByValue.value_type == BSON_TYPE_EOD)
-	{
-		/* here we write an empty path and minKey so it's sorted first. */
-		state.orderByValue.value_type = BSON_TYPE_UNDEFINED;
-		PgbsonWriterAppendValue(&writer, filterElement.path, filterPathLength,
-								&state.orderByValue);
-	}
-	else
-	{
-		PgbsonWriterAppendValue(&writer, filterElement.path, filterPathLength,
-								&state.orderByValue);
-	}
-
-	return PointerGetDatum(PgbsonWriterGetPgbson(&writer));
+	CustomOrderByOptions options = CustomOrderByOptions_Default;
+	return BsonOrderbyCore(document, filter, validateSort, options);
 }
 
 
@@ -2303,6 +2300,69 @@ CompareModOperator(const bson_value_t *srcVal, const bson_value_t *modArrVal)
 /* Helpers */
 /* --------------------------------------------------------- */
 
+
+/*
+ * Helper for BsonOrderBy that accepts a options to strictly check the types of documents involved
+ * in the ordering.
+ * Few cases require the type to be same e.g. $sort in `$setWindowFields` stage
+ */
+static Datum
+BsonOrderbyCore(pgbson *document, pgbson *filter, bool validateSort,
+				CustomOrderByOptions options)
+{
+	bson_iter_t documentIterator;
+	pgbsonelement filterElement;
+	TraverseOrderByValidateState state = {
+		{ 0 }, NULL, { 0 }, options
+	};
+
+	pgbson_writer writer;
+	PgbsonInitIterator(document, &documentIterator);
+	PgbsonToSinglePgbsonElement(filter, &filterElement);
+	uint32_t filterPathLength = filterElement.pathLength;
+	filterElement.pathLength = 0;
+
+	if (TryCheckMetaScoreOrderBy(&filterElement.bsonValue))
+	{
+		PgbsonWriterInit(&writer);
+		double ranking = EvaluateMetaTextScore(document);
+		PgbsonWriterAppendDouble(&writer, "rank", 4, ranking);
+		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+	}
+
+	if (!BsonValueIsNumber(&filterElement.bsonValue) && validateSort)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg("Invalid sort direction %s",
+							   BsonValueToJsonForLogging(
+								   &filterElement.bsonValue))));
+	}
+
+	int32_t orderBy = BsonValueAsInt32(&filterElement.bsonValue);
+	state.isOrderByMin = orderBy == 1;
+
+	TraverseBson(&documentIterator, filterElement.path, &state.traverseState,
+				 &OrderByExecutionFuncs);
+
+	/* Match order by outputs similar to what the index produces for terms */
+	PgbsonWriterInit(&writer);
+	if (state.orderByValue.value_type == BSON_TYPE_EOD)
+	{
+		/* here we write an empty path and minKey so it's sorted first. */
+		state.orderByValue.value_type = BSON_TYPE_UNDEFINED;
+		PgbsonWriterAppendValue(&writer, filterElement.path, filterPathLength,
+								&state.orderByValue);
+	}
+	else
+	{
+		PgbsonWriterAppendValue(&writer, filterElement.path, filterPathLength,
+								&state.orderByValue);
+	}
+
+	return PointerGetDatum(PgbsonWriterGetPgbson(&writer));
+}
+
+
 /*
  * Helper function that abstracts setting up common state
  * and evaluating a comparison function against a value
@@ -2605,7 +2665,6 @@ CompareArrayTypeMatch(const pgbsonelement *documentIterator,
 		const char *typeName = BsonTypeName(documentIterator->bsonValue.value_type);
 		return strcmp(typeName, validationState->filter->bsonValue.value.v_utf8.str) == 0;
 	}
-
 	/**
 	 * TODO: FIXME - Verify whether strict number check is required here
 	 * */
@@ -3533,13 +3592,53 @@ OrderByVisitTopLevelField(pgbsonelement *element, const
 						  StringView *filterPath,
 						  void *state)
 {
+	TraverseOrderByValidateState *validateState = (TraverseOrderByValidateState *) state;
+
+	/* Check if there is not strict type requirement */
+	if ((validateState->options & CustomOrderByOptions_AllowOnlyDates) ==
+		CustomOrderByOptions_AllowOnlyDates)
+	{
+		if (element->bsonValue.value_type != BSON_TYPE_DATE_TIME)
+		{
+			ereport(ERROR, (errcode(MongoLocation5429513),
+							errmsg(
+								"PlanExecutor error during aggregation :: caused by :: "
+								"Invalid range: Expected the sortBy field to be a Date, "
+								"but it was %s", BsonTypeName(
+									element->bsonValue.value_type)),
+							errhint(
+								"PlanExecutor error during aggregation :: caused by :: "
+								"Invalid range: Expected the sortBy field to be a Date, "
+								"but it was %s", BsonTypeName(
+									element->bsonValue.value_type))));
+		}
+	}
+
+	if ((validateState->options & CustomOrderByOptions_AllowOnlyNumbers) ==
+		CustomOrderByOptions_AllowOnlyNumbers)
+	{
+		if (!BsonTypeIsNumber(element->bsonValue.value_type))
+		{
+			ereport(ERROR, (errcode(MongoLocation5429414),
+							errmsg(
+								"PlanExecutor error during aggregation :: caused by :: "
+								"Invalid range: Expected the sortBy field to be a number, "
+								"but it was %s", BsonTypeName(
+									element->bsonValue.value_type)),
+							errhint(
+								"PlanExecutor error during aggregation :: caused by :: "
+								"Invalid range: Expected the sortBy field to be a number, "
+								"but it was %s", BsonTypeName(
+									element->bsonValue.value_type))));
+		}
+	}
+
 	if (element->bsonValue.value_type == BSON_TYPE_ARRAY)
 	{
 		/* These are processed as array fields - do nothing */
 		return true;
 	}
 
-	TraverseOrderByValidateState *validateState = (TraverseOrderByValidateState *) state;
 	CompareForOrderBy(element, validateState);
 	return true;
 }

@@ -19,11 +19,11 @@
 #include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
+#include "utils/date_utils.h"
 #include "utils/mongo_errors.h"
 #include "utils/fmgrprotos.h"
 #include "metadata/metadata_cache.h"
 
-#define MILLISECONDS_IN_SECOND 1000L
 #define SECONDS_IN_MINUTE 60
 #define MINUTES_IN_HOUR 60
 #define DAYS_IN_WEEK 7
@@ -93,20 +93,6 @@ typedef enum WeekDay
 	WeekDay_Sunday = 7
 }WeekDay;
 
-/* Enum which defines the possible units which mongo supports. */
-typedef enum DateUnit
-{
-	DateUnit_Invalid = 0,
-	DateUnit_Year = 1,
-	DateUnit_Quarter = 2,
-	DateUnit_Month = 3,
-	DateUnit_Week = 4,
-	DateUnit_Day = 5,
-	DateUnit_Hour = 6,
-	DateUnit_Minute = 7,
-	DateUnit_Second = 8,
-	DateUnit_Millisecond = 9
-} DateUnit;
 
 typedef struct DollarDateAddSubtract
 {
@@ -304,10 +290,6 @@ static const char *weekDaysAbbreviated[7] = {
 	"mon", "tue", "wed", "thu", "fri", "sat", "sun"
 };
 
-static const char *dateUnitStr[9] = {
-	"year", "quarter", "month", "week", "day", "hour", "minute", "second", "millisecond"
-};
-
 /* static mapping for mongo format specifiers to postgres format specifiers. These are sorted on mongo format specifier(index 0) and should be kept sorted */
 static const DateFormatMap dateFormats[] = {
 	{ "%B", "month", DatePart_Str_Month, 4, 9, -1, -1 },
@@ -465,10 +447,6 @@ static float8 GetEpochDiffForDateDiff(DateUnit dateUnitEnum, ExtensionTimezone
 									  timezoneToApply, int64 startDateEpoch, int64
 									  endDateEpoch);
 static Datum GetIntervalFromBinSize(int64_t binSize, DateTruncUnit dateTruncUnit);
-static Datum GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day,
-									 int64 hour, int64 minute, int64 seconds, int64
-									 millis);
-static Datum GetIntervalFromDateUnitAndAmount(DateUnit unitEnum, int64 amount);
 static int GetIsoWeeksForYear(int64 year);
 static inline int GetMonthIndexFromString(char *monthName, bool isAbbreviated);
 static Datum GetPgTimestampAdjustedToTimezone(Datum timestamp, ExtensionTimezone
@@ -2063,16 +2041,6 @@ TryParseTwoDigitNumber(StringView str, uint32_t *result)
 }
 
 
-/* Given a Unix epoch in milliseconds returns a Datum containing a postgres Timestamp instance. */
-static Datum
-GetPgTimestampFromUnixEpoch(int64_t epochInMs)
-{
-	return OidFunctionCall1(PostgresToTimestamptzFunctionId(),
-							Float8GetDatum(((float8) epochInMs) /
-										   MILLISECONDS_IN_SECOND));
-}
-
-
 /* Returns the requested unit part from the provided postgres timestamp as an uint32. */
 static uint32_t
 GetDatePartFromPgTimestamp(Datum pgTimestamp, DatePart datePart)
@@ -2440,19 +2408,6 @@ ParseDollarDateFromParts(const bson_value_t *argument, AggregationExpressionData
 		data->operator.arguments = dateFromParts;
 		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 	}
-}
-
-
-/* A function to create postgres interval object given the amount of year, month, week, day, hour, second, millis. */
-static Datum
-GetIntervalFromDatePart(int64 year, int64 month, int64 week, int64 day, int64 hour, int64
-						minute, int64 second, int64 millis)
-{
-	float8 secondsAdjustedWithMillis = second + (((float8) millis) /
-												 MILLISECONDS_IN_SECOND);
-	return OidFunctionCall7(PostgresMakeIntervalFunctionId(),
-							year, month, week, day, hour, minute, Float8GetDatum(
-								secondsAdjustedWithMillis));
 }
 
 
@@ -3902,100 +3857,6 @@ GetAdjustHourWithTimezoneForDateAddSubtract(Datum startTimestamp, Datum
 
 	/* This will tell if there's a DST is applied. */
 	return (hourFortimestampInterval - hourForStartTimestamp);
-}
-
-
-/*
- * This function given an input string value returns DateUnit enum corresponding to that str value.
- */
-static DateUnit
-GetDateUnitFromString(char *unitStrValue)
-{
-	DateUnit unitEnum = DateUnit_Invalid;
-	for (int index = 0; index < (int) (sizeof(dateUnitStr) / sizeof(dateUnitStr[0]));
-		 index++)
-	{
-		if (strcmp(dateUnitStr[index], unitStrValue) == 0)
-		{
-			unitEnum = (DateUnit) (index + 1);
-		}
-	}
-	return unitEnum;
-}
-
-
-/*
- * This function returns a datum interval taking in the date unit and amount.
- * Interval is one of the postgres way of referencing time interval.
- */
-static Datum
-GetIntervalFromDateUnitAndAmount(DateUnit unitEnum, int64 amount)
-{
-	int64 year = 0, month = 0, week = 0, day = 0, hour = 0, minute = 0, seconds = 0,
-		  millis = 0;
-	switch (unitEnum)
-	{
-		case DateUnit_Year:
-		{
-			year = amount;
-			break;
-		}
-
-		case DateUnit_Quarter:
-		{
-			month = amount * 3;
-			break;
-		}
-
-		case DateUnit_Month:
-		{
-			month = amount;
-			break;
-		}
-
-		case DateUnit_Week:
-		{
-			week = amount;
-			break;
-		}
-
-		case DateUnit_Day:
-		{
-			day = amount;
-			break;
-		}
-
-		case DateUnit_Hour:
-		{
-			hour = amount;
-			break;
-		}
-
-		case DateUnit_Minute:
-		{
-			minute = amount;
-			break;
-		}
-
-		case DateUnit_Second:
-		{
-			seconds = amount;
-			break;
-		}
-
-		case DateUnit_Millisecond:
-		{
-			millis = amount;
-			break;
-		}
-
-		default:
-		{
-			break;
-		}
-	}
-
-	return GetIntervalFromDatePart(year, month, week, day, hour, minute, seconds, millis);
 }
 
 

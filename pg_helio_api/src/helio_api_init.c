@@ -272,6 +272,9 @@ char *BackgroundWorkerDatabaseName = DEFAULT_BG_DATABASE_NAME;
 #define DEFAULT_BG_LATCH_TIMEOUT_SEC 10
 int LatchTimeOutSec = DEFAULT_BG_LATCH_TIMEOUT_SEC;
 
+#define DEFAULT_ENABLE_STAGE_SET_WINDOW_FIELDS false
+bool EnableSetWindowFields = DEFAULT_ENABLE_STAGE_SET_WINDOW_FIELDS;
+
 #define DEFAULT_ENABLE_NATIVE_COLOCATION false
 bool EnableNativeColocation = DEFAULT_ENABLE_NATIVE_COLOCATION;
 
@@ -737,6 +740,17 @@ InitApiConfigurations(char *prefix)
 		gettext_noop("Enable Helio Background worker."),
 		NULL, &EnableBackgroundWorker, DEFAULT_ENABLE_BG_WORKER,
 		PGC_SUSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableStageSetWindowFields",
+		gettext_noop(
+			"Enables support for setWindowFields stage in pg_helio_api."),
+		NULL,
+		&EnableSetWindowFields,
+		DEFAULT_ENABLE_STAGE_SET_WINDOW_FIELDS,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
 		psprintf("%s.enableNativeColocation", prefix),

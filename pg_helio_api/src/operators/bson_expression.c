@@ -460,6 +460,7 @@ CreateVariableEntryHashTable()
 /* --------------------------------------------------------- */
 
 PG_FUNCTION_INFO_V1(bson_expression_get);
+PG_FUNCTION_INFO_V1(bson_expression_partition_get);
 PG_FUNCTION_INFO_V1(bson_expression_map);
 
 /*
@@ -523,6 +524,72 @@ bson_expression_get(PG_FUNCTION_ARGS)
 											  variableContext, isNullOnEmpty);
 
 	pgbson *returnedBson = PgbsonWriterGetPgbson(&writer);
+
+	PG_FREE_IF_COPY(document, 0);
+	PG_RETURN_POINTER(returnedBson);
+}
+
+
+/*
+ * `bson_expression_partition_get` evaluates the expression similar to `bson_expression_get`
+ * but it throws error if the expression results are evaluated to be array.
+ */
+Datum
+bson_expression_partition_get(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *expression = PG_GETARG_PGBSON(1);
+	bool isNullOnEmpty = PG_GETARG_BOOL(2);
+	ExpressionVariableContext *variableContext = NULL;
+	pgbsonelement expressionElement;
+	pgbson_writer writer;
+
+	AggregationExpressionData expressionData;
+	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+
+	PgbsonToSinglePgbsonElement(expression, &expressionElement);
+
+	const AggregationExpressionData *state;
+	const int argPosition = 1;
+	SetCachedFunctionState(
+		state,
+		AggregationExpressionData,
+		argPosition,
+		ParseAggregationExpressionData,
+		&expressionElement.bsonValue);
+
+	if (state == NULL)
+	{
+		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
+		state = &expressionData;
+	}
+
+	StringView path = {
+		.length = expressionElement.pathLength,
+		.string = expressionElement.path,
+	};
+
+	PgbsonWriterInit(&writer);
+	EvaluateAggregationExpressionDataToWriter(state, document, path, &writer,
+											  variableContext, isNullOnEmpty);
+
+	pgbson *returnedBson = PgbsonWriterGetPgbson(&writer);
+
+	pgbsonelement result;
+	if (!TryGetSinglePgbsonElementFromPgbson(returnedBson, &result))
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg(
+							"PlanExecutor error during aggregation :: cause by :: An expression evaluated in a multi field document")));
+	}
+
+	if (result.bsonValue.value_type == BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(MongoTypeMismatch),
+						errmsg(
+							"PlanExecutor error during aggregation :: caused by :: An expression used to partition "
+							"cannot evaluate to value of type array")));
+	}
 
 	PG_FREE_IF_COPY(document, 0);
 	PG_RETURN_POINTER(returnedBson);

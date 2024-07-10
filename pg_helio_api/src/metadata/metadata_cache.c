@@ -170,6 +170,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the TABLESAMPLE SYSTEM_ROWS(n) function */
 	Oid ExtensionTableSampleSystemRowsFunctionId;
 
+	/* OID of the bson_in_range_interval function (in_range support function for btree to support RANGE in PARTITION clause) */
+	Oid BsonInRangeIntervalFunctionId;
+
+	/* OID of the bson_in_range_numeric function (in_range support function for btree to support RANGE in PARTITION clause) */
+	Oid BsonInRangeNumericFunctionId;
+
 	/* OID of ApiSchema.collection() UDF */
 	Oid CollectionFunctionId;
 
@@ -199,6 +205,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_orderby function */
 	Oid BsonOrderByFunctionId;
+
+	/* OID of the bson_orderby_partition function */
+	Oid BsonOrderByPartitionFunctionOid;
 
 	/* OID of the bson vector search orderby operator */
 	Oid VectorOrderByQueryOperatorId;
@@ -665,6 +674,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_expression_get function */
 	Oid ApiCatalogBsonExpressionGetFunctionOid;
+
+	/* OID of the bson_expression_partition_get function */
+	Oid ApiCatalogBsonExpressionPartitionGetFunctionOid;
 
 	/* OID of the bson_expression_map function */
 	Oid ApiCatalogBsonExpressionMapFunctionOid;
@@ -2691,6 +2703,46 @@ ExtensionTableSampleSystemRowsFunctionId(void)
 
 
 Oid
+BsonInRangeIntervalFunctionId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonInRangeIntervalFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+											makeString("bson_in_range_interval"));
+		Oid paramOids[5] = { BsonTypeId(), BsonTypeId(), INTERVALOID, BOOLOID, BOOLOID };
+		bool missingOK = false;
+
+		Cache.BsonInRangeIntervalFunctionId =
+			LookupFuncName(functionNameList, 5, paramOids, missingOK);
+	}
+
+	return Cache.BsonInRangeIntervalFunctionId;
+}
+
+
+Oid
+BsonInRangeNumericFunctionId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonInRangeNumericFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+											makeString("bson_in_range_numeric"));
+		Oid paramOids[5] = { BsonTypeId(), BsonTypeId(), BsonTypeId(), BOOLOID, BOOLOID };
+		bool missingOK = false;
+
+		Cache.BsonInRangeNumericFunctionId =
+			LookupFuncName(functionNameList, 5, paramOids, missingOK);
+	}
+
+	return Cache.BsonInRangeNumericFunctionId;
+}
+
+
+Oid
 ApiCatalogAggregationPipelineFunctionId(void)
 {
 	return GetBinaryOperatorFunctionIdMissingOk(
@@ -3353,6 +3405,26 @@ BsonExpressionGetFunctionOid(void)
 
 
 Oid
+BsonExpressionPartitionGetFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("bson_expression_partition_get"));
+		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
+		bool missingOK = false;
+
+		Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid;
+}
+
+
+Oid
 BsonExpressionMapFunctionOid(void)
 {
 	InitializeHelioApiExtensionCache();
@@ -3528,6 +3600,30 @@ BsonOrderByFunctionOid(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.BsonOrderByFunctionId,
 									   "bson_orderby", BsonTypeId(), BsonTypeId());
+}
+
+
+/*
+ * BsonOrderByPartitionFunctionOid returns the OID of the bson_orderby_partition(<bson>, <bson>, bool) function.
+ */
+Oid
+BsonOrderByPartitionFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonOrderByPartitionFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString(
+												"bson_orderby_partition"));
+		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
+		bool missingOK = false;
+
+		Cache.BsonOrderByPartitionFunctionOid =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.BsonOrderByPartitionFunctionOid;
 }
 
 
