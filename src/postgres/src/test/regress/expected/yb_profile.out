@@ -83,8 +83,6 @@ CREATE PROFILE profile_name LIMIT
   FAILED_LOGIN_ATTEMPTS number;
   [PASSWORD_LOCK_TIME days];
 
-URL: https://www.postgresql.org/docs/15/sql-createprofile.html
-
 --
 -- Test \h DROP PROFILE
 --
@@ -93,8 +91,6 @@ Command:     DROP PROFILE
 Description: remove a login profile
 Syntax:
 DROP PROFILE profile_name;
-
-URL: https://www.postgresql.org/docs/15/sql-dropprofile.html
 
 --
 -- Test \h ALTER USER
@@ -134,8 +130,6 @@ where role_specification can be:
   | CURRENT_USER
   | SESSION_USER
 
-URL: https://www.postgresql.org/docs/15/sql-alteruser.html
-
 --
 -- Test \h ALTER ROLE
 --
@@ -173,5 +167,3 @@ where role_specification can be:
   | CURRENT_ROLE
   | CURRENT_USER
   | SESSION_USER
-
-URL: https://www.postgresql.org/docs/15/sql-alterrole.html
