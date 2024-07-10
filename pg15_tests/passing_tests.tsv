@@ -1,3 +1,4 @@
+JAVA	org.yb.cdc.ysql.TestArrayTypes
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithoutCachedMetadata
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionBeforeAlterOnCurrentResource

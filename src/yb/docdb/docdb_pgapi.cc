@@ -1368,7 +1368,7 @@ Status SetValueFromQLBinaryHelper(
       break;
     }
     case TXID_SNAPSHOTOID: {
-      func_name = "txid_snapshot_out";
+      func_name = "pg_snapshot_out";
       string txid_val = ql_value.binary_value();
       size = txid_val.size();
       val = const_cast<char *>(txid_val.c_str());
@@ -1954,7 +1954,7 @@ Status SetValueFromQLBinaryHelper(
     }
 
     case TXID_SNAPSHOTARRAYOID: {
-      func_name = "txid_snapshot_out";
+      func_name = "pg_snapshot_out";
       set_array_string_value(ql_value, arg_type, TXID_SNAPSHOTOID, func_name, cdc_datum_message);
       break;
     }
