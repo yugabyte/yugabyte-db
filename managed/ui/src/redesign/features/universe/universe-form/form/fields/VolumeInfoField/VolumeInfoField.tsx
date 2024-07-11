@@ -200,10 +200,17 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       ...fieldValue,
       volumeSize: Number(value)
     });
-    if (storageType === StorageType.UltraSSD_LRS) {
-      onDiskIopsChanged(diskIops);
-    }
   };
+
+  /* 
+    When storage type is UltraSSD_LRS, disk IOPS is calculated based on volume size.
+    Hence, when volume size is changed, disk IOPS should be recalculated.
+  */
+  useUpdateEffect(() => {
+    if (fieldValue.storageType === StorageType.UltraSSD_LRS) {
+      onDiskIopsChanged(fieldValue.diskIops);
+    }
+  },[fieldValue?.volumeSize]);
 
   const onDiskIopsChanged = (value: any) => {
     const { storageType, volumeSize } = fieldValue;
