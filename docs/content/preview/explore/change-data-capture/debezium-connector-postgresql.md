@@ -26,7 +26,7 @@ The first time it connects to a YugabyteDB server or cluster, the connector take
 
 ## Overview
 
-YugabyteDB’s [logical decoding](#reminder) feature was introduced in version 9.4. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
+YugabyteDB’s [logical decoding](#reminder) feature was introduced in version 2024.1.1. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
 
 The YugabyteDB connector contains two main parts that work together to read and process database changes:
 
@@ -34,9 +34,9 @@ The YugabyteDB connector contains two main parts that work together to read and 
 * A logical decoding output plug-in. You might need to install the output plug-in that you choose to use. You must configure a replication slot that uses your chosen output plug-in before running the YugabyteDB server. The plug-in can be one of the following:
 
     <!-- YB specific -->
-    * `yboutput` is the plugin packaged with YugabyteDB. 
+    * `yboutput` is the plugin packaged with YugabyteDB. It is maintained by Yugabyte and is always present with the distribution.
 
-    * `pgoutput` is the standard logical decoding output plug-in in YugabyteDB 10+. It is maintained by the YugabyteDB community, and used by YugabyteDB itself for logical replication. This plug-in is always present so no additional libraries need to be installed. The Debezium connector interprets the raw replication event stream directly into change events.
+    * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plug-in with the standard distribution so it is always present and no additional libraries need to be installed. The Debezium connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
 * Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses YugabyteDB’s [streaming replication protocol](#reminder), by means of the YugabyteDB JDBC driver
@@ -46,20 +46,6 @@ The connector produces a change event for every row-level insert, update, and de
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
 The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off. This includes snapshots. If the connector stops during a snapshot, the connector begins a new snapshot when it restarts.
-
-{{< tip title="Behaviour with Logical Decoding" >}}
-
-The connector relies on and reflects the YugabyteDB logical decoding feature, which has the following limitations:
-
-* Logical decoding does not support DDL changes. This means that the connector is unable to report DDL change events back to consumers.
-
-* Logical decoding replication slots are supported on only primary servers. When there is a cluster of YugabyteDB servers, the connector can run on only the active primary server. It cannot run on hot or warm standby replicas. If the primary server fails or is demoted, the connector stops. After the primary server has recovered, you can restart the connector. If a different YugabyteDB server has been promoted to primary, adjust the connector configuration before restarting the connector.
-
-Additionally, the pgoutput logical decoding output plug-in does not capture values for generated columns, resulting in missing data for these columns in the connector’s output.
-
-[Behavior when things go wrong](#reminder) describes how the connector responds if there is a problem.
-
-{{< /tip >}}
 
 {{< tip title="Use UTF-8 encoding" >}}
 
@@ -79,7 +65,7 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 To use the Debezium connector to stream changes from a YugabyteDB database, the connector must operate with specific privileges in the database. Although one way to grant the necessary privileges is to provide the user with `superuser` privileges, doing so potentially exposes your YugabyteDB data to unauthorized access. Rather than granting excessive privileges to the Debezium user, it is best to create a dedicated Debezium replication user to which you grant specific privileges.
 
-For more information about configuring privileges for the Debezium YugabyteDB user, see [Setting up permissions](#reminder). For more information about YugabyteDB logical replication security, see the [YugabyteDB documentation](#reminder).
+For more information about configuring privileges for the Debezium YugabyteDB user, see [Setting up permissions](#setting-up-permissions). For more information about YugabyteDB logical replication security, see the [YugabyteDB documentation](#reminder).
 
 ### Snapshots
 
@@ -101,83 +87,9 @@ If the connector fails, is rebalanced, or stops after Step 1 begins but before S
 
 | Option | Description |
 | :--- | :--- |
-| `always` | The connector always performs a snapshot when it starts. After the snapshot completes, the connector continues streaming changes from step 3 in the above sequence. This mode is useful in these situations:<br/><br/> <ul><li>It is known that some WAL segments have been deleted and are no longer available.</li> <li>After a cluster failure, a new primary has been promoted. The always snapshot mode ensures that the connector does not miss any changes that were made after the new primary had been promoted but before the connector was restarted on the new primary.</li></ul> |
 | `never` | The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The `never` snapshot mode is useful only when you know all data of interest is still reflected in the WAL. |
 | `initial` (default) | The connector performs a database snapshot when no Kafka offsets topic exists. After the database snapshot completes the Kafka offsets topic is written. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. |
 | `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector restarts the snapshot process and stops when the snapshot completes. |
-| `custom` | The `custom` snapshot mode lets you inject your own implementation of the `io.debezium.connector.YugabyteDB.spi.Snapshotter` interface. Set the `snapshot.custom.class` configuration property to the class on the classpath of your Kafka Connect cluster or included in the JAR if using the `EmbeddedEngine`. For more details, see [custom snapshotter SPI](#reminder). |
-
-<!-- YB note Skip the section for incremental snapshots -->
-
-### Incremental snapshots
-
-To provide flexibility in managing snapshots, Debezium includes a supplementary snapshot mechanism, known as *incremental snapshotting*. Incremental snapshots rely on the Debezium mechanism for [sending signals to a Debezium connector](#reminder). Incremental snapshots are based on the [DDD-3](#reminder) design document.
-
-In an incremental snapshot, instead of capturing the full state of a database all at once, as in an initial snapshot, Debezium captures each table in phases, in a series of configurable chunks. You can specify the tables that you want the snapshot to capture and the [size of each chunk](#reminder). The chunk size determines the number of rows that the snapshot collects during each fetch operation on the database. The default chunk size for incremental snapshots is 1024 rows.
-
-As an incremental snapshot proceeds, Debezium uses watermarks to track its progress, maintaining a record of each table row that it captures. This phased approach to capturing data provides the following advantages over the standard initial snapshot process:
-* You can run incremental snapshots in parallel with streamed data capture, instead of postponing streaming until the snapshot completes. The connector continues to capture near real-time events from the change log throughout the snapshot process, and neither operation blocks the other.
-* If the progress of an incremental snapshot is interrupted, you can resume it without losing any data. After the process resumes, the snapshot begins at the point where it stopped, rather than recapturing the table from the beginning.
-* You can run an incremental snapshot on demand at any time, and repeat the process as needed to adapt to database updates. For example, you might re-run a snapshot after you modify the connector configuration to add a table to its `table.include.list` property.
-
-#### Incremental snapshot process
-
-When you run an incremental snapshot, Debezium sorts each table by primary key and then splits the table into chunks based on the [configured chunk size](#reminder). Working chunk by chunk, it then captures each table row in a chunk. For each row that it captures, the snapshot emits a `READ` event. That event represents the value of the row when the snapshot for the chunk began.
-
-As a snapshot proceeds, it’s likely that other processes continue to access the database, potentially modifying table records. To reflect such changes,`INSERT`, `UPDATE`, or `DELETE` operations are committed to the transaction log as per usual. Similarly, the ongoing Debezium streaming process continues to detect these change events and emits corresponding change event records to Kafka.
-
-#### How Debezium resolves collisions among records with the same primary key
-
-In some cases, the `UPDATE` or `DELETE` events that the streaming process emits are received out of sequence. That is, the streaming process might emit an event that modifies a table row before the snapshot captures the chunk that contains the `READ` event for that row. When the snapshot eventually emits the corresponding `READ` event for the row, its value is already superseded. To ensure that incremental snapshot events that arrive out of sequence are processed in the correct logical order, Debezium employs a buffering scheme for resolving collisions. Only after collisions between the snapshot events and the streamed events are resolved does Debezium emit an event record to Kafka.
-
-#### Snapshot window
-
-To assist in resolving collisions between late-arriving `READ` events and streamed events that modify the same table row, Debezium employs a so-called *snapshot window*. The snapshot windows demarcates the interval during which an incremental snapshot captures data for a specified table chunk. Before the snapshot window for a chunk opens, Debezium follows its usual behavior and emits events from the transaction log directly downstream to the target Kafka topic. But from the moment that the snapshot for a particular chunk opens, until it closes, Debezium performs a de-duplication step to resolve collisions between events that have the same primary key..
-
-For each data collection, the Debezium emits two types of events, and stores the records for them both in a single destination Kafka topic. The snapshot records that it captures directly from a table are emitted as `READ` operations. Meanwhile, as users continue to update records in the data collection, and the transaction log is updated to reflect each commit, Debezium emits `UPDATE` or `DELETE` operations for each change.
-
-As the snapshot window opens, and Debezium begins processing a snapshot chunk, it delivers snapshot records to a memory buffer. During the snapshot windows, the primary keys of the `READ` events in the buffer are compared to the primary keys of the incoming streamed events. If no match is found, the streamed event record is sent directly to Kafka. If Debezium detects a match, it discards the buffered `READ` event, and writes the streamed record to the destination topic, because the streamed event logically supersede the static snapshot event. After the snapshot window for the chunk closes, the buffer contains only `READ` events for which no related transaction log events exist. Debezium emits these remaining `READ` events to the table’s Kafka topic.
-
-The connector repeats the process for each snapshot chunk.
-
-{{< warning title="Warning" >}}
-
-The Debezium connector for YugabyteDB does not support schema changes while an incremental snapshot is running. If a schema change is performed *before* the incremental snapshot start but *after* sending the signal then passthrough config option `database.autosave` is set to `conservative` to correctly process the schema change.
-
-{{< /warning >}}
-
-#### Triggering an incremental snapshot
-
-Currently, the only way to initiate an incremental snapshot is to send an [ad hoc snapshot signal](#reminder) to the signaling table on the source database.
-
-You submit a signal to the signaling table as SQL `INSERT` queries.
-
-After Debezium detects the change in the signaling table, it reads the signal, and runs the requested snapshot operation.
-
-The query that you submit specifies the tables to include in the snapshot, and, optionally, specifies the kind of snapshot operation. Currently, the only valid option for snapshots operations is the default value, `incremental`.
-
-To specify the tables to include in the snapshot, provide a `data-collections` array that lists the tables or an array of regular expressions used to match tables, for example,
-
-`{"data-collections": ["public.MyFirstTable", "public.MySecondTable"]}`
-
-The `data-collections` array for an incremental snapshot signal has no default value. If the `data-collections` array is empty, Debezium detects that no action is required and does not perform a snapshot.
-
-{{< note title="Note" >}}
-
-If the name of a table that you want to include in a snapshot contains a dot (`.`) in the name of the database, schema, or table, to add the table to the `data-collections` array, you must escape each part of the name in double quotes.<br/><br/>
-
-For example, to include a table that exists in the **public** schema and that has the name **My.Table**, use the following format: **"public"."My.Table"**.
-
-{{< /note >}}
-
-Prerequisites:
-
-<!-- todo vaibhav require sub-bullets -->
-* [Signaling is enabled](#reminder).
-    * A signaling data collection exists on the source database.
-    * The signaling data collection is specified in the `signal.data.collection` property.
-
-<!-- todo vaibhav add rest of incremental snapshot and custom snapshotter SPI content -->
 
 ### Custom snapshotter SPI
 
@@ -331,11 +243,13 @@ The YugabyteDB connector retrieves schema information as part of the events sent
 
 {{< /note >}}
 
-### YugabyteDB 10+ logical decoding support (pgoutput)
+### YugabyteDB 2024.1.1+ logical decoding support (yboutput)
 
-As of YugabyteDB 10+, there is a logical replication stream mode, called pgoutput that is natively supported by YugabyteDB. This means that a Debezium YugabyteDB connector can consume that replication stream without the need for additional plug-ins. This is particularly valuable for environments where installation of plug-ins is not supported or not allowed.
+As of YugabyteDB 2024.1.1+, there is a logical replication stream mode, called `yboutput` that is natively supported by YugabyteDB. This means that a Debezium YugabyteDB connector can consume that replication stream without the need for additional plug-ins. This is particularly valuable for environments where installation of plug-ins is not supported or not allowed.
 
-For more information, see [Setting up YugabyteDB](#reminder).
+Additionally, YugabyteDB also supports PostgreSQL's plugin `pgoutput` natively. This means that the Debezium YugabyteDB connector can work with an existing setup which are configured using `pgoutput`, lift and shift.
+
+For more information, see [Setting up YugabyteDB](#setting-up-yugabytedb).
 
 ### Topic names
 
@@ -361,7 +275,7 @@ Now suppose that the tables are not part of a specific schema but were created i
 * `dbserver.public.customers`
 * `dbserver.public.orders`
 
-The connector applies similar naming conventions to label its [transaction metadata topics](todo vaubhav).
+The connector applies similar naming conventions to label its [transaction metadata topics](#transaction-metadata).
 
 If the default topic names don't meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see the Debezium documentation on [Topic routing](#reminder).
 
