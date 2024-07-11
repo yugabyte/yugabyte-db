@@ -10,10 +10,9 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.91-SNAPSHOT</version>
+    <version>0.8.92-SNAPSHOT</version>
     </parent>
   <artifactId>yb-yugabyted</artifactId>
-  <version>0.8.91-SNAPSHOT</version>
 
   <name>yb-yugabyted</name>
   <!-- FIXME change it to the project's website -->
@@ -41,26 +40,22 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.91-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.91-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-pgsql</artifactId>
-      <version>0.8.91-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-pgsql</artifactId>
-      <version>0.8.91-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>

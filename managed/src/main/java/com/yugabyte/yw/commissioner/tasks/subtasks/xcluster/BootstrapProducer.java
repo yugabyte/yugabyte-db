@@ -158,21 +158,25 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
       for (int i = 0; i < taskParams().tableIds.size(); i++) {
         Optional<XClusterTableConfig> tableConfig =
             xClusterConfig.maybeGetTableById(taskParams().tableIds.get(i));
-        String bootstrapId = bootstrapIds.get(i);
-        if (tableConfig.isPresent()) {
-          tableConfig.get().setStreamId(bootstrapId);
-          // If the table is bootstrapped, no need to bootstrap again.
-          tableConfig.get().setNeedBootstrap(false);
-          log.info("Stream id for table {} set to {}", tableConfig.get().getTableId(), bootstrapId);
-        } else {
-          // This code will never run because when we set the bootstrap creation time, we made sure
-          // that all the tableIds exist.
-          String errMsg =
-              String.format(
-                  "Could not find tableId (%s) in the xCluster config with uuid (%s)",
-                  taskParams().tableIds.get(i), taskParams().getXClusterConfig().getUuid());
-          throw new RuntimeException(errMsg);
-        }
+        int idx = i;
+        tableConfig.ifPresentOrElse(
+            config -> {
+              String bootstrapId = bootstrapIds.get(idx);
+              config.setStreamId(bootstrapId);
+              // If the table is bootstrapped, no need to bootstrap again.
+              config.setNeedBootstrap(false);
+              log.info("Stream id for table {} set to {}", config.getTableId(), bootstrapId);
+            },
+            () -> {
+              // This code will never run because when we set the bootstrap creation time, we made
+              // sure
+              // that all the tableIds exist.
+              String errMsg =
+                  String.format(
+                      "Could not find tableId (%s) in the xCluster config with uuid (%s)",
+                      taskParams().tableIds.get(idx), taskParams().getXClusterConfig().getUuid());
+              throw new RuntimeException(errMsg);
+            });
       }
 
       xClusterConfig.update();

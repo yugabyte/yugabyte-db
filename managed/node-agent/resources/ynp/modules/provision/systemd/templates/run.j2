@@ -5,11 +5,16 @@ systemd_dir="/etc/systemd/system"
     su - {{ yb_user }} -c "loginctl enable-linger {{ yb_user }}"
     su - {{ yb_user }} -c "export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})"
     # Configure the systemd_dir as path for user level systemd
-    systemd_dir="{{yb_home_dir}}/.config/systemd/user"
+    systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
     # Ensure the systemd directory exists
-    mkdir -p "$systemd_dir"
+    su - {{ yb_user }} -c "mkdir -p ${systemd_dir}"
 {% endif %}
+
 # Configure the systemd unit files
 {% for service_file in service_files | split_servers %}
-    echo "{% include service_file %}" > "$systemd_dir"/{{ service_file }}
+   tmp_file=$(mktemp)
+   echo "{% include service_file %}" > $tmp_file
+   chown {{ yb_user }}:{{ yb_user }} $tmp_file
+   su - {{ yb_user }} -c "mv $tmp_file ${systemd_dir}/{{ service_file }}"
+   su - {{ yb_user }} -c "chmod 755 ${systemd_dir}/{{ service_file }}"
 {% endfor %}

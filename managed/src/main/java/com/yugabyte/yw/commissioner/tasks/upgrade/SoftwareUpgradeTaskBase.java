@@ -152,8 +152,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     // Copy the source certs to the corresponding directory on the target universe.
     Map<UUID, List<XClusterConfig>> sourceUniverseUuidToXClusterConfigsMap =
         xClusterConfigsAsTarget.stream()
-            .collect(
-                Collectors.groupingBy(xClusterConfig -> xClusterConfig.getSourceUniverseUUID()));
+            .collect(Collectors.groupingBy(XClusterConfig::getSourceUniverseUUID));
 
     // Put all the universes in the locked list. The unlock operation is a no-op if the universe
     // does not get locked by this task.
@@ -184,7 +183,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
               xClusterConfigs.forEach(
                   xClusterConfig ->
                       createTransferXClusterCertsCopyTasks(
-                          xClusterConfig,
                           targetUniverse.getNodes(),
                           xClusterConfig.getReplicationGroupName(),
                           sourceCertificate,
@@ -265,8 +263,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
         nodes.mastersList.stream()
             .filter(
                 node ->
-                    (!masterNodesWithSameDBVersion.contains(node)
-                        || !node.state.equals(NodeState.Live)))
+                    (!masterNodesWithSameDBVersion.contains(node) || node.state != NodeState.Live))
             .collect(Collectors.toList());
     Set<NodeDetails> tserverNodesWithSameDBVersion =
         getNodesWithSameDBVersion(

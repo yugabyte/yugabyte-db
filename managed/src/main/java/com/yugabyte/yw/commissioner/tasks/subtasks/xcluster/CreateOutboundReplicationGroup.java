@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.time.Duration;
@@ -30,11 +29,6 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
   protected CreateOutboundReplicationGroup(
       BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies, xClusterUniverseService);
-  }
-
-  @Override
-  protected XClusterConfigTaskParams taskParams() {
-    return (XClusterConfigTaskParams) taskParams;
   }
 
   @Override
@@ -81,7 +75,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
   }
 
   protected void validateCheckpointingCompleted(
-      YBClient client, Universe sourceUniverse, XClusterConfig xClusterConfig) throws Exception {
+      YBClient client, Universe sourceUniverse, XClusterConfig xClusterConfig) {
     Duration xclusterWaitTimeout =
         this.confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
     for (String dbId : taskParams().getDbs()) {
