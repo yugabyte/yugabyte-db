@@ -88,9 +88,9 @@ To verify the configuration:
 
     ![Prometheus Service Discovery](/images/yp/alerts-monitoring/prometheus-service-discovery.png)
 
-To view metrics, use Prometheus queries. For sample queries, refer to [Analyze key metrics](../../../explore/observability/prometheus-integration/#analyze-key-metrics).
+To view metrics, use Prometheus queries. For sample queries, refer to [Analyze key metrics](../../../../explore/observability/prometheus-integration/#analyze-key-metrics).
 
-If you have [Grafana](../../../explore/observability/grafana-dashboard/grafana/) available, you can access a rich set of visualizations using the [YugabyteDB Grafana dashboard](https://grafana.com/grafana/dashboards/12620-yugabytedb/).
+If you have [Grafana](../../../../explore/observability/grafana-dashboard/grafana/) available, you can access a rich set of visualizations using the [YugabyteDB Grafana dashboard](https://grafana.com/grafana/dashboards/12620-yugabytedb/).
 
   {{% /tab %}}
 
