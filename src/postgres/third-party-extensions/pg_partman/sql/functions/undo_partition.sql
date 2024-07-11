@@ -68,12 +68,14 @@ BEGIN
  * For trigger-based, moves data to parent
  */
 
+/* YB: advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_native'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'undo_partition_native already running.';
     partitions_undone = -1;
     RETURN;
 END IF;
+*/
 
 IF p_parent_table = p_target_table THEN
     RAISE EXCEPTION 'Target table cannot be the same as the parent table';
