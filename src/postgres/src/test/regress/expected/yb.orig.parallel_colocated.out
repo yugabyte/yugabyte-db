@@ -315,9 +315,9 @@ EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
                              QUERY PLAN
 ---------------------------------------------------------------------
- GroupAggregate
+ HashAggregate
    Group Key: c
-   ->  Gather Merge
+   ->  Gather
          Workers Planned: 2
          ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
                Index Cond: (c > 40)
@@ -326,15 +326,15 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
  c  | count
 ----+-------
- 41 |    20
+ 44 |    20
  42 |    20
  43 |    20
- 44 |    20
- 45 |    20
- 46 |    20
- 47 |    20
  48 |    20
+ 45 |    20
+ 41 |    20
+ 46 |    20
  49 |    20
+ 47 |    20
 (9 rows)
 
 -- Joins

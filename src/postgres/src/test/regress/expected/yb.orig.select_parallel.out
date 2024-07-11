@@ -123,11 +123,11 @@ explain (costs off)
 explain (costs off)
 	select  sum(sp_parallel_restricted(unique1)) from tenk1
 	group by(sp_parallel_restricted(unique1));
-                  QUERY PLAN
-----------------------------------------------
+                     QUERY PLAN
+----------------------------------------------------
  HashAggregate
    Group Key: sp_parallel_restricted(unique1)
-   ->  Seq Scan on tenk1
+   ->  Index Only Scan using tenk1_unique1 on tenk1
 (3 rows)
 
 -- test prepared statement
@@ -522,10 +522,10 @@ reset enable_hashagg;
 -- check parallelized int8 aggregate (bug #14897)
 explain (costs off)
 select avg(unique1::int8) from tenk1;
-       QUERY PLAN
--------------------------
+                     QUERY PLAN
+----------------------------------------------------
  Aggregate
-   ->  Seq Scan on tenk1
+   ->  Index Only Scan using tenk1_unique1 on tenk1
 (2 rows)
 
 select avg(unique1::int8) from tenk1;
@@ -663,7 +663,7 @@ explain (costs off, verbose)
                Output: b.unique1, (row_number() OVER (?))
                ->  WindowAgg
                      Output: b.unique1, row_number() OVER (?)
-                     ->  Seq Scan on public.tenk1 b
+                     ->  Index Only Scan using tenk1_unique1 on public.tenk1 b
                            Output: b.unique1
 (12 rows)
 
@@ -786,7 +786,7 @@ SELECT 1 FROM tenk1_vw_sec
 -------------------------------------------------------------
  Subquery Scan on tenk1_vw_sec
    Filter: ((SubPlan 1) < 100)
-   ->  Seq Scan on tenk1
+   ->  Index Only Scan using tenk1_unique1 on tenk1
    SubPlan 1
      ->  Finalize Aggregate
            ->  Seq Scan on int4_tbl
