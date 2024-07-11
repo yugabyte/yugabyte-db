@@ -490,6 +490,12 @@ Default: `false`
 
 ## Tablet splitting flags
 
+##### --max_create_tablets_per_ts
+
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
+
+Default: `50`
+
 ##### --enable_automatic_tablet_splitting
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
@@ -512,7 +518,7 @@ Default: `8`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `512_MB`
+Default: `512 MiB`
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -524,19 +530,19 @@ Default: `24`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `10_GB`
+Default: `10 GiB`
 
 ##### --tablet_force_split_threshold_bytes
 
 The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
 
-Default: `100_GB`
+Default: `100 GiB`
 
 ##### --tablet_split_limit_per_table
 
 The maximum number of tablets per table for tablet splitting. Limitation is disabled if this value is set to 0.
 
-Default: `256`
+Default: `0`
 
 ##### --index_backfill_tablet_split_completion_timeout_sec
 

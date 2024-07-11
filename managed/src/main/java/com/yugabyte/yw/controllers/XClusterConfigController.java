@@ -1629,10 +1629,9 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   private void validateBackupRequestParamsForBootstrapping(
-      XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams bootstarpBackupParams,
-      UUID customerUUID) {
+      BootstrapParams.BootstrapBackupParams bootstrapBackupParams, UUID customerUUID) {
     XClusterConfigTaskBase.validateBackupRequestParamsForBootstrapping(
-        customerConfigService, backupHelper, bootstarpBackupParams, customerUUID);
+        customerConfigService, backupHelper, bootstrapBackupParams, customerUUID);
   }
 
   public static void certsForCdcDirGFlagCheck(Universe sourceUniverse, Universe targetUniverse) {

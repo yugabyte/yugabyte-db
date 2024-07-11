@@ -268,13 +268,6 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 /* YB specific fields in pg_get_replication_slots */
 #define YB_PG_GET_REPLICATION_SLOTS_COLS 2
 
-	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("pg_get_replication_slots is unavailable"),
-				 errdetail("yb_enable_replication_commands is false or a "
-				 		   "system upgrade is in progress")));
-
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
@@ -323,8 +316,12 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 	 *
 	 * For YSQL, the source of truth is yb-master and the
 	 * ReplicationSlotCtl->replication_slots array just acts as a cache.
+	 *
+	 * If the replication slot support isn't enabled, we return an empty
+	 * response instead of an error since there are clients (pgAdmin) which rely
+	 * on the function/view always working. See #23096 for more.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && yb_enable_replication_commands)
 		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	yb_totalslots = (IsYugaByteEnabled()) ? yb_numreplicationslots :

@@ -350,12 +350,29 @@ add_library(tserver_test_util
 target_link_libraries(tserver_test_util tablet_test_util tserver yb_test_util yb_util)
 
 #########################################
+# tserver_mock
+#########################################
+
+set(tserver_mock_SRCS
+  tserver_xcluster_context_mock.cc)
+
+set(tserver_mock_LIBS
+  tserver
+  gmock
+  gtest)
+
+ADD_YB_LIBRARY(tserver_mock
+  SRCS ${tserver_mock_SRCS}
+  DEPS ${tserver_mock_LIBS})
+
+#########################################
 # tserver tests
 #########################################
 
 set(YB_TEST_LINK_LIBS
   rpc_test_util
   tserver
+  tserver_mock
   tserver_test_util
   yb_client # yb::client::YBTableName
   yb-tserver_util

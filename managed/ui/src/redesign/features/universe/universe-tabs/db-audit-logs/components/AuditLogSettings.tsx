@@ -159,7 +159,13 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
     return (
       <Box className={border ? classes.logOption : classes.logOptionWithoutBorder}>
         <LabelWithTooltip label={label} tooltip={tooltip} />
-        <YBToggleField control={control} name={name} />
+        <YBToggleField
+          control={control}
+          name={name}
+          inputProps={{
+            'data-testid': `Option-${name}`
+          }}
+        />
       </Box>
     );
   };
@@ -173,6 +179,8 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
       cancelLabel="Cancel"
       overrideWidth={680}
       onSubmit={() => setConfirmationDialog(true)}
+      submitTestId="AuditLogSettings-Submit"
+      cancelTestId="AuditLogSettings-Cancel"
     >
       <FormProvider {...formMethods}>
         <Box height="100%" width="100%" display="flex" pl={1} pr={1} flexDirection={'column'}>
@@ -216,6 +224,9 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                           setValue('classes', exisitingArr);
                         } else setValue('classes', [...exisitingArr, ac.value]);
                       }}
+                      inputProps={{
+                        'data-testid': `AuditClasses-${ac.title}`
+                      }}
                     />
                   </Box>
                 );
@@ -239,7 +250,13 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                     label={'pgaudit.log_client'}
                     tooltip={t('dbAuitLog.tooltips.logClient')}
                   />
-                  <YBToggleField control={control} name="logClient" />
+                  <YBToggleField
+                    control={control}
+                    name="logClient"
+                    inputProps={{
+                      'data-testid': 'AuditLogSettings-LogClient'
+                    }}
+                  />
                 </Box>
                 {pgAuditClient && (
                   <Box display="flex" flexDirection={'row'} width="100%" pt={2} pr={3}>
@@ -251,11 +268,15 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                       fullWidth
                       defaultValue={logLevelValue ? logLevelValue : YSQLAuditLogLevel.LOG}
                       inputProps={{
-                        'data-testid': 'DefaultRegionField-Select'
+                        'data-testid': 'AuditLogSettings-LogLevel'
                       }}
                     >
                       {YSQL_LOG_LEVEL_OPTIONS.map((logOption) => (
-                        <MenuItem key={logOption.value} value={logOption.value}>
+                        <MenuItem
+                          key={logOption.value}
+                          value={logOption.value}
+                          data-testid={`Loglevel-${logOption.label}`}
+                        >
                           {logOption.label}
                         </MenuItem>
                       ))}
@@ -293,7 +314,13 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                   label={'Export Audit Log'}
                   tooltip={t('dbAuitLog.tooltips.exportLog')}
                 />
-                <YBToggleField control={control} name="exportActive" />
+                <YBToggleField
+                  control={control}
+                  name="exportActive"
+                  inputProps={{
+                    'data-testid': 'AuditLogSettings-ExportActive'
+                  }}
+                />
               </Box>
               {exportActiveValue && (
                 <Box
@@ -312,6 +339,9 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                       renderValue={(value) =>
                         telemetryProviders?.find((tp) => tp.uuid === value)?.name
                       }
+                      inputProps={{
+                        'data-testid': 'AuditLogSettings-ExportSelect'
+                      }}
                     >
                       {telemetryProviders?.map((tp) => {
                         return (
@@ -319,6 +349,7 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                             className={classes.exportMenuItem}
                             key={tp.name}
                             value={tp?.uuid}
+                            data-testid={`TelemetryProvider-${tp.name}`}
                           >
                             <Typography variant="body1">{tp?.name}</Typography>
                             <Typography variant="subtitle1" color="textSecondary">
@@ -332,6 +363,7 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                         value=""
                         className={classes.createExportMenuItem}
                         onClick={() => setExportNavDialog(true)}
+                        data-testid={`TelemetryProvider-CreateExport`}
                       >
                         <img src={AddCircleIcon} alt="--" /> &nbsp;{' '}
                         <Typography variant="inherit">

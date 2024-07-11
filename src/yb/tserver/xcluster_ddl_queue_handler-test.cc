@@ -12,21 +12,20 @@
 //
 
 #include <memory>
+#include <optional>
+
+#include <gmock/gmock.h>
+
 #include "yb/cdc/xcluster_types.h"
-#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/common_types.pb.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/xcluster/xcluster_test_base.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
+#include "yb/tserver/tserver_xcluster_context.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/tserver_xcluster_context_mock.h"
 #include "yb/tserver/xcluster_output_client.h"
-#include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
@@ -40,10 +39,11 @@ const std::string kDDLCommandCreateIndex = "CREATE INDEX";
 
 class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
  public:
-  explicit XClusterDDLQueueHandlerMocked(const client::YBTableName& table_name)
+  explicit XClusterDDLQueueHandlerMocked(
+      const client::YBTableName& table_name, MockTserverXClusterContext& xcluster_context)
       : XClusterDDLQueueHandler(
             /* local_client */ nullptr, table_name.namespace_name(), table_name.namespace_id(),
-            /* connect_to_pg_func */ nullptr) {}
+            xcluster_context, /* connect_to_pg_func */ nullptr) {}
 
   Status ProcessDDLQueueTable(
       const std::optional<HybridTime>& apply_safe_time, int num_records = 1) {
@@ -82,7 +82,7 @@ class XClusterDDLQueueHandlerMocked : public XClusterDDLQueueHandler {
 
   Status ProcessDDLQuery(const DDLQueryInfo& query_info) override { return Status::OK(); }
 
-  Result<bool> CheckIfAlreadyProcessed(int64 start_time, int64 query_id) override { return false; };
+  Result<bool> CheckIfAlreadyProcessed(const DDLQueryInfo& query_info) override { return false; };
 };
 
 class XClusterDDLQueueHandlerMockedTest : public YBTest {
@@ -101,7 +101,8 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifySafeTimes) {
   const auto ht3 = HybridTime(ht2.ToUint64() + 1);
   const auto ht_invalid = HybridTime::kInvalid;
 
-  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table);
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
   {
     // Pass in invalid ht, should skip processing.
     auto s = ddl_queue_handler.ProcessDDLQueueTable(ht_invalid);
@@ -147,7 +148,8 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
   const auto ht1 = HybridTime(HybridTime::kInitial.ToUint64() + 1);
   int query_id = 1;
 
-  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table);
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
   ddl_queue_handler.safe_time_ht_ = ht1;
 
   // Verify that we receive the necessary base tags.
@@ -210,7 +212,8 @@ TEST_F(XClusterDDLQueueHandlerMockedTest, VerifyBasicJsonParsing) {
 }
 
 TEST_F(XClusterDDLQueueHandlerMockedTest, SkipScanWhenNoNewRecords) {
-  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table);
+  MockTserverXClusterContext xcluster_context;
+  auto ddl_queue_handler = XClusterDDLQueueHandlerMocked(ddl_queue_table, xcluster_context);
 
   const auto ht1 = HybridTime(HybridTime::kInitial.ToUint64() + 1);
   ddl_queue_handler.safe_time_ht_ = ht1;

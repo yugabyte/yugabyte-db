@@ -231,6 +231,7 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-model" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
+  "javax.xml.bind" % "jaxb-api" % "2.3.1",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -924,7 +925,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.91-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.92-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 

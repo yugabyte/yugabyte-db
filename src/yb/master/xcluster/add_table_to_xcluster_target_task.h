@@ -56,6 +56,7 @@ class AddTableToXClusterTargetTask : public PostTabletCreateTaskBase {
   Status WaitForSetupUniverseReplicationToFinish();
   Status RefreshAndGetXClusterSafeTime();
   Status WaitForXClusterSafeTimeCaughtUp();
+  Status CleanupAndComplete();
 
   // Returns nullopt if the namespace is no longer part of xCluster replication, otherwise returns a
   // valid safe time.

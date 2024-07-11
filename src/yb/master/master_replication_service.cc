@@ -41,7 +41,6 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (IsSetupNamespaceReplicationWithBootstrapDone)
     (UpdateConsumerOnProducerSplit)
     (UpdateConsumerOnProducerMetadata)
-    (XClusterReportNewAutoFlagConfigVersion)
     (ListCDCStreams)
     (IsObjectPartOfXRepl)
     (SetUniverseReplicationEnabled)
@@ -51,7 +50,6 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetCDCDBStreamInfo)
     (IsBootstrapRequired)
     (WaitForReplicationDrain)
-    (GetReplicationStatus)
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
     (BootstrapProducer)
@@ -82,6 +80,8 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       (GetXClusterOutboundReplicationGroupInfo)
       (GetUniverseReplications)
       (GetUniverseReplicationInfo)
+      (GetReplicationStatus)
+      (XClusterReportNewAutoFlagConfigVersion)
   )
 };
 

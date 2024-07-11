@@ -1,6 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.api.v2;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.emptyCollectionOf;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -15,11 +19,13 @@ import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.UniverseRollbackUpgradeReq;
+import com.yugabyte.yba.v2.client.models.UniverseSoftwareFinalizeImpactedXCluster;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeFinalize;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeFinalizeInfo;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradePrecheckReq;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradePrecheckResp;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeStart;
+import com.yugabyte.yba.v2.client.models.UniverseSystemdEnableStart;
 import com.yugabyte.yba.v2.client.models.UniverseThirdPartySoftwareUpgradeStart;
 import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -29,6 +35,7 @@ import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
@@ -151,7 +158,9 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
 
     UniverseSoftwareUpgradeFinalizeInfo resp =
         apiClient.getFinalizeSoftwareUpgradeInfo(customer.getUuid(), universe.getUniverseUUID());
-    assertTrue(resp.getImpactedXclusters().isEmpty());
+    assertThat(
+        resp.getImpactedXclusters(),
+        anyOf(nullValue(), emptyCollectionOf(UniverseSoftwareFinalizeImpactedXCluster.class)));
   }
 
   @Test
@@ -311,5 +320,21 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     UniverseSoftwareUpgradePrecheckResp resp =
         apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
     assertFalse(resp.getFinalizeRequired());
+  }
+
+  @Test
+  public void testV2SystemdEnable() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeSystemd(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseSystemdEnableStart req = new UniverseSystemdEnableStart();
+    req.setSleepAfterTserverRestartMillis(10000);
+    YBATask resp = apiClient.systemdEnable(customer.getUuid(), universe.getUniverseUUID(), req);
+    ArgumentCaptor<SystemdUpgradeParams> captor =
+        ArgumentCaptor.forClass(SystemdUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler).upgradeSystemd(captor.capture(), eq(customer), eq(universe));
+    SystemdUpgradeParams params = captor.getValue();
+    assertTrue(10000 == params.sleepAfterTServerRestartMillis);
+    assertEquals(taskUUID, resp.getTaskUuid());
   }
 }

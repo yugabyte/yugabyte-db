@@ -21,6 +21,7 @@ import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -126,6 +127,14 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "addOnClusters", ignore = true)
   @Mapping(target = "nonPrimaryClusters", ignore = true)
   public RestartTaskParams toRestartTaskParams(UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public SystemdUpgradeParams toSystemdUpgradeParams(UniverseDefinitionTaskParams source);
 
   @Mapping(target = "spec", source = ".")
   UniverseCreateSpec toV2UniverseCreateSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);

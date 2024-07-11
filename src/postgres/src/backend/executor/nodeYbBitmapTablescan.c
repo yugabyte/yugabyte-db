@@ -25,6 +25,7 @@
 #include "access/relscan.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBitmapTablescan.h"
+#include "nodes/nodeFuncs.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
@@ -73,8 +74,26 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->initialized = true;
 		node->work_mem_exceeded = ybtbm->work_mem_exceeded;
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
-		node->recheck_required |= ybtbm->recheck;
 		node->skipped_tuples = 0;
+		node->recheck_required =
+			YbGetBitmapScanRecheckRequired(outerPlanState(node));
+
+		if (node->aggrefs)
+		{
+			/*
+			 * For aggregate pushdown, we read just the aggregates from DocDB
+			 * and pass that up to the aggregate node (agg pushdown wouldn't be
+			 * enabled if we needed to read more than that).  Set up a dummy
+			 * scan slot to hold as many attributes as there are pushed
+			 * aggregates.
+			 */
+			TupleDesc tupdesc = CreateTemplateTupleDesc(
+				list_length(node->aggrefs), false /* hasoid */);
+			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc);
+
+			/* Refresh the local pointer. */
+			slot = node->ss.ss_ScanTupleSlot;
+		}
 	}
 
 	if (!node->ss.ss_currentScanDesc)
@@ -253,7 +272,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 						  (Scan *) &plan /* pg_scan_plan */,
 						  yb_pushdown /* rel_pushdown */,
 						  NULL /* idx_pushdown */,
-						  NULL /* aggrefs */,
+						  scanstate->aggrefs /* aggrefs */,
 						  0 /* distinct_prefixlen */,
 						  &scanstate->ss.ps.state->yb_exec_params,
 						  true /* is_internal_scan */,
@@ -470,6 +489,11 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 		ExecInitQual(node->fallback_local_quals, (PlanState *) scanstate);
 
 	scanstate->ss.ss_currentRelation = currentRelation;
+
+	/*
+	 * We can already tell if we need to recheck index qual conditions.
+	 */
+	scanstate->recheck_required = YbGetBitmapScanRecheckRequired(outerPlanState(scanstate));
 
 	/*
 	 * all done.

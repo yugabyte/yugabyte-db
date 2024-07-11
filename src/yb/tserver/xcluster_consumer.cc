@@ -19,6 +19,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_defaults.h"
@@ -114,7 +115,7 @@ namespace tserver {
 Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
     std::function<int64_t(const TabletId&)> get_leader_term, const std::string& ts_uuid,
     client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
-    GetNamespaceInfoFunc get_namespace_info_func, const TserverXClusterContextIf& xcluster_context,
+    GetNamespaceInfoFunc get_namespace_info_func, TserverXClusterContextIf& xcluster_context,
     const scoped_refptr<MetricEntity>& server_metric_entity) {
   auto xcluster_consumer = std::make_unique<XClusterConsumer>(
       std::move(get_leader_term), ts_uuid, local_client, std::move(connect_to_pg_func),
@@ -128,7 +129,7 @@ Result<std::unique_ptr<XClusterConsumerIf>> CreateXClusterConsumer(
 XClusterConsumer::XClusterConsumer(
     std::function<int64_t(const TabletId&)> get_leader_term, const string& ts_uuid,
     client::YBClient& local_client, ConnectToPostgresFunc connect_to_pg_func,
-    GetNamespaceInfoFunc get_namespace_info_func, const TserverXClusterContextIf& xcluster_context,
+    GetNamespaceInfoFunc get_namespace_info_func, TserverXClusterContextIf& xcluster_context,
     const scoped_refptr<MetricEntity>& server_metric_entity)
     : get_leader_term_func_(std::move(get_leader_term)),
       rpcs_(new rpc::Rpcs),
@@ -532,7 +533,8 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         if (FLAGS_TEST_xcluster_enable_ddl_replication &&
             ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           xcluster_poller->InitDDLQueuePoller(
-              use_local_tserver, rate_limiter_.get(), namespace_name, connect_to_pg_func_);
+              use_local_tserver, rate_limiter_.get(), namespace_name, xcluster_context_,
+              connect_to_pg_func_);
         } else {
           xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
         }

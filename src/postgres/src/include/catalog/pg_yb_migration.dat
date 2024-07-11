@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V51__21861__ysql_dbid_in_yb_active_session_history.sql
-{ major => '51', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V52__22028__yb_reset_analyze_statistics.sql
+{ major => '52', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

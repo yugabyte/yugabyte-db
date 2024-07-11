@@ -46,7 +46,7 @@ export interface CreateXClusterConfigRequest {
 
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
@@ -59,7 +59,7 @@ export interface EditXClusterConfigTablesRequest {
   autoIncludeIndexTables?: boolean;
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
