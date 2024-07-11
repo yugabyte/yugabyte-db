@@ -45,6 +45,12 @@ If you prefer, you can install a standalone version using any of the following m
       Linux ARM
     </a>
   </li>
+  <li>
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -67,8 +73,15 @@ tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linu
   <div id="linuxarm" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxarm-tab">
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-el8-aarch64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
+```
+
+  </div>
+  <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
+
+```sh
+docker pull yugabytedb/yugabyte-client:latest
 ```
 
   </div>
