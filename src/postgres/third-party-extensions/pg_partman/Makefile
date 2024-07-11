@@ -12,6 +12,8 @@ DOCS = $(wildcard doc/*.md)
 MODULES = src/pg_partman_bgw
 
 # If user does not want the background worker, run: make NO_BGW=1
+# YB: Set NO_BGW = 1, maintenance job will be scheduled to run via pg_cron extension
+NO_BGW=1
 ifneq ($(NO_BGW),)
 	MODULES=
 endif
