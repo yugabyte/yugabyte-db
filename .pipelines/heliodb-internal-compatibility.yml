@@ -1,0 +1,90 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - "*"
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  system.debug: 'true'
+
+steps:
+- checkout: self
+- script: |
+    cd ..
+    git clone https://$(USERNAME):$(PAT)@msdata.visualstudio.com/DefaultCollection/CosmosDB/_git/$(innerRepo)
+    rm -rf $(innerRepo)/oss
+    cp -r heliodb $(innerRepo)/oss
+    cd $(innerRepo)
+    git chekcout -b helio-oss/$(Build.SourceBranchName)
+    git add .
+    git commit -m "$(git -C ../heliodb log -1 --pretty=format:'%s')"
+    git push origin helio-oss/$(Build.SourceBranchName)
+    last_commit_hash=$(git rev-parse HEAD)
+    echo "##vso[task.setvariable variable=LAST_COMMIT_HASH]$last_commit_hash"
+  displayName: 'Push to Azure DevOps'
+
+- task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.x'
+      addToPath: true
+
+- task: PythonScript@0
+    inputs:
+      scriptSource: 'inline'
+      script: |
+        import time
+        import os
+        import requests
+        import sys
+        from requests.auth import HTTPBasicAuth
+
+        time.sleep(60)
+
+        organization = "$(ORGANIZATION)"
+        project = "$(PROJECT)"
+        branch_name = "refs/heads/helio-oss/$(Build.SourceBranchName)"
+        commit_id = "$(LAST_COMMIT_HASH)"
+        build_name = "$(INTERNAL_PIPELINE_NAME)"
+
+        url = f"https://dev.azure.com/{organization}/{project}/_apis/build/builds?api-version=7.1&branchName={branch_name}&sourceVersion={commit_id}"
+
+        response = requests.get(url, auth=HTTPBasicAuth("$(USERNAME)", "$(PAT)"))
+
+        if response.status_code == 200:
+          builds = response.json()["value"]
+          filtered_builds = [build for build in builds if build_name == build['definition']['name']]
+          
+          if filtered_builds:
+            build_id = filtered_builds[0]['id']
+          
+          else:
+            print("##vso[task.logissue type=error]Internal build not found :(")
+            sys.exit(1)
+        
+        else:
+          print(f"##vso[task.logissue type=error]Failed to fetch builds: {response.status_code} - {response.text}")
+          sys.exit(1)       
+        
+        while True:
+          time.sleep(300)
+          response = requests.get(f"https://dev.azure.com/{organization}/{project}/_apis/build/builds/{build_id}?api-version=7.1", auth=HTTPBasicAuth("$(USERNAME)", "$(PAT2)"))
+          build = response.json()
+          status = build['status']
+          print(f"Internal build status: {status}")
+
+          if status == "completed":
+            result = build['result']
+            if result == "succeeded":
+              print("Internal build succeeded :)")
+            else:
+              print("##vso[task.logissue type=error]Internal build failed. Please go check the issue at: https://msdata.visualstudio.com/CosmosDB/_build/results?buildId={build_id}&view=results")
+              sys.exit(1)
+
+    displayName: 'Validate Internal Pipeline Correctness'
