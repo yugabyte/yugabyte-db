@@ -9,43 +9,41 @@ import {
 import { SortOrder } from '../../../../redesign/helpers/constants';
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { formatBytes, isTableToggleable, tableSort } from '../../ReplicationUtils';
-import { TableNameCell } from './TableNameCell';
+import { formatBytes, tableSort } from '../../ReplicationUtils';
 import { XClusterConfigAction } from '../../constants';
 
 import {
-  IndexTableReplicationCandidate,
-  MainTableReplicationCandidate,
-  TableReplicationCandidate
+  MainTableRestartReplicationCandidate,
+  TableRestartReplicationCandidate
 } from '../../XClusterTypes';
 
 import styles from './IndexTableList.module.scss';
 
-interface IndexTableListProps {
-  mainTableReplicationCandidate: MainTableReplicationCandidate;
+interface ConfigIndexTableListProps {
+  mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate;
   xClusterConfigAction: XClusterConfigAction;
-  isMainTableSelectable: boolean;
-  isTransactionalConfig: boolean;
   selectedTableUuids: string[];
-  handleTableSelect: (row: TableReplicationCandidate, isSelected: boolean) => void;
-  handleTableGroupSelect: (isSelected: boolean, rows: TableReplicationCandidate[]) => boolean;
+  handleTableSelect: (row: TableRestartReplicationCandidate, isSelected: boolean) => void;
+  handleTableGroupSelect: (
+    isSelected: boolean,
+    rows: TableRestartReplicationCandidate[]
+  ) => boolean;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as const;
 
-export const IndexTableList = ({
-  mainTableReplicationCandidate,
-  isMainTableSelectable,
-  isTransactionalConfig,
+export const ConfigIndexTableList = ({
+  mainTableRestartReplicationCandidate,
   selectedTableUuids,
   handleTableSelect,
-  handleTableGroupSelect,
-  xClusterConfigAction
-}: IndexTableListProps) => {
+  handleTableGroupSelect
+}: ConfigIndexTableListProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof MainTableReplicationCandidate>('tableName');
+  const [sortField, setSortField] = useState<keyof MainTableRestartReplicationCandidate>(
+    'tableName'
+  );
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const tableOptions: Options = {
@@ -53,24 +51,15 @@ export const IndexTableList = ({
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
       // Each row of the table is of type XClusterTableCandidate.
-      setSortField(sortName as keyof MainTableReplicationCandidate);
+      setSortField(sortName as keyof MainTableRestartReplicationCandidate);
       setSortOrder(sortOrder);
     }
   };
 
   const indexTableRows =
-    mainTableReplicationCandidate.indexTables?.sort((a, b) =>
-      tableSort<MainTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
+    mainTableRestartReplicationCandidate.indexTables?.sort((a, b) =>
+      tableSort<MainTableRestartReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
     ) ?? [];
-  const untoggleableTableUuids = indexTableRows
-    .filter(
-      (table) =>
-        isTransactionalConfig ||
-        !isTableToggleable(table, xClusterConfigAction) ||
-        xClusterConfigAction !== XClusterConfigAction.MANAGE_TABLE
-    )
-    .map((table) => table.tableUUID);
-  const isSelectable = isMainTableSelectable && !isTransactionalConfig;
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable
@@ -83,20 +72,12 @@ export const IndexTableList = ({
           onSelect: handleTableSelect,
           onSelectAll: handleTableGroupSelect,
           selected: selectedTableUuids,
-          hideSelectColumn: !isSelectable,
-          unselectable: untoggleableTableUuids
+          hideSelectColumn: true
         }}
         options={tableOptions}
       >
         <TableHeaderColumn dataField="tableUUID" isKey={true} hidden={true} />
-        <TableHeaderColumn
-          dataField="tableName"
-          dataSort={true}
-          dataFormat={(
-            _: string,
-            indexTableReplicationCandidate: IndexTableReplicationCandidate
-          ) => <TableNameCell tableReplicationCandidate={indexTableReplicationCandidate} />}
-        >
+        <TableHeaderColumn dataField="tableName" dataSort={true}>
           Index Table Name
         </TableHeaderColumn>
         <TableHeaderColumn

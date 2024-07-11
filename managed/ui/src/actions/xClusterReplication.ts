@@ -79,7 +79,12 @@ export function createXClusterConfig(createxClusterConfigRequest: CreateXCluster
 export function restartXClusterConfig(
   xClusterUUID: string,
   tables: string[],
-  bootstrapParams: { backupRequestParams: any }
+  bootstrapParams: {
+    allowBootstrap: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  }
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
