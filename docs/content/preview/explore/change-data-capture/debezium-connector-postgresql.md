@@ -26,7 +26,7 @@ The first time it connects to a YugabyteDB server or cluster, the connector take
 
 ## Overview
 
-YugabyteDB’s [logical decoding](#reminder) feature was introduced in version 2024.1.1. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
+YugabyteDB’s [logical decoding](#reminder) feature was introduced in YugabyteDB version 2024.1.1. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
 
 The YugabyteDB connector contains two main parts that work together to read and process database changes:
 
