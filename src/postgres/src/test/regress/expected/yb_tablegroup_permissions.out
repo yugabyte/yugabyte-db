@@ -7,9 +7,12 @@ CREATE DATABASE test_tablegroup;
 -- CREATE TABLEGROUP
 --
 CREATE USER user_1;
+GRANT CREATE ON SCHEMA public TO user_1;
 CREATE USER user_2 SUPERUSER;
 CREATE USER user_3;
+GRANT CREATE ON SCHEMA public TO user_3;
 CREATE USER user_4;
+GRANT CREATE ON SCHEMA public TO user_4;
 GRANT CREATE ON DATABASE test_tablegroup TO user_3;
 CREATE TABLEGROUP owned_by1 OWNER user_1;
 CREATE TABLEGROUP supergroup;
@@ -150,5 +153,3 @@ ALTER DEFAULT PRIVILEGES REVOKE CREATE ON TABLEGROUPS FROM user_1;
  Owner | Schema | Type | Access privileges
 -------+--------+------+-------------------
 (0 rows)
-
-

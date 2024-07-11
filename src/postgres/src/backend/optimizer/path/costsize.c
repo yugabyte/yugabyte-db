@@ -7578,11 +7578,6 @@ void
 yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			  bool partial_path)
 {
-#ifdef YB_TODO
-	/*
-	 * Gaurav: this function needs changes to work with pg15.  Particularly,
-	 * deconstruct_indexquals no longer exists
-	 */
 	IndexOptInfo *index = path->indexinfo;
 	Relation	index_rel = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		is_primary_index = index_rel->rd_index->indisprimary;
@@ -7600,7 +7595,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	List	   *index_conditions;
 	int			index_col;
 	ListCell   *lc;
-	ListCell   *lci;
 	RangeTblEntry *rte;
 	Oid			baserel_oid;
 	int32		index_tuple_width;
@@ -7714,10 +7708,12 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	index_conditions_on_each_column = palloc0(sizeof(List*) * index->nkeycolumns);
 	index_conditions = NIL;
 	index_col = 0;
-	forboth(lc, path->indexquals, lci, path->indexqualcols)
+
+	foreach(lc, path->indexclauses)
 	{
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
-		int index_qual_col = lfirst_int(lci);
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		ListCell *lc2;
+		int      index_qual_col = iclause->indexcol;
 
 		while (index_col != index_qual_col)
 		{
@@ -7725,20 +7721,22 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			Assert(index_col < index->nkeycolumns);
 		}
 
-		if (path->path.param_info)
+		foreach (lc2, iclause->indexquals)
 		{
-			Relids batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
-			RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
+			if (path->path.param_info)
+			{
+				Relids batched = YB_PATH_REQ_OUTER_BATCHED(&path->path);
+				RestrictInfo *batched_rinfo = yb_get_batched_restrictinfo(
 				rinfo, batched, path->path.parent->relids);
-			if (batched_rinfo)
+				if (batched_rinfo)
 				rinfo = batched_rinfo;
+			}
+			index_conditions_on_each_column[index_col] =
+				lappend(index_conditions_on_each_column[index_col], rinfo);
+			index_conditions = lappend(index_conditions, rinfo);
 		}
-
-		index_conditions_on_each_column[index_col] =
-			lappend(index_conditions_on_each_column[index_col], rinfo);
-		index_conditions = lappend(index_conditions, rinfo);
 	}
-
 
 	bool yb_exist_conditions_on_all_hash_keys_ =
 		yb_exist_conditions_on_all_hash_keys(index,
@@ -8140,7 +8138,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;
 	yb_parallel_cost((Path *) path);
-#endif
 }
 
 /*

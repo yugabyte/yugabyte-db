@@ -1,0 +1,12 @@
+# src/test/regress/yb_pg_auth_serial_schedule
+# This schedule is for ported tests only.
+
+# Dependency for yb_pg_privileges
+test: yb_pg_test_setup
+
+test: yb_pg_rolenames
+test: yb_pg_roleattributes
+test: yb_pg_privileges
+test: yb_pg_init_privs
+test: yb_pg_rowsecurity
+test: yb_pg_password

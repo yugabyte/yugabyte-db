@@ -5,11 +5,13 @@ step s1_ins: INSERT INTO test VALUES (2, 2);
 step s2_ins: INSERT INTO test VALUES (2, 4); <waiting ...>
 step s1_commit: COMMIT;
 step s2_ins: <... completed>
-error in steps s1_commit s2_ins: ERROR:  duplicate key value violates unique constraint "test_pkey"
+ERROR:  duplicate key value violates unique constraint "test_pkey"
 step s1_select: SELECT * FROM test;
-k              v
+k|v
+-+-
+2|2
+(1 row)
 
-2              2
 
 starting permutation: s1_ins s3_del s2_ins s1_commit s1_select
 step s1_ins: INSERT INTO test VALUES (2, 2);
@@ -19,20 +21,24 @@ step s1_commit: COMMIT;
 step s3_del: <... completed>
 step s2_ins: <... completed>
 step s1_select: SELECT * FROM test;
-k              v
+k|v
+-+-
+2|4
+(1 row)
 
-2              4
 
 starting permutation: s1_ins s2_multi_insert s1_commit s1_select
 step s1_ins: INSERT INTO test VALUES (2, 2);
 step s2_multi_insert: INSERT INTO test VALUES (1, 1), (2, 4), (3, 3); <waiting ...>
 step s1_commit: COMMIT;
 step s2_multi_insert: <... completed>
-error in steps s1_commit s2_multi_insert: ERROR:  duplicate key value violates unique constraint "test_pkey"
+ERROR:  duplicate key value violates unique constraint "test_pkey"
 step s1_select: SELECT * FROM test;
-k              v
+k|v
+-+-
+2|2
+(1 row)
 
-2              2
 
 starting permutation: s1_ins s3_del s2_multi_insert s1_commit s1_select
 step s1_ins: INSERT INTO test VALUES (2, 2);
@@ -42,8 +48,9 @@ step s1_commit: COMMIT;
 step s3_del: <... completed>
 step s2_multi_insert: <... completed>
 step s1_select: SELECT * FROM test;
-k              v
-
-1              1
-2              4
-3              3
+k|v
+-+-
+1|1
+2|4
+3|3
+(3 rows)

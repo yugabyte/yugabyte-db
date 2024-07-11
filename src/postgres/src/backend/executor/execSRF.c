@@ -124,7 +124,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 	 * context. Similarly, the function arguments need to be evaluated in a
 	 * context that is longer lived than the per-tuple context: The argument
 	 * values would otherwise disappear when we reset that context in the
-	 * inner loop.  As the caller's CurrentMemoryContext is typically a
+	 * inner loop.  As the caller's GetCurrentMemoryContext() is typically a
 	 * query-lifespan context, we don't want to leak memory there.  We require
 	 * the caller to pass a separate memory context that can be used for this,
 	 * and can be reset each time through to avoid bloat.

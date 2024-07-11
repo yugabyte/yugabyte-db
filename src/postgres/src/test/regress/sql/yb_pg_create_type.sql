@@ -168,12 +168,10 @@ CREATE FUNCTION base_fn_in(cstring) RETURNS base_type AS 'boolin'
 CREATE FUNCTION base_fn_out(base_type) RETURNS cstring AS 'boolout'
     LANGUAGE internal IMMUTABLE STRICT;
 CREATE TYPE base_type(INPUT = base_fn_in, OUTPUT = base_fn_out);
-\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP FUNCTION base_fn_in(cstring); -- error
 DROP FUNCTION base_fn_out(base_type); -- error
 DROP TYPE base_type; -- error
 DROP TYPE base_type CASCADE;
-\set VERBOSITY default \\ -- YB: unsuppress cascade details
 
 -- Check usage of typmod with a user-defined type
 -- (we have borrowed numeric's typmod functions)
@@ -223,7 +221,7 @@ INSERT INTO city VALUES
 ('Podunk', '(1,2),(3,4)', '100,127,1000'),
 ('Gotham', '(1000,34),(1100,334)', '123456,127,-1000,6789');
 
-TABLE city ORDER BY name DESC; -- YB-added ordering
+TABLE city;
 
 --
 -- Test CREATE/ALTER TYPE using a type that's compatible with varchar,
@@ -287,9 +285,7 @@ SELECT typinput, typoutput, typreceive, typsend, typmodin, typmodout,
 FROM pg_type WHERE typname = '_myvarchardom';
 
 -- ensure dependencies are straight
-\set VERBOSITY terse \\ -- YB: suppress cascade details
 DROP FUNCTION myvarcharsend(myvarchar);  -- fail
 DROP TYPE myvarchar;  -- fail
 
 DROP TYPE myvarchar CASCADE;
-\set VERBOSITY default \\ -- YB: unsuppress cascade details

@@ -25,15 +25,15 @@ explain (costs off)
 -------------------------------------------------
  Aggregate
    ->  Append
-         ->  Seq Scan on part_pa_test_p1 pa2
-         ->  Seq Scan on part_pa_test_p2 pa2_1
+         ->  Seq Scan on part_pa_test_p1 pa2_1
+         ->  Seq Scan on part_pa_test_p2 pa2_2
    SubPlan 2
      ->  Result
    SubPlan 1
      ->  Append
-           ->  Seq Scan on part_pa_test_p1 pa1
+           ->  Seq Scan on part_pa_test_p1 pa1_1
                  Storage Filter: (a = pa2.a)
-           ->  Seq Scan on part_pa_test_p2 pa1_1
+           ->  Seq Scan on part_pa_test_p2 pa1_2
                  Storage Filter: (a = pa2.a)
 (12 rows)
 

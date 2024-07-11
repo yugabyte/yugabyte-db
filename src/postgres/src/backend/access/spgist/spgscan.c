@@ -363,11 +363,11 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 
 	fmgr_info_copy(&so->innerConsistentFn,
 				   index_getprocinfo(rel, 1, SPGIST_INNER_CONSISTENT_PROC),
-				   CurrentMemoryContext);
+				   GetCurrentMemoryContext());
 
 	fmgr_info_copy(&so->leafConsistentFn,
 				   index_getprocinfo(rel, 1, SPGIST_LEAF_CONSISTENT_PROC),
-				   CurrentMemoryContext);
+				   GetCurrentMemoryContext());
 
 	so->indexCollation = rel->rd_indcollation[0];
 

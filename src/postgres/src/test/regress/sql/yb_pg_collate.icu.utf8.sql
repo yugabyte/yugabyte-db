@@ -2,6 +2,14 @@
  * This test is for ICU collations.
  */
 
+/* skip test if not UTF8 server encoding or no ICU collations installed */
+SELECT getdatabaseencoding() <> 'UTF8' OR
+       (SELECT count(*) FROM pg_collation WHERE collprovider = 'i') = 0
+       AS skip_test \gset
+\if :skip_test
+\quit
+\endif
+
 SET client_encoding TO UTF8;
 
 CREATE SCHEMA collate_tests;
@@ -50,38 +58,16 @@ INSERT INTO collate_test1 VALUES (1, 'abc'), (2, 'äbc'), (3, 'bbc'), (4, 'ABC')
 INSERT INTO collate_test2 SELECT * FROM collate_test1;
 INSERT INTO collate_test3 SELECT * FROM collate_test1;
 
-SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
-SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
-SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
-SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
+SELECT * FROM collate_test1 WHERE b >= 'bbc';
+SELECT * FROM collate_test2 WHERE b >= 'bbc';
+SELECT * FROM collate_test3 WHERE b >= 'bbc';
+SELECT * FROM collate_test3 WHERE b >= 'BBC';
 
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
-SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc';
+SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C";
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C";
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu";
 
--- Repeat the test with expression pushdown disabled
-set yb_enable_expression_pushdown to off;
-EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
-EXPLAIN (costs off) SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
-EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
-EXPLAIN (costs off) SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
-
-SELECT * FROM collate_test1 WHERE b >= 'bbc' order by 1;
-SELECT * FROM collate_test2 WHERE b >= 'bbc' order by 1;
-SELECT * FROM collate_test3 WHERE b >= 'bbc' order by 1;
-SELECT * FROM collate_test3 WHERE b >= 'BBC' order by 1;
-
-EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
-EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
-EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
-EXPLAIN (costs off) SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
-
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' order by 1;
-SELECT * FROM collate_test1 WHERE b >= 'bbc' COLLATE "C" order by 1;
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "C" order by 1;
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "en-x-icu" order by 1;
-set yb_enable_expression_pushdown to on;
 
 CREATE DOMAIN testdomain_sv AS text COLLATE "sv-x-icu";
 CREATE DOMAIN testdomain_i AS int COLLATE "sv-x-icu"; -- fails
@@ -125,37 +111,37 @@ CREATE TABLE collate_test10 (
 
 INSERT INTO collate_test10 VALUES (1, 'hij', 'hij'), (2, 'HIJ', 'HIJ');
 
-SELECT a, lower(x), lower(y), upper(x), upper(y), initcap(x), initcap(y) FROM collate_test10 order by 1;
-SELECT a, lower(x COLLATE "C"), lower(y COLLATE "C") FROM collate_test10 order by 1;
+SELECT a, lower(x), lower(y), upper(x), upper(y), initcap(x), initcap(y) FROM collate_test10;
+SELECT a, lower(x COLLATE "C"), lower(y COLLATE "C") FROM collate_test10;
 
-SELECT a, x, y FROM collate_test10 ORDER BY lower(y), a order by 1;
+SELECT a, x, y FROM collate_test10 ORDER BY lower(y), a;
 
 -- LIKE/ILIKE
 
-SELECT * FROM collate_test1 WHERE b LIKE 'abc' order by 1;
-SELECT * FROM collate_test1 WHERE b LIKE 'abc%' order by 1;
-SELECT * FROM collate_test1 WHERE b LIKE '%bc%' order by 1;
-SELECT * FROM collate_test1 WHERE b ILIKE 'abc' order by 1;
-SELECT * FROM collate_test1 WHERE b ILIKE 'abc%' order by 1;
-SELECT * FROM collate_test1 WHERE b ILIKE '%bc%' order by 1;
+SELECT * FROM collate_test1 WHERE b LIKE 'abc';
+SELECT * FROM collate_test1 WHERE b LIKE 'abc%';
+SELECT * FROM collate_test1 WHERE b LIKE '%bc%';
+SELECT * FROM collate_test1 WHERE b ILIKE 'abc';
+SELECT * FROM collate_test1 WHERE b ILIKE 'abc%';
+SELECT * FROM collate_test1 WHERE b ILIKE '%bc%';
 
-SELECT 'Türkiye' COLLATE "en-x-icu" ILIKE '%KI%' AS "true" order by 1;
-SELECT 'Türkiye' COLLATE "tr-x-icu" ILIKE '%KI%' AS "false" order by 1;
+SELECT 'Türkiye' COLLATE "en-x-icu" ILIKE '%KI%' AS "true";
+SELECT 'Türkiye' COLLATE "tr-x-icu" ILIKE '%KI%' AS "false";
 
-SELECT 'bıt' ILIKE 'BIT' COLLATE "en-x-icu" AS "false" order by 1;
-SELECT 'bıt' ILIKE 'BIT' COLLATE "tr-x-icu" AS "true" order by 1;
+SELECT 'bıt' ILIKE 'BIT' COLLATE "en-x-icu" AS "false";
+SELECT 'bıt' ILIKE 'BIT' COLLATE "tr-x-icu" AS "true";
 
 -- The following actually exercises the selectivity estimation for ILIKE.
-SELECT relname FROM pg_class WHERE relname ILIKE 'abc%' order by 1;
+SELECT relname FROM pg_class WHERE relname ILIKE 'abc%';
 
 -- regular expressions
 
-SELECT * FROM collate_test1 WHERE b ~ '^abc$' order by 1;
-SELECT * FROM collate_test1 WHERE b ~ '^abc' order by 1;
-SELECT * FROM collate_test1 WHERE b ~ 'bc' order by 1;
-SELECT * FROM collate_test1 WHERE b ~* '^abc$' order by 1;
-SELECT * FROM collate_test1 WHERE b ~* '^abc' order by 1;
-SELECT * FROM collate_test1 WHERE b ~* 'bc' order by 1;
+SELECT * FROM collate_test1 WHERE b ~ '^abc$';
+SELECT * FROM collate_test1 WHERE b ~ '^abc';
+SELECT * FROM collate_test1 WHERE b ~ 'bc';
+SELECT * FROM collate_test1 WHERE b ~* '^abc$';
+SELECT * FROM collate_test1 WHERE b ~* '^abc';
+SELECT * FROM collate_test1 WHERE b ~* 'bc';
 
 CREATE TABLE collate_test6 (
     a int,
@@ -174,16 +160,16 @@ SELECT b,
        b ~ '^[[:print:]]+$' AS is_print,
        b ~ '^[[:punct:]]+$' AS is_punct,
        b ~ '^[[:space:]]+$' AS is_space
-FROM collate_test6 order by 1;
+FROM collate_test6;
 
-SELECT 'Türkiye' COLLATE "en-x-icu" ~* 'KI' AS "true" order by 1;
-SELECT 'Türkiye' COLLATE "tr-x-icu" ~* 'KI' AS "true" order by 1;  -- true with ICU
+SELECT 'Türkiye' COLLATE "en-x-icu" ~* 'KI' AS "true";
+SELECT 'Türkiye' COLLATE "tr-x-icu" ~* 'KI' AS "true";  -- true with ICU
 
-SELECT 'bıt' ~* 'BIT' COLLATE "en-x-icu" AS "false" order by 1;
-SELECT 'bıt' ~* 'BIT' COLLATE "tr-x-icu" AS "false" order by 1;  -- false with ICU
+SELECT 'bıt' ~* 'BIT' COLLATE "en-x-icu" AS "false";
+SELECT 'bıt' ~* 'BIT' COLLATE "tr-x-icu" AS "false";  -- false with ICU
 
 -- The following actually exercises the selectivity estimation for ~*.
-SELECT relname FROM pg_class WHERE relname ~* '^abc' order by 1;
+SELECT relname FROM pg_class WHERE relname ~* '^abc';
 
 
 /* not run by default because it requires tr_TR system locale
@@ -210,17 +196,17 @@ SELECT table_name, view_definition FROM information_schema.views
 SELECT a, coalesce(b, 'foo') FROM collate_test1 ORDER BY 2;
 SELECT a, coalesce(b, 'foo') FROM collate_test2 ORDER BY 2;
 SELECT a, coalesce(b, 'foo') FROM collate_test3 ORDER BY 2;
-SELECT a, lower(coalesce(x, 'foo')), lower(coalesce(y, 'foo')) FROM collate_test10 order by 1;
+SELECT a, lower(coalesce(x, 'foo')), lower(coalesce(y, 'foo')) FROM collate_test10;
 
-SELECT a, b, greatest(b, 'CCC') FROM collate_test1 ORDER BY b;
-SELECT a, b, greatest(b, 'CCC') FROM collate_test2 ORDER BY b;
-SELECT a, b, greatest(b, 'CCC') FROM collate_test3 ORDER BY b;
-SELECT a, x, y, lower(greatest(x, 'foo')), lower(greatest(y, 'foo')) FROM collate_test10 order by 1;
+SELECT a, b, greatest(b, 'CCC') FROM collate_test1 ORDER BY 3;
+SELECT a, b, greatest(b, 'CCC') FROM collate_test2 ORDER BY 3;
+SELECT a, b, greatest(b, 'CCC') FROM collate_test3 ORDER BY 3;
+SELECT a, x, y, lower(greatest(x, 'foo')), lower(greatest(y, 'foo')) FROM collate_test10;
 
 SELECT a, nullif(b, 'abc') FROM collate_test1 ORDER BY 2;
 SELECT a, nullif(b, 'abc') FROM collate_test2 ORDER BY 2;
 SELECT a, nullif(b, 'abc') FROM collate_test3 ORDER BY 2;
-SELECT a, lower(nullif(x, 'foo')), lower(nullif(y, 'foo')) FROM collate_test10 order by 1;
+SELECT a, lower(nullif(x, 'foo')), lower(nullif(y, 'foo')) FROM collate_test10;
 
 SELECT a, CASE b WHEN 'abc' THEN 'abcd' ELSE b END FROM collate_test1 ORDER BY 2;
 SELECT a, CASE b WHEN 'abc' THEN 'abcd' ELSE b END FROM collate_test2 ORDER BY 2;
@@ -231,15 +217,15 @@ SELECT a, b::testdomain FROM collate_test1 ORDER BY 2;
 SELECT a, b::testdomain FROM collate_test2 ORDER BY 2;
 SELECT a, b::testdomain FROM collate_test3 ORDER BY 2;
 SELECT a, b::testdomain_sv FROM collate_test3 ORDER BY 2;
-SELECT a, lower(x::testdomain), lower(y::testdomain) FROM collate_test10 order by 1;
+SELECT a, lower(x::testdomain), lower(y::testdomain) FROM collate_test10;
 
-SELECT min(b), max(b) FROM collate_test1 order by 1;
-SELECT min(b), max(b) FROM collate_test2 order by 1;
-SELECT min(b), max(b) FROM collate_test3 order by 1;
+SELECT min(b), max(b) FROM collate_test1;
+SELECT min(b), max(b) FROM collate_test2;
+SELECT min(b), max(b) FROM collate_test3;
 
-SELECT array_agg(b ORDER BY b) FROM collate_test1 order by 1;
-SELECT array_agg(b ORDER BY b) FROM collate_test2 order by 1;
-SELECT array_agg(b ORDER BY b) FROM collate_test3 order by 1;
+SELECT array_agg(b ORDER BY b) FROM collate_test1;
+SELECT array_agg(b ORDER BY b) FROM collate_test2;
+SELECT array_agg(b ORDER BY b) FROM collate_test3;
 
 SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test1 ORDER BY 2;
 SELECT a, b FROM collate_test2 UNION SELECT a, b FROM collate_test2 ORDER BY 2;
@@ -247,7 +233,7 @@ SELECT a, b FROM collate_test3 WHERE a < 4 INTERSECT SELECT a, b FROM collate_te
 SELECT a, b FROM collate_test3 EXCEPT SELECT a, b FROM collate_test3 WHERE a < 2 ORDER BY 2;
 
 SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test3 ORDER BY 2; -- fail
-SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test3 order by 2; -- ok
+SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test3; -- ok
 SELECT a, b FROM collate_test1 UNION SELECT a, b FROM collate_test3 ORDER BY 2; -- fail
 SELECT a, b COLLATE "C" FROM collate_test1 UNION SELECT a, b FROM collate_test3 ORDER BY 2; -- ok
 SELECT a, b FROM collate_test1 INTERSECT SELECT a, b FROM collate_test3 ORDER BY 2; -- fail
@@ -257,7 +243,7 @@ CREATE TABLE test_u AS SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM
 
 -- ideally this would be a parse-time error, but for now it must be run-time:
 select x < y from collate_test10; -- fail
-select x || y from collate_test10 order by 1; -- ok, because || is not collation aware
+select x || y from collate_test10; -- ok, because || is not collation aware
 select x, y from collate_test10 order by x || y; -- not so ok
 
 -- collation mismatch between recursive and non-recursive term
@@ -265,12 +251,12 @@ WITH RECURSIVE foo(x) AS
    (SELECT x FROM (VALUES('a' COLLATE "en-x-icu"),('b')) t(x)
    UNION ALL
    SELECT (x || 'c') COLLATE "de-x-icu" FROM foo WHERE length(x) < 10)
-SELECT * FROM foo order by 1;
+SELECT * FROM foo;
 
 
 -- casting
 
-SELECT CAST('42' AS text COLLATE "C") order by 1;
+SELECT CAST('42' AS text COLLATE "C");
 
 SELECT a, CAST(b AS varchar) FROM collate_test1 ORDER BY 2;
 SELECT a, CAST(b AS varchar) FROM collate_test2 ORDER BY 2;
@@ -355,6 +341,15 @@ CREATE INDEX collate_test1_idx6 ON collate_test1 ((a COLLATE "C")); -- fail
 
 SELECT relname, pg_get_indexdef(oid) FROM pg_class WHERE relname LIKE 'collate_test%_idx%' ORDER BY 1;
 
+set enable_seqscan = off;
+explain (costs off)
+select * from collate_test1 where b ilike 'abc';
+select * from collate_test1 where b ilike 'abc';
+explain (costs off)
+select * from collate_test1 where b ilike 'ABC';
+select * from collate_test1 where b ilike 'ABC';
+reset enable_seqscan;
+
 
 -- schema manipulation commands
 
@@ -371,13 +366,11 @@ $$;
 CREATE COLLATION test0 FROM "C"; -- fail, duplicate name
 do $$
 BEGIN
-  EXECUTE 'CREATE COLLATION test1 (provider = icu, lc_collate = ' ||
-          quote_literal(current_setting('lc_ctype')) || -- use 'lc_ctype' instead of 'lc_collate' for YB
-          ', lc_ctype = ' ||
-          quote_literal(current_setting('lc_ctype')) || ');';
+  EXECUTE 'CREATE COLLATION test1 (provider = icu, locale = ' ||
+          quote_literal(current_setting('lc_collate')) || ');';
 END
 $$;
-CREATE COLLATION test3 (provider = icu, lc_collate = 'en_US.utf8'); -- fail, need lc_ctype
+CREATE COLLATION test3 (provider = icu, lc_collate = 'en_US.utf8'); -- fail, needs "locale"
 CREATE COLLATION testx (provider = icu, locale = 'nonsense'); /* never fails with ICU */  DROP COLLATION testx;
 
 CREATE COLLATION test4 FROM nonsense;
@@ -400,10 +393,10 @@ SELECT collname, nspname, obj_description(pg_collation.oid, 'pg_collation')
     WHERE collname LIKE 'test%'
     ORDER BY 1;
 
-DROP COLLATION test0, test_schema.test11, test5; -- fail in YB
-DROP COLLATION test0;
-DROP COLLATION test_schema.test11;
-DROP COLLATION test5;
+DROP COLLATION test0, test_schema.test11, test5;
+DROP COLLATION test0; -- YB: workaround
+DROP COLLATION test_schema.test11; -- YB: workaround
+DROP COLLATION test5; -- YB: workaround
 DROP COLLATION test0; -- fail
 DROP COLLATION IF EXISTS test0;
 
@@ -417,6 +410,10 @@ DROP ROLE regress_test_role;
 
 ALTER COLLATION "en-x-icu" REFRESH VERSION;
 
+-- also test for database while we are here
+SELECT current_database() AS datname \gset
+ALTER DATABASE :"datname" REFRESH COLLATION VERSION;
+
 
 -- dependencies
 
@@ -429,11 +426,8 @@ CREATE VIEW collate_dep_test3 AS SELECT text 'foo' COLLATE test0 AS foo;
 CREATE TABLE collate_dep_test4t (a int, b text);
 CREATE INDEX collate_dep_test4i ON collate_dep_test4t (b COLLATE test0);
 
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP COLLATION test0 RESTRICT; -- fail
-SET client_min_messages = WARNING; -- suppress cascading notice
 DROP COLLATION test0 CASCADE;
-SET client_min_messages = NOTICE;
 
 \d collate_dep_test1
 \d collate_dep_test2
@@ -452,62 +446,47 @@ select textrange_en_us('A','Z') @> 'b'::text;
 drop type textrange_c;
 drop type textrange_en_us;
 
-CREATE TABLE tab1(id varchar(10));
-INSERT INTO tab1 values ('aaaa');
-\d tab1
 
--- test rewrites
-CREATE OR REPLACE FUNCTION trig_rewrite() RETURNS event_trigger
-LANGUAGE plpgsql AS $$
-BEGIN
-  RAISE NOTICE 'rewriting table';
-END;
-$$;
-create event trigger event_rewrite on table_rewrite
-  execute procedure trig_rewrite();
+-- test ICU collation customization
 
-ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(5) collate "en-US-x-icu"; -- rewrite
-\d tab1
+-- test the attributes handled by icu_set_collation_attributes()
 
-CREATE TABLE tab2(id varchar(10) collate "en-US-x-icu");
-CREATE INDEX tab2_id_idx on tab2(id collate "C" desc);
-INSERT INTO tab2 VALUES ('aaaa');
-\d tab2
-ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- no rewrite
-\d tab2
+CREATE COLLATION testcoll_ignore_accents (provider = icu, locale = '@colStrength=primary;colCaseLevel=yes');
+SELECT 'aaá' > 'AAA' COLLATE "und-x-icu", 'aaá' < 'AAA' COLLATE testcoll_ignore_accents;
 
--- test YB restrictions
-CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
+CREATE COLLATION testcoll_backwards (provider = icu, locale = '@colBackwards=yes');
+SELECT 'coté' < 'côte' COLLATE "und-x-icu", 'coté' > 'côte' COLLATE testcoll_backwards;
 
-CREATE TABLE tab3(id char(10) collate "en-US-x-icu");
-CREATE INDEX tab3_id_idx ON tab3(id bpchar_pattern_ops asc); -- fail;
-\d tab3
-CREATE INDEX tab3_id_idx ON tab3(id collate "C" asc); -- ok;
-\d tab3
+CREATE COLLATION testcoll_lower_first (provider = icu, locale = '@colCaseFirst=lower');
+CREATE COLLATION testcoll_upper_first (provider = icu, locale = '@colCaseFirst=upper');
+SELECT 'aaa' < 'AAA' COLLATE testcoll_lower_first, 'aaa' > 'AAA' COLLATE testcoll_upper_first;
 
-CREATE TABLE tab4(id varchar(10) collate "en-US-x-icu");
-CREATE INDEX tab4_id_idx ON tab4(id varchar_pattern_ops asc); -- fail;
-\d tab4
-CREATE INDEX tab4_id_idx ON tab4(id collate "C" asc); -- ok;
-\d tab4
+CREATE COLLATION testcoll_shifted (provider = icu, locale = '@colAlternate=shifted');
+SELECT 'de-luge' < 'deanza' COLLATE "und-x-icu", 'de-luge' > 'deanza' COLLATE testcoll_shifted;
 
-CREATE TABLE tab5(id text collate "en-US-x-icu");
-CREATE INDEX tab5_id_idx ON tab5(id text_pattern_ops asc); -- fail;
-\d tab5
-CREATE INDEX tab5_id_idx ON tab5(id collate "C" asc); -- ok;
-\d tab5
+CREATE COLLATION testcoll_numeric (provider = icu, locale = '@colNumeric=yes');
+SELECT 'A-21' > 'A-123' COLLATE "und-x-icu", 'A-21' < 'A-123' COLLATE testcoll_numeric;
 
--- No index scan when collation does not match
-CREATE TABLE collate_filter_pushdown (k text collate "C", v text, PRIMARY KEY(k hash));
-INSERT INTO collate_filter_pushdown (SELECT s, s FROM generate_series(1,1000) s);
-EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "C"; -- should push down filter and result in Index scan.
-EXPLAIN SELECT * from collate_filter_pushdown where k = 'A' collate "en_US"; -- should NOT push down filter and result in Seq scan.
+CREATE COLLATION testcoll_error1 (provider = icu, locale = '@colNumeric=lower');
+
+-- test that attributes not handled by icu_set_collation_attributes()
+-- (handled by ucol_open() directly) also work
+CREATE COLLATION testcoll_de_phonebook (provider = icu, locale = 'de@collation=phonebook');
+SELECT 'Goldmann' < 'Götz' COLLATE "de-x-icu", 'Goldmann' > 'Götz' COLLATE testcoll_de_phonebook;
+
+
+-- nondeterministic collations
+
+CREATE COLLATION ctest_det (provider = icu, locale = '', deterministic = true);
+CREATE COLLATION ctest_nondet (provider = icu, locale = '', deterministic = false);
+-- YB: port more queries when nondeterministic collation is supported
+
 
 -- cleanup
-SET client_min_messages = WARNING; -- suppress cascading notice
-DROP SCHEMA collate_tests CASCADE;
-SET client_min_messages = NOTICE;
 RESET search_path;
+SET client_min_messages TO warning;
+DROP SCHEMA collate_tests CASCADE;
+RESET client_min_messages;
 
 -- leave a collation for pg_upgrade test
 CREATE COLLATION coll_icu_upgrade FROM "und-x-icu";

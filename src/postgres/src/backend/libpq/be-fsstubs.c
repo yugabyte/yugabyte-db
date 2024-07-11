@@ -433,7 +433,7 @@ lo_import_internal(text *filename, Oid lobjOid)
 	/*
 	 * read in from the filesystem and write to the inversion object
 	 */
-	lobj = inv_open(oid, INV_WRITE, CurrentMemoryContext);
+	lobj = inv_open(oid, INV_WRITE, GetCurrentMemoryContext());
 
 	while ((nbytes = read(fd, buf, BUFSIZE)) > 0)
 	{
@@ -479,7 +479,7 @@ be_lo_export(PG_FUNCTION_ARGS)
 	 * open the inversion object (no need to test for failure)
 	 */
 	lo_cleanup_needed = true;
-	lobj = inv_open(lobjId, INV_READ, CurrentMemoryContext);
+	lobj = inv_open(lobjId, INV_READ, GetCurrentMemoryContext());
 
 	/*
 	 * open the file to be written to
@@ -731,7 +731,7 @@ lo_get_fragment_internal(Oid loOid, int64 offset, int32 nbytes)
 	bytea	   *result = NULL;
 
 	lo_cleanup_needed = true;
-	loDesc = inv_open(loOid, INV_READ, CurrentMemoryContext);
+	loDesc = inv_open(loOid, INV_READ, GetCurrentMemoryContext());
 
 	/*
 	 * Compute number of bytes we'll actually read, accommodating nbytes == -1
@@ -817,7 +817,7 @@ be_lo_from_bytea(PG_FUNCTION_ARGS)
 
 	lo_cleanup_needed = true;
 	loOid = inv_create(loOid);
-	loDesc = inv_open(loOid, INV_WRITE, CurrentMemoryContext);
+	loDesc = inv_open(loOid, INV_WRITE, GetCurrentMemoryContext());
 	written = inv_write(loDesc, VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
 	Assert(written == VARSIZE_ANY_EXHDR(str));
 	inv_close(loDesc);
@@ -838,7 +838,7 @@ be_lo_put(PG_FUNCTION_ARGS)
 	int			written PG_USED_FOR_ASSERTS_ONLY;
 
 	lo_cleanup_needed = true;
-	loDesc = inv_open(loOid, INV_WRITE, CurrentMemoryContext);
+	loDesc = inv_open(loOid, INV_WRITE, GetCurrentMemoryContext());
 
 	/* Permission check */
 	if (!lo_compat_privileges &&

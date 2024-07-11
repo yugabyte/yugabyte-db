@@ -50,8 +50,8 @@ INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 
-SELECT * FROM test_ns_schema_1.abc ORDER BY a; -- YB: add ordering
-SELECT * FROM test_ns_schema_1.abc_view ORDER BY a; -- YB: add ordering
+SELECT * FROM test_ns_schema_1.abc;
+SELECT * FROM test_ns_schema_1.abc_view;
 
 ALTER SCHEMA test_ns_schema_1 RENAME TO test_ns_schema_renamed;
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =

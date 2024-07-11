@@ -1,7 +1,6 @@
 --
 -- PLPGSQL
 --
-SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 -- Scenario:
 --
 --     A building with a modern TP cable installation where any

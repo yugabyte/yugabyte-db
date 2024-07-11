@@ -186,7 +186,7 @@ ResetUnloggedRelationsInDbspaceDir(const char *dbspacedirname, int op)
 		 */
 		ctl.keysize = sizeof(Oid);
 		ctl.entrysize = sizeof(unlogged_relation_entry);
-		ctl.hcxt = CurrentMemoryContext;
+		ctl.hcxt = GetCurrentMemoryContext();
 		hash = hash_create("unlogged relation OIDs", 32, &ctl,
 						   HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
 

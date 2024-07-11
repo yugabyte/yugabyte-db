@@ -1,3 +1,5 @@
+unused step name: s1_select_for_update
+unused step name: s2_update
 Parsed test spec with 2 sessions
 
 starting permutation: s1_insert s2_begin s2_insert s1_1secold s1_wait2s s1_lock_status s1_commit s2_abort
@@ -7,7 +9,9 @@ step s2_insert: INSERT INTO foo VALUES (2,2); <waiting ...>
 step s1_1secold: SET yb_locks_min_txn_age TO 1;
 step s1_wait2s: SELECT pg_sleep(2);
 pg_sleep
+--------
 
+(1 row)
 
 step s1_lock_status:
     SELECT
@@ -17,17 +21,19 @@ step s1_lock_status:
     ORDER BY
         relation::regclass::text, granted, hash_cols NULLS FIRST, range_cols NULLS FIRST;
 
-locktype       relation       mode           granted        fastpath       is_explicit    hash_cols      range_cols     attnum         column_id      multiple_rows_locked
+locktype|relation|mode                      |granted|fastpath|is_explicit|hash_cols|range_cols|attnum|column_id|multiple_rows_locked
+--------+--------+--------------------------+-------+--------+-----------+---------+----------+------+---------+--------------------
+relation|foo     |{WEAK_READ,WEAK_WRITE}    |f      |f       |f          |         |          |      |         |t
+row     |foo     |{STRONG_READ,STRONG_WRITE}|f      |f       |f          |{2}      |          |      |         |f
+relation|foo     |{WEAK_READ,WEAK_WRITE}    |t      |f       |f          |         |          |      |         |t
+row     |foo     |{WEAK_READ,WEAK_WRITE}    |t      |f       |f          |{2}      |          |      |         |f
+column  |foo     |{STRONG_READ,STRONG_WRITE}|t      |f       |f          |{2}      |          |      |        0|f
+column  |foo     |{STRONG_READ,STRONG_WRITE}|t      |f       |f          |{2}      |          |     2|        1|f
+(6 rows)
 
-relation       foo            {WEAK_READ,WEAK_WRITE}f              f              f                                                                          t
-row            foo            {STRONG_READ,STRONG_WRITE}f              f              f              {2}                                                         f
-relation       foo            {WEAK_READ,WEAK_WRITE}t              f              f                                                                          t
-row            foo            {WEAK_READ,WEAK_WRITE}t              f              f              {2}                                                         f
-column         foo            {STRONG_READ,STRONG_WRITE}t              f              f              {2}                                          0              f
-column         foo            {STRONG_READ,STRONG_WRITE}t              f              f              {2}                           2              1              f
 step s1_commit: COMMIT;
 step s2_insert: <... completed>
-error in steps s1_commit s2_insert: ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
 step s2_abort: ABORT;
 
 starting permutation: s1_insert s2_begin s2_insert s1_lock_status_blockers s1_commit s2_abort
@@ -40,13 +46,15 @@ step s1_lock_status_blockers:
     SELECT s.query FROM uuids u LEFT JOIN pg_stat_activity s ON u.uuid = s.yb_backend_xid;
 
 query
-
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     WITH uuids AS (SELECT DISTINCT unnest(blocked_by) as uuid
                    FROM yb_lock_status(null, null) )
     SELECT s.query FROM uuids u LEFT JOIN pg_stat_activity s ON u.uuid = s.yb_backend_xid;
 
+(1 row)
+
 step s1_commit: COMMIT;
 step s2_insert: <... completed>
-error in steps s1_commit s2_insert: ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
 step s2_abort: ABORT;

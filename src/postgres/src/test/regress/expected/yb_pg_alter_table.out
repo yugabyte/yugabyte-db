@@ -305,7 +305,7 @@ CREATE TABLE like_constraint_rename_cache
 --------+---------+-----------+----------+---------
  a      | integer |           | not null |
 Indexes:
-    "like_constraint_rename_cache_pkey" PRIMARY KEY, lsm (a HASH)
+    "like_constraint_rename_cache_pkey" PRIMARY KEY, lsm (a ASC)
 Check constraints:
     "chk_a_new" CHECK (a > 0)
 

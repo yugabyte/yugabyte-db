@@ -571,3 +571,32 @@ UPDATE test set b = b + 5;
 SELECT * FROM test ORDER BY a DESC;
 
 -- YB_TODO: end
+-- YB_TODO: begin: remove once subselect is tracked
+create temp table outer_text (f1 text, f2 text);
+insert into outer_text values ('a', 'a');
+insert into outer_text values ('b', 'a');
+insert into outer_text values ('a', null);
+insert into outer_text values ('b', null);
+
+create temp table inner_text (c1 text, c2 text);
+insert into inner_text values ('a', null);
+insert into inner_text values ('123', '456');
+
+select * from outer_text where (f1, f2) not in (select * from inner_text) order by f2;
+
+drop table outer_text, inner_text;
+
+create table outer_text (f1 text, f2 text);
+insert into outer_text values ('a', 'a');
+insert into outer_text values ('b', 'a');
+insert into outer_text values ('a', null);
+insert into outer_text values ('b', null);
+
+create table inner_text (c1 text, c2 text);
+insert into inner_text values ('a', null);
+insert into inner_text values ('123', '456');
+
+select * from outer_text where (f1, f2) not in (select * from inner_text) order by f2;
+-- YB_TODO: begin: remove after tracking yb_tablespaces
+CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1}]}');
+-- YB_TODO: end

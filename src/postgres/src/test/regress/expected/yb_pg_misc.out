@@ -161,7 +161,7 @@ CREATE FUNCTION equipment_named_ambiguous_2b(hobby text)
 -- joe and sally play basketball, and
 -- everyone else does nothing.
 --
-SELECT p.name, name(p.hobbies) FROM ONLY person p ORDER BY 2 DESC, 1; -- YB: add ordering
+SELECT p.name, name(p.hobbies) FROM ONLY person p;
  name  |    name     
 -------+-------------
  mike  | posthacking
@@ -250,7 +250,7 @@ SELECT name(equipment_named_ambiguous_2a(text 'skywalking'));
  guts
 (1 row)
 
-SELECT name(equipment_named_ambiguous_2b(text 'skywalking')) ORDER BY substr(name(equipment_named_ambiguous_2b(text 'skywalking')), 2, 1); -- YB: add ordering
+SELECT name(equipment_named_ambiguous_2b(text 'skywalking'));
      name      
 ---------------
  advil

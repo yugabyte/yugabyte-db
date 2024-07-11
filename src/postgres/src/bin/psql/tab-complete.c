@@ -4604,11 +4604,8 @@ psql_completion(const char *text, int start, int end)
 	/* must be at end of \dF alternatives: */
 	else if (TailMatchesCS("\\dF*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_ts_configurations);
-#ifdef YB_TODO
 	else if (TailMatchesCS("\\dgr*"))
-		/* Need rework to match Pg15 API */
-		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tablegroups);
-#endif
+		COMPLETE_WITH_QUERY(Query_for_list_of_tablegroups);
 	else if (TailMatchesCS("\\di*"))
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_indexes);
 	else if (TailMatchesCS("\\dL*"))

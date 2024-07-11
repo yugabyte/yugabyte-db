@@ -403,7 +403,7 @@ fill_hba_view(Tuplestorestate *tuple_store, TupleDesc tupdesc)
 	FreeFile(file);
 
 	/* Now parse all the lines */
-	hbacxt = AllocSetContextCreate(CurrentMemoryContext,
+	hbacxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								   "hba parser context",
 								   ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(hbacxt);
@@ -539,7 +539,7 @@ fill_ident_view(Tuplestorestate *tuple_store, TupleDesc tupdesc)
 	FreeFile(file);
 
 	/* Now parse all the lines */
-	identcxt = AllocSetContextCreate(CurrentMemoryContext,
+	identcxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 									 "ident parser context",
 									 ALLOCSET_SMALL_SIZES);
 	oldcxt = MemoryContextSwitchTo(identcxt);

@@ -477,10 +477,6 @@ CatalogTuplesMultiInsertWithInfo(Relation heapRel, TupleTableSlot **slot,
 
 	if (IsYugaByteEnabled())
 	{
-		/*
-		 *	YB_TODO(arpan): Is there a multi tuple equivalent of
-		 *	YBCExecuteInsertForDb?
-		 */
 		bool	  shouldFree;
 		HeapTuple tuple;
 		for (int i = 0; i < ntuples; i++)

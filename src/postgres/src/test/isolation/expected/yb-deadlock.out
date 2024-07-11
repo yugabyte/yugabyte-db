@@ -5,15 +5,15 @@ step s1_begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s2_begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s3_begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_acq_lock_k3+: SELECT k FROM test WHERE k>=3 ORDER BY k FOR UPDATE;
-k
-
-3
-4
-5
-6
-7
-8
-9
+ k
+--
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
 10
 11
 12
@@ -25,6 +25,8 @@ k
 18
 19
 20
+(18 rows)
+
 step s2_upd_k1: UPDATE test SET v=2 WHERE k=1;
 step s3_upd_k2: UPDATE test SET v=3 WHERE k=2;
 step s2_upd_all_k_except_1: UPDATE test SET v=2 where k!=1; <waiting ...>
@@ -32,32 +34,34 @@ step s3_upd_all_k_except_2: UPDATE test SET v=3 where k!=2; <waiting ...>
 step s1c: COMMIT;
 step s2_upd_all_k_except_1: <... completed>
 step s3_upd_all_k_except_2: <... completed>
-error in steps s1c s2_upd_all_k_except_1 s3_upd_all_k_except_2: ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
 step s2c: COMMIT;
 step s3c: COMMIT;
 step s1_select: SELECT * FROM test ORDER BY k;
-k              v
+ k|v
+--+-
+ 1|2
+ 2|2
+ 3|2
+ 4|2
+ 5|2
+ 6|2
+ 7|2
+ 8|2
+ 9|2
+10|2
+11|2
+12|2
+13|2
+14|2
+15|2
+16|2
+17|2
+18|2
+19|2
+20|2
+(20 rows)
 
-1              2
-2              2
-3              2
-4              2
-5              2
-6              2
-7              2
-8              2
-9              2
-10             2
-11             2
-12             2
-13             2
-14             2
-15             2
-16             2
-17             2
-18             2
-19             2
-20             2
 
 starting permutation: s2_begin s3_begin s2_upd_k1 s3_upd_k2 s2_upd_all_k_except_1 s3_upd_all_k_except_2 s2c s3c s1_select
 step s2_begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
@@ -66,30 +70,31 @@ step s2_upd_k1: UPDATE test SET v=2 WHERE k=1;
 step s3_upd_k2: UPDATE test SET v=3 WHERE k=2;
 step s2_upd_all_k_except_1: UPDATE test SET v=2 where k!=1; <waiting ...>
 step s3_upd_all_k_except_2: UPDATE test SET v=3 where k!=2;
+ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
 step s2_upd_all_k_except_1: <... completed>
-error in steps s3_upd_all_k_except_2 s2_upd_all_k_except_1: ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
 step s2c: COMMIT;
 step s3c: COMMIT;
 step s1_select: SELECT * FROM test ORDER BY k;
-k              v
-
-1              2
-2              2
-3              2
-4              2
-5              2
-6              2
-7              2
-8              2
-9              2
-10             2
-11             2
-12             2
-13             2
-14             2
-15             2
-16             2
-17             2
-18             2
-19             2
-20             2
+ k|v
+--+-
+ 1|2
+ 2|2
+ 3|2
+ 4|2
+ 5|2
+ 6|2
+ 7|2
+ 8|2
+ 9|2
+10|2
+11|2
+12|2
+13|2
+14|2
+15|2
+16|2
+17|2
+18|2
+19|2
+20|2
+(20 rows)

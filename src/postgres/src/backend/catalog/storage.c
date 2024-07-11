@@ -590,7 +590,7 @@ SerializePendingSyncs(Size maxSize, char *startAddress)
 	/* Create temporary hash to collect active relfilenodes */
 	ctl.keysize = sizeof(RelFileNode);
 	ctl.entrysize = sizeof(RelFileNode);
-	ctl.hcxt = CurrentMemoryContext;
+	ctl.hcxt = GetCurrentMemoryContext();
 	tmphash = hash_create("tmp relfilenodes",
 						  hash_get_num_entries(pendingSyncHash), &ctl,
 						  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);

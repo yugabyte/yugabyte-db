@@ -1,5 +1,3 @@
-SET compute_query_id to regress; -- hide query id for EXPLAIN VERBOSE
-
 -- Check for unsupported system columns.
 CREATE TABLE test_tab1(id INT);
 INSERT INTO test_tab1 VALUES (1) RETURNING ctid;

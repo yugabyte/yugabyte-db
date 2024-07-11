@@ -5,7 +5,9 @@ step s1_update: UPDATE test SET v=2 WHERE k=1;
 step s2_select: SELECT * FROM test WHERE k=1; <waiting ...>
 step s1_commit: COMMIT;
 step s2_select: <... completed>
-k              v
+k|v
+-+-
+1|2
+(1 row)
 
-1              2
 step s2_commit: COMMIT;

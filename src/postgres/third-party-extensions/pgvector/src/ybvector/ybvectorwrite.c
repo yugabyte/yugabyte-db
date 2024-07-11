@@ -277,7 +277,7 @@ initVectorState(YbVectorBuildState *buildstate,
 
 	buildstate->collation = index->rd_indcollation[0];
 
-	buildstate->tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
+	buildstate->tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 											   "ann build temporary context",
 											   ALLOCSET_DEFAULT_SIZES);
 }

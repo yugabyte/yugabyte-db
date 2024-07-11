@@ -1,3 +1,5 @@
+-- deal with numeric instability of ts_rank
+SET extra_float_digits = 0;
 --Base tsvector test
 SELECT '1'::tsvector;
  tsvector 
@@ -83,6 +85,10 @@ SELECT 'a:3A b:2a'::tsvector || 'ba:1234 a:1B';
  'a':3A,4B 'b':2A 'ba':1237
 (1 row)
 
+SELECT $$'' '1' '2'$$::tsvector;  -- error, empty lexeme is not allowed
+ERROR:  syntax error in tsvector: "'' '1' '2'"
+LINE 1: SELECT $$'' '1' '2'$$::tsvector;
+               ^
 --Base tsquery test
 SELECT '1'::tsquery;
  tsquery 
@@ -531,6 +537,73 @@ SELECT 'a b:89  ca:23A,64c cb:80b d:34c'::tsvector @@ 'd:AC & c:*B' as "true";
  t
 (1 row)
 
+SELECT 'wa:1D wb:2A'::tsvector @@ 'w:*D & w:*A'::tsquery as "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'wa:1D wb:2A'::tsvector @@ 'w:*D <-> w:*A'::tsquery as "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'wa:1A wb:2D'::tsvector @@ 'w:*D <-> w:*A'::tsquery as "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'wa:1A'::tsvector @@ 'w:*A'::tsquery as "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT 'wa:1A'::tsvector @@ 'w:*D'::tsquery as "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'wa:1A'::tsvector @@ '!w:*A'::tsquery as "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT 'wa:1A'::tsvector @@ '!w:*D'::tsquery as "true";
+ true 
+------
+ t
+(1 row)
+
+-- historically, a stripped tsvector matches queries ignoring weights:
+SELECT strip('wa:1A'::tsvector) @@ 'w:*A'::tsquery as "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT strip('wa:1A'::tsvector) @@ 'w:*D'::tsquery as "true";
+ true 
+------
+ t
+(1 row)
+
+SELECT strip('wa:1A'::tsvector) @@ '!w:*A'::tsquery as "false";
+ false 
+-------
+ f
+(1 row)
+
+SELECT strip('wa:1A'::tsvector) @@ '!w:*D'::tsquery as "false";
+ false 
+-------
+ f
+(1 row)
+
 SELECT 'supernova'::tsvector @@ 'super'::tsquery AS "false";
  false 
 -------
@@ -767,7 +840,85 @@ select to_tsvector('simple', 'z q') @@ '(!x | y <-> z) <-> q' AS "true";
  t
 (1 row)
 
+select to_tsvector('simple', 'x y q') @@ '(!x | y) <-> y <-> q' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+select to_tsvector('simple', 'x y q') @@ '(!x | !y) <-> y <-> q' AS "true";
+ true 
+------
+ t
+(1 row)
+
+select to_tsvector('simple', 'x y q') @@ '(x | !y) <-> y <-> q' AS "true";
+ true 
+------
+ t
+(1 row)
+
+select to_tsvector('simple', 'x y q') @@ '(x | !!z) <-> y <-> q' AS "true";
+ true 
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'x y q y') @@ '!x <-> y' AS "true";
+ true 
+------
+ t
+(1 row)
+
+select to_tsvector('simple', 'x y q y') @@ '!x <-> !y' AS "true";
+ true 
+------
+ t
+(1 row)
+
+select to_tsvector('simple', 'x y q y') @@ '!x <-> !!y' AS "true";
+ true 
+------
+ t
+(1 row)
+
+select to_tsvector('simple', 'x y q y') @@ '!(x <-> y)' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+select to_tsvector('simple', 'x y q y') @@ '!(x <2> y)' AS "true";
+ true 
+------
+ t
+(1 row)
+
+select strip(to_tsvector('simple', 'x y q y')) @@ '!x <-> y' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+select strip(to_tsvector('simple', 'x y q y')) @@ '!x <-> !y' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+select strip(to_tsvector('simple', 'x y q y')) @@ '!x <-> !!y' AS "false";
+ false 
+-------
+ f
+(1 row)
+
+select strip(to_tsvector('simple', 'x y q y')) @@ '!(x <-> y)' AS "true";
+ true 
+------
+ t
+(1 row)
+
+select strip(to_tsvector('simple', 'x y q y')) @@ '!(x <2> y)' AS "true";
  true 
 ------
  t
@@ -787,57 +938,57 @@ select to_tsvector('simple', '') @@ '!foo' AS "true";
 
 --ranking
 SELECT ts_rank(' a:1 s:2C d g'::tsvector, 'a | s');
-   ts_rank
--------------
- 0.091189064
+  ts_rank  
+-----------
+ 0.0911891
 (1 row)
 
 SELECT ts_rank(' a:1 sa:2C d g'::tsvector, 'a | s');
-   ts_rank
--------------
- 0.030396355
+  ts_rank  
+-----------
+ 0.0303964
 (1 row)
 
 SELECT ts_rank(' a:1 sa:2C d g'::tsvector, 'a | s:*');
-   ts_rank
--------------
- 0.091189064
+  ts_rank  
+-----------
+ 0.0911891
 (1 row)
 
 SELECT ts_rank(' a:1 sa:2C d g'::tsvector, 'a | sa:*');
-   ts_rank
--------------
- 0.091189064
+  ts_rank  
+-----------
+ 0.0911891
 (1 row)
 
 SELECT ts_rank(' a:1 s:2B d g'::tsvector, 'a | s');
-  ts_rank
-------------
- 0.15198177
+ ts_rank  
+----------
+ 0.151982
 (1 row)
 
 SELECT ts_rank(' a:1 s:2 d g'::tsvector, 'a | s');
-  ts_rank
-------------
- 0.06079271
+  ts_rank  
+-----------
+ 0.0607927
 (1 row)
 
 SELECT ts_rank(' a:1 s:2C d g'::tsvector, 'a & s');
-  ts_rank
-------------
- 0.14015312
+ ts_rank  
+----------
+ 0.140153
 (1 row)
 
 SELECT ts_rank(' a:1 s:2B d g'::tsvector, 'a & s');
-  ts_rank
-------------
- 0.19820644
+ ts_rank  
+----------
+ 0.198206
 (1 row)
 
 SELECT ts_rank(' a:1 s:2 d g'::tsvector, 'a & s');
-  ts_rank
-------------
- 0.09910322
+  ts_rank  
+-----------
+ 0.0991032
 (1 row)
 
 SELECT ts_rank_cd(' a:1 s:2C d g'::tsvector, 'a | s');
@@ -883,9 +1034,9 @@ SELECT ts_rank_cd(' a:1 s:2 d g'::tsvector, 'a | s');
 (1 row)
 
 SELECT ts_rank_cd(' a:1 s:2C d g'::tsvector, 'a & s');
- ts_rank_cd
+ ts_rank_cd 
 ------------
- 0.13333334
+   0.133333
 (1 row)
 
 SELECT ts_rank_cd(' a:1 s:2B d g'::tsvector, 'a & s');
@@ -901,15 +1052,15 @@ SELECT ts_rank_cd(' a:1 s:2 d g'::tsvector, 'a & s');
 (1 row)
 
 SELECT ts_rank_cd(' a:1 s:2A d g'::tsvector, 'a <-> s');
- ts_rank_cd
+ ts_rank_cd 
 ------------
- 0.18181819
+   0.181818
 (1 row)
 
 SELECT ts_rank_cd(' a:1 s:2C d g'::tsvector, 'a <-> s');
- ts_rank_cd
+ ts_rank_cd 
 ------------
- 0.13333334
+   0.133333
 (1 row)
 
 SELECT ts_rank_cd(' a:1 s:2 d g'::tsvector, 'a <-> s');
@@ -925,15 +1076,15 @@ SELECT ts_rank_cd(' a:1 s:2 d:2A g'::tsvector, 'a <-> s');
 (1 row)
 
 SELECT ts_rank_cd(' a:1 s:2,3A d:2A g'::tsvector, 'a <2> s:A');
- ts_rank_cd
+ ts_rank_cd 
 ------------
- 0.09090909
+  0.0909091
 (1 row)
 
 SELECT ts_rank_cd(' a:1 b:2 s:3A d:2A g'::tsvector, 'a <2> s:A');
- ts_rank_cd
+ ts_rank_cd 
 ------------
- 0.09090909
+  0.0909091
 (1 row)
 
 SELECT ts_rank_cd(' a:1 sa:2D sb:2A g'::tsvector, 'a <-> s:*');
@@ -1111,8 +1262,12 @@ SELECT ts_delete('base hidden rebel spaceship strike'::tsvector, ARRAY['spaceshi
  'base' 'hidden' 'strike'
 (1 row)
 
-SELECT ts_delete('base hidden rebel spaceship strike'::tsvector, ARRAY['spaceship','leya','rebel', NULL]);
-ERROR:  lexeme array may not contain nulls
+SELECT ts_delete('base hidden rebel spaceship strike'::tsvector, ARRAY['spaceship','leya','rebel', '', NULL]);
+        ts_delete         
+--------------------------
+ 'base' 'hidden' 'strike'
+(1 row)
+
 SELECT unnest('base:7 hidden:6 rebel:1 spaceship:2,33A,34B,35C,36D strike:3'::tsvector);
                    unnest                    
 ---------------------------------------------
@@ -1181,8 +1336,11 @@ SELECT array_to_tsvector(ARRAY['base','hidden','rebel','spaceship','strike']);
  'base' 'hidden' 'rebel' 'spaceship' 'strike'
 (1 row)
 
+-- null and empty string are disallowed, since we mustn't make an empty lexeme
 SELECT array_to_tsvector(ARRAY['base','hidden','rebel','spaceship', NULL]);
 ERROR:  lexeme array may not contain nulls
+SELECT array_to_tsvector(ARRAY['base','hidden','rebel','spaceship', '']);
+ERROR:  lexeme array may not contain empty strings
 -- array_to_tsvector must sort and de-dup
 SELECT array_to_tsvector(ARRAY['foo','bar','baz','bar']);
  array_to_tsvector 
@@ -1220,14 +1378,12 @@ SELECT setweight('a:1,3A asd:1C w:5,6,12B,13A zxc:81,222A,567'::tsvector, 'c', '
  'a':1C,3C 'asd':1C 'w':5,6,12B,13A 'zxc':81C,222C,567C
 (1 row)
 
-SELECT setweight('a asd w:5,6,12B,13A zxc'::tsvector, 'c', '{a,zxc}');
+SELECT setweight('a asd w:5,6,12B,13A zxc'::tsvector, 'c', ARRAY['a', 'zxc', '', NULL]);
             setweight            
 ---------------------------------
  'a' 'asd' 'w':5,6,12B,13A 'zxc'
 (1 row)
 
-SELECT setweight('a asd w:5,6,12B,13A zxc'::tsvector, 'c', ARRAY['a', 'zxc', NULL]);
-ERROR:  lexeme array may not contain nulls
 SELECT ts_filter('base:7A empir:17 evil:15 first:11 galact:16 hidden:6A rebel:1A spaceship:2A strike:3A victori:12 won:9'::tsvector, '{a}');
                           ts_filter                          
 -------------------------------------------------------------

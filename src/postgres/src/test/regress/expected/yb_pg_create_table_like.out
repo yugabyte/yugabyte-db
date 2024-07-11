@@ -240,7 +240,7 @@ CREATE TABLE inhz (x text REFERENCES inhz, LIKE inhx INCLUDING INDEXES);
  x      | text |           |          | 
  xx     | text |           | not null | 
 Indexes:
-    "inhz_pkey" PRIMARY KEY, lsm (xx HASH)
+    "inhz_pkey" PRIMARY KEY, lsm (xx ASC)
 Foreign-key constraints:
     "inhz_x_fkey" FOREIGN KEY (x) REFERENCES inhz(xx)
 Referenced by:
@@ -303,9 +303,9 @@ CREATE TABLE ctlt_all (LIKE ctlt1 INCLUDING ALL);
  a      | text |           | not null |         | extended |              | A
  b      | text |           |          |         | extended |              | B
 Indexes:
-    "ctlt_all_pkey" PRIMARY KEY, lsm (a HASH)
-    "ctlt_all_b_idx" lsm (b HASH)
-    "ctlt_all_expr_idx" lsm ((a || b) HASH)
+    "ctlt_all_pkey" PRIMARY KEY, lsm (a ASC)
+    "ctlt_all_b_idx" lsm (b ASC)
+    "ctlt_all_expr_idx" lsm ((a || b) ASC)
 Check constraints:
     "ctlt1_a_check" CHECK (length(a) > 2)
 Statistics objects:
@@ -342,9 +342,9 @@ CREATE TABLE pg_attrdef (LIKE ctlt1 INCLUDING ALL);
  a      | text |           | not null |         | extended |              | A
  b      | text |           |          |         | extended |              | B
 Indexes:
-    "pg_attrdef_pkey" PRIMARY KEY, lsm (a HASH)
-    "pg_attrdef_b_idx" lsm (b HASH)
-    "pg_attrdef_expr_idx" lsm ((a || b) HASH)
+    "pg_attrdef_pkey" PRIMARY KEY, lsm (a ASC)
+    "pg_attrdef_b_idx" lsm (b ASC)
+    "pg_attrdef_expr_idx" lsm ((a || b) ASC)
 Check constraints:
     "ctlt1_a_check" CHECK (length(a) > 2)
 Statistics objects:
@@ -364,9 +364,9 @@ CREATE TABLE ctlt1 (LIKE ctlt1 INCLUDING ALL);
  a      | text |           | not null |         | extended |              | A
  b      | text |           |          |         | extended |              | B
 Indexes:
-    "ctlt1_pkey" PRIMARY KEY, lsm (a HASH)
-    "ctlt1_b_idx" lsm (b HASH)
-    "ctlt1_expr_idx" lsm ((a || b) HASH)
+    "ctlt1_pkey" PRIMARY KEY, lsm (a ASC)
+    "ctlt1_b_idx" lsm (b ASC)
+    "ctlt1_expr_idx" lsm ((a || b) ASC)
 Check constraints:
     "ctlt1_a_check" CHECK (length(a) > 2)
 Statistics objects:

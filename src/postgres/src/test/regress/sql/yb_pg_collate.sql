@@ -39,9 +39,9 @@ CREATE TABLE collate_test2 (
 INSERT INTO collate_test1 VALUES (1, 'abc'), (2, 'Abc'), (3, 'bbc'), (4, 'ABD');
 INSERT INTO collate_test2 SELECT * FROM collate_test1;
 
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'abc' ORDER BY 2;
-SELECT * FROM collate_test1 WHERE b >= 'abc' COLLATE "C" ORDER BY 2;
-SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'abc' COLLATE "C" ORDER BY 2;
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'abc';
+SELECT * FROM collate_test1 WHERE b >= 'abc' COLLATE "C";
+SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'abc' COLLATE "C";
 SELECT * FROM collate_test1 WHERE b COLLATE "C" >= 'bbc' COLLATE "POSIX"; -- fail
 
 CREATE DOMAIN testdomain_p AS text COLLATE "POSIX";
@@ -84,8 +84,8 @@ CREATE TABLE collate_test10 (
 
 INSERT INTO collate_test10 VALUES (1, 'hij', 'hij'), (2, 'HIJ', 'HIJ');
 
-SELECT a, lower(x), lower(y), upper(x), upper(y), initcap(x), initcap(y) FROM collate_test10 ORDER BY 1;
-SELECT a, lower(x COLLATE "C"), lower(y COLLATE "C") FROM collate_test10 ORDER BY 1;
+SELECT a, lower(x), lower(y), upper(x), upper(y), initcap(x), initcap(y) FROM collate_test10;
+SELECT a, lower(x COLLATE "C"), lower(y COLLATE "C") FROM collate_test10;
 
 SELECT a, x, y FROM collate_test10 ORDER BY lower(y), a;
 
@@ -103,15 +103,15 @@ SELECT table_name, view_definition FROM information_schema.views
 
 SELECT a, coalesce(b, 'foo') FROM collate_test1 ORDER BY 2;
 SELECT a, coalesce(b, 'foo') FROM collate_test2 ORDER BY 2;
-SELECT a, lower(coalesce(x, 'foo')), lower(coalesce(y, 'foo')) FROM collate_test10 ORDER BY 1;
+SELECT a, lower(coalesce(x, 'foo')), lower(coalesce(y, 'foo')) FROM collate_test10;
 
-SELECT a, b, greatest(b, 'CCC') FROM collate_test1 ORDER BY 2, 3;
-SELECT a, b, greatest(b, 'CCC') FROM collate_test2 ORDER BY 2, 3;
-SELECT a, x, y, lower(greatest(x, 'foo')), lower(greatest(y, 'foo')) FROM collate_test10 ORDER BY 2;
+SELECT a, b, greatest(b, 'CCC') FROM collate_test1 ORDER BY 3;
+SELECT a, b, greatest(b, 'CCC') FROM collate_test2 ORDER BY 3;
+SELECT a, x, y, lower(greatest(x, 'foo')), lower(greatest(y, 'foo')) FROM collate_test10;
 
 SELECT a, nullif(b, 'abc') FROM collate_test1 ORDER BY 2;
 SELECT a, nullif(b, 'abc') FROM collate_test2 ORDER BY 2;
-SELECT a, lower(nullif(x, 'foo')), lower(nullif(y, 'foo')) FROM collate_test10 ORDER BY 1;
+SELECT a, lower(nullif(x, 'foo')), lower(nullif(y, 'foo')) FROM collate_test10;
 
 SELECT a, CASE b WHEN 'abc' THEN 'abcd' ELSE b END FROM collate_test1 ORDER BY 2;
 SELECT a, CASE b WHEN 'abc' THEN 'abcd' ELSE b END FROM collate_test2 ORDER BY 2;
@@ -120,7 +120,7 @@ CREATE DOMAIN testdomain AS text;
 SELECT a, b::testdomain FROM collate_test1 ORDER BY 2;
 SELECT a, b::testdomain FROM collate_test2 ORDER BY 2;
 SELECT a, b::testdomain_p FROM collate_test2 ORDER BY 2;
-SELECT a, lower(x::testdomain), lower(y::testdomain) FROM collate_test10 ORDER BY 1;
+SELECT a, lower(x::testdomain), lower(y::testdomain) FROM collate_test10;
 
 SELECT min(b), max(b) FROM collate_test1;
 SELECT min(b), max(b) FROM collate_test2;
@@ -140,10 +140,7 @@ SELECT a, b FROM collate_test2 WHERE a < 4 INTERSECT SELECT a, b FROM collate_te
 SELECT a, b FROM collate_test2 EXCEPT SELECT a, b FROM collate_test2 WHERE a < 2 ORDER BY 2;
 
 SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
--- YB edit: add consistent ordering.
-SELECT * FROM (
-SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2 -- ok
-LIMIT ALL) ybview ORDER BY a;
+SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM collate_test2; -- ok
 SELECT a, b FROM collate_test1 UNION SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
 SELECT a, b COLLATE "C" FROM collate_test1 UNION SELECT a, b FROM collate_test2 ORDER BY 2; -- ok
 SELECT a, b FROM collate_test1 INTERSECT SELECT a, b FROM collate_test2 ORDER BY 2; -- fail
@@ -153,10 +150,7 @@ CREATE TABLE test_u AS SELECT a, b FROM collate_test1 UNION ALL SELECT a, b FROM
 
 -- ideally this would be a parse-time error, but for now it must be run-time:
 select x < y from collate_test10; -- fail
--- YB edit: add consistent ordering.
-SELECT xy AS "?column?" FROM (
-select x || y from collate_test10 -- ok, because || is not collation aware
-LIMIT ALL) ybview(xy) ORDER BY xy COLLATE "C" DESC;
+select x || y from collate_test10; -- ok, because || is not collation aware
 select x, y from collate_test10 order by x || y; -- not so ok
 
 -- collation mismatch between recursive and non-recursive term
@@ -167,8 +161,13 @@ WITH RECURSIVE foo(x) AS
 SELECT * FROM foo;
 
 SELECT a, b, a < b as lt FROM
-  (VALUES ('a' COLLATE "C", 'B'), ('A', 'b' COLLATE "C")) v(a,b) ORDER BY 1;
+  (VALUES ('a', 'B'), ('A', 'b' COLLATE "C")) v(a,b);
 
+-- collation mismatch in subselects
+SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y, x FROM collate_test10); -- YB: TODO: find out why output differs with upstream PG
+-- now it works with overrides
+SELECT * FROM collate_test10 WHERE (x COLLATE "POSIX", y COLLATE "C") NOT IN (SELECT y, x FROM collate_test10);
+SELECT * FROM collate_test10 WHERE (x, y) NOT IN (SELECT y COLLATE "C", x COLLATE "POSIX" FROM collate_test10);
 
 -- casting
 
@@ -176,6 +175,14 @@ SELECT CAST('42' AS text COLLATE "C");
 
 SELECT a, CAST(b AS varchar) FROM collate_test1 ORDER BY 2;
 SELECT a, CAST(b AS varchar) FROM collate_test2 ORDER BY 2;
+
+
+-- result of a SQL function
+
+CREATE FUNCTION vc (text) RETURNS text LANGUAGE sql
+    AS 'select $1::varchar';
+
+SELECT a, b FROM collate_test1 ORDER BY a, vc(b);
 
 
 -- polymorphism
@@ -259,12 +266,37 @@ SELECT collation for ('foo'::text);
 SELECT collation for ((SELECT a FROM collate_test1 LIMIT 1)); -- non-collatable type - error
 SELECT collation for ((SELECT b FROM collate_test1 LIMIT 1));
 
+-- old bug with not dropping COLLATE when coercing to non-collatable type
+CREATE VIEW collate_on_int AS
+SELECT c1+1 AS c1p FROM
+  (SELECT ('4' COLLATE "C")::INT AS c1) ss;
+\d+ collate_on_int
+
+-- Check conflicting or redundant options in CREATE COLLATION
+-- LC_COLLATE
+CREATE COLLATION coll_dup_chk (LC_COLLATE = "POSIX", LC_COLLATE = "NONSENSE", LC_CTYPE = "POSIX");
+-- LC_CTYPE
+CREATE COLLATION coll_dup_chk (LC_CTYPE = "POSIX", LC_CTYPE = "NONSENSE", LC_COLLATE = "POSIX");
+-- PROVIDER
+CREATE COLLATION coll_dup_chk (PROVIDER = icu, PROVIDER = NONSENSE, LC_COLLATE = "POSIX", LC_CTYPE = "POSIX");
+-- LOCALE
+CREATE COLLATION case_sensitive (LOCALE = '', LOCALE = "NONSENSE");
+-- DETERMINISTIC
+CREATE COLLATION coll_dup_chk (DETERMINISTIC = TRUE, DETERMINISTIC = NONSENSE, LOCALE = '');
+-- VERSION
+CREATE COLLATION coll_dup_chk (VERSION = '1', VERSION = "NONSENSE", LOCALE = '');
+-- LOCALE conflicts with LC_COLLATE and LC_CTYPE
+CREATE COLLATION coll_dup_chk (LC_COLLATE = "POSIX", LC_CTYPE = "POSIX", LOCALE = '');
+-- LOCALE conflicts with LC_COLLATE
+CREATE COLLATION coll_dup_chk (LC_COLLATE = "POSIX", LOCALE = '');
+-- LOCALE conflicts with LC_CTYPE
+CREATE COLLATION coll_dup_chk (LC_CTYPE = "POSIX", LOCALE = '');
+-- FROM conflicts with any other option
+CREATE COLLATION coll_dup_chk (FROM = "C", VERSION = "1");
 
 --
 -- Clean up.  Many of these table names will be re-used if the user is
 -- trying to run any platform-specific collation tests later, so we
 -- must get rid of them.
 --
-\set VERBOSITY terse
-SET client_min_messages = WARNING; -- suppress cascading notice
 DROP SCHEMA collate_tests CASCADE;

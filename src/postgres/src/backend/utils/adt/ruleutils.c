@@ -2004,12 +2004,12 @@ pg_get_statisticsobjdef_expressions(PG_FUNCTION_ARGS)
 								  PointerGetDatum(cstring_to_text(str)),
 								  false,
 								  TEXTOID,
-								  CurrentMemoryContext);
+								  GetCurrentMemoryContext());
 	}
 
 	ReleaseSysCache(statexttup);
 
-	PG_RETURN_DATUM(makeArrayResult(astate, CurrentMemoryContext));
+	PG_RETURN_DATUM(makeArrayResult(astate, GetCurrentMemoryContext()));
 }
 
 /*

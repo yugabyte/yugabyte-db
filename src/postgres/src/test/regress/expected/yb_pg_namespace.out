@@ -74,7 +74,7 @@ SELECT COUNT(*) FROM pg_class WHERE relnamespace =
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
 INSERT INTO test_ns_schema_1.abc DEFAULT VALUES;
-SELECT * FROM test_ns_schema_1.abc ORDER BY a; -- YB: add ordering
+SELECT * FROM test_ns_schema_1.abc;
  a | b
 ---+---
  1 |
@@ -82,7 +82,7 @@ SELECT * FROM test_ns_schema_1.abc ORDER BY a; -- YB: add ordering
  3 |
 (3 rows)
 
-SELECT * FROM test_ns_schema_1.abc_view ORDER BY a; -- YB: add ordering
+SELECT * FROM test_ns_schema_1.abc_view;
  a | b
 ---+---
  2 |

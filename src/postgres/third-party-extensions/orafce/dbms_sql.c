@@ -1648,7 +1648,7 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 		uint64		idx;
 		uint64		i;
 
-		abs = initArrayResult(columnTypeId, CurrentMemoryContext, false);
+		abs = initArrayResult(columnTypeId, GetCurrentMemoryContext(), false);
 
 		idx = c->start_read;
 
@@ -1663,13 +1663,13 @@ column_value(CursorData *c, int pos, Oid targetTypeId, bool *isnull, bool spi_tr
 									   value,
 									   *isnull,
 									   columnTypeId,
-									   CurrentMemoryContext);
+									   GetCurrentMemoryContext());
 
 				idx += 1;
 			}
 		}
 
-		value = makeArrayResult(abs, CurrentMemoryContext);
+		value = makeArrayResult(abs, GetCurrentMemoryContext());
 
 		if (ccast->array_targettypid != InvalidOid)
 			domain_check(value, isnull, ccast->array_targettypid, NULL, NULL);
@@ -2130,7 +2130,7 @@ dbms_sql_describe_columns(PG_FUNCTION_ARGS)
 	int			rc;
 	int			i = 0;
 	bool		nonatomic;
-	MemoryContext callercxt = CurrentMemoryContext;
+	MemoryContext callercxt = GetCurrentMemoryContext();
 
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
 		elog(ERROR, "return type must be a row type");
@@ -2265,7 +2265,7 @@ dbms_sql_describe_columns(PG_FUNCTION_ARGS)
 									HeapTupleGetDatum(tuple),
 									false,
 									desc_rec_typid,
-									CurrentMemoryContext);
+									GetCurrentMemoryContext());
 
 		ReleaseSysCache(tp);
 	}

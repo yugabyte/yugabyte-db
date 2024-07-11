@@ -766,7 +766,7 @@ NIAddAffix(IspellDict *Conf, const char *flag, char flagflags, const char *mask,
 
 		pregex->mcallback.func = regex_affix_deletion_callback;
 		pregex->mcallback.arg = (void *) pregex;
-		MemoryContextRegisterResetCallback(CurrentMemoryContext,
+		MemoryContextRegisterResetCallback(GetCurrentMemoryContext(),
 										   &pregex->mcallback);
 	}
 

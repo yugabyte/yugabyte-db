@@ -343,12 +343,12 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 	for (n = 0; n < max_lines && (line = dbms_output_next()) != NULL; n++)
 	{
 		astate = accumArrayResult(astate, PointerGetDatum(line), false,
-					TEXTOID, CurrentMemoryContext);
+					TEXTOID, GetCurrentMemoryContext());
 	}
 
 	/* 0: lines as text array */
 	if (n > 0)
-		values[0] = makeArrayResult(astate, CurrentMemoryContext);
+		values[0] = makeArrayResult(astate, GetCurrentMemoryContext());
 	else
 	{
 		int16		typlen;

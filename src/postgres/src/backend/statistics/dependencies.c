@@ -359,7 +359,7 @@ statext_dependencies_build(StatsBuildData *data)
 	Assert(data->nattnums >= 2);
 
 	/* tracks memory allocated by dependency_degree calls */
-	cxt = AllocSetContextCreate(CurrentMemoryContext,
+	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								"dependency_degree cxt",
 								ALLOCSET_DEFAULT_SIZES);
 
