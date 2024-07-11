@@ -144,19 +144,19 @@ Use the ysqlsh, ycqlsh, and psql shells to connect to and interact with Yugabyte
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#ysqlsh" class="nav-link active" id="ysqlsh-tab" data-toggle="tab" role="tab" aria-controls="ysqlsh" aria-selected="true">
+    <a href="#ysqlsh" class="nav-link active" id="ysqlsh-tab" data-bs-toggle="tab" role="tab" aria-controls="ysqlsh" aria-selected="true">
       <i class="icon-postgres" aria-hidden="true"></i>
       ysqlsh
     </a>
   </li>
   <li>
-    <a href="#ycqlsh" class="nav-link" id="ycqlsh-tab" data-toggle="tab" role="tab" aria-controls="ycqlsh" aria-selected="false">
+    <a href="#ycqlsh" class="nav-link" id="ycqlsh-tab" data-bs-toggle="tab" role="tab" aria-controls="ycqlsh" aria-selected="false">
       <i class="icon-cassandra" aria-hidden="true"></i>
       ycqlsh
     </a>
   </li>
   <li>
-    <a href="#psql" class="nav-link" id="psql-tab" data-toggle="tab" role="tab" aria-controls="psql" aria-selected="false">
+    <a href="#psql" class="nav-link" id="psql-tab" data-bs-toggle="tab" role="tab" aria-controls="psql" aria-selected="false">
       <i class="icon-postgres" aria-hidden="true"></i>
       psql
     </a>

@@ -5,6 +5,7 @@ import subprocess
 import logging
 import pkgutil
 import jinja2
+import sys
 
 import modules.base_module as mbm
 from .base_command import Command
@@ -102,6 +103,7 @@ class ProvisionCommand(Command):
             logger.info(f"{package_name} is installed.")
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
+            sys.exit()
 
     def _validate_required_packages(self):
         package_manager = None
