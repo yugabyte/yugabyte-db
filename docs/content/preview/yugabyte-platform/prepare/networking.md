@@ -35,7 +35,7 @@ When two database clusters are connected via [xCluster replication](../../create
 
 ### Overriding default port assignments
 
-When deploying a universe, you can customize the following ports:
+When [deploying a universe](../../create-deployments/create-universe-multi-zone/), you can customize the following ports:
 
 - YB-Master HTTP(S)
 - YB-Master RPC
