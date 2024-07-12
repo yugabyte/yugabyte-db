@@ -1,0 +1,30 @@
+--
+-- SUBSELECT
+--
+SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
+-- another variant of that (bug #16213)
+explain (verbose, costs off)
+select * from
+(values
+  (3 not in (select * from (values (1), (2)) ss1)),
+  (false)
+) ss;
+               QUERY PLAN               
+----------------------------------------
+ Values Scan on "*VALUES*"
+   Output: "*VALUES*".column1
+   SubPlan 1
+     ->  Values Scan on "*VALUES*_1"
+           Output: "*VALUES*_1".column1
+(5 rows)
+
+select * from
+(values
+  (3 not in (select * from (values (1), (2)) ss1)),
+  (false)
+) ss;
+ column1 
+---------
+ t
+ f
+(2 rows)
