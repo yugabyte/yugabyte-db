@@ -2,12 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -92,6 +94,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -133,6 +136,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   // Constants needed for parsing a templated node name tag (for AWS).
   public static final String NODE_NAME_KEY = "Name";
+  public static final String TABLET_SERVERS_URL_FORMAT = "http://%s:%d/api/v1/tablet-servers";
 
   private static class TemplatedTags {
 
@@ -634,7 +638,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       @Nullable NodeDetails stoppingNode,
       boolean isStoppable,
       boolean ignoreStopError) {
-    createStartMasterOnNodeTasks(universe, currentNode, stoppingNode, isStoppable, false, true);
+    createStartMasterOnNodeTasks(
+        universe,
+        currentNode,
+        stoppingNode,
+        isStoppable,
+        ignoreStopError,
+        false /*ignoreMasterAddrsUpdateError*/);
   }
 
   public void createStartMasterOnNodeTasks(
@@ -643,7 +653,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       @Nullable NodeDetails stoppingNode,
       boolean isStoppable,
       boolean ignoreStopError,
-      boolean updateMasterAddrsOnStoppedNode) {
+      boolean ignoreMasterAddrsUpdateError) {
 
     Set<NodeDetails> nodeSet = ImmutableSet.of(currentNode);
     if (currentNode.masterState != MasterState.Configured) {
@@ -702,11 +712,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     // Update all server conf files because there was a master change.
-    createMasterInfoUpdateTask(universe, currentNode, stoppingNode, updateMasterAddrsOnStoppedNode);
+    createMasterInfoUpdateTask(universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError);
   }
 
   // Find a similar node on which a new master process can be started.
-  public static NodeDetails findReplacementMaster(Universe universe, NodeDetails currentNode) {
+  public NodeDetails findReplacementMaster(Universe universe, NodeDetails currentNode) {
     if ((currentNode.isMaster || currentNode.masterState == MasterState.ToStop)
         && currentNode.dedicatedTo == null) {
       List<NodeDetails> candidates =
@@ -732,9 +742,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       if (optional.isPresent()) {
         return optional.get();
       }
+      Set<NodeDetails> liveTserverNodes = getLiveTserverNodes(universe);
       // This picks up an eligible node from the candidates.
       return candidates.stream()
           .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
+          .filter(n -> liveTserverNodes.contains(n))
           .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
           .findFirst()
           .orElse(null);
@@ -754,7 +766,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         replacementSupplier,
         isStoppable,
         ignoreStopError,
-        false /* updateMasterAddrsOnStoppedNode */);
+        false /* ignoreMasterAddrsUpdateError */);
   }
 
   /**
@@ -775,7 +787,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Supplier<NodeDetails> replacementSupplier,
       boolean isStoppable,
       boolean ignoreStopError,
-      boolean updateMasterAddrsOnStoppedNode) {
+      boolean ignoreMasterAddrsUpdateError) {
     if (currentNode.masterState != MasterState.ToStop) {
       log.info(
           "Current node {} is not a master to be stopped. Ignoring master replacement",
@@ -804,10 +816,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createUpdateNodeProcessTask(currentNode.getNodeName(), ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       // Now isTserver and isMaster are both false for this stopped node.
-      createMasterInfoUpdateTask(universe, null, currentNode, updateMasterAddrsOnStoppedNode);
-      // Update the master addresses on the target universes whose source universe belongs to
-      // this task.
-      createXClusterConfigUpdateMasterAddressesTask();
+      createMasterInfoUpdateTask(universe, null, currentNode, ignoreMasterAddrsUpdateError);
     } else if (newMasterNode.masterState == MasterState.ToStart
         || newMasterNode.masterState == MasterState.Configured) {
       log.info(
@@ -825,7 +834,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           currentNode,
           isStoppable,
           ignoreStopError,
-          updateMasterAddrsOnStoppedNode);
+          ignoreMasterAddrsUpdateError);
       createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
     }
@@ -1772,7 +1781,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       @Nullable NodeDetails addedMasterNode,
       @Nullable NodeDetails stoppedNode,
-      boolean updateMasterAddrsOnStoppedNode) {
+      boolean ignoreError) {
     Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
     Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
 
@@ -1785,12 +1794,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // Remove the stopped node from the update.
     if (stoppedNode != null) {
-      if (!updateMasterAddrsOnStoppedNode) {
-        tserverNodes.remove(stoppedNode);
-      }
+      tserverNodes.remove(stoppedNode);
       masterNodes.remove(stoppedNode);
     }
-    createMasterAddressUpdateTask(universe, masterNodes, tserverNodes);
+    createMasterAddressUpdateTask(universe, masterNodes, tserverNodes, ignoreError);
 
     // Update the master addresses on the target universes whose source universe belongs to
     // this task.
@@ -1804,7 +1811,29 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void createMasterAddressUpdateTask(
       Universe universe,
       Collection<NodeDetails> masterNodes,
-      Collection<NodeDetails> tserverNodes) {
+      Collection<NodeDetails> tserverNodes,
+      boolean ignoreError) {
+    BiFunction<ITask, Throwable, Throwable> failedMasterAddrUpdateHandler =
+        (t, th) -> {
+          if (ignoreError && th != null) {
+            JsonNode jNode = t.getTaskParams().get("nodeName");
+            if (jNode != null && !jNode.isNull()) {
+              String nodeName = jNode.asText();
+              log.debug("Setting auto-sync master addresses to true for node {}", nodeName);
+              Universe.saveDetails(
+                  universe.getUniverseUUID(),
+                  u -> {
+                    NodeDetails node = u.getNode(nodeName);
+                    if (node != null) {
+                      node.autoSyncMasterAddrs = true;
+                    }
+                  });
+            }
+            // Return null to make the subtask succeed.
+            return null;
+          }
+          return th;
+        };
     // Configure all tservers to update the masters list as well.
     createConfigureServerTasks(
             tserverNodes,
@@ -1812,8 +1841,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.updateMasterAddrsOnly = true;
               params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
             })
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+        .setAfterRunHandler(failedMasterAddrUpdateHandler);
     // Change the master addresses in the conf file for the all masters to reflect
     // the changes.
     createConfigureServerTasks(
@@ -1823,14 +1852,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.isMaster = true;
               params.masterAddrsOverride = getOrCreateExecutionContext().getMasterAddrsSupplier();
             })
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+        .setAfterRunHandler(failedMasterAddrUpdateHandler);
     // Update the master addresses in memory.
     createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+        .setAfterRunHandler(failedMasterAddrUpdateHandler);
     createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
-        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags)
+        .setAfterRunHandler(failedMasterAddrUpdateHandler);
   }
 
   /**

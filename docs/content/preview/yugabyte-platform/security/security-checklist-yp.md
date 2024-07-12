@@ -3,6 +3,8 @@ title: Security checklist for YugabyteDB Anywhere
 headerTitle: Security checklist
 linkTitle: Security checklist
 description: Security measures that can be implemented to protect your YugabyteDB Anywhere and YugabyteDB universes.
+aliases:
+  - /preview/yugabyte-platform/security/network-security/
 menu:
   preview_yugabyte-platform:
     parent: security
@@ -13,7 +15,7 @@ type: docs
 
 You can apply security measures to protect your YugabyteDB Anywhere instance and YugabyteDB universes.
 
-## Network Security
+## Network security
 
 You need to ensure that YugabyteDB Anywhere and the database run in a trusted network environment. You should restrict machine and port access, based on the following guidelines:
 

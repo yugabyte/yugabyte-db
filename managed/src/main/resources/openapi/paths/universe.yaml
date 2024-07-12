@@ -685,7 +685,7 @@
     description: |
       Use Systemd to control YugabyteDB services for this universe. This is a 1 way migration from
       cron-based service management to systemd, and will involve a rolling restart of the universe.
-      
+
       This is not supported for on prem manual provisioned universes or kubernetes universes.
     tags:
       - Universe

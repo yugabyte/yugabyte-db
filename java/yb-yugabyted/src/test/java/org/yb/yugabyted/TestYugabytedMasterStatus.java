@@ -6,6 +6,7 @@ import static org.yb.AssertionWrappers.assertNotEquals;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Scanner;
 
@@ -16,13 +17,30 @@ import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 import org.yb.client.TestMasterStatus;
 import org.yb.minicluster.MiniYBDaemon;
+import org.yb.minicluster.MiniYugabytedClusterParameters;
+import org.yb.minicluster.MiniYugabytedNodeConfigurations;
 
 import com.google.common.net.HostAndPort;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYugabytedMasterStatus extends BaseYbdClientTest {
 
-    private static final Logger LOG = LoggerFactory.getLogger(TestYugabytedMasterStatus.class);
+    private static final Logger LOG = LoggerFactory.getLogger(TestMasterStatus.class);
+
+    public TestYugabytedMasterStatus() {
+        clusterParameters = new MiniYugabytedClusterParameters.Builder()
+                                .numNodes(1)
+                                .build();
+
+        clusterConfigurations = new ArrayList<>();
+        for (int i = 0; i < clusterParameters.numNodes; i++) {
+            MiniYugabytedNodeConfigurations nodeConfigurations = new
+                                        MiniYugabytedNodeConfigurations.Builder()
+                .build();
+
+            clusterConfigurations.add(nodeConfigurations);
+        }
+    }
 
     private String isMasterLeader(String host, int port) throws Exception {
         try {

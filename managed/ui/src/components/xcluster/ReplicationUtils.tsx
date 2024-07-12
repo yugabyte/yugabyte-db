@@ -543,9 +543,7 @@ export const isTableToggleable = (
     table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
 export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig | undefined) =>
-  xClusterConfig
-    ? xClusterConfig.type === XClusterConfigType.TXN || xClusterConfig.tableType !== 'YSQL'
-    : true;
+  xClusterConfig ? xClusterConfig.type === XClusterConfigType.TXN : true;
 
 export const getIsTransactionalAtomicityEnabled = (
   sourceUniverse: Universe,

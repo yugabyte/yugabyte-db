@@ -109,6 +109,7 @@
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -898,6 +899,9 @@ YBInitPostgresBackend(
 		YBCInstallTxnDdlHook();
 		if (yb_ash_enable_infra)
 			YbAshInit();
+
+		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+			YbQueryDiagnosticsInstallHook();
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use

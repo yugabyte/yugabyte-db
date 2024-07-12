@@ -69,7 +69,8 @@ public class SyncMasterAddresses extends UniverseDefinitionTaskBase {
                 params.deconfigure = true;
               })
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-      createMasterAddressUpdateTask(universe, universe.getMasters(), universe.getTServers());
+      createMasterAddressUpdateTask(
+          universe, universe.getMasters(), universe.getTServers(), false /* ignore error */);
       createUpdateUniverseFieldsTask(u -> u.getNodes().forEach(n -> n.autoSyncMasterAddrs = false));
       createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID());
       getRunnableTask().runSubTasks();
