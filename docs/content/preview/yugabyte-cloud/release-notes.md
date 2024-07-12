@@ -21,6 +21,10 @@ On this page:
 
 ### July 11, 2024
 
+**New features**
+
+- Support for JumpCloud Single Sign-On [federated authentication](../managed-security/managed-authentication/), to provide single sign-on access for your account users.
+
 **Database**
 
 - Ability to choose the latest [stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) when creating a dedicated or Sandbox cluster using the new Early Access track. Early Access has more frequent updates for faster access to the most recent stable version of YugabyteDB. Currently features YugabyteDB v2024.1.0.0.
