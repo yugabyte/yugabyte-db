@@ -51,6 +51,20 @@ You can also export the metrics provided by YugabyteDB onto third-party visualiz
 Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Aeon](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
 {{</tip>}}
 
+## Use cases
+
+### Operational monitoring
+
+You can build an application health dashboard for your critical applications using key operational signals that are constantly monitored. Add alerts for DevOps or SRE teams so they can act quickly in case of an event to ensure business continuity. The application health dashboard collects signals, metrics from YugabyteDB, and other systems that power your application, such as APIs, web app, SDK, and so on.
+
+### Performance troubleshooting
+
+Database administrators and application developers need to be able to troubleshoot issues, perform root cause analysis, and issue fixes. You can create a dashboard to monitor an observed issue causing temporal, gradual, or systemic performance degradation, or application failure. To conduct root cause analysis, issue-dependent deep observability metrics in a specific area are typically used. These metrics are consumed at the time of root cause analysis and operating teams fall back to a health dashboard after the issue is identified, the fix is monitored, and the issue is resolved.
+
+### Object monitoring
+
+Monitor specific parts of application behavior continuously after a new feature launch, during maintenance windows, during application upgrades, and more. The metrics can be system-wide or specific to the object of interest, such as a YugabyteDB cluster, node, tablet, geography, users, tenant, and more.
+
 ## Logging
 
 Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](../../troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very helpful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](../../troubleshoot/nodes/check-logs#logs-management).

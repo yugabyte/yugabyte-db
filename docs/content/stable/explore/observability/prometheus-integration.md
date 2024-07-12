@@ -114,26 +114,6 @@ Open the Prometheus UI at <http://localhost:9090> and then navigate to the **Tar
 
 ![Prometheus Targets](/images/ce/prom-targets.png)
 
-## Dashboards
-
-### Operational monitoring
-
-You can build an application health dashboard for your critical applications using key operational signals that are constantly monitored. Add alerts for DevOps or SRE teams so they can act quickly in case of an event to ensure business continuity. The application health dashboard collects signals, metrics from YugabyteDB, and other systems that power your application, such as APIs, web app, SDK, and so on.
-
-<add Prometheus configuration template for aggregate metrics>
-
-### Performance troubleshooting
-
-Database administrators and application developers need to be able to troubleshoot issues, perform root cause analysis, and issue fixes. You can create a dashboard to monitor an observed issue causing temporal, gradual, or systemic performance degradation, or application failure. To conduct root cause analysis, issue-dependent deep observability metrics in a specific area are typically used. These metrics are consumed at the time of root cause analysis and operating teams fall back to a health dashboard after the issue is identified, the fix is monitored, and the issue is resolved.
-
-<add Prometheus configuration template for node, table, tablet level metrics>
-
-### Object monitoring
-
-Monitor specific parts of application behavior continuously after a new feature launch, during maintenance windows, during application upgrades, and more. The metrics can be system-wide or specific to the object of interest, such as a YugabyteDB cluster, node, tablet, geography, users, tenant, and more.
-
-<add Prometheus configuration template for cluster specific, table specific, geo specific metrics>
-
 ## Analyze key metrics
 
 On the Prometheus Graph UI, you can plot the read or write throughput and latency for the `CassandraKeyValue` sample application. Because the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE), you can measure throughput and latency by using the metrics corresponding to the SELECT and INSERT statements.
