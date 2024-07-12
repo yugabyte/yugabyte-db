@@ -29,7 +29,7 @@ const useStyles = makeStyles((theme) => ({
   badge: {
     height: "32px",
     width: "32px",
-    borderRadius: "50%",
+    borderRadius: "100%",
   },
   progressbar: {
     height: "8px",
