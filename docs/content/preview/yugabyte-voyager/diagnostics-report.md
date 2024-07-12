@@ -19,20 +19,20 @@ None of your data or personally identifiable information is collected.
 When enabled, the following data is collected while running yb-voyager:
 
 - Migration unique ID
-- Migration Phase name (for example, export-data, import-schema, and so on.)
-- Migration Phase Start Time of a particular run
+- Migration phase name (for example, export-data, import-schema, and so on)
+- Migration phase start time
 - Migration phase payload (information relevant to that phase of the migration)
 - Payload collection time
 - Migration type (Offline, live migration (with fall-foward or fall-back), or bulk data load)
 - YugabyteDB Voyager version (the version of yb-voyager used for the migration)
 - Source database details
   - Host IP/name
-  - DBType (PostgreSQL, Oracle, and MySQL)
-  - DBVersion
+  - Database type (PostgreSQL, Oracle, and MySQL)
+  - Database version
   - Total size of the database migrating to YugabyteDB
 - Target YugabyteDB database details
   - Host IP/name
-  - DBVersion
+  - Database version
   - Node counts on the target YugabyteDB cluster
   - Total cores on the target YugabyteDB cluster
 - Time taken in the migration phase up to the point when the payload is collected
