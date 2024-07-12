@@ -88,9 +88,9 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
       XClusterRole currentXClusterRole =
           clusterConfigResp.getConfig().getConsumerRegistry().getDEPRECATEDRole();
       if (Objects.nonNull(taskParams().sourceRole)) {
-        xClusterConfig.setSourceActive(currentXClusterRole.equals(XClusterRole.ACTIVE));
+        xClusterConfig.setSourceActive(currentXClusterRole == XClusterRole.ACTIVE);
       } else {
-        xClusterConfig.setTargetActive(currentXClusterRole.equals(XClusterRole.ACTIVE));
+        xClusterConfig.setTargetActive(currentXClusterRole == XClusterRole.ACTIVE);
       }
       xClusterConfig.update();
       log.info(
@@ -98,7 +98,7 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
           universe.getUniverseUUID(),
           currentXClusterRole);
 
-      if (requestedRole.equals(currentXClusterRole)) {
+      if (requestedRole == currentXClusterRole) {
         log.warn(
             "The universe {} is already in {} role; no change happened",
             universe.getUniverseUUID(),
@@ -122,9 +122,9 @@ public class ChangeXClusterRole extends XClusterConfigTaskBase {
 
         // Save the role in the DB.
         if (Objects.nonNull(taskParams().sourceRole)) {
-          xClusterConfig.setSourceActive(requestedRole.equals(XClusterRole.ACTIVE));
+          xClusterConfig.setSourceActive(requestedRole == XClusterRole.ACTIVE);
         } else {
-          xClusterConfig.setTargetActive(requestedRole.equals(XClusterRole.ACTIVE));
+          xClusterConfig.setTargetActive(requestedRole == XClusterRole.ACTIVE);
         }
         xClusterConfig.update();
       }
