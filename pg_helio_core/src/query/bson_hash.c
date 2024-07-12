@@ -32,6 +32,24 @@
 	BSON_VARIABLE_LENGTH_FIELD_HASH(&(field), sizeof(field), seed)
 
 static uint64 HashNumber(double number, int64 seed);
+static uint64 HashBytesUint32AsUint64(const uint8_t *bytes, uint32_t bytesLength, int64
+									  seed);
+static uint64 HashCombineUint32AsUint64(uint64 left, uint64 right);
+
+static uint64 HashBytesUint64(const uint8_t *bytes, uint32_t bytesLength, int64 seed);
+
+static uint64_t BsonHashCompare(bson_iter_t *bsonIterValue,
+								uint64 (*hash_bytes_func)(const uint8_t *bytes, uint32_t
+														  bytesLength, int64 seed),
+								uint64 (*hash_combine_func)(uint64 left, uint64 right),
+								int64 seed);
+static uint64_t HashBsonValueCompare(const bson_value_t *value,
+									 uint64 (*hash_bytes_func)(const uint8_t *bytes,
+															   uint32_t bytesLength, int64
+															   seed),
+									 uint64 (*hash_combine_func)(uint64 left, uint64
+																 right),
+									 int64 seed);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -50,8 +68,13 @@ extension_bson_hash_int4(PG_FUNCTION_ARGS)
 	pgbson *bson = PG_GETARG_PGBSON_PACKED(0);
 	Datum result;
 
-	result = hash_any((unsigned char *) VARDATA_ANY(bson),
-					  VARSIZE_ANY_EXHDR(bson));
+	bson_iter_t bsonIterator;
+	PgbsonInitIterator(bson, &bsonIterator);
+
+	int64 seed = 0;
+	result = UInt32GetDatum((uint32_t) BsonHashCompare(&bsonIterator,
+													   HashBytesUint32AsUint64,
+													   HashCombineUint32AsUint64, seed));
 
 	/* Avoid leaking memory for toasted inputs */
 	PG_FREE_IF_COPY(bson, 0);
@@ -69,10 +92,11 @@ extension_bson_hash_int8(PG_FUNCTION_ARGS)
 	int64 seed = PG_GETARG_INT64(1);
 	Datum result;
 
-	result = hash_any_extended((unsigned char *) VARDATA_ANY(bson),
-							   VARSIZE_ANY_EXHDR(bson),
-							   seed);
+	bson_iter_t bsonIterator;
+	PgbsonInitIterator(bson, &bsonIterator);
 
+	result = UInt64GetDatum(BsonHashCompare(&bsonIterator, HashBytesUint64,
+											hash_combine64, seed));
 	PG_FREE_IF_COPY(bson, 0);
 
 	return result;
@@ -394,4 +418,287 @@ static uint64
 HashNumber(double number, int64 seed)
 {
 	return BSON_FIXED_LENGTH_FIELD_HASH(number, seed);
+}
+
+
+static uint64_t
+BsonHashCompare(bson_iter_t *bsonIterValue,
+				uint64 (*hash_bytes_func)(const uint8_t *bytes, uint32_t bytesLength,
+										  int64 seed),
+				uint64 (*hash_combine_func)(uint64 left, uint64 right),
+				int64 seed)
+{
+	check_stack_depth();
+	uint64_t hashValue = 0;
+	while (bson_iter_next(bsonIterValue))
+	{
+		pgbsonelement leftElement;
+
+		BsonIterToPgbsonElement(bsonIterValue, &leftElement);
+
+		/* next compare field name. */
+		uint64_t pathHash = hash_bytes_func((uint8_t *) leftElement.path,
+											leftElement.pathLength, seed);
+		hashValue = hash_combine_func(hashValue, pathHash);
+
+		uint64_t valueHash = HashBsonValueCompare(&leftElement.bsonValue, hash_bytes_func,
+												  hash_combine_func, seed);
+		hashValue = hash_combine_func(hashValue, valueHash);
+	}
+
+	return hashValue;
+}
+
+
+/*
+ * Hashes a value assuming that if ValueA == ValueB
+ * Hash(ValueA) == Hash(ValueB)
+ *
+ * CODESYNC: This needs to match the behavior of CompareBsonValue in bson_compare.c
+ */
+static uint64_t
+HashBsonValueCompare(const bson_value_t *value,
+					 uint64 (*hash_bytes_func)(const uint8_t *bytes, uint32_t bytesLength,
+											   int64 seed),
+					 uint64 (*hash_combine_func)(uint64 left, uint64 right),
+					 int64 seed)
+{
+	int typeCodeInt = (int) value->value_type;
+	switch (value->value_type)
+	{
+		case BSON_TYPE_EOD:
+		case BSON_TYPE_MINKEY:
+		{
+			typeCodeInt = (int) BSON_TYPE_MINKEY;
+			return hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed);
+		}
+
+		case BSON_TYPE_UNDEFINED:
+		case BSON_TYPE_NULL:
+		{
+			typeCodeInt = (int) BSON_TYPE_UNDEFINED;
+			return hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed);
+		}
+
+		case BSON_TYPE_INT32:
+		case BSON_TYPE_INT64:
+		{
+			/* All numbers are cocomparable - use a fixed type code */
+			typeCodeInt = BSON_TYPE_INT64;
+			int64_t int64Value = BsonValueAsInt64(value);
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) &int64Value, sizeof(int64_t), seed));
+		}
+
+		case BSON_TYPE_DOUBLE:
+		case BSON_TYPE_DECIMAL128:
+		{
+			/* All numbers are cocomparable - use a fixed type code */
+			typeCodeInt = BSON_TYPE_INT64;
+			bool checkFixedInteger = true;
+			if (IsBsonValue64BitInteger(value, checkFixedInteger))
+			{
+				int64_t int64Value = BsonValueAsInt64(value);
+				return hash_combine_func(
+					hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+					hash_bytes_func((uint8_t *) &int64Value, sizeof(int64_t), seed));
+			}
+
+			bson_decimal128_t decimalValue = GetBsonValueAsDecimal128(value);
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) &decimalValue, sizeof(bson_decimal128_t),
+								seed));
+		}
+
+		case BSON_TYPE_UTF8:
+		case BSON_TYPE_SYMBOL:
+		{
+			typeCodeInt = (int) BSON_TYPE_UTF8;
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) value->value.v_utf8.str,
+								value->value.v_utf8.len, seed));
+		}
+
+		case BSON_TYPE_DOCUMENT:
+		case BSON_TYPE_ARRAY:
+		{
+			bson_iter_t leftInnerIt;
+			if (!bson_iter_init_from_data(
+					&leftInnerIt,
+					value->value.v_doc.data,
+					value->value.v_doc.data_len))
+			{
+				ereport(ERROR, errmsg(
+							"Could not initialize nested iterator for document"));
+			}
+
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				BsonHashCompare(&leftInnerIt, hash_bytes_func, hash_combine_func, seed));
+		}
+
+		case BSON_TYPE_BINARY:
+		{
+			return hash_combine_func(
+				hash_combine_func(hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int),
+												  seed),
+								  hash_bytes_func(
+									  (uint8_t *) &value->value.v_binary.subtype,
+									  sizeof(bson_subtype_t), seed)),
+				hash_bytes_func((uint8_t *) value->value.v_binary.data,
+								value->value.v_binary.data_len, seed));
+		}
+
+		case BSON_TYPE_OID:
+		{
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) &value->value.v_oid.bytes, 12, seed));
+		}
+
+		case BSON_TYPE_BOOL:
+		{
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) &value->value.v_bool, sizeof(bool), seed));
+		}
+
+		case BSON_TYPE_DATE_TIME:
+		{
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) &value->value.v_datetime, sizeof(int64_t),
+								seed));
+		}
+
+		case BSON_TYPE_TIMESTAMP:
+		{
+			return hash_combine_func(
+				hash_combine_func(hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int),
+												  seed),
+								  hash_bytes_func(
+									  (uint8_t *) &value->value.v_timestamp.increment,
+									  sizeof(uint32_t), seed)),
+				hash_bytes_func((uint8_t *) &value->value.v_timestamp.timestamp,
+								sizeof(uint32_t), seed));
+		}
+
+		case BSON_TYPE_REGEX:
+		{
+			uint64 hashValue = hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int),
+											   seed);
+
+			if (value->value.v_regex.regex != NULL)
+			{
+				int regexLen = strlen(value->value.v_regex.regex);
+				hashValue = hash_combine_func(hashValue,
+											  hash_bytes_func(
+												  (uint8_t *) value->value.v_regex.regex,
+												  regexLen, seed));
+			}
+
+			if (value->value.v_regex.options != NULL)
+			{
+				int optionsLen = strlen(value->value.v_regex.options);
+				hashValue = hash_combine_func(hashValue,
+											  hash_bytes_func(
+												  (uint8_t *) value->value.v_regex.options,
+												  optionsLen, seed));
+			}
+
+			return hashValue;
+		}
+
+		case BSON_TYPE_DBPOINTER:
+		{
+			uint64 codeHash = hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) value->value.v_dbpointer.collection,
+								value->value.v_dbpointer.collection_len, seed));
+
+
+			return hash_combine_func(
+				codeHash,
+				hash_bytes_func((uint8_t *) &value->value.v_dbpointer.oid.bytes, 12,
+								seed));
+		}
+
+		case BSON_TYPE_CODE:
+		{
+			return hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) value->value.v_code.code,
+								value->value.v_code.code_len, seed));
+		}
+
+		case BSON_TYPE_CODEWSCOPE:
+		{
+			uint64 codeHash = hash_combine_func(
+				hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed),
+				hash_bytes_func((uint8_t *) value->value.v_code.code,
+								value->value.v_code.code_len, seed));
+
+			bson_iter_t leftInnerIt;
+			if (!bson_iter_init_from_data(
+					&leftInnerIt,
+					value->value.v_codewscope.scope_data,
+					value->value.v_codewscope.scope_len))
+			{
+				ereport(ERROR, errmsg(
+							"Could not initialize nested iterator for scope"));
+			}
+
+			return hash_combine_func(
+				codeHash,
+				BsonHashCompare(&leftInnerIt, hash_bytes_func, hash_combine_func, seed));
+		}
+
+		case BSON_TYPE_MAXKEY:
+		{
+			return hash_bytes_func((uint8_t *) &typeCodeInt, sizeof(int), seed);
+		}
+
+		default:
+		{
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg(
+								"invalid bson type for hash value bson- not supported yet"),
+							errhint(
+								"invalid bson type for hash value bson- not supported yet: %d",
+								value->value_type)));
+		}
+	}
+}
+
+
+/*
+ * Hash as uint32 but represented as uint64.
+ */
+static uint64
+HashBytesUint32AsUint64(const uint8_t *bytes, uint32_t bytesLength, int64 seed)
+{
+	return hash_bytes(bytes, bytesLength);
+}
+
+
+/*
+ * Combine hash as uint32 but represented as uint64.
+ */
+static uint64
+HashCombineUint32AsUint64(uint64 left, uint64 right)
+{
+	return hash_combine((uint32_t) left, (uint32_t) right);
+}
+
+
+/*
+ * Passthrough for hash uint64 with type coercion
+ */
+static uint64
+HashBytesUint64(const uint8_t *bytes, uint32_t bytesLength, int64 seed)
+{
+	return hash_bytes_extended((unsigned char *) bytes, bytesLength, seed);
 }

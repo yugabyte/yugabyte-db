@@ -1,0 +1,141 @@
+SET search_path TO helio_core;
+-- numerics share the same hash
+SELECT bson_hash_int4('{ "": { "$numberInt": "4" }}');
+ bson_hash_int4 
+----------------
+    -1885350330
+(1 row)
+
+SELECT bson_hash_int4('{ "": { "$numberLong": "4" }}');
+ bson_hash_int4 
+----------------
+    -1885350330
+(1 row)
+
+SELECT bson_hash_int4('{ "": 4.0 }');
+ bson_hash_int4 
+----------------
+    -1885350330
+(1 row)
+
+-- object with numbers still has same hash
+SELECT bson_hash_int4('{ "a": { "b": { "$numberInt": "4" }}}');
+ bson_hash_int4 
+----------------
+     1926967474
+(1 row)
+
+SELECT bson_hash_int4('{ "a": { "b": { "$numberLong": "4" }}}');
+ bson_hash_int4 
+----------------
+     1926967474
+(1 row)
+
+SELECT bson_hash_int4('{ "a": { "b": 4.0 }}');
+ bson_hash_int4 
+----------------
+     1926967474
+(1 row)
+
+-- same value code/string/symbol only match for string and symbol
+SELECT bson_hash_int4('{ "": "This is a string value"}');
+ bson_hash_int4 
+----------------
+     -604606913
+(1 row)
+
+SELECT bson_hash_int4('{ "": { "$symbol": "This is a string value" }}');
+ bson_hash_int4 
+----------------
+     -604606913
+(1 row)
+
+SELECT bson_hash_int4('{ "": { "$code": "This is a string value" } }');
+ bson_hash_int4 
+----------------
+     2054237711
+(1 row)
+
+-- array of simliar but same values match hash
+SELECT bson_hash_int4('{ "a": [ 4.0, "This is a string value" ] }');
+ bson_hash_int4 
+----------------
+     1160351312
+(1 row)
+
+SELECT bson_hash_int4('{ "a": [ { "$numberInt": "4" }, { "$symbol" : "This is a string value" }] }');
+ bson_hash_int4 
+----------------
+     1160351312
+(1 row)
+
+---------------------------------------------------
+SELECT bson_hash_int8('{ "": { "$numberInt": "4" }}', 0);
+    bson_hash_int8    
+----------------------
+ -4336199891449115970
+(1 row)
+
+SELECT bson_hash_int8('{ "": { "$numberLong": "4" }}', 0);
+    bson_hash_int8    
+----------------------
+ -4336199891449115970
+(1 row)
+
+SELECT bson_hash_int8('{ "": 4.0 }', 0);
+    bson_hash_int8    
+----------------------
+ -4336199891449115970
+(1 row)
+
+-- object with numbers still has same hash
+SELECT bson_hash_int8('{ "a": { "b": { "$numberInt": "4" }}}', 0);
+   bson_hash_int8    
+---------------------
+ -445854247252583331
+(1 row)
+
+SELECT bson_hash_int8('{ "a": { "b": { "$numberLong": "4" }}}', 0);
+   bson_hash_int8    
+---------------------
+ -445854247252583331
+(1 row)
+
+SELECT bson_hash_int8('{ "a": { "b": 4.0 }}', 0);
+   bson_hash_int8    
+---------------------
+ -445854247252583331
+(1 row)
+
+-- same value code/string/symbol only match for string and symbol
+SELECT bson_hash_int8('{ "": "This is a string value"}', 0);
+    bson_hash_int8    
+----------------------
+ -3634752653554244574
+(1 row)
+
+SELECT bson_hash_int8('{ "": { "$symbol": "This is a string value" }}', 0);
+    bson_hash_int8    
+----------------------
+ -3634752653554244574
+(1 row)
+
+SELECT bson_hash_int8('{ "": { "$code": "This is a string value" } }', 0);
+   bson_hash_int8    
+---------------------
+ 6565726260714952645
+(1 row)
+
+-- array of simliar but same values match hash
+SELECT bson_hash_int8('{ "a": [ 4.0, "This is a string value" ] }', 0);
+    bson_hash_int8    
+----------------------
+ -6455149314696189357
+(1 row)
+
+SELECT bson_hash_int8('{ "a": [ { "$numberInt": "4" }, { "$symbol" : "This is a string value" }] }', 0);
+    bson_hash_int8    
+----------------------
+ -6455149314696189357
+(1 row)
+

@@ -243,73 +243,58 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
-   ->  GroupAggregate
+   ->  HashAggregate
          Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'itemsSold'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : { "item" : "$item" } }'::bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-         ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-               ->  Seq Scan on helio_data.documents_12200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
-(10 rows)
+         Group Key: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)
+         ->  Seq Scan on helio_data.documents_12200 collection
+               Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(7 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
                                                                                                                 QUERY PLAN                                                                                                                
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
-   ->  GroupAggregate
+   ->  HashAggregate
          Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'itemsSold'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$item" }'::bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-         ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-               ->  Seq Scan on helio_data.documents_12200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
-(10 rows)
+         Group Key: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)
+         ->  Seq Scan on helio_data.documents_12200 collection
+               Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(7 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
                                                                                                                    QUERY PLAN                                                                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
-   ->  GroupAggregate
+   ->  HashAggregate
          Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'pricingDeals'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$pricing" }'::bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-         ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-               ->  Seq Scan on helio_data.documents_12200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
-(10 rows)
+         Group Key: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)
+         ->  Seq Scan on helio_data.documents_12200 collection
+               Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(7 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
                                                                                                                       QUERY PLAN                                                                                                                       
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
-   ->  GroupAggregate
+   ->  HashAggregate
          Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'retailPrices'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$pricing.retail" }'::bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-         ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-               ->  Seq Scan on helio_data.documents_12200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
-(10 rows)
+         Group Key: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)
+         ->  Seq Scan on helio_data.documents_12200 collection
+               Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(7 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
                                                                                                                    QUERY PLAN                                                                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Subquery Scan on agg_stage_0
    Output: bson_repath_and_build(agg_stage_0.c1, agg_stage_0.c2, agg_stage_0.c3, agg_stage_0.c4)
-   ->  GroupAggregate
+   ->  HashAggregate
          Output: '_id'::text, (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), 'retailPrices'::text, helio_api_internal.bson_add_to_set(bson_expression_get(collection.document, '{ "" : "$noValue" }'::bson, true))
-         Group Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-         ->  Sort
-               Output: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)), collection.document
-               Sort Key: (bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true))
-               ->  Seq Scan on helio_data.documents_12200 collection
-                     Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
-(10 rows)
+         Group Key: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true)
+         ->  Seq Scan on helio_data.documents_12200 collection
+               Output: bson_expression_get(collection.document, '{ "" : "$year" }'::bson, true), collection.document
+(7 rows)
 

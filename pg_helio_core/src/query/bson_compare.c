@@ -971,6 +971,7 @@ CompareSortOrderType(bson_type_t left, bson_type_t right)
 /*
  *  Compares two bson values.
  *  Please DO NOT  expose this method beyond this file.
+ * CODESYNC: This needs to match the behavior of HashBsonValueCompare in bson_hash.c
  */
 static int
 CompareBsonValue(const bson_value_t *left, const bson_value_t *right,

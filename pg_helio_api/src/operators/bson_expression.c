@@ -65,6 +65,16 @@ typedef struct
 } MongoOperatorExpression;
 
 
+/*
+ * Cached state for bson_expression_get
+ */
+typedef struct BsonExpressionGetState
+{
+	AggregationExpressionData *expressionData;
+	ExpressionVariableContext *variableContext;
+} BsonExpressionGetState;
+
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -150,6 +160,10 @@ static void ReportOperatorExpressonSyntaxError(const char *fieldA,
 static int CompareOperatorExpressionByName(const void *a, const void *b);
 static uint32 VariableHashEntryHashFunc(const void *obj, size_t objsize);
 static int VariableHashEntryCompareFunc(const void *obj1, const void *obj2, Size objsize);
+
+static void ParseBsonExpressionGetState(BsonExpressionGetState *getState,
+										const bson_value_t *expressionValue,
+										pgbson *variableSpec);
 
 /*
  *  Keep this list lexicographically sorted by the operator name,
@@ -490,27 +504,38 @@ bson_expression_get(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *expression = PG_GETARG_PGBSON(1);
 	bool isNullOnEmpty = PG_GETARG_BOOL(2);
-	ExpressionVariableContext *variableContext = NULL;
+
+	pgbson *variableSpec = NULL;
+	int argPositions[2] = { 1, 3 };
+	int numArgs = 1;
+	if (PG_NARGS() > 3)
+	{
+		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
+		numArgs = 2;
+	}
+
 	pgbsonelement expressionElement;
 	pgbson_writer writer;
 
-	AggregationExpressionData expressionData;
-	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+	BsonExpressionGetState expressionData;
+	memset(&expressionData, 0, sizeof(BsonExpressionGetState));
 
 	PgbsonToSinglePgbsonElement(expression, &expressionElement);
 
-	const AggregationExpressionData *state;
-	const int argPosition = 1;
-	SetCachedFunctionState(
+	const BsonExpressionGetState *state;
+	SetCachedFunctionStateMultiArgs(
 		state,
-		AggregationExpressionData,
-		argPosition,
-		ParseAggregationExpressionData,
-		&expressionElement.bsonValue);
+		BsonExpressionGetState,
+		argPositions,
+		numArgs,
+		ParseBsonExpressionGetState,
+		&expressionElement.bsonValue,
+		variableSpec);
 
 	if (state == NULL)
 	{
-		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
+		ParseBsonExpressionGetState(&expressionData, &expressionElement.bsonValue,
+									variableSpec);
 		state = &expressionData;
 	}
 
@@ -520,8 +545,9 @@ bson_expression_get(PG_FUNCTION_ARGS)
 	};
 
 	PgbsonWriterInit(&writer);
-	EvaluateAggregationExpressionDataToWriter(state, document, path, &writer,
-											  variableContext, isNullOnEmpty);
+	EvaluateAggregationExpressionDataToWriter(state->expressionData, document, path,
+											  &writer,
+											  state->variableContext, isNullOnEmpty);
 
 	pgbson *returnedBson = PgbsonWriterGetPgbson(&writer);
 
@@ -1117,6 +1143,30 @@ EvaluateExpression(pgbson *document, const bson_value_t *expressionValue,
 			ExpressionResultSetValue(expressionResult, expressionValue);
 			break;
 		}
+	}
+}
+
+
+/*
+ * Parses the shared state for bson_expression_get
+ */
+static void
+ParseBsonExpressionGetState(BsonExpressionGetState *getState,
+							const bson_value_t *expressionValue, pgbson *variableSpec)
+{
+	getState->expressionData = (AggregationExpressionData *) palloc0(
+		sizeof(AggregationExpressionData));
+	getState->variableContext = NULL;
+
+	ParseAggregationExpressionData(getState->expressionData, expressionValue);
+	if (variableSpec != NULL)
+	{
+		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
+		ExpressionVariableContext *variableContext =
+			palloc0(sizeof(ExpressionVariableContext));
+
+		ParseVariableSpec(&varsValue, variableContext);
+		getState->variableContext = variableContext;
 	}
 }
 

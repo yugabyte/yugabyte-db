@@ -564,6 +564,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_add_fields function */
 	Oid ApiCatalogBsonDollarAddFieldsFunctionOid;
 
+	/* OID of the bson_dollar_add_fields with let function */
+	Oid ApiCatalogBsonDollarAddFieldsWithLetFunctionOid;
+
 	/* OID of the bson_dollar_inverse_match function */
 	Oid ApiCatalogBsonDollarInverseMatchFunctionOid;
 
@@ -587,6 +590,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_dollar_project function */
 	Oid ApiCatalogBsonDollarProjectFunctionOid;
+
+	/* OID of the bson_dollar_project function with let */
+	Oid ApiCatalogBsonDollarProjectWithLetFunctionOid;
 
 	/* OID of the command_bson_get_value function */
 	Oid ApiCatalogBsonGetValueFunctionId;
@@ -674,6 +680,9 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_expression_get function */
 	Oid ApiCatalogBsonExpressionGetFunctionOid;
+
+	/* OID of the bson_expression_get with let function */
+	Oid ApiCatalogBsonExpressionGetWithLetFunctionOid;
 
 	/* OID of the bson_expression_partition_get function */
 	Oid ApiCatalogBsonExpressionPartitionGetFunctionOid;
@@ -2796,6 +2805,17 @@ BsonDollarAddFieldsFunctionOid(void)
 
 
 Oid
+BsonDollarAddFieldsWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.ApiCatalogBsonDollarAddFieldsWithLetFunctionOid,
+		"helio_api_internal", "bson_dollar_add_fields",
+		HelioCoreBsonTypeId(),
+		HelioCoreBsonTypeId(), HelioCoreBsonTypeId());
+}
+
+
+Oid
 BsonDollaMergeDocumentsFunctionOid(void)
 {
 	bool missingOk = false;
@@ -2812,6 +2832,17 @@ BsonDollarProjectFunctionOid(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.ApiCatalogBsonDollarProjectFunctionOid,
 									   "bson_dollar_project", BsonTypeId(), BsonTypeId());
+}
+
+
+Oid
+BsonDollarProjectWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.ApiCatalogBsonDollarProjectWithLetFunctionOid,
+		"helio_api_internal", "bson_dollar_project",
+		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
+		HelioCoreBsonTypeId());
 }
 
 
@@ -3387,20 +3418,19 @@ RowGetBsonFunctionOid(void)
 Oid
 BsonExpressionGetFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	return GetOperatorFunctionIdThreeArgs(&Cache.ApiCatalogBsonExpressionGetFunctionOid,
+										  ApiCatalogSchemaName, "bson_expression_get",
+										  BsonTypeId(), BsonTypeId(), BOOLOID);
+}
 
-	if (Cache.ApiCatalogBsonExpressionGetFunctionOid == InvalidOid)
-	{
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
-											makeString("bson_expression_get"));
-		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
-		bool missingOK = false;
 
-		Cache.ApiCatalogBsonExpressionGetFunctionOid =
-			LookupFuncName(functionNameList, 3, paramOids, missingOK);
-	}
-
-	return Cache.ApiCatalogBsonExpressionGetFunctionOid;
+Oid
+BsonExpressionGetWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdFourArgs(
+		&Cache.ApiCatalogBsonExpressionGetWithLetFunctionOid,
+		"helio_api_internal", "bson_expression_get",
+		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), BOOLOID, HelioCoreBsonTypeId());
 }
 
 

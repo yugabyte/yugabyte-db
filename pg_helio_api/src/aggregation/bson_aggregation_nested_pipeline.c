@@ -147,7 +147,7 @@ static int ValidateFacet(const bson_value_t *facetValue);
 static Query * BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 									   CommonTableExpr *baseCte, QuerySource querySource,
 									   Datum databaseNameDatum, const
-									   bson_value_t *sortSpec);
+									   bson_value_t *sortSpec, pgbson *variableContext);
 static Query * AddBsonArrayAggFunction(Query *baseQuery,
 									   AggregationPipelineBuildContext *context,
 									   ParseState *parseState, const char *fieldPath,
@@ -178,7 +178,7 @@ static Query * BuildRecursiveGraphLookupQuery(QuerySource parentSource,
 											  AggregationPipelineBuildContext *
 											  parentContext,
 											  CommonTableExpr *baseCteExpr, int levelsUp);
-static void ValidateUnionWithPipeline(const bson_value_t *pipeline);
+static void ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection);
 
 
 /*
@@ -285,7 +285,8 @@ HandleFacet(const bson_value_t *existingValue, Query *query,
 	Query *finalQuery = BuildFacetUnionAllQuery(numStages, existingValue, baseCte,
 												query->querySource,
 												context->databaseNameDatum,
-												&context->sortSpec);
+												&context->sortSpec,
+												context->variableSpec);
 
 	/* Finally, add bson_object_agg */
 	finalQuery = AddBsonObjectAggFunction(finalQuery, context);
@@ -783,14 +784,11 @@ ParseUnionWith(const bson_value_t *existingValue, StringView *collectionFrom,
 			}
 		}
 
-		if (collectionFrom->length == 0)
+		if (collectionFrom->length == 0 && pipeline->value_type == BSON_TYPE_EOD)
 		{
-			/* TODO: Technically this can be supported for agnostic queries but for now bail */
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(MongoBadValue),
 							errmsg(
-								"$unionWith without explicit collection not supported yet"),
-							errhint(
-								"$unionWith without explicit collection not supported yet")));
+								"$unionWith stage without explicit collection must have a pipeline with $documents as first stage")));
 		}
 	}
 	else
@@ -836,6 +834,7 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		AggregationPipelineBuildContext subPipelineContext = { 0 };
 		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+		subPipelineContext.variableSpec = context->variableSpec;
 
 		/* This is unionWith on the base collection */
 		pg_uuid_t *collectionUuid = NULL;
@@ -849,15 +848,26 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		AggregationPipelineBuildContext subPipelineContext = { 0 };
 		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+		subPipelineContext.variableSpec = context->variableSpec;
 		pg_uuid_t *collectionUuid = NULL;
-		rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
-											&collectionFrom,
-											collectionUuid,
-											&subPipelineContext);
+
+		if (collectionFrom.length == 0)
+		{
+			rightQuery = GenerateBaseAgnosticQuery(context->databaseNameDatum,
+												   &subPipelineContext);
+		}
+		else
+		{
+			rightQuery = GenerateBaseTableQuery(context->databaseNameDatum,
+												&collectionFrom,
+												collectionUuid,
+												&subPipelineContext);
+		}
 
 		if (pipelineValue.value_type != BSON_TYPE_EOD)
 		{
-			ValidateUnionWithPipeline(&pipelineValue);
+			bool hasCollection = collectionFrom.length != 0;
+			ValidateUnionWithPipeline(&pipelineValue, hasCollection);
 			rightQuery = MutateQueryWithPipeline(rightQuery, &pipelineValue,
 												 &subPipelineContext);
 		}
@@ -975,7 +985,8 @@ ValidateFacet(const bson_value_t *facetValue)
 static Query *
 BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 						CommonTableExpr *baseCte, QuerySource querySource,
-						Datum databaseNameDatum, const bson_value_t *sortSpec)
+						Datum databaseNameDatum, const bson_value_t *sortSpec,
+						pgbson *variableContext)
 {
 	Query *modifiedQuery = NULL;
 
@@ -1004,6 +1015,7 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 		nestedContext.nestedPipelineLevel = 1;
 		nestedContext.databaseNameDatum = databaseNameDatum;
 		nestedContext.sortSpec = *sortSpec;
+		nestedContext.variableSpec = variableContext;
 
 		modifiedQuery = MutateQueryWithPipeline(baseQuery, &singleElement.bsonValue,
 												&nestedContext);
@@ -1061,6 +1073,7 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 			nestedContext.nestedPipelineLevel = 1;
 			nestedContext.databaseNameDatum = databaseNameDatum;
 			nestedContext.sortSpec = *sortSpec;
+			nestedContext.variableSpec = variableContext;
 
 			Query *innerQuery = MutateQueryWithPipeline(baseQuery, bson_iter_value(
 															&facetIterator),
@@ -2088,15 +2101,34 @@ CanInlineInnerLookupPipeline(LookupArgs *lookupArgs)
  * Validates the pipeline for a $unionwith query.
  */
 static void
-ValidateUnionWithPipeline(const bson_value_t *pipeline)
+ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection)
 {
 	bson_iter_t pipelineIter;
 	BsonValueInitIterator(pipeline, &pipelineIter);
 
+	if (IsBsonValueEmptyArray(pipeline) && !hasCollection)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"$unionWith stage without explicit collection must have a pipeline with $documents as first stage")));
+	}
+
+	bool isFirstStage = true;
 	while (bson_iter_next(&pipelineIter))
 	{
 		pgbsonelement stageElement = GetPipelineStage(&pipelineIter, "unionWith",
 													  "pipeline");
+		if (isFirstStage && !hasCollection)
+		{
+			if (strcmp(stageElement.path, "$documents") != 0)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"$unionWith stage without explicit collection must have a pipeline with $documents as first stage")));
+			}
+		}
+
+		isFirstStage = false;
 		if (strcmp(stageElement.path, "$out") == 0)
 		{
 			ereport(ERROR, (errcode(MongoLocation31441),
@@ -2365,7 +2397,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
  */
 static FuncExpr *
 BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, const
-							 bson_value_t *inputExpression)
+							 bson_value_t *inputExpression, pgbson *variableContext)
 {
 	pgbson_writer expressionWriter;
 	PgbsonWriterInit(&expressionWriter);
@@ -2380,10 +2412,24 @@ BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, c
 	PgbsonWriterEndDocument(&expressionWriter, &makeArrayWriter);
 	pgbson *inputExpr = PgbsonWriterGetPgbson(&expressionWriter);
 	Const *falseConst = (Const *) MakeBoolValueConst(false);
-	List *inputExprArgs = list_make3(origExpr, MakeBsonConst(inputExpr),
-									 falseConst);
+	List *inputExprArgs;
+	Oid functionOid;
+
+	if (variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		inputExprArgs = list_make4(origExpr, MakeBsonConst(inputExpr),
+								   falseConst, MakeBsonConst(variableContext));
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		inputExprArgs = list_make3(origExpr, MakeBsonConst(inputExpr),
+								   falseConst);
+	}
+
 	FuncExpr *inputFuncExpr = makeFuncExpr(
-		BsonExpressionGetFunctionOid(), BsonTypeId(), inputExprArgs, InvalidOid,
+		functionOid, BsonTypeId(), inputExprArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 	return inputFuncExpr;
 }
@@ -2396,7 +2442,8 @@ BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, c
  */
 static AttrNumber
 AddInputExpressionToQuery(Query *query, StringView *fieldName, const
-						  bson_value_t *inputExpression)
+						  bson_value_t *inputExpression,
+						  pgbson *variableContext)
 {
 	/* Now, add the expression value projector to the left query */
 	TargetEntry *origEntry = linitial(query->targetList);
@@ -2406,7 +2453,8 @@ AddInputExpressionToQuery(Query *query, StringView *fieldName, const
 	 * into the left query.
 	 */
 	FuncExpr *inputFuncExpr = BuildInputExpressionForQuery(origEntry->expr, fieldName,
-														   inputExpression);
+														   inputExpression,
+														   variableContext);
 	bool resjunk = false;
 	AttrNumber expressionResultNumber = 2;
 	TargetEntry *entry = makeTargetEntry((Expr *) inputFuncExpr, expressionResultNumber,
@@ -2479,7 +2527,8 @@ ProcessGraphLookupCore(Query *query, AggregationPipelineBuildContext *context,
 
 	/* First add the input expression to the input query */
 	AddInputExpressionToQuery(query, &lookupArgs->connectToField,
-							  &lookupArgs->inputExpression);
+							  &lookupArgs->inputExpression,
+							  context->variableSpec);
 
 	/* Create the final query: Since the higher query is in a CTE - push this one down. */
 	context->numNestedLevels++;
@@ -2711,6 +2760,7 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 	AggregationPipelineBuildContext subPipelineContext = { 0 };
 	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 2;
 	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
+	subPipelineContext.variableSpec = parentContext->variableSpec;
 	pg_uuid_t *collectionUuid = NULL;
 	Query *recursiveQuery = GenerateBaseTableQuery(parentContext->databaseNameDatum,
 												   &args->fromCollection, collectionUuid,
@@ -2742,7 +2792,8 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 	Var *leftDocVar = makeVar(rangeTblRef->rtindex, 1, BsonTypeId(), -1, InvalidOid, 0);
 	FuncExpr *inputExpr = BuildInputExpressionForQuery((Expr *) leftDocVar,
 													   &args->connectToField,
-													   &args->connectFromFieldExpression);
+													   &args->connectFromFieldExpression,
+													   parentContext->variableSpec);
 	FuncExpr *initialMatchFunc = makeFuncExpr(BsonInMatchFunctionId(), BOOLOID,
 											  list_make2(firstEntry->expr, inputExpr),
 											  InvalidOid, InvalidOid,

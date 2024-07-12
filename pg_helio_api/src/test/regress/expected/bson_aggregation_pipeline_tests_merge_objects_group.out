@@ -241,23 +241,23 @@ SELECT helio_api.shard_collection('db', 'objColl1', '{ "_id": "hashed" }', false
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$year", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
                                                                                                      document                                                                                                      
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2016" }, "mergedobjColl1" : { "2016Q1" : { "$numberInt" : "400" }, "2016Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
  { "_id" : { "$numberInt" : "2017" }, "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "300" }, "2017Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "1200" }, "2016Q4" : { "$numberInt" : "312" } } }
+ { "_id" : { "$numberInt" : "2016" }, "mergedobjColl1" : { "2016Q1" : { "$numberInt" : "400" }, "2016Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
 (2 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$item", "mergedobjColl1": { "$mergeObjects": "$quantity" } } } ] }');
                                                                                                                             document                                                                                                                            
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  { "_id" : "A", "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "1" }, "2017Q2" : { "$numberInt" : "300" }, "2016Q1" : { "$numberInt" : "400" }, "2016Q2" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "0" }, "2016Q4" : { "$numberInt" : "0" } } }
- { "_id" : "B", "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
  { "_id" : "C", "mergedobjColl1" : { "2016Q3" : { "$numberInt" : "1200" }, "2016Q4" : { "$numberInt" : "312" } } }
+ { "_id" : "B", "mergedobjColl1" : { "2017Q1" : { "$numberInt" : "300" }, "2016Q3" : { "$numberInt" : "100" }, "2016Q4" : { "$numberInt" : "250" } } }
 (3 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$year", "lastItemSold": { "$mergeObjects": { "item": "$item" } } } } ] }');
                                  document                                 
 --------------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2016" }, "lastItemSold" : { "item" : "B" } }
  { "_id" : { "$numberInt" : "2017" }, "lastItemSold" : { "item" : "C" } }
+ { "_id" : { "$numberInt" : "2016" }, "lastItemSold" : { "item" : "B" } }
 (2 rows)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "objColl1", "pipeline": [ { "$sort": { "item": 1 } }, { "$group": { "_id": "$year", "shouldFail": { "$mergeObjects": "$item" } } } ] }');

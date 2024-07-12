@@ -823,5 +823,5 @@ HandleListCollectionsProjector(Query *query, AggregationPipelineBuildContext *co
 	pgbson *bson = PgbsonWriterGetPgbson(&writer);
 	bson_value_t bsonValue = ConvertPgbsonToBsonValue(bson);
 	return HandleSimpleProjectionStage(&bsonValue, query, context, "$project",
-									   BsonDollarProjectFunctionOid());
+									   BsonDollarProjectFunctionOid(), NULL);
 }

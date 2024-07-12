@@ -131,7 +131,8 @@ static void BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 											  BsonProjectionContext *context);
 static void BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 												bson_iter_t *addFieldsSpec,
-												bool skipParseAggregationExpressions);
+												bool skipParseAggregationExpressions,
+												pgbson *variableSpec);
 static void BuildBsonPathTreeForDollarUnset(BsonProjectionQueryState *state,
 											const bson_value_t *unsetValue,
 											bool forceProjectId);
@@ -148,6 +149,7 @@ static void PostProcessParseProjectNode(void *state, const StringView *path,
 										bool *hasFieldsForIntermediate);
 static pgbson * ProjectGeonearDocument(const GeonearDistanceState *state,
 									   pgbson *document);
+static void SetVariableSpec(BsonProjectionQueryState *state, pgbson *variableSpec);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -173,6 +175,16 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
+	pgbson *variableSpec = NULL;
+
+	int argPositions[2] = { 1, 2 };
+	int numArgs = 1;
+
+	if (PG_NARGS() > 2)
+	{
+		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
+		numArgs = 2;
+	}
 
 	/* project_find with empty projection spec is a no-op */
 	if (IsPgbsonEmptyDocument(pathSpec))
@@ -182,8 +194,6 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 
 	const BsonProjectionQueryState *state;
 
-	int argPosition = 1;
-
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
 	BsonProjectionContext context = {
@@ -191,12 +201,13 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 		.allowInclusionExclusion = false,
 		.pathSpecIter = &pathSpecIter,
 		.querySpec = NULL,
-		.variableSpec = NULL,
+		.variableSpec = variableSpec,
 	};
-	SetCachedFunctionState(
+	SetCachedFunctionStateMultiArgs(
 		state,
 		BsonProjectionQueryState,
-		argPosition,
+		argPositions,
+		numArgs,
 		BuildBsonPathTreeForDollarProject,
 		&context);
 
@@ -354,6 +365,17 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 
+	pgbson *variableSpec = NULL;
+	int argPosition[2] = { 1, 0 };
+	int numArgs = 1;
+
+	if (PG_NARGS() > 2)
+	{
+		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
+		argPosition[1] = 2;
+		numArgs = 2;
+	}
+
 	/* bson_dollar_add_fields with empty projection spec is a no-op */
 	if (IsPgbsonEmptyDocument(pathSpec))
 	{
@@ -362,24 +384,25 @@ bson_dollar_add_fields(PG_FUNCTION_ARGS)
 
 	const BsonProjectionQueryState *state;
 
-	int argPosition = 1;
-
 	bool skipParseAggregationExpressions = false;
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
-	SetCachedFunctionState(
+	SetCachedFunctionStateMultiArgs(
 		state,
 		BsonProjectionQueryState,
 		argPosition,
+		numArgs,
 		BuildBsonPathTreeForDollarAddFields,
 		&pathSpecIter,
-		skipParseAggregationExpressions);
+		skipParseAggregationExpressions,
+		variableSpec);
 
 	if (state == NULL)
 	{
 		BsonProjectionQueryState projectionState = { 0 };
 		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
-											skipParseAggregationExpressions);
+											skipParseAggregationExpressions,
+											variableSpec);
 		PG_RETURN_POINTER(ProjectDocumentWithState(document, &projectionState));
 	}
 	else
@@ -412,19 +435,22 @@ bson_dollar_merge_documents(PG_FUNCTION_ARGS)
 	bool skipParseAggregationExpressions = true;
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
+	pgbson *variableSpec = NULL;
 	SetCachedFunctionState(
 		state,
 		BsonProjectionQueryState,
 		argPosition,
 		BuildBsonPathTreeForDollarAddFields,
 		&pathSpecIter,
-		skipParseAggregationExpressions);
+		skipParseAggregationExpressions,
+		variableSpec);
 
 	if (state == NULL)
 	{
 		BsonProjectionQueryState projectionState = { 0 };
 		BuildBsonPathTreeForDollarAddFields(&projectionState, &pathSpecIter,
-											skipParseAggregationExpressions);
+											skipParseAggregationExpressions,
+											variableSpec);
 		PG_RETURN_POINTER(ProjectDocumentWithState(document, &projectionState));
 	}
 	else
@@ -443,9 +469,10 @@ const BsonProjectionQueryState *
 GetProjectionStateForBsonAddFields(bson_iter_t *projectionSpecIter)
 {
 	bool skipParseAggregationExpressions = false;
+	pgbson *variableSpec = NULL;
 	BsonProjectionQueryState *projectionState = palloc0(sizeof(BsonProjectionQueryState));
 	BuildBsonPathTreeForDollarAddFields(projectionState, projectionSpecIter,
-										skipParseAggregationExpressions);
+										skipParseAggregationExpressions, variableSpec);
 	return projectionState;
 }
 
@@ -1067,17 +1094,7 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 	state->hasExclusion = pathTreeContext->hasExclusion;
 	state->projectNonMatchingFields = pathTreeContext->hasExclusion;
 
-	state->variableContext = NULL;
-	if (projectionContext->variableSpec != NULL)
-	{
-		bson_value_t varsValue = ConvertPgbsonToBsonValue(
-			projectionContext->variableSpec);
-		ExpressionVariableContext *variableContext =
-			palloc0(sizeof(ExpressionVariableContext));
-
-		ParseVariableSpec(&varsValue, variableContext);
-		state->variableContext = variableContext;
-	}
+	SetVariableSpec(state, projectionContext->variableSpec);
 }
 
 
@@ -1091,7 +1108,8 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 static void
 BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 									bson_iter_t *projectionSpecIter,
-									bool skipParseAggregationExpressions)
+									bool skipParseAggregationExpressions,
+									pgbson *variableSpec)
 {
 	BuildBsonPathTreeContext context = { 0 };
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
@@ -1107,8 +1125,26 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 	state->hasExclusion = context.hasExclusion;
 	state->projectNonMatchingFields = true;
 
-	/* TODO VARIABLE take as an argument and parse. */
+	SetVariableSpec(state, variableSpec);
+}
+
+
+/*
+ * Given a potentially null variable spec, sets the spec into the projection query state.
+ */
+static void
+SetVariableSpec(BsonProjectionQueryState *state, pgbson *variableSpec)
+{
 	state->variableContext = NULL;
+	if (variableSpec != NULL)
+	{
+		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
+		ExpressionVariableContext *variableContext =
+			palloc0(sizeof(ExpressionVariableContext));
+
+		ParseVariableSpec(&varsValue, variableContext);
+		state->variableContext = variableContext;
+	}
 }
 
 

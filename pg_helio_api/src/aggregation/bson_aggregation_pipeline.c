@@ -1657,7 +1657,7 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 	pgbson *addFieldsSpec = PgbsonWriterGetPgbson(&addFieldsWriter);
 	bson_value_t addFieldsValue = ConvertPgbsonToBsonValue(addFieldsSpec);
 	query = HandleSimpleProjectionStage(&addFieldsValue, query, &context, "$addFields",
-										GetMergeDocumentsFunctionOid());
+										GetMergeDocumentsFunctionOid(), NULL);
 
 	return query;
 }
@@ -1874,11 +1874,13 @@ CanInlineLookupPipeline(const bson_value_t *pipeline,
 /*
  * Processes simple projections (dollar_project, dollar_add_fields etc).
  * This just updates the targetEntry with the new projector.
+ * functionOidWithLet can be NULL if the stage doesn't support let
  */
 Query *
 HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 							AggregationPipelineBuildContext *context,
-							const char *stageName, Oid functionOid)
+							const char *stageName, Oid functionOid,
+							Oid (*functionOidWithLet)(void))
 {
 	if (existingValue->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -1902,7 +1904,18 @@ HandleSimpleProjectionStage(const bson_value_t *existingValue, Query *query,
 		existingValue->value.v_doc.data_len);
 	Const *addFieldsProcessed = MakeBsonConst(docBson);
 
-	List *args = list_make2(currentProjection, addFieldsProcessed);
+	List *args;
+	if (context->variableSpec != NULL && functionOidWithLet != NULL)
+	{
+		args = list_make3(currentProjection, addFieldsProcessed, MakeBsonConst(
+							  context->variableSpec));
+		functionOid = functionOidWithLet();
+	}
+	else
+	{
+		args = list_make2(currentProjection, addFieldsProcessed);
+	}
+
 	FuncExpr *resultExpr = makeFuncExpr(
 		functionOid, BsonTypeId(), args, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
@@ -1921,7 +1934,8 @@ HandleAddFields(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_ADD_FIELDS);
 	return HandleSimpleProjectionStage(existingValue, query, context, "$addFields",
-									   BsonDollarAddFieldsFunctionOid());
+									   BsonDollarAddFieldsFunctionOid(),
+									   BsonDollarAddFieldsWithLetFunctionOid);
 }
 
 
@@ -1953,7 +1967,8 @@ HandleProject(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_PROJECT);
 	return HandleSimpleProjectionStage(existingValue, query, context, "$project",
-									   BsonDollarProjectFunctionOid());
+									   BsonDollarProjectFunctionOid(),
+									   BsonDollarProjectWithLetFunctionOid);
 }
 
 
@@ -2018,7 +2033,7 @@ HandleReplaceRoot(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_REPLACE_ROOT);
 	return HandleSimpleProjectionStage(existingValue, query, context, "$replaceRoot",
-									   BsonDollarReplaceRootFunctionOid());
+									   BsonDollarReplaceRootFunctionOid(), NULL);
 }
 
 
@@ -3202,16 +3217,31 @@ inline static List *
 AddSimpleGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 						  List *repathArgs, Const *accumulatorText,
 						  ParseState *parseState, char *identifiers,
-						  Expr *documentExpr, Oid aggregateFunctionOid)
+						  Expr *documentExpr, Oid aggregateFunctionOid,
+						  pgbson *variableSpec)
 {
 	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
 												  accumulatorValue));
 
 	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
 								 true);
-	List *groupArgs = list_make3(documentExpr, constValue, trueConst);
+	List *groupArgs;
+	Oid functionId;
+	if (variableSpec != NULL)
+	{
+		groupArgs = list_make4(documentExpr, constValue, trueConst, MakeBsonConst(
+								   variableSpec));
+		functionId = BsonExpressionGetWithLetFunctionOid();
+	}
+	else
+	{
+		groupArgs = list_make3(documentExpr, constValue, trueConst);
+		functionId = BsonExpressionGetFunctionOid();
+	}
+
+
 	FuncExpr *accumFunc = makeFuncExpr(
-		BsonExpressionGetFunctionOid(), BsonTypeId(), groupArgs, InvalidOid,
+		functionId, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 	Aggref *aggref = CreateSingleArgAggregate(aggregateFunctionOid,
 											  (Expr *) accumFunc, parseState);
@@ -3396,7 +3426,8 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 						  List *repathArgs, Const *accumulatorText,
 						  ParseState *parseState, char *identifiers,
 						  Expr *documentExpr, Oid aggregateFunctionOid,
-						  const bson_value_t *sortSpec)
+						  const bson_value_t *sortSpec,
+						  pgbson *variableSpec)
 {
 	/* First apply the sorted agg (FIRST/LAST) */
 	int nelems = BsonDocumentValueCountKeys(sortSpec);
@@ -3432,10 +3463,23 @@ AddSortedGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 
 	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
 								 true);
-	List *groupArgs = list_make3(aggref, constValue, trueConst);
+	List *groupArgs;
+	Oid expressionGetFunction;
+
+	if (variableSpec != NULL)
+	{
+		groupArgs = list_make4(aggref, constValue, trueConst, MakeBsonConst(
+								   variableSpec));
+		expressionGetFunction = BsonExpressionGetWithLetFunctionOid();
+	}
+	else
+	{
+		groupArgs = list_make3(aggref, constValue, trueConst);
+		expressionGetFunction = BsonExpressionGetFunctionOid();
+	}
 
 	FuncExpr *accumFunc = makeFuncExpr(
-		BsonExpressionGetFunctionOid(), BsonTypeId(), groupArgs, InvalidOid,
+		expressionGetFunction, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	repathArgs = lappend(repathArgs, AddGroupExpression((Expr *) accumulatorText,
@@ -3585,10 +3629,24 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	parseState->p_next_resno = 1;
 	parseState->p_expr_kind = EXPR_KIND_GROUP_BY;
 
-	List *groupArgs = list_make3(origEntry->expr, MakeBsonConst(groupValue),
-								 MakeBoolValueConst(true));
+	List *groupArgs;
+	Oid bsonExpressionGetFunction;
+	if (context->variableSpec != NULL)
+	{
+		bsonExpressionGetFunction = BsonExpressionGetWithLetFunctionOid();
+		groupArgs = list_make4(origEntry->expr, MakeBsonConst(groupValue),
+							   MakeBoolValueConst(true), MakeBsonConst(
+								   context->variableSpec));
+	}
+	else
+	{
+		bsonExpressionGetFunction = BsonExpressionGetFunctionOid();
+		groupArgs = list_make3(origEntry->expr, MakeBsonConst(groupValue),
+							   MakeBoolValueConst(true));
+	}
+
 	FuncExpr *groupFunc = makeFuncExpr(
-		BsonExpressionGetFunctionOid(), BsonTypeId(), groupArgs, InvalidOid,
+		bsonExpressionGetFunction, BsonTypeId(), groupArgs, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	/* Now do the projector / accumulators
@@ -3661,7 +3719,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 												   accumulatorText, parseState,
 												   identifiers,
 												   origEntry->expr,
-												   BsonAvgAggregateFunctionOid());
+												   BsonAvgAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$sum"))
 		{
@@ -3670,7 +3729,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 												   accumulatorText, parseState,
 												   identifiers,
 												   origEntry->expr,
-												   BsonSumAggregateFunctionOid());
+												   BsonSumAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$max"))
 		{
@@ -3679,7 +3739,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 												   accumulatorText, parseState,
 												   identifiers,
 												   origEntry->expr,
-												   BsonMaxAggregateFunctionOid());
+												   BsonMaxAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$min"))
 		{
@@ -3688,7 +3749,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 												   accumulatorText, parseState,
 												   identifiers,
 												   origEntry->expr,
-												   BsonMinAggregateFunctionOid());
+												   BsonMinAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$count"))
 		{
@@ -3700,7 +3762,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 												   accumulatorText, parseState,
 												   identifiers,
 												   origEntry->expr,
-												   BsonSumAggregateFunctionOid());
+												   BsonSumAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$first"))
 		{
@@ -3712,7 +3775,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 													   accumulatorText, parseState,
 													   identifiers,
 													   origEntry->expr,
-													   BsonFirstOnSortedAggregateFunctionOid());
+													   BsonFirstOnSortedAggregateFunctionOid(),
+													   context->variableSpec);
 			}
 			else
 			{
@@ -3723,7 +3787,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 													   identifiers,
 													   origEntry->expr,
 													   BsonFirstAggregateFunctionOid(),
-													   &context->sortSpec);
+													   &context->sortSpec,
+													   context->variableSpec);
 			}
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$last"))
@@ -3736,7 +3801,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 													   accumulatorText, parseState,
 													   identifiers,
 													   origEntry->expr,
-													   BsonLastOnSortedAggregateFunctionOid());
+													   BsonLastOnSortedAggregateFunctionOid(),
+													   context->variableSpec);
 			}
 			else
 			{
@@ -3747,7 +3813,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 													   identifiers,
 													   origEntry->expr,
 													   BsonLastAggregateFunctionOid(),
-													   &context->sortSpec);
+													   &context->sortSpec,
+													   context->variableSpec);
 			}
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$firstN"))
@@ -3812,7 +3879,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 												   accumulatorText, parseState,
 												   identifiers,
 												   origEntry->expr,
-												   BsonAddToSetAggregateFunctionOid());
+												   BsonAddToSetAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$mergeObjects"))
 		{
@@ -3826,7 +3894,8 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 														   accumulatorText, parseState,
 														   identifiers,
 														   origEntry->expr,
-														   BsonMergeObjectsOnSortedFunctionOid());
+														   BsonMergeObjectsOnSortedFunctionOid(),
+														   context->variableSpec);
 				}
 				else
 				{
@@ -3888,7 +3957,7 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 	grpcl->eqop = BsonEqualOperatorId();
 	grpcl->sortop = BsonLessThanOperatorId();
 	grpcl->nulls_first = false; /* OK with or without sortop */
-	grpcl->hashable = false;
+	grpcl->hashable = true;
 	query->groupClause = list_make1(grpcl);
 
 	/* Now that the group + accumulators are done, push to a subquery

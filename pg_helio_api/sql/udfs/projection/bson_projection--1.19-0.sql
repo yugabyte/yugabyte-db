@@ -5,6 +5,13 @@ CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_dollar_project(document _
  IMMUTABLE PARALLEL SAFE STRICT
 AS 'MODULE_PATHNAME', $function$bson_dollar_project$function$;
 
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_project(document helio_core.bson, pathSpec helio_core.bson, variableSpec helio_core.bson)
+ RETURNS helio_core.bson
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bson_dollar_project$function$;
+
+
 CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_dollar_project_find(document __CORE_SCHEMA__.bson, pathSpec __CORE_SCHEMA__.bson, querySpec __CORE_SCHEMA__.bson DEFAULT NULL)
  RETURNS __CORE_SCHEMA__.bson
  LANGUAGE c
@@ -19,6 +26,12 @@ AS 'MODULE_PATHNAME', $function$bson_dollar_project_find$function$;
 
 CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_dollar_add_fields(document __CORE_SCHEMA__.bson, pathSpec __CORE_SCHEMA__.bson)
  RETURNS __CORE_SCHEMA__.bson
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bson_dollar_add_fields$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_add_fields(document helio_core.bson, pathSpec helio_core.bson, letVariableSpec helio_core.bson)
+ RETURNS helio_core.bson
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
 AS 'MODULE_PATHNAME', $function$bson_dollar_add_fields$function$;

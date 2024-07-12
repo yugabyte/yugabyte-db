@@ -175,7 +175,8 @@ GenerateDatabasesQuery(AggregationPipelineBuildContext *context)
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
 	query = HandleSimpleProjectionStage(
-		&projectionValue, query, context, "$addFields", BsonDollarAddFieldsFunctionOid());
+		&projectionValue, query, context, "$addFields", BsonDollarAddFieldsFunctionOid(),
+		NULL);
 
 	return query;
 }
@@ -261,7 +262,8 @@ GenerateCollectionsQuery(AggregationPipelineBuildContext *context)
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
 	query = HandleSimpleProjectionStage(
-		&projectionValue, query, context, "$project", BsonDollarProjectFunctionOid());
+		&projectionValue, query, context, "$project", BsonDollarProjectFunctionOid(),
+		NULL);
 
 	return query;
 }
@@ -345,7 +347,8 @@ GenerateChunksQuery(AggregationPipelineBuildContext *context)
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
 	query = HandleSimpleProjectionStage(
-		&projectionValue, query, context, "$project", BsonDollarProjectFunctionOid());
+		&projectionValue, query, context, "$project", BsonDollarProjectFunctionOid(),
+		NULL);
 
 	return query;
 }
