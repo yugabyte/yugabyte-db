@@ -20,7 +20,7 @@ You can do this in the following ways:
 
 - [Federation](prometheus-federate/)
 
-    Federation allows a Prometheus server to scrape selected time series from another Prometheus server. It is commonly used to either achieve scalable Prometheus monitoring setups or to pull related metrics from one service's Prometheus into another. All Yugabyte Platform aggregated metrics can be scraped into a different Prometheus system using built-in federation.
+    Federation allows a Prometheus server to scrape selected time series from another Prometheus server. It is commonly used to either achieve scalable Prometheus monitoring setups or to pull related metrics from one service's Prometheus into another. All YugabyteDB Anywhere aggregated metrics can be scraped into a different Prometheus system using built-in federation.
 
 - [Scrape directly from universe nodes](prometheus-scrape/)
 

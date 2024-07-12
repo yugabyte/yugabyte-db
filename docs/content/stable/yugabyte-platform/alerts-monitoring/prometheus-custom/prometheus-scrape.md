@@ -84,7 +84,7 @@ To verify the configuration:
 
 1. Navigate to the **Service Discovery** page and search for the name of your universe.
 
-    The service monitor for your YugabyteDB universe should be listed.
+    The service monitor for your YugabyteDB Anywhere universe should be listed.
 
     ![Prometheus Service Discovery](/images/yp/alerts-monitoring/prometheus-service-discovery.png)
 

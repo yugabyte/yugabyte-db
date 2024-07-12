@@ -20,11 +20,11 @@ For example, to scrape all metrics from YugabyteDB Anywhere, the following `scra
 # federate endpoint configuration
   - job_name: 'federate'
     scrape_interval: 15s
-    # honor the labels from Platform's prometheus server if there's a label conflict
+    # honor the labels from YugabyteDB Anywhere's prometheus server if there's a label conflict
     honor_labels: true
     metrics_path: '/federate'
     params:
-        # grab all node_exporter and platform metrics from two Yugabyte Platform nodes
+        # grab all node_exporter and platform metrics from two YugabyteDB Anywhere nodes
         'match[]':
         - '{job="node"}'
         - '{job="platform"}'
