@@ -1437,7 +1437,9 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
 
   for (const auto& db_name : db_names) {
     // On each database, create the tables.
-    auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(db_name, kTestUser));
+    auto conn = ASSERT_RESULT(ConnectToDB(db_name));
+    ASSERT_OK(conn.ExecuteFormat("GRANT ALL ON SCHEMA public TO $0", kTestUser));
+    ASSERT_OK(conn.ExecuteFormat("SET SESSION AUTHORIZATION $0", kTestUser));
     for (const auto& table_name : tableList) {
       auto query = Format(
           "CREATE TABLE IF NOT EXISTS $0 "
@@ -1450,7 +1452,7 @@ TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
           "v26 integer, v27 money, v28 JSONB, v29 TIMESTAMP, v30 bool)",
         table_name);
       LOG(INFO) << db_name << ":" << query;
-      ASSERT_OK(conn_test.Execute(query));
+      ASSERT_OK(conn.Execute(query));
     }
   }
   TestThreadHolder thread_holder;
