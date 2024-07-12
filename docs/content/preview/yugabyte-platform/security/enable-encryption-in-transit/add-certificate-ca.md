@@ -23,13 +23,17 @@ For universes created with an on-premises provider, instead of using self-signed
 
 ## Prerequisites
 
-The certificates must adhere to the following criteria:
+The server and CA certificates must adhere to the following criteria:
 
 - Be stored in a `.crt` file, with both the certificate and the private key being in the PEM format.
 
   If your certificates and keys are stored in the PKCS12 format, you can [convert them to the PEM format](#convert-certificates-and-keys-from-pkcs12-to-pem-format).
 
-- Contain IP addresses of the database nodes or DNS names as the Subject Alternative Names (wildcards are acceptable).
+
+The server certificates must adhere to the following criteria:
+
+- Contain IP addresses of the database nodes in the Common Name or in the Subject Alternative Name. For on-premises universes where nodes are identified usng DNS addresses, the server certificates should include the DNS names of the database nodes in the Common Name or Subject Alternate Name (wildcards are acceptable).
+
 
 ## Add CA-signed certificates
 
@@ -41,9 +45,9 @@ Obtain the keys and the custom CA-signed certificates for each of the on-premise
 
 ### Copy the certificates to each node
 
-For each on-premises provider node, copy the custom CA root certificate, node certificate, and node key to that node's file system.
+For each on-premises provider node, copy the custom CA certificate, node certificate, and node key to that node's file system.
 
-If you are enabling client-to-node TLS, make sure to copy the client certificate and client key to each of the nodes.
+If you are enabling client-to-node TLS, make sure to copy the client-facing server certificate and client-facing server key to each of the nodes.
 
 In addition, ensure the following:
 
@@ -64,7 +68,7 @@ Add a CA-signed certificate to YugabyteDB Anywhere as follows:
 
 1. In the **Certificate Name** field, enter a meaningful name for your certificate.
 
-1. Upload the custom CA root certificate as the root certificate.
+1. Upload the custom CA certificate (including any intermediate certificates in the chain) as the Root CA certificate.
 
     If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
 

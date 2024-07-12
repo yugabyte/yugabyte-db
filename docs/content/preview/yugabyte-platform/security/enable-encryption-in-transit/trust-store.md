@@ -12,14 +12,14 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere uses certificates to validate connections between YugabyteDB Anywhere and other services, including:
+YugabyteDB Anywhere uses certificates to validate connections between YugabyteDB Anywhere and other external services, including:
 
 - [LDAP](../../../administer-yugabyte-platform/ldap-authentication/)
 - [OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
 - [Webhook](../../../alerts-monitoring/set-up-alerts-health-check/)
 - [S3 backup storage](../../../back-up-restore-universes/configure-backup-storage/)
 - [Hashicorp Vault](../../create-kms-config/hashicorp-kms/)
-- [YugabyteDB Anywhere high availability](../../../administer-yugabyte-platform/high-availability/)
+- Other [YugabyteDB Anywhere high availability](../../../administer-yugabyte-platform/high-availability/) replicas.
 
 If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
 

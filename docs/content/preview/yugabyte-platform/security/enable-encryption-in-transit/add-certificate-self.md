@@ -26,7 +26,6 @@ Instead of using YugabyteDB Anywhere-provided certificates, you can use your own
 The certificates must meet the following criteria:
 
 - Be in the `.crt` format and the private key must be in the `.pem` format, with both of these artifacts available for upload.
-- Contain IP addresses of the target database nodes or DNS names as the Subject Alternative Names (wildcards are acceptable).
 
 YugabyteDB Anywhere produces the node (leaf) certificates from the uploaded certificates and copies the certificate chain, leaf certificate, and private key to the nodes in the cluster.
 

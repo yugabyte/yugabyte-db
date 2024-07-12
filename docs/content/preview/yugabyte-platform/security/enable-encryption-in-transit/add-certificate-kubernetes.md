@@ -16,7 +16,7 @@ type: docs
 {{<tabitem href="../add-certificate-self/" text="Self-Signed" >}}
 {{<tabitem href="../add-certificate-ca/" text="CA-Signed" >}}
 {{<tabitem href="../add-certificate-hashicorp/" text="Hashicorp Vault" >}}
-{{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes" active="true" >}}
+{{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes cert-manager" active="true" >}}
 {{</tabs>}}
 
 For a universe created on Kubernetes, YugabyteDB Anywhere allows you to configure an existing running instance of the [cert-manager](https://cert-manager.io/) as a TLS certificate provider for a cluster.
@@ -26,7 +26,7 @@ For a universe created on Kubernetes, YugabyteDB Anywhere allows you to configur
 The following criteria must be met:
 
 - The cert-manager is running in the Kubernetes cluster.
-- A root or intermediate CA (either self-signed or external) is already configured on the cert-manager. The same root certificate file must be prepared for upload to YugabyteDB Anywhere.
+- A root or intermediate CA (either self-signed or external) is already configured on the cert-manager. The same CA certificate file, including any intermediate CAs, must be prepared for upload to YugabyteDB Anywhere. For intermediate certificates, the chained CA certificate can be constructed using a command similar to `cat intermediate-ca.crt root-ca.crt > bundle.crt`.
 - An Issuer or ClusterIssuer Kind is configured on the cert-manager and is ready to issue certificates using the previously-mentioned root or intermediate certificate.
 - Prepare the root certificate in a file (for example, `root.crt`).
 
@@ -44,7 +44,7 @@ Add TLS certificates issued by the cert-manager as follows:
 
 1. In the **Certificate Name** field, enter a meaningful name for your certificate.
 
-1. Click **Upload Root Certificate** and select the root certificate file that you prepared.
+1. Click **Upload Root Certificate** and select the CA certificate file that you prepared.
 
 1. Click **Add** to make the certificate available.
 

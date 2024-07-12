@@ -22,7 +22,7 @@ yb-environment-universe_name
 
 where *environment* is the environment type (either `dev`, `stg`, `demo`, or `prod`) that was used during the tenant registration (admin user creation), and *universe_name* is the provided universe name.
 
-YugabyteDB Anywhere generates the root certificate, root private key, and node-level certificates (assuming node-to-node encryption is enabled), and then provisions those artifacts to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node:
+YugabyteDB Anywhere generates the root CA certificate, root private key, and node-level certificates (assuming node-to-node or client-to-node encryption is enabled), and then provisions those artifacts to the database nodes any time nodes are created or added to the cluster. The following three files are copied to each node:
 
 1. The root certificate (`ca.cert`).
 1. The node certificate (`node.ip_address.crt`).

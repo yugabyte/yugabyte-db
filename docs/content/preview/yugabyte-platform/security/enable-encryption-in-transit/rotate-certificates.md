@@ -18,7 +18,6 @@ Before rotating certificates, ensure that you have added the certificates to Yug
 
 ## Rotating certificates
 
-Rotating certificates may require a restart of the YB-Master and YB-TServer processes and in some circumstances can result in downtime.
 
 - Client-to-node certificates
 
@@ -48,9 +47,9 @@ To modify encryption in transit settings and rotate certificates for a universe,
 
     ![Rotate certificates](/images/yp/encryption-in-transit/rotate-cert.png)
 
-1. To rotate the root certificate, on the **Certificate Authority** tab, select the new root certificate(s).
+1. To rotate the CA certificate, on the **Certificate Authority** tab, select the new CA certificate(s).
 
-    Delete the root certificate to create a new [self-signed certificate](../auto-certificate/).
+    If you wish to have YBA generate a new self-signed CA certificate [automatically](../auto-certificate/), delete the root certificate field.
 
 1. To rotate the server certificates, on the **Server Certificate** tab, select the **Rotate Node-to-Node Server Certificate** and **Rotate Client-to-Node Server Certificate** options as appropriate.
 
