@@ -16,7 +16,7 @@ type: docs
 {{<tabitem href="../add-certificate-self/" text="Self-Signed" >}}
 {{<tabitem href="../add-certificate-ca/" text="CA-Signed" >}}
 {{<tabitem href="../add-certificate-hashicorp/" text="Hashicorp Vault" active="true" >}}
-{{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes" >}}
+{{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes cert-manager" >}}
 {{</tabs>}}
 
 YugabyteDB Anywhere allows you to add an encryption in transit configuration using HashiCorp Vault with a public key infrastructure (PKI) secret engine. This configuration can be used to enable TLS for different clusters and YugabyteDB instances. You can apply this configuration to node-to-node encryption, client-to-node encryption, or both.

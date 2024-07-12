@@ -16,7 +16,7 @@ type: docs
 {{<tabitem href="../add-certificate-self/" text="Self-Signed" active="true" >}}
 {{<tabitem href="../add-certificate-ca/" text="CA-Signed" >}}
 {{<tabitem href="../add-certificate-hashicorp/" text="Hashicorp Vault" >}}
-{{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes" >}}
+{{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes cert-manager" >}}
 {{</tabs>}}
 
 Instead of using YugabyteDB Anywhere-provided certificates, you can use your own self-signed certificates that you upload to YugabyteDB Anywhere.
@@ -47,40 +47,6 @@ openssl pkcs12 -in cert-archive.pfx -out key.pem -nocerts -nodes
 
 If the key is protected by a passphrase in the PKCS12 archive, you are prompted for the passphrase.
 
-### Verify certificate chain
-
-Perform the following steps to verify your certificates:
-
-1. Execute the following verify command which checks the database node certificate (node.crt) against the root CA certificate (ca.crt):
-
-    ```sh
-    openssl verify ca.crt node.crt
-    ```
-
-1. Verify that the node certificate (`node.crt`) and the node private key (`node.key`) match. See [How do I verify that a private key matches a certificate?](https://www.ssl247.com/knowledge-base/detail/how-do-i-verify-that-a-private-key-matches-a-certificate-openssl-1527076112539/ka03l0000015hscaay/)
-
-1. Verify that the node certificate and Root CA certificate expiration is at least 3 months by checking the validity field in the output of the following commands:
-
-    ```sh
-    openssl x509 -in node.crt -text -noout
-    ```
-
-    ```sh
-    openssl x509 -in ca.crt -text -noout
-    ```
-
-1. Verify that the node certificate Common Name (CN) or Subject Alternate Name  (SAN) contains the IP address or DNS name of each on-prem node on which the nodes are deployed.
-
-    {{< note >}}
-Each entry you provide for the CN or SAN must match the on-prem node as entered in the provider configuration. For example, if the node address is entered as a DNS address in the on-prem provider configuration, you must use the same DNS entry in the CN or SAN, not the resolved IP address.
-    {{< /note >}}
-
-    If you face any issue with the above verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
-
-{{< note >}}
-The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
-{{< /note >}}
-
 ## Add self-signed certificates
 
 To add self-signed certificates to YugabyteDB Anywhere:
@@ -102,3 +68,32 @@ To add self-signed certificates to YugabyteDB Anywhere:
 1. In the **Expiration Date** field, specify the expiration date of the root certificate. To find this information, execute the `openssl x509 -in <root-crt-file-path> -text -noout` command and note the **Validity Not After** date.
 
 1. Click **Add** to make the certificate available.
+
+## Validate certificates
+
+When configuring and using certificates, SSL issues may occasionally arise. You can validate your certificates and keys as follows:
+
+- Verify that the CA CRT and CA private key match by executing the following commands:
+
+    ```shell
+    openssl rsa -noout -modulus -in ca.key | openssl md5
+    openssl x509 -noout -modulus -in ca.crt | openssl md5
+
+    \# outputs should match
+    ```
+
+- Verify that the CA CRT is actually a certificate authority by executing the following command:
+
+    ```shell
+    openssl x509 -text -noout -in ca.crt
+
+    \# Look for fields
+
+    X509v3 Basic Constraints:
+
+      CA:TRUE
+    ```
+
+- Verify that certificates and keys are in PEM format (as opposed to the DER or other format). If these artifacts are not in the PEM format and you require assistance with converting them or identifying the format, consult [Converting certificates](https://support.globalsign.com/ssl/ssl-certificates-installation/converting-certificates-openssl).
+
+- Ensure that the private key does not have a passphrase associated with it. For information on how to identify this condition, see [Decrypt an encrypted SSL RSA private key](https://techjourney.net/how-to-decrypt-an-enrypted-ssl-rsa-private-key-pem-key/).
