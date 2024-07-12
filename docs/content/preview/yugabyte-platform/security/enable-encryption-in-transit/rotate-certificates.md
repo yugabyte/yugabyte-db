@@ -16,28 +16,25 @@ You can rotate certificates for universes configured with the same type of certi
 
 Before rotating certificates, ensure that you have added the certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
 
-## Rotating certificates
+**Client-to-node certificates**
 
+Regardless of whether the client-to-node certificates are expired or not expired, you can always trigger a rolling upgrade to rotate the certificates.
 
-- Client-to-node certificates
+- If the universe was created before v2.16.6, then the rotation requires a restart, which can be done in a rolling manner with no downtime.
+- If the universe was created after v2.16.6, then the rotation can be done without a restart and no downtime.
 
-  Regardless of whether the client-to-node certificates are expired or not expired, you can always trigger a rolling upgrade to rotate the certificates.
+**Node-to-node certificates**
 
-  - If the universe was created before v2.16.6, then the rotation requires a restart, which can be done in a rolling manner with no downtime.
-  - If the universe was created after v2.16.6, then the rotation can be done without a restart and no downtime.
+If the certificate has expired, the rotation requires a simultaneous restart of all nodes, resulting in some downtime.
 
-- Node-to-node certificates
+If the certificate has not expired, the rotation can be done using a rolling upgrade.
 
-  If the certificate has expired, the rotation requires a simultaneous restart of all nodes, resulting in some downtime.
-
-  If the certificate has not expired, the rotation can be done using a rolling upgrade.
-
-  - If the universe was created before v2.16.6, then the rotation requires a restart, which can be done in a rolling manner with no downtime.
-  - If the universe is created after v2.16.6, then the rotation can be done without a restart and no downtime.
+- If the universe was created before v2.16.6, then the rotation requires a restart, which can be done in a rolling manner with no downtime.
+- If the universe is created after v2.16.6, then the rotation can be done without a restart and no downtime.
 
 You can always opt to not perform rolling updates to update all nodes at the same time, but this will result in downtime.
 
-### Rotate certificates
+## Rotate certificates
 
 To modify encryption in transit settings and rotate certificates for a universe, do the following:
 
