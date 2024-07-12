@@ -16,6 +16,7 @@ import clsx from "clsx";
 import { Prereqs } from "./Prereqs";
 import { StepDetails } from "./StepDetails";
 import { StepCard } from "./StepCard";
+import { SchemaAnalysis } from "./SchemaAnalysis";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -26,27 +27,6 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(1),
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
-  },
-  stat: {
-    display: "flex",
-    gap: theme.spacing(6),
-    paddingRight: theme.spacing(6),
-    marginRight: theme.spacing(2),
-    borderRight: `1px solid ${theme.palette.grey[300]}`,
-  },
-  label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
-    textTransform: "uppercase",
-    textAlign: "left",
-  },
-  statLabel: {
-    marginBottom: theme.spacing(0.75),
-  },
-  value: {
-    color: theme.palette.grey[700],
-    paddingTop: theme.spacing(0.57),
-    textAlign: "left",
   },
 }));
 
@@ -153,7 +133,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                 ) : null
               }
             </StepCard>
-            <StepCard title={t("clusterDetail.voyager.migrateSchema.schemaAnalysis")} showTooltip>
+            <StepCard title={t("clusterDetail.voyager.migrateSchema.schemaAnalysis")} isDone>
               {(isDone) =>
                 !isDone ? (
                   <>
@@ -165,46 +145,10 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                     />
                   </>
                 ) : (
-                  <Grid container>
-                    <div>
-                      <div className={classes.stat}>
-                        <div>
-                          <Typography
-                            variant="body1"
-                            className={clsx(classes.label, classes.statLabel)}
-                          >
-                            {t("clusterDetail.voyager.migrateSchema.automaticDDLImport")}
-                          </Typography>
-                          <Typography variant="h4" className={classes.value}>
-                            113
-                          </Typography>
-                        </div>
+                  <div>
+                    <SchemaAnalysis />
 
-                        <div>
-                          <Typography
-                            variant="body1"
-                            className={clsx(classes.label, classes.statLabel)}
-                          >
-                            {t("clusterDetail.voyager.migrateSchema.manualRefactoring")}
-                          </Typography>
-                          <Typography variant="h4" className={classes.value}>
-                            32
-                          </Typography>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <Typography
-                        variant="body1"
-                        className={clsx(classes.label, classes.statLabel)}
-                      >
-                        {t("clusterDetail.voyager.migrateSchema.totalAnalyzed")}
-                      </Typography>
-                      <Typography variant="h4" className={classes.value}>
-                        {113 + 32}
-                      </Typography>
-                    </div>
-                  </Grid>
+                  </div>
                 )
               }
             </StepCard>
