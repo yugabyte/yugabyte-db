@@ -136,6 +136,8 @@ public class AppInit {
           fileDataService.fixUpPaths(storagePath);
           releaseManager.fixFilePaths();
         }
+        // yb.fixPaths has a specific, limited use case. This should run always.
+        releasesUtils.releaseUploadPathFixup();
 
         boolean ywFileDataSynced =
             Boolean.parseBoolean(
