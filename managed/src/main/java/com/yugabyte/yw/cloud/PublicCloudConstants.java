@@ -89,6 +89,7 @@ public class PublicCloudConstants {
     Persistent(Common.CloudType.gcp),
     StandardSSD_LRS(Common.CloudType.azu),
     Premium_LRS(Common.CloudType.azu),
+    PremiumV2_LRS(Common.CloudType.azu, new Pair<>(3000, 80_000), new Pair<>(1, 1200)),
     UltraSSD_LRS(Common.CloudType.azu, new Pair<>(100, 160_000), new Pair<>(1, 3814)),
     Local(Common.CloudType.local);
 

@@ -4766,7 +4766,7 @@
         },
         "storageType" : {
           "description" : "Storage type used for this instance",
-          "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+          "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
           "type" : "string"
         },
         "throughput" : {
@@ -28247,7 +28247,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -28259,7 +28259,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -28283,7 +28283,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -28295,7 +28295,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -28319,7 +28319,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -28331,7 +28331,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
