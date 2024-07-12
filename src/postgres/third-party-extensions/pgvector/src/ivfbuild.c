@@ -379,7 +379,7 @@ InitBuildState(IvfflatBuildState * buildstate, Relation heap, Relation index, In
 	/* Reuse for each tuple */
 	buildstate->normvec = InitVector(buildstate->dimensions);
 
-	buildstate->tmpCtx = AllocSetContextCreate(CurrentMemoryContext,
+	buildstate->tmpCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 											   "Ivfflat build temporary context",
 											   ALLOCSET_DEFAULT_SIZES);
 

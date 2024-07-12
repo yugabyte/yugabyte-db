@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -12,31 +12,22 @@
 //
 package org.yb.pgsql;
 
-import java.util.Map;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 /**
- * Runs the pg_regress authorization-related tests on YB code.
+ * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value = YBTestRunner.class)
-public class TestPgRegressAuthorization extends BasePgRegressTestSequentialYbrowid {
+@RunWith(value=YBTestRunner.class)
+public class TestPgRegressPgTypesString extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_enable_reindex", "true");
-    return flagMap;
-}
-
   @Test
-  public void testPgRegressAuthorization() throws Exception {
-    runPgRegressTest("yb_pg_auth_serial_schedule");
+  public void schedule() throws Exception {
+    runPgRegressTest("yb_pg_types_string_schedule");
   }
 }

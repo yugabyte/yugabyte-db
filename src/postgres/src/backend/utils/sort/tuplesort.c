@@ -1376,7 +1376,7 @@ tuplesort_begin_index_gist(Relation heapRel,
 	{
 		SortSupport sortKey = state->sortKeys + i;
 
-		sortKey->ssup_cxt = CurrentMemoryContext;
+		sortKey->ssup_cxt = GetCurrentMemoryContext();
 		sortKey->ssup_collation = indexRel->rd_indcollation[i];
 		sortKey->ssup_nulls_first = false;
 		sortKey->ssup_attno = i + 1;

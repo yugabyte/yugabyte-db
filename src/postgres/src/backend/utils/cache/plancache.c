@@ -1747,7 +1747,7 @@ GetCachedExpression(Node *expr)
 	 * avoid leaking a long-lived context if we fail while copying data, we
 	 * initially make the context under the caller's context.
 	 */
-	cexpr_context = AllocSetContextCreate(CurrentMemoryContext,
+	cexpr_context = AllocSetContextCreate(GetCurrentMemoryContext(),
 										  "CachedExpression",
 										  ALLOCSET_SMALL_SIZES);
 

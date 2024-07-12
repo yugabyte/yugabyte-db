@@ -640,7 +640,7 @@ PgCronLauncherMain(Datum arg)
 	}
 
 
-	CronLoopContext = AllocSetContextCreate(CurrentMemoryContext,
+	CronLoopContext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											  "pg_cron loop context",
 											  ALLOCSET_DEFAULT_MINSIZE,
 											  ALLOCSET_DEFAULT_INITSIZE,

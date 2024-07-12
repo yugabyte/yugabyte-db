@@ -271,7 +271,7 @@ pgstat_get_xact_stack_level(int nest_level)
  * respective WAL records, to ensure stats are dropped in case of a crash / on
  * standbys.
  *
- * The list of items is allocated in CurrentMemoryContext and must be freed by
+ * The list of items is allocated in GetCurrentMemoryContext() and must be freed by
  * the caller (directly or via memory context reset).
  */
 int

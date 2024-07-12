@@ -9,10 +9,12 @@ step s2_insert_2_2: INSERT INTO t VALUES (2, 2);
 step s1_commit: COMMIT;
 step s2_commit: COMMIT;
 step s1_select: SELECT * FROM t;
-key            v              
+key|v
+---+-
+  1|1
+  2|2
+(2 rows)
 
-1              1              
-2              2              
 
 starting permutation: s1_insert_1_1 s1_savepoint_a s1_insert_2_1 s1_rollback_to_a s1_sleep s2_insert_2_2 s1_commit s2_commit s1_select
 step s1_insert_1_1: INSERT INTO t VALUES (1, 1);
@@ -20,14 +22,17 @@ step s1_savepoint_a: SAVEPOINT a;
 step s1_insert_2_1: INSERT INTO t VALUES (2, 1);
 step s1_rollback_to_a: ROLLBACK TO a;
 step s1_sleep: SELECT pg_sleep(2);
-pg_sleep       
+pg_sleep
+--------
 
-               
+(1 row)
+
 step s2_insert_2_2: INSERT INTO t VALUES (2, 2);
 step s1_commit: COMMIT;
 step s2_commit: COMMIT;
 step s1_select: SELECT * FROM t;
-key            v              
-
-1              1              
-2              2              
+key|v
+---+-
+  1|1
+  2|2
+(2 rows)

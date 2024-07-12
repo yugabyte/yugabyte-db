@@ -193,7 +193,7 @@ CREATE FUNCTION equipment_named_ambiguous_2b(hobby text)
 -- joe and sally play basketball, and
 -- everyone else does nothing.
 --
-SELECT p.name, name(p.hobbies) FROM ONLY person p ORDER BY 2 DESC, 1; -- YB: add ordering
+SELECT p.name, name(p.hobbies) FROM ONLY person p;
 
 /* YB: uncomment when person's descendant tables such as stud_emp are supported
 --
@@ -249,7 +249,7 @@ SELECT name(equipment_named_ambiguous_1c(hobby_construct_named(text 'skywalking'
 
 SELECT name(equipment_named_ambiguous_2a(text 'skywalking'));
 
-SELECT name(equipment_named_ambiguous_2b(text 'skywalking')) ORDER BY substr(name(equipment_named_ambiguous_2b(text 'skywalking')), 2, 1); -- YB: add ordering
+SELECT name(equipment_named_ambiguous_2b(text 'skywalking'));
 
 /* YB: output sometimes gives joe, sometimes sally
 SELECT hobbies_by_name('basketball');

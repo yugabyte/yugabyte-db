@@ -3131,7 +3131,7 @@ index_build(Relation heapRelation,
 	if (IsYugaByteEnabled())
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
 									 YB_PROGRESS_CREATEIDX_BACKFILLING);
-
+	else
 	/* Set up initial progress report status */
 	{
 		const int	progress_index[] = {

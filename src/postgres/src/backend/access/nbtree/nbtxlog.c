@@ -1071,7 +1071,7 @@ btree_redo(XLogReaderState *record)
 void
 btree_xlog_startup(void)
 {
-	opCtx = AllocSetContextCreate(CurrentMemoryContext,
+	opCtx = AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "Btree recovery temporary context",
 								  ALLOCSET_DEFAULT_SIZES);
 }

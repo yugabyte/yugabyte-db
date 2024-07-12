@@ -31,7 +31,7 @@ public class TestPgRegressWaitQueues extends BasePgRegressTest {
      * Setting yb_max_query_layer_retries allows to reliably test wait queue semantics in
      * isolation by avoiding query layer retries of serialization errors.
      */
-    flagMap.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(0));
+    appendToYsqlPgConf(flagMap, maxQueryLayerRetriesConf(0));
     return flagMap;
   }
 

@@ -1,4 +1,4 @@
-/* contrib/pg_stat_statements/pg_stat_statements--1.6--1.6-yb-1.0.sql */
+/* contrib/pg_stat_statements/pg_stat_statements--1.10--1.10-yb-1.0.sql */
 
 -- complain if script is sourced in psql, rather than via ALTER EXTENSION
 \echo Use "ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-1.0'" to load this file. \quit
@@ -67,3 +67,5 @@ LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 -- Register a view on the function for ease of use.
 CREATE OR REPLACE VIEW pg_stat_statements AS
   SELECT * FROM pg_stat_statements(true);
+
+GRANT SELECT ON pg_stat_statements TO PUBLIC;

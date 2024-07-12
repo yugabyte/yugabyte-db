@@ -247,9 +247,6 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 		if (tle->resjunk)
 			continue;			/* ignore junk tlist items */
 
-		if (IsYsqlUpgrade && tle->resno == ObjectIdAttributeNumber)
-			continue;			/* ignore oid system column used in YSQL upgrade */
-
 		if (attno >= resultDesc->natts)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
@@ -5004,7 +5001,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 		hash_ctl.keysize = sizeof(Oid);
 		hash_ctl.entrysize = sizeof(MTTargetRelLookup);
-		hash_ctl.hcxt = CurrentMemoryContext;
+		hash_ctl.hcxt = GetCurrentMemoryContext();
 		mtstate->mt_resultOidHash =
 			hash_create("ModifyTable target hash",
 						nrels, &hash_ctl,

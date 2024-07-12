@@ -690,7 +690,7 @@ statext_mcv_serialize(MCVList *mcvlist, VacAttrStats **stats)
 			continue;
 
 		/* sort and deduplicate the data */
-		ssup[dim].ssup_cxt = CurrentMemoryContext;
+		ssup[dim].ssup_cxt = GetCurrentMemoryContext();
 		ssup[dim].ssup_collation = stats[dim]->attrcollid;
 		ssup[dim].ssup_nulls_first = false;
 
@@ -1412,7 +1412,7 @@ pg_stats_ext_mcvlist_items(PG_FUNCTION_ARGS)
 											BoolGetDatum(item->isnull[i]),
 											false,
 											BOOLOID,
-											CurrentMemoryContext);
+											GetCurrentMemoryContext());
 
 			if (!item->isnull[i])
 			{
@@ -1433,19 +1433,19 @@ pg_stats_ext_mcvlist_items(PG_FUNCTION_ARGS)
 												 PointerGetDatum(txt),
 												 false,
 												 TEXTOID,
-												 CurrentMemoryContext);
+												 GetCurrentMemoryContext());
 			}
 			else
 				astate_values = accumArrayResult(astate_values,
 												 (Datum) 0,
 												 true,
 												 TEXTOID,
-												 CurrentMemoryContext);
+												 GetCurrentMemoryContext());
 		}
 
 		values[0] = Int32GetDatum(funcctx->call_cntr);
-		values[1] = PointerGetDatum(makeArrayResult(astate_values, CurrentMemoryContext));
-		values[2] = PointerGetDatum(makeArrayResult(astate_nulls, CurrentMemoryContext));
+		values[1] = PointerGetDatum(makeArrayResult(astate_values, GetCurrentMemoryContext()));
+		values[2] = PointerGetDatum(makeArrayResult(astate_nulls, GetCurrentMemoryContext()));
 		values[3] = Float8GetDatum(item->frequency);
 		values[4] = Float8GetDatum(item->base_frequency);
 

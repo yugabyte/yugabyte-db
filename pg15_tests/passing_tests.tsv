@@ -1,3 +1,4 @@
+JAVA	org.yb.cdc.ysql.TestArrayTypes
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithoutCachedMetadata
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionBeforeAlterOnCurrentResource
@@ -16,11 +17,12 @@ JAVA	org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 JAVA	org.yb.pgsql.TestPgConfiguration
 JAVA	org.yb.pgsql.TestPgConnection
 JAVA	org.yb.pgsql.TestPgConnection#testConnectionKillsAndRestarts
-JAVA	org.yb.pgsql.TestPgCostModelSeekNextEstimation#testSeekNextEstimationBitmapScan
+JAVA	org.yb.pgsql.TestPgCostModelSeekNextEstimation
 JAVA	org.yb.pgsql.TestPgDepend#testForSuperfluousEntries
 JAVA	org.yb.pgsql.TestPgDepend#testSequenceDeletionWithCascade
 JAVA	org.yb.pgsql.TestPgDepend#testTableWithSequenceDeletion
 JAVA	org.yb.pgsql.TestPgDepend#testViewDeletionWithCascade
+JAVA	org.yb.pgsql.TestPgExplainAnalyze
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeColocated
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeScans#testFetchLimitCosting
@@ -38,7 +40,7 @@ JAVA	org.yb.pgsql.TestPgPushdown#in_primaryKeySimple
 JAVA	org.yb.pgsql.TestPgRegressAggregates
 JAVA	org.yb.pgsql.TestPgRegressAnalyze
 JAVA	org.yb.pgsql.TestPgRegressArrays
-JAVA	org.yb.pgsql.TestPgRegressAuthorization
+JAVA	org.yb.pgsql.TestPgRegressAuth
 JAVA	org.yb.pgsql.TestPgRegressBackfillIndex
 JAVA	org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
 JAVA	org.yb.pgsql.TestPgRegressColocation
@@ -60,9 +62,13 @@ JAVA	org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
 JAVA	org.yb.pgsql.TestPgRegressDistinctPushdown
 JAVA	org.yb.pgsql.TestPgRegressDml
 JAVA	org.yb.pgsql.TestPgRegressFeatureDatabase
+JAVA	org.yb.pgsql.TestPgRegressForeignData
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
 JAVA	org.yb.pgsql.TestPgRegressHashIndex
+JAVA	org.yb.pgsql.TestPgRegressIsolation#testPgRegress
+JAVA	org.yb.pgsql.TestPgRegressIsolation#testPgRegressWithDelayedTxnApply
+JAVA	org.yb.pgsql.TestPgRegressIsolationWithoutWaitQueues
 JAVA	org.yb.pgsql.TestPgRegressJson
 JAVA	org.yb.pgsql.TestPgRegressLegacyColocation
 JAVA	org.yb.pgsql.TestPgRegressMatview
@@ -70,6 +76,8 @@ JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscIndependent
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
+JAVA	org.yb.pgsql.TestPgRegressPgAuth
+JAVA	org.yb.pgsql.TestPgRegressPgForeignData
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
 JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
@@ -81,7 +89,9 @@ JAVA	org.yb.pgsql.TestPgRegressPushdown#testPgRegressPushdown
 JAVA	org.yb.pgsql.TestPgRegressPushdownKey
 JAVA	org.yb.pgsql.TestPgRegressReplicaIdentity
 JAVA	org.yb.pgsql.TestPgRegressReplicationSlot#testPgRegressReplicationSlot
+JAVA	org.yb.pgsql.TestPgRegressTAQO
 JAVA	org.yb.pgsql.TestPgRegressTable
+JAVA	org.yb.pgsql.TestPgRegressTablegroup
 JAVA	org.yb.pgsql.TestPgRegressTabletSplit
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsHypopg
 JAVA	org.yb.pgsql.TestPgRegressThirdPartyExtensionsPgCron
@@ -92,7 +102,9 @@ JAVA	org.yb.pgsql.TestPgRegressTransactions
 JAVA	org.yb.pgsql.TestPgRegressTrigger
 JAVA	org.yb.pgsql.TestPgRegressTypesGeo
 JAVA	org.yb.pgsql.TestPgRegressTypesMisc
+JAVA	org.yb.pgsql.TestPgRegressTypesString
 JAVA	org.yb.pgsql.TestPgRegressTypesUDT
+JAVA	org.yb.pgsql.TestPgRegressWaitQueues
 JAVA	org.yb.pgsql.TestPgRegressWindow
 JAVA	org.yb.pgsql.TestPgRegressYbExtensionsYbXclusterDdlReplication
 JAVA	org.yb.pgsql.TestPgRegressYbFetchLimits
@@ -102,6 +114,7 @@ JAVA	org.yb.pgsql.TestPgSelect#testAggregatePushdowns
 JAVA	org.yb.pgsql.TestPgSelect#testNullPushdown
 JAVA	org.yb.pgsql.TestPgSelect#testReverseScanMultiRangeCol
 JAVA	org.yb.pgsql.TestPgSequences
+JAVA	org.yb.pgsql.TestPgSortNumeric
 JAVA	org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
 JAVA	org.yb.pgsql.TestPgTransparentRestarts#testUpdateLong
 JAVA	org.yb.pgsql.TestPgTruncate
@@ -150,7 +163,13 @@ JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testRejectLogin[1]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testTrustLogin[1]
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpAllWithYbMetadata
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpAllWithoutYbMetadata
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpColocatedDB
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpLegacyColocatedDB
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpWithoutYbMetadata
 JAVA	org.yb.pgsql.TestYsqlMetrics
+JAVA	org.yb.pgsql.TestYsqlPartitionedBackup
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsCreatesThemEverywhere
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsAfterFailure
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsByNonSuperuser
@@ -449,6 +468,12 @@ pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.InsertsWhileCreatingIndexDi
 pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.InsertsWhileCreatingIndexEnableWait
 pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.Large
 pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.NoAbortTxn
+pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.PgStatProgressCreateIndexCheckIndexTypes
+pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.PgStatProgressCreateIndexCheckVolatility
+pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.PgStatProgressCreateIndexDifferentDatabase
+pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.PgStatProgressCreateIndexMultiNode
+pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.PgStatProgressCreateIndexPartitioned
+pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.PgStatProgressCreateIndexPermissions
 pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.RetainDeleteMarkers
 pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.RetainDeleteMarkersRecovery
 pgwrapper_pg_index_backfill-test	PgIndexBackfillTest.RetainDeleteMarkersRecoveryViaSeveralRequests

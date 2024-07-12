@@ -1016,7 +1016,7 @@ ExecAppendAsyncEventWait(AppendState *node)
 	/* We should never be called when there are no valid async subplans. */
 	Assert(node->as_nasyncremain > 0);
 
-	node->as_eventset = CreateWaitEventSet(CurrentMemoryContext, nevents);
+	node->as_eventset = CreateWaitEventSet(GetCurrentMemoryContext(), nevents);
 	AddWaitEventToSet(node->as_eventset, WL_EXIT_ON_PM_DEATH, PGINVALID_SOCKET,
 					  NULL, NULL);
 

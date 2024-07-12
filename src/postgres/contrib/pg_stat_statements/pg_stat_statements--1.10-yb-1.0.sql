@@ -386,3 +386,5 @@ LANGUAGE C STRICT VOLATILE PARALLEL SAFE;
 -- Register a view on the function for ease of use.
 CREATE OR REPLACE VIEW pg_stat_statements AS
   SELECT * FROM pg_stat_statements(true);
+
+GRANT SELECT ON pg_stat_statements TO PUBLIC;

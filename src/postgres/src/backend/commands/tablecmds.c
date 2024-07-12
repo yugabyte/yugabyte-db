@@ -12388,11 +12388,11 @@ validateForeignKeyConstraint(char *conname,
 
 	/* YB note: perTupCxt is used as per-batch (and not per-tuple) context */
 	if (IsYBRelation(rel))
-		perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+		perTupCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 										  "validateForeignKeyConstraint",
 										  ALLOCSET_DEFAULT_SIZES);
 	else
-		perTupCxt = AllocSetContextCreate(CurrentMemoryContext,
+		perTupCxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 										  "validateForeignKeyConstraint",
 										  ALLOCSET_SMALL_SIZES);
 

@@ -1,3 +1,7 @@
+unused step name: select_for_key_share
+unused step name: select_for_no_key_update
+unused step name: select_for_share
+unused step name: select_for_update
 Parsed test spec with 2 sessions
 
 starting permutation: insert_new_satisfying_row_k_5 delete_satisfying_row update_true_to_false update_true_to_true update_false_to_true pk_update update c2 select c1
@@ -11,11 +15,13 @@ step update: update test set v=100 where v>=5; <waiting ...>
 step c2: commit;
 step update: <... completed>
 step select: select * from test;
-k              v
+ k|  v
+--+---
+ 5|100
+ 1|  1
+10|100
+ 4|100
+ 2|100
+(5 rows)
 
-5              100
-1              1
-10             100
-4              100
-2              100
 step c1: commit;

@@ -457,7 +457,7 @@ PLy_spi_execute_fetch_result(SPITupleTable *tuptable, uint64 rows, int status)
 PyObject *
 PLy_commit(PyObject *self, PyObject *args)
 {
-	MemoryContext oldcontext = CurrentMemoryContext;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 
 	PG_TRY();
@@ -504,7 +504,7 @@ PLy_commit(PyObject *self, PyObject *args)
 PyObject *
 PLy_rollback(PyObject *self, PyObject *args)
 {
-	MemoryContext oldcontext = CurrentMemoryContext;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
 
 	PG_TRY();

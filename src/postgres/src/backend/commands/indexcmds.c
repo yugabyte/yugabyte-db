@@ -727,10 +727,11 @@ DefineIndex(Oid relationId,
 		{
 			/*
 			 * For temp tables, we set tuples_total and tuples_done to an
-			 * invalid value (-1) because we do not compute them.
+			 * invalid value (YB_PROGRESS_CREATEIDX_INVALID) because we do
+			 * not compute them.
 			 */
-			values[1] = -1;
-			values[2] = -1;
+			values[1] = YB_PROGRESS_CREATEIDX_INVALID;
+			values[2] = YB_PROGRESS_CREATEIDX_INVALID;
 		}
 		pgstat_progress_update_multi_param(3, cols, values);
 
@@ -774,9 +775,10 @@ DefineIndex(Oid relationId,
 		/*
 		 * For concurrent to be true, temporary tables should already be ruled
 		 * out by the PG-owned code far above, and by also ruling out system
-		 * tables, what's left should be YB relations.
+		 * tables, what's left should be YB relations and foreign relations.
 		 */
-		Assert(!concurrent || IsYBRelation(rel));
+		Assert(!concurrent || IsYBRelation(rel) ||
+			   rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 		if (concurrent && (stmt->primary || IsBootstrapProcessingMode()))
 		{
 			Assert(stmt->concurrent != YB_CONCURRENCY_EXPLICIT_ENABLED);

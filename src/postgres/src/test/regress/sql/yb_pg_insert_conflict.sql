@@ -340,17 +340,19 @@ insert into cities values ('Las Vegas', 2.583E+5, 2174) on conflict do nothing;
 -- Wrong "Sacramento", so do nothing:
 -- insert into capitals values ('Sacramento', 50, 2267, 'NE') on conflict (name) do nothing;
 -- select * from capitals;
+with ybtmp as (delete from cities where name = 'Las Vegas' returning *)
+    insert into cities select * from ybtmp; -- YB: imitate PG ctid reallocation for the following update
 insert into cities values ('Las Vegas', 5.83E+5, 2001) on conflict (name) do update set population = excluded.population, altitude = excluded.altitude;
-select tableoid::regclass, * from cities order by altitude; -- YB: add ordering
+select tableoid::regclass, * from cities;
 -- insert into capitals values ('Las Vegas', 5.83E+5, 2222, 'NV') on conflict (name) do update set population = excluded.population;
 -- Capitals will contain new capital, Las Vegas:
 -- select * from capitals;
 -- Cities contains two instances of "Las Vegas", since unique constraints don't
 -- work across inheritance:
-select tableoid::regclass, * from cities order by altitude; -- YB: add ordering
+select tableoid::regclass, * from cities;
 -- This only affects "cities" version of "Las Vegas":
 insert into cities values ('Las Vegas', 5.86E+5, 2223) on conflict (name) do update set population = excluded.population, altitude = excluded.altitude;
-select tableoid::regclass, * from cities order by altitude; -- YB: add ordering
+select tableoid::regclass, * from cities;
 
 -- clean up
 drop table capitals; -- YB: errors because of above failure to create capitals table

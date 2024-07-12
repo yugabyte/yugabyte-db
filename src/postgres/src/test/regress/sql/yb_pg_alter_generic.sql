@@ -335,6 +335,7 @@ ALTER OPERATOR FAMILY alt_opf5 USING btree ADD OPERATOR 1 < (int4, int2), FUNCTI
 RESET ROLE;
 DROP OPERATOR FAMILY alt_opf5 USING btree;
 ROLLBACK;
+DROP OPERATOR FAMILY alt_opf5 USING btree; -- YB: workaround for lack of transactional DDL
 
 -- Should fail. Need rights to namespace for ALTER OPERATOR FAMILY .. ADD / DROP
 BEGIN TRANSACTION;
@@ -381,6 +382,8 @@ CREATE FUNCTION fn_opf12  (int4, int2) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' 
 ALTER OPERATOR FAMILY alt_opf12 USING btree ADD FUNCTION 1 fn_opf12(int4, int2);
 DROP OPERATOR FAMILY alt_opf12 USING btree;
 ROLLBACK;
+DROP FUNCTION fn_opf12 (int4, int2); -- YB: workaround for lack of transactional DDL
+DROP OPERATOR FAMILY alt_opf12 USING btree; -- YB: workaround for lack of transactional DDL
 
 -- Should fail. hash comparison functions should return INTEGER in ALTER OPERATOR FAMILY ... ADD FUNCTION
 BEGIN TRANSACTION;
@@ -389,6 +392,8 @@ CREATE FUNCTION fn_opf13  (int4) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' LANGUA
 ALTER OPERATOR FAMILY alt_opf13 USING hash ADD FUNCTION 1 fn_opf13(int4);
 DROP OPERATOR FAMILY alt_opf13 USING hash;
 ROLLBACK;
+DROP FUNCTION fn_opf13 (int4); -- YB: workaround for lack of transactional DDL
+DROP OPERATOR FAMILY alt_opf13 USING hash; -- YB: workaround for lack of transactional DDL
 
 -- Should fail. btree comparison functions should have two arguments in ALTER OPERATOR FAMILY ... ADD FUNCTION
 BEGIN TRANSACTION;
@@ -397,6 +402,8 @@ CREATE FUNCTION fn_opf14 (int4) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' LANGUAG
 ALTER OPERATOR FAMILY alt_opf14 USING btree ADD FUNCTION 1 fn_opf14(int4);
 DROP OPERATOR FAMILY alt_opf14 USING btree;
 ROLLBACK;
+DROP FUNCTION fn_opf14 (int4); -- YB: workaround for lack of transactional DDL
+DROP OPERATOR FAMILY alt_opf14 USING btree; -- YB: workaround for lack of transactional DDL
 
 -- Should fail. hash comparison functions should have one argument in ALTER OPERATOR FAMILY ... ADD FUNCTION
 BEGIN TRANSACTION;
@@ -405,6 +412,8 @@ CREATE FUNCTION fn_opf15 (int4, int2) RETURNS BIGINT AS 'SELECT NULL::BIGINT;' L
 ALTER OPERATOR FAMILY alt_opf15 USING hash ADD FUNCTION 1 fn_opf15(int4, int2);
 DROP OPERATOR FAMILY alt_opf15 USING hash;
 ROLLBACK;
+DROP FUNCTION fn_opf15 (int4, int2); -- YB: workaround for lack of transactional DDL
+DROP OPERATOR FAMILY alt_opf15 USING hash; -- YB: workaround for lack of transactional DDL
 
 -- Should fail. In gist throw an error when giving different data types for function argument
 -- without defining left / right type in ALTER OPERATOR FAMILY ... ADD FUNCTION
@@ -624,10 +633,9 @@ DROP FOREIGN DATA WRAPPER alt_fdw3 CASCADE;
 DROP LANGUAGE alt_lang2 CASCADE;
 DROP LANGUAGE alt_lang3 CASCADE; -- YB: fails due to above commenting out
 
-\set VERBOSITY terse \\ -- YB: suppress cascade details
-DROP SCHEMA alt_nsp1 CASCADE; -- YB: output numbers different due to above commenting out
-DROP SCHEMA alt_nsp2 CASCADE;
+DROP SCHEMA alt_nsp1 CASCADE; -- YB: output different due to above commenting out
+DROP SCHEMA alt_nsp2 CASCADE; -- YB: output different due to above commenting out
 
-DROP USER regress_alter_generic_user1; -- YB: fails likely due to above commenting out
+DROP USER regress_alter_generic_user1; -- YB: fails due to above commenting out
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;

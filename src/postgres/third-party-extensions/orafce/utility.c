@@ -42,7 +42,7 @@ PG_FUNCTION_INFO_V1(dbms_utility_get_time);
 static char*
 dbms_utility_format_call_stack(char mode)
 {
-	MemoryContext oldcontext = CurrentMemoryContext;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 	ErrorData *edata;
 	ErrorContextCallback *econtext;
 	StringInfo   sinfo;

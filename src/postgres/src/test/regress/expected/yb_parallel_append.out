@@ -109,14 +109,14 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
 -- partitioned table
 explain (costs off)
 select * from lp;
-          QUERY PLAN
-------------------------------
+            QUERY PLAN
+-----------------------------------
  Append
-   ->  Seq Scan on lp_ad
-   ->  Seq Scan on lp_bc
-   ->  Seq Scan on lp_ef
-   ->  Seq Scan on lp_null
-   ->  Seq Scan on lp_default
+   ->  Seq Scan on lp_ad lp_1
+   ->  Seq Scan on lp_bc lp_2
+   ->  Seq Scan on lp_ef lp_3
+   ->  Seq Scan on lp_null lp_4
+   ->  Seq Scan on lp_default lp_5
 (6 rows)
 
 select * from lp;
@@ -192,14 +192,14 @@ select * from t, t1 where t.k = t1.k union all select * from t, t2 where t.k = t
 -- partitioned table
 explain (costs off)
 select * from lp;
-             QUERY PLAN
-------------------------------------
+               QUERY PLAN
+-----------------------------------------
  Gather
    Workers Planned: 2
    ->  Parallel Append
-         ->  Seq Scan on lp_ad
-         ->  Seq Scan on lp_bc
-         ->  Seq Scan on lp_ef
-         ->  Seq Scan on lp_null
-         ->  Seq Scan on lp_default
+         ->  Seq Scan on lp_ad lp_1
+         ->  Seq Scan on lp_bc lp_2
+         ->  Seq Scan on lp_ef lp_3
+         ->  Seq Scan on lp_null lp_4
+         ->  Seq Scan on lp_default lp_5
 (8 rows)

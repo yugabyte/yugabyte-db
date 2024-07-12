@@ -2077,7 +2077,7 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 						bool streaming)
 {
 	bool		using_subtxn;
-	MemoryContext ccxt = CurrentMemoryContext;
+	MemoryContext ccxt = GetCurrentMemoryContext();
 	ReorderBufferIterTXNState *volatile iterstate = NULL;
 	volatile XLogRecPtr prev_lsn = InvalidXLogRecPtr;
 	ReorderBufferChange *volatile specinsert = NULL;

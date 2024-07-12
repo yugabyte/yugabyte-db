@@ -2601,7 +2601,7 @@ set_config_option_noerror(const char *name, const char *value,
 						  GucAction action, bool changeVal, int elevel)
 {
 	int				result = 0;
-	MemoryContext	ccxt = CurrentMemoryContext;
+	MemoryContext	ccxt = GetCurrentMemoryContext();
 
 	PG_TRY();
 	{

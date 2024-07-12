@@ -79,7 +79,7 @@ public class TestPgTransactions extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-    flags.put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+    appendToYsqlPgConf(flags, maxQueryLayerRetriesConf(2));
     return flags;
   }
 
@@ -93,6 +93,14 @@ public class TestPgTransactions extends BasePgSQLTest {
     // Some of these tests depend on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     markClusterNeedsRecreation();
+    Map<String, String> FailOnConflictTestGflags = new TreeMap<String, String>()
+      {
+        {
+            put("enable_wait_queues", "false");
+            // The retries are set to 2 to speed up the tests.
+            put("ysql_pg_conf_csv", maxQueryLayerRetriesConf(2));
+        }
+      };
     restartClusterWithFlags(FailOnConflictTestGflags, FailOnConflictTestGflags);
   }
 

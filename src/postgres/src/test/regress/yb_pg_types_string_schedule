@@ -1,0 +1,20 @@
+# src/test/regress/yb_pg_types_string_schedule
+# This schedule is for ported tests only.
+
+# Dependency for yb_pg_varchar, yb_pg_text.
+test: yb_pg_test_setup
+
+test: yb_pg_varchar
+test: yb_pg_text
+test: yb_pg_bit
+test: yb_pg_uuid
+test: yb_pg_tstypes
+
+test: yb_pg_collate
+test: yb_pg_collate.icu.utf8
+
+test: yb_pg_tsearch
+test: yb_pg_tsdicts
+
+# TODO(neil) Must build postgres with --with-libxml
+# test: yb_pg_xml

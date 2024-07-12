@@ -185,4 +185,10 @@ enum progress_type
 #define YB_PROGRESS_CREATEIDX_INITIALIZING 0
 #define YB_PROGRESS_CREATEIDX_BACKFILLING 1
 
+/*
+ * YB constant used to indicate that the progress parameter for CREATE INDEX
+ * is not computed.
+ */
+#define YB_PROGRESS_CREATEIDX_INVALID -10
+
 #endif

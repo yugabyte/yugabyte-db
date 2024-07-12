@@ -4,7 +4,6 @@
 -- Assorted tests using SQL-language functions
 --
 
-SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
 -- All objects made in this test are in temp_func_test schema
 
 CREATE USER regress_unpriv_user;
@@ -240,9 +239,7 @@ CREATE FUNCTION functest_S_14() RETURNS bigint
 
 SELECT functest_S_14();
 
-\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
 DROP TABLE functest3 CASCADE;
-\set VERBOSITY default \\ -- YB
 
 
 -- information_schema tests
@@ -310,9 +307,7 @@ SELECT routine_name, table_name FROM information_schema.routine_table_usage
   ORDER BY 1, 2;
 
 DROP FUNCTION functest_IS_4a CASCADE;
-\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
 DROP SEQUENCE functest1 CASCADE;
-\set VERBOSITY default \\ -- YB
 DROP TABLE functest2 CASCADE;
 
 
@@ -345,7 +340,7 @@ AS '
     SELECT * FROM functest3;
 ';
 
-SELECT * FROM functest_sri1() ORDER BY functest_sri1; -- YB: add ordering
+SELECT * FROM functest_sri1();
 EXPLAIN (verbose, costs off) SELECT * FROM functest_sri1();
 
 CREATE FUNCTION functest_sri2() RETURNS SETOF int
@@ -355,7 +350,7 @@ BEGIN ATOMIC
     SELECT * FROM functest3;
 END;
 
-SELECT * FROM functest_sri2() ORDER BY functest_sri2; -- YB: add ordering
+SELECT * FROM functest_sri2();
 EXPLAIN (verbose, costs off) SELECT * FROM functest_sri2();
 
 DROP TABLE functest3 CASCADE;
@@ -384,7 +379,7 @@ CREATE FUNCTION voidtest4(a int) RETURNS VOID LANGUAGE SQL AS
 $$ INSERT INTO sometable VALUES(a - 1) RETURNING f1 $$;
 SELECT voidtest4(39);
 
-TABLE sometable ORDER BY f1; -- YB: add ordering
+TABLE sometable;
 
 CREATE FUNCTION voidtest5(a int) RETURNS SETOF VOID LANGUAGE SQL AS
 $$ SELECT generate_series(1, a) $$ STABLE;
@@ -421,8 +416,6 @@ CREATE FUNCTION test1 (int) RETURNS int LANGUAGE SQL
     AS 'a', 'b';
 
 -- Cleanup
-\set VERBOSITY terse \\ -- YB: suppress cascade details because of ordering
 DROP SCHEMA temp_func_test CASCADE;
-\set VERBOSITY default \\ -- YB
 DROP USER regress_unpriv_user;
 RESET search_path;
