@@ -681,8 +681,12 @@
       required: true
   post:
     operationId: systemdEnable
-    summary: Enable Systemd controlled services
-    description: Use Systemd to control YugabyteDB services for this universe
+    summary: Migrate to Systemd controlled services
+    description: |
+      Use Systemd to control YugabyteDB services for this universe. This is a 1 way migration from
+      cron-based service management to systemd, and will involve a rolling restart of the universe.
+
+      This is not supported for on prem manual provisioned universes or kubernetes universes.
     tags:
       - Universe
     requestBody:
@@ -691,7 +695,7 @@
       '202':
         $ref: "../components/responses/YBATaskResp.yaml"
       '400':
-        description: Invalid input
+        description: Invalid input or the universe is already is already using systemd services
       '500':
         description: Server error
     security:
