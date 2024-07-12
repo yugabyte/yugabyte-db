@@ -162,6 +162,7 @@ public class GFlagsUtil {
   public static final String YBC_MAX_CONCURRENT_DOWNLOADS = "max_concurrent_downloads";
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
+  public static final String YBC_LOG_FILENAME = "yb-controller-server";
   public static final String TMP_DIRECTORY = "tmp_dir";
   public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
   public static final String JWT_AUDIENCES = "jwt_audiences=";
@@ -517,6 +518,7 @@ public class GFlagsUtil {
     ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
     ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
     ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("log_filename", YBC_LOG_FILENAME);
 
     if (taskParam.enableNodeToNodeEncrypt) {
       ybcFlags.put(CERT_NODE_FILENAME, node.cloudInfo.private_ip);
@@ -587,6 +589,7 @@ public class GFlagsUtil {
     ybcFlags.put("ysql_dumpall", ybHomeDir + YSQL_DUMPALL_PATH);
     ybcFlags.put("ysqlsh", ybHomeDir + YSQLSH_PATH);
     ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
+    ybcFlags.put("log_filename", YBC_LOG_FILENAME);
 
     if (MapUtils.isNotEmpty(userIntent.ybcFlags)) {
       ybcFlags.putAll(userIntent.ybcFlags);
