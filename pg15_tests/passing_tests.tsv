@@ -7,6 +7,7 @@ JAVA	org.yb.pgsql.TestBatchCopyFrom
 JAVA	org.yb.pgsql.TestHdr
 JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 JAVA	org.yb.pgsql.TestJWTAuth
+JAVA	org.yb.pgsql.TestLintPgRegressSchedules
 JAVA	org.yb.pgsql.TestPg15Regress
 JAVA	org.yb.pgsql.TestPgAlterTable
 JAVA	org.yb.pgsql.TestPgAuthorization
