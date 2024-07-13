@@ -3,6 +3,7 @@ title: Encryption in transit in YugabyteDB Anywhere
 headerTitle: Encryption in transit
 linkTitle: Encryption in transit
 description: Use encryption in transit (TLS) to secure data traffic.
+headcontent: Secure intra-node and application traffic
 menu:
   preview_yugabyte-platform:
     parent: security
@@ -81,3 +82,9 @@ In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version='TLSv1.2'"
 ```
+
+## Learn more
+
+- [Securing YugabyteDB: Server-to-Server Encryption in Transit](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/)
+- [Securing YugabyteDB: SQL Client-to-Server Encryption in Transit](https://www.yugabyte.com/blog/securing-yugabytedb-client-to-server-encryption/)
+- [Securing YugabyteDB: CQL Client-to-Server Encryption in Transit](https://www.yugabyte.com/blog/securing-yugabytedb-part-3-cql-client-server-encryption-transit/)

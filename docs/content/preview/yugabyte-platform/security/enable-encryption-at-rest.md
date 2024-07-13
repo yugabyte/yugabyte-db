@@ -3,6 +3,7 @@ title: Encryption at rest in YugabyteDB Anywhere
 headerTitle: Encryption at rest
 linkTitle: Encryption at rest
 description: Use encryption at rest in YugabyteDB Anywhere
+headcontent: Encrypt your universes
 menu:
   preview_yugabyte-platform:
     parent: security
