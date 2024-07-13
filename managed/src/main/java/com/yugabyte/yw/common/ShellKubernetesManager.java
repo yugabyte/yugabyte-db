@@ -591,7 +591,7 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void performYbcAction(
+  public String performYbcAction(
       Map<String, String> config,
       String namespace,
       String podName,
@@ -609,9 +609,11 @@ public class ShellKubernetesManager extends KubernetesManager {
                 containerName,
                 "--"));
     commandList.addAll(commandArgs);
-    execCommand(config, commandList)
-        .processErrors(
-            String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
+    ShellResponse response =
+        execCommand(config, commandList)
+            .processErrors(
+                String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
+    return response.getMessage();
   }
 
   // Ref: https://kubernetes.io/blog/2022/05/05/volume-expansion-ga/
