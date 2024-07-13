@@ -97,7 +97,7 @@ typedef struct BsonQueryOperatorContext
 	List *targetEntries;
 
 	/* Any let variable context for this query operator */
-	pgbson *variableContext;
+	Expr *variableContext;
 } BsonQueryOperatorContext;
 
 Var * MakeSimpleDocumentVar(void);

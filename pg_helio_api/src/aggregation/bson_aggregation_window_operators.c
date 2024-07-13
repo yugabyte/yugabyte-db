@@ -85,6 +85,9 @@ typedef struct
 
 	/* Sort options list */
 	List *sortOptions;
+
+	/* Variable context for operators */
+	Expr *variableContext;
 } WindowOperatorContext;
 
 
@@ -496,12 +499,27 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 			{
 				/* Consider empty or missing values as null */
 				bool isNullOnEmpty = true;
-				List *args = list_make3(docExpr,
-										MakeBsonConst(BsonValueToDocumentPgbson(value)),
-										MakeBoolValueConst(isNullOnEmpty));
+				List *args;
+				Oid functionOid;
+
+				if (context->variableSpec != NULL)
+				{
+					functionOid = BsonExpressionPartitionGetWithLetFunctionOid();
+					args = list_make4(docExpr,
+									  MakeBsonConst(BsonValueToDocumentPgbson(value)),
+									  MakeBoolValueConst(isNullOnEmpty),
+									  context->variableSpec);
+				}
+				else
+				{
+					functionOid = BsonExpressionPartitionGetFunctionOid();
+					args = list_make3(docExpr,
+									  MakeBsonConst(BsonValueToDocumentPgbson(value)),
+									  MakeBoolValueConst(isNullOnEmpty));
+				}
+
 				partitionExpr = (Expr *) makeFuncExpr(
-					BsonExpressionPartitionGetFunctionOid(),
-					BsonTypeId(), args, InvalidOid,
+					functionOid, BsonTypeId(), args, InvalidOid,
 					InvalidOid, COERCE_EXPLICIT_CALL);
 			}
 		}
@@ -611,6 +629,7 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 			.pstate = parseState,
 			.winRef = winRef,
 			.sortOptions = sortOptions,
+			.variableContext = context->variableSpec,
 		};
 
 		TargetEntry *windowpOperatorTle =
@@ -1259,9 +1278,23 @@ HandleDollarSumWindowOperator(const bson_value_t *opValue,
 
 	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
 								 true);
-	List *args = list_make3(context->docExpr, constValue, trueConst);
+	List *args;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		args = list_make4(context->docExpr, constValue, trueConst,
+						  context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		args = list_make3(context->docExpr, constValue, trueConst);
+	}
+
 	FuncExpr *accumFunc = makeFuncExpr(
-		BsonExpressionGetFunctionOid(), BsonTypeId(), args, InvalidOid,
+		functionOid, BsonTypeId(), args, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 	windowFunc->args = list_make1(accumFunc);
 	return windowFunc;

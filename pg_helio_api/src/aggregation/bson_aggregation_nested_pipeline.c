@@ -81,6 +81,11 @@ typedef struct
 	bson_value_t pipeline;
 
 	/*
+	 * let variables for $lookup
+	 */
+	bson_value_t let;
+
+	/*
 	 * has a join (foreign/local field).
 	 */
 	bool hasLookupMatch;
@@ -147,7 +152,7 @@ static int ValidateFacet(const bson_value_t *facetValue);
 static Query * BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 									   CommonTableExpr *baseCte, QuerySource querySource,
 									   Datum databaseNameDatum, const
-									   bson_value_t *sortSpec, pgbson *variableContext);
+									   bson_value_t *sortSpec, Expr *variableContext);
 static Query * AddBsonArrayAggFunction(Query *baseQuery,
 									   AggregationPipelineBuildContext *context,
 									   ParseState *parseState, const char *fieldPath,
@@ -564,6 +569,7 @@ CreateInverseMatchFromCollectionQuery(InverseMatchArgs *inverseMatchArgs,
 	AggregationPipelineBuildContext subPipelineContext = { 0 };
 	subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 	subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+	subPipelineContext.variableSpec = context->variableSpec;
 
 	Query *nestedPipeline = GenerateBaseTableQuery(context->databaseNameDatum,
 												   &inverseMatchArgs->fromCollection,
@@ -986,7 +992,7 @@ static Query *
 BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 						CommonTableExpr *baseCte, QuerySource querySource,
 						Datum databaseNameDatum, const bson_value_t *sortSpec,
-						pgbson *variableContext)
+						Expr *variableContext)
 {
 	Query *modifiedQuery = NULL;
 
@@ -1489,8 +1495,15 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 		}
 		else if (strcmp(key, "let") == 0)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("let not supported")));
+			if (value->value_type != BSON_TYPE_DOCUMENT)
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"lookup argument 'let' must be a document, is type %s",
+									BsonTypeName(value->value_type))));
+			}
+
+			args->let = *value;
 		}
 		else if (strcmp(key, "localField") == 0)
 		{
@@ -1644,6 +1657,12 @@ static Query *
 ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 				  LookupArgs *lookupArgs)
 {
+	if (lookupArgs->let.value_type != BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("let not supported")));
+	}
+
 	if (list_length(query->targetList) > 1)
 	{
 		/* if we have multiple projectors, push to a subquery (Lookup needs 1 projector) */
@@ -2397,7 +2416,7 @@ ParseGraphLookupStage(const bson_value_t *existingValue, GraphLookupArgs *args)
  */
 static FuncExpr *
 BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, const
-							 bson_value_t *inputExpression, pgbson *variableContext)
+							 bson_value_t *inputExpression, Expr *variableContext)
 {
 	pgbson_writer expressionWriter;
 	PgbsonWriterInit(&expressionWriter);
@@ -2419,7 +2438,7 @@ BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, c
 	{
 		functionOid = BsonExpressionGetWithLetFunctionOid();
 		inputExprArgs = list_make4(origExpr, MakeBsonConst(inputExpr),
-								   falseConst, MakeBsonConst(variableContext));
+								   falseConst, variableContext);
 	}
 	else
 	{
@@ -2443,7 +2462,7 @@ BuildInputExpressionForQuery(Expr *origExpr, const StringView *connectToField, c
 static AttrNumber
 AddInputExpressionToQuery(Query *query, StringView *fieldName, const
 						  bson_value_t *inputExpression,
-						  pgbson *variableContext)
+						  Expr *variableContext)
 {
 	/* Now, add the expression value projector to the left query */
 	TargetEntry *origEntry = linitial(query->targetList);

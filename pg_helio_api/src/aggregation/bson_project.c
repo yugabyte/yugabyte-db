@@ -59,7 +59,8 @@ typedef struct BsonProjectionQueryState
 	 * from parsing the projection type spec */
 	const BsonIntermediatePathNode *root;
 
-	const ExpressionVariableContext *variableContext;
+	/* The variable context for let if any */
+	ExpressionVariableContext *variableContext;
 
 	/* Whether or not the projection has an inclusion */
 	bool hasInclusion;
@@ -77,6 +78,19 @@ typedef struct BsonProjectionQueryState
 	/* Optional: Bson Project Document stage function hooks */
 	BsonProjectDocumentFunctions projectDocumentFuncs;
 } BsonProjectionQueryState;
+
+
+/*
+ * Cached state for ReplaceRoot.
+ */
+typedef struct BsonReplaceRootState
+{
+	/* The aggregation expression data */
+	AggregationExpressionData *expressionData;
+
+	/* The variable context for let if any */
+	ExpressionVariableContext *variableContext;
+} BsonReplaceRootState;
 
 
 /* --------------------------------------------------------- */
@@ -125,7 +139,7 @@ static pgbson * BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 static pgbson * BsonLookUpProject(pgbson *sourceDocument, int numMatchedDocuments,
 								  Datum *mathedArray, char *matchedDocsFieldName);
 static void PopulateReplaceRootExpressionDataFromSpec(
-	AggregationExpressionData *expressionData, pgbson *pathSpec);
+	BsonReplaceRootState *expressionData, pgbson *pathSpec, pgbson *variableSpec);
 
 static void BuildBsonPathTreeForDollarProject(BsonProjectionQueryState *state,
 											  BsonProjectionContext *context);
@@ -149,7 +163,7 @@ static void PostProcessParseProjectNode(void *state, const StringView *path,
 										bool *hasFieldsForIntermediate);
 static pgbson * ProjectGeonearDocument(const GeonearDistanceState *state,
 									   pgbson *document);
-static void SetVariableSpec(BsonProjectionQueryState *state, pgbson *variableSpec);
+static void SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -512,28 +526,43 @@ bson_dollar_replace_root(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
+	pgbson *variableSpec = NULL;
 
-	const AggregationExpressionData *replaceRootExpression;
-	int argPosition = 1;
+	int argPositions[2] = { 1, 2 };
+	int numArgs = 1;
 
-	SetCachedFunctionState(
+	if (PG_NARGS() > 2)
+	{
+		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
+		numArgs = 2;
+	}
+
+	BsonReplaceRootState localState = { 0 };
+	const BsonReplaceRootState *replaceRootExpression;
+
+	SetCachedFunctionStateMultiArgs(
 		replaceRootExpression,
-		AggregationExpressionData,
-		argPosition,
+		BsonReplaceRootState,
+		argPositions,
+		numArgs,
 		PopulateReplaceRootExpressionDataFromSpec,
-		pathSpec);
+		pathSpec,
+		variableSpec);
 
 	bool forceProjectId = false;
 	if (replaceRootExpression == NULL)
 	{
-		AggregationExpressionData expressionData;
-		PopulateReplaceRootExpressionDataFromSpec(&expressionData, pathSpec);
-		PG_RETURN_POINTER(ProjectReplaceRootDocument(document, &expressionData,
+		PopulateReplaceRootExpressionDataFromSpec(&localState, pathSpec, variableSpec);
+		PG_RETURN_POINTER(ProjectReplaceRootDocument(document, localState.expressionData,
+													 localState.variableContext,
 													 forceProjectId));
 	}
 	else
 	{
-		PG_RETURN_POINTER(ProjectReplaceRootDocument(document, replaceRootExpression,
+		PG_RETURN_POINTER(ProjectReplaceRootDocument(document,
+													 replaceRootExpression->expressionData,
+													 replaceRootExpression->
+													 variableContext,
 													 forceProjectId));
 	}
 }
@@ -547,9 +576,10 @@ bson_dollar_replace_root(PG_FUNCTION_ARGS)
  *
  */
 pgbson *
-ProjectReplaceRootDocument(pgbson *document, const
-						   AggregationExpressionData *replaceRootExpression, bool
-						   forceProjectId)
+ProjectReplaceRootDocument(pgbson *document,
+						   const AggregationExpressionData *replaceRootExpression,
+						   const ExpressionVariableContext *variableContext,
+						   bool forceProjectId)
 {
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
@@ -568,8 +598,6 @@ ProjectReplaceRootDocument(pgbson *document, const
 	PgbsonWriterInit(&valueWriter);
 	bool isNullOnEmpty = false;
 
-	/* TODO VARIABLE: take as argument? */
-	ExpressionVariableContext *variableContext = NULL;
 	StringView path = { .string = "", .length = 0 };
 	EvaluateAggregationExpressionDataToWriter(replaceRootExpression, document, path,
 											  &valueWriter, variableContext,
@@ -1094,7 +1122,7 @@ BuildBsonPathTreeForDollarProjectCore(BsonProjectionQueryState *state,
 	state->hasExclusion = pathTreeContext->hasExclusion;
 	state->projectNonMatchingFields = pathTreeContext->hasExclusion;
 
-	SetVariableSpec(state, projectionContext->variableSpec);
+	SetVariableSpec(&state->variableContext, projectionContext->variableSpec);
 }
 
 
@@ -1125,7 +1153,7 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
 	state->hasExclusion = context.hasExclusion;
 	state->projectNonMatchingFields = true;
 
-	SetVariableSpec(state, variableSpec);
+	SetVariableSpec(&state->variableContext, variableSpec);
 }
 
 
@@ -1133,9 +1161,9 @@ BuildBsonPathTreeForDollarAddFields(BsonProjectionQueryState *state,
  * Given a potentially null variable spec, sets the spec into the projection query state.
  */
 static void
-SetVariableSpec(BsonProjectionQueryState *state, pgbson *variableSpec)
+SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec)
 {
-	state->variableContext = NULL;
+	*state = NULL;
 	if (variableSpec != NULL)
 	{
 		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
@@ -1143,7 +1171,7 @@ SetVariableSpec(BsonProjectionQueryState *state, pgbson *variableSpec)
 			palloc0(sizeof(ExpressionVariableContext));
 
 		ParseVariableSpec(&varsValue, variableContext);
-		state->variableContext = variableContext;
+		*state = variableContext;
 	}
 }
 
@@ -2009,8 +2037,8 @@ FilterNodeToWrite(void *state, int currentIndex)
 
 /* Populates the aggregation expression data for a replace root stage based on the pathSpec specified to $replaceRoot. */
 static void
-PopulateReplaceRootExpressionDataFromSpec(AggregationExpressionData *expressionData,
-										  pgbson *pathSpec)
+PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootState *expressionData,
+										  pgbson *pathSpec, pgbson *variableSpec)
 {
 	bson_iter_t pathSpecIter;
 	PgbsonInitIterator(pathSpec, &pathSpecIter);
@@ -2018,7 +2046,10 @@ PopulateReplaceRootExpressionDataFromSpec(AggregationExpressionData *expressionD
 	bson_value_t bsonValue;
 	GetBsonValueForReplaceRoot(&pathSpecIter, &bsonValue);
 
-	ParseAggregationExpressionData(expressionData, &bsonValue);
+	expressionData->expressionData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(expressionData->expressionData, &bsonValue);
+
+	SetVariableSpec(&expressionData->variableContext, variableSpec);
 }
 
 

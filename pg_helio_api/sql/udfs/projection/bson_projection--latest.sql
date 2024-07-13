@@ -54,6 +54,13 @@ CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_dollar_replace_root(docum
  IMMUTABLE PARALLEL SAFE STRICT
 AS 'MODULE_PATHNAME', $function$bson_dollar_replace_root$function$;
 
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_dollar_replace_root(document helio_core.bson, pathSpec helio_core.bson, variableSpec helio_core.bson)
+ RETURNS helio_core.bson
+ LANGUAGE c
+ IMMUTABLE PARALLEL SAFE STRICT
+AS 'MODULE_PATHNAME', $function$bson_dollar_replace_root$function$;
+
 CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_dollar_facet_project(__CORE_SCHEMA__.bson, bool)
  RETURNS __CORE_SCHEMA__.bson
  LANGUAGE c

@@ -361,7 +361,9 @@ HandleUpdateReplaceRoot(pgbson **source, const UpdateAggregationSpec *projection
 	 */
 	bool forceProjectId = true;
 	pgbson *sourceDoc = *source;
+	const ExpressionVariableContext *variableContext = NULL;
 	*source = ProjectReplaceRootDocument(sourceDoc, &projectionValue->expressionData,
+										 variableContext,
 										 forceProjectId);
 }
 

@@ -81,7 +81,7 @@ typedef struct
 	/*
 	 * The variable spec expression that preceds it.
 	 */
-	pgbson *variableSpec;
+	Expr *variableSpec;
 } AggregationPipelineBuildContext;
 
 

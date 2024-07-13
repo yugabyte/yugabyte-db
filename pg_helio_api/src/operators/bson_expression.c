@@ -566,27 +566,38 @@ bson_expression_partition_get(PG_FUNCTION_ARGS)
 	pgbson *document = PG_GETARG_PGBSON(0);
 	pgbson *expression = PG_GETARG_PGBSON(1);
 	bool isNullOnEmpty = PG_GETARG_BOOL(2);
-	ExpressionVariableContext *variableContext = NULL;
+	pgbson *variableSpec = NULL;
+
+	int argPositions[2] = { 1, 3 };
+	int numArgs = 1;
+	if (PG_NARGS() > 3)
+	{
+		variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(3);
+		numArgs = 2;
+	}
+
 	pgbsonelement expressionElement;
 	pgbson_writer writer;
 
-	AggregationExpressionData expressionData;
-	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+	BsonExpressionGetState expressionData;
+	memset(&expressionData, 0, sizeof(BsonExpressionGetState));
 
 	PgbsonToSinglePgbsonElement(expression, &expressionElement);
 
-	const AggregationExpressionData *state;
-	const int argPosition = 1;
-	SetCachedFunctionState(
+	const BsonExpressionGetState *state;
+	SetCachedFunctionStateMultiArgs(
 		state,
-		AggregationExpressionData,
-		argPosition,
-		ParseAggregationExpressionData,
-		&expressionElement.bsonValue);
+		BsonExpressionGetState,
+		argPositions,
+		numArgs,
+		ParseBsonExpressionGetState,
+		&expressionElement.bsonValue,
+		variableSpec);
 
 	if (state == NULL)
 	{
-		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
+		ParseBsonExpressionGetState(&expressionData, &expressionElement.bsonValue,
+									variableSpec);
 		state = &expressionData;
 	}
 
@@ -596,8 +607,9 @@ bson_expression_partition_get(PG_FUNCTION_ARGS)
 	};
 
 	PgbsonWriterInit(&writer);
-	EvaluateAggregationExpressionDataToWriter(state, document, path, &writer,
-											  variableContext, isNullOnEmpty);
+	EvaluateAggregationExpressionDataToWriter(state->expressionData, document, path,
+											  &writer,
+											  state->variableContext, isNullOnEmpty);
 
 	pgbson *returnedBson = PgbsonWriterGetPgbson(&writer);
 

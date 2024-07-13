@@ -1159,8 +1159,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 															 queryDocIterator));
 			return (Expr *) makeFuncExpr(BsonExprWithLetFunctionId(), BOOLOID,
 										 list_make3(context->documentExpr, constValue,
-													MakeBsonConst(
-														context->variableContext)),
+													context->variableContext),
 										 InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 		}
 

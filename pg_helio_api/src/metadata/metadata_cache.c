@@ -73,6 +73,10 @@ static Oid GetOperatorFunctionIdFourArgs(Oid *operatorFuncId, char *schemaName,
 										 Oid arg0TypeOid, Oid arg1TypeOid, Oid
 										 arg2TypeOid,
 										 Oid arg3TypeOid);
+static Oid GetOperatorFunctionIdFiveArgs(Oid *operatorFuncId, char *schemaName,
+										 char *operatorName,
+										 Oid arg0TypeOid, Oid arg1TypeOid, Oid
+										 arg2TypeOid, Oid arg3TypeOid, Oid arg4TypeId);
 static Oid GetHelioInternalBinaryOperatorFunctionId(Oid *operatorFuncId,
 													char *operatorName,
 													Oid leftTypeOid, Oid rightTypeOid,
@@ -612,6 +616,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_replace_root function */
 	Oid ApiCatalogBsonDollarReplaceRootFunctionOid;
 
+	/* OID of the bson_dollar_replace_root function */
+	Oid ApiCatalogBsonDollarReplaceRootWithLetFunctionOid;
+
 	/* OID of the BSONSUM aggregate function */
 	Oid ApiCatalogBsonSumAggregateFunctionOid;
 
@@ -687,8 +694,14 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_expression_partition_get function */
 	Oid ApiCatalogBsonExpressionPartitionGetFunctionOid;
 
+	/* OID of the bson_expression_partition_get with let function */
+	Oid ApiCatalogBsonExpressionPartitionGetWithLetFunctionOid;
+
 	/* OID of the bson_expression_map function */
 	Oid ApiCatalogBsonExpressionMapFunctionOid;
+
+	/* OID of the bson_expression_map with let arguments function */
+	Oid ApiCatalogBsonExpressionMapWithLetFunctionOid;
 
 	/* OID of the pg_catalog.random() function */
 	Oid PgRandomFunctionOid;
@@ -3040,6 +3053,18 @@ BsonDollarReplaceRootFunctionOid(void)
 }
 
 
+Oid
+BsonDollarReplaceRootWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.ApiCatalogBsonDollarReplaceRootWithLetFunctionOid,
+		"helio_api_internal",
+		"bson_dollar_replace_root",
+		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
+		HelioCoreBsonTypeId());
+}
+
+
 static Oid
 GetAggregateFunctionByName(Oid *function, char *namespaceName, char *name)
 {
@@ -3437,40 +3462,41 @@ BsonExpressionGetWithLetFunctionOid(void)
 Oid
 BsonExpressionPartitionGetFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid,
+		"helio_api_internal", "bson_expression_partition_get",
+		BsonTypeId(), BsonTypeId(), BOOLOID);
+}
 
-	if (Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid == InvalidOid)
-	{
-		List *functionNameList = list_make2(makeString("helio_api_internal"),
-											makeString("bson_expression_partition_get"));
-		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
-		bool missingOK = false;
 
-		Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid =
-			LookupFuncName(functionNameList, 3, paramOids, missingOK);
-	}
-
-	return Cache.ApiCatalogBsonExpressionPartitionGetFunctionOid;
+Oid
+BsonExpressionPartitionGetWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdFourArgs(
+		&Cache.ApiCatalogBsonExpressionPartitionGetWithLetFunctionOid,
+		"helio_api_internal", "bson_expression_partition_get",
+		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(), BOOLOID, HelioCoreBsonTypeId());
 }
 
 
 Oid
 BsonExpressionMapFunctionOid(void)
 {
-	InitializeHelioApiExtensionCache();
+	return GetOperatorFunctionIdFourArgs(
+		&Cache.ApiCatalogBsonExpressionMapFunctionOid,
+		ApiCatalogSchemaName, "bson_expression_map",
+		BsonTypeId(), TEXTOID, BsonTypeId(), BOOLOID);
+}
 
-	if (Cache.ApiCatalogBsonExpressionMapFunctionOid == InvalidOid)
-	{
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
-											makeString("bson_expression_map"));
-		Oid paramOids[4] = { BsonTypeId(), TEXTOID, BsonTypeId(), BOOLOID };
-		bool missingOK = false;
 
-		Cache.ApiCatalogBsonExpressionMapFunctionOid =
-			LookupFuncName(functionNameList, 4, paramOids, missingOK);
-	}
-
-	return Cache.ApiCatalogBsonExpressionMapFunctionOid;
+Oid
+BsonExpressionMapWithLetFunctionOid(void)
+{
+	return GetOperatorFunctionIdFiveArgs(
+		&Cache.ApiCatalogBsonExpressionMapWithLetFunctionOid,
+		"helio_api_internal", "bson_expression_map",
+		HelioCoreBsonTypeId(), TEXTOID, HelioCoreBsonTypeId(), BOOLOID,
+		HelioCoreBsonTypeId());
 }
 
 
@@ -5007,6 +5033,30 @@ GetOperatorFunctionIdFourArgs(Oid *operatorFuncId, char *schemaName, char *opera
 
 		*operatorFuncId =
 			LookupFuncName(functionNameList, 4, paramOids, missingOK);
+	}
+
+	return *operatorFuncId;
+}
+
+
+static Oid
+GetOperatorFunctionIdFiveArgs(Oid *operatorFuncId, char *schemaName, char *operatorName,
+							  Oid arg0TypeOid, Oid arg1TypeOid, Oid arg2TypeOid,
+							  Oid arg3TypeOid, Oid arg4TypeId)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (*operatorFuncId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(schemaName),
+											makeString(operatorName));
+		Oid paramOids[5] = {
+			arg0TypeOid, arg1TypeOid, arg2TypeOid, arg3TypeOid, arg4TypeId
+		};
+		bool missingOK = false;
+
+		*operatorFuncId =
+			LookupFuncName(functionNameList, 5, paramOids, missingOK);
 	}
 
 	return *operatorFuncId;

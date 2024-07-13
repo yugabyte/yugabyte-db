@@ -138,6 +138,7 @@ pgbson * ProjectDocumentWithState(pgbson *sourceDocument,
 								  const BsonProjectionQueryState *state);
 pgbson * ProjectReplaceRootDocument(pgbson *document,
 									const AggregationExpressionData *replaceRootExpression,
+									const ExpressionVariableContext *variableContext,
 									bool forceProjectId);
 
 /* projection writer functions */
