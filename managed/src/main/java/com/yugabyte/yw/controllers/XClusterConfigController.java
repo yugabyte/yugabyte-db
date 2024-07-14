@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -105,6 +106,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterScheduler xClusterScheduler;
+  private final UniverseTableHandler tableHandler;
 
   @Inject
   public XClusterConfigController(
@@ -116,7 +118,8 @@ public class XClusterConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterScheduler xClusterScheduler) {
+      XClusterScheduler xClusterScheduler,
+      UniverseTableHandler tableHandler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -126,6 +129,7 @@ public class XClusterConfigController extends AuthenticatedController {
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterScheduler = xClusterScheduler;
+    this.tableHandler = tableHandler;
   }
 
   /**
@@ -367,7 +371,7 @@ public class XClusterConfigController extends AuthenticatedController {
     }
 
     XClusterConfigTaskBase.setReplicationStatus(
-        this.xClusterUniverseService, this.ybService, xClusterConfig);
+        this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
 
     // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();

@@ -16046,6 +16046,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "sourceTableInfo" : {
+          "$ref" : "#/definitions/TableInfoResp",
+          "description" : "tableInfo from source universe"
+        },
         "status" : {
           "description" : "Status",
           "enum" : [ "Validated", "Running", "Updating", "Warning", "Error", "Bootstrapping", "Failed", "UnableToFetch" ],
@@ -16060,6 +16064,10 @@
           "description" : "Table ID",
           "example" : "000033df000030008000000000004005",
           "type" : "string"
+        },
+        "targetTableInfo" : {
+          "$ref" : "#/definitions/TableInfoResp",
+          "description" : "tableInfo from target universe"
         }
       },
       "type" : "object"
