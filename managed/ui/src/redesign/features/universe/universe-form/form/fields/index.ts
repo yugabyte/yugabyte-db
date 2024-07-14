@@ -17,6 +17,7 @@ export * from './KMSConfigField/KMSConfigField';
 export * from './MasterPlacementField/MasterPlacementField';
 export * from './NetworkAccessField/NetworkAccessField';
 export * from './NodeToNodeTLSField/NodeToNodeTLSField';
+export * from './PGCompatibilityField/PGCompatibilityField';
 export * from './PlacementsField/PlacementsField';
 export * from './ProvidersField/ProvidersField';
 export * from './RegionsField/RegionsField';
