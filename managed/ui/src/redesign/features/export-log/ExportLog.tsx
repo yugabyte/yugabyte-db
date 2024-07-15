@@ -1,26 +1,32 @@
 import { FC, useState } from 'react';
+import clsx from 'clsx';
 import { get, isEmpty } from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
-import { Box, Typography, Link, IconButton, Menu, MenuItem } from '@material-ui/core';
-import { YBButton } from '../../components';
-import { YBLoading } from '../../../components/common/indicators';
+import { Dropdown, MenuItem } from 'react-bootstrap';
 import { TableHeaderColumn } from 'react-bootstrap-table';
+import { Box, Typography, Link } from '@material-ui/core';
+import { YBButton, YBTooltip } from '../../components';
 import { YBTable } from '../../../components/common/YBTable';
+import { YBLoading } from '../../../components/common/indicators';
+import { YBLabelWithIcon } from '../../../components/common/descriptors';
 import { ExportLogModalForm } from './components/ExportLogModalForm';
+import { DeleteTelProviderModal } from './components/DeleteTelProviderModal';
 import { api, QUERY_KEY } from '../../utils/api';
 import { universeQueryKey } from '../../helpers/api';
-import { ExportLogResponse } from './utils/types';
+import { ExportLogResponse, TPItem } from './utils/types';
+import { TelemetryProviderMin } from './components/DeleteTelProviderModal';
 import { getLinkedUniverses } from './utils/helpers';
 import { TP_FRIENDLY_NAMES } from './utils/constants';
 
 //styles
 import { usePillStyles } from '../../styles/styles';
 import { exportLogStyles } from './utils/ExportLogStyles';
+import styles from '../../../components/configRedesign/providerRedesign/ProviderList.module.scss';
 
 //icons
 import AuditBackupIcon from '../../assets/backup.svg';
-import { ReactComponent as EllipsisIcon } from '../../assets/ellipsis.svg';
+import EllipsisIcon from '../../assets/ellipsis.svg';
 
 interface ExportLogProps {}
 
@@ -28,25 +34,33 @@ export const ExportLog: FC<ExportLogProps> = () => {
   const classes = exportLogStyles();
   const pillClasses = usePillStyles();
   const { t } = useTranslation();
-  const [anchorEl, setAnchorEl] = useState(null);
   const [openExportModal, setOpenExportModal] = useState(false);
+  const [exportModalProps, setExportModalProps] = useState<TPItem | null>(null);
+  const [openDeleteModal, setDeleteModal] = useState(false);
+  const [deleteModalProps, setDeleteModalProps] = useState<TelemetryProviderMin | null>(null);
 
   const { data, isLoading: logslistLoading, refetch } = useQuery<ExportLogResponse[]>(
     [QUERY_KEY.getAllTelemetryProviders],
     () => api.getAllTelemetryProviders()
   );
 
-  const { data: universeList, isLoading: universeListLoading } = useQuery(
-    universeQueryKey.ALL,
-    () => api.fetchUniverseList()
-  );
+  const {
+    data: universeList,
+    isLoading: universeListLoading,
+    isFetching
+  } = useQuery(universeQueryKey.ALL, () => api.fetchUniverseList());
 
-  if (logslistLoading || universeListLoading) return <YBLoading />;
+  if (logslistLoading || universeListLoading || isFetching) return <YBLoading />;
 
   const finalData = data?.map((logData) => {
     const linkedUniverses = getLinkedUniverses(logData?.uuid, universeList || []);
     return { ...logData, type: logData?.config?.type || '', linkedUniverses };
   });
+
+  const handleRowClick = (row: TPItem) => {
+    setExportModalProps(row);
+    setOpenExportModal(true);
+  };
 
   const formatUsage = (_: unknown, row: any) => {
     return row.linkedUniverses.length ? (
@@ -63,51 +77,66 @@ export const ExportLog: FC<ExportLogProps> = () => {
     const universeNameArr = row.linkedUniverses.map((ul: any) =>
       get(ul, 'linkedClusters[0].userIntent.universeName')
     );
+    const displayCount = 4;
+    const beforeDisplayCount = universeNameArr.slice(0, displayCount);
+    let afterDisplayCount = [];
+    if (universeNameArr.length > displayCount) {
+      afterDisplayCount = universeNameArr.slice(displayCount);
+    }
+
     return row.linkedUniverses.length ? (
       <Box display="flex" flexDirection={'row'}>
-        {universeNameArr.map((un: string) => {
-          return <div className={pillClasses.pill}>{un}</div>;
+        {beforeDisplayCount.map((un: string) => {
+          return (
+            <div className={clsx(pillClasses.pill, classes.mr4)} key={un}>
+              {un}
+            </div>
+          );
         })}
+        {afterDisplayCount.length > 0 && (
+          <YBTooltip
+            title={
+              <>
+                {afterDisplayCount.map((un: string) => (
+                  <span key={un}>
+                    {un}
+                    <br />
+                  </span>
+                ))}
+              </>
+            }
+          >
+            <div className={clsx(pillClasses.pill)}>+{afterDisplayCount.length}</div>
+          </YBTooltip>
+        )}
       </Box>
     ) : (
-      <span>--</span>
+      <span>-</span>
     );
   };
 
-  const handleActionClick = (e: any) => {
-    setAnchorEl(e.currentTarget);
-  };
-
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
-
-  const formatActions = (_: unknown, row: any) => {
+  const formatActions = (cell: any, row: any) => {
     return (
-      <div key={row.name}>
-        <IconButton
-          aria-label="more"
-          aria-controls="long-menu"
-          aria-haspopup="true"
-          onClick={handleActionClick}
-        >
-          <EllipsisIcon />
-        </IconButton>
-        <Menu
-          id="long-menu"
-          anchorEl={anchorEl}
-          keepMounted
-          open={Boolean(anchorEl)}
-          onClose={handleClose}
-        >
-          <MenuItem key={row.name} disabled={isEmpty(row.linkedUniverses)} onClick={handleClose}>
-            {t('exportAuditLog.deleteConfiguration')}
+      <Dropdown id="table-actions-dropdown" pullRight onClick={(e) => e.stopPropagation()}>
+        <Dropdown.Toggle noCaret>
+          <img src={EllipsisIcon} alt="more" className="ellipsis-icon" />
+        </Dropdown.Toggle>
+        <Dropdown.Menu>
+          <MenuItem
+            eventKey="1"
+            onSelect={() => {
+              setDeleteModalProps({ name: row.name, uuid: row.uuid });
+              setDeleteModal(true);
+            }}
+            data-testid="ExportLog-DeleteConfiguration"
+            disabled={!isEmpty(row.linkedUniverses)}
+          >
+            <YBLabelWithIcon icon="fa fa-trash">{t('exportAuditLog.deleteConfig')}</YBLabelWithIcon>
           </MenuItem>
-        </Menu>
-      </div>
+        </Dropdown.Menu>
+      </Dropdown>
     );
   };
-
   return (
     <Box display="flex" flexDirection="column" width="100%" p={0.25}>
       <Box mb={4}>
@@ -115,18 +144,30 @@ export const ExportLog: FC<ExportLogProps> = () => {
           {t('exportAuditLog.exportConfigForLogs')}
         </Typography>
       </Box>
-      {(finalData || []).length > 0 ? (
+      {!isEmpty(finalData) ? (
         <Box className={classes.exportListContainer}>
           <Box display={'flex'} flexDirection={'row'} justifyContent={'flex-end'}>
-            <YBButton variant="primary" size="large" onClick={() => setOpenExportModal(true)}>
+            <YBButton
+              variant="primary"
+              size="large"
+              onClick={() => setOpenExportModal(true)}
+              data-testid="ExportLog-AddConfig"
+            >
               <i className="fa fa-plus" />
               {t('exportAuditLog.addConfiguration')}
             </YBButton>
           </Box>
           <Box mt={4} width="100%" height="100%">
-            <YBTable data={finalData || []} hover={false}>
+            <YBTable
+              data={finalData || []}
+              options={{
+                onRowClick: handleRowClick
+              }}
+              hover
+              pagination
+            >
               <TableHeaderColumn
-                width="20%"
+                width="250"
                 dataField="name"
                 isKey
                 dataSort
@@ -135,20 +176,24 @@ export const ExportLog: FC<ExportLogProps> = () => {
                 <span>{t('exportAuditLog.exportName')}</span>
               </TableHeaderColumn>
               <TableHeaderColumn
-                width="20%"
+                width="200"
                 dataField="type"
                 dataSort
                 dataFormat={(cell) => <span>{TP_FRIENDLY_NAMES[cell]}</span>}
               >
                 <span>{t('exportAuditLog.exportTo')}</span>
               </TableHeaderColumn>
-              <TableHeaderColumn dataFormat={formatUsage}>
+              <TableHeaderColumn dataFormat={formatUsage} width="200">
                 {t('exportAuditLog.usageHeader')}
               </TableHeaderColumn>
               <TableHeaderColumn dataFormat={formatUniverseList}>
                 {t('exportAuditLog.assignedUniverses')}
               </TableHeaderColumn>
-              <TableHeaderColumn dataFormat={formatActions} width="70" />
+              <TableHeaderColumn
+                columnClassName={styles.exportActionsColumn}
+                dataFormat={formatActions}
+                width="70"
+              ></TableHeaderColumn>
             </YBTable>
           </Box>
         </Box>
@@ -157,7 +202,12 @@ export const ExportLog: FC<ExportLogProps> = () => {
           <Box display={'flex'} flexDirection={'column'} alignItems={'center'}>
             <img src={AuditBackupIcon} alt="--" height={48} width={48} />
             <Box mt={3} mb={2}>
-              <YBButton variant="primary" size="large" onClick={() => setOpenExportModal(true)}>
+              <YBButton
+                variant="primary"
+                size="large"
+                onClick={() => setOpenExportModal(true)}
+                data-testid="ExportLog-CreateExport"
+              >
                 {t('exportAuditLog.createExport')}
               </YBButton>
             </Box>
@@ -185,10 +235,23 @@ export const ExportLog: FC<ExportLogProps> = () => {
       {openExportModal && (
         <ExportLogModalForm
           open={openExportModal}
+          formProps={exportModalProps}
           onClose={() => {
+            setExportModalProps(null);
             setOpenExportModal(false);
             refetch();
           }}
+        />
+      )}
+      {openDeleteModal && deleteModalProps && (
+        <DeleteTelProviderModal
+          open={openDeleteModal}
+          onClose={() => {
+            setDeleteModal(false);
+            setDeleteModalProps(null);
+            refetch();
+          }}
+          telemetryProviderProps={deleteModalProps}
         />
       )}
     </Box>

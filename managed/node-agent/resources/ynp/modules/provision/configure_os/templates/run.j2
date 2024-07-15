@@ -1,0 +1,133 @@
+# Set system limits
+# Append limits to /etc/security/limits.conf if they don't already exist
+#
+{% for key, value in limits.items() %}
+if ! grep -qP "^\*\s+-\s+{{ key }}\s+{{ value }}$" /etc/security/limits.conf; then
+  echo "*                -       {{ key }}            {{ value }}" | \
+  tee -a /etc/security/limits.conf
+fi
+{% endfor %}
+
+if test ! -f /etc/security/limits.d/20-nproc.conf; then
+  touch /etc/security/limits.d/20-nproc.conf
+  echo "File /etc/security/limits.d/20-nproc.conf created."
+else
+  echo "File /etc/security/limits.d/20-nproc.conf already exists."
+fi
+
+sed -i 's/*          soft    nproc     4096/*          soft    nproc     \
+{{ nproc_limit }}/' /etc/security/limits.d/20-nproc.conf
+
+
+# Determine the PLATFORM_ID
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+
+if [[ "$platform_id" == "platform:el8" ]]; then
+  # Check and set DefaultLimitNOFILE in /etc/systemd/system.conf
+  if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/system.conf; then
+    echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/system.conf
+  fi
+
+  # Check and set DefaultLimitNOFILE in /etc/systemd/user.conf
+  if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/user.conf; then
+    echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/user.conf
+  fi
+else
+  echo "el8 not detected, not updating file limits"
+fi
+
+echo "Systemd file limits configured."
+
+
+# Reload systemd to apply changes
+systemctl daemon-reload
+
+# Apply some changes to the current shell session
+ulimit -n {{ fd_limit }}
+ulimit -u {{ nproc_limit }}
+
+
+# Configure kernel settings
+# Set and persist vm.swappiness
+if ! grep -q "^vm.swappiness=" /etc/sysctl.conf; then
+  echo "vm.swappiness={{ vm_swappiness }}" >> /etc/sysctl.conf
+fi
+sysctl -w vm.swappiness={{ vm_swappiness }}
+
+# Set and persist kernel.core_pattern
+if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
+  echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
+fi
+sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
+
+# Set and persist vm.max_map_count
+if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
+  echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
+fi
+sysctl -w vm.max_map_count={{ vm_max_map_count }}
+
+echo "Kernel settings configured."
+
+
+echo "Mounting volumes."
+# Excluding the known mounts that we have to avoid.
+{% set excluded_mounts = ["/", "boot", "efi"] %}
+
+# Generate a unique backup filename for /etc/fstab
+backup_file="/etc/fstab.bak.$(date +%s)"
+cp /etc/fstab $backup_file
+echo "Backup of /etc/fstab created at $backup_file."
+
+# Get list of available volumes excluding the root and specified excluded mounts
+volumes=$(lsblk -lnpo NAME,MOUNTPOINT | awk '$2 == "" {print $1}' | grep -vE 'NAME|MOUNTPOINT')
+
+# Prepare and mount each volume
+index=1
+for volume in $volumes; do
+  if [[ $volume =~ /dev/nvme[0-9]n[0-9]p[0-9]+ ]]; then
+    echo "Skipping volume $volume"
+    continue
+  fi
+  mount_point="/mnt/d${index}"
+
+  mkdir -p ${mount_point}
+
+  if mount | grep -qE "^${volume}|^${volume}[0-9]"; then
+    echo "${volume} or one of its partitions is currently mounted. Skipping..."
+    continue
+  fi
+
+  # Check if filesystem already exists
+  if ! blkid ${volume} | grep -q "TYPE=\"xfs\""; then
+      mkfs -t xfs ${volume}
+      echo "Filesystem created on ${volume}."
+  else
+    echo "Filesystem already exists on ${volume}."
+  fi
+
+  # Add entry to /etc/fstab if it doesn't already exist
+  if ! grep -q "^${volume}" /etc/fstab; then
+    echo "${volume} ${mount_point} xfs noatime 0 0" | tee -a /etc/fstab
+  else
+    echo "Entry for ${volume} already exists in /etc/fstab."
+  fi
+
+  # Mount the volume if it's not already mounted
+  if ! mountpoint -q ${mount_point}; then
+    mount ${mount_point} || fail "Failed to mount ${volume} at ${mount_point}."
+    echo "Mounted ${volume} at ${mount_point}."
+  else
+    echo "${mount_point} is already mounted."
+  fi
+
+  # Set ownership and permissions
+  chown yugabyte:yugabyte ${mount_point} || fail "Failed to set ownership for ${mount_point}."
+  chmod 755 ${mount_point} || fail "Failed to set permissions for ${mount_point}."
+  echo "Set ownership and permissions for ${mount_point}."
+
+  index=$((index + 1))
+done
+
+echo "Volume mounting process completed."
+
+echo "OS Configuration applied successfully."

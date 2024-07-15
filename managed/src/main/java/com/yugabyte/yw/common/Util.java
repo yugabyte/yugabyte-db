@@ -76,6 +76,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
@@ -137,9 +138,9 @@ public class Util {
 
   public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
-  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_STABLE_VERSION = "2024.1.1.0-b1";
+  public static final String GFLAG_GROUPS_STABLE_VERSION = "2024.1.0.0-b129";
 
-  public static final String ENHANCED_POSTGRES_COMPATIBILITY_DB_PREVIEW_VERSION = "2.23.0.0-b416";
+  public static final String GFLAG_GROUPS_PREVIEW_VERSION = "2.23.0.0-b416";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
@@ -222,6 +223,13 @@ public class Util {
           id.replaceAll("(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})", "$1-$2-$3-$4-$5");
       return UUID.fromString(uuidWithHyphens);
     }
+  }
+
+  public static String getIdRepresentation(UUID uuid) {
+    if (uuid == null) {
+      return null;
+    }
+    return uuid.toString().replace("-", "");
   }
 
   /**
@@ -1351,5 +1359,9 @@ public class Util {
       }
     }
     return clone;
+  }
+
+  public static <T> Predicate<T> not(Predicate<T> t) {
+    return t.negate();
   }
 }

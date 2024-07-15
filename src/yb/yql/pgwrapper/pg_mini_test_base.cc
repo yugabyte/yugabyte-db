@@ -173,8 +173,10 @@ PGConnSettings PgMiniTestBase::MakeConnSettings(const std::string& dbname) const
   };
 }
 
-Result<PGConn> PgMiniTestBase::ConnectToDB(const std::string& dbname) const {
-  auto result = VERIFY_RESULT(PGConnBuilder(MakeConnSettings(dbname)).Connect());
+Result<PGConn> PgMiniTestBase::ConnectToDB(const std::string& dbname, size_t timeout) const {
+  auto settings = MakeConnSettings(dbname);
+  settings.connect_timeout = timeout;
+  auto result = VERIFY_RESULT(PGConnBuilder(settings).Connect());
   RETURN_NOT_OK(SetupConnection(&result));
   return result;
 }

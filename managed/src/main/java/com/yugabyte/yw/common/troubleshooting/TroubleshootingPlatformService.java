@@ -12,14 +12,13 @@ package com.yugabyte.yw.common.troubleshooting;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.WSClientRefresher;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.TroubleshootingPlatformExt;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.TroubleshootingPlatform;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.TroubleshootingPlatformFilter;
 import io.ebean.ExpressionList;
 import io.ebean.annotation.Transactional;
@@ -28,23 +27,22 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import play.libs.ws.WSClient;
 
 @Singleton
 @Slf4j
 public class TroubleshootingPlatformService {
-
-  public static final String WS_CLIENT_KEY = "yb.troubleshooting.ws";
-
   private final BeanValidator beanValidator;
-
-  private final WSClientRefresher wsClientRefresher;
+  private final TroubleshootingPlatformClient client;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public TroubleshootingPlatformService(
-      BeanValidator beanValidator, WSClientRefresher wsClientRefresher) {
+      BeanValidator beanValidator,
+      TroubleshootingPlatformClient client,
+      RuntimeConfGetter confGetter) {
     this.beanValidator = beanValidator;
-    this.wsClientRefresher = wsClientRefresher;
+    this.client = client;
+    this.confGetter = confGetter;
   }
 
   @Transactional
@@ -59,7 +57,7 @@ public class TroubleshootingPlatformService {
           getOrBadRequest(
               troubleshootingPlatform.getCustomerUUID(), troubleshootingPlatform.getUuid());
       if (!force && !existingConfig.getTpUrl().equals(troubleshootingPlatform.getTpUrl())) {
-        TroubleshootingPlatformExt.InUseStatus inUseStatus = getInUseStatus(existingConfig);
+        TroubleshootingPlatformExt.InUseStatus inUseStatus = client.getInUseStatus(existingConfig);
         if (inUseStatus == TroubleshootingPlatformExt.InUseStatus.IN_USE) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Can't change Troubleshooting Platform URL while platform is in use");
@@ -72,6 +70,7 @@ public class TroubleshootingPlatformService {
     }
 
     validate(troubleshootingPlatform);
+    client.putCustomerMetadata(troubleshootingPlatform);
     if (isUpdate) {
       troubleshootingPlatform.update();
     } else {
@@ -115,18 +114,41 @@ public class TroubleshootingPlatformService {
   @Transactional
   public void delete(UUID customerUuid, UUID uuid, boolean force) {
     TroubleshootingPlatform platform = getOrBadRequest(customerUuid, uuid);
-    if (!force) {
-      TroubleshootingPlatformExt.InUseStatus inUseStatus = getInUseStatus(platform);
-      if (inUseStatus == TroubleshootingPlatformExt.InUseStatus.IN_USE) {
-        throw new PlatformServiceException(BAD_REQUEST, "Troubleshooting Platform is in use");
-      } else if (inUseStatus == TroubleshootingPlatformExt.InUseStatus.ERROR) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Failed to access Troubleshooting Platform");
+    try {
+      client.deleteCustomerMetadata(platform);
+    } catch (PlatformServiceException e) {
+      if (!force) {
+        throw e;
       }
-    } else {
-      tryForceUnregister(platform);
     }
     platform.delete();
+  }
+
+  public TroubleshootingPlatformExt.InUseStatus getInUseStatus(TroubleshootingPlatform platform) {
+    return client.getInUseStatus(platform);
+  }
+
+  public boolean isRegistered(TroubleshootingPlatform troubleshootingPlatform, Universe universe) {
+    return client.getUniverseMetadata(troubleshootingPlatform, universe.getUniverseUUID()) != null;
+  }
+
+  public void putUniverse(TroubleshootingPlatform troubleshootingPlatform, Universe universe) {
+    TroubleshootingPlatformClient.UniverseMetadata universeMetadata =
+        new TroubleshootingPlatformClient.UniverseMetadata()
+            .setId(universe.getUniverseUUID())
+            .setCustomerId(troubleshootingPlatform.getCustomerUUID())
+            .setDataMountPoints(splitMountPoints(MetricQueryHelper.getDataMountPoints(universe)))
+            .setOtherMountPoints(
+                splitMountPoints(MetricQueryHelper.getOtherMountPoints(confGetter, universe)));
+    client.putUniverseMetadata(troubleshootingPlatform, universeMetadata);
+  }
+
+  public void deleteUniverse(TroubleshootingPlatform troubleshootingPlatform, Universe universe) {
+    client.deleteUniverseMetadata(troubleshootingPlatform, universe.getUniverseUUID());
+  }
+
+  private List<String> splitMountPoints(String mountPoints) {
+    return Arrays.stream(mountPoints.split("\\|")).toList();
   }
 
   public void validate(TroubleshootingPlatform platform) {
@@ -144,48 +166,6 @@ public class TroubleshootingPlatformService {
           .error()
           .forField("tpUrl", "platform with such url already exists.")
           .throwError();
-    }
-  }
-
-  public TroubleshootingPlatformExt.InUseStatus getInUseStatus(TroubleshootingPlatform platform) {
-    try {
-      WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
-      ApiHelper apiHelper = new ApiHelper(wsClient);
-      String universeMetadataUrl = platform.getTpUrl() + "/api/universe_metadata";
-      JsonNode universeMetadataList =
-          apiHelper.getRequest(
-              universeMetadataUrl,
-              Collections.emptyMap(),
-              ImmutableMap.of("customer_uuid", platform.getCustomerUUID().toString()));
-      if (!universeMetadataList.isArray()) {
-        return TroubleshootingPlatformExt.InUseStatus.ERROR;
-      }
-      return universeMetadataList.isEmpty()
-          ? TroubleshootingPlatformExt.InUseStatus.NOT_IN_USE
-          : TroubleshootingPlatformExt.InUseStatus.IN_USE;
-    } catch (Exception e) {
-      return TroubleshootingPlatformExt.InUseStatus.ERROR;
-    }
-  }
-
-  public void tryForceUnregister(TroubleshootingPlatform platform) {
-    try {
-      WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
-      ApiHelper apiHelper = new ApiHelper(wsClient);
-      String universeMetadataUrl = platform.getTpUrl() + "/api/universe_metadata";
-      JsonNode response =
-          apiHelper.deleteRequest(
-              universeMetadataUrl,
-              Collections.emptyMap(),
-              ImmutableMap.of("customer_uuid", platform.getCustomerUUID().toString()));
-      if (response.has("error")) {
-        log.warn(
-            "Failed to delete universe metadata objects from {}. Error: {}",
-            platform.getTpUrl(),
-            response.get("error"));
-      }
-    } catch (Exception e) {
-      log.warn("Failed to delete universe metadata objects from {}", platform.getTpUrl(), e);
     }
   }
 }

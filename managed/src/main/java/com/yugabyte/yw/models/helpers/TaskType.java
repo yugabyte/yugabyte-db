@@ -128,9 +128,6 @@ public enum TaskType {
       CustomerTask.TaskType.CreatePitrConfig,
       CustomerTask.TargetType.Universe),
 
-  // TODO There is no reference for this task.
-  RestorePitrConfig(com.yugabyte.yw.commissioner.tasks.RestorePitrConfig.class),
-
   DeletePitrConfig(
       com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class,
       CustomerTask.TaskType.DeletePitrConfig,
@@ -743,6 +740,14 @@ public enum TaskType {
   AddNamespaceToXClusterReplication(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication.class),
 
+  XClusterRemoveNamespaceFromTargetUniverse(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse
+          .class),
+
+  XClusterRemoveNamespaceFromOutboundReplication(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
+          .XClusterRemoveNamespaceFromOutboundReplicationGroup.class),
+
   SetRestoreTime(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime.class),
 
   XClusterConfigSetup(
@@ -791,6 +796,12 @@ public enum TaskType {
   DeleteReplicationOnSource(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplicationOnSource.class),
 
+  DeleteXClusterBackupRestoreEntries(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterBackupRestoreEntries
+          .class),
+
+  SetRestoreState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState.class),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup.class),
@@ -825,6 +836,10 @@ public enum TaskType {
   RestoreUniverseKeysYb(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb.class),
 
   RestoreUniverseKeysYbc(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc.class),
+
+  SetBackupHiddenState(com.yugabyte.yw.commissioner.tasks.subtasks.SetBackupHiddenState.class),
+
+  SetRestoreHiddenState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreHiddenState.class),
 
   RestorePreflightValidate(
       com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate.class),

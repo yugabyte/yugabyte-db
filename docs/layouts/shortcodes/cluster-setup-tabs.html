@@ -3,7 +3,7 @@
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
     {{- if strings.Contains $tabs "local" -}}
     <li>
-        <a href="#local" class="nav-link {{if (eq $mode "local")}}active{{end}}" id="local-tab" data-toggle="tab" role="tab" aria-controls="local" aria-selected="{{if (eq $mode "local")}}true{{end}}">
+        <a href="#local" class="nav-link {{if (eq $mode "local")}}active{{end}}" id="local-tab" data-bs-toggle="tab" role="tab" aria-controls="local" aria-selected="{{if (eq $mode "local")}}true{{end}}">
         <img src="/icons/database.svg" alt="Local Cluster"/>
         Local
         </a>
@@ -11,7 +11,7 @@
     {{- end -}}
     {{- if strings.Contains $tabs "cloud" -}}
     <li>
-        <a href="#cloud" class="nav-link {{if (eq $mode "cloud")}}active{{end}}" id="cloud-tab" data-toggle="tab" role="tab" aria-controls="cloud" aria-selected="{{if (eq $mode "cloud")}}true{{end}}">
+        <a href="#cloud" class="nav-link {{if (eq $mode "cloud")}}active{{end}}" id="cloud-tab" data-bs-toggle="tab" role="tab" aria-controls="cloud" aria-selected="{{if (eq $mode "cloud")}}true{{end}}">
         <img src="/icons/cloud.svg" alt="Cloud Cluster"/>
         YB Managed
         </a>
@@ -19,7 +19,7 @@
     {{- end -}}
     {{- if strings.Contains $tabs "anywhere" -}}
     <li>
-        <a href="#anywhere" class="nav-link {{if (eq $mode "anywhere")}}active{{end}}" id="anywhere-tab" data-toggle="tab" role="tab" aria-controls="anywhere" aria-selected="{{if (eq $mode "anywhere")}}true{{end}}">
+        <a href="#anywhere" class="nav-link {{if (eq $mode "anywhere")}}active{{end}}" id="anywhere-tab" data-bs-toggle="tab" role="tab" aria-controls="anywhere" aria-selected="{{if (eq $mode "anywhere")}}true{{end}}">
         <img src="/icons/server.svg" alt="Anywhere Cluster"/>
         YB Anywhere
         </a>
@@ -40,7 +40,7 @@
     <div id="cloud" class="tab-pane fade {{if (eq $mode "cloud")}}show active{{end}}" role="tabpanel" aria-labelledby="cloud-tab">
         <div class="admonition note">
             <p class="admonition-title">Setup</p>
-            To set up a cluster, refer to <a href="/preview/explore/#set-up-yugabytedb-universe">Set up a YugabyteDB Managed cluster</a>.
+            To set up a cluster, refer to <a href="/preview/explore/#set-up-yugabytedb-universe">Set up a YugabyteDB Aeon cluster</a>.
         </div>
     </div>
     {{- end -}}

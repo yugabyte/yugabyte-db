@@ -4,7 +4,7 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 menu:
   preview:
     identifier: ash
@@ -80,7 +80,7 @@ Get information on wait events for each normalized query, YSQL, or YCQL request.
 | top_level_node_id | UUID | 16-byte YB-TServer UUID of the YSQL/YCQL node where the query is being executed. |
 | query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). A known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
 | ysql_session_id | bigint | YSQL session identifier. Zero for YCQL and background activities. |
-| client_node_ip | text | Client IP for the RPC. For YSQL, it is the client node from where the query is generated. Null for background activities. |
+| client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
 
 ## Wait events
@@ -166,7 +166,7 @@ ORDER BY
 ```
 
 ```output
- query_id             | wait_event_component |             wait_event             | wait_event_type | percentage
+ query_id             | wait_event_component |             wait_event             | wait_event_type | count
  ---------------------+----------------------+------------------------------------+-----------------+------------
  -4157456334073660389 | YSQL                 | CatalogRead                        | Network         |     3
  -1970690938654296136 | TServer              | Raft_ApplyingEdits                 | Cpu             |    54
@@ -220,7 +220,7 @@ ORDER BY
 ```
 
 ```output
-                query                          | wait_event_component |             wait_event                   | wait_event_type | percentage
+                query                          | wait_event_component |             wait_event                   | wait_event_type | count
 -----------------------------------------------+----------------------+------------------------------------------+-----------------+------------
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | OnCpu_Passive                            | Cpu             |    46
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | Raft_ApplyingEdits                       | Cpu             |    34

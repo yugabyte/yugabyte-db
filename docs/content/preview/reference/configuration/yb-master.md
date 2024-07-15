@@ -289,7 +289,7 @@ If these defaults are used for both TServer and master, then a node's available 
 | Postgres % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Managed](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
 
@@ -635,6 +635,12 @@ Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tabl
 
 ## Tablet splitting flags
 
+##### --max_create_tablets_per_ts
+
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
+
+Default: `50`
+
 ##### --enable_automatic_tablet_splitting
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
@@ -657,7 +663,7 @@ Default: `1`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `128_MB`
+Default: `128 MiB`
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -669,19 +675,19 @@ Default: `24`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `10_GB`
+Default: `10 GiB`
 
 ##### --tablet_force_split_threshold_bytes
 
 The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
 
-Default: `100_GB`
+Default: `100 GiB`
 
 ##### --tablet_split_limit_per_table
 
 The maximum number of tablets per table for tablet splitting. Limitation is disabled if this value is set to 0.
 
-Default: `256`
+Default: `0`
 
 ##### --index_backfill_tablet_split_completion_timeout_sec
 

@@ -11,9 +11,11 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.BiMap;
+import com.google.common.collect.HashBiMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
+import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -36,6 +38,8 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
 import com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData;
+import com.yugabyte.yw.forms.XClusterConfigNeedBootstrapPerTableResponse;
+import com.yugabyte.yw.forms.XClusterConfigNeedBootstrapPerTableResponse.XClusterNeedBootstrapReason;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
@@ -75,6 +79,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -99,7 +104,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final RuntimeConfGetter confGetter;
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
-  private final XClusterSyncScheduler xClusterSyncScheduler;
+  private final XClusterScheduler xClusterScheduler;
 
   @Inject
   public XClusterConfigController(
@@ -111,7 +116,7 @@ public class XClusterConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterSyncScheduler xClusterSyncScheduler) {
+      XClusterScheduler xClusterScheduler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -120,7 +125,7 @@ public class XClusterConfigController extends AuthenticatedController {
     this.confGetter = confGetter;
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
-    this.xClusterSyncScheduler = xClusterSyncScheduler;
+    this.xClusterScheduler = xClusterScheduler;
   }
 
   /**
@@ -319,8 +324,27 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
 
-    xClusterSyncScheduler.syncXClusterConfig(xClusterConfig);
+    xClusterScheduler.syncXClusterConfig(xClusterConfig);
     xClusterConfig.refresh();
+
+    // Set tableType if it is UNKNOWN. This is useful for xCluster configs that were created in old
+    // versions of YBA and now the customer has updated their YBA version.
+    if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.UNKNOWN)) {
+      try {
+        Universe sourceUniverse =
+            Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(
+                sourceTableInfoList, xClusterConfig.getTableIds());
+        xClusterConfig.updateTableType(requestedTableInfoList);
+      } catch (Exception e) {
+        log.warn(
+            "Failed to set tableType for XClusterConfig({}): {}", xClusterConfig, e.getMessage());
+        // Ignore any exception because the get API should not fail because of this.
+      }
+    }
 
     JsonNode lagMetricData;
     try {
@@ -356,7 +380,8 @@ public class XClusterConfigController extends AuthenticatedController {
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
 
-    XClusterConfigTaskBase.setReplicationStatus(this.xClusterUniverseService, xClusterConfig);
+    XClusterConfigTaskBase.setReplicationStatus(
+        this.xClusterUniverseService, this.ybService, xClusterConfig);
 
     // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
@@ -517,12 +542,17 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   static XClusterConfigTaskParams getSetDatabasesTaskParams(
-      XClusterConfig xClusterConfig, Set<String> databaseIds) {
+      XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      Set<String> databaseIds,
+      Set<String> databaseIdsToAdd,
+      Set<String> databaseIdsToRemove) {
 
     XClusterConfigEditFormData editForm = new XClusterConfigEditFormData();
     editForm.databases = databaseIds;
 
-    return new XClusterConfigTaskParams(xClusterConfig, editForm);
+    return new XClusterConfigTaskParams(
+        xClusterConfig, bootstrapParams, editForm, databaseIdsToAdd, databaseIdsToRemove);
   }
 
   static XClusterConfigTaskParams getSetTablesTaskParams(
@@ -1122,7 +1152,11 @@ public class XClusterConfigController extends AuthenticatedController {
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.16.0.0")
   public Result needBootstrapTable(
-      UUID customerUuid, UUID sourceUniverseUuid, String configTypeString, Http.Request request) {
+      UUID customerUuid,
+      UUID sourceUniverseUuid,
+      String configTypeString,
+      boolean includeDetails,
+      Http.Request request) {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUuid);
     XClusterConfigNeedBootstrapFormData needBootstrapFormData =
@@ -1133,37 +1167,114 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfigTaskBase.convertUuidStringsToIdStringSet(needBootstrapFormData.tables);
 
     log.info(
-        "Received needBootstrapTable request for sourceUniverseUuid={}, configTypeString={} "
-            + "with body={}",
+        "Received needBootstrapTable request for sourceUniverseUuid={}, configTypeString={},"
+            + " includeDetails={} with body={}",
         sourceUniverseUuid,
         configTypeString,
+        includeDetails,
         needBootstrapFormData);
 
-    Set<String> allTables = new HashSet<>(needBootstrapFormData.tables);
-
-    // Add index tables.
-    Map<String, List<String>> mainTableIndexTablesMap =
-        XClusterConfigTaskBase.getMainTableIndexTablesMap(
-            this.ybService, sourceUniverse, needBootstrapFormData.tables);
-    Set<String> indexTableIdSet =
-        mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
-    allTables.addAll(indexTableIdSet);
-    log.debug("The following index tables are added to the list of tables: {}", indexTableIdSet);
+    if (Objects.nonNull(configTypeString)) {
+      log.warn("The configTypeString parameter is deprecated and will be removed in the future");
+    }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+    Map<String, MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableIdToTableInfoMap =
+        XClusterConfigTaskBase.getTableIdToTableInfoMap(sourceTableInfoList);
+    Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
+        namespaceIdToTableInfoListMap =
+            XClusterConfigTaskBase.groupByNamespaceId(sourceTableInfoList);
+    log.debug("namespaceIdToTableInfoListMap is {}", namespaceIdToTableInfoListMap);
+    Map<String, List<String>> sourceUniverseMainTableIndexTablesMap;
+    // For universes newer than or equal to 2.21.1.0-b168, we use the following method to improve
+    // performance.
+    if (Util.compareYbVersions(
+            "2.21.1.0-b168",
+            sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            true)
+        <= 0) {
+      sourceUniverseMainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(sourceUniverse, sourceTableInfoList);
+    } else {
+      log.warn(
+          "Universe {} does not support indexed_table_id in the ListTable RPC, the response may"
+              + " take time to be generated. Please consider upgrading the universe to a newer"
+              + " version.",
+          sourceUniverseUuid);
+      sourceUniverseMainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybService,
+              sourceUniverse,
+              XClusterConfigTaskBase.getTableIds(sourceTableInfoList));
+    }
+    log.debug("sourceUniverseMainTableIndexTablesMap is {}", sourceUniverseMainTableIndexTablesMap);
+
+    Set<String> allTableIds = new HashSet<>(needBootstrapFormData.tables);
+
+    Set<String> addedNamespaceIds = new HashSet<>();
+    needBootstrapFormData.tables.forEach(
+        tableId -> {
+          MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo =
+              sourceTableIdToTableInfoMap.get(tableId);
+          if (Objects.isNull(tableInfo)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format("The table %s does not exist on the source universe", tableId));
+          }
+          CommonTypes.TableType tableType = tableInfo.getTableType();
+          if (tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)) {
+            // For YSQL, add other tables in the same namespace.
+            String namespaceId = tableInfo.getNamespace().getId().toStringUtf8();
+            if (addedNamespaceIds.contains(namespaceId)) {
+              return;
+            }
+            addedNamespaceIds.add(namespaceId);
+            allTableIds.addAll(
+                namespaceIdToTableInfoListMap.get(namespaceId).stream()
+                    .map(XClusterConfigTaskBase::getTableId)
+                    .collect(Collectors.toSet()));
+          } else if (tableType.equals(CommonTypes.TableType.YQL_TABLE_TYPE)) {
+            // For YCQL, add other index tables and the main table.
+            String mainTableId;
+            if (TableInfoUtil.isIndexTable(tableInfo)) {
+              mainTableId = tableInfo.getIndexedTableId();
+            } else {
+              mainTableId = XClusterConfigTaskBase.getTableId(tableInfo);
+            }
+            allTableIds.add(mainTableId);
+            List<String> indexTables =
+                sourceUniverseMainTableIndexTablesMap.getOrDefault(
+                    mainTableId, Collections.emptyList());
+            allTableIds.addAll(indexTables);
+          } else {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "The table type %s of tableId %s is not supported for xCluster replication",
+                    tableType, tableId));
+          }
+        });
+    log.debug("The set to be tested for need bootstrap is: {}", allTableIds);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         sourceTableInfoList.stream()
-            .filter(tableInfo -> allTables.contains(tableInfo.getId().toStringUtf8()))
+            .filter(tableInfo -> allTableIds.contains(tableInfo.getId().toStringUtf8()))
             .collect(Collectors.toList());
+
+    Map<String, XClusterConfigNeedBootstrapPerTableResponse>
+        tableIdToNeedBootstrapPerTableResponseMap = new HashMap<>();
+    allTableIds.forEach(
+        tableId ->
+            tableIdToNeedBootstrapPerTableResponseMap.put(
+                tableId, new XClusterConfigNeedBootstrapPerTableResponse()));
 
     // If tables do not exist on the target universe, bootstrapping is required.
     Optional<Set<String>> sourceTableIdsWithNoTableOnTargetUniverseOptional = Optional.empty();
+    Optional<BiMap<String, String>> sourceTableIdTargetTableIdBiMapOptional = Optional.empty();
     if (Objects.nonNull(needBootstrapFormData.targetUniverseUUID)) {
       Universe targetUniverse =
           Universe.getOrBadRequest(needBootstrapFormData.targetUniverseUUID, customer);
-
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
           XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
       Map<String, String> sourceTableIdTargetTableIdMap =
@@ -1176,28 +1287,55 @@ public class XClusterConfigController extends AuthenticatedController {
                   .filter(entry -> Objects.isNull(entry.getValue()))
                   .map(Entry::getKey)
                   .collect(Collectors.toSet()));
-
       log.debug(
-          "Tables with no matching on the target are {}",
+          "sourceTableIdsWithNoTableOnTargetUniverse is {}",
           sourceTableIdsWithNoTableOnTargetUniverseOptional.get());
+
+      sourceTableIdTargetTableIdBiMapOptional =
+          Optional.of(
+              HashBiMap.create(
+                  sourceTableIdTargetTableIdMap.entrySet().stream()
+                      .filter(entry -> Objects.nonNull(entry.getValue()))
+                      .collect(Collectors.toMap(Entry::getKey, Entry::getValue))));
+      log.debug(
+          "sourceTableIdTargetTableIdBiMapOptional is {}",
+          sourceTableIdTargetTableIdBiMapOptional.get());
     }
 
     try {
       Map<String, Boolean> isBootstrapRequiredMap;
       isBootstrapRequiredMap =
           this.xClusterUniverseService.isBootstrapRequired(
-              allTables, null /* xClusterConfig */, sourceUniverseUuid);
+              allTableIds, null /* xClusterConfig */, sourceUniverseUuid);
+
+      // If isBootstrapRequiredMap is true for a table, it is not empty on the source universe.
+      Set<String> tableIdsWithData =
+          isBootstrapRequiredMap.entrySet().stream()
+              .filter(Entry::getValue)
+              .map(Entry::getKey)
+              .collect(Collectors.toSet());
+      tableIdsWithData.forEach(
+          tableId -> {
+            tableIdToNeedBootstrapPerTableResponseMap
+                .get(tableId)
+                .addReason(XClusterNeedBootstrapReason.TABLE_HAS_DATA);
+          });
 
       // Merge with the results from sourceTableIdsWithNoTableOnTargetUniverse if required.
       sourceTableIdsWithNoTableOnTargetUniverseOptional.ifPresent(
           sourceTableIdsWithNoTableOnTargetUniverse ->
               sourceTableIdsWithNoTableOnTargetUniverse.forEach(
-                  tableId -> isBootstrapRequiredMap.put(tableId, true)));
+                  tableId -> {
+                    isBootstrapRequiredMap.put(tableId, true);
+                    tableIdToNeedBootstrapPerTableResponseMap
+                        .get(tableId)
+                        .addReason(XClusterNeedBootstrapReason.TABLE_MISSING_ON_TARGET);
+                  }));
 
       // If an index table needs bootstrapping, its main table needs bootstrapping too because
       // backup/restore can be done only on the main tables and the index tables will be
       // automatically included.
-      mainTableIndexTablesMap.forEach(
+      sourceUniverseMainTableIndexTablesMap.forEach(
           (mainTableId, indexTableIds) -> {
             if (isBootstrapRequiredMap.containsKey(mainTableId)
                 && isBootstrapRequiredMap.entrySet().stream()
@@ -1207,16 +1345,92 @@ public class XClusterConfigController extends AuthenticatedController {
             }
           });
 
-      // For unsupported tables, bootstrapping is not required because they will never be in
-      // replication.
-      XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(requestedTableInfoList)
-          .get(false)
-          .forEach(
-              tableId -> {
-                if (isBootstrapRequiredMap.containsKey(tableId)) {
-                  isBootstrapRequiredMap.put(tableId, false);
-                }
-              });
+      sourceTableIdTargetTableIdBiMapOptional.ifPresent(
+          sourceTableIdTargetTableIdBiMap -> {
+            List<XClusterConfig> xClusterConfigsInReverseDirection =
+                XClusterConfig.getBetweenUniverses(
+                    needBootstrapFormData.targetUniverseUUID, sourceUniverseUuid);
+            // Detect YSQL namespaces in bidirectional replication.
+            Set<String> ysqlSourceNamespaceIdsInReverseReplication = new HashSet<>();
+            xClusterConfigsInReverseDirection.stream()
+                .filter(
+                    xClusterConfigInReverseDirection ->
+                        xClusterConfigInReverseDirection
+                            .getTableType()
+                            .equals(XClusterConfig.TableType.YSQL))
+                .forEach(
+                    xClusterConfigInReverseDirection ->
+                        xClusterConfigInReverseDirection.getTableIds().stream()
+                            .map(
+                                tableId ->
+                                    sourceTableIdToTableInfoMap.get(
+                                        sourceTableIdTargetTableIdBiMap.inverse().get(tableId)))
+                            .filter(Objects::nonNull)
+                            .forEach(
+                                tableInfo ->
+                                    ysqlSourceNamespaceIdsInReverseReplication.add(
+                                        tableInfo.getNamespace().getId().toStringUtf8())));
+
+            // Detect YCQL index group in bidirectional replication.
+            Set<String> ycqlSourceTableIdsIndexGroupInReverseReplication = new HashSet<>();
+            xClusterConfigsInReverseDirection.stream()
+                .filter(
+                    xClusterConfigInReverseDirection ->
+                        xClusterConfigInReverseDirection
+                            .getTableType()
+                            .equals(XClusterConfig.TableType.YCQL))
+                .forEach(
+                    xClusterConfigInReverseDirection ->
+                        xClusterConfigInReverseDirection.getTableIds().stream()
+                            .map(
+                                tableId ->
+                                    sourceTableIdToTableInfoMap.get(
+                                        sourceTableIdTargetTableIdBiMap.inverse().get(tableId)))
+                            .filter(Objects::nonNull)
+                            .forEach(
+                                tableInfo -> {
+                                  String mainTableId;
+                                  if (TableInfoUtil.isIndexTable(tableInfo)) {
+                                    mainTableId = tableInfo.getIndexedTableId();
+                                  } else {
+                                    mainTableId = XClusterConfigTaskBase.getTableId(tableInfo);
+                                  }
+                                  List<String> indexTables =
+                                      sourceUniverseMainTableIndexTablesMap.getOrDefault(
+                                          mainTableId, Collections.emptyList());
+                                  Stream.concat(Stream.of(mainTableId), indexTables.stream())
+                                      .forEach(
+                                          ycqlSourceTableIdsIndexGroupInReverseReplication::add);
+                                }));
+
+            // Bootstrapping cannot be done for bidirectional replication.
+            allTableIds.forEach(
+                tableId -> {
+                  MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo =
+                      sourceTableIdToTableInfoMap.get(tableId);
+                  if (tableInfo.getTableType().equals(TableType.PGSQL_TABLE_TYPE)) {
+                    String namespaceId = tableInfo.getNamespace().getId().toStringUtf8();
+                    if (ysqlSourceNamespaceIdsInReverseReplication.contains(namespaceId)) {
+                      tableIdToNeedBootstrapPerTableResponseMap
+                          .get(tableId)
+                          .addReason(XClusterNeedBootstrapReason.BIDIRECTIONAL_REPLICATION);
+                    }
+                  } else if (tableInfo.getTableType().equals(TableType.YQL_TABLE_TYPE)) {
+                    if (ycqlSourceTableIdsIndexGroupInReverseReplication.contains(tableId)) {
+                      tableIdToNeedBootstrapPerTableResponseMap
+                          .get(tableId)
+                          .addReason(XClusterNeedBootstrapReason.BIDIRECTIONAL_REPLICATION);
+                    }
+                  }
+                });
+          });
+
+      if (includeDetails) {
+        return PlatformResults.withData(
+            tableIdToNeedBootstrapPerTableResponseMap.entrySet().stream()
+                .filter(entry -> needBootstrapFormData.tables.contains(entry.getKey()))
+                .collect(Collectors.toMap(Entry::getKey, Entry::getValue)));
+      }
 
       // The response should include only the requested tables.
       return PlatformResults.withData(
@@ -1224,7 +1438,7 @@ public class XClusterConfigController extends AuthenticatedController {
               .filter(entry -> needBootstrapFormData.tables.contains(entry.getKey()))
               .collect(Collectors.toMap(Entry::getKey, Entry::getValue)));
     } catch (Exception e) {
-      log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
+      log.error("XClusterConfigTaskBase.isBootstrapRequired hit error: ", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
@@ -1325,7 +1539,7 @@ public class XClusterConfigController extends AuthenticatedController {
       bootstrapParams.tables =
           XClusterConfigTaskBase.convertUuidStringsToIdStringSet(bootstrapParams.tables);
       // Fail early if parameters are invalid for bootstrapping.
-      if (bootstrapParams.tables.size() > 0) {
+      if (!bootstrapParams.tables.isEmpty()) {
         validateBackupRequestParamsForBootstrapping(
             bootstrapParams.backupRequestParams, customerUUID);
       }
@@ -1436,10 +1650,9 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   private void validateBackupRequestParamsForBootstrapping(
-      XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams bootstarpBackupParams,
-      UUID customerUUID) {
+      BootstrapParams.BootstrapBackupParams bootstrapBackupParams, UUID customerUUID) {
     XClusterConfigTaskBase.validateBackupRequestParamsForBootstrapping(
-        customerConfigService, backupHelper, bootstarpBackupParams, customerUUID);
+        customerConfigService, backupHelper, bootstrapBackupParams, customerUUID);
   }
 
   public static void certsForCdcDirGFlagCheck(Universe sourceUniverse, Universe targetUniverse) {

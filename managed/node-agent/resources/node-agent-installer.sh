@@ -20,6 +20,7 @@ SKIP_VERIFY_CERT=""
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
+SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
@@ -64,11 +65,16 @@ run_as_super_user() {
 }
 
 export_path() {
+  set +euo pipefail
+  source "$INSTALL_USER_HOME"/.bashrc >/dev/null 2>&1
   if [[ ":$PATH:" != *":$1:"* ]]; then
-    PATH="$1${PATH:+":$PATH"}"
-    echo "PATH=$PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    NEW_PATH="$1":\$PATH
+    PATH="$1":$PATH
+    echo "PATH=$NEW_PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    echo "export PATH" >> "$INSTALL_USER_HOME"/.bashrc
     export PATH
   fi
+  set -euo pipefail
 }
 
 save_node_agent_home() {
@@ -519,6 +525,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --airgap)
       AIRGAP_INSTALL="true"
+    ;;
+    --skip_package_download)
+      SKIP_PACKAGE_DOWNLOAD="true"
     ;;
     --node_name)
       NODE_NAME="$2"

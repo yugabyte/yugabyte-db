@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Alert.SortBy;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
@@ -60,6 +61,8 @@ public class AlertTest extends FakeDBApplication {
 
   private AlertTemplateDescription alertTemplateDescription;
 
+  private RuntimeConfGetter runtimeConfGetter;
+
   @Before
   public void setUp() {
     cust1 = ModelFactory.testCustomer("Customer 1");
@@ -69,6 +72,7 @@ public class AlertTest extends FakeDBApplication {
     definition = createDefinition();
     alertService = app.injector().instanceOf(AlertService.class);
     alertTemplateService = app.injector().instanceOf(AlertTemplateService.class);
+    runtimeConfGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     alertTemplateDescription =
         alertTemplateService.getTemplateDescription(configuration.getTemplate());
   }
@@ -342,7 +346,11 @@ public class AlertTest extends FakeDBApplication {
     List<AlertLabel> labels =
         definition
             .getEffectiveLabels(
-                alertTemplateDescription, configuration, null, AlertConfiguration.Severity.SEVERE)
+                alertTemplateDescription,
+                configuration,
+                null,
+                AlertConfiguration.Severity.SEVERE,
+                runtimeConfGetter)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());
@@ -418,7 +426,7 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.ALERT_EXPRESSION.labelName(),
             alertTemplateDescription.getQueryWithThreshold(
-                definition, configuration.getThresholds().get(Severity.SEVERE)));
+                configuration, definition, Severity.SEVERE, runtimeConfGetter));
     AlertLabel thresholdLabel = new AlertLabel(alert, KnownAlertLabels.THRESHOLD.labelName(), "1");
     AlertLabel definitionUuidLabel =
         new AlertLabel(

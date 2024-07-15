@@ -23,7 +23,7 @@ import {
   shouldAutoIncludeIndexTables
 } from '../ReplicationUtils';
 import DeleteReplicationTableModal from './DeleteReplicationTableModal';
-import { TableLagGraphModal } from './TableLagGraphModal';
+import { TableReplicationLagGraphModal } from './TableReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import {
@@ -36,6 +36,7 @@ import {
 } from '../../../redesign/helpers/api';
 import {
   BROKEN_XCLUSTER_CONFIG_STATUSES,
+  INPUT_FIELD_WIDTH_PX,
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
   MetricName,
@@ -64,6 +65,14 @@ import { XClusterReplicationTable, XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
 import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import {
+  SearchToken,
+  YBSmartSearchBar
+} from '../../../redesign/components/YBSmartSearchBar/YBSmartSearchBar';
+import {
+  FieldType,
+  isMatchedBySearchToken
+} from '../../../redesign/components/YBSmartSearchBar/helpers';
 
 import styles from './ReplicationTables.module.scss';
 
@@ -85,6 +94,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   const { xClusterConfig, isActive = true } = props;
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterReplicationTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
+  const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
 
   const dispatch = useDispatch();
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
@@ -97,7 +107,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
       fetchTablesInUniverse(
         xClusterConfig.sourceUniverseUUID,
         XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((respone) => respone.data)
+      ).then((response) => response.data)
   );
 
   const sourceUniverseQuery = useQuery(
@@ -118,7 +128,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     nodeAggregation: NodeAggregation.MAX,
     splitType: SplitType.TABLE
   };
-  const replciationLagMetricRequestParams: MetricsQueryParams = {
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     xClusterConfigUuid: xClusterConfig.uuid,
@@ -127,11 +137,11 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   };
   const tableReplicationLagQuery = useQuery(
     metricQueryKey.live(
-      replciationLagMetricRequestParams,
+      replicationLagMetricRequestParams,
       liveMetricTimeRangeValue,
       liveMetricTimeRangeUnit
     ),
-    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
@@ -155,7 +165,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
               toast.success(
                 deleteTableDetails
-                  ? `"${getTableName(deleteTableDetails)}" table removed successully.`
+                  ? `"${getTableName(deleteTableDetails)}" table removed successfully.`
                   : 'Table removed successfully.'
               );
             } else {
@@ -211,6 +221,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
+  const handleSearchTokenChange = (searchTokens: SearchToken[]) => {
+    setSearchTokens(searchTokens);
+  };
+
   const hideModal = () => {
     dispatch(closeDialog());
   };
@@ -224,6 +238,9 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   );
 
   const sourceUniverse = sourceUniverseQuery.data;
+  const filteredTablesInConfig = tablesInConfig.filter((table) =>
+    isTableMatchedBySearchTokens(table, searchTokens)
+  );
   return (
     <div className={styles.rootContainer}>
       {!props.isDrInterface && (
@@ -232,9 +249,16 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           <span className={styles.infoText}>Tables selected for Replication</span>
         </div>
       )}
+      <YBSmartSearchBar
+        searchTokens={searchTokens}
+        onSearchTokensChange={handleSearchTokenChange}
+        recognizedModifiers={['database', 'table']}
+        placeholder="Search tables..."
+        autoExpandMinWidth={INPUT_FIELD_WIDTH_PX}
+      />
       <div className={styles.replicationTable}>
         <BootstrapTable
-          data={tablesInConfig}
+          data={filteredTablesInConfig}
           tableBodyClass={styles.table}
           trClassName="tr-row-style"
           pagination={tablesInConfig && tablesInConfig.length > TABLE_MIN_PAGE_SIZE}
@@ -401,14 +425,15 @@ export function ReplicationTables(props: ReplicationTablesProps) {
         </BootstrapTable>
       </div>
       {openTableLagGraphDetails && (
-        <TableLagGraphModal
-          tableDetails={openTableLagGraphDetails}
-          replicationUUID={xClusterConfig.uuid}
-          universeUUID={sourceUniverse.universeUUID}
+        <TableReplicationLagGraphModal
+          xClusterTable={openTableLagGraphDetails}
+          sourceUniverseUuid={sourceUniverse.universeUUID}
           nodePrefix={sourceUniverse.universeDetails.nodePrefix}
           queryEnabled={isActive}
-          visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
-          onHide={hideModal}
+          modalProps={{
+            open: visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH,
+            onClose: hideModal
+          }}
         />
       )}
       <DeleteReplicationTableModal
@@ -426,3 +451,26 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     </div>
   );
 }
+
+/**
+ * Fields to do substring search on if search token modifier is not specified.
+ */
+const SUBSTRING_SEARCH_FIELDS = ['table', 'database'];
+
+const isTableMatchedBySearchTokens = (
+  table: XClusterReplicationTable,
+  searchTokens: SearchToken[]
+) => {
+  const candidate = {
+    ...(table.status !== XClusterTableStatus.DROPPED && {
+      database: { value: table.keySpace, type: FieldType.STRING }
+    }),
+    table: {
+      value: table.status === XClusterTableStatus.DROPPED ? table.tableUUID : table.tableName,
+      type: FieldType.STRING
+    }
+  };
+  return searchTokens.every((searchToken) =>
+    isMatchedBySearchToken(candidate, searchToken, SUBSTRING_SEARCH_FIELDS)
+  );
+};

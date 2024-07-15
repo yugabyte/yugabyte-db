@@ -859,7 +859,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
     }
 
     currentTime := time.Now().UnixMicro()
-    hostToUuid, errHostToUuidMap := c.helper.GetHostToUuidMap(helpers.HOST)
+    hostToUuid := c.helper.GetHostToUuidMapFromFuture(tabletServersResponse)
     tserverAddresses := map[string]bool{}
     for placementUuid, obj := range tabletServersResponse.Tablets {
         // Cross check the placement UUID of the node with that of read-replica cluster
@@ -936,22 +936,20 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                         masterUptimeUs = currentTime - master.InstanceId.StartTimeUs
                     }
                 }
-                if errHostToUuidMap == nil {
-                    query :=
-                        fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
-                            hostToUuid[hostName])
-                    session, err := c.GetSession()
-                    if err == nil {
-                        iter := session.Query(query).Iter()
-                        var ts int64
-                        var value int64
-                        var details string
-                        iter.Scan(&ts, &value, &details)
-                        totalDiskBytes = value
-                        if err := iter.Close(); err != nil {
-                            c.logger.Errorf("Error fetching total_disk from %s: %s",
-                                hostName, err.Error())
-                        }
+                query :=
+                    fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk",
+                        hostToUuid[hostName])
+                session, err := c.GetSession()
+                if err == nil {
+                    iter := session.Query(query).Iter()
+                    var ts int64
+                    var value int64
+                    var details string
+                    iter.Scan(&ts, &value, &details)
+                    totalDiskBytes = value
+                    if err := iter.Close(); err != nil {
+                        c.logger.Errorf("Error fetching total_disk from %s: %s",
+                            hostName, err.Error())
                     }
                 }
             }
@@ -1724,8 +1722,7 @@ func (c *Container) GetClusterConnections(ctx echo.Context) error {
                         UserName: connectionPool.UserName,
                         ActiveLogicalConnections: connectionPool.ActiveLogicalConnections,
                         QueuedLogicalConnections: connectionPool.QueuedLogicalConnections,
-                        IdleOrPendingLogicalConnections:
-                            connectionPool.IdleOrPendingLogicalConnections,
+                        WaitingLogicalConnections: connectionPool.WaitingLogicalConnections,
                         ActivePhysicalConnections: connectionPool.ActivePhysicalConnections,
                         IdlePhysicalConnections: connectionPool.IdlePhysicalConnections,
                         AvgWaitTimeNs: connectionPool.AvgWaitTimeNs,

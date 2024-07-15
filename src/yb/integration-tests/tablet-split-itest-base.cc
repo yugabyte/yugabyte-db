@@ -44,6 +44,7 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -307,10 +308,9 @@ Result<docdb::DocKeyHash> TabletSplitITestBase<MiniClusterType>::WriteRowsAndGet
 }
 
 template <class MiniClusterType>
-Result<scoped_refptr<master::TabletInfo>>
-    TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo(
-        master::CatalogManagerIf* catalog_mgr) {
-  auto tablet_infos = catalog_mgr->GetTableInfo(this->table_->id())->GetTablets();
+Result<master::TabletInfoPtr> TabletSplitITestBase<MiniClusterType>::GetSingleTestTabletInfo(
+    master::CatalogManagerIf* catalog_mgr) {
+  auto tablet_infos = VERIFY_RESULT(catalog_mgr->GetTableInfo(this->table_->id())->GetTablets());
 
   SCHECK_EQ(tablet_infos.size(), 1U, IllegalState, "Expect test table to have only 1 tablet");
   return tablet_infos.front();

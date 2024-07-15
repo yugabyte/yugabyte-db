@@ -1,7 +1,7 @@
 ---
 title: Plan your cluster
 linkTitle: Plan your cluster
-description: Plan a cluster in YugabyteDB Managed.
+description: Plan a cluster in YugabyteDB Aeon.
 headcontent: Before deploying a production cluster, consider the following factors
 menu:
   preview_yugabyte-cloud:
@@ -17,15 +17,17 @@ The following best practices are recommended for production clusters.
 
 | Feature | Recommendation |
 | :--- | :--- |
-| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS, Azure, and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
+| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Aeon supports AWS, Azure, and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections. |
 | [YugabyteDB version](#yugabytedb-version) | Use the **Production** release track. |
 | [Staging cluster](#staging-cluster) | Use a staging cluster to test application compatibility with database updates before upgrading your production cluster. |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
-| [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. Deploy clusters in a VPC and configure either peering or a private link. Refer to [VPC network](../cloud-vpcs/). After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [Connect to clusters](../../cloud-connect/). |
+| [Security and authorization](#security) | YugabyteDB Aeon clusters are secure by default. Deploy clusters in a VPC and configure either peering or a private link. Refer to [VPC network](../cloud-vpcs/). After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [Connect to clusters](../../cloud-connect/). |
 
 ## In depth
+
+Note that the availability of some features depends on your plan. To review your plan, navigate to **Usage & Billing > Plan**.
 
 ### Topology
 
@@ -59,7 +61,7 @@ For more details, refer to [Topologies](../create-clusters-topology/).
 
 #### Provider
 
-YugabyteDB Managed supports AWS, Azure, and GCP. Your choice of provider will depend primarily on where your existing applications are hosted. YugabyteDB Managed pricing is the same for all.
+YugabyteDB Aeon supports AWS, Azure, and GCP. Your choice of provider will depend primarily on where your existing applications are hosted. YugabyteDB Aeon pricing is the same for all.
 
 | Feature | AWS | Azure | GCP |
 | :--- | :--- | :--- | :--- |
@@ -89,7 +91,7 @@ For a list of supported regions, refer to [Cloud provider regions](#cloud-provid
 
 An instance in cloud computing is a server resource provided by third-party cloud services. An instance abstracts physical computing infrastructure using virtual machines. It's similar to having your own server machine in the cloud.
 
-Cloud providers offer a variety of instance types across the regions where they have data centers. When creating clusters, YugabyteDB Managed chooses the most suitable type for the cloud provider, subject to what is available in the selected regions, and uses the same instance type for all nodes in the cluster.
+Cloud providers offer a variety of instance types across the regions where they have data centers. When creating clusters, YugabyteDB Aeon chooses the most suitable type for the cloud provider, subject to what is available in the selected regions, and uses the same instance type for all nodes in the cluster.
 
 ### Fault tolerance
 
@@ -99,7 +101,7 @@ The _fault tolerance_ determines how resilient the cluster is to domain (that is
 
 With a fault tolerant cluster, planned outages such as maintenance and upgrades are performed using a rolling restart, meaning your workloads are not interrupted.
 
-YugabyteDB Managed provides the following configurations for fault tolerance.
+YugabyteDB Aeon provides the following configurations for fault tolerance.
 
 | Fault tolerance | Resilient to | Minimum number of nodes | Scale in increments of |
 | :-------------- | :----------- | :---------------------: | :--------------------: |
@@ -138,9 +140,9 @@ For application development and testing, you can set fault tolerance to **None**
 
 ### Sizing
 
-The size of the cluster is based on the number of vCPUs. The default configuration for YugabyteDB Managed clusters includes 4 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs with 4GB of memory per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
+The size of the cluster is based on the number of vCPUs. The default configuration for YugabyteDB Aeon clusters includes 4 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs with 4GB of memory per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
 
-YugabyteDB Managed clusters support 15 simultaneous connections per vCPU. So a cluster with 3 nodes and 4 vCPUs per node can support 15 x 3 x 4 = 180 simultaneous connections.
+YugabyteDB Aeon clusters support 15 simultaneous connections per vCPU. So a cluster with 3 nodes and 4 vCPUs per node can support 15 x 3 x 4 = 180 simultaneous connections.
 
 | Cluster size (node x vCPU) | Maximum simultaneous connections |
 | :--- | :--- |
@@ -165,8 +167,9 @@ Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#release-versioning-convention-for-stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
+- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
 - Innovation - Updated more frequently, providing quicker access to new features.
-- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Managed.
+- Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
 If you need a feature from the [preview release series](../../../releases/versioning/#release-versioning-convention-for-preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
 
@@ -201,9 +204,9 @@ If you identify a performance problem or regression with an update, set an exclu
 
 ### Backups
 
-YugabyteDB Managed provides a default recommended backup schedule (daily, with 8 day retention), and manages backups for you. You can [change the default schedule](../../cloud-clusters/backup-clusters/#schedule-backups), as well as perform [on-demand backups](../../cloud-clusters/backup-clusters/#on-demand-backups).
+YugabyteDB Aeon provides a default recommended backup schedule (daily, with 8 day retention), and manages backups for you. You can [change the default schedule](../../cloud-clusters/backup-clusters/#schedule-backups), as well as perform [on-demand backups](../../cloud-clusters/backup-clusters/#on-demand-backups).
 
-YugabyteDB Managed performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Backup storage costs](../../cloud-admin/cloud-billing-costs/#backup-storage-costs).
+YugabyteDB Aeon performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
 
 ### Security
 
@@ -213,11 +216,11 @@ If your applications are running in a VPC, deploy your cluster in a VPC to impro
 
 Multi-region clusters, or clusters in Azure, must be deployed in VPCs; in AWS, each region or read replica must be deployed in its own VPC.
 
-You need to create VPCs before you deploy the cluster. YugabyteDB Managed supports AWS, Azure, and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
+You need to create VPCs before you deploy the cluster. YugabyteDB Aeon supports AWS, Azure, and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
 
 #### Database user authorization
 
-YugabyteDB uses role-based access control to manage database access. When you create a cluster, YugabyteDB Managed adds a default database admin user (the credentials for this user are configurable).
+YugabyteDB uses role-based access control to manage database access. When you create a cluster, YugabyteDB Aeon adds a default database admin user (the credentials for this user are configurable).
 
 After the cluster is provisioned, create a new database and [add users](../../cloud-secure-clusters/add-users/). You can create users specific to each connecting application, and restrict their access accordingly.
 
@@ -225,15 +228,13 @@ After the cluster is provisioned, create a new database and [add users](../../cl
 In YSQL, the database admin user is not a full superuser. For security reasons, you do not have access to the Yugabyte or Postgres superusers, nor can you create users with superuser privileges.
 {{< /note >}}
 
-For more information on users and roles in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/).
+For more information on users and roles in YugabyteDB Aeon, refer to [Database authorization in YugabyteDB Aeon clusters](../../cloud-secure-clusters/cloud-users/).
 
 ## Pricing
 
 The biggest factor in the price of a cluster is the number vCPUs.
 
-Cluster charges are based on the total number of vCPUs used and how long they have been running. Cluster per-hour charges include [free allowances](../../cloud-admin/cloud-billing-costs/) for disk storage, backup storage, and data transfer. If you use more than the free allowance, you incur overages on top of the base vCPU capacity cost.
-
-Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
+Cluster charges are based on the total number of vCPUs used and how long they have been running. The rate is determined by your [pricing plan](https://www.yugabyte.com/pricing/).
 
 ## Cloud provider regions
 

@@ -23,7 +23,7 @@ class IsOperationDoneResult;
 class SysCatalogTable;
 
 namespace client {
-class XClusterRemoteClient;
+class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
@@ -72,7 +72,7 @@ Result<NamespaceId> GetProducerNamespaceId(
 bool IncludesConsumerNamespace(
     UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
 
-Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
+Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetXClusterRemoteClientHolder(
     UniverseReplicationInfo& universe);
 
 // Returns (false, Status::OK()) if the universe setup is still in progress.

@@ -68,7 +68,7 @@ The following table describes the types of metrics exposed by each endpoint and 
 
 System-level metrics are not exposed by YugabyteDB and are generally collected using an external tool such as [node_exporter](https://prometheus.io/docs/guides/node-exporter/) if using Prometheus.
 
-If you use products that automate metrics and monitoring (such as YugabyteDB Anywhere and YugabyteDB Managed), node-level metric collection and aggregation to expose key metrics is provided out-of-the-box.
+If you use products that automate metrics and monitoring (such as YugabyteDB Anywhere and YugabyteDB Aeon), node-level metric collection and aggregation to expose key metrics is provided out-of-the-box.
 
 ## Prometheus Endpoint URL Parameters
 

@@ -49,6 +49,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -138,6 +139,7 @@ public class Backup extends Model {
           .put(BackupState.Failed, BackupState.QueuedForDeletion)
           .put(BackupState.Stopped, BackupState.QueuedForDeletion)
           .put(BackupState.Stopped, BackupState.InProgress)
+          .put(BackupState.Stopped, BackupState.FailedToDelete)
           .put(BackupState.Stopping, BackupState.QueuedForDeletion)
           .put(BackupState.InProgress, BackupState.QueuedForDeletion)
           .put(BackupState.Completed, BackupState.QueuedForDeletion)
@@ -186,6 +188,9 @@ public class Backup extends Model {
   public static final Set<BackupState> IN_PROGRESS_STATES =
       Sets.immutableEnumSet(
           BackupState.InProgress, BackupState.QueuedForDeletion, BackupState.DeleteInProgress);
+  public static final List<BackupState> COMPLETED_STATES =
+      Arrays.asList(
+          BackupState.Completed, BackupState.Failed, BackupState.Stopped, BackupState.Skipped);
 
   public enum SortBy implements PagedQuery.SortByIF {
     createTime("createTime");
@@ -218,6 +223,11 @@ public class Backup extends Model {
   public UUID getCustomerUUID() {
     return customerUUID;
   }
+
+  @JsonIgnore
+  @ApiModelProperty(value = "Whether to hide this backup on the UI", accessMode = READ_WRITE)
+  @Column(nullable = false)
+  private boolean hidden = false;
 
   @JsonIgnore
   @ApiModelProperty(value = "Universe UUID that created this backup", accessMode = READ_WRITE)
@@ -329,6 +339,10 @@ public class Backup extends Model {
   @ApiModelProperty(value = "Version of the backup in a category")
   @Column(nullable = false)
   private BackupVersion version = BackupVersion.V1;
+
+  @ApiModelProperty(value = "Retry count for backup deletion")
+  @Column(nullable = false)
+  private int retryCount;
 
   public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class) {};
 
@@ -646,7 +660,7 @@ public class Backup extends Model {
   public static Map<UUID, List<Backup>> getCompletedExpiredBackups() {
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).in("state", BackupState.Completed).findList();
+        Backup.find.query().where().lt("expiry", now).in("state", COMPLETED_STATES).findList();
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
       if (!(Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
@@ -921,6 +935,9 @@ public class Backup extends Model {
     if (!CollectionUtils.isEmpty(filter.getStates())) {
       appendInClause(query, "state", filter.getStates());
     }
+    if (!filter.isShowHidden()) {
+      query.eq("hidden", false);
+    }
     if (!CollectionUtils.isEmpty(filter.getKeyspaceList())) {
       Junction<Backup> orExpr = query.or();
       String queryStringInner =
@@ -946,6 +963,7 @@ public class Backup extends Model {
           "t0.storage_config_uuid not in (select C.config_uuid from customer_config C)";
       query.raw(configNotExists);
     }
+
     return query;
   }
 

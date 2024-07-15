@@ -2,7 +2,7 @@
 title: ybm CLI backup policy resource
 headerTitle: ybm backup policy
 linkTitle: backup policy
-description: YugabyteDB Managed CLI reference backup policy resource.
+description: YugabyteDB Aeon CLI reference backup policy resource.
 headcontent: Manage cluster backup policies
 menu:
   preview_yugabyte-cloud:

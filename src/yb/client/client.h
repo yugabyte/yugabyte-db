@@ -83,6 +83,8 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 template<class T> class scoped_refptr;
 
 namespace yb {
@@ -311,7 +313,7 @@ class YBClientBuilder {
 // This class is thread-safe.
 class YBClient {
  public:
-  ~YBClient();
+  virtual ~YBClient();
 
   std::unique_ptr<YBTableCreator> NewTableCreator();
 
@@ -456,13 +458,11 @@ class YBClient {
                          const TransactionMetadata* txn = nullptr,
                          const bool colocated = false,
                          CoarseTimePoint deadline = CoarseTimePoint(),
-                         const std::optional<std::string> source_namespace_name = std::nullopt,
-                         std::optional<HybridTime> clone_time = std::nullopt);
+                         std::optional<YbCloneInfo> yb_clone_info = std::nullopt);
 
   Status CloneNamespace(const std::string& target_namespace_name,
-                        const std::string& source_namespace_name,
                         const YQLDatabase& database_type,
-                        std::optional<HybridTime> clone_time);
+                        YbCloneInfo& yb_clone_info);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
@@ -643,7 +643,8 @@ class YBClient {
       std::optional<uint64_t>* consistent_snapshot_time = nullptr,
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
       std::optional<uint64_t>* stream_creation_time = nullptr,
-      std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr);
+      std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr,
+      std::optional<std::string>* replication_slot_name = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -1006,7 +1007,7 @@ class YBClient {
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
-  void AddMetaCacheInfo(JsonWriter* writer);
+  void AddMetaCacheInfo(JsonWriter* writer) const;
 
   void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
@@ -1031,6 +1032,7 @@ class YBClient {
  private:
   class Data;
 
+  friend class MockYBClient;
   friend class YBClientBuilder;
   friend class YBNoOp;
   friend class YBTable;
@@ -1050,7 +1052,7 @@ class YBClient {
   friend class internal::ClientMasterRpcBase;
   friend class PlacementInfoTest;
   friend class XClusterClient;
-  friend class XClusterRemoteClient;
+  friend class XClusterRemoteClientHolder;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
@@ -1092,6 +1094,15 @@ class YBClient {
   std::unique_ptr<Data> data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
+};
+
+// A mock YBClient that can be used for testing.
+// Currently it only allows us to create a MockYBClient object , and does not mock any member
+// functions.
+class MockYBClient : public YBClient {
+ public:
+  MockYBClient() = default;
+  virtual ~MockYBClient() = default;
 };
 
 Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name);

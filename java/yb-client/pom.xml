@@ -25,12 +25,11 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.89-SNAPSHOT</version>
+    <version>0.8.92-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-client</artifactId>
   <name>YB Java Client</name>
-  <version>0.8.89-SNAPSHOT</version>
   <properties>
     <yb.thirdparty.dir>${project.basedir}/../../thirdparty</yb.thirdparty.dir>
   </properties>
@@ -47,7 +46,7 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>interface-annotations</artifactId>
-      <version>${project.parent.version}</version>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.google.protobuf</groupId>

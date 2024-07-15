@@ -97,7 +97,6 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
-lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
@@ -204,7 +203,7 @@ libraryDependencies ++= Seq(
   "org.pac4j" %% "play-pac4j" % "9.0.2",
   "org.pac4j" % "pac4j-oauth" % "4.5.7" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
-  "org.playframework" %% "play-json" % "3.0.1",
+  "org.playframework" %% "play-json" % "3.0.4",
   "commons-validator" % "commons-validator" % "1.8.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -232,6 +231,7 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-model" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
+  "javax.xml.bind" % "jaxb-api" % "2.3.1",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -349,7 +349,7 @@ externalResolvers := {
     (Compile / compile),
     releaseModulesLocally
   ).value
-  buildUI.value
+  uIInstallDependency.value
   versionGenerate.value
   compileYbaCliBinary.value
   downloadThirdPartyDeps.value
@@ -404,12 +404,6 @@ buildVenv := {
     ybLog("buildVenv already done. Call 'cleanVenv' to force build again.")
     0
   }
-}
-
-buildUI := {
-  ybLog("Building UI...")
-  val status = Process("npm ci", baseDirectory.value / "ui").!
-  status
 }
 
 releaseModulesLocally := {
@@ -520,8 +514,7 @@ cleanV2ServerStubs := {
   ybLog("Cleaning Openapi v2 server stubs...")
   Process("rm -rf openapi", target.value) !
   val openapiDir = baseDirectory.value / "src/main/resources/openapi"
-  Process("rm -f paths/_index.yaml", openapiDir) #|
-      Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
+  Process("rm -f ../openapi.yaml ../openapi_public.yaml", openapiDir) !
 }
 
 lazy val cleanClients = taskKey[Int]("Clean generated clients")
@@ -569,6 +562,19 @@ openApiLint := {
     throw new RuntimeException("openapi lint failed!!!")
   }
 }
+
+lazy val jsOpenApiStubs = taskKey[Unit]("Generating JS Api Stubs")
+jsOpenApiStubs := Def.taskDyn {
+   Def.sequential(
+    uIInstallDependency,
+    Def.task {
+      val rc = Process("npm run generateV2JSApiClient", baseDirectory.value / "ui").!
+      if (rc != 0) {
+        throw new RuntimeException("Generating JS Api Stubs failed")
+      }
+    }
+   )
+}.value
 
 lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
 Compile / openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
@@ -790,12 +796,14 @@ lazy val openApiProcessClients = taskKey[Unit]("Generate and compile openapi cli
 openApiProcessClients / fileInputs += baseDirectory.value.toGlob / "src/main/resources/openapi.yaml"
 openApiProcessClients := {
   if (openApiProcessClients.inputFileChanges.hasChanges |
-      !(baseDirectory.value / "client/java/v2/build.sbt").exists())
+      !(baseDirectory.value / "client/java/v2/build.sbt").exists() ||
+      !(baseDirectory.value / "ui/src/v2/api").exists)
     Def.sequential(
       ybLogTask.toTask(" openapi.yaml file has changed, so regenerating clients..."),
       cleanClients,
       openApiGenClients,
       openApiCompileClients,
+      jsOpenApiStubs
     ).value
   else
     ybLog("Generated Openapi clients are up to date. Run 'cleanClients' to force generation.")
@@ -917,7 +925,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.89-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.92-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
@@ -961,7 +969,28 @@ dependencyOverrides += "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5"
 dependencyOverrides += "jakarta.ws.rs" % "jakarta.ws.rs-api" % "2.1.6" % Test
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-jaxb-annotations" % "2.10.1" % Test
 
-val jacksonVersion         = "2.15.3"
+// This is a custom version, built based on 1.0.3 with the following commit added on top:
+// https://github.com/apache/pekko/commit/1e41829bf7abeec268b9a409f35051ed7f4e0090.
+// This is required to fix TLS infinite loop issue, which causes high CPU usage.
+// We can't use 1.1.0-M1 version yet, as it has the following issue:
+// https://github.com/playframework/playframework/pull/12662
+// Once the issue is fixed we should migrate back on stable version.
+val pekkoVersion         = "1.0.3-tls-loop-fix"
+
+val pekkoLibs = Seq(
+  "org.apache.pekko" %% "pekko-actor-typed",
+  "org.apache.pekko" %% "pekko-actor",
+  "org.apache.pekko" %% "pekko-protobuf-v3",
+  "org.apache.pekko" %% "pekko-serialization-jackson",
+  "org.apache.pekko" %% "pekko-slf4j",
+  "org.apache.pekko" %% "pekko-stream",
+)
+
+val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
+
+dependencyOverrides ++= pekkoOverrides
+
+val jacksonVersion         = "2.17.1"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
@@ -1015,9 +1044,9 @@ testOptions += Tests.Filter(s =>
   !s.contains("com.yugabyte.yw.commissioner.tasks.local")
 )
 
-lazy val testLocal = taskKey[Unit]("Runs local provider tests")
-lazy val testFast = taskKey[Unit]("Runs quick tests")
-lazy val testUpgradeRetry = taskKey[Unit]("Runs retry tests")
+lazy val testLocal = inputKey[Unit]("Runs local provider tests")
+lazy val testFast = inputKey[Unit]("Runs quick tests")
+lazy val testUpgradeRetry = inputKey[Unit]("Runs retry tests")
 
 def localTestSuiteFilter(name: String): Boolean = (name startsWith "com.yugabyte.yw.commissioner.tasks.local")
 def quickTestSuiteFilter(name: String): Boolean =
@@ -1100,9 +1129,6 @@ val swaggerGenTest: TaskKey[Unit] = taskKey[Unit](
   "test generate swagger.json"
 )
 
-val swaggerJacksonVersion = "2.11.1"
-val swaggerJacksonOverrides = jacksonLibs.map(_ % swaggerJacksonVersion)
-
 lazy val swagger = project
   .dependsOn(root % "compile->compile;test->test")
   .settings(commonSettings)
@@ -1114,7 +1140,8 @@ lazy val swagger = project
       "com.github.dwickern" %% "swagger-play3.0" % "4.0.0"
     ),
 
-    dependencyOverrides ++= swaggerJacksonOverrides,
+    dependencyOverrides ++= pekkoOverrides,
+    dependencyOverrides ++= jacksonOverrides,
     dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
 
     swaggerGen := Def.taskDyn {
@@ -1163,3 +1190,43 @@ grafanaGen := Def.taskDyn {
       .toTask(s" com.yugabyte.yw.controllers.GrafanaGenTest $file")
   )
 }.value
+
+/**
+  * UI Build Tasks like clean node modules, npm install and npm run build
+  */
+
+// Delete node_modules directory in the given path. Return 0 if success.
+def cleanNodeModules(implicit dir: File): Int = Process("rm -rf node_modules", dir)!
+
+// Execute `npm ci` command to install all node module dependencies. Return 0 if success.
+def runNpmInstall(implicit dir: File): Int =
+  if (cleanNodeModules != 0) throw new Exception("node_modules not cleaned up")
+  else {
+    println("node version: " + Process("node" :: "--version" :: Nil).lineStream_!.head)
+    println("npm version: " + Process("npm" :: "--version" :: Nil).lineStream_!.head)
+    println("npm config get: " + Process("npm" :: "config" :: "get" :: Nil).lineStream_!.head)
+    println("npm cache verify: " + Process("npm" :: "cache" :: "verify" :: Nil).lineStream_!.head)
+    Process("npm" :: "ci" :: Nil, dir).!
+  }
+
+// Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
+def runNpmBuild(implicit dir: File): Int =
+  Process("npm run build-and-copy", dir)!
+
+lazy val uIInstallDependency = taskKey[Unit]("Install NPM dependencies")
+lazy val uIBuild = taskKey[Unit]("Build production version of UI code.")
+uIInstallDependency := {
+  implicit val uiSource = baseDirectory.value / "ui"
+  if (runNpmInstall != 0) throw new Exception("npm install failed")
+}
+uIBuild := {
+  implicit val uiSource = baseDirectory.value / "ui"
+  if (runNpmBuild != 0) throw new Exception("UI Build crashed.")
+}
+
+uIBuild := (uIBuild dependsOn (buildDependentArtifacts)).value
+
+/**
+ *  Make SBT packaging depend on the UI build hook.
+ */
+Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(uIBuild).value

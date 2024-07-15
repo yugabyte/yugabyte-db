@@ -51,6 +51,8 @@
   hosts: "{{ yb_ansible_host }}"
   become: yes
   become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
   tasks:
     # Disable unattended-upgrades so we can acquire locks to install packages on Ubuntu 18.
     - block:
@@ -124,6 +126,28 @@
       when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
       tags: yb-prebuilt-ami
 
+    - block:
+      - name: Find CentOS repo files
+        find:
+          paths: /etc/yum.repos.d/
+          patterns: 'CentOS-*'
+        register: repo_files
+
+      - name: Comment out mirrorlist URLs on CentOS 7
+        replace:
+          dest: "{{ item }}"
+          regexp: '^mirrorlist='
+          replace: '#mirrorlist='
+        with_items: "{{ repo_files.files | map(attribute='path') | list }}"
+
+      - name: Uncomment and set baseurl to vault in CentOS 7 repo files
+        replace:
+          dest: "{{ item }}"
+          regexp: '^#?baseurl=http://mirror.centos.org'
+          replace: 'baseurl=http://vault.centos.org'
+        with_items: "{{ repo_files.files | map(attribute='path') | list }}"
+      when: ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7'
+
     - name: Gather package facts
       package_facts:
       tags: yb-prebuilt-ami
@@ -137,6 +161,7 @@
         name: policycoreutils-python
         state: present
       when: >
+        not air_gapped and
         'policycoreutils-python' not in ansible_facts.packages and custom_ssh_port != '22' and
         (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
       tags: yb-prebuilt-ami
@@ -149,6 +174,7 @@
         name: policycoreutils-python-utils
         state: present
       when: >
+        not air_gapped and
         'policycoreutils-python-utils' not in ansible_facts.packages and custom_ssh_port != '22' and
         (ansible_os_family == 'RedHat' and ansible_distribution_major_version != '7')
       tags: yb-prebuilt-ami
@@ -172,7 +198,8 @@
       register: result
       until: result.rc == 0
       retries: 10
-      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+      when: not air_gapped and ansible_distribution == 'OracleLinux' and
+            ansible_distribution_major_version == '8' and
             custom_ssh_port != '22'
       tags: yb-prebuilt-ami
 
@@ -201,6 +228,6 @@
         args:
           executable: /bin/bash
 
-      when: not (air_gap | default(false) | bool) and
+      when: not air_gapped and
             install_locales | default(false) | bool
             and ansible_os_family == 'RedHat' and ansible_distribution_major_version != "7"

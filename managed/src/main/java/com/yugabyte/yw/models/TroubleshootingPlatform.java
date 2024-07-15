@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.Encrypted;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
@@ -48,6 +49,15 @@ public class TroubleshootingPlatform extends Model {
   @ApiModelProperty(value = "Metrics URL", accessMode = READ_WRITE)
   @URL
   private String metricsUrl;
+
+  @NotNull
+  @ApiModelProperty(value = "API Token", accessMode = READ_WRITE)
+  @Encrypted
+  private String apiToken;
+
+  @NotNull
+  @ApiModelProperty(value = "Metrics Scrape Period Seconds", accessMode = READ_WRITE)
+  private Long metricsScrapePeriodSecs;
 
   public TroubleshootingPlatform generateUUID() {
     this.uuid = UUID.randomUUID();

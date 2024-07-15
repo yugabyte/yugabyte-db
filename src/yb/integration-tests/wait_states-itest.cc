@@ -49,6 +49,7 @@ using namespace std::literals;
 
 DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 DECLARE_bool(allow_index_table_read_write);
 DECLARE_int32(client_read_write_timeout_ms);
@@ -329,8 +330,7 @@ void WaitStateTestCheckMethodCounts::UpdateCounts(
   std::lock_guard lock(mutex_);
   VLOG(1) << "Received " << resp.ShortDebugString();
   for (auto& container :
-       {resp.tserver_wait_states(), resp.cql_wait_states(), resp.flush_and_compaction_wait_states(),
-        resp.raft_log_appender_wait_states()}) {
+       {resp.tserver_wait_states(), resp.cql_wait_states()}) {
     for (auto& entry : container.wait_states()) {
       VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
       const auto& method =
@@ -363,6 +363,7 @@ void WaitStateTestCheckMethodCounts::DoAshCalls(std::atomic<bool>& stop) {
   req.set_fetch_flush_and_compaction_states(true);
   req.set_fetch_raft_log_appender_states(true);
   req.set_fetch_cql_states(true);
+  req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
   tserver::PgActiveSessionHistoryResponsePB resp;
   rpc::RpcController controller;
   while (!stop) {

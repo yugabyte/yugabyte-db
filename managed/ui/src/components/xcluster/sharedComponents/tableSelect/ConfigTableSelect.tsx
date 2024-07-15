@@ -8,7 +8,7 @@ import {
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
 import moment from 'moment';
-import { Typography } from '@material-ui/core';
+import { Box, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
 import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
@@ -18,14 +18,15 @@ import {
   metricQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
-import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
+import { YBControlledSelect } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   formatBytes,
   augmentTablesWithXClusterDetails,
   tableSort,
-  getStrictestReplicationLagAlertThreshold
+  getStrictestReplicationLagAlertThreshold,
+  getNamespaceIdentifierToNamespaceUuidMap,
+  getNamespaceIdentifier
 } from '../../ReplicationUtils';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
@@ -40,33 +41,63 @@ import { getTableUuid } from '../../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../../actions/universe';
 import { AlertTemplate } from '../../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 import { ExpandColumnComponent } from './ExpandColumnComponent';
+import {
+  FieldType,
+  isMatchedBySearchToken
+} from '../../../../redesign/components/YBSmartSearchBar/helpers';
+import {
+  SearchToken,
+  YBSmartSearchBar
+} from '../../../../redesign/components/YBSmartSearchBar/YBSmartSearchBar';
 
 import {
   MetricsQueryParams,
   TableType,
   Universe,
+  UniverseNamespace,
   YBTable
 } from '../../../../redesign/helpers/dtos';
-import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import {
+  IndexTableRestartReplicationCandidate,
+  MainTableRestartReplicationCandidate,
+  TableRestartReplicationCandidate,
+  XClusterTable,
+  XClusterTableType
+} from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
 import { NodeAggregation, SplitType } from '../../../metrics/dtos';
 
 import styles from './ConfigTableSelect.module.scss';
 
-interface RowItem {
-  namespace: string;
+interface NamespaceItem {
+  uuid: string;
+  name: string;
+  // Total size for all table in the namespace (regardless of search token match)
   sizeBytes: number;
-  xClusterTables: XClusterTable[];
+
+  // Stores the xCluster tables which match the current search tokens
+  xClusterTables: MainTableRestartReplicationCandidate[];
+  // Stores all xCluster tables in the namespace
+  allXClusterTables: MainTableRestartReplicationCandidate[];
+}
+
+interface SelectionOptions {
+  namespaces: NamespaceItem[];
+
+  // We store a set of table uuids at the top level to make it easy to check
+  // if the list of table options matching the current search tokens contains a specific table uuid.
+  searchMatchingTableUuids: Set<string>;
+  searchMatchingNamespaceUuids: Set<string>;
 }
 
 interface ConfigTableSelectProps {
   xClusterConfig: XClusterConfig;
   isDrInterface: boolean;
-  setSelectedTableUUIDs: (tableUUIDs: string[]) => void;
-  selectedTableUUIDs: string[];
+  setSelectedTableUuids: (tableUUIDs: string[]) => void;
+  selectedTableUuids: string[];
   configTableType: XClusterTableType;
-  selectedNamespaces: string[];
-  setSelectedNamespaces: (selectedNamespaces: string[]) => void;
+  selectedNamespaceUuids: string[];
+  setSelectedNamespaceUuids: (selectedNamespaceUuids: string[]) => void;
   selectionError: { title?: string; body?: string } | undefined;
   selectionWarning: { title: string; body: string } | undefined;
 }
@@ -81,21 +112,27 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
  */
 export const ConfigTableSelect = ({
   xClusterConfig,
-  selectedTableUUIDs,
-  setSelectedTableUUIDs,
+  selectedTableUuids,
+  setSelectedTableUuids,
   isDrInterface,
   configTableType,
-  selectedNamespaces,
-  setSelectedNamespaces,
+  selectedNamespaceUuids,
+  setSelectedNamespaceUuids,
   selectionError,
   selectionWarning
 }: ConfigTableSelectProps) => {
-  const [namespaceSearchTerm, setNamespaceSearchTerm] = useState('');
+  const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof RowItem>('namespace');
+  const [sortField, setSortField] = useState<keyof NamespaceItem>('name');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const theme = useTheme();
+
+  const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
+    universeQueryKey.namespaces(xClusterConfig.sourceUniverseUUID),
+    () => api.fetchUniverseNamespaces(xClusterConfig.sourceUniverseUUID)
+  );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
@@ -147,12 +184,14 @@ export const ConfigTableSelect = ({
   ) {
     const errorMessage =
       xClusterConfig.sourceUniverseUUID === undefined
-        ? 'The source universe is deleted.'
-        : 'The target universe is deleted.';
+        ? 'The xCluster config has undefined sourceUniverseUUID. This indicates that the source universe might be deleted.'
+        : 'The xCluster config has undefined targetUniverseUUID. This indicates that the target universe might be deleted.';
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
   if (
+    sourceUniverseNamespaceQuery.isLoading ||
+    sourceUniverseNamespaceQuery.isIdle ||
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
@@ -161,69 +200,97 @@ export const ConfigTableSelect = ({
     return <YBLoading />;
   }
 
-  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
-    return <YBErrorIndicator />;
+  const sourceUniverseLabel = isDrInterface ? 'DR primary universe' : 'source universe';
+  if (
+    sourceUniverseNamespaceQuery.isError ||
+    sourceUniverseTablesQuery.isError ||
+    sourceUniverseQuery.isError
+  ) {
+    return (
+      <YBErrorIndicator customErrorMessage={`Error fetching ${sourceUniverseLabel} information.`} />
+    );
   }
 
-  const toggleTableGroup = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
+  const toggleTableGroup = (
+    isSelected: boolean,
+    xClusterTables: TableRestartReplicationCandidate[]
+  ) => {
     if (isSelected) {
-      const currentSelectedTableUuids = new Set(selectedTableUUIDs);
+      const currentSelectedTableUuids = new Set(selectedTableUuids);
 
       xClusterTables.forEach((xClusterTable) => {
         currentSelectedTableUuids.add(getTableUuid(xClusterTable));
       });
 
-      setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
+      setSelectedTableUuids(Array.from(currentSelectedTableUuids));
     } else {
       const removedTableUuids = new Set(
-        xClusterTables.map((xClustertables) => getTableUuid(xClustertables))
+        xClusterTables.map((xClusterTables) => getTableUuid(xClusterTables))
       );
 
-      setSelectedTableUUIDs(
-        selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
+      setSelectedTableUuids(
+        selectedTableUuids.filter((tableUUID) => !removedTableUuids.has(tableUUID))
       );
     }
   };
 
-  const handleTableGroupToggle = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
+  const handleTableGroupToggle = (
+    isSelected: boolean,
+    xClusterTables: TableRestartReplicationCandidate[]
+  ) => {
     toggleTableGroup(isSelected, xClusterTables);
     return true;
   };
 
-  const handleTableToggle = (xClustertable: XClusterTable, isSelected: boolean) => {
-    toggleTableGroup(isSelected, [xClustertable]);
+  const handleTableToggle = (
+    xClusterTable: TableRestartReplicationCandidate,
+    isSelected: boolean
+  ) => {
+    toggleTableGroup(isSelected, [xClusterTable]);
   };
 
-  const toggleNamespaceGroup = (isSelected: boolean, rows: RowItem[]) => {
+  const toggleNamespaceGroup = (isSelected: boolean, namespaceItems: NamespaceItem[]) => {
     if (isSelected) {
-      const currentSelectedNamespaces = new Set(selectedNamespaces);
+      const currentSelectedNamespaceUuids = new Set(selectedNamespaceUuids);
 
-      rows.forEach((row) => {
-        currentSelectedNamespaces.add(row.namespace);
+      namespaceItems.forEach((namespaceItem) => {
+        currentSelectedNamespaceUuids.add(namespaceItem.uuid);
       });
-      setSelectedNamespaces(Array.from(currentSelectedNamespaces));
+      setSelectedNamespaceUuids(Array.from(currentSelectedNamespaceUuids));
     } else {
-      const removedNamespaceUuids = new Set(rows.map((row) => row.namespace));
+      const removedNamespaceUuids = new Set(
+        namespaceItems.map((namespaceItem) => namespaceItem.uuid)
+      );
 
-      setSelectedNamespaces(
-        selectedNamespaces.filter((namespace: string) => !removedNamespaceUuids.has(namespace))
+      setSelectedNamespaceUuids(
+        selectedNamespaceUuids.filter(
+          (namespaceUuid: string) => !removedNamespaceUuids.has(namespaceUuid)
+        )
       );
     }
   };
 
-  const handleAllNamespaceSelect = (isSelected: boolean, rows: RowItem[]) => {
-    const selectedTables = rows.reduce((table: XClusterTable[], row) => {
-      return table.concat(row.xClusterTables);
-    }, []);
+  const handleNamespaceGroupToggle = (isSelected: boolean, namespaceItems: NamespaceItem[]) => {
+    const selectedTables = namespaceItems.reduce(
+      (table: TableRestartReplicationCandidate[], namespaceItem) => {
+        return table.concat(namespaceItem.allXClusterTables);
+      },
+      []
+    );
 
-    toggleNamespaceGroup(isSelected, rows);
+    toggleNamespaceGroup(isSelected, namespaceItems);
     toggleTableGroup(isSelected, selectedTables);
     return true;
   };
 
-  const handleNamespaceSelect = (row: RowItem, isSelected: boolean) => {
+  const handleNamespaceToggle = (row: NamespaceItem, isSelected: boolean) => {
     toggleNamespaceGroup(isSelected, [row]);
-    toggleTableGroup(isSelected, row.xClusterTables);
+    toggleTableGroup(isSelected, row.allXClusterTables);
+  };
+
+  const handleSearchTokenChange = (searchTokens: SearchToken[]) => {
+    setSearchTokens(searchTokens);
+    setActivePage(1);
   };
 
   const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
@@ -240,48 +307,57 @@ export const ConfigTableSelect = ({
   const tablesForSelection = tablesInConfig.filter(
     (xClusterTable) => xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
   );
-  const rowItems = getRowItemsFromTables(tablesForSelection);
+  const selectionOptions = getSelectionOptionsFromTables(
+    sourceUniverseNamespaceQuery.data,
+    tablesForSelection,
+    searchTokens
+  );
   const tableOptions: Options = {
     sortName: sortField,
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
       // Each row of the table is of type RowItem.
-      setSortField(sortName as keyof RowItem);
+      setSortField(sortName as keyof NamespaceItem);
       setSortOrder(sortOrder);
     }
   };
+  const selectedSearchMatchingTableCount: number = selectedTableUuids.filter((tableUuid) =>
+    selectionOptions.searchMatchingTableUuids.has(tableUuid)
+  ).length;
+  const selectedSearchMatchingNamespaceCount: number = selectedNamespaceUuids.filter(
+    (namespaceUuid) => selectionOptions.searchMatchingNamespaceUuids.has(namespaceUuid)
+  ).length;
   const tableDescriptor = isDrInterface
     ? t('selectionDescriptorDr')
     : t('selectionDescriptorXCluster');
-  const sourceUniverseUUID = xClusterConfig.sourceUniverseUUID;
   return (
     <>
       <div className={styles.tableDescriptor}>{tableDescriptor}</div>
-      <div className={styles.tableToolbar}>
-        <YBInputField
-          containerClassName={styles.namespaceSearchInput}
-          placeHolder="Search for database.."
-          onValueChanged={(searchTerm: string) => setNamespaceSearchTerm(searchTerm)}
+      <Box display="flex" width="100%" gridGap={theme.spacing(1)}>
+        <YBSmartSearchBar
+          searchTokens={searchTokens}
+          onSearchTokensChange={handleSearchTokenChange}
+          recognizedModifiers={['database', 'table']}
+          placeholder={t('tablesSearchBarPlaceholder')}
         />
-      </div>
+      </Box>
       <div className={styles.bootstrapTableContainer}>
         <BootstrapTable
           tableContainerClass={styles.bootstrapTable}
           maxHeight="450px"
-          data={rowItems
-            .filter((row) => hasSubstringMatch(row.namespace, namespaceSearchTerm))
-            .sort((a, b) => tableSort<RowItem>(a, b, sortField, sortOrder, 'namespace'))
+          data={selectionOptions.namespaces
+            .sort((a, b) => tableSort<NamespaceItem>(a, b, sortField, sortOrder, 'name'))
             .slice((activePage - 1) * pageSize, activePage * pageSize)}
-          expandableRow={(row: RowItem) => {
+          expandableRow={(row: NamespaceItem) => {
             return row.xClusterTables.length > 0;
           }}
-          expandComponent={(row: RowItem) => (
+          expandComponent={(row: NamespaceItem) => (
             <ExpandedConfigTableSelect
               tables={row.xClusterTables}
-              selectedTableUUIDs={selectedTableUUIDs}
+              selectedTableUuids={selectedTableUuids}
               tableType={configTableType}
               handleTableSelect={handleTableToggle}
-              handleAllTableSelect={handleTableGroupToggle}
+              handleTableGroupSelect={handleTableGroupToggle}
             />
           )}
           expandColumnOptions={{
@@ -292,13 +368,14 @@ export const ConfigTableSelect = ({
           selectRow={{
             mode: 'checkbox',
             clickToExpand: true,
-            onSelect: handleNamespaceSelect,
-            onSelectAll: handleAllNamespaceSelect,
-            selected: selectedNamespaces
+            onSelect: handleNamespaceToggle,
+            onSelectAll: handleNamespaceGroupToggle,
+            selected: selectedNamespaceUuids
           }}
           options={tableOptions}
         >
-          <TableHeaderColumn dataField="namespace" isKey={true} dataSort={true}>
+          <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
+          <TableHeaderColumn dataField="name" dataSort={true}>
             Database
           </TableHeaderColumn>
           <TableHeaderColumn
@@ -311,7 +388,7 @@ export const ConfigTableSelect = ({
           </TableHeaderColumn>
         </BootstrapTable>
       </div>
-      {rowItems.length > TABLE_MIN_PAGE_SIZE && (
+      {selectionOptions.namespaces.length > TABLE_MIN_PAGE_SIZE && (
         <div className={styles.paginationControls}>
           <YBControlledSelect
             className={styles.pageSizeInput}
@@ -325,7 +402,7 @@ export const ConfigTableSelect = ({
           />
           <YBPagination
             className={styles.yBPagination}
-            numPages={Math.ceil(rowItems.length / pageSize)}
+            numPages={Math.ceil(selectionOptions.namespaces.length / pageSize)}
             onChange={(newPageNum: number) => {
               setActivePage(newPageNum);
             }}
@@ -336,15 +413,15 @@ export const ConfigTableSelect = ({
       {configTableType === TableType.YQL_TABLE_TYPE ? (
         <Typography variant="body2">
           {t('tableSelectionCount', {
-            selectedTableCount: selectedTableUUIDs.length,
-            availableTableCount: tablesForSelection.length
+            selectedTableCount: selectedSearchMatchingTableCount,
+            availableTableCount: selectionOptions.searchMatchingTableUuids.size
           })}
         </Typography>
       ) : (
         <Typography variant="body2">
           {t('databaseSelectionCount', {
-            selectedDatabaseCount: selectedNamespaces.length,
-            availableDatabaseCount: rowItems.length
+            selectedDatabaseCount: selectedSearchMatchingNamespaceCount,
+            availableDatabaseCount: selectionOptions.searchMatchingNamespaceUuids.size
           })}
         </Typography>
       )}
@@ -374,28 +451,100 @@ export const ConfigTableSelect = ({
   );
 };
 
-function getRowItemsFromTables(xClusterConfigTables: XClusterTable[]): RowItem[] {
-  /**
-   * Map from namespace name to namespace details.
-   */
-  const namespaceToNamespaceDetails = new Map<
-    string,
-    { xClusterTables: XClusterTable[]; sizeBytes: number }
-  >();
+function getSelectionOptionsFromTables(
+  sourceUniverseNamespaces: UniverseNamespace[],
+  xClusterConfigTables: XClusterTable[],
+  searchTokens: SearchToken[]
+): SelectionOptions {
+  const searchMatchingNamespaceUuids = new Set<string>();
+  const searchMatchingTableUuids = new Set<string>();
+  const namespaceUuidToNamespaceDetails = new Map<string, NamespaceItem>();
+  const namespaceIdentifierToNamespaceUuid = getNamespaceIdentifierToNamespaceUuidMap(
+    sourceUniverseNamespaces
+  );
+  const tableUuidToConfigTable = Object.fromEntries(
+    xClusterConfigTables.map((table) => [getTableUuid(table), table])
+  );
+
   xClusterConfigTables.forEach((xClusterTable) => {
-    const namespaceDetails = namespaceToNamespaceDetails.get(xClusterTable.keySpace);
-    if (namespaceDetails !== undefined) {
-      namespaceDetails.xClusterTables.push(xClusterTable);
-      namespaceDetails.sizeBytes += xClusterTable.sizeBytes;
-    } else {
-      namespaceToNamespaceDetails.set(xClusterTable.keySpace, {
-        xClusterTables: [xClusterTable],
-        sizeBytes: xClusterTable.sizeBytes
+    // Filter out index tables because we will add them as a field under the main table.
+    if (!xClusterTable.isIndexTable) {
+      // Add associated index tables if the current source table is a main table.
+      const indexTables = [] as IndexTableRestartReplicationCandidate[];
+      let indexTableTotalSize = 0;
+      xClusterTable.indexTableIDs?.forEach((indexTableUuid) => {
+        const indexTable = tableUuidToConfigTable[indexTableUuid];
+        if (indexTable) {
+          indexTables.push(indexTable);
+          indexTableTotalSize += indexTable.sizeBytes;
+        }
       });
+
+      const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate = {
+        ...xClusterTable,
+        indexTables
+      };
+
+      const namespaceName = xClusterTable.keySpace;
+      const namespaceUuid =
+        namespaceIdentifierToNamespaceUuid[
+          getNamespaceIdentifier(namespaceName, xClusterTable.tableType)
+        ];
+      const isTableMatchedBySearchTokens =
+        checkIsTableMatchedBySearchTokens(xClusterTable, searchTokens) ||
+        mainTableRestartReplicationCandidate.indexTables?.some(
+          (indexTableRestartReplicationCandidate) =>
+            checkIsTableMatchedBySearchTokens(indexTableRestartReplicationCandidate, searchTokens)
+        );
+      if (isTableMatchedBySearchTokens) {
+        searchMatchingNamespaceUuids.add(namespaceUuid);
+        searchMatchingTableUuids.add(getTableUuid(xClusterTable));
+      }
+
+      const namespaceDetails = namespaceUuidToNamespaceDetails.get(namespaceUuid);
+      if (namespaceDetails !== undefined) {
+        // Selecting/deselecting a namespace will select/deselect all tables under that namespace regardless if
+        // those tables match the current filter.
+        namespaceDetails.allXClusterTables.push(mainTableRestartReplicationCandidate);
+        namespaceDetails.sizeBytes += xClusterTable.sizeBytes + indexTableTotalSize;
+        if (isTableMatchedBySearchTokens) {
+          namespaceDetails.xClusterTables.push(mainTableRestartReplicationCandidate);
+        }
+      } else {
+        namespaceUuidToNamespaceDetails.set(namespaceUuid, {
+          uuid: namespaceUuid,
+          name: namespaceName,
+          sizeBytes: xClusterTable.sizeBytes + indexTableTotalSize,
+          xClusterTables: isTableMatchedBySearchTokens
+            ? [mainTableRestartReplicationCandidate]
+            : [],
+          allXClusterTables: [mainTableRestartReplicationCandidate]
+        });
+      }
     }
   });
-  return Array.from(namespaceToNamespaceDetails, ([namespace, namespaceDetails]) => ({
-    namespace: namespace,
+  const namespaces = Array.from(namespaceUuidToNamespaceDetails, ([_, namespaceDetails]) => ({
     ...namespaceDetails
   }));
+
+  return {
+    namespaces,
+    searchMatchingTableUuids,
+    searchMatchingNamespaceUuids
+  };
 }
+
+/**
+ * Fields to do substring search on if search token modifier is not specified.
+ */
+const SUBSTRING_SEARCH_FIELDS = ['table', 'database'];
+
+const checkIsTableMatchedBySearchTokens = (table: XClusterTable, searchTokens: SearchToken[]) => {
+  const candidate = {
+    database: { value: table.keySpace, type: FieldType.STRING },
+    table: { value: table.tableName, type: FieldType.STRING }
+  };
+  return searchTokens.every((searchToken) =>
+    isMatchedBySearchToken(candidate, searchToken, SUBSTRING_SEARCH_FIELDS)
+  );
+};

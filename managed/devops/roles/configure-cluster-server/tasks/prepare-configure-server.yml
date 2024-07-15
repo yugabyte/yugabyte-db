@@ -83,11 +83,6 @@
     mode: 0755
   tags: yb-prebuilt-ami
 
-- name: Configure | Check the node_exporter installation
-  stat:
-    path: "{{ yb_home_dir }}/node_exporter"
-  register: node_exporter_installed
-
 - set_fact:
     cron_result: {}
   tags: yb-prebuilt-ami
@@ -287,25 +282,9 @@
       state: present
       mode: 0644
 
-  - name: Configure | Create node_exporter data directory
-    file:
-      path: "{{ yb_home_dir }}/node_exporter"
-      state: directory
-      mode: 0755
-      owner: "{{ user_name }}"
-      group: "{{ user_name }}"
-    when: install_node_exporter is defined and install_node_exporter|bool
-
-  - name: Configure | Install node exporter
-    include_role:
-        name: swamper
-    vars:
-        prometheus_components:
-          - node_exporter
-        home_dir: "{{ yb_home_dir }}"
-    when: install_node_exporter is defined and install_node_exporter|bool
-
-  tags: systemd_upgrade
+  tags: 
+  - systemd_upgrade
+  - install-software
   when: (systemd_option and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
         or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')))
 
@@ -441,65 +420,3 @@
 
   tags: systemd_upgrade
   when: systemd_option
-
-- block:
-  # Configure the user level systemd for node-exporter, in case the universe is deployed with
-  # crons.
-  - name: Configure | Register yb user id
-    shell:
-      cmd: "id -u {{ user_name }}"
-    register: output
-
-  - name: Configure | Add yb user bash profile
-    lineinfile:
-      dest: "{{ yb_home_dir }}/.bash_profile"
-      line: ". {{ yb_home_dir }}/.bashrc"
-      owner: "{{ user_name }}"
-      group: "{{ user_name }}"
-      create: yes
-      state: present
-
-  - name: Configure | Export XDG_RUNTIME_DIR for yb user
-    lineinfile:
-      dest: "{{ yb_home_dir }}/.bashrc"
-      line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
-      owner: "{{ user_name }}"
-      group: "{{ user_name }}"
-      create: yes
-      state: present
-
-  - name: Configure | Add user systemd directory
-    file:
-      path: "{{ yb_home_dir }}/.config/systemd/user/"
-      state: directory
-      owner: "{{ user_name }}"
-      group: "{{ user_name }}"
-      mode: 0744
-
-  - set_fact:
-      systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
-
-  - name: Configure | Enable linger for {{ user_name }} user
-    shell:
-        cmd: "loginctl enable-linger {{ user_name }}"
-
-  - name: Configure | Create node_exporter data directory
-    file:
-      path: "{{ yb_home_dir }}/node_exporter"
-      state: directory
-      mode: 0755
-      owner: "{{ user_name }}"
-      group: "{{ user_name }}"
-
-  - name: Configure | Install node exporter
-    include_role:
-        name: swamper
-    vars:
-        prometheus_components:
-          - node_exporter
-        home_dir: "{{ yb_home_dir }}"
-
-  when: not systemd_option and not node_exporter_installed.stat.exists
-        and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
-        or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
-        and (install_node_exporter is defined and install_node_exporter|bool)

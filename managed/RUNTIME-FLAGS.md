@@ -15,6 +15,7 @@
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
 | "Enable IMDSv2" | "yb.aws.enable_imdsv2_support" | "CUSTOMER" | "Enable IMDSv2 support for AWS providers" | "Boolean" |
+| "Backup Garbage Collector Number of Retries" | "yb.backupGC.number_of_retries" | "CUSTOMER" | "Number of retries during backup deletion" | "Integer" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -223,6 +224,8 @@
 | "Network Load balancer health check protocol" | "yb.universe.network_load_balancer.custom_health_check_protocol" | "UNIVERSE" | "Protocol to use for health checks performed by the network load balancer" | "Protocol" |
 | "Network Load balancer health check paths" | "yb.universe.network_load_balancer.custom_health_check_paths" | "UNIVERSE" | "Paths probed by HTTP/HTTPS health checks performed by the network load balancer. Paths are mapped one-to-one with the custom health check ports runtime configuration." | "String List" |
 | "Validate filepath for local release" | "yb.universe.validate_local_release" | "UNIVERSE" | "For certain tasks validates the existence of local filepath for the universe software version." | "Boolean" |
+| "The delay before the next poll of the PITR config creation status" | "yb.pitr.create_poll_delay" | "UNIVERSE" | "It is the delay after which the create PITR config subtask rechecks the status of the PITR config creation in each iteration" | "Duration" |
+| "The timeout for creating a PITR config" | "yb.pitr.create_timeout" | "UNIVERSE" | "It is the maximum time that the create PITR config subtask waits for the PITR config to be created; otherwise, it will fail the operation" | "Duration" |
 | "Default PITR retention period for txn xCluster" | "yb.xcluster.transactional.pitr.default_retention_period" | "UNIVERSE" | "The default retention period used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Default PITR snapshot interval for txn xCluster" | "yb.xcluster.transactional.pitr.default_snapshot_interval" | "UNIVERSE" | "The default snapshot interval used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Skip backup metadata validation" | "yb.backup.skip_metadata_validation" | "UNIVERSE" | "Skip backup metadata based validation during restore" | "Boolean" |
@@ -235,3 +238,7 @@
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
 | "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |
+| "CPU usage alert aggregation interval" | "yb.alert.cpu_usage_interval_secs" | "UNIVERSE" | "CPU usage alert aggregation interval in seconds." | "Integer" |
+| "Enable health checks for time drift between nodes" | "yb.health_checks.check_clock_time_drift" | "UNIVERSE" | "Enable health checks for time drift between nodes." | "Boolean" |
+| "Time drift threshold for warning health check" | "yb.health_checks.time_drift_wrn_threshold_ms" | "UNIVERSE" | "Threshold to raise a warning when time drift exceeds this amount" | "Integer" |
+| "Time drift threshold for error health check" | "yb.health_checks.time_drift_err_threshold_ms" | "UNIVERSE" | "Threshold to raise a error when time drift exceeds this amount" | "Integer" |

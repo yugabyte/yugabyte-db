@@ -38,7 +38,8 @@
       "startDate": "Start Date",
       "endDate": "End Date",
       "dot": ".",
-      "and": "and"
+      "and": "and",
+      "learnMore": "Learn more"
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -47,7 +48,7 @@
       "viewDetails": "View Details"
     },
     "queryError": {
-      "failedToFetchUniverselist": "Error fetching universe list.",
+      "failedToFetchUniverseList": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
       "failedToFetchUniverseRuntimeConfig": "Failed to fetch runtime configurations for the current universe.",
       "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
@@ -61,6 +62,7 @@
       "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{universeUuid}}",
       "failedToFetchSourceUniverseTables": "Unable to fetch tables for source universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryTables": "Unable to fetch tables for DR primary universe UUID: {{universeUuid}}",
+      "failedToFetchXClusterConfig": "Unable to fetch xCluster config UUID: {{xClusterConfigUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
@@ -200,6 +202,15 @@
           "finalizingTooltip": "Finalizing v{{version}}",
           "upgradingTooltip": "Upgrading to v{{version}}"
         }
+      },
+      "pgCompatibility": {
+        "modalTitle": "Edit Enhanced Postgres Compatibility",
+        "toggleLabel": "Enhanced Postgres Compatibility",
+        "subText": "Configure YSQL for maximum Postgres compatibility by enabling early access features.",
+        "enableWarning": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility:",
+        "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning3": "May impact performance."
       }
     },
     "commonErrors": {
@@ -259,7 +270,11 @@
         "yqlServerHttpPort": "YCQL HTTP Port",
         "yqlServerRpcPort": "YCQL RPC Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
-        "ysqlServerRpcPort": "YSQL RPC Port"
+        "ysqlServerRpcPort": "YSQL RPC Port",
+        "enhancePGCompatibility": "Enhanced Postgres Compatibility",
+        "earlyAccess": "Early Access",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -421,7 +436,7 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Disk can be resized after a cooldown period of 6 hours"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -541,6 +556,9 @@
         "tpServiceUrlLabel": "Troubleshooting Platform Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "apiTokenLabel": "API Token",
+        "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
+        "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
         "urlPlaceholder": "http(s)://<ip>:<port>",
         "universeDetailsErrorMessage": "Failed to fetch universe details",
@@ -548,6 +566,11 @@
         "configTabTitle": "Configuration",
         "universesTabTitle": "Universes",
         "urlRequired": "Platform Url required",
+        "apiTokenRequired": "API Token required",
+        "monitorUniverseSuccess": "Successfully started monitoring the universe",
+        "monitorUniverseFailure": "Failed to monitor universe",
+        "startMonitoring": "Start monitoring the universe.",
+        "monitor": "Monitor",
         "editDialog": {
           "title": "Update Troubleshooting Platform Configuration",
           "updateButton": "Update",
@@ -1106,6 +1129,8 @@
           }
         },
         "selectTable": {
+          "tablesSearchBarPlaceholder": "Search tables...",
+          "selectUnreplicatedTablesButton": "Select Unreplicated Tables",
           "selectionDescriptorDr": "List of databases and tables in the DR primary universe.",
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
@@ -1114,6 +1139,12 @@
           "droppedTablesInfoTextXCluster": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster replication configuration have been dropped on the source universe. These tables will be removed from the configuration upon submission of this select table request.",
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
+          "tablePill": {
+            "unreplicatedTableInReplicatedNamespace": "Unreplicated",
+            "eligible": "Eligible",
+            "inCurrentConfig": "In Current Config",
+            "inUse": "In Use - Not Available"
+          },
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",
@@ -1135,6 +1166,24 @@
             }
           }
         },
+        "metrics": {
+          "showAlertThresholdReferenceLine": {
+            "label": "Show Alert Threshold",
+            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
+          },
+          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
+        },
+        "tableLevelMetricModal": {
+          "title": "Table Replication Lag",
+          "label": {
+            "table": "Table",
+            "schema": "Schema",
+            "database": "Database"
+          },
+          "graphTitle": {
+            "asyncReplicationSentLag": "Async Replication Lag"
+          }
+        },
         "metricsPanel": {
           "graphFilter": {
             "nodeAggregation": {
@@ -1154,16 +1203,11 @@
               "bottom": "Bottom K"
             }
           },
-          "showAlertThresholdReferenceLine": {
-            "label": "Show Alert Threshold",
-            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
-          },
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
             "consumerSafeTimeSkew": "Consumer Safe Time Skew"
-          },
-          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
+          }
         },
         "error": {
           "undefinedXClusterTableType": "Unable to determine the table type of the current xCluster configuration. Please ensure the source universe is reachable and contains at least one table among those configured for xCluster replication.",
@@ -2024,7 +2068,12 @@
       "awsEndpoint": "Endpoint (Optional)",
       "gcpProject": "Project (Optional)",
       "uploadGCPCredentails": "Upload GCP credentails",
-      "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console."
+      "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console.",
+      "deleteModalTitle": "Delete Export Configuration",
+      "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
+      "deleteModalSubmitLabel": "Delete Export Configuration",
+      "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
+      "deleteConfig": "Delete Configuration"
     }
   }
 }

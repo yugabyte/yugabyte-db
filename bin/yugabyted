@@ -71,6 +71,9 @@ OS_NAME = OS_DETAILS[0]
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+YUGABYTE_JENKINS_BUILD_DIR = os.getenv("BUILD_ROOT",
+                                       os.path.dirname(
+                                           os.path.dirname(os.path.realpath(__file__))))
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
@@ -84,7 +87,7 @@ YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yug
 GENERATE_SERVER_CERTS = "https://docs.yugabyte.com/preview/secure/tls-encryption/\
 server-certificates/#create-the-server-certificates"
 YBC_DOWNLOAD_LINK = "https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/" + \
-"2.0.0.0-b20/ybc-2.0.0.0-b20-linux-x86_64.tar.gz"
+"2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz"
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
 DEFAULT_START_FAULT_TOLERANCE = "none"
@@ -149,6 +152,11 @@ PREFIX = {
     'configure_read_replica new': "",
     'configure_read_replica modify': "",
     'configure_read_replica delete': "",
+    'xcluster' : "Setup and manage xCluster Replication.",
+    'xcluster checkpoint': "",
+    'xcluster set_up': "",
+    'xcluster status': "",
+    'xcluster delete': "",
     'backup': "",
     'restore': "",
     'connect' : "",
@@ -179,6 +187,11 @@ USAGE = {
     'configure_read_replica new': "yugabyted configure_read_replica new [flags]",
     'configure_read_replica modify': "yugabyted configure_read_replica modify [flags]",
     'configure_read_replica delete' : "yugabyted configure_read_replica delete",
+    'xcluster' : "yugabyted xcluster [command] [flags]",
+    'xcluster checkpoint': "yugabyted xcluster checkpoint [flags]",
+    'xcluster set_up': "yugabyted xcluster set_up [flags]",
+    'xcluster status': "yugabyted status set_up [flags]",
+    'xcluster delete': "yugabyted status set_up [flags]",
     'backup' : "yugabyted backup [flags]",
     'restore' : "yugabyted restore [flags]",
     'connect' : "yugabyted connect [command] [flags]",
@@ -224,13 +237,13 @@ EXAMPLE = {
                   "--data_placement_constraint=<new_placement_policy_for_rr_cluster>\n\n" +
                   "# Delete an existing read replica cluster:\n" +
                   "yugabyted configure_read_replica delete\n\n",
-    "new" : "# Configure a new read replica cluster:\n" +
+    "configure_read_replica_new" : "# Configure a new read replica cluster:\n" +
             "yugabyted configure_read_replica new --rf=<replication_factor> " +
             "--data_placement_constraint=<placement_policy_for_rr_cluster>",
-    "modify" : "# Modify an existing read replica cluster:\n" +
+    "configure_read_replica_modify" : "# Modify an existing read replica cluster:\n" +
                "yugabyted configure_read_replica modify --rf=<new_replication_factor> " +
                "--data_placement_constraint=<new_placement_policy_for_rr_cluster>",
-    "delete" : "# Delete an existing read replica cluster:\n" +
+    "configure_read_replica_delete" : "# Delete an existing read replica cluster:\n" +
                "yugabyted configure_read_replica delete",
     'configure' : "# Configure a multi-zone cluster:\n" +
                 "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
@@ -242,7 +255,7 @@ EXAMPLE = {
                 "yugabyted configure point_in_time_recovery --enable" + \
                 " --retention <retention_period> --database <database_name> \n\n" +
                 "For more examples use 'yugabyted configure [command] -h'\n\n",
-    'data_placement' : "# Configure a multi-zone cluster:\n" +
+    'configure_data_placement' : "# Configure a multi-zone cluster:\n" +
                        "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
                        "# Configure a multi-region cluster:\n" +
                        "yugabyted configure data_placement --fault_tolerance=region\n\n" +
@@ -257,13 +270,13 @@ EXAMPLE = {
                        "cloud2.region2.zone2:<preference_number>," +
                        "cloud3.region3.zone3:<preference_number>\n\n",
 
-    'encrypt_at_rest' : "# Enable encryption at rest for a cluster:\n" +
+    'configure_encrypt_at_rest' : "# Enable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --enable\n\n" +
                         "# Disable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --disable\n\n",
-    'admin_operation' : "# Execute yb-admin command on the YugabyteDB cluster:\n" +
+    'configure_admin_operation' : "# Execute yb-admin command on the YugabyteDB cluster:\n" +
                         "yugabyted configure admin_operation --command 'get_universe_config'\n\n",
-    'point_in_time_recovery' : "# Enable point-in-time recovery for a database:\n" +
+    'configure_point_in_time_recovery' : "# Enable point-in-time recovery for a database:\n" +
                         "yugabyted configure point_in_time_recovery --enable" + \
                         " --retention <retention_period> --database <database_name> \n\n" +
                         "# Disable point-in-time recovery for a database:\n" +
@@ -277,6 +290,32 @@ EXAMPLE = {
                         "# Finalize the cluster upgrade by specifying a timeout value for" +
                          " the YSQL catalog upgrade:\n" +
                          "yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>\n\n",
+    'xcluster' : "# Checkpoint a new xcluster replication:\n" +
+                  "yugabyted xcluster checkpoint --replication_id=<replication_id> " +
+                  "--databases=<comma_separated_databases_to_be_added_to_replication>\n\n" +
+                  "# Set-up xcluster replication:\n" +
+                  "yugabyted xcluster set_up --replication_id=<replication_id> " +
+                  "--target_address=<IP_of_any_target_node>\n\n" +
+                  "# Show status of outbound and inbound replications:\n" +
+                  "yugabyted xcluster status --replication_id=<replication_id>\n\n" +
+                  "# Delete a xcluster replication:\n" +
+                  "yugabyted xcluster status --replication_id=<replication_id> " +
+                  "--target_address=<IP_of_any_target_node>\n\n",
+    "xcluster_checkpoint" : "# Checkpoint a new xcluster replication:\n" +
+                  "yugabyted xcluster checkpoint --replication_id=<replication_id> " +
+                  "--databases=<comma_separated_databases_to_be_added_to_replication>\n\n",
+    "xcluster_set_up" : "# Set-up xcluster replication:\n" +
+                  "yugabyted xcluster set_up --replication_id=<replication_id> " +
+                  "--target_address=<IP_of_any_target_node>\n\n" +
+                  "# Set-up xcluster replication (after completing bootstrap):\n" +
+                  "yugabyted xcluster set_up --replication_id=<replication_id> " +
+                  "--target_address=<IP_of_any_target_node> --bootstrap_done\n\n",
+    "xcluster_status" : "# Show status of outbound and inbound replications:\n" +
+                  "yugabyted xcluster status --replication_id=<replication_id>\n\n",
+    "xcluster_delete" : "# Delete a xcluster replication:\n" +
+                  "yugabyted xcluster status --replication_id=<replication_id> " +
+                  "--target_address=<IP_of_any_target_node>\n\n",
+
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -407,8 +446,37 @@ def check_files_in_path(path, files):
 
     return not has_error
 
+def get_ysqlsh_test_env_path():
+
+    # Find directories inside YUGABYTE_DIR containing ysqlsh
+    directories_with_ysqlsh = find_directories_with_ysqlsh(YUGABYTE_DIR)
+    if directories_with_ysqlsh:
+        for directory in directories_with_ysqlsh:
+            if 'postgres/bin' in directory:
+                ysqlsh_path = os.path.join(directory, 'ysqlsh')
+                Output.log("Using directory for running ysqlsh: {}".format(
+                                                                directory))
+                return ysqlsh_path
+    else:
+        Output.log_error_and_exit(
+            "No directories containing ysqlsh were found.")
+
+
+def find_directories_with_ysqlsh(root_dir):
+    directories_with_ysqlsh = []
+    for dirpath, _, filenames in os.walk(root_dir):
+        if 'ysqlsh' in filenames:
+            directories_with_ysqlsh.append(dirpath)
+    return directories_with_ysqlsh
+
 # Finds the path of a particular YB binary
 def find_binary_location(binary_name):
+
+    # Specific path for ysqlsh in test environment
+    is_test_env = os.getenv('USER') == 'jenkins'
+    if binary_name == "ysqlsh" and is_test_env:
+        return get_ysqlsh_test_env_path()
+
     # Default if tar is downloaded
     dir_candidates = [
         os.path.join(YUGABYTE_DIR, "bin")
@@ -422,6 +490,15 @@ def find_binary_location(binary_name):
     # Development environment for UI
     dir_candidates += [
         os.path.join(YUGABYTE_DIR, "build", "latest", "gobin"),
+    ]
+
+    # Jenkins Test Environment
+    dir_candidates += [
+        os.path.join(YUGABYTE_JENKINS_BUILD_DIR, "bin")
+    ]
+
+    dir_candidates += [
+        os.path.join(YUGABYTE_JENKINS_BUILD_DIR, "gobin")
     ]
 
     return search_file_in_paths(dir_candidates, binary_name)
@@ -479,7 +556,7 @@ def download_ybc_package():
     try:
         response = urlopen(YBC_DOWNLOAD_LINK)
         CHUNK_SIZE = 1 << 20
-        fileName = 'ybc-2.0.0.0-b20-linux-x86_64.tar.gz'
+        fileName = 'ybc-2.1.0.0-b9-linux-x86_64.tar.gz'
         Output.log('Downloading YBC Package: {}', YBC_DOWNLOAD_LINK)
         with open(fileName, 'wb') as f:
             while True:
@@ -636,6 +713,8 @@ class ControlScript(object):
             return
         else:
             YBControllerCLIProxy.init()
+            YBControllerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
+                self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
         ybc_task_type = "backup"
@@ -865,6 +944,8 @@ class ControlScript(object):
             return
         else:
             YBControllerCLIProxy.init()
+            YBControllerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
+                self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         ybc_server_dir = "{}/yb-data/ybc".format(self.configs.saved_data.get("data_dir"))
         ybc_task_type = "restore"
@@ -974,8 +1055,8 @@ class ControlScript(object):
         if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
             Output.init_animation("Fetching status...")
             status_output = self.get_status_string().strip()
-            Output.update_animation("")
-            Output.print_out(status_output)
+            Output.update_animation("", Output.ANIMATION_STOP)
+            Output.print_out("\n" + status_output)
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
 
@@ -1336,6 +1417,331 @@ class ControlScript(object):
         # Show PITR status
         else:
             self.display_pitr(pitr_object, pitr_yb_api_type, schedules)
+
+    def get_xcluster_error_msg(self, err, dbs_to_be_bootstrapped=None,
+                                          dbs_not_to_be_bootstrapped=None,
+                                          replication_id=None):
+
+        # variable naming format: <xcluster_cmd>_<err_type>_<yb_admin/ybd>_err
+        checkpoint_empty_db_yb_admin_err = "Database should have at least one table in order to " +\
+                "be part of xCluster replication"
+        checkpoint_empty_db_ybd_err = "couldn't set xcluster checkpoint. " +\
+                            "All provided databases should have atleast 1 table in them."
+
+        set_up_db_not_found_yb_admin_err = "YSQL keyspace name not found"
+        set_up_object_not_found_yb_admin_err = "Could not find matching"
+
+        complete_bootstrap_err_msg = ""
+        if dbs_to_be_bootstrapped and len(dbs_to_be_bootstrapped) != 0:
+            complete_bootstrap_err_msg += "Please complete bootstrapping for "
+            if len(dbs_to_be_bootstrapped) == 1:
+                complete_bootstrap_err_msg += "database "
+            else:
+                complete_bootstrap_err_msg += "databases "
+            complete_bootstrap_err_msg += "`{}`. ".format(','.join(dbs_to_be_bootstrapped))
+
+        if dbs_not_to_be_bootstrapped and len(dbs_not_to_be_bootstrapped) != 0:
+            complete_bootstrap_err_msg += "Please complete db schema creation for "
+            if len(dbs_not_to_be_bootstrapped) == 1:
+                complete_bootstrap_err_msg += "database "
+            else:
+                complete_bootstrap_err_msg += "databases "
+            complete_bootstrap_err_msg += "`{}` on target cluster.".format(
+                                                        ','.join(dbs_not_to_be_bootstrapped))
+
+
+        set_up_db_not_found_ybd_err = "The database(s) is missing from the target cluster. " +\
+                                            complete_bootstrap_err_msg
+        set_up_object_not_found_ybd_err = "All of the SQL Objects are not present in the " +\
+                            "target database. " + complete_bootstrap_err_msg
+
+        delete_replication_id_not_found_yb_admin_err = "xClusterOutboundReplicationGroup " +\
+                                        "{} not found".format(replication_id)
+        delete_replication_id_not_found_ybd_err = "No outbound replication " +\
+                                          "found with replication_id: {}".format(replication_id)
+
+        # Map format: <err present in yb_admin stderr>: <ybd err to be displayed>
+        yb_admin_err_msg_to_ybd_err_msg = {
+            checkpoint_empty_db_yb_admin_err: checkpoint_empty_db_ybd_err,
+            set_up_db_not_found_yb_admin_err: set_up_db_not_found_ybd_err,
+            set_up_object_not_found_yb_admin_err: set_up_object_not_found_ybd_err,
+            delete_replication_id_not_found_yb_admin_err: delete_replication_id_not_found_ybd_err,
+        }
+
+        for yb_admin_err, ybd_err in yb_admin_err_msg_to_ybd_err_msg.items():
+            if yb_admin_err in err:
+                return ybd_err
+
+        return ""
+
+    # Checkpoint xcluster replication
+    def xcluster_checkpoint(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        master_addrs = self.get_current_masters_from_api(self.advertise_ip())
+        if master_addrs == '':
+            Output.log_error_and_exit(Output.make_red("Error") + ": cannot retreive the masters.")
+
+        replication_id = self.configs.temp_data.get("xcluster_replication_id")
+        databases = self.configs.temp_data.get("xcluster_databases")
+
+        out, err, ret_code = YBAdminProxy.checkpoint_xcluster(master_addrs, replication_id,
+                                                              databases)
+        is_bootstrap_required = False
+
+        if ret_code:
+            err_msg = self.get_xcluster_error_msg(err)
+            if not err_msg:
+                err_msg = "couldn't set xcluster checkpoint."
+            Output.log_error_and_exit(Output.make_red("Error") +
+                                ": {}".format(err_msg))
+        else:
+            bootstrap_required_msg = "Bootstrap is required"
+            if bootstrap_required_msg in out:
+                is_bootstrap_required = True
+
+        status_details = []
+        status_display_info = {}
+
+        status_details = [
+            (Output.make_yellow("Status"), "xCluster checkpoint success.")
+        ]
+
+        all_databases = databases.split(',')
+        databases_to_be_bootstrapped = []
+        databases_not_to_be_bootstrapped = []
+
+        if is_bootstrap_required:
+            regex = r'Perform a distributed Backup of database\(s\) \[(.*?)\] and ' + \
+                r'Restore them on the target universe'
+            match = re.search(regex, out)
+            databases_to_be_bootstrapped = match.group(1).strip().split(',')
+
+        databases_not_to_be_bootstrapped = [database for database in all_databases
+                                           if database not in databases_to_be_bootstrapped]
+
+        bootstrap_msg = ""
+        schema_creation_msg = ""
+
+        if is_bootstrap_required:
+            if len(databases_to_be_bootstrapped) > 1:
+                bootstrap_msg = "Bootstrap is required for databases " + \
+                    "`{}`.".format(','.join(databases_to_be_bootstrapped))
+            else:
+                bootstrap_msg = "Bootstrap is required for database " + \
+                    "`{}`.".format(databases_to_be_bootstrapped[0])
+
+            bootstrap_help_msg = "For each database which requires bootstrap run the following " +\
+                    "commands to perform a backup and restore.\n"
+            bootstrap_help_msg += "# Run on source:\n"
+            bootstrap_help_msg += "./yugabyted backup " +\
+                    "--cloud_storage_uri {} ".format(Output.make_cyan(
+                        "<AWS/GCP/local cloud storage uri>")) +\
+                    " --database {}".format(Output.make_cyan("<database_name>")) +\
+                    " --base_dir {}\n".format(Output.make_cyan("<base_dir of source node>"))
+            bootstrap_help_msg += "# Run on target:\n"
+            bootstrap_help_msg += "./yugabyted restore " +\
+                    "--cloud_storage_uri {} ".format(Output.make_cyan(
+                        "<AWS/GCP/local cloud storage uri>")) +\
+                    " --database {}".format(Output.make_cyan("<database_name>")) +\
+                    " --base_dir {}\n".format(Output.make_cyan("<base_dir of target node>"))
+
+        if len(databases_not_to_be_bootstrapped) != 0:
+
+            if len(databases_not_to_be_bootstrapped) > 1:
+                schema_creation_msg = "Before running the xcluster setup command, Databases " +\
+                        "`{}` and schema needs to be applied on the target cluster.".format(
+                        ','.join(databases_not_to_be_bootstrapped))
+            else:
+                schema_creation_msg = "Before running the xcluster setup command, Database " +\
+                        "`{}` and schema needs to be applied on the target cluster.".format(
+                        databases_not_to_be_bootstrapped[0])
+
+
+
+        status_details.extend([
+            (Output.make_yellow("Bootstrapping"), bootstrap_msg),
+            (Output.make_yellow(""), schema_creation_msg),
+        ])
+
+        Output.print_out(self.get_status_string_common(status_details, status_display_info))
+
+        if is_bootstrap_required:
+            Output.print_out(bootstrap_help_msg)
+
+            # TODO: Maybe add info that table creation is required on target cluster even if
+            # bootstrap is not required.
+
+    # Set-up xcluster replication
+    def xcluster_set_up(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        master_addresses, leader_master = self.get_current_masters_and_leader_from_api(
+            self.advertise_ip())
+        if master_addresses == '' or leader_master == '':
+            Output.log_error_and_exit(Output.make_red("Error") + ": cannot retreive the masters.")
+
+        replication_id = self.configs.temp_data.get("xcluster_replication_id")
+
+        replication_id_with_dbs = self.get_databases_for_xcluster(leader_master, replication_id)
+        if len(replication_id_with_dbs) == 0:
+            Output.log_error_and_exit(Output.make_red("Error") + ": cannot retreive the " +
+                                      "databases for replication_id {}.".format(replication_id))
+
+        databases_list = [db.get("name") for db in replication_id_with_dbs[0].get("databases")]
+
+        out, ret_code = YBAdminProxy.xcluster_is_bootstrap_required(master_addresses,
+                                                                    replication_id,
+                                                                    ','.join(databases_list))
+
+        bootstrap_required_databases = []
+        if ret_code:
+            Output.log_error_and_exit(Output.make_red("Error") +
+                            ": couldn't check if bootstrap is required or not")
+        else:
+            for database in databases_list:
+                bootstrap_required_regex = re.compile(r'{} completed.\s*(.*?)\s*for'.format(
+                                                                                        database))
+                bootstrap_required_match = bootstrap_required_regex.search(out)
+                if not bootstrap_required_match:
+                    Output.log_error_and_exit("Couldn't find bootstrap requirement of database " +
+                               "{}.".format(database))
+                if bootstrap_required_match.group(1) == "Bootstrap is required":
+                    bootstrap_required_databases.append(database)
+
+        bootstrap_not_required_dbs = [database for database in databases_list \
+                                      if database not in bootstrap_required_databases]
+        if len(bootstrap_required_databases) != 0:
+            if not self.configs.temp_data.get("xcluster_bootstrap_done"):
+                # TODO: Maybe add the steps for bootstrap for backup/restore
+                err_msg = "Bootstrap required for following databases. Please do a backup of " + \
+                    "the databases and restore them to target database the rerun the " + \
+                    "`yugabyted xcluster set_up` command with --bootstrap_done flag."
+                for database in bootstrap_required_databases:
+                    err_msg += "\n* " + database
+                Output.print_out(err_msg)
+                sys.exit(1)
+
+        Output.init_animation("Setting up xCluster replication....")
+        out, err, ret_code = YBAdminProxy.set_up_xcluster(master_addresses, replication_id,
+                                        self.configs.temp_data.get("xcluster_target_addresses"))
+        Output.update_animation("", Output.ANIMATION_STOP)
+        status_details = []
+        status_display_info = {}
+
+        if ret_code == 0:
+            status_details = [
+                (Output.make_yellow("Status"), "xCluster set-up successful.")
+            ]
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+        else:
+            err_msg = self.get_xcluster_error_msg(err,
+                                        dbs_to_be_bootstrapped=bootstrap_required_databases,
+                                        dbs_not_to_be_bootstrapped=bootstrap_not_required_dbs)
+            if not err_msg:
+                err_msg = "xCluster set-up not successful."
+            Output.log_error_and_exit(Output.make_red("Error") +
+                                ": {}".format(err_msg))
+
+    # Show Outbound and Inbound replications status
+    def xcluster_status(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        master_addresses, leader_master = self.get_current_masters_and_leader_from_api(
+            self.advertise_ip())
+        if master_addresses == '' or leader_master == '':
+            Output.log_error_and_exit(Output.make_red("Error") + ": cannot retreive the masters.")
+
+        replication_id = self.configs.temp_data.get("xcluster_replication_id")
+
+        xcluster_info = self.get_xcluster_info(leader_master)
+
+        outbound_replication_status = self.get_outbound_xcluster_replication_statuses(xcluster_info,
+                              leader_master, replication_id if replication_id != "" else None)
+
+        inbound_replication_status = self.get_inbound_xcluster_replication_statuses(xcluster_info,
+                              master_addresses, replication_id if replication_id != "" else None)
+
+        if outbound_replication_status:
+            Output.print_out(Output.make_yellow("Outbound xCluster Replications:"))
+            Output.print_out(outbound_replication_status)
+        else:
+            if replication_id:
+                Output.print_out("No Outbound xCluster replications found for this replication_id.")
+            else:
+                Output.print_out("No Outbound xCluster replications found for this cluster.")
+
+        if inbound_replication_status:
+            Output.print_out(Output.make_yellow("Inbound xCluster Replications:"))
+            Output.print_out(inbound_replication_status)
+        else:
+            if replication_id:
+                Output.print_out("No Inbound xCluster replications found for this replication_id.")
+            else:
+                Output.print_out("No Inbound xCluster replications found for this cluster.")
+
+        if not inbound_replication_status and not outbound_replication_status:
+            Output.log_error_and_exit("No inbound and Outbound replication groups.")
+
+    # Delete xcluster replication
+    def xcluster_delete(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        master_addresses = self.get_current_masters_from_api(self.advertise_ip())
+        if master_addresses == '':
+            Output.log_error_and_exit(Output.make_red("Error") + ": cannot retreive the masters.")
+
+        is_target_available = True
+        target_master_addresses = self.get_current_masters_from_api(
+                                        self.configs.temp_data.get("xcluster_target_addresses"))
+        if target_master_addresses == '':
+            is_target_available = False
+
+        replication_id = self.configs.temp_data.get("xcluster_replication_id")
+
+        err, ret_code = YBAdminProxy.drop_xcluster_replication(master_addresses,
+                                        replication_id, target_addresses=target_master_addresses)
+
+        if ret_code:
+            err_msg = self.get_xcluster_error_msg(err, replication_id=replication_id)
+            if not err_msg:
+                err_msg = "Couldn't delete the replication."
+            Output.log_error_and_exit(Output.make_red("Error") +
+                                ": {}".format(err_msg))
+        status_details = []
+        status_display_info = {}
+
+        if is_target_available:
+            status_details = [
+                (Output.make_yellow("Status"), "xCluster successfully deleted.")
+            ]
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+        else:
+            msg = Output.make_yellow(Output.ANIMATION_WARNING + " WARNING") + ": Couldn't reach "+\
+                        "target cluster. Deleting the replication on source cluster."
+
+            status_details = [
+                (Output.make_yellow("Status"), "xCluster successfully deleted on source."),
+            ]
+            Output.print_out(msg)
+            Output.print_out(self.get_status_string_common(status_details, status_display_info))
+
+            msg = Output.make_cyan("NOTE") + ": After restarting the target, please run the " +\
+                                            "following command on a target node to delete " +\
+                                            "replication from target cluster:\n"
+            msg += "\n./yugabyted configure admin_operation " + \
+                "--base_dir {} ".format(Output.make_cyan("<base_dir_for_the_target_node>")) + \
+                "--command {}".format(
+                    Output.make_cyan("delete_universe_replication <replication_id>"))
+            Output.print_out(msg)
 
     # Configuring the primary cluster data placement policy
     def configure_data_placement(self):
@@ -2815,19 +3221,28 @@ class ControlScript(object):
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
 
-        yb_master_cmd = [find_binary_location("yb-master")] + \
-            common_flags + \
-            [
-                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
-                "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
-                "--replication_factor=1",
-                "--server_dump_info_path={}".format(
-                    os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
-                "--master_enable_metrics_snapshotter=true",
-                "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
-                "--default_memory_limit_to_ram_ratio=0.35",
-                "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
-            ]
+        certs_dir = self.configs.saved_data.get("certs_dir")
+
+        flag_list = common_flags + [
+            "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
+            "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
+            "--replication_factor=1",
+            "--server_dump_info_path={}".format(
+                os.path.join(self.configs.saved_data.get("data_dir"), "master-info")),
+            "--master_enable_metrics_snapshotter=true",
+            "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
+            "--default_memory_limit_to_ram_ratio=0.35",
+            "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
+            "--enable_xcluster_api_v2=true",
+            "--allowed_preview_flags_csv=enable_xcluster_api_v2",
+        ]
+
+        if self.configs.saved_data.get("secure"):
+            flag_list.extend([
+                "--certs_for_cdc_dir={}/xcluster".format(certs_dir)
+                ])
+
+        yb_master_cmd = [find_binary_location("yb-master")]
 
         master_flags = self.configs.saved_data.get("master_flags","")
 
@@ -2864,10 +3279,23 @@ class ControlScript(object):
                 # Check for complex flags and remove curly brackets
                 elif re.search(r'={.*}$', master_flag):
                     complex_flag = re.sub(r'({|})', '', master_flag)
-                    yb_master_cmd.append("--{}".format(complex_flag))
+                    complex_flag_name = complex_flag.split('=')[0]
+                    is_complex_flag_new = True
+                    for i in range(len(flag_list)):
+                        master_flag = flag_list[i]
+                        flag_name = master_flag.split('=', 1)[0]
+                        if complex_flag_name == flag_name.lstrip('-'):
+                            flag_list[i] += "," + complex_flag.split('=')[1]
+                            is_complex_flag_new = False
+                            break
+
+                    if is_complex_flag_new:
+                        yb_master_cmd.append("--{}".format(complex_flag))
                 else:
                     # Handle simple flags
                     yb_master_cmd.append("--{}".format(master_flag))
+
+        yb_master_cmd.extend(flag_list)
 
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
@@ -2906,6 +3334,11 @@ class ControlScript(object):
                 "--start_redis_proxy=false",
                 "--placement_uuid={}".format(self.configs.saved_data.get("placement_uuid")),
             ]
+
+        if self.configs.saved_data.get("secure"):
+            yb_tserver_cmd.extend([
+                "--certs_for_cdc_dir={}/xcluster".format(certs_dir)
+                ])
 
         tserver_flags = self.configs.saved_data.get("tserver_flags","")
 
@@ -3012,6 +3445,24 @@ class ControlScript(object):
             yb_tserver_cmd.extend(["--use_client_to_server_encryption=true",
                 "--certs_for_client_dir={}".format(certs_dir),])
 
+            hba_conf_updated = False
+            for i, flag in enumerate(yb_tserver_cmd):
+                if flag.startswith("--ysql_hba_conf_csv="):
+                    pattern = re.compile(r'--ysql_hba_conf_csv=(["\']?)(.*)\1$')
+                    match = pattern.match(flag)
+                    # Extract the original ysql_hba_conf
+                    quote_char = match.group(1)  # This will be '' if there are no quotes
+                    original_hba_conf = match.group(2)
+                    # Append 'local all yugabyte trust' to the original_hba_conf
+                    updated_hba_conf = original_hba_conf + ',local all yugabyte trust'
+
+                    yb_tserver_cmd[i] = f'--ysql_hba_conf_csv={quote_char}' +\
+                                f'{updated_hba_conf}{quote_char}'
+                    hba_conf_updated = True
+
+            if not hba_conf_updated:
+                yb_tserver_cmd.extend(["--ysql_hba_conf_csv=local all yugabyte trust",])
+
         if self.configs.saved_data.get("ysql_enable_auth"):
             yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
 
@@ -3051,6 +3502,13 @@ class ControlScript(object):
                 "--ycqlsh={}".format(find_binary_location("ycqlsh")),
                 "--redis_cli={}".format(find_binary_location("redis-cli")),
             ]
+
+        if self.configs.saved_data.get("secure"):
+            ybc_cmd.extend([
+                "--cert_node_filename={}".format(advertise_ip),
+                "--certs_dir_name={}".format(self.configs.saved_data.get("certs_dir")),
+            ])
+
         return ybc_cmd
 
 
@@ -3344,6 +3802,55 @@ class ControlScript(object):
             return True
 
         raise RetryableError()
+
+    # Get the current list of masters and leader master known to a tserver using
+    # api/v1/masters endpoint of the tserver.
+    def get_current_masters_and_leader_from_api(self, tserverIp, timeout=30):
+        if not tserverIp:
+            Output.log("Empty tserverIp passed to get_current_masters_and_leader_from_api")
+            return ('','')
+        tserver_addr = "{}:{}".format(tserverIp,
+                            self.configs.saved_data.get("tserver_webserver_port"))
+        try:
+            tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
+            Output.log("Trying to get masters information from {}".format(tserverMastersAPI) +
+                        " (Timeout={})".format(timeout))
+            response = urlopen(Request(tserverMastersAPI), timeout=timeout)
+            Output.log("Got the response from {}. response: {}".format(tserverMastersAPI, response))
+
+            jsonResponseFromTserver = json.load(response)
+            dictOfAllNodes = jsonResponseFromTserver.get("master_server_and_type")
+
+            currentMastersCSV = ""
+            lenOfMasters = len(dictOfAllNodes)
+            masterLeader = ""
+            for node in dictOfAllNodes:
+                if node["is_leader"]:
+                    masterLeader = node["master_server"].split(':')[0]
+                currentMastersCSV += node["master_server"]
+                lenOfMasters -= 1
+                if lenOfMasters > 0:
+                    currentMastersCSV += ","
+
+            Output.log("Tserver {} returned the following ".format(tserverIp) +
+                "set of the current masters {}.".format(currentMastersCSV) +
+                " and master leader {}.".format(masterLeader),
+                    logging.DEBUG)
+
+            return (currentMastersCSV, masterLeader)
+
+        except HTTPError as http_err:
+            Output.log('HTTP error occurred while fetching current' +
+                    'masters from tserver: {}', http_err)
+            return ('','')
+        except URLError as url_err:
+            Output.log('URL error occurred while fetching current' +
+                    'masters from tserver: {}', url_err)
+            return ('','')
+        except Exception as err:
+            Output.log('Other error occurred while fetching current' +
+                    'masters from tserver: {}', err)
+            return ('','')
 
     # Get the current list of masters known to a tserver using api/v1/masters endpoint
     # of the tserver. Use the node address given with the --join flag or use the
@@ -4486,7 +4993,172 @@ class ControlScript(object):
         return invalid_num_replica_locations if \
                         len(invalid_num_replica_locations) > 0 else None
 
+    # Get Outbound xcluster replications' statuses
+    def get_outbound_xcluster_replication_statuses(self, xcluster_api_response, leader_master,
+                                                  replication_id = None):
+        outbound_replication_groups = xcluster_api_response.get("outbound_replication_groups")
+        if len(outbound_replication_groups) == 0:
+            Output.log("No outbound replication found for target cluster.")
+            return ""
 
+        status_details = []
+        status_display_info = {}
+
+        replication_id_with_databases = self.get_databases_for_xcluster(leader_master)
+        if len(replication_id_with_databases) == 0:
+            Output.log("Cannot retreive the databases for " +
+                                                    "replication_id {}.".format(replication_id))
+
+        replication_count = 1
+        found_xcluster_status = False
+        for replication_group in outbound_replication_groups:
+            if (not replication_id) or (replication_id and \
+                                replication_id == replication_group.get("replication_group_id")):
+                status_details.extend([
+                    (Output.make_yellow("Replication {}".format(replication_count)), ""),
+                    (Output.make_yellow("Replication ID"),
+                                                replication_group.get("replication_group_id")),
+                ])
+
+                replication_metadata = replication_group.get("metadata")
+                namespace_infos = replication_metadata.get("namespace_infos")
+                target_universe_info = replication_metadata.get("target_universe_info")
+                if target_universe_info:
+                    status_details.extend([
+                        (Output.make_yellow("State"), target_universe_info.get("state")),
+                        (Output.make_yellow("Target Universe UUID"),
+                                                    target_universe_info.get("universe_uuid")),
+                    ])
+                else:
+                    status_details.append(
+                        (Output.make_yellow("State"), "CHECKPOINT")
+                    )
+
+                status_details.extend([
+                    (Output.make_yellow("Databases"), "Following are the databases included " +
+                                                            "in this replication"),
+                ])
+
+                databases_info = []
+
+                for replication_group_info in replication_id_with_databases:
+                    if replication_group_info["replication_id"] == \
+                            replication_group.get("replication_group_id"):
+                        databases_info = replication_group_info.get("databases")
+
+
+                db_count = 1
+                for db_info in databases_info:
+                    for namespace_info in namespace_infos:
+                        if db_info.get("id") == namespace_info.get("key"):
+                            status_details.extend([
+                                (Output.make_yellow(""), "Database {}:".format(db_count)),
+                                (Output.make_yellow(""),
+                                    "Name: {}".format(db_info.get("name"))),
+                                (Output.make_yellow(""),
+                                    "State: {}".format(namespace_info.get("value").get("state"))),
+                            ])
+                            if not status_display_info.get("Database {}:".format(db_count)):
+                                status_display_info["Database {}:".format(db_count)] = \
+                                                                                Output.make_yellow
+                            db_count += 1
+
+                replication_count += 1
+
+                found_xcluster_status = True
+
+        if not found_xcluster_status:
+            if replication_id:
+                Output.log("Couldn't find any outbound " +
+                    "replication with replication id {}".format(replication_id))
+            else:
+                Output.log("Couldn't find any outbound replication groups.")
+            return ""
+
+        return self.get_status_string_common(status_details, status_display_info)
+
+    # Get Inbound xcluster replications' statuses
+    def get_inbound_xcluster_replication_statuses(self, xcluster_api_response, master_addresses,
+                                                  replication_id = None):
+        replication_infos = xcluster_api_response.get("replication_infos")
+        if len(replication_infos) == 0:
+            Output.log("No inbound replication found for target cluster.")
+            return ""
+
+        status_details = []
+        status_display_info = {}
+
+        xcluster_safe_time_statuses = YBAdminProxy.get_xcluster_safe_time(master_addresses)
+        if xcluster_safe_time_statuses is None:
+            Output.log("Couldn't get xcluster safe time status.")
+            return ""
+
+        if len(xcluster_safe_time_statuses) == 0:
+            Output.log("No inbound xcluster replication found. Set-up xcluster " +
+                                 "replication using `xcluster checkpoint` and `xcluster set_up`, " +
+                                 "then run `xcluster status` on the target node to get status of " +
+                                 "replication.")
+            return ""
+
+        replication_count = 1
+        found_xcluster_status = False
+        for replication_info in replication_infos:
+            if (not replication_id) or (replication_id and \
+                                replication_id == replication_info.get("replication_group_id")):
+                status_details.extend([
+                    (Output.make_yellow("Replication {}".format(replication_count)), ""),
+                    (Output.make_yellow("Replication ID"),
+                                                replication_info.get("replication_group_id")),
+                    (Output.make_yellow("State"), replication_info.get("state")),
+                ])
+
+                source_nodes = [producer.get("host") for producer in
+                                replication_info.get("producer_master_addresses")[1:]]
+
+                status_details.extend([
+                    (Output.make_yellow("Source cluster nodes"), ','.join(source_nodes)),
+                    (Output.make_yellow("Databases"), "Following are the databases included " +
+                                                            "in this replication"),
+                ])
+
+                databases_consumer_ids = [namespace_info.get("consumer_namespace_id") for
+                    namespace_info in replication_info.get("db_scoped_info").get("namespace_infos")]
+
+                db_count = 1
+                for db_consumer_id in databases_consumer_ids:
+                    for xcluster_status in xcluster_safe_time_statuses:
+                        if db_consumer_id == xcluster_status.get("namespace_id"):
+                            status_details.extend([
+                                (Output.make_yellow(""), "Database {}:".format(db_count)),
+                                (Output.make_yellow(""),
+                                        "Name: {}".format(xcluster_status.get("namespace_name"))),
+                                (Output.make_yellow(""),
+                                        "Safe Time: {}".format(xcluster_status.get("safe_time"))),
+                                (Output.make_yellow(""),
+                                        "Safe Time Lag(micro secs): {}".format(
+                                            xcluster_status.get("safe_time_lag_sec"))),
+                                (Output.make_yellow(""),
+                                        "Safe Time Skew(micro secs): {}".format(
+                                            xcluster_status.get("safe_time_skew_sec"))),
+                            ])
+                            if not status_display_info.get("Database {}:".format(db_count)):
+                                status_display_info["Database {}:".format(db_count)] = \
+                                                                                Output.make_yellow
+                            db_count += 1
+
+                replication_count += 1
+
+                found_xcluster_status = True
+
+        if not found_xcluster_status:
+            if replication_id:
+                Output.log("Couldn't find any inbound " +
+                    "replication with replication id {}".format(replication_id))
+            else:
+                Output.log("Couldn't find any inbound replication groups.")
+            return ""
+
+        return self.get_status_string_common(status_details, status_display_info)
 
     # Updating the database user passwords for postgres and cassandra
     def update_db_passwords(self, new_password):
@@ -5063,6 +5735,140 @@ class ControlScript(object):
 
         return False
 
+    def get_databases_for_xcluster(self, masterIP, group_name = None):
+        if not masterIP:
+            Output.log("Empty masterIP passed to get_databases_for_xcluster")
+            return []
+        master_addr = "{}:{}".format(masterIP,
+                            self.configs.saved_data.get("master_webserver_port"))
+        try:
+            timeout = 30
+            masterXClusterHttpPage = "http://{}/xcluster".format(master_addr)
+            Output.log("Trying to parse xcluster html page from {}".format(masterXClusterHttpPage) +
+                        " (Timeout={})".format(timeout))
+            response = urlopen(Request(masterXClusterHttpPage), timeout=timeout)
+            Output.log("Got the response from {}. ".format(masterXClusterHttpPage) +
+                       "response: {}".format(response))
+
+            # Find the HTML code of Outbound Replication Groups
+            outbound_replication_group_reg = re.compile(r'(?ms)Outbound Replication ' +
+                                                        r'Groups</h3>.*?<h3>')
+            outbound_replication_groups_match = outbound_replication_group_reg.search(
+                                                                response.read().decode('utf-8'))
+            if not outbound_replication_groups_match:
+                Output.log("No Outbound Replication Groups found. " +
+                           "Was xcluster checkpoint initialised?")
+                return []
+
+            outbound_replication_groups_html = outbound_replication_groups_match.group(0)
+
+            group_htmls = []
+            # Find the HTML code of Group of the provided group name
+            if group_name:
+                group_regex = re.compile(r'(?ms)Group: {}</legend>.*?<h3>'.format(group_name))
+                group_match = group_regex.search(outbound_replication_groups_html)
+                if not group_match:
+                    Output.log("No Outbound Replication Group with name(replication_id) " +
+                                "{} was found. Was xcluster checkpoint ".format(group_name) +
+                                "for this group initialised?")
+                    return []
+
+                group_html = group_match.group(0)
+
+                if group_html.count('Group') > 1:
+                    group_regex = re.compile(r'(?ms)Group: {}</legend>.*?Group'.format(group_name))
+                    group_match = group_regex.search(outbound_replication_groups_html)
+                    group_html = group_match.group(0)
+
+                group_htmls.append(group_html)
+            else:
+                all_group_positions = [match.start() for match in re.finditer(
+                                        r'Group:', outbound_replication_groups_html)]
+
+                # If no occurrences of "Group:" means no replication groups
+                if not all_group_positions:
+                    return []
+
+                # Add the position of the last character of the string
+                all_group_positions.append(len(outbound_replication_groups_html))
+
+                # Iterate over the positions to split the string
+                for i in range(len(all_group_positions) - 1):
+                    start = all_group_positions[i]
+                    end = all_group_positions[i + 1]
+                    group_htmls.append(outbound_replication_groups_html[start:end].strip())
+
+            response = []
+            for group_html in group_htmls:
+                replication_id_regex = re.compile(r'Group: \s*(.*?)\s*</legend>')
+                replication_id_match = replication_id_regex.search(group_html)
+                pattern = r'Namespace: (.*?)</legend>.*?NamespaceId: (\w+).*?status'
+
+                # Find all matches in the HTML content
+                matches = re.findall(pattern, group_html, re.DOTALL)
+                group_info = {}
+                group_info["replication_id"] = replication_id_match.group(1)
+                group_info["databases"] = []
+                for match in matches:
+                    namespace_name, namespace_id = match
+                    group_info["databases"].append({"name": namespace_name.strip(),
+                                                    "id": namespace_id.strip()})
+
+                response.append(group_info)
+
+            Output.log("replication_id with their databases info: {} from ".format(response) +
+                                                "{} http page".format(masterXClusterHttpPage))
+
+            return response
+
+        except HTTPError as http_err:
+            Output.log('HTTP error occurred while fetching current' +
+                    'masters from tserver: {}', http_err)
+            return []
+        except URLError as url_err:
+            Output.log('URL error occurred while fetching current' +
+                    'masters from tserver: {}', url_err)
+            return []
+        except Exception as err:
+            Output.log('Other error occurred while fetching current' +
+                    'masters from tserver: {}', err)
+            return []
+
+    def get_xcluster_info(self, masterIP):
+        if not masterIP:
+            Output.log("Empty masterIP passed to get_xcluster_info")
+            return []
+        master_addr = "{}:{}".format(masterIP,
+                            self.configs.saved_data.get("master_webserver_port"))
+        try:
+            timeout = 30
+            masterXClusterApi = "http://{}/api/v1/xcluster".format(master_addr)
+            Output.log("Trying to parse xcluster info from {}".format(masterXClusterApi) +
+                        " (Timeout={})".format(timeout))
+            response = urlopen(Request(masterXClusterApi), timeout=timeout)
+            Output.log("Got the response from {}. ".format(masterXClusterApi) +
+                       "response: {}".format(response))
+
+            jsonResponse = json.load(response)
+            if not jsonResponse:
+                Output.log("Empty response from {}.".format(masterXClusterApi))
+                return []
+
+            return jsonResponse
+        except HTTPError as http_err:
+            Output.log('HTTP error occurred while fetching current' +
+                    'masters from tserver: {}', http_err)
+            return []
+        except URLError as url_err:
+            Output.log('URL error occurred while fetching current' +
+                    'masters from tserver: {}', url_err)
+            return []
+        except Exception as err:
+            Output.log('Other error occurred while fetching current' +
+                    'masters from tserver: {}', err)
+            return []
+
+
     # Returns a list of invalid IPs from the list of IPs provided.
     def get_invalid_ips(self, ips):
         invalid_ips = []
@@ -5133,7 +5939,7 @@ class ControlScript(object):
             user_configs = Configs.parse_user_config_file(args.config)
             # User should not be able to override data_dir
             if (self.configs.saved_data.get("cluster_member")
-                                    and args.data_dir is None):
+                and args.data_dir is None and user_configs.get("data_dir")):
                 user_configs_data_dir = [
                     path for path in user_configs.get("data_dir").split(',')
                 ]
@@ -5567,6 +6373,13 @@ class ControlScript(object):
         # The time string does not match the expected format.
             return False
 
+    def flags_not_provided(self, args, required_flags):
+        flags_not_provided_list = list()
+        for flag in required_flags:
+            if getattr(args, flag) is None:
+                flags_not_provided_list.append(flag)
+
+        return flags_not_provided_list
 
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
@@ -5575,6 +6388,90 @@ class ControlScript(object):
 
         if self.configs.saved_data.get("database_password") is not None:
             self.setup_env_init.update_passwords(self.configs.saved_data.get("database_password"))
+
+        if args.parser == "checkpoint":
+            required_flags = ["replication_id", "databases"]
+            flags_not_provided_list = self.flags_not_provided(args, required_flags)
+
+            if len(flags_not_provided_list) != 0:
+                err_msg = Output.make_red("Error") + ": Following flags are not provided. " +\
+                    "Please provide them while running `yugabyted xcluster checkpoint`."
+                for flag in flags_not_provided_list:
+                    err_msg += "\n- " + flag
+                Output.print_out(err_msg)
+                sys.exit(1)
+
+            ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
+            databases = args.databases.split(",")
+            db_not_exist_list = list()
+            for db in databases:
+                if not ysql_proxy.db_exists(db):
+                    db_not_exist_list.append(db)
+
+            if len(db_not_exist_list):
+                if len(db_not_exist_list) == 1:
+                    err_msg = "database {}".format(db_not_exist_list[0])
+                else:
+                    err_msg = "databases {}".format(','.join(db_not_exist_list))
+                Output.log_error_and_exit(Output.make_red("Error") + ": " + err_msg +
+                    " does not exists in this cluster. Please create " +
+                    "the schema for the database to be replicated before running " +
+                    "`yugabyted xcluster checkpoint`.")
+
+            self.configs.temp_data["xcluster_replication_id"] = args.replication_id
+            self.configs.temp_data["xcluster_databases"] = args.databases
+
+        if args.parser == "set_up":
+            required_flags = ["replication_id", "target_address"]
+            flags_not_provided_list = self.flags_not_provided(args, required_flags)
+
+            if len(flags_not_provided_list) != 0:
+                err_msg = Output.make_red("Error") + ": Following flags are not provided. " +\
+                    "Please provide them while running `yugabyted xcluster set_up`."
+                for flag in flags_not_provided_list:
+                    err_msg += "\n- " + flag
+                Output.print_out(err_msg)
+                sys.exit(1)
+
+            if self.validate_hostname_ip(args.target_address):
+                target_master_addresses = self.get_current_masters_from_api(args.target_address)
+                if target_master_addresses == '':
+                    Output.log_error_and_exit(Output.make_red("Error") + ": cannot reach node at " +
+                    "provided target IP {}. Is target cluster running?".format(args.target_address))
+                else:
+                    self.configs.temp_data["xcluster_target_addresses"] = target_master_addresses
+            else:
+                Output.log_error_and_exit(Output.make_red("Error") + ": --target_address" +
+                        " {} provided is not a valid address. ".format(args.target_address) +
+                        "Please try again with a valid IPV4, IPV6 or DNS.")
+
+            self.configs.temp_data["xcluster_replication_id"] = args.replication_id
+            self.configs.temp_data["xcluster_bootstrap_done"] = args.bootstrap_done
+
+        if args.parser == "delete" and sys.argv[1] == "xcluster":
+            required_flags = ["replication_id", "target_address"]
+            flags_not_provided_list = self.flags_not_provided(args, required_flags)
+
+            if len(flags_not_provided_list) != 0:
+                err_msg = Output.make_red("Error") + ": Following flags are not provided. " +\
+                    "Please provide them while running `yugabyted xcluster delete`."
+                for flag in flags_not_provided_list:
+                    err_msg += "\n- " + flag
+                Output.print_out(err_msg)
+                sys.exit(1)
+
+            if self.validate_hostname_ip(args.target_address):
+                self.configs.temp_data["xcluster_target_addresses"] = args.target_address
+            else:
+                Output.log_error_and_exit(Output.make_red("Error") + ": --target_address" +
+                        " {} provided is not a valid address. ".format(args.target_address) +
+                        "Please try again with a valid IPV4, IPV6 or DNS.")
+
+            self.configs.temp_data["xcluster_replication_id"] = args.replication_id
+
+        if args.parser == "status" and sys.argv[1] == "xcluster":
+            if args.replication_id is not None:
+                self.configs.temp_data["xcluster_replication_id"] = args.replication_id
 
         if args.parser == "backup":
             if not self.validate_ybc_args(args):
@@ -6393,8 +7290,8 @@ class ControlScript(object):
             all_parsers[parser_name] = subparser
 
         # Top Level command: cert
-        example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["cert"]
-        cert_parser = subparsers.add_parser("cert", description=example,
+        cert_example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["cert"]
+        cert_parser = subparsers.add_parser("cert", description=cert_example,
                                                 help="Generate SSL certificates")
         all_parsers["cert"] = cert_parser
         cert_subparsers = cert_parser.add_subparsers(dest="parser", metavar="")
@@ -6427,8 +7324,8 @@ class ControlScript(object):
                 .format(SCRIPT_NAME),metavar="")
 
         # Top Level command: configure
-        example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure"]
-        configure_parser = subparsers.add_parser("configure", description=example,
+        configure_example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure"]
+        configure_parser = subparsers.add_parser("configure", description=configure_example,
                                                 help="Configure data placement," +
                                                 " toggle encryption at rest or run" +
                                                 " point-in-time recovery operations on" +
@@ -6445,12 +7342,12 @@ class ControlScript(object):
         ("admin_operation", "Run yb-admin command on the YugabyteDB cluster."),
         ("point_in_time_recovery", "Configure point-in-time recovery for "
             "a database or keyspace."),):
+            parser_name = "configure_" + cmd
             example = ""
-            if EXAMPLE.get(cmd):
-                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
+            if EXAMPLE.get(parser_name):
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[parser_name]
             subparser = configure_subparsers.add_parser(cmd, help=description, description=example,
                                 parents=[common_parser])
-            parser_name = "configure_" + cmd
             func = getattr(self, parser_name, None)
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
@@ -6529,9 +7426,11 @@ class ControlScript(object):
                 )
 
         # Top Level command: configure_read_replica
-        example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure_read_replica"]
+        configure_read_replica_example = Output.make_yellow("Examples") + ": \n" + \
+                                                EXAMPLE["configure_read_replica"]
         configure_read_replica_parser = subparsers.add_parser("configure_read_replica",
-                                                description=example, help="Configure/Modify/" +
+                                                description=configure_read_replica_example,
+                                                help="Configure/Modify/" +
                                                 "Delete a read replica cluster.",
                                                 parents=[common_parser])
 
@@ -6544,12 +7443,12 @@ class ControlScript(object):
                 ("new", "Configure a new read replica cluster."),
                 ("modify", "Modify an existing new read replica cluster."),
                 ("delete", "Delete an existing new read replica cluster.")):
+            parser_name = "configure_read_replica_" + cmd
             example = ""
-            if EXAMPLE.get(cmd):
-                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
+            if EXAMPLE.get(parser_name):
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[parser_name]
             subparser = configure_read_replica_subparsers.add_parser(cmd, help=description,
                                 description=example, parents=[common_parser])
-            parser_name = "configure_read_replica_" + cmd
             func = getattr(self, parser_name, None)
             subparser.set_defaults(func=func)
             all_parsers[parser_name] = subparser
@@ -6623,6 +7522,82 @@ class ControlScript(object):
                 help="Custom timeout for the YSQL upgrade in milliseconds.",
                 metavar=""
             )
+
+        # Top Level command: configure_read_replica
+        xcluster_example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["xcluster"]
+        xcluster_parser = subparsers.add_parser("xcluster",
+                                    description=xcluster_example,
+                                    help="Operations for xcluster replication between 2 clusters.",
+                                    parents=[common_parser])
+
+        # Sub-commands for top level `configure_read_replica` command: new, modify, delete
+        all_parsers["xcluster"] = xcluster_parser
+        xcluster_subparsers = xcluster_parser.add_subparsers(dest="parser", metavar="")
+        xcluster_subparsers.required = True
+        for cmd, description in (
+                ("checkpoint", "Initialise a xcluster replication. " +
+                                        "Needs to be run from source cluster."),
+                ("set_up", "Setup xcluster replication. " +
+                                        "Needs to be run from source cluster."),
+                ("status", "Displays the status of any replications running " +
+                                        "from or to this cluster." +
+                                        "Can be run from either source or target cluster."),
+                ("delete", "Deletes the specified replication. Needs to run from source cluster"),):
+            parser_name = "xcluster_" + cmd
+            example = ""
+            if EXAMPLE.get(parser_name):
+                example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[parser_name]
+            subparser = xcluster_subparsers.add_parser(cmd, help=description,
+                                description=example, parents=[common_parser])
+            func = getattr(self, parser_name, None)
+            subparser.set_defaults(func=func)
+            all_parsers[parser_name] = subparser
+
+        # Flags for sub-command: checkpoint
+        for cmd in ("xcluster_checkpoint",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--replication_id", help="Unique string to assign to a replication.",
+                metavar="")
+            cur_parser.add_argument(
+                "--databases", help="Name of database to be replicated.",
+                metavar="")
+
+        # Flags for sub-command: set_up
+        for cmd in ("xcluster_set_up",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--target_address",
+                help="IP of any target cluster node.",
+                metavar="")
+            cur_parser.add_argument(
+                "--replication_id",
+                help="Unique string to assigned to a replication during checkpoint.",
+                metavar="")
+            cur_parser.add_argument(
+                "--bootstrap_done",
+                help="Use this flag if bootstrap was required and has been completed.",
+                action="store_true")
+
+        # Flags for sub-command: set_up
+        for cmd in ("xcluster_status",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--replication_id",
+                help="Replication id of the xcluster replication whose status is to be displayed.",
+                metavar="")
+
+        # Flags for sub-command: delete
+        for cmd in ("xcluster_delete",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--target_address",
+                help="IP of any target cluster node.",
+                metavar="")
+            cur_parser.add_argument(
+                "--replication_id",
+                help="Unique string to assigned to a replication during checkpoint.",
+                metavar="")
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -6897,6 +7872,10 @@ class Configs(object):
             "ybc_cloud_storage_dir": "",
             "ybc_status": False,
             "upgrade_ysql_timeout": DEFAULT_UPGRADE_YSQL_TIMEOUT,
+            "xcluster_replication_id": "",
+            "xcluster_databases": "",
+            "xcluster_target_addresses": "",
+            "xcluster_bootstrap_done": "",
         }
         self.config_file = config_file
 
@@ -7765,6 +8744,52 @@ class YBAdminProxy(object):
         out, err, ret_code = run_process(cmd, log_cmd=True)
         return (ret_code == 0)
 
+    @staticmethod
+    def checkpoint_xcluster(master_addrs, replication_id, databases, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                                       "create_xcluster_checkpoint", replication_id, databases]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (out, err, ret_code)
+
+    @staticmethod
+    def xcluster_is_bootstrap_required(master_addrs, replication_id, databases, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                                       "is_xcluster_bootstrap_required", replication_id, databases]
+        out, _, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (out, ret_code)
+
+    @staticmethod
+    def set_up_xcluster(master_addrs, replication_id, target_addresses, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                                       "setup_xcluster_replication", replication_id,
+                                       target_addresses]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (out, err, ret_code)
+
+    @staticmethod
+    def get_xcluster_safe_time(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                                       "get_xcluster_safe_time",
+                                       "include_lag_and_skew"]
+        out, _, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if ret_code == 0:
+            return json.loads(out)
+        else:
+            return None
+
+    @staticmethod
+    def drop_xcluster_replication(master_addrs, replication_id, target_addresses = '', timeout=10):
+        if target_addresses == '':
+            cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                                       "drop_xcluster_replication", replication_id]
+        else:
+            cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs,
+                                       "drop_xcluster_replication", replication_id,
+                                       target_addresses]
+
+        _, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return (err, ret_code)
+
     # Passthrough method for all the yb-admin commands
     # @staticmethod
     # def call_yb_admin_command(master_addrss, command, timeout=10):
@@ -8305,6 +9330,7 @@ class Output(object):
     ANIMATION_FAIL = '\u274C'
     ANIMATION_RUNNING = 1
     ANIMATION_WARNING = '\u26A0'
+    ANIMATION_STOP = 2
     # Tuple of (animation_status, animation_message) to ensure atomicity.
     animation_status = (ANIMATION_SUCCESS, "")
     animation_thread = None
@@ -8346,15 +9372,16 @@ class Output(object):
                     symbol = status
                     running = False
 
-                if msg == "":
-                    line = "\r" + " " * line_len
-                    running = False
+                if msg == "" and status == Output.ANIMATION_STOP:
+                    line = "\r\x1b[2K"
+                    line_len = 0
                 else:
                     line = "\r{} {}".format(symbol, msg)
 
                 line_len = max(len(line), line_len)
                 line_to_write = "{:<{}}".format(line, line_len)
-                if not running:
+
+                if not running and msg != "":
                     line_to_write += "\n"
 
                 try:

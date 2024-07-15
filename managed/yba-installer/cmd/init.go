@@ -117,6 +117,18 @@ func handleRootCheck(cmdName string) {
 		log.Fatal("Could not determine current user: " + err.Error())
 	}
 
+	if !viper.IsSet("as_root") && cmdName == "yba-ctl upgrade" {
+		// Upgrading from before "as_root" exists. perform legacy check for /opt/yba-ctl
+		_, err := os.Stat(common.YbactlRootInstallDir)
+		if user.Uid == "0" && err != nil {
+			log.Fatal("no root install found at /opt/yba-ctl, cannot upgrade with root")
+		} else if user.Uid != "0" && err == nil {
+			log.Fatal("Detected root install at /opt/yba-ctl, cannot upgrade as non-root")
+		}
+		log.Debug("legacy root check passed for upgrade")
+		return
+	}
+
 	// First, validate that the user (root access) matches the config 'as_root'
 	if user.Uid == "0" && !viper.GetBool("as_root") {
 		log.Fatal("running as root user with 'as_root' set to false is not supported")
@@ -124,10 +136,10 @@ func handleRootCheck(cmdName string) {
 		(viper.GetBool("as_root") || common.Exists(common.YbactlRootInstallDir)) {
 		// Allow running certain commands as non-root in root install mode
 		switch cmdName {
-			case "yba-ctl version", "yba-ctl status", "yba-ctl createBackup":
-				break
-			default:
-				log.Fatal("running as non-root user with 'as_root' set to true is not supported")
+		case "yba-ctl version", "yba-ctl status", "yba-ctl createBackup":
+			break
+		default:
+			log.Fatal("running as non-root user with 'as_root' set to true is not supported")
 		}
 	}
 }

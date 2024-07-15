@@ -182,7 +182,7 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForDataCompacted(
   // Loop while a tablet can be picked.
   master::TabletInfoPtr parent;
   while (true) {
-    const auto tablets = GetTabletsByPartitionKey(table);
+    const auto tablets = VERIFY_RESULT(GetTabletsByPartitionKey(table));
     const auto tablet  = VERIFY_RESULT(select_tablet(tablets));
     if (!tablet) {
       break;
@@ -228,7 +228,7 @@ size_t PgTabletSplitTestBase::NumTabletServers() {
 Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForDataCompacted(
     const master::TableInfoPtr& table, const master::TabletInfoPtr& tablet) {
   // Keep current tablets.
-  const auto tablets = table->GetTablets();
+  const auto tablets = VERIFY_RESULT(table->GetTablets());
 
   // Sanity check that tablet belongs to the table.
   if (!IsTabletInCollection(tablet, tablets)) {
@@ -247,7 +247,7 @@ Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForDataCompacted(
       cluster_.get(), table->id(), MonoDelta::FromSeconds(20) * kTimeMultiplier));
 
   // Select new tablets ids
-  const auto all_tablets = table->GetTablets();
+  const auto all_tablets = VERIFY_RESULT(table->GetTablets());
   std::vector<TabletId> new_tablet_ids;
   new_tablet_ids.reserve(all_tablets.size());
   for (const auto& t : all_tablets) {
@@ -260,11 +260,11 @@ Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForDataCompacted(
   return WaitForPeersPostSplitCompacted(cluster_.get(), new_tablet_ids);
 }
 
-PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table) {
+Result<PartitionKeyTabletMap> GetTabletsByPartitionKey(const master::TableInfoPtr& table) {
   // Get tablets and keep in sorted order, we assume partition_key cannot be changed
   // as we are holding a std::string_view to partition_key_start.
   PartitionKeyTabletMap tablets;
-  for (auto& t : table->GetTablets()) {
+  for (auto& t : VERIFY_RESULT(table->GetTablets())) {
     const auto partition = t->LockForRead()->pb.partition();
     tablets.emplace(partition.has_partition_key_start() ? partition.partition_key_start() : "", t);
   }

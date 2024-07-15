@@ -122,6 +122,17 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
     return promise.get_future().get();
   }
 
+  Result<master::GetXClusterStreamsResponsePB> GetXClusterStreamsByTableId(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      std::vector<TableId> table_ids) {
+    std::promise<Result<master::GetXClusterStreamsResponsePB>> promise;
+    RETURN_NOT_OK(XClusterClient().GetXClusterStreams(
+        CoarseMonoClock::Now() + kDeadline, replication_group_id, namespace_id, table_ids,
+        [&promise](const auto& resp) { promise.set_value(resp); }));
+
+    return promise.get_future().get();
+  }
+
   Status VerifyWalRetentionOfTable(
       const TableId& table_id, uint32 wal_retention_secs = FLAGS_cdc_wal_retention_time_secs) {
     auto tablets = ListTableActiveTabletLeadersPeers(producer_cluster(), table_id);
@@ -601,6 +612,78 @@ TEST_F(XClusterOutboundReplicationGroupTest, TestListAPIs) {
         ASSERT_RESULT(XClusterClient().GetXClusterOutboundReplicationGroups(namespace_id_2));
     ASSERT_EQ(replication_groups.size(), 0);
   }
+}
+
+// Make sure we cleanup the streams of the failed table create.
+TEST_F(XClusterOutboundReplicationGroupTest, CleanupStreamsOfFailedTableCreate) {
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(kReplicationGroupId, {namespace_id_}));
+  int expected_stream_count = 1;
+
+  auto check_streams = [&]() -> Status {
+    auto resp = VERIFY_RESULT(GetXClusterStreams(kReplicationGroupId, namespace_id_));
+    SCHECK_EQ(
+        resp.table_infos_size(), expected_stream_count, IllegalState,
+        Format("Unexpected table infos: $0", resp.ShortDebugString()));
+    return Status::OK();
+  };
+
+  ASSERT_OK(check_streams());
+
+  auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
+
+  // This fails due to GUC yb_test_fail_next_ddl.
+  ASSERT_NOK(conn.Execute("SET yb_test_fail_next_ddl=true; CREATE TABLE tbl1 (a int)"));
+  ASSERT_OK(check_streams());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE moneyp (a money) PARTITION BY LIST (a);"));
+  ++expected_stream_count;
+  ASSERT_OK(check_streams());
+  // This fails due to invalid cast but still creates (and drops) a new table.
+  ASSERT_NOK(conn.Execute("CREATE TABLE moneyp_10 PARTITION OF moneyp FOR VALUES IN (10);"));
+  ASSERT_OK(check_streams());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE bigintp (a bigint) PARTITION BY LIST (a);"));
+  ++expected_stream_count;
+  ASSERT_OK(conn.Execute("CREATE TABLE bigintp_10 PARTITION OF bigintp FOR VALUES IN (10);"));
+  ++expected_stream_count;
+  ASSERT_OK(check_streams());
+  // This fails due to overlap.
+  ASSERT_NOK(conn.Execute("CREATE TABLE bigintp_10_2 PARTITION OF bigintp FOR VALUES IN ('10');"));
+  ASSERT_OK(check_streams());
+}
+
+TEST_F(XClusterOutboundReplicationGroupTest, TestGetStreamByTableId) {
+  auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+
+  ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(kReplicationGroupId, {namespace_id_}));
+
+  // Delete the table to put it into HIDDEN state.
+  ASSERT_OK(DropYsqlTable(&producer_cluster_, kNamespaceName, kPgSchemaName, kTableName1));
+
+  // Recreate another table with the same name.
+  auto table_id_2 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
+
+  // Verify that we can request each table by its table id.
+  for (const auto& table_id : {table_id_1, table_id_2}) {
+    auto ns_info =
+        ASSERT_RESULT(GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {table_id}));
+    ASSERT_EQ(ns_info.table_infos_size(), 1);
+    ASSERT_EQ(ns_info.table_infos(0).table_id(), table_id);
+  }
+
+  // Also verify that we can request both tables by their table ids.
+  auto ns_info = ASSERT_RESULT(
+      GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {table_id_1, table_id_2}));
+  ASSERT_EQ(ns_info.table_infos_size(), 2);
+  // Tables should be returned in the same order as requested.
+  ASSERT_EQ(ns_info.table_infos(0).table_id(), table_id_1);
+  ASSERT_EQ(ns_info.table_infos(1).table_id(), table_id_2);
+
+  // Verify that we can request a table that does not exist.
+  ASSERT_NOK_STR_CONTAINS(
+      GetXClusterStreamsByTableId(kReplicationGroupId, namespace_id_, {"bad_table_id"}),
+      "Table bad_table_id not found");
 }
 
 }  // namespace master

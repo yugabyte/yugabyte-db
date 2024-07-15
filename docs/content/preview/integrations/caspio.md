@@ -32,6 +32,6 @@ To connect your YugabyteDB database to Caspio:
     - Provide the username and password for your YugabyteDB instance.
     - Optionally, to connect via SSL, provide the CA certificate.
 
-1. If your cluster is in YugabteDB Managed, be sure to add the listed IP addresses to the cluster [IP Allow List](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
+1. If your cluster is in YugabyteDB Aeon, be sure to add the listed IP addresses to the cluster [IP Allow List](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
 
 With these applications connected, you can create Zaps to trigger events and create relationships between Caspio and the underlying YugabyteDB data source.

@@ -739,8 +739,6 @@ TEST_F(PgDdlAtomicitySanityTest, YB_DISABLE_TEST(FailureRecoveryTest)) {
 }
 
 TEST_F(PgDdlAtomicitySanityTest, AddReplicaIdentityTest) {
-  ASSERT_OK(
-      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("set yb_enable_replica_identity = true"));
@@ -956,6 +954,21 @@ TEST_F(PgDdlAtomicityTxnTest, CreateDropIndexTxn) {
   // Create and drop index in the same successful transaction.
   ASSERT_OK(RunTransaction(ddl_stmts));
   VerifyTableNotExists(client.get(), kDatabase, kCreateIndex, 10);
+}
+
+TEST_F(PgDdlAtomicityTxnTest,
+       YB_DISABLE_TEST_IN_TSAN(TestDropColumnSkippingAlterSchema)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (a int, b int, PRIMARY KEY (a ASC))", table()));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", table()));
+  const auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", table(), {"a", "b", "c"}));
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_ysql_ddl_rollback_failure_percentage", "100"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN c", table()));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", table(), {"a", "b"}));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET b = 2 WHERE a = 1", table()));
 }
 
 TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {

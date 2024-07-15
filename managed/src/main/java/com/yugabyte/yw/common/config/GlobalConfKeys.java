@@ -1355,4 +1355,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Interval at which the XCluster Sync Scheduler runs",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> xClusterMetricsSchedulerInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_metrics_scheduler_interval",
+          ScopeType.GLOBAL,
+          "XCluster Metrics Scheduler Interval",
+          "Interval at which the XCluster Metrics Scheduler runs",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

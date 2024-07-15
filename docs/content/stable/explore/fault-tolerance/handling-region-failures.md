@@ -68,7 +68,7 @@ To simulate the failure of the 3rd region locally, you can just stop the third n
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -96,7 +96,7 @@ To simulate the failure of the secondary region locally, you can just stop the s
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -124,7 +124,7 @@ To simulate the failure of the primary region locally, you can just stop the fir
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}

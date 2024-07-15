@@ -1,8 +1,8 @@
 ---
-title: Alerts and monitoring in YugabyteDB Managed
+title: Alerts and monitoring in YugabyteDB Aeon
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
-description: Set alerts and monitor your YugabyteDB Managed clusters.
+description: Set alerts and monitor your YugabyteDB Aeon clusters.
 image: /images/section_icons/explore/monitoring.png
 headcontent: Set alerts and monitor cluster performance and activity
 aliases:
@@ -18,7 +18,7 @@ showRightNav: true
 
 ### Alerts
 
-Use YugabyteDB Managed [Alerts](cloud-alerts/) to be automatically notified of potential problems. You can enable alerts for cluster, database, and billing criteria. Configure alerts from the **Alerts** page.
+Use YugabyteDB Aeon [Alerts](cloud-alerts/) to be automatically notified of potential problems. You can enable alerts for cluster, database, and billing criteria. Configure alerts from the **Alerts** page.
 
 ### Performance monitoring
 

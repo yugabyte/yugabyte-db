@@ -46,7 +46,7 @@ export interface CreateXClusterConfigRequest {
 
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
@@ -59,7 +59,7 @@ export interface EditXClusterConfigTablesRequest {
   autoIncludeIndexTables?: boolean;
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
@@ -79,7 +79,12 @@ export function createXClusterConfig(createxClusterConfigRequest: CreateXCluster
 export function restartXClusterConfig(
   xClusterUUID: string,
   tables: string[],
-  bootstrapParams: { backupRequestParams: any }
+  bootstrapParams: {
+    allowBootstrap: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  }
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
@@ -243,7 +248,7 @@ interface TableReplicationLagQueryParams {
 }
 interface ConfigReplicationLagQueryParms {
   nodePrefix: string | undefined;
-  replicationUuid: string;
+  xClusterConfigUuid: string;
 
   start?: string;
   end?: string;

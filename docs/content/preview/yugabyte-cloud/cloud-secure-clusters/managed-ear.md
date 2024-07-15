@@ -1,9 +1,9 @@
 ---
 title: Encryption at rest
 linkTitle: Encryption at rest
-description: YugabyteDB Managed cluster encryption at rest.
+description: YugabyteDB Aeon cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
-earlyAccess: /preview/releases/versioning/#feature-maturity
+badges: ea
 menu:
   preview_yugabyte-cloud:
     identifier: managed-ear
@@ -12,14 +12,14 @@ menu:
 type: docs
 ---
 
-For added security, you can encrypt your clusters (including backups) using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). You grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
+For added security, you can encrypt your clusters (including backups) using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). You grant YugabyteDB Aeon access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
 You can enable YugabyteDB EAR for a cluster as follows:
 
 - On the **Security** page of the **Create Cluster** wizard when you [create your cluster](../../cloud-basics/create-clusters/).
 - On the cluster **Settings** tab under **Encryption at rest** (database version 2.16.7 and later only).
 
-Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Managed uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
+Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Aeon uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
 
 ## Limitations
 
@@ -149,9 +149,9 @@ You can enable EAR using a CMK for clusters (database version 2.16.7 and later o
 
 Click **Save** when you are done.
 
-YugabyteDB Managed validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
+YugabyteDB Aeon validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
 
-To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Managed uses lazy decryption to decrypt the cluster.
+To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Aeon uses lazy decryption to decrypt the cluster.
 
 ## Rotate your CMK
 
@@ -179,4 +179,4 @@ To rotate the CMK used for EAR, do the following:
 
 1. Click **Save**.
 
-YugabyteDB Managed uses lazy decryption and encryption to encrypt the cluster using the new key.
+YugabyteDB Aeon uses lazy decryption and encryption to encrypt the cluster using the new key.

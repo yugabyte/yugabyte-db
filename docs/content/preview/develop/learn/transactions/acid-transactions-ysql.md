@@ -17,10 +17,7 @@ rightNav:
 type: docs
 ---
 
-{{<tabs>}}
-{{<tabitem href="../acid-transactions-ysql/" text="YSQL" icon="postgres" active="true" >}}
-{{<tabitem href="../acid-transactions-ycql/" text="YCQL" icon="cassandra" >}}
-{{</tabs>}}
+{{<api-tabs>}}
 
 In YugabyteDB, a transaction is a sequence of operations performed as a single logical unit of work. The essential point of a transaction is that it bundles multiple steps into a single, all-or-nothing operation. The intermediate states between the steps are not visible to other concurrent transactions, and if some failure occurs that prevents the transaction from completing, then none of the steps affect the database at all.
 
@@ -158,7 +155,7 @@ For more examples and details on how to tune your application's performance, see
 
 ## Observability
 
-YugabyteDB exports a lot of [observable metrics](../../../../explore/observability/) so that you can see what is going on in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Managed. The following are key transaction-related metrics.
+YugabyteDB exports a lot of [observable metrics](../../../../explore/observability/) so that you can see what is going on in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Aeon. The following are key transaction-related metrics.
 
 ##### transactions_running
 

@@ -7,6 +7,7 @@ aliases:
   - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
   - /preview/explore/change-data-capture/debezium-connector
   - /preview/explore/change-data-capture/debezium
+  - /preview/explore/change-data-capture/debezium-connector-postgresql
 menu:
   preview:
     parent: explore-change-data-capture
@@ -1045,7 +1046,7 @@ If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root c
 
 * [Local deployments](../../../secure/tls-encryption/)
 * [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
-* [YugabyteDB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [YugabyteDB Aeon](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 

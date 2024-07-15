@@ -14,7 +14,7 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 >
 >YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/tutorials/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
->To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+>To evaluate YugabyteDB Aeon for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
 To create your Sandbox cluster:
 
@@ -34,13 +34,13 @@ To create your Sandbox cluster:
 
 1. Click **Create Cluster**.
 
-YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
+YugabyteDB Aeon bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
-When the cluster is ready, the cluster [Overview](/preview/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
+When the cluster is ready, the cluster [Overview](/preview/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon.
 
 ## Connect to the cluster
 
-Use Cloud Shell to connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
+Use Cloud Shell to connect to your YugabyteDB Aeon cluster from your browser, and interact with it using distributed SQL.
 
 >The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
 
@@ -86,12 +86,12 @@ When you connect to your cluster using Cloud Shell with the [YSQL API](/preview/
 
 ## Build an application
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Aeon clusters using your favorite programming language.
 
 Before you begin, you need the following:
 
-- a cluster deployed in YugabyteDB Managed.
-- the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
+- a cluster deployed in YugabyteDB Aeon.
+- the cluster CA certificate; YugabyteDB Aeon uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
 Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).

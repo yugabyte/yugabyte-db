@@ -751,11 +751,10 @@ Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
 
 Status PgApiImpl::NewCreateDatabase(
     const char* database_name, const PgOid database_oid, const PgOid source_database_oid,
-    const char* source_database_name, const PgOid next_oid, const bool colocated,
-    const int64_t clone_time, PgStatement** handle) {
+    const PgOid next_oid, const bool colocated, YbCloneInfo *yb_clone_info, PgStatement** handle) {
   auto stmt = std::make_unique<PgCreateDatabase>(
-      pg_session_, database_name, database_oid, source_database_oid, source_database_name, next_oid,
-      clone_time, colocated);
+      pg_session_, database_name, database_oid, source_database_oid, next_oid,
+      yb_clone_info, colocated);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -2156,8 +2155,8 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
   return pg_txn_manager_->SetEnableTracing(tracing);
 }
 
-Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->EnableFollowerReads(enable_follower_reads, staleness_ms);
+Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
+  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
@@ -2378,20 +2377,20 @@ Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
       max_key_length);
 }
 
-uint64_t PgApiImpl::GetReadTimeSerialNo() {
+uint64_t PgApiImpl::GetReadTimeSerialNo() const {
   return pg_txn_manager_->GetReadTimeSerialNo();
 }
 
-uint64_t PgApiImpl::GetTxnSerialNo() {
+uint64_t PgApiImpl::GetTxnSerialNo() const {
   return pg_txn_manager_->GetTxnSerialNo();
 }
 
-SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
+SubTransactionId PgApiImpl::GetActiveSubTransactionId() const {
   return pg_txn_manager_->GetActiveSubTransactionId();
 }
 
-void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
-  pg_txn_manager_->RestoreSessionParallelData(session_data);
+void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData& data) {
+  pg_txn_manager_->RestoreSessionParallelData(data);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2485,5 +2484,14 @@ void PgApiImpl::ClearSessionState() {
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
+
+uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
+  return pg_txn_manager_->GetCurrentReadTimePoint();
+}
+
+Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
+}
 
 } // namespace yb::pggate

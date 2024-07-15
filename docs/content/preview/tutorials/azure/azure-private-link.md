@@ -15,7 +15,7 @@ type: docs
 
 YugabyteDB provides multiple networking options to ensure security, reliability, and improved latencies. [Virtual Private Clouds (VPC)](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/) can be connected through a [VPC peering connection](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to keep network traffic in a cloud provider's network, bypassing the public internet. This allows applications running in Google Cloud or AWS to connect to YugabyteDB as if they were in the same network.
 
-In Azure, you can achieve a similar result using [Private Service Endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-endpoint/). To illustrate this point, let's securely connect a Node.js application in Azure to a cluster running in YugabyteDB Managed.
+In Azure, you can achieve a similar result using [Private Service Endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-endpoint/). To illustrate this point, let's securely connect a Node.js application in Azure to a cluster running in YugabyteDB Aeon.
 
 In the following sections, you will:
 
@@ -26,10 +26,10 @@ In the following sections, you will:
 
 ## Prerequisites
 
-- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
+- A YugabyteDB Aeon account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - An Azure Cloud account with permission to create services.
 
-## Get started with YugabyteDB Managed
+## Get started with YugabyteDB Aeon
 
 [Create a 3-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the _uswest3_ region.
 
@@ -41,7 +41,7 @@ Remember to save the credentials after creation and [download the CA certificate
 
 To test the connection between Azure and YugabyteDB using Azure Private Link, start by creating a virtual machine in the Azure console.
 
-1. **Create a virtual machine running Ubuntu in Azure.** This machine will run the Node.js process that connects to YugabyteDB Managed.
+1. **Create a virtual machine running Ubuntu in Azure.** This machine will run the Node.js process that connects to YugabyteDB Aeon.
 
     ![Create an Ubuntu VM in Azure](/images/tutorials/azure/azure-private-link/azure-create-vm.png "Create an Ubuntu VM in Azure")
 
@@ -98,7 +98,7 @@ This basic application can be run inside your Azure VNet to verify the connectiv
     ```
 
     ```output
-    Establishing connection with YugabyteDB Managed...
+    Establishing connection with YugabyteDB Aeon...
     Connected successfully.
     ```
 

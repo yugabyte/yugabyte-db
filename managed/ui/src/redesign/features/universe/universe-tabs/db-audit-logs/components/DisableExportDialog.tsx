@@ -32,6 +32,8 @@ export const DisableExportDialog: FC<DisableExportDialogProps> = ({
       submitLabel={t('dbAuitLog.disableExportSubmitLabel')}
       cancelLabel={t('common.cancel')}
       onSubmit={onSubmit}
+      submitTestId="DisableExportDialog-Submit"
+      cancelTestId="DisableExportDialog-Cancel"
     >
       <Box className={classes.disableLogModalConatiner}>
         <Typography className={classes.exportInfoText}>

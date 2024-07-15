@@ -3,6 +3,8 @@ title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB clusters.
+aliases:
+  - /preview/deploy/docker/
 menu:
   preview:
     identifier: yugabyted
@@ -245,7 +247,7 @@ The following sub-commands are available for `yugabyted configure` command:
 
 #### data_placement
 
-Use the `yugabyted configure data_placement` sub-command to set or modify placement policy of the nodes of the deployed cluster, and specify the [preferred region(s)](../../../architecture/key-concepts/#preferred-region).
+{{<badge/ea>}} Use the `yugabyted configure data_placement` sub-command to set or modify placement policy of the nodes of the deployed cluster, and specify the [preferred region(s)](../../../architecture/key-concepts/#preferred-region).
 
 For example, you would use the following command to create a multi-zone YugabyteDB cluster:
 
@@ -335,13 +337,13 @@ Enable point-in-time recovery for a database:
 Disable point-in-time recovery for a database:
 
 ```sh
-./bin/yugabyted configure point_in_time_recovery --disable --database <database_name> 
+./bin/yugabyted configure point_in_time_recovery --disable --database <database_name>
 ```
 
 Display point-in-time schedules configured on the cluster:
 
 ```sh
-./bin/yugabyted configure point_in_time_recovery --status 
+./bin/yugabyted configure point_in_time_recovery --status
 ```
 
 #### admin_operation
@@ -720,7 +722,7 @@ Create a single-node locally and join other nodes that are part of the same clus
 : IP address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin.
+: The IP or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *config-file*
 : Yugabyted configuration file path. Refer to [Advanced flags](#advanced-flags).
@@ -1327,9 +1329,13 @@ You can set the replication factor of the cluster manually using the `--rf` flag
 
 ### Create a multi-region cluster in Docker
 
+Docker-based deployments are in {{<badge/ea>}}.
+
 You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
 
 The following example shows how to create a multi-region cluster. If the `~/yb_docker_data` directory already exists, delete and re-create it.
+
+Note that the `--join` flag only accepts labels that conform to DNS syntax, so name your Docker container accordingly using only letters, numbers, and hyphens.
 
 ```sh
 rm -rf ~/yb_docker_data

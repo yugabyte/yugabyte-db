@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere needs to be able to access nodes that will be used to create universes, and the nodes that make up universes need to be accessible to each other and to applications.
+YugabyteDB Anywhere (YBA) needs to be able to access nodes that will be used to create universes, and the nodes that make up universes need to be accessible to each other and to applications.
 
 ## Global port requirements
 
@@ -22,9 +22,9 @@ The following ports need to be open. (The default port numbers can be customized
 
 | From | To | Requirements |
 | :--- | :--- | :--- |
-| DB&nbsp;nodes | DB&nbsp;nodes | Open the following ports for communication between nodes in clusters. They do not need to be exposed to your application.<ul><li>7000 - YB-Master HTTP endpoint</li><li>7100 - YB-Master RPC</li><li>9000 - YB-TServer HTTP endpoint</li><li>9100 - YB-TServer RPC</li><li>18018 - YB Controller</li></ul> |
-| YBA&nbsp;node | DB nodes | Open the following ports on database cluster nodes so that YugabyteDB Anywhere can provision them.<ul><li>22 - SSH</li><li>5433 - YSQL server</li><li>7000/7100 - YB-Master HTTP/RPC endpoint</li><li>9000/9100 - YB-TServer HTTP/RPC endpoint</li><li>9042 - YCQL server</li><li>9070 - Node agent</li><li>9300 - Prometheus Node Exporter</li><li>12000 - YCQL API</li><li>13000 - YSQL API</li><li>18018 - YB Controller</li></ul>SSH is not required after initial setup and configuration, but is recommended for subsequent troubleshooting. If you disallow SSH entirely, you must manually set up each DB node (see [Provisioning on-premises nodes](../server-nodes-software/software-on-prem-manual/)). |
-| Application | DB nodes | Open the following ports on database cluster nodes so that applications can connect via APIs.<ul><li>5433 - YSQL server</li><li>9042 - YCQL server</li></ul> |
+| DB&nbsp;nodes | DB&nbsp;nodes | Open the following ports for communication between nodes in clusters. They do not need to be exposed to your application. For universes with [Node-to-Node encryption in transit](../../security/enable-encryption-in-transit/), communication over these ports is encrypted.<ul><li>7000 - YB-Master HTTP(S)</li><li>7100 - YB-Master RPC</li><li>9000 - YB-TServer HTTP(S)</li><li>9100 - YB-TServer RPC</li><li>18018 - YB Controller RPC</li></ul> |
+| YBA&nbsp;node | DB nodes | Open the following ports on database cluster nodes so that YugabyteDB Anywhere can provision them.<ul><li>22 - SSH</li><li>5433 - YSQL server</li><li>7000/7100 - YB-Master HTTP/RPC</li><li>9000/9100 - YB-TServer HTTP/RPC</li><li>9042 - YCQL server</li><li>9070 - Node agent RPC</li><li>9300 - Prometheus Node Exporter HTTP</li><li>12000 - YCQL API</li><li>13000 - YSQL API</li><li>18018 - YB Controller RPC</li></ul>SSH is not required after initial setup and configuration, but is recommended for subsequent troubleshooting. If you disallow SSH entirely, you must manually set up each DB node (see [Provisioning on-premises nodes](../server-nodes-software/software-on-prem-manual/)). |
+| Application | DB nodes | Open the following ports on database cluster nodes so that applications can connect via APIs. For universes with [Client-to-Node encryption in transit](../../security/enable-encryption-in-transit/), communication over these ports is encrypted. Universes can also be configured with database [authorization](../../security/authorization-platform/) and [authentication](../../security/authentication/) to manage access.<ul><li>5433 - YSQL server</li><li>9042 - YCQL server</li></ul> |
 | DB nodes | YBA&nbsp;node | Open the following port on the YugabyteDB Anywhere node so that node agents can communicate.<ul><li>443 - HTTPS</li></ul> |
 | Operator | YBA&nbsp;node | Open the following ports on the YugabyteDB Anywhere node so that administrators can access the YBA UI and monitor the system and node metrics. These ports are also used by standby YBA instances in [high availability](../../administer-yugabyte-platform/high-availability/) setups.<ul><li>443 - HTTPS</li><li>9090 - Served by Prometheus, for metrics</li></ul>Port 5432 serves a local PostgreSQL instance, and is not exposed outside of localhost. |
 | DB nodes<br>YBA node | Storage | Database clusters must be allowed to contact backup storage (such as AWS S3, GCP GCS, Azure blob).<ul><li>443 - HTTPS</li></ul> |
@@ -33,32 +33,48 @@ The following ports need to be open. (The default port numbers can be customized
 
 When two database clusters are connected via [xCluster replication](../../create-deployments/async-replication-platform/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters.
 
+### Overriding default port assignments
+
+When [deploying a universe](../../create-deployments/create-universe-multi-zone/), you can customize the following ports:
+
+- YB-Master HTTP(S)
+- YB-Master RPC
+- YB-TServer HTTP(S)
+- YB-TServer RPC
+- YSQL server
+- YSQL API
+- YCQL server
+- YCQL API
+- Prometheus Node Exporter HTTP
+
+If you intend to customize these port numbers, replace the default port assignments with the values identifying the port that each process should use. Any value from `1024` to `65535` is valid, as long as this value does not conflict with anything else running on nodes to be provisioned.
+
 ## Provider-specific requirements
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#onprem" class="nav-link active" id="onprem-tab" data-toggle="tab"
+    <a href="#onprem" class="nav-link active" id="onprem-tab" data-bs-toggle="tab"
       role="tab" aria-controls="onprem" aria-selected="true">
       <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
   <li>
-    <a href="#aws" class="nav-link" id="aws-tab" data-toggle="tab"
+    <a href="#aws" class="nav-link" id="aws-tab" data-bs-toggle="tab"
       role="tab" aria-controls="aws" aria-selected="false">
       <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
   <li>
-    <a href="#gcp" class="nav-link" id="gcp-tab" data-toggle="tab"
+    <a href="#gcp" class="nav-link" id="gcp-tab" data-bs-toggle="tab"
       role="tab" aria-controls="gcp" aria-selected="false">
       <i class="fa-brands fa-google"></i>
       GCP
     </a>
   </li>
   <li>
-    <a href="#azure" class="nav-link" id="azure-tab" data-toggle="tab"
+    <a href="#azure" class="nav-link" id="azure-tab" data-bs-toggle="tab"
       role="tab" aria-controls="azure" aria-selected="false">
       <i class="fa-brands fa-microsoft"></i>
       Azure

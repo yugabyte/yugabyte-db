@@ -1,7 +1,7 @@
 ---
 title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
-description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
+description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: node-postgres"
 menu:
   v2.18:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Node.js.
+The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Node.js.
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ git clone https://github.com/YugabyteDB-Samples/yugabyte-simple-node-app.git && 
 
 ## Provide connection parameters
 
-If your cluster is running on YugabyteDB Managed, you need to modify the connection parameters so that the application can establish a connection to the YugabyteDB cluster. (You can skip this step if your cluster is running locally and listening on 127.0.0.1:5433.)
+If your cluster is running on YugabyteDB Aeon, you need to modify the connection parameters so that the application can establish a connection to the YugabyteDB cluster. (You can skip this step if your cluster is running locally and listening on 127.0.0.1:5433.)
 
 To do this:
 
@@ -36,11 +36,11 @@ To do this:
 
 2. Set the following configuration parameter constants:
 
-    - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+    - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
     - **database** - the name of the database you are connecting to (the default is `yugabyte`).
-    - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
-    - **ssl** - YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Managed cluster CA certificate.
+    - **user** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
+    - **ssl** - YugabyteDB Aeon [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/). To enable `verify-ca` SSL mode, the `rejectUnauthorized` property is set to `true` to require root certificate chain validation; replace `path_to_your_root_certificate` with the full path to the YugabyteDB Aeon cluster CA certificate.
 
 3. Save the file.
 
@@ -78,7 +78,7 @@ name = Jessica, age = 28, country = USA, balance = 9200
 name = John, age = 28, country = Canada, balance = 9800
 ```
 
-You have successfully executed a basic Node.js application that works with YugabyteDB Managed.
+You have successfully executed a basic Node.js application that works with YugabyteDB Aeon.
 
 ## Explore the application logic
 

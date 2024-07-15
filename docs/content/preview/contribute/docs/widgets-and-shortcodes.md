@@ -146,28 +146,28 @@ The corresponding code for this widget is as follows. Note that the actual conte
 ```html
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab"
+    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab"
        role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
-    <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab"
+    <a href="#linux" class="nav-link" id="linux-tab" data-bs-toggle="tab"
        role="tab" aria-controls="linux" aria-selected="false">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab"
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab"
        role="tab" aria-controls="docker" aria-selected="false">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li >
-    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab"
+    <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-bs-toggle="tab"
        role="tab" aria-controls="kubernetes" aria-selected="false">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
@@ -324,7 +324,7 @@ slack-invite
 : Inserts the address for community slack invitations.
 
 support-cloud
-: Inserts the address to open a YugabyteDB Managed support ticket.
+: Inserts the address to open a YugabyteDB Aeon support ticket.
 
 support-general
 : Inserts the address to open a support ticket with no pre-selected product.

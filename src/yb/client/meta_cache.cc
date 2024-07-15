@@ -1370,7 +1370,7 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
   }
 }
 
-void MetaCache::AddAllTabletInfo(JsonWriter* writer) {
+void MetaCache::AddAllTabletInfo(JsonWriter* writer) const {
   SharedLock lock(mutex_);
   writer->StartObject();
   writer->String("tablets");

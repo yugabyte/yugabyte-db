@@ -547,6 +547,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--server_port=" + ybControllerPort,
         "--yb_master_webserver_port=" + masterWebPort,
         "--yb_tserver_webserver_port=" + tserverWebPort,
+        "--v=1",
         "--logtostderr");
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.YBCONTROLLER,
@@ -584,7 +585,18 @@ public class MiniYBCluster implements AutoCloseable {
   private void applyYsqlSnapshot(YsqlSnapshotVersion ver, Map<String, String> masterFlags) {
     // No need to set the flag for LATEST snapshot.
     if (ver != YsqlSnapshotVersion.LATEST) {
-      String snapshotPath = getYsqlSnapshotFilePath(ver);
+      // If the test argument provides a sys catalog snapshot path, use it.
+      // Otherwise, use the default snapshot.
+      String snapshotPath = System.getProperty("ysql_sys_catalog_snapshot_path");
+      if (snapshotPath == null) {
+        snapshotPath = getYsqlSnapshotFilePath(ver);
+      }
+      File snapshot = new File(snapshotPath);
+      assertTrue(snapshot != null);
+      if (!snapshot.isDirectory()) {
+        LOG.error("directory '{}' does not exist", snapshotPath);
+        fail();
+      }
       masterFlags.put("initial_sys_catalog_snapshot_path", snapshotPath);
     }
   }
