@@ -188,6 +188,10 @@ Status SnapshotState::TryStartDelete() {
   return Status::OK();
 }
 
+bool SnapshotState::delete_started() const {
+  return delete_started_;
+}
+
 void SnapshotState::DeleteAborted(const Status& status) {
   delete_started_ = false;
 }
@@ -243,6 +247,10 @@ bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {
   // If we have several updates for single snapshot, they are loaded in chronological order.
   // So latest update should be picked.
   return version() < other_version;
+}
+
+Result<bool> SnapshotState::Complete() const {
+  return VERIFY_RESULT(AggregatedState()) == SysSnapshotEntryPB::COMPLETE;
 }
 
 Result<tablet::CreateSnapshotData> SnapshotState::SysCatalogSnapshotData(

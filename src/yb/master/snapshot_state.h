@@ -90,6 +90,8 @@ class SnapshotState : public StateWithTablets {
     return retention_duration_hours_ ? true : false;
   }
 
+  Result<bool> Complete() const;
+
   bool ShouldAddToCoveringMap() const {
     return HasTtl() && !schedule_id() && AllInState(SysSnapshotEntryPB::COMPLETE);
   }
@@ -111,6 +113,7 @@ class SnapshotState : public StateWithTablets {
       ListSnapshotsDetailOptionsPB options) const;
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
+  bool delete_started() const;
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
