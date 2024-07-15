@@ -4796,6 +4796,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  public Set<NodeDetails> getLiveTserverNodes(Universe universe) {
+    return getLiveTabletServers(universe).stream()
+        .map(
+            sInfo -> {
+              String host = sInfo.getPrivateAddress().getHost();
+              NodeDetails nodeDetails = universe.getNodeByAnyIP(host);
+              if (nodeDetails == null) {
+                log.warn(
+                    "Unknown node with IP {} in universe {}", host, universe.getUniverseUUID());
+              }
+              return nodeDetails;
+            })
+        .filter(Objects::nonNull)
+        .collect(Collectors.toSet());
+  }
+
   protected boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certificate = universe.getCertificateNodetoNode();

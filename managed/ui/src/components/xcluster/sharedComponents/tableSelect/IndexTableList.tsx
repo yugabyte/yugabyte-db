@@ -18,7 +18,6 @@ import {
   MainTableReplicationCandidate,
   TableReplicationCandidate
 } from '../../XClusterTypes';
-import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './IndexTableList.module.scss';
 
@@ -66,15 +65,12 @@ export const IndexTableList = ({
   const untoggleableTableUuids = indexTableRows
     .filter(
       (table) =>
-        mainTableReplicationCandidate.tableType !== TableType.PGSQL_TABLE_TYPE ||
         isTransactionalConfig ||
-        !isTableToggleable(table, xClusterConfigAction)
+        !isTableToggleable(table, xClusterConfigAction) ||
+        xClusterConfigAction !== XClusterConfigAction.MANAGE_TABLE
     )
     .map((table) => table.tableUUID);
-  const isSelectable =
-    isMainTableSelectable &&
-    !isTransactionalConfig &&
-    mainTableReplicationCandidate.tableType === TableType.PGSQL_TABLE_TYPE;
+  const isSelectable = isMainTableSelectable && !isTransactionalConfig;
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable

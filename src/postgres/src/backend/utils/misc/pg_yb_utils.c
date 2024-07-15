@@ -197,6 +197,7 @@ static bool YBCanEnableDBCatalogVersionMode();
 
 bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
+bool yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t yb_follower_read_staleness_ms = 0;
 
 bool
@@ -2552,6 +2553,10 @@ bool YBEnableTracing() {
 
 bool YBReadFromFollowersEnabled() {
 	return yb_read_from_followers;
+}
+
+bool YBFollowerReadsBehaviorBefore20482() {
+	return yb_follower_reads_behavior_before_fixing_20482;
 }
 
 int32_t YBFollowerReadStalenessMs() {

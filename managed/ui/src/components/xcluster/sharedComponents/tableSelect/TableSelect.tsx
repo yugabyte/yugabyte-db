@@ -44,6 +44,10 @@ import {
   YBSmartSearchBar
 } from '../../../../redesign/components/YBSmartSearchBar/YBSmartSearchBar';
 import { YBButton } from '../../../../redesign/components';
+import {
+  FieldType,
+  isMatchedBySearchToken
+} from '../../../../redesign/components/YBSmartSearchBar/helpers';
 
 import { TableType, Universe, UniverseNamespace, YBTable } from '../../../../redesign/helpers/dtos';
 import {
@@ -58,10 +62,6 @@ import {
   ReplicationItems,
   MainTableReplicationCandidate
 } from '../..';
-import {
-  FieldType,
-  isMatchedBySearchToken
-} from '../../../../redesign/components/YBSmartSearchBar/helpers';
 
 import styles from './TableSelect.module.scss';
 
@@ -289,7 +289,7 @@ export const TableSelect = (props: TableSelectProps) => {
       tableReplicationCandidates.forEach((tableReplicationCandidate) => {
         removedTableUuids.add(getTableUuid(tableReplicationCandidate));
 
-        // When removing a main table, also add the index tables.
+        // When removing a main table, also remove the index tables.
         tableReplicationCandidate.indexTableIDs?.forEach((indexTableId) =>
           removedTableUuids.add(indexTableId)
         );

@@ -131,6 +131,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
             dbs: formValues.namespaceUuids
           })
         : restartXClusterConfig(xClusterConfigUuid, formValues.tableUuids, {
+            allowBootstrap: true,
             backupRequestParams: {
               storageConfigUUID: formValues.storageConfig.value
             }

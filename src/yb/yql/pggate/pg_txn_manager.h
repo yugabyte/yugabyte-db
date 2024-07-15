@@ -67,7 +67,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
   Status SetEnableTracing(bool tracing);
-  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
+  Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness);
   Status SetDeferrable(bool deferrable);
   Status EnterSeparateDdlTxnMode();
   Status ExitSeparateDdlTxnModeWithAbort();
