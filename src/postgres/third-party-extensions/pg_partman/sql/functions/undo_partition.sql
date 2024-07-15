@@ -213,7 +213,9 @@ IF v_partition_type != 'native' THEN
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
+                    /* YB: ACCESS EXCLUSIVE not supported yet
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_parent_tablename);
+                    */
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN
@@ -293,7 +295,9 @@ LOOP
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
+                    /* YB: ACCESS EXCLUSIVE not supported yet
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_child_table);
+                    */
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN

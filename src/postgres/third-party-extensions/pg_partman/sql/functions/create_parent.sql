@@ -257,7 +257,9 @@ IF p_jobmon THEN
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
+/* YB: ACCESS EXCLUSIVE not supported yet
 EXECUTE format('LOCK TABLE %I.%I IN ACCESS EXCLUSIVE MODE', v_parent_schema, v_parent_tablename);
+*/
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN SETUP PARENT: %s', p_parent_table));
