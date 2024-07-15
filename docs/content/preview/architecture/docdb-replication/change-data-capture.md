@@ -10,7 +10,7 @@ menu:
   preview:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
-    weight: 500
+    weight: 600
 type: docs
 ---
 
