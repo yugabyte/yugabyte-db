@@ -387,14 +387,13 @@ public class EditXClusterConfig extends CreateXClusterConfig {
   protected void addSubtasksToAddDatabasesToXClusterConfig(
       XClusterConfig xClusterConfig, Set<String> databases) {
 
-    for (String dbId : databases) {
-      if (!xClusterConfig.getDbIds().contains(dbId)) {
-        xClusterConfig.addNamespaces(Set.of(dbId));
-      }
-      xClusterConfig.updateStatusForNamespace(dbId, XClusterNamespaceConfig.Status.Updating);
-      createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, dbId);
-      createAddNamespaceToXClusterReplicationTask(xClusterConfig, dbId);
-    }
+    addSubtasksForTablesNeedBootstrap(
+        xClusterConfig,
+        taskParams().getBootstrapParams(),
+        null,
+        databases,
+        true /* isReplicationConfigCreated */,
+        taskParams().getPitrParams());
 
     if (xClusterConfig.isUsedForDr()) {
       createSetDrStatesTask(

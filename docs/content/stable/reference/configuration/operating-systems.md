@@ -22,7 +22,6 @@ Unless otherwise noted, operating systems are supported by all supported version
 | AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform<br>Default for YBA-deployed nodes |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Amazon Linux 2   | {{<icon/no>}}  | {{<icon/no>}}  | Supported in v2.18.0 and later<br>Deprecated in v2.20 |
-| Amazon Linux 2<br>(ARM, CIS-hardened) |  | {{<icon/yes>}} | Supported in v2.20.x. Database performance in this environment varies both due to CIS-hardening and ARM. For more information, contact {{% support-general %}}.|
 | CentOS 7          | {{<icon/no>}}  |                | Deprecated in v2.20 |
 | Oracle Linux 7   | {{<icon/no>}}  |                | Deprecated in v2.20 |
 | Oracle Linux 8   | {{<icon/yes>}} |                | |

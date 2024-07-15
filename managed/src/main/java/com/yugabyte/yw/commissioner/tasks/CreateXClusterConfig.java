@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
 import java.time.Duration;
@@ -562,6 +563,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       }
 
       if (xClusterConfig.getType() == ConfigType.Db) {
+
+        if (!xClusterConfig.getDbIds().contains(namespaceId)) {
+          xClusterConfig.addNamespaces(Set.of(namespaceId));
+        }
+        xClusterConfig.updateStatusForNamespace(
+            namespaceId, XClusterNamespaceConfig.Status.Updating);
         if (!isReplicationConfigCreated) {
           createCreateOutboundReplicationGroupTask(
               xClusterConfig, Collections.singleton(namespaceId));

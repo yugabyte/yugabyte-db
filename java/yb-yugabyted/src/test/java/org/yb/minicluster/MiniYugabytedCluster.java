@@ -54,7 +54,7 @@ public class MiniYugabytedCluster implements AutoCloseable {
      * that we know what
      * test invoked them if they get stuck.
      */
-    private final String testClassName;
+    private String testClassName;
 
     // The client cert files for mTLS.
     private String certFile = null;
@@ -121,6 +121,12 @@ public class MiniYugabytedCluster implements AutoCloseable {
     private String ybdAdvertiseAddresses;
     private String masterAddresses;
 
+    // Yugabyted Ports
+    private  Integer tserverRpcPort = null;
+    private  Integer tserverWebPort = null;
+    private  Integer ycqlPort = null;
+    private  Integer ysqlPort = null;
+
     private static class YugabytedMasterHostPortAllocation {
 
         final String bindAddress;
@@ -135,22 +141,9 @@ public class MiniYugabytedCluster implements AutoCloseable {
     }
 
     public MiniYugabytedCluster(MiniYugabytedClusterParameters clusterParameters,
-            Map<String, String> yugabytedFlags,
-            Map<String, String> yugabytedAdvancedFlags,
-            Map<String, String> masterFlags,
-            Map<String, String> commonTserverFlags,
-            List<Map<String, String>> perTserverFlags,
-            Map<String, String> tserverEnvVars,
-            String testClassName,
-            String certFile,
-            String clientCertFile,
-            String clientKeyFile) throws Exception {
+        List<MiniYugabytedNodeConfigurations> clusterConfigurations) throws Exception {
 
         this.clusterParameters = clusterParameters;
-        this.testClassName = testClassName;
-        this.certFile = certFile;
-        this.clientCertFile = clientCertFile;
-        this.clientKeyFile = clientKeyFile;
         if (clusterParameters.pgTransactionsEnabled && !clusterParameters.startYsqlProxy) {
             throw new AssertionError(
                     "Attempting to enable YSQL transactions without enabling YSQL API");
@@ -159,9 +152,7 @@ public class MiniYugabytedCluster implements AutoCloseable {
         this.clientPort = clientPort;
 
         startCluster(
-                clusterParameters.numNodes, yugabytedFlags, yugabytedAdvancedFlags,
-                masterFlags, commonTserverFlags, perTserverFlags, tserverEnvVars);
-
+                clusterParameters.numNodes, clusterConfigurations);
     }
 
     @Override
@@ -241,20 +232,15 @@ public class MiniYugabytedCluster implements AutoCloseable {
     }
 
     private void startCluster(int numNodes,
-            Map<String, String> yugabytedFlags,
-            Map<String, String> yugabyatedAdvancedFlags,
-            Map<String, String> masterFlags,
-            Map<String, String> commonTserverFlags,
-            List<Map<String, String>> perTserverFlags,
-            Map<String, String> tserverEnvVars) throws Exception {
+                List<MiniYugabytedNodeConfigurations> clusterConfigurations) throws Exception {
 
         Preconditions.checkArgument(numNodes > 0, "Need at least one yugabyted node.");
         // Preconditions.checkNotNull(yugabytedFlags);
-        if (perTserverFlags != null &&
-                !perTserverFlags.isEmpty() && perTserverFlags.size() != numNodes) {
-            throw new AssertionError("numTservers=" + numNodes + " but (perTServerArgs has " +
-                    perTserverFlags.size() + " elements");
-        }
+        // if (perTserverFlags != null &&
+        //         !perTserverFlags.isEmpty() && perTserverFlags.size() != numNodes) {
+        //     throw new AssertionError("numTservers=" + numNodes + " but (perTServerArgs has " +
+        //             perTserverFlags.size() + " elements");
+        // }
 
         for (String envVarName : new String[] { "ASAN_OPTIONS", "TSAN_OPTIONS",
                 "LSAN_OPTIONS", "UBSAN_OPTIONS", "ASAN_SYMBOLIZER_PATH" }) {
@@ -263,25 +249,17 @@ public class MiniYugabytedCluster implements AutoCloseable {
                     (envVarValue == null ? "not set" : envVarValue));
         }
 
-        if (clusterParameters.startYsqlProxy) {
-            applyYsqlSnapshot(clusterParameters.ysqlSnapshotVersion, masterFlags);
-        }
+        // if (clusterParameters.startYsqlProxy) {
+        //     applyYsqlSnapshot(clusterParameters.ysqlSnapshotVersion, masterFlags);
+        // }
 
         LOG.info("Using yugabyted to start YugabyteDB cluster with {} nodes...", numNodes);
 
-        startYugabytedNode(numNodes, "~/node1", yugabytedFlags, yugabyatedAdvancedFlags,
-                masterFlags, commonTserverFlags, perTserverFlags, tserverEnvVars);
-
+            startYugabytedNodes(numNodes, clusterConfigurations);
     }
 
-    private void startYugabytedNode(int numNodes,
-            String baseDirPath,
-            Map<String, String> yugabytedFlags,
-            Map<String, String> yugabytedAdvancedFlags,
-            Map<String, String> masterFlags,
-            Map<String, String> commonTserverFlags,
-            List<Map<String, String>> perTserverFlags,
-            Map<String, String> tserverEnvVars) throws Exception {
+    private void startYugabytedNodes(int numNodes,
+      List<MiniYugabytedNodeConfigurations> clusterConfigurations) throws Exception {
 
         assert (yugabytedMasterHostAndPorts.isEmpty());
 
@@ -297,30 +275,45 @@ public class MiniYugabytedCluster implements AutoCloseable {
         updateYbdAdvertiseAddress();
 
         int perTserverFlagsCounter = 0;
+        int i = 0;
         for (YugabytedMasterHostPortAllocation hostAlloc : yugabytedReservedHostPort) {
+            MiniYugabytedNodeConfigurations nodeConfig = clusterConfigurations.get(i);
             final String yugabytedAdvertiseAddress = hostAlloc.bindAddress;
             final int yugabytedMasterRpcPort = hostAlloc.rpcPort;
             final long now = System.currentTimeMillis();
-            baseDirPath = baseDirPath + "-" + yugabytedAdvertiseAddress + "-" + now;
+            nodeConfig.ybdAdvertiseAddress = yugabytedAdvertiseAddress;
+            nodeConfig.baseDir = "~/node" + (i + 1) + "-" + yugabytedAdvertiseAddress + "-" + now;
             String flagsPath = YugabytedTestUtils.getFlagsPath();
 
             // Determine the list of all the arguments provided to
             // yugabyted CLI based of the other flags - masterFlags, commonTserverFlags,
             // perTserverFlags etc.
 
+            // Add --join flag for the second and subsequent nodes
+            if (i > 0) {
+                nodeConfig.yugabytedFlags.put("join",
+                            clusterConfigurations.get(0).ybdAdvertiseAddress);
+            }
+
             List<String> yugabytedArgs = getCommonYugabytedCmdLine(flagsPath,
-                    baseDirPath, yugabytedAdvertiseAddress);
+                                    nodeConfig.baseDir, nodeConfig.ybdAdvertiseAddress);
 
-            if (yugabytedFlags != null && yugabytedFlags.size() > 0) {
-                yugabytedArgs.addAll(CommandUtil.flagsToArgs(yugabytedFlags));
+            if (nodeConfig.yugabytedFlags != null && nodeConfig.yugabytedFlags.size() > 0) {
+                yugabytedArgs.addAll(YugabytedTestUtils.flagsToArgs(nodeConfig.yugabytedFlags));
             }
 
-            if (masterFlags != null && masterFlags.size() > 0) {
-                getMasterFlagsAsYugabytedArg(yugabytedArgs, masterFlags);
+            if (nodeConfig.masterFlags != null && nodeConfig.masterFlags.size() > 0) {
+                getMasterFlagsAsYugabytedArg(yugabytedArgs, nodeConfig.masterFlags);
             }
 
-            getTserverFlagsAsYugabytedArg(yugabytedArgs,
-                    commonTserverFlags, perTserverFlags, perTserverFlagsCounter);
+            if (nodeConfig.tserverFlags != null && nodeConfig.tserverFlags.size() > 0) {
+                getTserverFlagsAsYugabytedArg(yugabytedArgs, nodeConfig.tserverFlags);
+            }
+
+
+            // getTserverFlagsAsYugabytedArg(yugabytedArgs,
+            //         nodeConfig.commonTserverFlags,
+            //              nodeConfig.tserverFlags, perTserverFlagsCounter);
 
             // if (commonTserverFlags != null && commonTserverFlags.size() > 0) {
             // if (perTserverFlags != null &&
@@ -337,9 +330,9 @@ public class MiniYugabytedCluster implements AutoCloseable {
             // perTserverFlags.get(perTserverFlagsCounter));
             // }
 
-            Map<String, Object> yugabytedConfArgs = generateAndPopulateYugabytedConfigFile(
+            Map<String, Object> yugabytedConfArgs = generateAndPopulateYugabytedConfigFile(i,
                     yugabytedAdvertiseAddress, yugabytedMasterRpcPort, hostAlloc.webPort,
-                    flagsPath, yugabytedAdvancedFlags);
+                    flagsPath, nodeConfig.yugabytedAdvancedFlags);
 
             // generate the webserver and API ports and set the yugabyted config file.
 
@@ -350,12 +343,18 @@ public class MiniYugabytedCluster implements AutoCloseable {
             yugabytedStartCommand = yugabytedArgs.toArray(yugabytedStartCommand);
             yugabytedProcesses.put(yugabytedNodeHostPort,
                     configureAndStartProcess(MiniYBDaemonType.YUGABYTED,
-                            yugabytedStartCommand, flagsPath, baseDirPath,
-                            tserverEnvVars, yugabytedConfArgs));
+                            yugabytedStartCommand, flagsPath, nodeConfig.baseDir,
+                            nodeConfig.tserverEnvVars, yugabytedConfArgs));
 
             if (perTserverFlagsCounter < numNodes)
                 perTserverFlagsCounter++;
 
+            // Wait for Yugabyted Node to start all processes
+            YugabytedTestUtils.waitForNodeToStart(nodeConfig.baseDir, yugabytedAdvertiseAddress,
+                                                ysqlPort,70000, 5000);
+
+            Thread.sleep(20000);
+            i++;
         }
     }
 
@@ -378,22 +377,29 @@ public class MiniYugabytedCluster implements AutoCloseable {
     }
 
     private List<YugabytedMasterHostPortAllocation> reserveHostAndPort(int numNodes)
-            throws Exception {
+        throws Exception {
 
-        final List<YugabytedMasterHostPortAllocation> yugabytedHostPortAllocList =
-                                                                        new ArrayList<>();
-        for (int i = 0; i < numNodes; ++i) {
-            final String yugabytedBindAddress = getYugabytedBindAddress();
-            final int rpcPort = TestUtils.findFreePort(yugabytedBindAddress);
-            // final String yugabytedBindAddress = "127.0.0.1";
-            // final int rpcPort = 7100;
-            final int webPort = TestUtils.findFreePort(yugabytedBindAddress);
-            yugabytedHostPortAllocList.add(
-                    new YugabytedMasterHostPortAllocation(yugabytedBindAddress, rpcPort, webPort));
-            yugabytedMasterHostAndPorts.add(HostAndPort.fromParts(yugabytedBindAddress, rpcPort));
-        }
-        return yugabytedHostPortAllocList;
+    final List<YugabytedMasterHostPortAllocation> yugabytedHostPortAllocList = new ArrayList<>();
+
+    String yugabytedBindAddress = getYugabytedBindAddress();
+    int rpcPort = TestUtils.findFreePort(yugabytedBindAddress);
+    int webPort = TestUtils.findFreePort(yugabytedBindAddress);
+
+    // Add the first node
+    yugabytedHostPortAllocList.add(
+            new YugabytedMasterHostPortAllocation(yugabytedBindAddress, rpcPort, webPort));
+    yugabytedMasterHostAndPorts.add(HostAndPort.fromParts(yugabytedBindAddress, rpcPort));
+
+    // Add the subsequent nodes with the same ports but new bind addresses
+    for (int i = 1; i < numNodes; ++i) {
+        yugabytedBindAddress = getYugabytedBindAddress();
+        yugabytedHostPortAllocList.add(
+                new YugabytedMasterHostPortAllocation(yugabytedBindAddress, rpcPort, webPort));
+        yugabytedMasterHostAndPorts.add(HostAndPort.fromParts(yugabytedBindAddress, rpcPort));
     }
+
+    return yugabytedHostPortAllocList;
+}
 
     private MiniYBDaemon configureAndStartProcess(MiniYBDaemonType type,
             String[] command,
@@ -458,43 +464,44 @@ public class MiniYugabytedCluster implements AutoCloseable {
     }
 
     /** Common flags for both master and tserver processes */
-    private List<String> getCommonDaemonFlags() {
-        final List<String> commonFlags = Lists.newArrayList(
-                // Ensure that logging goes to the test output and doesn't get buffered.
-                "--logtostderr",
-                "--logbuflevel=-1",
-                "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
-        addFlagsFromEnv(commonFlags, "YB_EXTRA_DAEMON_FLAGS");
-        if (testClassName != null) {
-            commonFlags.add("--yb_test_name=" + testClassName);
-        }
+    // private List<String> getCommonDaemonFlags() {
+    //     final List<String> commonFlags = Lists.newArrayList(
+    //             // Ensure that logging goes to the test output and doesn't get buffered.
+    //             "--logtostderr",
+    //             "--logbuflevel=-1",
+    //             "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
+    //     addFlagsFromEnv(commonFlags, "YB_EXTRA_DAEMON_FLAGS");
+    //     if (testClassName != null) {
+    //         commonFlags.add("--yb_test_name=" + testClassName);
+    //     }
 
-        final long memoryLimit = BuildTypeUtil.nonTsanVsTsan(
-                DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
-                DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
-        commonFlags.add("--memory_limit_hard_bytes=" + memoryLimit);
+    //     final long memoryLimit = BuildTypeUtil.nonTsanVsTsan(
+    //             DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
+    //             DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
+    //     commonFlags.add("--memory_limit_hard_bytes=" + memoryLimit);
 
-        // YB_TEST_INVOCATION_ID is a special environment variable that we use to
-        // force-kill all
-        // processes even if MiniYBCluster fails to kill them.
-        String testInvocationId = System.getenv("YB_TEST_INVOCATION_ID");
-        if (testInvocationId != null) {
-            // We use --metric_node_name=... to include a unique "test invocation id" into
-            // the command
-            // line so we can kill any stray processes later. --metric_node_name is normally
-            // how we pass
-            // the Universe ID to the cluster. We could use any other flag that is present
-            // in yb-master
-            // and yb-tserver for this.
-            commonFlags.add("--metric_node_name=" + testInvocationId);
-        }
+    //     // YB_TEST_INVOCATION_ID is a special environment variable that we use to
+    //     // force-kill all
+    //     // processes even if MiniYBCluster fails to kill them.
+    //     String testInvocationId = System.getenv("YB_TEST_INVOCATION_ID");
+    //     if (testInvocationId != null) {
+    //         // We use --metric_node_name=... to include a unique "test invocation id" into
+    //         // the command
+    //         // line so we can kill any stray processes later. --metric_node_name is normally
+    //         // how we pass
+    //         // the Universe ID to the cluster. We could use any other flag that is present
+    //         // in yb-master
+    //         // and yb-tserver for this.
+    //         commonFlags.add("--metric_node_name=" + testInvocationId);
+    //     }
 
-        commonFlags.add("--yb_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
-        commonFlags.add("--ysql_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
-        commonFlags.add("--enable_ysql=" + clusterParameters.startYsqlProxy);
+    //     commonFlags.add("--yb_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
+    //     commonFlags.add(
+    //                  "--ysql_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
+    //     commonFlags.add("--enable_ysql=" + clusterParameters.startYsqlProxy);
 
-        return commonFlags;
-    }
+    //     return commonFlags;
+    // }
 
     /**
      * Returns the common options among regular masters and shell masters.
@@ -514,19 +521,32 @@ public class MiniYugabytedCluster implements AutoCloseable {
         return yugabytedCmdLine;
     }
 
-    private void getMasterFlagsAsYugabytedArg(List<String> yugabytedFlags,
-            Map<String, String> masterFlags) {
+    private void getMasterFlagsAsYugabytedArg(
+                        List<String> yugabytedFlags, Map<String, String> masterFlags) {
+        String masterFlagsString = YUGABYTED_MASTER_GFLAGS +
+            String.join(",",
+                masterFlags.entrySet()
+                           .stream()
+                           .map(entry -> entry.getKey() + "=" + entry.getValue())
+                           .toArray(String[]::new)
+            );
 
-        List<String> masterFlagsList = new ArrayList<String>();
-        String masterFlagsString = YUGABYTED_MASTER_GFLAGS;
-
-        masterFlagsList.addAll(CommandUtil.flagsToArgs(masterFlags));
-        for (String flag : masterFlagsList) {
-            masterFlagsString += flag + ",";
-        }
         yugabytedFlags.add(masterFlagsString);
-
     }
+
+    private void getTserverFlagsAsYugabytedArg(
+                    List<String> yugabytedFlags, Map<String, String> tserverFlags) {
+        String tserverFlagsString = YUGABYTED_TSERVER_GFLAGS +
+            String.join(",",
+                tserverFlags.entrySet()
+                            .stream()
+                            .map(entry -> entry.getKey() + "=" + entry.getValue())
+                            .toArray(String[]::new)
+            );
+
+        yugabytedFlags.add(tserverFlagsString);
+    }
+
 
     private void getTserverFlagsAsYugabytedArg(List<String> yugabytedFlags,
             Map<String, String> tserverFlags, List<Map<String, String>> perTserverFlags,
@@ -554,14 +574,16 @@ public class MiniYugabytedCluster implements AutoCloseable {
 
     }
 
-    private Map<String, Object> generateAndPopulateYugabytedConfigFile(String advertiseAddress,
-            int masterRpcPort, int masterWebPort, String flagsFilePath,
+    private Map<String, Object> generateAndPopulateYugabytedConfigFile(int i, String
+        advertiseAddress,int masterRpcPort, int masterWebPort, String flagsFilePath,
             Map<String, String> yugabyatedAdvancedFlags) throws IOException {
 
-        final int tserverRpcPort = TestUtils.findFreePort(advertiseAddress);
-        final int tserverWebPort = TestUtils.findFreePort(advertiseAddress);
-        final int ycqlPort = TestUtils.findFreePort(advertiseAddress);
-        final int ysqlPort = TestUtils.findFreePort(advertiseAddress);
+        if (i==0){
+            tserverRpcPort = TestUtils.findFreePort(advertiseAddress);
+            tserverWebPort = TestUtils.findFreePort(advertiseAddress);
+            ycqlPort = TestUtils.findFreePort(advertiseAddress);
+            ysqlPort = TestUtils.findFreePort(advertiseAddress);
+        }
 
         Map<String, Object> customFlags = new HashMap<String, Object>();
         customFlags.put(YUGABYTED_MASTER_RPC_PORT, masterRpcPort);
@@ -740,6 +762,9 @@ public class MiniYugabytedCluster implements AutoCloseable {
             String snapshotPath = getYsqlSnapshotFilePath(ver);
             masterFlags.put("initial_sys_catalog_snapshot_path", snapshotPath);
         }
+    }
+    public Integer getTserverWebPort() {
+        return tserverWebPort;
     }
 
 }

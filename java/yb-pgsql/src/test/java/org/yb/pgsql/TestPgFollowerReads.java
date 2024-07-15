@@ -57,27 +57,19 @@ public class TestPgFollowerReads extends BasePgSQLTest {
   @Test
   public void testSetIsolationLevelsWithReadFromFollowersSessionVariable() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      // If follower reads are disabled, we should be allowed to set any staleness.
       // Enabling follower reads should fail if staleness is less than 2 * max_clock_skew.
       statement.execute("SET yb_read_from_followers = false");
-      statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs - 1));
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs - 1),
                       "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
                       + "2 * (max_clock_skew");
-      statement.execute("SET yb_follower_read_staleness_ms = " + kMaxClockSkewMs / 2);
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + kMaxClockSkewMs / 2,
                       "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
                       + "2 * (max_clock_skew");
-      statement.execute("SET yb_follower_read_staleness_ms = " + 0);
-      runInvalidQuery(statement, "SET yb_read_from_followers = true",
+      runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + 0,
                       "ERROR: cannot enable yb_read_from_followers with a staleness of less than "
                       + "2 * (max_clock_skew");
-
       statement.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs + 1));
-      statement.execute("SET yb_read_from_followers = true");
 
-      // If follower reads are enabled, we should be allowed to set staleness to any value over
-      // 2 * max_clock_skew, which is 500ms. Any value smaller than that should fail.
       statement.execute("SET yb_read_from_followers = true");
       statement.execute("SET yb_follower_read_staleness_ms = " + 2 * kMaxClockSkewMs);
       runInvalidQuery(statement, "SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs - 1),

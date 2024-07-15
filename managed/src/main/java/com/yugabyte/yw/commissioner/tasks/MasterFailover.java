@@ -138,7 +138,7 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
           () -> super.findReplacementMaster(universe, currentNode),
           super.instanceExists(taskParams()),
           true /*ignoreStopErrors*/,
-          updateMasterAddrsOnStoppedNode.get());
+          true /*ignoreMasterAddrsUpdateError*/);
       createSetNodeStateTask(currentNode, NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createSwamperTargetUpdateTask(false);

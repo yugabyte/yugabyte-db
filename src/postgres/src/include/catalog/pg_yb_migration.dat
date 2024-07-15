@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V52__22028__yb_reset_analyze_statistics.sql
-{ major => '52', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V53__22144__yb_query_diagnostics.sql
+{ major => '53', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

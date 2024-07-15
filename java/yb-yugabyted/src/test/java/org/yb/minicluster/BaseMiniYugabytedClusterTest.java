@@ -31,6 +31,10 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
      */
     protected static MiniYugabytedCluster miniYugabytedCluster;
 
+    protected static MiniYugabytedClusterParameters clusterParameters;
+
+    protected static List<MiniYugabytedNodeConfigurations> clusterConfigurations;
+
     /**
      * Comma separate describing the master addresses and ports.
      */
@@ -60,7 +64,7 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
             clusterNeedsRecreation = false;
         }
         if (miniYugabytedCluster == null) {
-            createMiniCluster(1);
+            createMiniCluster(clusterParameters.numNodes);
         } else if (shouldRestartMiniClusterBetweenTests()) {
             LOG.info("Restarting the MiniCluster");
             miniYugabytedCluster.restart();
@@ -79,18 +83,16 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
 
         final int replicationFactor = getReplicationFactor();
 
-        MiniYugabytedClusterParameters clusterParameters = new MiniYugabytedClusterParameters();
-
         // miniYugabytedCluster = new MiniYugabytedCluster(clusterParameters,
         // getMasterFlags(), getMasterFlags(), getTServerFlags(),
         // null, getMasterFlags(), clientHost, certFile,
         // clientCertFile, clientKeyFile);
 
         // TO-DO: replace all nulls with the actual fields.
-        miniYugabytedCluster = new MiniYugabytedCluster(clusterParameters,
-                null, null, null,
-                null, null, null, null,
-                null, null, null);
+        miniYugabytedCluster = new MiniYugabytedCluster(
+            clusterParameters,
+            clusterConfigurations
+        );
 
         masterAddresses = miniYugabytedCluster.getMasterAddresses();
         masterHostPorts = miniYugabytedCluster.getMasterHostPorts();
