@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeActionType;
@@ -545,7 +546,8 @@ public class NodeInstanceController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Node,
         nodeAction.getCustomerTask(),
-        nodeName);
+        nodeName,
+        CustomerTaskManager.getCustomTaskName(nodeAction.getCustomerTask(), taskParams, null));
     log.info(
         "Saved task uuid {} in customer tasks table for universe {} : {} for node {}",
         taskUUID,

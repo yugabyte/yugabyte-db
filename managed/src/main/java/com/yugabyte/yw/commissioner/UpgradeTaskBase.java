@@ -172,7 +172,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     log.debug("Nodes to be restarted {}", nodesToBeRestarted);
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
-        && !nodesToBeRestarted.isEmpty()) {
+        && !nodesToBeRestarted.isEmpty()
+        && !taskParams().skipNodeChecks) {
       Optional<NodeDetails> nonLive =
           nodesToBeRestarted.getAllNodes().stream()
               .filter(n -> n.state != NodeState.Live)
@@ -243,6 +244,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public abstract NodeState getNodeState();
 
   public void runUpgrade(Runnable upgradeLambda) {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     checkUniverseVersion();
     lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
@@ -593,10 +597,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       boolean hasPrimaryNodes = false;
       for (NodeDetails node : nodeList) {
         hasPrimaryNodes = hasPrimaryNodes || node.isInPlacement(primaryId);
-        createNodePrecheckTasks(
-            node, processTypes, subGroupType, true, context.targetSoftwareVersion);
+        if (!taskParams().skipNodeChecks) {
+          createNodePrecheckTasks(
+              node, processTypes, subGroupType, true, context.targetSoftwareVersion);
+        }
       }
-      if (activeRole && hasPrimaryNodes) {
+      if (activeRole && hasPrimaryNodes && !taskParams().skipNodeChecks) {
         createCheckNodesAreSafeToTakeDownTask(
             Collections.singletonList(MastersAndTservers.from(nodeList, processTypes)),
             getTargetSoftwareVersion(),

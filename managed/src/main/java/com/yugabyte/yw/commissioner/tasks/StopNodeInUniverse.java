@@ -109,6 +109,9 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Stop Node with name {} from universe uuid={}",
         taskParams().nodeName,

@@ -695,4 +695,18 @@ public class CustomerTaskManager {
         customerTask.getType(),
         customerTask.getTargetName());
   }
+
+  public static String getCustomTaskName(
+      CustomerTask.TaskType customerTaskType,
+      UniverseTaskParams taskParams,
+      String currentCustomTaskName) {
+    if (taskParams.isRunOnlyPrechecks()) {
+      String baseName =
+          currentCustomTaskName == null
+              ? customerTaskType.getFriendlyName()
+              : currentCustomTaskName;
+      return "Validation " + baseName;
+    }
+    return currentCustomTaskName;
+  }
 }

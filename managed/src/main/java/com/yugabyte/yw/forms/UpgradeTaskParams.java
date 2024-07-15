@@ -25,6 +25,12 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
   protected RuntimeConfGetter runtimeConfGetter;
 
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Whether to skip node prechecks while " + "performing rolling upgrade")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  public Boolean skipNodeChecks = false;
+
   @ApiModelProperty(value = "YbaApi Internal. Requested batch size values for rolling upgrade")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.0.0")
   public RollMaxBatchSize rollMaxBatchSize = null;
