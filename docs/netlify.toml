@@ -1381,6 +1381,7 @@
             https://js.driftt.com/
             https://j.6sc.co/
             https://cdn.rudderlabs.com/
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
         ;
 
         style-src 'self' 'unsafe-inline'
