@@ -31,11 +31,11 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   "undefined"==typeof globalThis&&(Object.defineProperty(Object.prototype,"__globalThis_magic__",{get:function get(){
   return this},configurable:true}),__globalThis_magic__.globalThis=__globalThis_magic__,
   delete Object.prototype.__globalThis_magic__),
-  window.rudderAnalyticsAddScript("".concat(sdkBaseUrl,"/").concat(window.rudderAnalyticsBuildType,"/").concat(sdkName),"data-rsa-write-key","{{- $rudderstact_api_key -}}")
+  window.rudderAnalyticsAddScript("".concat(sdkBaseUrl,"/").concat(window.rudderAnalyticsBuildType,"/").concat(sdkName),"data-rsa-write-key",window.atob("{{- $rudderstact_api_key -}}"))
   },
   "undefined"==typeof Promise||"undefined"==typeof globalThis?window.rudderAnalyticsAddScript("https://polyfill-fastly.io/v3/polyfill.min.js?version=3.111.0&features=Symbol%2CPromise&callback=rudderAnalyticsMount"):window.rudderAnalyticsMount()
   ;var loadOptions={}
-  ;rudderanalytics.load("{{- $rudderstact_api_key -}}","https://yugabyteklhgka.dataplane.rudderstack.com",loadOptions)}}
+  ;rudderanalytics.load(window.atob("{{- $rudderstact_api_key -}}"),"https://yugabyteklhgka.dataplane.rudderstack.com",loadOptions)}}
   }();
 </script>
 {{- end -}}
