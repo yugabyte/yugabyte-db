@@ -70,15 +70,19 @@ tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darw
 
 ```sh
 wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz
+cd yugabyte-client-{{< yb-version version="stable" >}}/
+./bin/post_install.sh
 ```
 
   </div>
   <div id="linuxarm" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxarm-tab">
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-el8-aarch64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-aarch64.tar.gz
+cd yugabyte-client-{{< yb-version version="stable" >}}
+./bin/post_install.sh
 ```
 
   </div>
