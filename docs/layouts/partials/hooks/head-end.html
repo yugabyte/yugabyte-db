@@ -10,14 +10,33 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','GTM-5GH7JQS');</script>
 <!-- End Google Tag Manager -->
 
-{{ $segment_api_key := os.Getenv "SEGMENT_API_KEY" }}
-
-{{- if $segment_api_key -}}
-<script>
-  !function(){var i="analytics",analytics=window[i]=window[i]||[];if(!analytics.initialize)if(analytics.invoked)window.console&&console.error&&console.error("Segment snippet included twice.");else{analytics.invoked=!0;analytics.methods=["trackSubmit","trackClick","trackLink","trackForm","pageview","identify","reset","group","track","ready","alias","debug","page","screen","once","off","on","addSourceMiddleware","addIntegrationMiddleware","setAnonymousId","addDestinationMiddleware","register"];analytics.factory=function(e){return function(){if(window[i].initialized)return window[i][e].apply(window[i],arguments);var n=Array.prototype.slice.call(arguments);if(["track","screen","alias","group","page","identify"].indexOf(e)>-1){var c=document.querySelector("link[rel='canonical']");n.push({__t:"bpc",c:c&&c.getAttribute("href")||void 0,p:location.pathname,u:location.href,s:location.search,t:document.title,r:document.referrer})}n.unshift(e);analytics.push(n);return analytics}};for(var n=0;n<analytics.methods.length;n++){var key=analytics.methods[n];analytics[key]=analytics.factory(key)}analytics.load=function(key,n){var t=document.createElement("script");t.type="text/javascript";t.async=!0;t.setAttribute("data-global-segment-analytics-key",i);t.src="https://cdn.segment.com/analytics.js/v1/" + key + "/analytics.min.js";var r=document.getElementsByTagName("script")[0];r.parentNode.insertBefore(t,r);analytics._loadOptions=n};analytics._writeKey="{{- $segment_api_key -}}";;analytics.SNIPPET_VERSION="5.2.0";
-  analytics.load(window.atob("{{- $segment_api_key -}}"));
-  analytics.page();
-  }}();
+{{ $rudderstact_api_key := os.Getenv "RUDDERSTACK_API_KEY" }}
+{{- if $rudderstact_api_key -}}
+<script type="text/javascript">
+  !function(){"use strict";window.RudderSnippetVersion="3.0.14";var e="rudderanalytics";window[e]||(window[e]=[])
+  ;var rudderanalytics=window[e];if(Array.isArray(rudderanalytics)){
+  if(true===rudderanalytics.snippetExecuted&&window.console&&console.error){
+  console.error("RudderStack JavaScript SDK snippet included more than once.")}else{rudderanalytics.snippetExecuted=true,
+  window.rudderAnalyticsBuildType="legacy";var sdkBaseUrl="https://cdn.rudderlabs.com/v3";var sdkName="rsa.min.js"
+  ;var scriptLoadingMode="async"
+  ;var t=["setDefaultInstanceKey","load","ready","page","track","identify","alias","group","reset","setAnonymousId","startSession","endSession","consent"]
+  ;for(var r=0;r<t.length;r++){var n=t[r];rudderanalytics[n]=function(t){return function(){var r
+  ;Array.isArray(window[e])?rudderanalytics.push([t].concat(Array.prototype.slice.call(arguments))):null===(r=window[e][t])||void 0===r||r.apply(window[e],arguments)
+  }}(n)}try{new Function('return import("")'),window.rudderAnalyticsBuildType="modern"}catch(a){}
+  var i=document.head||document.getElementsByTagName("head")[0]
+  ;var d=document.body||document.getElementsByTagName("body")[0];window.rudderAnalyticsAddScript=function(e,t,r){
+  var n=document.createElement("script");n.src=e,n.setAttribute("data-loader","RS_JS_SDK"),t&&r&&n.setAttribute(t,r),
+  "async"===scriptLoadingMode?n.async=true:"defer"===scriptLoadingMode&&(n.defer=true),
+  i?i.insertBefore(n,i.firstChild):d.insertBefore(n,d.firstChild)},window.rudderAnalyticsMount=function(){
+  "undefined"==typeof globalThis&&(Object.defineProperty(Object.prototype,"__globalThis_magic__",{get:function get(){
+  return this},configurable:true}),__globalThis_magic__.globalThis=__globalThis_magic__,
+  delete Object.prototype.__globalThis_magic__),
+  window.rudderAnalyticsAddScript("".concat(sdkBaseUrl,"/").concat(window.rudderAnalyticsBuildType,"/").concat(sdkName),"data-rsa-write-key","{{- $rudderstact_api_key -}}")
+  },
+  "undefined"==typeof Promise||"undefined"==typeof globalThis?window.rudderAnalyticsAddScript("https://polyfill-fastly.io/v3/polyfill.min.js?version=3.111.0&features=Symbol%2CPromise&callback=rudderAnalyticsMount"):window.rudderAnalyticsMount()
+  ;var loadOptions={}
+  ;rudderanalytics.load("{{- $rudderstact_api_key -}}","https://yugabyteklhgka.dataplane.rudderstack.com",loadOptions)}}
+  }();
 </script>
 {{- end -}}
 

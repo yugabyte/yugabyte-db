@@ -43,4 +43,4 @@ enableGitInfo = true
 
 [security]
   [security.funcs]
-    getenv = ['SEGMENT_API_KEY']
+    getenv = ['RUDDERSTACK_API_KEY']
