@@ -1355,7 +1355,7 @@
             https://c.6sc.co/
             https://ipv6.6sc.co/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
-            https://cdn.rudderlabs.com/
+            https://api.rudderstack.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
