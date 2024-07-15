@@ -1418,22 +1418,11 @@ ValidateUpdateSpecAndSetPushUpdateState(const bson_value_t *fieldUpdateValue,
 	}
 
 	/* $each is a required modifier for other modifiers to have impact */
+	/* Based on native mongo behavior and jstest, when $each is missing, other modifiers are treated as simple objects to push. */
 	if (eachBsonValue.value_type == BSON_TYPE_EOD)
 	{
-		if (firstDollarKey == NULL)
-		{
-			/* There is no $prefixed key so Update value is simply an object to push */
-			pushState->modifiersExist = false;
-			return;
-		}
-		else
-		{
-			/* Error becuase $ prefixed key without $each */
-			ereport(ERROR, (errcode(MongoDollarPrefixedFieldName),
-							errmsg(
-								"The dollar ($) prefixed field '%s' is not valid for storage.",
-								firstDollarKey)));
-		}
+		pushState->modifiersExist = false;
+		return;
 	}
 
 	pushState->modifiersExist = true;

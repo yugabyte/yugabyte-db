@@ -444,7 +444,6 @@ SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$sort": {} }}} }', '{}');
 -- TODO: Make the error compatible with mongo: "errmsg" : "Cannot create field 'y' in element {x: [ { y: 1 } ]}"
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{"key.x.y": 1 }}}', '{}');
-SELECT helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{ "key.x": { "$eachh": [], "$position": 1, "$sort" : 1} }}}', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{ "key.x": { "$each": [], "badplugin": 1} }}}', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$position": -0.1 }}} }', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$position": 1.1 }}} }', '{}');
@@ -452,9 +451,6 @@ SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$position": false }}} }', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$position": {"a.b": -2} }}} }', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$position": [1,2,3] }}} }', '{}');
-
--- $push without $each but with other modifiers works on mongo5.0, but here it errors out because $ is not supported in key names yet
-SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$position": 5, "$slice": 3, "$sort": -1 }}} }', '{}');
 
 -- $push valid cases when modifiers are not persent
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" : {"a": 6} } }', '{}');
@@ -538,6 +534,10 @@ SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [{"$numberDecima
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [{"$numberDecimal": "Infinity"}, {"$numberDouble": "NaN"}, {"$numberDecimal": "332"}, {"$numberDecimal": "NaN"}, {"$numberDecimal": "23"}]}', '{ "": { "$push" : {"a": { "$each": [], "$sort" : -1 } } } }', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [{"$numberDecimal": "NaN"}, {"$numberDouble": "NaN"}, {"$numberDecimal": "Infinity"}, {"$numberDecimal": "23"}]}', '{ "": { "$push" : {"a": { "$each": [], "$sort" : 1 } } } }', '{}');
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [{"$numberDecimal": "NaN"}, {"$numberDouble": "NaN"}, {"$numberDecimal": "Infinity"}, {"$numberDecimal": "23"}]}', '{ "": { "$push" : {"a": { "$each": [], "$sort" : -1 } } } }', '{}');
+
+-- $push without $each but with other modifiers works on mongo5.0, $ is now supported in key names.
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{ "key.x": { "$eachh": [], "$position": 1, "$sort" : 1} }}}', '{}');
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$position": 5, "$slice": 3, "$sort": -1 }}} }', '{}');
 
 -- test conflicting update operator paths
 SELECT helio_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": 1 } } }', '{}');

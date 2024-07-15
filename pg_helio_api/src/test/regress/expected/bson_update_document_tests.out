@@ -1537,8 +1537,6 @@ ERROR:  The $sort pattern is empty when it should be a set of fields.
 -- TODO: Make the error compatible with mongo: "errmsg" : "Cannot create field 'y' in element {x: [ { y: 1 } ]}"
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{"key.x.y": 1 }}}', '{}');
 ERROR:  Invalid array index path y
-SELECT helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{ "key.x": { "$eachh": [], "$position": 1, "$sort" : 1} }}}', '{}');
-ERROR:  The dollar ($) prefixed field '$eachh' is not valid for storage.
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{ "key.x": { "$each": [], "badplugin": 1} }}}', '{}');
 ERROR:  Unrecognized clause in $push: badplugin
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$position": -0.1 }}} }', '{}');
@@ -1553,9 +1551,6 @@ SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '
 ERROR:  The value for $position must be an integer value, not of type: object
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$position": [1,2,3] }}} }', '{}');
 ERROR:  The value for $position must be an integer value, not of type: array
--- $push without $each but with other modifiers works on mongo5.0, but here it errors out because $ is not supported in key names yet
-SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$position": 5, "$slice": 3, "$sort": -1 }}} }', '{}');
-ERROR:  The dollar ($) prefixed field '$position' is not valid for storage.
 -- $push valid cases when modifiers are not persent
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" : {"a": 6} } }', '{}');
                                                                                      bson_update_document                                                                                     
@@ -1830,6 +1825,19 @@ SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [{"$numberDecima
                                                                                          bson_update_document                                                                                         
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""_id"" : { ""$numberInt"" : ""1"" }, ""a"" : [ { ""$numberDecimal"" : ""Infinity"" }, { ""$numberDecimal"" : ""23"" }, { ""$numberDecimal"" : ""NaN"" }, { ""$numberDouble"" : ""NaN"" } ] }",)
+(1 row)
+
+-- $push without $each but with other modifiers works on mongo5.0, $ is now supported in key names.
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "key": {"x": [{"y": [1]}, {"y": [2]}]}}', '{ "": { "$push" :{ "key.x": { "$eachh": [], "$position": 1, "$sort" : 1} }}}', '{}');
+                                                                                                       bson_update_document                                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "key" : { "x" : [ { "y" : [ { "$numberInt" : "1" } ] }, { "y" : [ { "$numberInt" : "2" } ] }, { "$eachh" : [  ], "$position" : { "$numberInt" : "1" }, "$sort" : { "$numberInt" : "1" } } ] } }
+(1 row)
+
+SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$position": 5, "$slice": 3, "$sort": -1 }}} }', '{}');
+                                                                                                                                 bson_update_document                                                                                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$position" : { "$numberInt" : "5" }, "$slice" : { "$numberInt" : "3" }, "$sort" : { "$numberInt" : "-1" } } ] }
 (1 row)
 
 -- test conflicting update operator paths
