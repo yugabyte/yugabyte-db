@@ -107,17 +107,23 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-**Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
+### Client ID
+
+The ID of an application you registered with the Microsoft Identity Platform. You must register an application in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
+
+Your Azure application needs to have a [resource group](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/overview#resource-groups) with `Network Contributor` and `Virtual Machine Contributor` roles assigned. See [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
+
+For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate) in the Microsoft Azure documentation.
 
 #### Credential type
 
 YugabyteDB Anywhere requires cloud permissions to create VMs. You can grant access to YugabyteDB Anywhere to manage Azure resources such as VMs in one of the following ways:
 
-- [Register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app) in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
+- [Add credentials](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=client-secret#add-credentials) in the form of a client secret to your registered application. YugabyteDB Anywhere will use these credentials to authenticate with Azure.
 
     Select **Specify Client Secret** and enter the Client Secret of the application associated with the Client ID you provided. You need to enter the `Value` of the secret (not the `Secret ID`).
 
-    For information on assigning roles to applications, see [Assign a role to an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#assign-a-role-to-the-application).
+    For information on creating client secrets, see [Create a new client secret](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal#option-3-create-a-new-client-secret) in the Microsoft Azure documentation.
 
 - [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) to the Azure VM hosting YugabyteDB Anywhere. Azure will use the managed identity assigned to your instance to authenticate.
 
@@ -127,9 +133,9 @@ YugabyteDB Anywhere requires cloud permissions to create VMs. You can grant acce
 
 #### Additional fields
 
-- **Resource Group** represents the group in which YugabyteDB nodes compute and network resources are created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
+- **Resource Group** is the group in which YugabyteDB node compute and network resources are created.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription.
-- **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Azure Active Directory tenant ID](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/how-to-find-tenant).
+- **Tenant ID** represents the tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Microsoft Entra tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
 
 ### Regions
