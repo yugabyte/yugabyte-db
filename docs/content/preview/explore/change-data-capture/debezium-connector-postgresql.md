@@ -823,17 +823,9 @@ DELETE FROM employee WHERE employee_id = 1001;
 {
   "before": null,
   "after": {
-    "employee_id": {
-        "value": 1001,
-        "set": true
-    },
-    "employee_name": {
-      "value": "Alice",
-      "set": true
-    },
-    "employee_dept": {
-        "value": "Packaging",
-        "set": true
+    "employee_id": 1001,
+    "employee_name": "Alice",
+    "employee_dept": "Packaging",
     }
   }
   "op": "c"
@@ -922,17 +914,9 @@ DELETE FROM employee WHERE employee_id = 1001;
 {
   "before": null,
   "after": {
-    "employee_id": {
-        "value": 1001,
-        "set": true
-    },
-    "employee_name": {
-      "value": "Alice",
-      "set": true
-    },
-    "employee_dept": {
-        "value": "Packaging",
-        "set": true
+    "employee_id": 1001,
+    "employee_name": "Alice",
+    "employee_dept": "Packaging",
     }
   }
   "op": "c"
@@ -1248,7 +1232,7 @@ When a row is deleted, the *delete* event value still works with log compaction,
 
 ## Data type mappings
 
-The YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
+The Debezium YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
 
 * `literal` type describes how the value is literally represented using Kafka Connect schema types: `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT32`, `FLOAT64`, `BOOLEAN`, `STRING`, `BYTES`, `ARRAY`, `MAP`, and `STRUCT`.
 * `semantic` type describes how the Kafka Connect schema captures the meaning of the field using the name of the Kafka Connect schema for the field.
@@ -1274,7 +1258,7 @@ If the default data type conversions do not meet your needs, you can [create a c
 | `CHARACTER VARYING [(M)]` | `STRING` | N/A |
 | `TIMESTAMPTZ`, `TIMESTAMP WITH TIME ZONE` | `STRING` | `io.debezium.time.ZonedTimestamp` <br/> A string representation of a timestamp with timezone information, where the timezone is GMT. |
 | `TIMETZ`, `TIME WITH TIME ZONE` | `STRING` | `io.debezium.time.ZonedTime` <br/> A string representation of a time value with timezone information, where the timezone is GMT. |
-| `INTERVAL [P]` | `INT64` | `io.debezium.time.MicroDuration` (default) <br/> The approximate number of microseconds for a time interval using the 365.25 / 12.0 formula for days per month average. |
+| `INTERVAL [P]` | `INT64` | `io.debezium.time.MicroDuration` (default) <br/> The approximate number of microseconds for a time interval using the `365.25 / 12.0` formula for days per month average. |
 | `INTERVAL [P]` | `STRING` | `io.debezium.time.Interval` <br/> (when `interval.handling.mode` is `string`) <br/> The string representation of the interval value that follows the pattern <br/> P\<years>Y\<months>M\<days>DT\<hours>H\<minutes>M\<seconds>S. <br/> For example, `P1Y2M3DT4H5M6.78S`. |
 | `BYTEA` | `BYTES` or `STRING` | n/a<br/><br/>Either the raw bytes (the default), a base64-encoded string, or a base64-url-safe-encoded String, or a hex-encoded string, based on the connector’s `binary handling mode` setting.<br/><br/>Debezium only supports Yugabyte `bytea_output` configuration of value `hex`. For more information about PostgreSQL binary data types, see the [YugabyteDB documentation](#reminder). |
 | `JSON`, `JSONB` | `STRING` | `io.debezium.data.Json` <br/> Contains the string representation of a JSON document, array, or scalar. |
@@ -1360,6 +1344,12 @@ The last possible setting for the `decimal.handling.mode` configuration property
 | `MONEY[(M[,D])]` | `STRING` | |
 
 YugabyteDB supports `NaN` (not a number) as a special value to be stored in `DECIMAL`/`NUMERIC` values when the setting of `decimal.handling.mode` is string or `double`. In this case, the connector encodes `NaN` as either `Double.NaN` or the string constant `NAN`.
+
+{{< note title="Note" >}}
+
+Decimal handling mode `precise` is not yet supported by `YugabyteDBConnector`.
+
+{{< /note >}}
 
 ### Network address types
 
