@@ -25,7 +25,9 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -194,16 +196,25 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   Status WaitForSnapshotOpDone(const string& op_name, const TxnSnapshotId& snapshot_id) {
     return WaitTillComplete(
         op_name,
-        [this, &snapshot_id]() -> Result<bool> {
+        [this, &snapshot_id, &op_name]() -> Result<bool> {
           ListSnapshotsRequestPB list_req;
           ListSnapshotsResponsePB list_resp;
           list_req.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
 
-          RETURN_NOT_OK(proxy_backup_->ListSnapshots(
-              list_req, &list_resp, ResetAndGetController()));
-          SCHECK(!list_resp.has_error(), IllegalState, "Expected response without error");
+          Status s = proxy_backup_->ListSnapshots(
+              list_req, &list_resp, ResetAndGetController());
+          if (s.ok() && list_resp.has_error()) {
+            s = StatusFromPB(list_resp.error().status());
+          }
+          if (op_name == "IsSnapshotDeleted" && !s.ok() && s.IsNotFound()) {
+            return true;
+          }
+          RETURN_NOT_OK(s);
           SCHECK_FORMAT(list_resp.snapshots_size() == 1, IllegalState,
               "Wrong number of snapshots: ", list_resp.snapshots_size());
+          if (op_name == "IsSnapshotDeleted") {
+            return list_resp.snapshots(0).entry().state() == SysSnapshotEntryPB::DELETED;
+          }
           return list_resp.snapshots(0).entry().state() == SysSnapshotEntryPB::COMPLETE;
         });
   }
@@ -276,6 +287,32 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         });
 
     return snapshot_id;
+  }
+
+  Status DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
+    master::DeleteSnapshotResponsePB resp;
+    auto s = client_->DeleteSnapshot(snapshot_id, &resp);
+    if (s.ok() && resp.has_error()) {
+      s = StatusFromPB(resp.error().status());
+    }
+    return s;
+  }
+
+  Result<TxnSnapshotRestorationId> RestoreSnapshot(const TxnSnapshotId& snapshot_id) {
+    RestoreSnapshotRequestPB req;
+    RestoreSnapshotResponsePB resp;
+    req.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
+    RETURN_NOT_OK(proxy_backup_->RestoreSnapshot(req, &resp, ResetAndGetController()));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return TryFullyDecodeTxnSnapshotRestorationId(resp.restoration_id());
+  }
+
+  Status DeleteSnapshotAndWait(const TxnSnapshotId& snapshot_id) {
+    RETURN_NOT_OK(DeleteSnapshot(snapshot_id));
+    LOG(INFO) << "Started snapshot deletion " << snapshot_id;
+    return WaitForSnapshotOpDone("IsSnapshotDeleted", snapshot_id);
   }
 
   void VerifySnapshotFiles(const TxnSnapshotId& snapshot_id) {
@@ -352,13 +389,18 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
-  TestWorkload SetupWorkload() {
+  TestWorkload CreateDefaultWorkload() {
     TestWorkload workload(cluster_.get());
     workload.set_table_name(kTableName);
     workload.set_sequential_write(true);
     workload.set_insert_failures_allowed(false);
     workload.set_num_write_threads(1);
     workload.set_write_batch_size(10);
+    return workload;
+  }
+
+  TestWorkload SetupWorkload() {
+    auto workload = CreateDefaultWorkload();
     workload.Setup();
     return workload;
   }
@@ -652,6 +694,64 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   ASSERT_TRUE(result_exist.get());
 
   LOG(INFO) << "Test ImportSnapshotMeta finished.";
+}
+
+class RestoreAndDeleteValidationTest : public SnapshotTest {
+ public:
+  TxnSnapshotId CreateTableAndSnapshotDuringWrites(int insertions = 100) {
+    auto workload = CreateDefaultWorkload();
+    workload.Setup();
+    workload.Start();
+    workload.WaitInserted(insertions);
+    const auto snapshot_id = CreateSnapshot();
+    int64_t max_inserted = workload.rows_inserted();
+    workload.WaitInserted(max_inserted + insertions);
+    workload.StopAndJoin();
+    return snapshot_id;
+  }
+};
+
+TEST_F(RestoreAndDeleteValidationTest, DeleteDuringRestore) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  // Pause before sending tablet restore ops to tservers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = true;
+  TxnSnapshotRestorationId restoration_id = ASSERT_RESULT(RestoreSnapshot(snapshot_id));
+  auto s = DeleteSnapshot(snapshot_id);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = false;
+  ASSERT_TRUE(s.IsInvalidArgument())
+      << "Expected invalid argument from deleting snapshot, instead got: " << s;
+  ASSERT_STR_CONTAINS(s.ToString(), Format("restoration $0 is in progress", restoration_id));
+  ASSERT_OK(WaitForSnapshotRestorationDone(restoration_id));
+}
+
+TEST_F(RestoreAndDeleteValidationTest, DeleteAfterRestore) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  TxnSnapshotRestorationId restoration_id = ASSERT_RESULT(RestoreSnapshot(snapshot_id));
+  ASSERT_OK(WaitForSnapshotRestorationDone(restoration_id));
+  // Should be able to delete the snapshot now that the restore is complete.
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+}
+
+TEST_F(RestoreAndDeleteValidationTest, RestoreDuringDelete) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  // Pause before sending tablet deletion ops to tservers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = true;
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+  auto result = RestoreSnapshot(snapshot_id);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = false;
+  ASSERT_TRUE(!result.ok() && result.status().IsIllegalState())
+      << "Expected illegal state from restoring deleted snapshot, instead got: "
+      << (!result.ok() ? result.status() : Status::OK());
+  ASSERT_STR_CONTAINS(result.status().ToString(), "The snapshot has started deleting");
+}
+
+TEST_F(RestoreAndDeleteValidationTest, RestoreAfterDelete) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  auto result = RestoreSnapshot(snapshot_id);
+  ASSERT_TRUE(!result.ok() && result.status().IsIllegalState())
+      << "Expected illegal state from restoring deleted snapshot, instead got: "
+      << (!result.ok() ? result.status() : Status::OK());
 }
 
 } // namespace yb

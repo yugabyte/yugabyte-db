@@ -80,10 +80,6 @@ Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
   return has_initial ? initial_state_ : result;
 }
 
-Result<bool> StateWithTablets::Complete() const {
-  return VERIFY_RESULT(AggregatedState()) != initial_state_;
-}
-
 Status StateWithTablets::AnyFailure() const {
   for (const auto& tablet : tablets_) {
     if (tablet.state == SysSnapshotEntryPB::FAILED) {
