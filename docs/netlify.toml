@@ -1356,6 +1356,7 @@
             https://ipv6.6sc.co/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://api.rudderstack.com/
+            https://sessions.bugsnag.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
