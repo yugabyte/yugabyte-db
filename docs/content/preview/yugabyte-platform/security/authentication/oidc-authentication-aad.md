@@ -1,7 +1,7 @@
 ---
 title: OIDC authentication using Azure AD in YugabyteDB Anywhere
 headerTitle: OIDC authentication with Azure AD
-linkTitle: OIDC with Azure AD
+linkTitle: OIDC authentication
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Azure AD to authenticate accounts for database access
 badges: ea
@@ -12,6 +12,21 @@ menu:
     weight: 20
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../oidc-authentication-aad/" class="nav-link active">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      Azure AD
+    </a>
+  </li>
+  <li >
+    <a href="../oidc-authentication-jumpcloud/" class="nav-link">
+      <i class="fa-solid fa-cubes"></i>
+      JumpCloud
+    </a>
+  </li>
+</ul>
 
 This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL database access using Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) as the Identity Provider (IdP).
 
