@@ -176,7 +176,7 @@ CREATE FUNCTION @extschema@.check_partition_type (p_type text) RETURNS boolean
 DECLARE
 v_result    boolean;
 BEGIN
-    SELECT p_type IN ('partman', 'time-custom', 'native') INTO v_result;
+    SELECT p_type IN ('native') INTO v_result;
     RETURN v_result;
 END
 $$;
