@@ -138,6 +138,10 @@ RestorationState::RestorationState(
   }
 }
 
+Result<bool> RestorationState::RestorationComplete() const {
+  return VERIFY_RESULT(AggregatedState()) == SysSnapshotEntryPB::RESTORED;
+}
+
 Status RestorationState::ToPB(RestorationInfoPB* out) {
   out->set_id(restoration_id_.data(), restoration_id_.size());
   return ToEntryPB(ForClient::kTrue, out->mutable_entry());

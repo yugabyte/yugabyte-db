@@ -86,6 +86,8 @@ class SnapshotState : public StateWithTablets {
     return throttler_;
   }
 
+  Result<bool> Complete() const;
+
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
       const tablet::SnapshotOperation& operation) const;
 
@@ -99,6 +101,7 @@ class SnapshotState : public StateWithTablets {
       ListSnapshotsDetailOptionsPB options);
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
+  bool delete_started() const;
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;

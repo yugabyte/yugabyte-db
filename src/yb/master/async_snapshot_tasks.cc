@@ -26,9 +26,13 @@
 
 #include "yb/tserver/backup.proxy.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+
+DEFINE_test_flag(bool, pause_issuing_tserver_snapshot_requests, false,
+                 "Whether to halt before issuing snapshot operations to tservers.");
 
 namespace yb {
 namespace master {
@@ -150,6 +154,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
 }
 
 bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_issuing_tserver_snapshot_requests);
   tserver::TabletSnapshotOpRequestPB req;
   req.set_dest_uuid(permanent_uuid());
   req.add_tablet_id(tablet_->tablet_id());
