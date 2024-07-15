@@ -131,6 +131,11 @@ IF p_keep_index IS NOT NULL THEN
     v_retention_keep_index = p_keep_index;
 END IF;
 IF p_retention_schema IS NOT NULL THEN
+    /* YB: Early exiting if p_retention_schema is not NULL.
+    Transactional DDL is not supported yet, hence the detach
+    call we not be rolled back.
+    */
+    RAISE EXCEPTION 'Setting retention schema is not supported';
     v_retention_schema = p_retention_schema;
 END IF;
 
