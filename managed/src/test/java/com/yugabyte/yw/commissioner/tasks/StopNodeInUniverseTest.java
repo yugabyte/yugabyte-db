@@ -143,6 +143,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     setUnderReplicatedTabletsMock();
     setLeaderlessTabletsMock();
     setCheckNodesAreSafeToTakeDown(mockClient);
+    setMockLiveTabletServers(mockClient, defaultUniverse);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 

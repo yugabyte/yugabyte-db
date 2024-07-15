@@ -994,11 +994,37 @@ public class YbcManager {
       NodeDetails nodeDetails,
       String ybcSoftwareVersion,
       Map<String, String> ybcGflagsMap) {
-    ReleaseManager.ReleaseMetadata releaseMetadata =
-        releaseManager.getYbcReleaseByVersion(
-            ybcSoftwareVersion,
-            OsType.LINUX.toString().toLowerCase(),
-            Architecture.x86_64.name().toLowerCase());
+    // We will run uname -m to get the architecture of the node
+    // Ideally all nodes in the cluster should be same but
+    // we may support mixed mode clusters in future
+    // This logic should still work for them.
+    List<String> unameCommandArgs = Arrays.asList("uname", "-m");
+    String architecture =
+        kubernetesManagerFactory
+            .getManager()
+            .performYbcAction(
+                config,
+                nodeDetails.cloudInfo.kubernetesNamespace,
+                nodeDetails.cloudInfo.kubernetesPodName,
+                "yb-controller",
+                unameCommandArgs);
+    ReleaseManager.ReleaseMetadata releaseMetadata;
+    if ("x86_64".equals(architecture)) {
+      releaseMetadata =
+          releaseManager.getYbcReleaseByVersion(
+              ybcSoftwareVersion,
+              OsType.LINUX.toString().toLowerCase(),
+              Architecture.x86_64.name().toLowerCase());
+    } else if ("aarch64".equals(architecture)) {
+      releaseMetadata =
+          releaseManager.getYbcReleaseByVersion(
+              ybcSoftwareVersion,
+              OsType.EL8.toString().toLowerCase(),
+              Architecture.aarch64.name().toLowerCase());
+    } else {
+      throw new RuntimeException("Unsupported architecture: " + architecture);
+    }
+
     String ybcPackage = releaseMetadata.filePath;
     UUID providerUUID =
         UUID.fromString(universe.getCluster(nodeDetails.placementUuid).userIntent.provider);

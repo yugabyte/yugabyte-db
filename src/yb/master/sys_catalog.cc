@@ -1714,7 +1714,7 @@ Status SysCatalogTable::CopyPgsqlTables(
       source_table_ids.size(), target_table_ids.size(), InvalidArgument,
       "size mismatch between source tables and target tables");
 
-  int batch_count = 0, total_count = 0, total_bytes = 0;
+  size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
   const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   const auto* meta = tablet->metadata();
   for (size_t i = 0; i < source_table_ids.size(); ++i) {
@@ -1735,21 +1735,21 @@ Status SysCatalogTable::CopyPgsqlTables(
           source_table_info->schema(), source_row, target_table_id, target_table_info->schema(),
           target_table_info->schema_version, true /* is_upsert */));
 
-      ++total_count;
-      if (FLAGS_copy_tables_batch_bytes > 0 && 0 == (total_count % 128)) {
+      ++rows_so_far;
+      if (FLAGS_copy_tables_batch_bytes > 0 && 0 == (rows_so_far % 128)) {
           // Break up the write into batches of roughly the same serialized size
           // in order to avoid uncontrolled large network writes.
           // ByteSizeLong is an expensive calculation so do not perform it each time
 
-        size_t batch_bytes = writer->req().ByteSizeLong();
+        auto batch_bytes = writer->req().ByteSizeLong();
         if (batch_bytes > FLAGS_copy_tables_batch_bytes) {
           RETURN_NOT_OK(SyncWrite(writer.get()));
 
           total_bytes += batch_bytes;
           ++batch_count;
-          LOG(INFO) << Format(
-              "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
-              writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
+          LOG(INFO) << "CopyPgsqlTables: Batch# " << batch_count << " copied "
+                    << writer->req().pgsql_write_batch_size() << " rows with "
+                    << HumanizeBytes(batch_bytes) << " bytes";
 
           writer = NewWriter(leader_term);
         }
@@ -1759,17 +1759,16 @@ Status SysCatalogTable::CopyPgsqlTables(
 
   if (writer->req().pgsql_write_batch_size() > 0) {
     RETURN_NOT_OK(SyncWrite(writer.get()));
-    size_t batch_bytes = writer->req().ByteSizeLong();
+    auto batch_bytes = writer->req().ByteSizeLong();
     total_bytes += batch_bytes;
     ++batch_count;
-    LOG(INFO) << Format(
-        "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
-        writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
+    LOG(INFO) << "CopyPgsqlTables: Batch# " << batch_count << " copied "
+              << writer->req().pgsql_write_batch_size() << " rows with "
+              << HumanizeBytes(batch_bytes) << " bytes";
   }
 
-  LOG(INFO) << Format(
-      "CopyPgsqlTables: Copied total $0 rows, total $1 bytes in $2 batches", total_count,
-      HumanizeBytes(total_bytes), batch_count);
+  LOG(INFO) << "CopyPgsqlTables: Copied total " << rows_so_far << " rows, total "
+            << HumanizeBytes(total_bytes) << " bytes in " << batch_count << " batches";
   return Status::OK();
 }
 

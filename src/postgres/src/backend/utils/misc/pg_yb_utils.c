@@ -109,6 +109,7 @@
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -195,6 +196,7 @@ static bool YBCanEnableDBCatalogVersionMode();
 
 bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
+bool yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t yb_follower_read_staleness_ms = 0;
 
 bool
@@ -898,6 +900,9 @@ YBInitPostgresBackend(
 		YBCInstallTxnDdlHook();
 		if (yb_ash_enable_infra)
 			YbAshInit();
+
+		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+			YbQueryDiagnosticsInstallHook();
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
@@ -2347,6 +2352,10 @@ bool YBEnableTracing() {
 
 bool YBReadFromFollowersEnabled() {
 	return yb_read_from_followers;
+}
+
+bool YBFollowerReadsBehaviorBefore20482() {
+	return yb_follower_reads_behavior_before_fixing_20482;
 }
 
 int32_t YBFollowerReadStalenessMs() {
@@ -4958,4 +4967,10 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 		? (YbReadTimePointHandle){
 			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
 		: (YbReadTimePointHandle){};
+}
+
+// TODO(#22370): the method will be used to make Const Based Optimizer to be aware of
+// fast backward scan capability.
+bool YbUseFastBackwardScan() {
+  return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
 }

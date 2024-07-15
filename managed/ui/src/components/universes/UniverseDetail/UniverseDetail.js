@@ -51,6 +51,7 @@ import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportB
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
 import { EncryptionInTransit } from '../../../redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
+import { EditPGCompatibilityModal } from '../../../redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
@@ -72,6 +73,10 @@ import {
 import { AppName } from '../../../redesign/features/Troubleshooting/TroubleshootingDashboard';
 import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
+import {
+  getCurrentVersion,
+  isVerionPGSupported
+} from '../../../redesign/features/universe/universe-form/utils/helpers';
 
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg';
@@ -286,6 +291,7 @@ class UniverseDetail extends Component {
       showToggleBackupModal,
       showEnableYSQLModal,
       showEnableYCQLModal,
+      showPGCompatibilityModal,
       updateBackupState,
       closeModal,
       customer,
@@ -497,6 +503,10 @@ class UniverseDetail extends Component {
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.PAUSE_UNIVERSE);
     const isDeleteUniverseDisabled =
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_UNIVERSE) || isK8ActionsDisabled;
+
+    const isPGCompatibilitySupported = isVerionPGSupported(
+      getCurrentVersion(currentUniverse.data.universeDetails)
+    );
 
     const editTLSAvailability = getFeatureState(
       currentCustomer.data.features,
@@ -1109,6 +1119,21 @@ class UniverseDetail extends Component {
                       </YBMenuItem>
                     </RbacValidator>
                   )}
+                  {!universePaused && isPGCompatibilitySupported && (
+                    <RbacValidator
+                      accessRequiredOn={{
+                        onResource: uuid,
+                        ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                      }}
+                      isControl
+                    >
+                      <YBMenuItem onClick={showPGCompatibilityModal}>
+                        <YBLabelWithIcon icon="fa fa-retweet fa-fw">
+                          Edit Postgres Compatibility
+                        </YBLabelWithIcon>
+                      </YBMenuItem>
+                    </RbacValidator>
+                  )}
                   {!universePaused && isConfigureYSQLEnabled && (
                     <RbacValidator
                       accessRequiredOn={{
@@ -1500,6 +1525,16 @@ class UniverseDetail extends Component {
             uuid={currentUniverse.data.universeUUID}
           />
         )}
+
+        <EditPGCompatibilityModal
+          open={showModal && visibleModal === 'enablePGCompatibility'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
 
         <EnableYSQLModal
           open={showModal && visibleModal === 'enableYSQLModal'}

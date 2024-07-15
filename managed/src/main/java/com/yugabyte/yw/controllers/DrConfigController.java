@@ -1174,10 +1174,7 @@ public class DrConfigController extends AuthenticatedController {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
     }
     DrConfigSetDatabasesForm setDatabasesForm = parseSetDatabasesForm(customerUUID, request);
-    Set<String> existingDatabaseIds =
-        xClusterConfig.getNamespaceIdsInStatus(
-            xClusterConfig.getDbIds(),
-            XClusterConfigTaskBase.X_CLUSTER_NAMESPACE_CONFIG_RUNNING_STATUS_LIST);
+    Set<String> existingDatabaseIds = xClusterConfig.getDbIds();
     Set<String> newDatabaseIds = setDatabasesForm.databases;
     Set<String> databaseIdsToAdd = Sets.difference(newDatabaseIds, existingDatabaseIds);
     Set<String> databaseIdsToRemove = Sets.difference(existingDatabaseIds, newDatabaseIds);
@@ -1188,9 +1185,15 @@ public class DrConfigController extends AuthenticatedController {
 
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
 
+    XClusterConfigRestartFormData.RestartBootstrapParams restartBootstrapParams =
+        drConfig.getBootstrapBackupParams();
+    BootstrapParams bootstrapParams =
+        getBootstrapParamsFromRestartBootstrapParams(restartBootstrapParams, null);
+
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getSetDatabasesTaskParams(
-            xClusterConfig, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
+            xClusterConfig, bootstrapParams, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
+
     UUID taskUUID = commissioner.submit(TaskType.SetDatabasesDrConfig, taskParams);
     CustomerTask.create(
         customer,

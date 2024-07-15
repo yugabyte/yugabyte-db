@@ -9,12 +9,10 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -28,40 +26,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
-public class DRLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(300, 330);
-  }
-
-  private Result createDrConfig(DrConfigCreateForm formData) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-        app,
-        "POST",
-        "/api/customers/" + customer.getUuid() + "/dr_configs",
-        user.createAuthToken(),
-        Json.toJson(formData));
-  }
-
-  private Result deleteDrConfig(UUID drConfigUUID) {
-    return FakeApiHelper.doRequestWithAuthToken(
-        app,
-        "DELETE",
-        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID,
-        user.createAuthToken());
-  }
-
-  @Before
-  public void setupDr() {
-    settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.xcluster.dr.enabled", "true");
-  }
+public class DRLocalTest extends DRLocalTestBase {
 
   @Test
   public void testDrConfigSetup() throws InterruptedException {

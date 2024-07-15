@@ -677,7 +677,7 @@ YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
 YBCStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YBCStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YBCStatus YBCPgSetEnableTracing(bool tracing);
-YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
+YBCStatus YBCPgUpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode(YBCPgOid db_oid, bool is_silent_altering);

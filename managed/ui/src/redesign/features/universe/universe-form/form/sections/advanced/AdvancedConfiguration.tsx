@@ -9,6 +9,7 @@ import {
   DeploymentPortsField,
   IPV6Field,
   NetworkAccessField,
+  PGCompatibiltyField,
   SystemDField
 } from '../../fields';
 import {
@@ -75,6 +76,11 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
             <NetworkAccessField disabled={!isCreatePrimary} />
           </Box>
         </>
+      )}
+      {isPrimary && (
+        <Box display="flex" width="100%" mt={2.5}>
+          <PGCompatibiltyField disabled={!isCreateMode} />
+        </Box>
       )}
       {provider.code !== CloudType.kubernetes && (
         <>

@@ -2155,8 +2155,8 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
   return pg_txn_manager_->SetEnableTracing(tracing);
 }
 
-Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->EnableFollowerReads(enable_follower_reads, staleness_ms);
+Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
+  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {

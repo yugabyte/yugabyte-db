@@ -7,6 +7,7 @@ aliases:
   - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
   - /preview/explore/change-data-capture/debezium-connector
   - /preview/explore/change-data-capture/debezium
+  - /preview/explore/change-data-capture/debezium-connector-postgresql
 menu:
   preview:
     parent: explore-change-data-capture

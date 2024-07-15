@@ -4,6 +4,8 @@ headerTitle: Provisioning on-premises nodes
 linkTitle: Provision nodes
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites with fully manual provisioning
+aliases:
+    - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
   preview_yugabyte-platform:
     identifier: software-on-prem-3-manual
