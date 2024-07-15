@@ -22,7 +22,7 @@ rightNav:
 
 The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database.
 
-The first time it connects to a YugabyteDB server or cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
+The first time it connects to a YugabyteDB server, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 
 ## Overview
 
@@ -30,13 +30,12 @@ YugabyteDB’s [logical decoding](#reminder) feature was introduced in YugabyteD
 
 The YugabyteDB connector contains two main parts that work together to read and process database changes:
 
-<!-- todo vaibhav: need sub-bullets -->
 * A logical decoding output plug-in. You might need to install the output plug-in that you choose to use. You must configure a replication slot that uses your chosen output plug-in before running the YugabyteDB server. The plug-in can be one of the following:
 
     <!-- YB specific -->
     * `yboutput` is the plugin packaged with YugabyteDB. It is maintained by Yugabyte and is always present with the distribution.
 
-    * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plug-in with the standard distribution so it is always present and no additional libraries need to be installed. The Debezium connector interprets the raw replication event stream directly into change events.
+    * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plug-in with the standard distribution so it is always present and no additional libraries need to be installed. The Debezium YugabyteDB connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
 * Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses YugabyteDB’s [streaming replication protocol](#reminder), by means of the YugabyteDB JDBC driver
@@ -75,6 +74,7 @@ Most YugabyteDB servers are configured to not retain the complete history of the
 
 The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` [connector configuration property](#reminder) to a value other than `initial`.
 
+<!-- todo Vaibhav: the first points need double checking -->
 1. Start a transaction with a [SERIALIZABLE, READ ONLY, DEFERRABLE](#reminder) isolation level to ensure that subsequent reads in this transaction are against a single consistent version of the data. Any changes to the data due to subsequent `INSERT`, `UPDATE`, and `DELETE` operations by other clients are not visible to this transaction.
 2. Read the current position in the server’s transaction log.
 3. Scan the database tables and schemas, generate a `READ` event for each row and write that event to the appropriate table-specific Kafka topic.
@@ -261,7 +261,7 @@ The components of a topic name are as follows:
 * _schemaName_ - the name of the database schema in which the change event occurred.
 * _tableName_ - the name of the database table in which the change event occurred.
 
-For example, suppose that `dbserver` is the logical server name in the configuration for a connector that is capturing changes in a YugabyteDB installation that has a `yugabyte` database and an `inventory` schema that contains four tables: `products`, `products_on_hand`, `customers`, and `orders`. The connector would stream records to these four Kafka topics:
+For example, suppose that `dbserver` is the topic prefix in the configuration for a connector that is capturing changes in a YugabyteDB installation that has a `yugabyte` database and an `inventory` schema that contains four tables: `products`, `products_on_hand`, `customers`, and `orders`. The connector would stream records to these four Kafka topics:
 
 * `dbserver.inventory.products`
 * `dbserver.inventory.products_on_hand`
@@ -277,7 +277,7 @@ Now suppose that the tables are not part of a specific schema but were created i
 
 The connector applies similar naming conventions to label its [transaction metadata topics](#transaction-metadata).
 
-If the default topic names don't meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see the Debezium documentation on [Topic routing](#reminder).
+If the default topic names don't meet your requirements, you can configure custom topic names. To configure custom topic names, you specify regular expressions in the logical topic routing SMT. For more information about using the logical topic routing SMT to customize topic naming, see the Debezium documentation on [Topic routing](https://debezium.io/documentation/reference/2.5/transformations/topic-routing.html).
 
 ### Transaction metadata
 
@@ -292,7 +292,7 @@ Debezium registers and receives metadata only for transactions that occur _after
 For every transaction `BEGIN` and `END`, Debezium generates an event containing the following fields:
 
 * `status` - `BEGIN` or `END`
-* `id` - String representation of the unique transaction identifier composed of Postgres transaction ID itself and LSN of given operation separated by colon, i.e. the format is `txID:LSN`
+* `id` - String representation of the unique transaction identifier composed of YugabyteDB transaction ID itself and LSN of given operation separated by colon, i.e. the format is `txID:LSN`
 * `ts_ms` - The time of a transaction boundary event (`BEGIN` or `END` event) at the data source. If the data source does not provide Debezium with the event time, then the field instead represents the time at which Debezium processes the event.
 * `event_count` (for `END` events) - total number of events emitted by the transaction
 * `data_collections` (for `END` events) - an array of pairs of `data_collection` and `event_count` that provides the number of events emitted by changes originating from given data collection
@@ -402,9 +402,9 @@ Starting with Kafka 0.10, Kafka can optionally record the event key and value wi
 
 {{< warning title="Warning" >}}
 
-The YugabyteDB connector ensures that all Kafka Connect schema names adhere to the Avro schema name format. This means that the logical server name must start with a Latin letter or an underscore, that is, a-z, A-Z, or _. Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore, that is, a-z, A-Z, 0-9, or \_. If there is an invalid character it is replaced with an underscore character.
+The YugabyteDB connector ensures that all Kafka Connect schema names adhere to the Avro schema name format. This means that the logical server name must start with a Latin letter or an underscore, that is, `a-z`, `A-Z`, or `_`. Each remaining character in the logical server name and each character in the schema and table names must be a Latin letter, a digit, or an underscore, that is, `a-z`, `A-Z`, `0-9`, or `_`. If there is an invalid character it is replaced with an underscore character.
 
-This can lead to unexpected conflicts if the logical server name, a schema name, or a table name contains invalid characters, and the only characters that distinguish names from one another are invalid and thus replaced with underscores.
+This can lead to unexpected conflicts if the topic prefix, a schema name, or a table name contains invalid characters, and the only characters that distinguish names from one another are invalid and thus replaced with underscores.
 
 {{< /warning >}}
 
@@ -471,7 +471,6 @@ Although the `column.exclude.list` and `column.include.list` connector configura
 
 {{< warning title="Warning" >}}
 
-<!-- YB Note -->
 CDC is not supported for tables without primary keys.
 
 {{< /warning >}}
@@ -527,7 +526,9 @@ UPDATE employee SET employee_name = 'Bob' WHERE employee_id = 1001;
 DELETE FROM employee WHERE employee_id = 1001;
 ```
 
-##### CHANGE
+{{< tabpane text=true >}}
+
+  {{% tab header="CHANGE" lang="change" %}}
 
 <table>
 <tr>
@@ -599,7 +600,9 @@ DELETE FROM employee WHERE employee_id = 1001;
 
 </table>
 
-##### DEFAULT
+  {{% /tab %}}
+
+  {{% tab header="DEFAULT" lang="default" %}}
 
 <table>
 <tr>
@@ -716,7 +719,9 @@ DELETE FROM employee WHERE employee_id = 1001;
 
 </table>
 
-##### FULL
+  {{% /tab %}}
+
+  {{% tab header="FULL" lang="full" %}}
 
 <table>
 <tr>
@@ -871,6 +876,10 @@ DELETE FROM employee WHERE employee_id = 1001;
 
 </table>
 
+  {{% /tab %}}
+
+  {{% tab header="NOTHING" lang="nothing" %}}
+
 ##### NOTHING
 
 <table>
@@ -933,6 +942,10 @@ DELETE FROM employee WHERE employee_id = 1001;
 </tr> 
 
 </table>
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
 
 {{< note title="Note" >}}
 
