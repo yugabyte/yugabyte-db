@@ -21,10 +21,8 @@ jobs:
     build_type: release
     release_artifact: true
 
-  # When forced to move off centos7, but AL2 is still supported,
-  # this combo needs to be os: amazonlinux2, compiler: clang17
-  - os: centos7
-    compiler: clang16
+  - os: amzn2
+    compiler: clang17
     build_type: release
     architecture: aarch64
     release_artifact: true

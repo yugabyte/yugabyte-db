@@ -2603,9 +2603,6 @@ set_prebuilt_thirdparty_url() {
         # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
         thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
       fi
-      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
-        thirdparty_tool_cmd_line+=( "--allow-older-os" )
-      fi
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL

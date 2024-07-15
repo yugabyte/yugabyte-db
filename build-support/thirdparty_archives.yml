@@ -70,21 +70,21 @@ archives:
     sha: ffb781854e0a662975254c6c075e211c4fde9292
     lto_type:
     tag: v2.20-20240625152657-ffb781854e-almalinux9-x86_64-gcc12
-  - os_type: amazonlinux2
+  - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
     is_linuxbrew: false
     sha: ffb781854e0a662975254c6c075e211c4fde9292
     lto_type:
     tag: v2.20-20240625152843-ffb781854e-amazonlinux2-aarch64-clang17
-  - os_type: amazonlinux2
+  - os_type: amzn2
     architecture: aarch64
     compiler_type: clang17
     is_linuxbrew: false
     sha: ffb781854e0a662975254c6c075e211c4fde9292
     lto_type: full
     tag: v2.20-20240625152849-ffb781854e-amazonlinux2-aarch64-clang17-full-lto
-  - os_type: amazonlinux2
+  - os_type: amzn2
     architecture: x86_64
     compiler_type: clang17
     is_linuxbrew: false
