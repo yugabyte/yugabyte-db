@@ -2,8 +2,8 @@ import React, { FC } from "react";
 import { Box, Divider, Paper, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
-import { MigrationAssessmentRefactoringTable } from "./AssessmentRefactoringTable";
 import { RefactoringGraph } from "../schema/RefactoringGraph";
+import { RefactoringTables } from "../schema/RefactoringTables";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -74,32 +74,11 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
               </Typography>
             </Box>
 
-            <Box display="flex" flexDirection="column" gridGap={20}>
-              {unsupportedDataTypes?.length ? (
-                <MigrationAssessmentRefactoringTable
-                  data={unsupportedDataTypes}
-                  tableHeader={t(
-                    "clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType"
-                  )}
-                />
-              ) : null}
-              {unsupportedFeatures?.length ? (
-                <MigrationAssessmentRefactoringTable
-                  data={unsupportedFeatures}
-                  tableHeader={t(
-                    "clusterDetail.voyager.planAndAssess.refactoring.unsupportedFeature"
-                  )}
-                />
-              ) : null}
-              {unsupportedFunctions?.length ? (
-                <MigrationAssessmentRefactoringTable
-                  data={unsupportedFunctions}
-                  tableHeader={t(
-                    "clusterDetail.voyager.planAndAssess.refactoring.unsupportedFunction"
-                  )}
-                />
-              ) : null}
-            </Box>
+            <RefactoringTables
+              unsupportedDataTypes={unsupportedDataTypes}
+              unsupportedFeatures={unsupportedFeatures}
+              unsupportedFunctions={unsupportedFunctions}
+            />
           </>
         ) : null}
       </Box>

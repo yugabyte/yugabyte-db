@@ -1,15 +1,17 @@
 import React, { FC } from "react";
-import { Box, makeStyles, useTheme } from "@material-ui/core";
-import { useTranslation } from "react-i18next";
-
-const useStyles = makeStyles((theme) => ({}));
+import { Box } from "@material-ui/core";
+import { RefactoringTables } from "./RefactoringTables";
 
 interface ReviewRecommendedTabProps {}
 
 export const ReviewRecommendedTab: FC<ReviewRecommendedTabProps> = ({}) => {
-  const classes = useStyles();
-  const theme = useTheme();
-  const { t } = useTranslation();
-
-  return <Box>Review Recommended</Box>;
+  return (
+    <Box>
+      <RefactoringTables
+        unsupportedDataTypes={[]}
+        unsupportedFeatures={[]}
+        unsupportedFunctions={[]}
+      />
+    </Box>
+  );
 };
