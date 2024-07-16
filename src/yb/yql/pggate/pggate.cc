@@ -1613,13 +1613,11 @@ Status PgApiImpl::InitRandomState(
   return Status::OK();
 }
 
-Status PgApiImpl::SampleNextBlock(PgStatement *handle, bool *has_more) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->SampleNextBlock(has_more));
-  return Status::OK();
+Result<bool> PgApiImpl::SampleNextBlock(PgStatement* handle) {
+  RSTATUS_DCHECK(
+      PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE),
+      InvalidArgument, "Invalid statement handle");
+  return down_cast<PgSample*>(handle)->SampleNextBlock();
 }
 
 Status PgApiImpl::ExecSample(PgStatement *handle) {
@@ -1631,13 +1629,11 @@ Status PgApiImpl::ExecSample(PgStatement *handle) {
   return Status::OK();
 }
 
-Status PgApiImpl::GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->GetEstimatedRowCount(liverows, deadrows));
-  return Status::OK();
+Result<EstimatedRowCount> PgApiImpl::GetEstimatedRowCount(PgStatement* handle) {
+  RSTATUS_DCHECK(
+      PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE),
+      InvalidArgument, "Invalid statement handle");
+  return down_cast<PgSample*>(handle)->GetEstimatedRowCount();
 }
 
 Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
@@ -1673,11 +1669,9 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement *handle) {
 
 // Select ------------------------------------------------------------------------------------------
 
-Status PgApiImpl::NewSelect(const PgObjectId& table_id,
-                            const PgObjectId& index_id,
-                            const PgPrepareParameters *prepare_params,
-                            bool is_region_local,
-                            PgStatement **handle) {
+Status PgApiImpl::NewSelect(
+    const PgObjectId& table_id, const PgObjectId& index_id,
+    const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle) {
   // Scenarios:
   // - Sequential Scan: PgSelect to read from table_id.
   // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
@@ -1686,18 +1680,22 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
   //     Note that for SysTable, only one request is send for both table_id and index_id.
   *handle = nullptr;
   std::unique_ptr<PgDmlRead> stmt;
-  if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
-    if (!index_id.IsValid()) {
-      return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
+  PgDml::PrepareParameters dml_prepare_params;
+  if (prepare_params) {
+    dml_prepare_params.querying_colocated_table = prepare_params->querying_colocated_table;
+    dml_prepare_params.index_only_scan = prepare_params->index_only_scan;
+    dml_prepare_params.fetch_ybctids_only = prepare_params->fetch_ybctids_only;
+    if (prepare_params->index_only_scan && prepare_params->use_secondary_index) {
+      RSTATUS_DCHECK(index_id.IsValid(), InvalidArgument, "Cannot run query with invalid index ID");
+      stmt = std::make_unique<PgSelectIndex>(
+          pg_session_, index_id, is_region_local, dml_prepare_params);
     }
-    stmt = std::make_unique<PgSelectIndex>(
-        pg_session_, table_id, index_id, prepare_params, is_region_local);
-  } else {
-    // For IndexScan PgSelect processing will create subquery PgSelectIndex.
-    stmt = std::make_unique<PgSelect>(
-        pg_session_, table_id, index_id, prepare_params, is_region_local);
   }
 
+  if (!stmt) {
+    stmt = std::make_unique<PgSelect>(
+        pg_session_, table_id, is_region_local, dml_prepare_params, index_id);
+  }
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
