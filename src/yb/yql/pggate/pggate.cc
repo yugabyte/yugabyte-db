@@ -473,7 +473,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     }
     if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
       SCHECK(new_row_id_holder.empty(), Corruption, "Multiple kYBRowId attribute detected");
-      new_row_id_holder = session->GenerateNewRowid();
+      new_row_id_holder = session->GenerateNewYbrowid();
       expr_pb->mutable_value()->ref_binary_value(new_row_id_holder);
     } else {
       const auto& collation_info = attr->collation_info;
@@ -499,6 +499,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     doc_key_.set_hash(VERIFY_RESULT(
         target_desc->partition_schema().PgsqlHashColumnCompoundValue(hashed_values)));
   }
+  VLOG(5) << "Built ybctid: " << doc_key_.ToString();
   return doc_key_.Encode();
 }
 

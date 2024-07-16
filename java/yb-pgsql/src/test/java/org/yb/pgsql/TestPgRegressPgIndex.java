@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,37 +16,19 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-// Runs the pg_regress test suite on YB code.
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressIndex extends BasePgRegressTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressIndex.class);
-
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
-  }
-
-  @Override
-  protected Map<String, String> getMasterFlags() {
-    Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("TEST_ysql_suppress_ybctid_corruption_details", "true");
-    return flagMap;
-  }
-
+public class TestPgRegressPgIndex extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    // TODO (#19975): Enable read committed isolation
-    flagMap.put("yb_enable_read_committed_isolation", "false");
+    flagMap.put("TEST_generate_ybrowid_sequentially", "true");
     return flagMap;
   }
 
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest("yb_index_schedule");
+    runPgRegressTest("yb_pg_index_schedule");
   }
 }
