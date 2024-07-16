@@ -7,6 +7,9 @@ systemd_dir="/etc/systemd/system"
 {% for service_file in service_files | split_servers %}
     if [ ! -f "$systemd_dir"/{{ service_file }} ]; then
         echo "Systemd unit {{ service_file }} is not configured."
-        exit 1
+        add_result "Systemd Unit File Check - {{ service_file }}" "FAIL" "Systemd unit {{ service_file }} is not configured."
+    else
+        echo "Systemd unit {{ service_file }} is configured."
+        add_result "Systemd Unit File Check - {{ service_file }}" "PASS" "Systemd unit {{ service_file }} is configured."
     fi
 {% endfor %}

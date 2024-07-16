@@ -23,8 +23,10 @@ check_port() {
     (echo > /dev/tcp/$ip/$port) >/dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo "Port $port is open on $ip"
+        add_result "Port $port Check" "PASS" "Port $port is open on $ip"
     else
         echo "Port $port is closed or filtered on $ip"
+        add_result "Port $port Check" "FAIL" "Port $port is closed or filtered on $ip"
     fi
 }
 

@@ -12,6 +12,7 @@ ynp:
   use_system_level_systemd: false
   ip_address: "127.0.0.1"
   tmp_directory: /tmp
+  mount_points: /data # Comma separated values.
 
 yba:
   url: <url>
@@ -31,4 +32,3 @@ yba:
     cores: cores
     memory_size: size
     volume_size: size
-    mount_points: /data # Comma separated values.
