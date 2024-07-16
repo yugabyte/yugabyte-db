@@ -12,10 +12,9 @@ menu:
 type: docs
 ---
 
-Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data due to operations such as inserts, updates, and deletions are identified, captured, and made available for consumption by applications and other tools. 
+Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data due to operations such as inserts, updates, and deletions are identified, captured, and made available for consumption by applications and other tools.
 
 CDC in YugabyteDB is based on the Postgres Logical Replication model. The fundamental concept here is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
-
 
 ## Architecture<a id="architecture-1"></a>
 
@@ -25,20 +24,25 @@ The following are the main components of the Yugabyte CDC solution -
 
 1. Walsender - A special purpose PG backend responsible for streaming changes to the client and handling acknowledgments.
 
-2. Virtual WAL (VWAL) - Assembles changes from all the tablets of tables (under the publication) to maintain transactional consistency.
+2. Virtual WAL (VWAL) - Assembles changes from all the shards of user tables (under the publication) to maintain transactional consistency.
 
-3. CDCService - Retrieves changes from the WAL of a specified shard/tablet starting from a given checkpoint.
-
+3. CDCService - Retrieves changes from the WAL of a specified shard starting from a given checkpoint.
 
 ### Data Flow<a id="data-flow"></a>
 
 Logical replication starts by copying a snapshot of the data on the publisher database. Once that is done, changes on the publisher are streamed to the server as they occur in near real time.
 
+To setup Logical Replication, an application will first have to create a replication slot. When a replication slot is created a “boundary” is established between the snapshot data and the streaming changes. This “boundary” or “consistent_point” is a consistent state of the source database. It corresponds to a commit time (HybridTime value).  Data from transactions with commit time <= commit time corresponding to the consistent_point are consumed as part of the initial snapshot. Changes from transactions with commit time > commit time of the consistent_point are consumed in the streaming phase in transaction commit time order.
 
 #### Initial Snapshot<a id="initial-snapshot"></a>
-TBD
 
+The initial snapshot data for each table is consumed by executing a corresponding snapshot query (SELECT statement) on that table. This snapshot query should be executed as of the database state corresponding to the consistent\_point. This database state is represented by a value of HybridTime. 
 
+First, a `SET LOCAL yb_read_time TO ‘<consistent_point commit time> ht’` command should be executed on the connection (session). The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction.
+
+The HybridTime value to use in the `SET LOCAL yb_read_time `command is the value of the  `snapshot_name` field that is returned by the `CREATE_REPLICATION_SLOT` command. Alternatively, it can be obtained by querying the `pg_replication_slots` view.
+
+During Snapshot consumption, the snapshot data from all tables will be from the same consistent state (consistent\_point). At the end of Snapshot consumption, the state of the target system is at/based on the consistent\_point. History of the tables as of the consistent\_point is retained on the source until the snapshot is consumed.
 
 #### Streaming Data Flow<a id="streaming-data-flow"></a>
 
@@ -62,15 +66,15 @@ Step 3 - Walsender to client
 
 Walsender sends changes to the output plugin, which filters them according to the slot's publication and converts them into the client's desired format. These changes are then streamed to the client using the appropriate streaming replication protocols determined by the output plugin. Yugabyte follows the same streaming replication protocols as defined in PostgreSQL.
 
+// TODO (Siddharth): Fix the Link to the protocol section.
 {{< note title="Note" >}}
-Please refer to the official PostgreSQL documentation for [Streaming Replication Protocol](https://www.postgresql.org/docs/11/protocol-replication.html) & [Logical Streaming Replication Protocol](https://www.postgresql.org/docs/11/protocol-logical-replication.html).
+
+Please refer to the [Protocol Section](../../../explore/logical-replication/#Streaming-Protocol) for more details.
 
 {{< /note >}}
 
-
-
 {{< note title="Note" >}}
 
-See [Logical Replication](../../../explore/logical-replication/) in Explore to setup CDC.
+See [Logical Replication](../../../explore/logical-replication/) in Explore to setup Logical Replication in YugabyteDB.
 
 {{< /note >}}
