@@ -144,15 +144,11 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
         clusters: []
       };
       if (primaryCluster && primaryCluster.userIntent?.specificGFlags) {
-        const primaryGflagGroups = primaryCluster.userIntent.specificGFlags?.gflagGroups || [];
         primaryCluster.userIntent.specificGFlags = {
           ...primaryCluster.userIntent.specificGFlags,
-          gflagGroups: [
-            ...primaryGflagGroups,
-            ...(formValues.enablePGCompatibitilty
-              ? [GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY]
-              : [])
-          ]
+          gflagGroups: formValues.enablePGCompatibitilty
+            ? [GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY]
+            : []
         };
         payload.clusters.push(primaryCluster);
       }
