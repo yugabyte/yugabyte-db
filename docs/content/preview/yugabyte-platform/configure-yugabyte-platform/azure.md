@@ -126,8 +126,8 @@ If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/
 
 #### Additional fields
 
-- **Resource Group** is the group in which YugabyteDB node compute and network resources are created.
-- **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription.
+- **Resource Group** is the name of the resource group you created for your application, and in which YugabyteDB node compute and network resources will be created.
+- **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription. To get the subscription ID, open Subscriptions in Azure portal and find your subscription. Then, copy the Subscription ID.
 - **Tenant ID** represents the tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Microsoft Entra tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
 
