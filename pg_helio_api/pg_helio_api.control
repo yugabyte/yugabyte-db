@@ -1,5 +1,5 @@
 comment = 'Single Node API surface for PostgreSQL'
-default_version = '1.19-0'
+default_version = '1.20-0'
 module_pathname = '$libdir/pg_helio_api'
 relocatable = false
 superuser = true
