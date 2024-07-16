@@ -588,11 +588,9 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  Status NewSelect(const PgObjectId& table_id,
-                   const PgObjectId& index_id,
-                   const PgPrepareParameters *prepare_params,
-                   bool is_region_local,
-                   PgStatement **handle);
+  Status NewSelect(
+      const PgObjectId& table_id, const PgObjectId& index_id,
+      const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle);
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
@@ -640,11 +638,11 @@ class PgApiImpl {
 
   Status InitRandomState(PgStatement *handle, double rstate_w, uint64 rand_state);
 
-  Status SampleNextBlock(PgStatement *handle, bool *has_more);
+  Result<bool> SampleNextBlock(PgStatement* handle);
 
   Status ExecSample(PgStatement *handle);
 
-  Status GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows);
+  Result<EstimatedRowCount> GetEstimatedRowCount(PgStatement* handle);
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
