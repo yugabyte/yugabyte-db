@@ -89,7 +89,7 @@ class InstallNodeAgent(BaseYnpModule):
             })
         provider['regions'] = regions
         return provider
-    
+
     def _generate_instance_type_payload(self, context):
         time_stamp = int(time.time())
         instance_data = {
@@ -130,7 +130,7 @@ class InstallNodeAgent(BaseYnpModule):
         }
 
         return node_add_payload
-    
+
     def _get_provider(self, context):
         provider_url = self._get_provider_url(context)
         yba_url = context.get('url')

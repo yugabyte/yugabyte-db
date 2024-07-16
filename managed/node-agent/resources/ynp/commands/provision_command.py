@@ -89,7 +89,7 @@ class ProvisionCommand(Command):
         precheck_combined_script = self._build_script(all_templates, "precheck")
         run_combined_script = self._build_script(all_templates, "run")
 
-        return precheck_combined_script, run_combined_script
+        return run_combined_script, precheck_combined_script
 
     def _check_package(self, package_manager, package_name):
         """Check if a package is installed."""

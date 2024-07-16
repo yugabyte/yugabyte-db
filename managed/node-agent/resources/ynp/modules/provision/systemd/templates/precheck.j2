@@ -1,6 +1,6 @@
 systemd_dir="/etc/systemd/system"
 
-{% if not use_system_level_systemd  %}
+{% if use_system_level_systemd == 'False' %}
     systemd_dir="{{yb_home_dir}}/.config/systemd/user"
 {% endif %}
 

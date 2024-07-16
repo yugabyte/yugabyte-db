@@ -39,6 +39,8 @@ for port in "${ports[@]}"; do
     # Check if the port is open
     check_port "$vm_ip" "$port"
 
-    # Stop the server
-    kill $server_pid
+    # Stop the server if the PID exists
+    if ps -p $server_pid > /dev/null; then
+        kill $server_pid
+    fi
 done
