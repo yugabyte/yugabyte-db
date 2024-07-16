@@ -35,7 +35,7 @@ RewriteListCollectionsQueryForDistribution_HookType rewrite_list_collections_que
 TryGetShardNameForUnshardedCollection_HookType
 	try_get_shard_name_for_unsharded_collection_hook = NULL;
 GetDistributedApplicationName_HookType get_distributed_application_name_hook = NULL;
-
+IsNtoReturnSupported_HookType is_n_to_return_supported_hook = NULL;
 
 /*
  * Single node scenario is always a metadata coordinator
@@ -239,4 +239,19 @@ GetDistributedApplicationName(void)
 	}
 
 	return NULL;
+}
+
+
+/*
+ * Checks if server version supports ntoreturn spec.
+ */
+bool
+IsNtoReturnSupported(void)
+{
+	if (is_n_to_return_supported_hook != NULL)
+	{
+		return is_n_to_return_supported_hook();
+	}
+
+	return true;
 }

@@ -61,6 +61,7 @@
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "utils/version_utils.h"
+#include "api_hooks.h"
 
 extern bool EnableLetSupport;
 extern bool IgnoreLetOnQuerySupport;
@@ -1286,6 +1287,9 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 
 	StringView collectionName = { 0 };
 	bool hasFind = false;
+	bool hasNtoreturn = false;
+	bool hasBatchSize = false;
+	bool isNtoReturnSupported = IsNtoReturnSupported();
 	bson_value_t filter = { 0 };
 	bson_value_t limit = { 0 };
 	bson_value_t projection = { 0 };
@@ -1314,6 +1318,14 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		}
 		else if (StringViewEqualsCString(&keyView, "limit"))
 		{
+			/* In case ntoreturn is present and has been parsed already we throw this error */
+			if (!isNtoReturnSupported && hasNtoreturn)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+			}
+
 			/* Validation handled in the stage processing */
 			limit = *value;
 		}
@@ -1342,11 +1354,32 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		}
 		else if (StringViewEqualsCString(&keyView, "batchSize"))
 		{
+			/* In case ntoreturn is present and has been parsed already we throw this error */
+			if (!isNtoReturnSupported && hasNtoreturn)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+			}
 			SetBatchSize("batchSize", value, queryData);
+			hasBatchSize = !isNtoReturnSupported;
 		}
 		else if (StringViewEqualsCString(&keyView, "ntoreturn"))
 		{
-			SetBatchSize("ntoreturn", value, queryData);
+			/* In case of versions <6.0 we support ntoreturn */
+			if (isNtoReturnSupported)
+			{
+				SetBatchSize("ntoreturn", value, queryData);
+			}
+
+			/* In case ntoreturn is the last option in the find command we first check if batchSize or limit is present */
+			if (limit.value_type != BSON_TYPE_EOD || hasBatchSize)
+			{
+				ereport(ERROR, (errcode(MongoBadValue),
+								errmsg(
+									"'limit' or 'batchSize' fields can not be set with 'ntoreturn' field")));
+			}
+			hasNtoreturn = !isNtoReturnSupported;
 		}
 		else if (StringViewEqualsCString(&keyView, "let"))
 		{
@@ -1392,6 +1425,13 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	{
 		ereport(ERROR, (errcode(MongoInvalidNamespace),
 						errmsg("Collection name can't be empty.")));
+	}
+
+	/* In case only ntoreturn is present we give a different error.*/
+	if (!isNtoReturnSupported && hasNtoreturn)
+	{
+		ereport(ERROR, (errcode(MongoLocation5746102),
+						errmsg("Command is not supported for mongo version >= 5.1")));
 	}
 
 	/* Find supports negative limit (as well as count) */

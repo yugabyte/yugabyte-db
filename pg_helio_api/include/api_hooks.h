@@ -114,4 +114,9 @@ const char * TryGetShardNameForUnshardedCollection(Oid relationOid, uint64 colle
 
 const char * GetDistributedApplicationName(void);
 
+
+/*
+ * This checks whether the current server version supports ntoreturn spec.
+ */
+bool IsNtoReturnSupported(void);
 #endif

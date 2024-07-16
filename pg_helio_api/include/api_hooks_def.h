@@ -14,7 +14,6 @@
 #define EXTENSION_API_HOOKS_DEF_H
 
 #include "api_hooks_common.h"
-
 #include <nodes/parsenodes.h>
 
 /* Section: General Extension points */
@@ -143,6 +142,9 @@ extern NotifyUpdatedFieldPathView_HookType notify_updated_field_path_view_hook;
 
 typedef const char *(*GetDistributedApplicationName_HookType)(void);
 extern GetDistributedApplicationName_HookType get_distributed_application_name_hook;
+
+typedef bool (*IsNtoReturnSupported_HookType)(void);
+extern IsNtoReturnSupported_HookType is_n_to_return_supported_hook;
 
 extern bool DefaultInlineWriteOperations;
 #endif
