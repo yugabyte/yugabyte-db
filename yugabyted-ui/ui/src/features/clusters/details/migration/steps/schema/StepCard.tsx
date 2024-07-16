@@ -3,7 +3,7 @@ import { Box, LinearProgress, makeStyles, Paper, Typography, useTheme } from "@m
 import TodoIcon from "@app/assets/todo.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
-import { YBTooltip } from "@app/components";
+import { YBAccordion, YBTooltip } from "@app/components";
 
 const useStyles = makeStyles((theme) => ({
   paper: {
@@ -48,6 +48,7 @@ interface StepCardProps {
   showTooltip?: boolean;
   isDone?: boolean;
   isLoading?: boolean;
+  accordion?: boolean;
   children?: (isDone: boolean) => React.ReactNode;
 }
 
@@ -56,6 +57,7 @@ export const StepCard: FC<StepCardProps> = ({
   showTooltip = false,
   isDone = false,
   isLoading = false,
+  accordion = false,
   children,
 }) => {
   const classes = useStyles();
@@ -69,8 +71,9 @@ export const StepCard: FC<StepCardProps> = ({
   const content = children?.(isDone);
 
   return (
-    <Paper className={classes.paper}>
-      <Box p={2}>
+    <Accordionify
+      accordion={accordion}
+      titleComponent={
         <Box display="flex" alignItems="center" gridGap={theme.spacing(3)}>
           {!isDone && !isLoading && (
             <Box className={classes.dotWrapper}>
@@ -100,31 +103,64 @@ export const StepCard: FC<StepCardProps> = ({
             />
           )}
         </Box>
-
-        {isLoading && (
-          <Box ml={7} mt={2}>
-            <LinearProgress
-              classes={{
-                root: classes.progressbar,
-                colorPrimary: classes.barBg,
-                bar: classes.bar,
-              }}
-              variant="determinate"
-              value={progress}
-            />
-            <Box ml="auto" mt={1} width="fit-content">
-              <Typography variant="body2">
-                {completedObjects}/{totalObjects} objects completed
-              </Typography>
-            </Box>
+      }
+    >
+      {isLoading && (
+        <Box ml={7} mt={2}>
+          <LinearProgress
+            classes={{
+              root: classes.progressbar,
+              colorPrimary: classes.barBg,
+              bar: classes.bar,
+            }}
+            variant="determinate"
+            value={progress}
+          />
+          <Box ml="auto" mt={1} width="fit-content">
+            <Typography variant="body2">
+              {completedObjects}/{totalObjects} objects completed
+            </Typography>
           </Box>
-        )}
+        </Box>
+      )}
 
-        {!isLoading && !showTooltip && content && (
-          <Box ml={7} mt={2}>
-            {content}
-          </Box>
-        )}
+      {!isLoading && !showTooltip && content && (
+        <Box ml={7} mt={2}>
+          {content}
+        </Box>
+      )}
+    </Accordionify>
+  );
+};
+
+interface AccordionifyProps {
+  accordion?: boolean;
+  titleComponent: React.ReactNode;
+  children: React.ReactNode;
+}
+
+export const Accordionify: FC<AccordionifyProps> = ({
+  titleComponent,
+  accordion = false,
+  children,
+}) => {
+  const classes = useStyles();
+
+  if (accordion) {
+    return (
+      <YBAccordion titleContent={titleComponent}>
+        <Box width="100%" mt={-3}>
+          {children}
+        </Box>
+      </YBAccordion>
+    );
+  }
+
+  return (
+    <Paper className={classes.paper}>
+      <Box p={2}>
+        {titleComponent}
+        {children}
       </Box>
     </Paper>
   );
