@@ -151,7 +151,7 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
   };
 
   return (
-    <div className={alertClassName} role="alert" aria-label={`alert ${variant}`}>
+    <div className={clsx(alertClassName, className)} role="alert" aria-label={`alert ${variant}`}>
       {alertText && <span>{alertText}</span>}
       {getIcon()}
     </div>
