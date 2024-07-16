@@ -49,6 +49,8 @@
 
 const int MaximumLookupPipelineDepth = 20;
 
+extern bool EnableLookupLetSupport;
+
 /*
  * Struct having parsed view of the
  * arguments to Lookup.
@@ -89,7 +91,23 @@ typedef struct
 	 * has a join (foreign/local field).
 	 */
 	bool hasLookupMatch;
+
+	/* Whether or not let is specified.*/
+	bool hasLet;
 } LookupArgs;
+
+
+/*
+ * The walker state to replace the Let variable in queries.
+ */
+typedef struct LookupLetQueryTreeWalkerState
+{
+	/* numLevels up - modified during modify state*/
+	int numLevels;
+
+	/* the let variable in the query */
+	Var *originalVariable;
+} LookupLetQueryTreeWalkerState;
 
 
 /*
@@ -185,6 +203,8 @@ static Query * BuildRecursiveGraphLookupQuery(QuerySource parentSource,
 											  CommonTableExpr *baseCteExpr, int levelsUp);
 static void ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection);
 
+static void WalkRightQueryForLetAndSetLevelsUp(Query *rightQuery, Var *leftQueryLookupLet,
+											   int leftQueryLevelsUp);
 
 /*
  * Helper function that creates a UNION ALL Set operation statement
@@ -1504,6 +1524,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 			}
 
 			args->let = *value;
+			args->hasLet = !IsBsonValueEmptyDocument(value);
 		}
 		else if (strcmp(key, "localField") == 0)
 		{
@@ -1657,12 +1678,11 @@ static Query *
 ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 				  LookupArgs *lookupArgs)
 {
-	if (lookupArgs->let.value_type != BSON_TYPE_EOD)
+	if (!EnableLookupLetSupport && lookupArgs->hasLet)
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg("let not supported")));
 	}
-
 	if (list_length(query->targetList) > 1)
 	{
 		/* if we have multiple projectors, push to a subquery (Lookup needs 1 projector) */
@@ -1712,6 +1732,46 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	 */
 	bool canInlineInnerPipeline = CanInlineInnerLookupPipeline(lookupArgs);
 
+	Var *leftQueryLookupLet = NULL;
+
+	if (lookupArgs->hasLet)
+	{
+		/* Add the let evaluation into the left query's targetEntry */
+		TargetEntry *leftExpr = linitial(leftQuery->targetList);
+
+		/* Evaluate the let against the leftExpr */
+		pgbson *letPgbson = PgbsonInitFromDocumentBsonValue(&lookupArgs->let);
+
+		/* Let Expression Evaluation here */
+		Const *letConstValue = MakeBsonConst(letPgbson);
+		Node *trueConst = makeBoolConst(true, false);
+
+		List *args;
+		Oid funcOid;
+		if (context->variableSpec != NULL)
+		{
+			args = list_make4(leftExpr->expr, letConstValue, trueConst,
+							  context->variableSpec);
+			funcOid = BsonExpressionGetWithLetFunctionOid();
+		}
+		else
+		{
+			args = list_make3(leftExpr->expr, letConstValue, trueConst);
+			funcOid = BsonExpressionGetFunctionOid();
+		}
+
+		FuncExpr *letEvalFuncExpr = makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
+												 InvalidOid, COERCE_EXPLICIT_CALL);
+		TargetEntry *targetEntry = makeTargetEntry((Expr *) letEvalFuncExpr, list_length(
+													   leftQuery->targetList) + 1,
+												   "?letEvalExpr?", false);
+
+		leftQuery->targetList = lappend(leftQuery->targetList, targetEntry);
+		leftQueryLookupLet = makeVar(leftQueryRteIndex, targetEntry->resno, BsonTypeId(),
+									 -1, InvalidOid, 1);
+		subPipelineContext.variableSpec = (Expr *) leftQueryLookupLet;
+	}
+
 	if (!lookupArgs->hasLookupMatch)
 	{
 		/* If lookup is purely a pipeline (uncorrelated subquery) then
@@ -1736,9 +1796,6 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 &subPipelineContext);
 		}
 
-		/* Do not turn on the fast version if we're still using the legacy extract function
-		 * TODO: This can be removed once 1.16 fully deploys with this.
-		 */
 		bool canProcessForeignFieldAsDocumentId =
 			StringViewEquals(&lookupArgs->foreignField, &IdFieldStringView) &&
 			!isRightQueryAgnostic;
@@ -1797,6 +1854,12 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		{
 			rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
 												 &subPipelineContext);
+
+			if (list_length(rightQuery->targetList) > 1)
+			{
+				subPipelineContext.requiresSubQuery = true;
+			}
+
 			if (subPipelineContext.requiresSubQuery)
 			{
 				rightQuery = MigrateQueryToSubQuery(rightQuery, &subPipelineContext);
@@ -1909,6 +1972,13 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	}
 
 	/* Make the input a sub-query RTE (The left part of the join) */
+	if (leftQueryLookupLet != NULL)
+	{
+		/* Somewhere in the right query stack is the pointer to the left query. */
+		int leftQueryLevelsUp = 1;
+		WalkRightQueryForLetAndSetLevelsUp(rightQuery, leftQueryLookupLet,
+										   leftQueryLevelsUp);
+	}
 
 	/* Due to citus query_pushdown_planning.JoinTreeContainsSubqueryWalker
 	 * we can't just use SubQueries (however, CTEs work). So move the left
@@ -1987,6 +2057,9 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	if (lookupArgs->pipeline.value_type != BSON_TYPE_EOD &&
 		!canInlineInnerPipeline)
 	{
+		/* We need to do the apply the lookup pipeline. Before proceeding
+		 * if we have a "let" then project the evaluated let here.
+		 */
 		List *unwindArgs = list_make2(rightOutputExpr,
 									  MakeTextConst(lookupArgs->lookupAs.string,
 													lookupArgs->lookupAs.length));
@@ -2005,6 +2078,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		projectorQueryContext.databaseNameDatum =
 			subPipelineContext.databaseNameDatum;
 		projectorQueryContext.mongoCollection = subPipelineContext.mongoCollection;
+		projectorQueryContext.variableSpec = subPipelineContext.variableSpec;
 
 		subSelectQuery = MutateQueryWithPipeline(subSelectQuery,
 												 &lookupArgs->pipeline,
@@ -2023,6 +2097,11 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 lookupArgs->lookupAs.length,
 												 projectorQueryContext.
 												 requiresSubQuery, aggrefPtr);
+
+		if (leftQueryLookupLet != NULL)
+		{
+			WalkRightQueryForLetAndSetLevelsUp(subSelectQuery, leftQueryLookupLet, 1);
+		}
 
 		rightOutput->varlevelsup += projectorQueryContext.numNestedLevels + 1;
 		SubLink *subLink = makeNode(SubLink);
@@ -3133,4 +3212,51 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 
 	pfree(parseState);
 	return graphLookupQuery;
+}
+
+
+static Node *
+LookupReplaceLetVariableInQueries(Node *node, LookupLetQueryTreeWalkerState *state)
+{
+	CHECK_FOR_INTERRUPTS();
+
+	if (node == NULL)
+	{
+		return NULL;
+	}
+
+	if (IsA(node, Query))
+	{
+		state->numLevels++;
+		Query *result = query_tree_mutator((Query *) node,
+										   LookupReplaceLetVariableInQueries,
+										   state, QTW_EXAMINE_RTES_BEFORE |
+										   QTW_DONT_COPY_QUERY);
+		state->numLevels--;
+		return (Node *) result;
+	}
+	else if (IsA(node, Var) && (Var *) node == state->originalVariable)
+	{
+		Var *originalVar = (Var *) node;
+		Var *copyVar = copyObject(originalVar);
+		copyVar->varlevelsup = state->numLevels;
+		return (Node *) copyVar;
+	}
+
+	return expression_tree_mutator(node, LookupReplaceLetVariableInQueries, state);
+}
+
+
+static void
+WalkRightQueryForLetAndSetLevelsUp(Query *rightQuery, Var *leftQueryLookupLet, int
+								   leftQueryLevelsUp)
+{
+	LookupLetQueryTreeWalkerState state = { 0 };
+	state.numLevels = leftQueryLevelsUp;
+	state.originalVariable = leftQueryLookupLet;
+
+	query_tree_mutator((Query *) rightQuery,
+					   LookupReplaceLetVariableInQueries, &state,
+					   QTW_EXAMINE_RTES_BEFORE |
+					   QTW_DONT_COPY_QUERY);
 }
