@@ -399,7 +399,6 @@ export const createUniverse = async ({
     //patch - end
 
     // now everything is ready to create universe
-    console.log(finalPayload, 'Final');
     const response = await api.createUniverse(finalPayload);
 
     //redirect to task page
@@ -511,7 +510,7 @@ export const getKubernetesDiffClusterData = (
   };
 };
 
-export const isVerionPGSupported = (dbVersion: string) => {
+export const isVersionPGSupported = (dbVersion: string) => {
   return (
     compareYBSoftwareVersions({
       versionA: dbVersion,

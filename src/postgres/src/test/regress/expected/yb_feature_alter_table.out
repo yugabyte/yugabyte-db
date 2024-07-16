@@ -910,16 +910,18 @@ SELECT * FROM demo;
  1
 (2 rows)
 
--- Test that an attemp to drop primary key column with sequence generator
+-- Test dropping a primary key column with sequence generator
 -- does not delete the associated sequence.
 CREATE TABLE tbl_serial_primary_key (k serial PRIMARY KEY, v text);
 ALTER TABLE tbl_serial_primary_key DROP COLUMN k;
-ERROR:  cannot drop key column "k"
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO tbl_serial_primary_key(v) VALUES ('ABC');
 SELECT * FROM tbl_serial_primary_key;
- k |  v
----+-----
- 1 | ABC
+  v  
+-----
+ ABC
 (1 row)
 
 DROP TABLE tbl_serial_primary_key;

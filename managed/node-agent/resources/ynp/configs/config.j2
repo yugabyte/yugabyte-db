@@ -32,6 +32,7 @@ nproc_limit = 12000
 vm_swappiness = 0
 kernel_core_pattern = {{ ynp.yb_home_dir }}/cores/core_%%p_%%t_%%E
 vm_max_map_count = 262144
+mount_points = {{ ynp.mount_points }}
 
 [ConfigureOs.limits]
 core = unlimited
@@ -70,4 +71,5 @@ ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
 yb_user = yugabyte
 yb_home_dir = {{ ynp.yb_home_dir }}
 tmp_directory = {{ ynp.tmp_directory }}
+mount_points = {{ ynp.mount_points }}
 

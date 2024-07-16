@@ -1335,8 +1335,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return tableSchemaMap;
   }
 
+  /**
+   * It returns a map from main table id to a list of index table ids associated with the main table
+   * in the universe. `getIndexedTableId` was added to YBDB 2.21.1.0-b168.
+   *
+   * @param tableInfoList The list of table info in the universe
+   * @return A map from main table id to a list of index table ids
+   */
   public static Map<String, List<String>> getMainTableIndexTablesMap(
+      Universe universe,
       Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    // Ensure it is not called for a universe older than 2.21.1.0-b168. For older version use the
+    // other getMainTableIndexTablesMap method that uses an RPC available in older universes.
+    if (Util.compareYbVersions(
+            "2.21.1.0-b168",
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            true)
+        > 0) {
+      throw new IllegalStateException(
+          "This method is only supported for universes newer than or equal to 2.21.1.0-b168");
+    }
     Map<String, List<String>> mainTableIndexTablesMap = new HashMap<>();
     tableInfoList.forEach(
         tableInfo -> {

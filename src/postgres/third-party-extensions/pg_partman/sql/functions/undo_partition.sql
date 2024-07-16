@@ -68,12 +68,14 @@ BEGIN
  * For trigger-based, moves data to parent
  */
 
+/* YB: advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_native'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'undo_partition_native already running.';
     partitions_undone = -1;
     RETURN;
 END IF;
+*/
 
 IF p_parent_table = p_target_table THEN
     RAISE EXCEPTION 'Target table cannot be the same as the parent table';
@@ -213,7 +215,9 @@ IF v_partition_type != 'native' THEN
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
+                    /* YB: ACCESS EXCLUSIVE not supported yet
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_parent_tablename);
+                    */
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN
@@ -293,7 +297,9 @@ LOOP
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
+                    /* YB: ACCESS EXCLUSIVE not supported yet
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_child_table);
+                    */
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN

@@ -1492,7 +1492,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
-  RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders());
+  RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders(state->epoch));
 
   return Status::OK();
 }

@@ -1,17 +1,19 @@
-import { ChangeEvent, ReactElement } from 'react';
+import { useState, useEffect, ChangeEvent, ReactElement, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useController } from 'react-hook-form';
 import { Box, makeStyles } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { YBButtonGroup, YBLabel, YBInputField } from '../../../../../../components';
+import { UniverseFormContext } from '../../../UniverseFormContainer';
 import { UniverseFormData } from '../../../utils/dto';
+import { getPrimaryCluster } from '../../../../../../../utils/universeUtilsTyped';
 import { REPLICATION_FACTOR_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface ReplicationFactorProps {
-  disabled?: boolean;
+  disabled: boolean;
   isPrimary: boolean;
-  isViewMode: boolean;
+  isEditMode: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -29,9 +31,17 @@ const ASYNC_RF_MAX = 15;
 export const ReplicationFactor = ({
   disabled,
   isPrimary,
-  isViewMode
+  isEditMode
 }: ReplicationFactorProps): ReactElement => {
+  const { universeConfigureTemplate } = useContext(
+    UniverseFormContext
+  )[0];
+  const clusters = universeConfigureTemplate?.clusters;
+  const primaryCluster = getPrimaryCluster(clusters);
+  const replicationFactor = primaryCluster?.userIntent?.replicationFactor;
+
   const { control, setValue } = useFormContext<UniverseFormData>();
+  const [initialRF, setInitialRF] = useState<number>(ASYNC_RF_MIN);
   const { t } = useTranslation();
   const classes = useStyles();
   const fieldClasses = useFormFieldStyles();
@@ -41,6 +51,10 @@ export const ReplicationFactor = ({
   } = useController({
     name: REPLICATION_FACTOR_FIELD
   });
+
+  useEffect(() => {
+    setInitialRF(replicationFactor!);
+  }, []);
 
   const handleSelect = (val: number) => {
     setValue(REPLICATION_FACTOR_FIELD, val);
@@ -80,8 +94,9 @@ export const ReplicationFactor = ({
             color={'default'}
             values={PRIMARY_RF}
             selectedNum={value}
-            disabled={disabled || isViewMode}
+            disabled={disabled}
             handleSelect={handleSelect}
+            shouldDisableButtonFn={(buttonValue: number) => isEditMode && buttonValue < initialRF}
           />
         ) : (
           <Box>
@@ -94,7 +109,7 @@ export const ReplicationFactor = ({
                 min: ASYNC_RF_MIN,
                 max: ASYNC_RF_MAX
               }}
-              disabled={isViewMode}
+              disabled={disabled}
               className={classes.overrideMuiInput}
               onChange={handleChange}
             />

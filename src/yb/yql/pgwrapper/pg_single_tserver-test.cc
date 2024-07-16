@@ -772,8 +772,11 @@ class PgFastBackwardScanTest
   Status FetchAndValidate(
       PGConn& conn, const std::string& fetch_stmt,
       const std::string& expected_result, size_t num_iterations = 4) {
+    VLOG_WITH_FUNC(1)
+        << "fetch stmt: '" << fetch_stmt << "' expected result: '" << expected_result << "'";
     for ([[maybe_unused]] const auto _ : Range(num_iterations)) {
       const auto result = VERIFY_RESULT(conn.FetchAllAsString(fetch_stmt));
+      VLOG_WITH_FUNC(1) << "iteration: " << _ << " actual result: '" << result << "'";
       SCHECK_EQ(result, expected_result, IllegalState, "Unexpected result");
     }
     return Status::OK();
