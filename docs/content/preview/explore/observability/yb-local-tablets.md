@@ -1,7 +1,7 @@
 ---
-title: View YSQL/YCQL and tablet metadata with yb_local_tablets
-linkTitle: YQL and tablet metadata
-description: View tablet metadata for YSQL and YCQL statements, and system tablets executed by a server.
+title: View metadata for YSQL/YCQL/system tablets on a server
+linkTitle: Tablets metadata
+description: View metadata for YSQL, YCQL, and system tablets on a server.
 headerTitle: View YSQL/YCQL and tablet metadata with yb_local_tablets
 menu:
   preview:
@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-Use the YugabyteDB `yb_local_tablets` view to see metadata about the [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) statements, and system [tablets](../../../architecture/key-concepts/#tablet) of a node.
+Use YSQL `yb_local_tablets` view to fetch the metadata for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and system [tablets](../../../architecture/key-concepts/#tablet) of a node. This view returns the same information that is available on `<yb-tserver-ip>:9000/tablets`.
 
-This view is also present on `<yb-tserver_ip>:9000/tablets` in the form of a YSQL view, and can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view using the tablet ID. For example, see [Detect a hot shard](../../observability/active-session-history/#detect-a-hot-shard).
+While debugging a system with [Active Session History](../../observability/active-session-history/), the `tablet_id` column of this view can be can be joined with the `wait_event_aux` column of the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view. For example, see [Detect a hot shard](../../observability/active-session-history/#detect-a-hot-shard).
 
 The columns of the `yb_local_tablets` view are described in the following table.
 
