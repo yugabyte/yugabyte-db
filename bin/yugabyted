@@ -1186,9 +1186,6 @@ class ControlScript(object):
         Output.print_and_log(msg)
 
     def collect_logs(self):
-        if not self.script.is_running():
-            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
-                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
         logpath = self.configs.saved_data.get("log_dir")
         collect_at_dir=self.configs.temp_data.get("collect_at_dir")
         if not os.path.exists(logpath):
