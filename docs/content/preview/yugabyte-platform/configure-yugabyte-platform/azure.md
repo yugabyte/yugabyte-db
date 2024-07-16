@@ -107,29 +107,22 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-### Client ID
+Enter the following details of your Azure cloud account, as described in [Azure cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-azure/).
 
-The ID of an application you registered with the Microsoft Identity Platform. You must register an application in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
+#### Client ID
 
-Your Azure application needs to have a [resource group](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/overview#resource-groups) with `Network Contributor` and `Virtual Machine Contributor` roles assigned. See [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
-
-For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate) in the Microsoft Azure documentation.
+Provide the ID of the application you registered with the Microsoft Identity Platform.
 
 #### Credential type
 
-YugabyteDB Anywhere requires cloud permissions to create VMs. You can grant access to YugabyteDB Anywhere to manage Azure resources such as VMs in one of the following ways:
+If you [added credentials](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=client-secret#add-credentials) in the form of a client secret to your registered application:
 
-- [Add credentials](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=client-secret#add-credentials) in the form of a client secret to your registered application. YugabyteDB Anywhere will use these credentials to authenticate with Azure.
+1. Select **Specify Client Secret**.
+1. Enter the Client Secret of the application associated with the Client ID you provided. You need to enter the `Value` of the secret (not the `Secret ID`).
 
-    Select **Specify Client Secret** and enter the Client Secret of the application associated with the Client ID you provided. You need to enter the `Value` of the secret (not the `Secret ID`).
+If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) of the Azure VM hosting YugabyteDB Anywhere to authenticate:
 
-    For information on creating client secrets, see [Create a new client secret](https://learn.microsoft.com/en-us/entra/identity-platform/howto-create-service-principal-portal#option-3-create-a-new-client-secret) in the Microsoft Azure documentation.
-
-- [Assign a managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) to the Azure VM hosting YugabyteDB Anywhere. Azure will use the managed identity assigned to your instance to authenticate.
-
-    Select **Use Managed Identity from this YBA host's instance**.
-
-    For information on assigning roles for managed identities, see [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
+- Select **Use Managed Identity from this YBA host's instance**.
 
 #### Additional fields
 
