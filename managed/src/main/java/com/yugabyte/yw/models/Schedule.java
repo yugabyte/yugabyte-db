@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
@@ -58,11 +60,15 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
@@ -82,15 +88,50 @@ import play.libs.Json;
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
 
+  // This is a key lock for Schedule by UUID.
+  public static final KeyLock<UUID> SCHEDULE_KEY_LOCK = new KeyLock<UUID>();
+
   public enum State {
+    @EnumValue("Deleting")
+    Deleting("Error"),
+
+    @EnumValue("Error")
+    Error("Deleting", "Creating", "Editing"),
+
     @EnumValue("Active")
-    Active,
+    Active("Editing", "Deleting", "Stopped"),
+
+    @EnumValue("Creating")
+    Creating("Active", "Error", "Deleting"),
 
     @EnumValue("Paused")
-    Paused,
+    Paused(),
 
     @EnumValue("Stopped")
-    Stopped,
+    Stopped("Active", "Deleting"),
+
+    @EnumValue("Editing")
+    Editing("Active", "Deleting", "Error");
+
+    private final String[] allowedTransitions;
+
+    State(String... allowedTransitions) {
+      this.allowedTransitions = allowedTransitions;
+    }
+
+    public Set<State> allowedTransitionStates() {
+      return Arrays.asList(allowedTransitions).stream()
+          .map(s -> State.valueOf(s))
+          .collect(Collectors.toSet());
+    }
+
+    public boolean stateTransitionAllowed(State state) {
+      return this.equals(state) || allowedTransitionStates().contains(state);
+    }
+
+    public boolean isIntermediateState() {
+      return this.equals(Deleting) || this.equals(Creating) || this.equals(Editing);
+    }
   }
 
   public enum SortBy implements PagedQuery.SortByIF {
@@ -212,6 +253,55 @@ public class Schedule extends Model {
   @ApiModelProperty(value = "User who created the schedule policy", accessMode = READ_ONLY)
   private String userEmail;
 
+  /* ---- Locking Schedule updater ---- */
+  public interface ScheduleUpdater {
+    void run(Schedule schedule);
+  }
+
+  public static Schedule saveDetails(
+      UUID customerUUID, UUID scheduleUUID, ScheduleUpdater updater) {
+    SCHEDULE_KEY_LOCK.acquireLock(scheduleUUID);
+    try {
+      AtomicReference<Schedule> scheduleRef = new AtomicReference<>();
+      TransactionUtil.doInTxn(
+          () -> {
+            Schedule schedule = getOrBadRequest(customerUUID, scheduleUUID);
+            updater.run(schedule);
+            schedule.save();
+            scheduleRef.set(schedule);
+          },
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+      return scheduleRef.get();
+    } finally {
+      SCHEDULE_KEY_LOCK.releaseLock(scheduleUUID);
+    }
+  }
+
+  /* ---- Locking Schedule updater end ---- */
+
+  public static Schedule modifyScheduleRunningAndSave(
+      UUID customerUUID, UUID scheduleUUID, boolean isRunning) {
+    return modifyScheduleRunningAndSave(
+        customerUUID, scheduleUUID, isRunning, false /* onlyLockIfActive */);
+  }
+
+  public static Schedule modifyScheduleRunningAndSave(
+      UUID customerUUID, UUID scheduleUUID, boolean isRunning, boolean onlyLockIfActive) {
+    ScheduleUpdater updater =
+        s -> {
+          if (onlyLockIfActive && (s.status != State.Active)) {
+            LOG.error("Schedule is not active");
+            throw new RuntimeException("Schedule is not active");
+          } else if (isRunning && s.isRunningState()) {
+            LOG.error("Schedule is currently locked");
+            throw new RuntimeException("Schedule is currently locked");
+          } else {
+            s.setRunningState(isRunning);
+          }
+        };
+    return saveDetails(customerUUID, scheduleUUID, updater);
+  }
+
   public void updateBacklogStatus(boolean backlogStatus) {
     this.backlogStatus = backlogStatus;
     save();
@@ -237,8 +327,8 @@ public class Schedule extends Model {
   public void resetSchedule() {
     this.status = State.Active;
     // Update old next Expected Task time if it expired due to non-active state.
-    if (Util.isTimeExpired(this.nextScheduleTaskTime)) {
-      updateNextScheduleTaskTime(nextExpectedTaskTime(null, this));
+    if (this.nextScheduleTaskTime == null || Util.isTimeExpired(this.nextScheduleTaskTime)) {
+      updateNextScheduleTaskTime(nextExpectedTaskTime(null /* lastScheduledTime */));
     }
     save();
   }
@@ -246,15 +336,89 @@ public class Schedule extends Model {
   public void resetIncrementSchedule() {
     this.status = State.Active;
     // Update old next Expected Task time if it expired due to non-active state.
-    if (Util.isTimeExpired(this.nextIncrementScheduleTaskTime)) {
+    if (this.nextIncrementScheduleTaskTime == null
+        || Util.isTimeExpired(this.nextIncrementScheduleTaskTime)) {
       updateNextIncrementScheduleTaskTime(ScheduleUtil.nextExpectedIncrementTaskTime(this));
     }
     save();
   }
 
+  // Use locking updater based status change.
+  @Deprecated
   public void stopSchedule() {
     this.status = State.Stopped;
     save();
+  }
+
+  private void updateStatus(State state) {
+    if (!this.status.stateTransitionAllowed(state)) {
+      throw new RuntimeException(
+          String.format("Transition of Schedule from %s to %s not allowed.", this.status, state));
+    }
+    this.status = state;
+  }
+
+  public static Schedule updateStatusAndSave(UUID customerUUID, UUID scheduleUUID, State state) {
+    ScheduleUpdater updater = s -> s.updateStatus(state);
+    return saveDetails(customerUUID, scheduleUUID, updater);
+  }
+
+  private void updateNewBackupScheduleTimes() {
+    ScheduleTask lastTask = ScheduleTask.getLastTask(this.getScheduleUUID());
+    Date nextScheduleTaskTime = null;
+    if (lastTask == null || Util.isTimeExpired(nextExpectedTaskTime(lastTask.getScheduledTime()))) {
+      nextScheduleTaskTime = nextExpectedTaskTime(null /* lastScheduledTime */);
+    } else {
+      nextScheduleTaskTime = nextExpectedTaskTime(lastTask.getScheduledTime());
+    }
+    Date nextExpectedIncrementScheduleTaskTime = null;
+    long incrementalBackupFrequency =
+        Json.fromJson(this.taskParams, BackupRequestParams.class).incrementalBackupFrequency;
+    if (incrementalBackupFrequency != 0L) {
+      nextExpectedIncrementScheduleTaskTime = ScheduleUtil.nextExpectedIncrementTaskTime(this);
+    }
+    this.nextScheduleTaskTime = nextScheduleTaskTime;
+    this.nextIncrementScheduleTaskTime = nextExpectedIncrementScheduleTaskTime;
+  }
+
+  // Toggle Schedule state
+  public static Schedule toggleBackupSchedule(
+      UUID customerUUID, UUID scheduleUUID, State newState) {
+    ScheduleUpdater updater =
+        s -> {
+          if (newState == s.status) {
+            throw new RuntimeException(String.format("Schedule is already %s", s.status));
+          }
+          if (s.isRunningState() && newState == State.Stopped) {
+            throw new RuntimeException("Schedule is currently locked");
+          }
+          s.updateStatus(newState);
+          if (newState == State.Active) {
+            s.updateNewBackupScheduleTimes();
+          }
+        };
+    return saveDetails(customerUUID, scheduleUUID, updater);
+  }
+
+  // On frequency or cron expression change, modify new full/incremental backup schedule time and
+  // save
+  public static Schedule updateNewBackupScheduleTimeAndStatusAndSave(
+      UUID customerUUID, UUID scheduleUUID, State newState, BackupRequestParams newScheduleParams) {
+    ScheduleUpdater updater =
+        s -> {
+          if (newScheduleParams.schedulingFrequency > 0L) {
+            s.frequency = newScheduleParams.schedulingFrequency;
+            s.frequencyTimeUnit = newScheduleParams.frequencyTimeUnit;
+            s.cronExpression = null;
+          } else if (StringUtils.isNotBlank(newScheduleParams.cronExpression)) {
+            s.cronExpression = newScheduleParams.cronExpression;
+            s.frequency = 0L;
+          }
+          s.setTaskParams(Json.toJson(newScheduleParams));
+          s.updateNewBackupScheduleTimes();
+          s.updateStatus(newState);
+        };
+    return saveDetails(customerUUID, scheduleUUID, updater);
   }
 
   public void updateFrequency(long frequency) {
@@ -291,6 +455,32 @@ public class Schedule extends Model {
 
   public static final Finder<UUID, Schedule> find = new Finder<UUID, Schedule>(Schedule.class) {};
 
+  public static Schedule getOrCreateSchedule(
+      UUID customerUUID, BackupRequestParams scheduleParams) {
+    Schedule schedule = null;
+    Optional<Schedule> optionalSchedule =
+        Schedule.maybeGetScheduleByUniverseWithName(
+            scheduleParams.scheduleName,
+            scheduleParams.getUniverseUUID(),
+            scheduleParams.customerUUID);
+    if (!optionalSchedule.isPresent()) {
+      schedule =
+          Schedule.create(
+              scheduleParams.customerUUID,
+              scheduleParams.getUniverseUUID(),
+              scheduleParams,
+              TaskType.CreateBackup,
+              scheduleParams.schedulingFrequency,
+              scheduleParams.cronExpression,
+              scheduleParams.frequencyTimeUnit,
+              scheduleParams.scheduleName,
+              State.Creating);
+    } else {
+      schedule = optionalSchedule.get();
+    }
+    return schedule;
+  }
+
   public static Schedule create(
       UUID customerUUID,
       UUID ownerUUID,
@@ -300,6 +490,28 @@ public class Schedule extends Model {
       String cronExpression,
       TimeUnit frequencyTimeUnit,
       String scheduleName) {
+    return create(
+        customerUUID,
+        ownerUUID,
+        params,
+        taskType,
+        frequency,
+        cronExpression,
+        frequencyTimeUnit,
+        scheduleName,
+        State.Active);
+  }
+
+  public static Schedule create(
+      UUID customerUUID,
+      UUID ownerUUID,
+      ITaskParams params,
+      TaskType taskType,
+      long frequency,
+      String cronExpression,
+      TimeUnit frequencyTimeUnit,
+      String scheduleName,
+      State status) {
     Schedule schedule = new Schedule();
     schedule.setScheduleUUID(UUID.randomUUID());
     schedule.customerUUID = customerUUID;
@@ -307,14 +519,14 @@ public class Schedule extends Model {
     schedule.taskType = taskType;
     schedule.taskParams = Json.toJson(params);
     schedule.frequency = frequency;
-    schedule.status = State.Active;
+    schedule.status = status;
     schedule.cronExpression = cronExpression;
     schedule.ownerUUID = ownerUUID;
     schedule.frequencyTimeUnit = frequencyTimeUnit;
     schedule.userEmail = Util.maybeGetEmailFromContext();
     schedule.scheduleName =
         scheduleName != null ? scheduleName : "schedule-" + schedule.getScheduleUUID();
-    schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);
+    schedule.nextScheduleTaskTime = schedule.nextExpectedTaskTime(null /* lastScheduledTime */);
     schedule.nextIncrementScheduleTaskTime = ScheduleUtil.nextExpectedIncrementTaskTime(schedule);
     schedule.save();
     return schedule;
@@ -358,8 +570,16 @@ public class Schedule extends Model {
     return find.query().where().idEq(scheduleUUID).findOne();
   }
 
+  private static Schedule get(UUID customerUUID, UUID scheduleUUID) {
+    return find.query().where().idEq(scheduleUUID).eq("customer_uuid", customerUUID).findOne();
+  }
+
   public static Optional<Schedule> maybeGet(UUID scheduleUUID) {
     return Optional.ofNullable(get(scheduleUUID));
+  }
+
+  public static Optional<Schedule> maybeGet(UUID customerUUID, UUID scheduleUUID) {
+    return Optional.ofNullable(get(customerUUID, scheduleUUID));
   }
 
   public static Schedule getOrBadRequest(UUID scheduleUUID) {
@@ -371,8 +591,7 @@ public class Schedule extends Model {
   }
 
   public static Schedule getOrBadRequest(UUID customerUUID, UUID scheduleUUID) {
-    Schedule schedule =
-        find.query().where().idEq(scheduleUUID).eq("customer_uuid", customerUUID).findOne();
+    Schedule schedule = get(customerUUID, scheduleUUID);
     if (schedule == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -488,6 +707,15 @@ public class Schedule extends Model {
         .findOne();
   }
 
+  public static Optional<Schedule> maybeGetScheduleByUniverseWithName(
+      String scheduleName, UUID universeUUID, UUID customerUUID) {
+    Schedule schedule = getScheduleByUniverseWithName(scheduleName, universeUUID, customerUUID);
+    if (schedule == null) {
+      return Optional.empty();
+    }
+    return Optional.of(schedule);
+  }
+
   private static SchedulePagedApiResponse createResponse(SchedulePagedResponse response) {
     List<Schedule> schedules = response.getEntities();
     List<ScheduleResp> schedulesList =
@@ -593,11 +821,11 @@ public class Schedule extends Model {
     return builder.build();
   }
 
-  public static Date nextExpectedTaskTime(Date lastScheduledTime, Schedule schedule) {
+  public Date nextExpectedTaskTime(@Nullable Date lastScheduledTime) {
     long nextScheduleTime;
-    if (schedule.cronExpression == null) {
+    if (this.cronExpression == null) {
       if (lastScheduledTime != null) {
-        nextScheduleTime = lastScheduledTime.getTime() + schedule.frequency;
+        nextScheduleTime = lastScheduledTime.getTime() + this.frequency;
       } else {
         // The task will be definitely executed under 2 minutes (scheduler frequency).
         return new Date();
@@ -606,7 +834,7 @@ public class Schedule extends Model {
       lastScheduledTime = new Date();
       CronParser unixCronParser = new CronParser(CronDefinitionBuilder.instanceDefinitionFor(UNIX));
       ExecutionTime executionTime =
-          ExecutionTime.forCron(unixCronParser.parse(schedule.cronExpression));
+          ExecutionTime.forCron(unixCronParser.parse(this.cronExpression));
       ZoneId defaultZoneId = ZoneId.systemDefault();
       Instant instant = lastScheduledTime.toInstant();
       ZonedDateTime zonedDateTime = instant.atZone(defaultZoneId);
@@ -671,5 +899,30 @@ public class Schedule extends Model {
             .parallelism(params.parallelism)
             .build();
     return backupInfo;
+  }
+
+  /**
+   * Returns max of history retention interval required for PIT enabled schedules.
+   *
+   * @param universeUUID
+   * @param includeIntermediate If true, use intermediate schedule state - Creating/Editing when
+   *     calculating the max value
+   * @return Retention value in seconds
+   */
+  public static Duration getMaxBackupIntervalInUniverseForPITRestore(
+      UUID universeUUID, boolean includeIntermediate) {
+    List<Schedule> schedules =
+        getAllSchedulesByOwnerUUIDAndType(universeUUID, TaskType.CreateBackup);
+    List<State> states = new ArrayList<>(Arrays.asList(State.Active, State.Stopped));
+    if (includeIntermediate) {
+      states.add(State.Editing);
+      states.add(State.Creating);
+    }
+    return schedules.stream()
+        .filter(s -> states.contains(s.status))
+        .map(s -> Json.fromJson(s.getTaskParams(), BackupRequestParams.class))
+        .map(ScheduleUtil::getBackupIntervalForPITRestore)
+        .max(Comparator.naturalOrder())
+        .orElse(Duration.ofSeconds(0));
   }
 }

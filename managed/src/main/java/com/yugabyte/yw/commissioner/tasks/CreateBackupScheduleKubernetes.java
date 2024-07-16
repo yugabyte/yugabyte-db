@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 YugaByte, Inc. and Contributors
+ * Copyright 2024 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -13,24 +13,26 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class CreateBackupSchedule extends BackupScheduleBase {
+public class CreateBackupScheduleKubernetes extends BackupScheduleBaseKubernetes {
 
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
 
   @Inject
-  protected CreateBackupSchedule(
+  protected CreateBackupScheduleKubernetes(
       BaseTaskDependencies baseTaskDependencies,
       YbcManager ybcManager,
-      CustomerConfigService customerConfigService) {
-    super(baseTaskDependencies);
-    this.customerConfigService = customerConfigService;
+      CustomerConfigService customerConfigService,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory);
     this.ybcManager = ybcManager;
+    this.customerConfigService = customerConfigService;
   }
 
   @Override

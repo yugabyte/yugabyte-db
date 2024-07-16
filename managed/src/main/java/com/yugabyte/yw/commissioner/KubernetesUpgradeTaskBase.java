@@ -556,53 +556,27 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   }
 
   protected void createNonRestartGflagsUpgradeTask(Universe universe) {
-    boolean enableYbc = universe.isYbcEnabled();
-    String ybcSoftwareVersion = universe.getUniverseDetails().getYbcSoftwareVersion();
-    String softwareVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    // Overrides are taken from primary cluster irrespective of which cluster
-    // we're upgrading.
-    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
-
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
-    PlacementInfo placementInfo = primaryCluster.placementInfo;
+    KubernetesGflagsUpgradeCommonParams upgradeParamsPrimary =
+        new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster);
     createSingleKubernetesExecutorTask(
-        universe.getName(), CommandType.POD_INFO, placementInfo, false /*isReadOnlyCluster*/);
-
-    KubernetesPlacement placement =
-        new KubernetesPlacement(placementInfo, false /*isReadOnlyCluster*/);
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
-
-    // Overrides are always taken from the primary cluster
-    String universeOverrides = primaryCluster.userIntent.universeOverrides;
-    Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
-    if (azOverrides == null) {
-      azOverrides = new HashMap<String, String>();
-    }
-    String masterAddresses =
-        KubernetesUtil.computeMasterAddresses(
-            placementInfo,
-            placement.masters,
-            taskParams().nodePrefix,
-            universe.getName(),
-            provider,
-            universeDetails.communicationPorts.masterRpcPort,
-            newNamingStyle);
-
+        universe.getName(),
+        CommandType.POD_INFO,
+        primaryCluster.placementInfo,
+        false /*isReadOnlyCluster*/);
     upgradePodsNonRestart(
         universe.getName(),
-        placement,
-        masterAddresses,
+        upgradeParamsPrimary.getPlacement(),
+        upgradeParamsPrimary.getMasterAddresses(),
         ServerType.EITHER,
-        softwareVersion,
-        universeOverrides,
-        azOverrides,
-        newNamingStyle,
+        upgradeParamsPrimary.getYbSoftwareVersion(),
+        upgradeParamsPrimary.getUniverseOverrides(),
+        upgradeParamsPrimary.getAzOverrides(),
+        upgradeParamsPrimary.isNewNamingStyle(),
         false /* isReadOnlyCluster */,
-        enableYbc,
-        ybcSoftwareVersion);
+        upgradeParamsPrimary.isEnableYbc(),
+        upgradeParamsPrimary.getYbcSoftwareVersion());
 
     MastersAndTservers mastersAndTservers = fetchNodes(UpgradeOption.NON_RESTART_UPGRADE);
     MastersAndTservers primaryClusterMastersAndTservers =
@@ -628,29 +602,28 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         });
 
     if (universeDetails.getReadOnlyClusters().size() != 0) {
-      PlacementInfo readClusterPlacementInfo =
-          universeDetails.getReadOnlyClusters().get(0).placementInfo;
+      Cluster readOnlyCluster = universeDetails.getReadOnlyClusters().get(0);
+      KubernetesGflagsUpgradeCommonParams upgradeParamsReadOnly =
+          new KubernetesGflagsUpgradeCommonParams(universe, readOnlyCluster);
+      PlacementInfo readClusterPlacementInfo = readOnlyCluster.placementInfo;
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,
           readClusterPlacementInfo,
           true /*isReadOnlyCluster*/);
 
-      KubernetesPlacement readClusterPlacement =
-          new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
-
       upgradePodsNonRestart(
           universe.getName(),
-          readClusterPlacement,
-          masterAddresses,
+          upgradeParamsReadOnly.getPlacement(),
+          upgradeParamsReadOnly.getMasterAddresses(),
           ServerType.TSERVER,
-          softwareVersion,
-          universeOverrides,
-          azOverrides,
-          newNamingStyle,
+          upgradeParamsReadOnly.getYbSoftwareVersion(),
+          upgradeParamsReadOnly.getUniverseOverrides(),
+          upgradeParamsReadOnly.getAzOverrides(),
+          upgradeParamsReadOnly.isNewNamingStyle(),
           true /* isReadOnlyCluster */,
-          enableYbc,
-          ybcSoftwareVersion);
+          upgradeParamsReadOnly.isEnableYbc(),
+          upgradeParamsReadOnly.getYbcSoftwareVersion());
 
       Cluster newReadOnlyCluster = taskParams().getReadOnlyClusters().get(0);
       createSetFlagInMemoryTasks(

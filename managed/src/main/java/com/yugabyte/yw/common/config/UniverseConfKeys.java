@@ -1242,4 +1242,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Threshold to raise a error when time drift exceeds this amount",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitEnabledBackupsRetentionBufferTimeSecs =
+      new ConfKeyInfo<>(
+          "yb.backup.pit_enabled_backups_history_retention_buffer_time_secs",
+          ScopeType.UNIVERSE,
+          "Time in seconds added to history_retention gflag on top of backup frequency",
+          "Time in seconds added to history_retention gflag on top of backup frequency. This is to"
+              + " accommodate backup upload times etc",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -48,6 +49,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -58,6 +60,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -1197,6 +1200,23 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
+    // timestamp_history_retention_sec gflag final value
+    Duration timestampHistoryRetentionPlatform =
+        Schedule.getMaxBackupIntervalInUniverseForPITRestore(
+            universeFromDB.getUniverseUUID(), true /* includeIntermediate */);
+    if (timestampHistoryRetentionPlatform.toSeconds() > 0L) {
+      long historyRetentionBufferSecs =
+          confGetter.getConfForScope(
+              universeFromDB, UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs);
+      Map<String, String> TIMESTAMP_HISTORY_RETENTION_GFLAG_MAP =
+          Collections.singletonMap(
+              GFlagsUtil.TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
+              Long.toString(
+                  timestampHistoryRetentionPlatform.toSeconds() + historyRetentionBufferSecs));
+      GFlagsUtil.processTimestampHistoryRetentionSecGflagIfRequired(
+          tserverGFlags, TIMESTAMP_HISTORY_RETENTION_GFLAG_MAP);
+    }
+
     if (!tserverGFlags.isEmpty()) {
       gflagOverrides.put("tserver", tserverGFlags);
     }

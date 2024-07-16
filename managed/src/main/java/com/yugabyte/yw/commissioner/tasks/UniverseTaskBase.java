@@ -21,6 +21,7 @@ import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -198,6 +199,9 @@ import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Schedule.State;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -216,6 +220,7 @@ import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.Model;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -365,7 +370,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
           TaskType.ReadOnlyClusterDelete,
-          TaskType.CreateSupportBundle);
+          TaskType.CreateSupportBundle,
+          TaskType.CreateBackupSchedule,
+          TaskType.CreateBackupScheduleKubernetes,
+          TaskType.EditBackupSchedule,
+          TaskType.EditBackupScheduleKubernetes,
+          TaskType.DeleteBackupSchedule,
+          TaskType.DeleteBackupScheduleKubernetes);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
@@ -637,6 +648,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return getAllowedTasksOnFailure(optional.get());
   }
 
+  public AllowedTasks getAllowedTasksOnFailure(Universe universe, TaskType taskType) {
+    AllowedTasks allowedTasks =
+        getAllowedTasksOnFailure(universe.getUniverseDetails().placementModificationTaskUuid);
+    if (allowedTasks.isRestricted() && !allowedTasks.getTaskTypes().contains(taskType)) {
+      String msg =
+          String.format(
+              "Universe %s placement update failed - can't run %s task until"
+                  + " placement update succeeds",
+              universe.getUniverseUUID(), taskType.name());
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    if (universe.getUniverseDetails().placementModificationTaskUuid != null) {
+      Optional<TaskInfo> optPlacementModificationTask =
+          TaskInfo.maybeGet(universe.getUniverseDetails().placementModificationTaskUuid);
+      if (optPlacementModificationTask.isPresent()
+          && !checkSafeToRunOnRestriction(universe, optPlacementModificationTask.get())) {
+        String msg =
+            String.format(
+                "Universe %s cannot run restricted %s task",
+                universe.getUniverseUUID(), taskType.name());
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+    }
+    return allowedTasks;
+  }
+
   /**
    * Validator method which is invoked when a re-run of a task is performed.
    *
@@ -658,20 +697,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               universe -> {
                 if (isFirstTry) {
                   UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-                  AllowedTasks allowedTasks =
-                      getAllowedTasksOnFailure(universeDetails.placementModificationTaskUuid);
-                  boolean isSafeToRun =
-                      !allowedTasks.isRestricted()
-                          || allowedTasks.getTaskTypes().contains(taskType);
-                  if (!isSafeToRun) {
-                    String msg =
-                        String.format(
-                            "Universe %s placement update failed - can't run %s task until"
-                                + " placement update succeeds",
-                            universe.getUniverseUUID(), taskType.name());
-                    log.error(msg);
-                    throw new RuntimeException(msg);
-                  }
+                  AllowedTasks allowedTasks = getAllowedTasksOnFailure(universe, taskType);
                   if (allowedTasks.isRerun()) {
                     // Invoke the re-run validator.
                     TaskInfo.maybeGet(universeDetails.placementModificationTaskUuid)
@@ -707,6 +733,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error(msg);
       throw new UniverseInProgressException(msg);
     }
+  }
+
+  /**
+   * Check safe to run task can really be run on top of previously failed Placement modification
+   * task.
+   */
+  protected boolean checkSafeToRunOnRestriction(
+      Universe universe, TaskInfo placementModificationTaskInfo) {
+    return true;
   }
 
   /**
@@ -6099,4 +6134,192 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
+
+  // Start Schedule backup methods
+
+  protected void addAllCreateBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      String stableYbcVersion) {
+    Universe universe = getUniverse();
+    Schedule schedule = null;
+
+    // Lock universe
+    lockAndFreezeUniverseForUpdate(
+        universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+    try {
+      // Get or create schedule
+      schedule = Schedule.getOrCreateSchedule(customerUUID, scheduleParams);
+      UUID scheduleUUID = schedule.getScheduleUUID();
+      log.info(
+          "Creating backup schedule for customer {}, schedule uuid = {}.",
+          scheduleParams.customerUUID,
+          scheduleUUID);
+
+      boolean ybcBackup =
+          !BackupCategory.YB_BACKUP_SCRIPT.equals(scheduleParams.backupCategory)
+              && universe.isYbcEnabled()
+              && !scheduleParams.backupType.equals(TableType.REDIS_TABLE_TYPE);
+      // Upgrade YBC version on universe
+      if (ybcBackup
+          && universe.isYbcEnabled()
+          && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(stableYbcVersion)) {
+        if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)) {
+          createUpgradeYbcTaskOnK8s(universe.getUniverseUUID(), stableYbcVersion)
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+        } else {
+          createUpgradeYbcTask(universe.getUniverseUUID(), stableYbcVersion, true)
+              .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);
+        }
+      }
+
+      // Validate customer config to be used on the Universe
+      createPreflightValidateBackupTask(
+              scheduleParams.storageConfigUUID,
+              scheduleParams.customerUUID,
+              scheduleParams.getUniverseUUID(),
+              ybcBackup)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
+      backupScheduleSubTasks.run();
+
+      // Mark universe update succeeded
+      createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID())
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      getRunnableTask().runSubTasks();
+
+      // Mark schedule Active
+      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+    } catch (Throwable t) {
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      // Update schedule state to Error
+      if (schedule != null) {
+        Schedule.updateStatusAndSave(
+            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+      }
+      throw t;
+    } finally {
+      // Unlock the universe.
+      unlockUniverseForUpdate(universe.getUniverseUUID());
+    }
+  }
+
+  protected void addAllEditBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      UUID scheduleUUID) {
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    Universe universe = getUniverse();
+    // Lock schedule
+    // Ok to fail, don't put this inside try block.
+    Schedule.modifyScheduleRunningAndSave(
+        customerUUID, schedule.getScheduleUUID(), true /* isRunning */);
+
+    // Lock universe if PIT based schedule
+    if (scheduleParams.enablePointInTimeRestore) {
+      lockAndFreezeUniverseForUpdate(
+          universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+    }
+    try {
+      log.info(
+          "Editing backup schedule for customer {}, schedule uuid = {}.",
+          customerUUID,
+          scheduleUUID);
+      // Modify params and set state to Editing
+      Schedule.updateNewBackupScheduleTimeAndStatusAndSave(
+          customerUUID, scheduleUUID, State.Editing, scheduleParams);
+
+      if (scheduleParams.enablePointInTimeRestore) {
+        backupScheduleSubTasks.run();
+        // Mark universe update succeeded
+        createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        getRunnableTask().runSubTasks();
+      }
+      // Mark schedule Active
+      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, Schedule.State.Active);
+    } catch (Throwable t) {
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      // Update schedule state to Error
+      if (schedule != null) {
+        Schedule.updateStatusAndSave(
+            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+      }
+      throw t;
+    } finally {
+      // Unlock the source universe.
+      if (scheduleParams.enablePointInTimeRestore) {
+        unlockUniverseForUpdate(universe.getUniverseUUID());
+      }
+      // Unlock schedule
+      Schedule.modifyScheduleRunningAndSave(
+          customerUUID, schedule.getScheduleUUID(), false /* isRunning */);
+    }
+  }
+
+  protected void addAllDeleteBackupScheduleTasks(
+      Runnable backupScheduleSubTasks,
+      BackupRequestParams scheduleParams,
+      UUID customerUUID,
+      UUID scheduleUUID) {
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    Universe universe = getUniverse();
+    // Lock schedule
+    // Ok to fail, don't put this inside try block.
+    Schedule.modifyScheduleRunningAndSave(
+        customerUUID, schedule.getScheduleUUID(), true /* isRunning */);
+
+    // Lock universe if PIT based schedule
+    if (scheduleParams.enablePointInTimeRestore) {
+      lockAndFreezeUniverseForUpdate(
+          universe.getUniverseUUID(), universe.getVersion(), null /* firstRunTxnCallback */);
+    }
+    try {
+      log.info(
+          "Deleting backup schedule for customer {}, schedule uuid = {}.",
+          customerUUID,
+          scheduleUUID);
+      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, State.Deleting);
+
+      if (scheduleParams.enablePointInTimeRestore) {
+        backupScheduleSubTasks.run();
+        // Mark universe update succeeded
+        createMarkUniverseUpdateSuccessTasks(universe.getUniverseUUID())
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+        getRunnableTask().runSubTasks();
+      }
+      // Delete schedule tasks and finally the schedule
+      ScheduleTask.getAllTasks(scheduleUUID).forEach(Model::delete);
+      if (schedule.delete()) {
+        schedule = null;
+      }
+    } catch (Throwable t) {
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      // Update schedule state to Error
+      if (schedule != null) {
+        Schedule.updateStatusAndSave(
+            customerUUID, schedule.getScheduleUUID(), Schedule.State.Error);
+      }
+      throw t;
+    } finally {
+      // Unlock the source universe.
+      if (scheduleParams.enablePointInTimeRestore) {
+        unlockUniverseForUpdate(universe.getUniverseUUID());
+      }
+      // Unlock schedule
+      if (schedule != null) {
+        Schedule.modifyScheduleRunningAndSave(
+            customerUUID, schedule.getScheduleUUID(), false /* isRunning */);
+      }
+    }
+  }
+
+  // End of Schedule backup methods
 }

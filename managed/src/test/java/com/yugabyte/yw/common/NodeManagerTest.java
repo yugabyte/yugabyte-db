@@ -589,6 +589,9 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs)))
+        .thenReturn(3600);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
