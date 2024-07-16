@@ -154,7 +154,6 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
             </StepCard>
             <StepCard
               title={t("clusterDetail.voyager.migrateSchema.schemaImportTargetDB")}
-              showTooltip
             >
               {(isDone) =>
                 !isDone ? (

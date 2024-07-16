@@ -1086,7 +1086,7 @@
           "schemaExportLearn": "Learn how to export schema",
           "schemaExportSourceDB": "Export schema from source database",
           "schemaAnalysis": "Schema analysis",
-          "schemaImportTargetDB": "Schema import to target database",
+          "schemaImportTargetDB": "Import schema to target database",
           "schemaAnalysisDesc": "Analyze schema in order to xyz",
           "schemaAnalysisLearn": "Learn how to analyze schema",
           "automaticDDLImport": "Automatic DDL Import",
