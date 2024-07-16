@@ -35,7 +35,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -382,14 +381,17 @@ public class Users extends Model {
    * @return apiToken
    */
   public String upsertApiToken() {
-    return upsertApiToken(null);
+    return upsertApiToken(apiTokenVersion);
   }
 
   public String upsertApiToken(Long version) {
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
-      if (version != null && apiTokenVersion != null && !version.equals(apiTokenVersion)) {
+      if (version != null
+          && version != -1
+          && apiTokenVersion != null
+          && !version.equals(apiTokenVersion)) {
         throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
@@ -398,25 +400,6 @@ public class Users extends Model {
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
       return apiTokenUnhashed;
-    } finally {
-      usersLock.releaseLock(uuidToLock);
-    }
-  }
-
-  /**
-   * Get current apiToken or create a new one if not exists.
-   *
-   * @return apiToken
-   */
-  @JsonIgnore
-  public String getOrCreateApiToken() {
-    UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
-    usersLock.acquireLock(uuidToLock);
-    try {
-      if (StringUtils.isEmpty(apiToken)) {
-        upsertApiToken();
-      }
-      return apiToken;
     } finally {
       usersLock.releaseLock(uuidToLock);
     }
