@@ -36,13 +36,13 @@ To setup Logical Replication, an application will first have to create a replica
 
 #### Initial Snapshot<a id="initial-snapshot"></a>
 
-The initial snapshot data for each table is consumed by executing a corresponding snapshot query (SELECT statement) on that table. This snapshot query should be executed as of the database state corresponding to the consistent\_point. This database state is represented by a value of HybridTime. 
+The initial snapshot data for each table is consumed by executing a corresponding snapshot query (SELECT statement) on that table. This snapshot query should be executed as of the database state corresponding to the consistent_point. This database state is represented by a value of HybridTime. 
 
 First, a `SET LOCAL yb_read_time TO ‘<consistent_point commit time> ht’` command should be executed on the connection (session). The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction.
 
-The HybridTime value to use in the `SET LOCAL yb_read_time `command is the value of the  `snapshot_name` field that is returned by the `CREATE_REPLICATION_SLOT` command. Alternatively, it can be obtained by querying the `pg_replication_slots` view.
+The HybridTime value to use in the `SET LOCAL yb_read_time `command is the value of the `snapshot_name` field that is returned by the `CREATE_REPLICATION_SLOT` command. Alternatively, it can be obtained by querying the `pg_replication_slots` view.
 
-During Snapshot consumption, the snapshot data from all tables will be from the same consistent state (consistent\_point). At the end of Snapshot consumption, the state of the target system is at/based on the consistent\_point. History of the tables as of the consistent\_point is retained on the source until the snapshot is consumed.
+During Snapshot consumption, the snapshot data from all tables will be from the same consistent state (consistent_point). At the end of Snapshot consumption, the state of the target system is at/based on the consistent_point. History of the tables as of the consistent_point is retained on the source until the snapshot is consumed.
 
 #### Streaming Data Flow<a id="streaming-data-flow"></a>
 
@@ -50,26 +50,26 @@ YugabyteDB automatically splits user tables into multiple shards (also called ta
 
 Each tablet has its own WAL. WAL is NOT in-memory, but it is disk persisted. Each WAL preserves the information on the changes involved in the transactions (or changes) for that tablet as well as additional metadata related to the transactions.
 
-Step 1 - Data flow from the tablets’ WAL to the VWAL
+##### Step 1 - Data flow from the tablets’ WAL to the VWAL
 
 ![CDCService-VWAL](/images/architecture/cdc_service_vwal_interaction.png)
 
 Each tablet sends changes in transaction commit time order. Further, within a transaction, the changes are in the order in which the operations were performed in the transaction.
 
-Step 2 - Sorting in the VWAL and sending transactions to the Walsender
+##### Step 2 - Sorting in the VWAL and sending transactions to the Walsender
 
 ![VWAL-Walsender](/images/architecture/vwal_walsender_interaction.png)
 
 VWAL collects changes across multiple tablets, assembles the transactions, assigns LSN to each change and transaction boundary (BEGIN, COMMIT) record and sends the changes to the Walsender in transaction commit time order.
 
-Step 3 - Walsender to client
+##### Step 3 - Walsender to client
 
 Walsender sends changes to the output plugin, which filters them according to the slot's publication and converts them into the client's desired format. These changes are then streamed to the client using the appropriate streaming replication protocols determined by the output plugin. Yugabyte follows the same streaming replication protocols as defined in PostgreSQL.
 
-// TODO (Siddharth): Fix the Link to the protocol section.
+<!--TODO (Siddharth): Fix the Link to the protocol section. -->
 {{< note title="Note" >}}
 
-Please refer to the [Protocol Section](../../../explore/logical-replication/#Streaming-Protocol) for more details.
+Please refer to [Replication Protocol](../../../explore/logical-replication/#Streaming-Protocol) section for more details.
 
 {{< /note >}}
 
