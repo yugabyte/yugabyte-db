@@ -164,8 +164,8 @@ public class GFlagsUtilTest extends FakeDBApplication {
 
     SpecificGFlags.PerProcessFlags perProcessFlags = new SpecificGFlags.PerProcessFlags();
     perProcessFlags.value = new HashMap<>();
-    perProcessFlags.value.put(ServerType.TSERVER, tserver);
-    perProcessFlags.value.put(ServerType.MASTER, master);
+    perProcessFlags.value.put(ServerType.TSERVER, new HashMap<>(tserver));
+    perProcessFlags.value.put(ServerType.MASTER, new HashMap<>(master));
     specificGFlags1.setPerProcessFlags(perProcessFlags);
 
     UniverseDefinitionTaskParams.UserIntent userIntent1 =
@@ -178,14 +178,14 @@ public class GFlagsUtilTest extends FakeDBApplication {
     PlatformServiceException exception1 =
         assertThrows(
             PlatformServiceException.class,
-            () -> GFlagsUtil.processGFlagGroups(master, userIntent1, "MASTER"));
+            () -> GFlagsUtil.processGFlagGroups(master, userIntent1, ServerType.MASTER));
 
     // Test with correct DB version
     userIntent1.ybSoftwareVersion = "2.23.0.0-b417";
-    GFlagsUtil.processGFlagGroups(master, userIntent1, "MASTER");
+    GFlagsUtil.processGFlagGroups(master, userIntent1, ServerType.MASTER);
     assertThat(master, equalTo(ImmutableMap.of("flag1", "1", "flag2", "2")));
 
-    GFlagsUtil.processGFlagGroups(tserver, userIntent1, "TSERVER");
+    GFlagsUtil.processGFlagGroups(tserver, userIntent1, ServerType.TSERVER);
     assertThat(
         tserver,
         equalTo(
@@ -214,11 +214,11 @@ public class GFlagsUtilTest extends FakeDBApplication {
     tserver1.put("flag2", "2");
     tserver1.put("flag3", "abc");
     tserver1.put("ysql_pg_conf_csv", "abc=def");
-    perProcessFlags.value.put(ServerType.TSERVER, tserver1);
+    perProcessFlags.value.put(ServerType.TSERVER, new HashMap<>(tserver1));
     specificGFlags1.setPerProcessFlags(perProcessFlags);
     userIntent1.specificGFlags = specificGFlags1;
 
-    GFlagsUtil.processGFlagGroups(tserver1, userIntent1, "TSERVER");
+    GFlagsUtil.processGFlagGroups(tserver1, userIntent1, ServerType.TSERVER);
     assertThat(
         tserver1,
         equalTo(
@@ -249,11 +249,11 @@ public class GFlagsUtilTest extends FakeDBApplication {
     tserver2.put("flag3", "abc");
     tserver2.put("ysql_pg_conf_csv", "abc=def,yb_enable_base_scans_cost_model=false");
     tserver2.put("ysql_enable_read_request_caching", "false");
-    perProcessFlags.value.put(ServerType.TSERVER, tserver2);
+    perProcessFlags.value.put(ServerType.TSERVER, new HashMap<>(tserver2));
     specificGFlags1.setPerProcessFlags(perProcessFlags);
     userIntent1.specificGFlags = specificGFlags1;
 
-    GFlagsUtil.processGFlagGroups(tserver2, userIntent1, "TSERVER");
+    GFlagsUtil.processGFlagGroups(tserver2, userIntent1, ServerType.TSERVER);
     assertThat(
         tserver2,
         equalTo(
@@ -283,13 +283,13 @@ public class GFlagsUtilTest extends FakeDBApplication {
     tserver3.put("flag2", "2");
     tserver3.put("flag3", "abc");
     tserver3.put("ysql_pg_conf_csv", "abc=def");
-    perProcessFlags.value.put(ServerType.TSERVER, tserver3);
+    perProcessFlags.value.put(ServerType.TSERVER, new HashMap<>(tserver3));
     specificGFlags1.setPerProcessFlags(perProcessFlags);
     gflagGroups = new ArrayList<>();
     specificGFlags1.setGflagGroups(gflagGroups);
     userIntent1.specificGFlags = specificGFlags1;
 
-    GFlagsUtil.processGFlagGroups(tserver, userIntent1, "TSERVER");
+    GFlagsUtil.processGFlagGroups(tserver, userIntent1, ServerType.TSERVER);
     assertThat(
         tserver3,
         equalTo(
