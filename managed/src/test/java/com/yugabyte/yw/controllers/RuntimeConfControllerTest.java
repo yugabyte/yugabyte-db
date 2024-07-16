@@ -526,9 +526,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertValue(
         rJson,
         "error",
-        "Not a valid list of tags."
-            + "All possible tags are "
-            + "PUBLIC, UIDriven, BETA, INTERNAL, YBM");
+        "Not a valid list of tags." + "All possible tags are " + "PUBLIC, BETA, INTERNAL");
   }
 
   @Test

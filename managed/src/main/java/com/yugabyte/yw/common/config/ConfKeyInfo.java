@@ -34,12 +34,8 @@ public class ConfKeyInfo<T> {
     PUBLIC,
     // Keys hidden from the UI
     INTERNAL,
-    // YBM Keys
-    YBM,
     // Keys for which we do not have metadata yet
     BETA,
-    // Keys with dedicated UI
-    UIDriven,
     // Feature flag keys. Only allowed data type: boolean.
     // These can be viewed without authorising. Should only be set at global scope.
     FEATURE_FLAG
