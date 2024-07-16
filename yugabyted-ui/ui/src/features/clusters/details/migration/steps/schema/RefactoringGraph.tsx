@@ -13,19 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
-
-interface RefactoringCount {
-  manual?: number;
-  automatic?: number;
-}
-
-interface RecommendedRefactoringGraph {
-  sql_type?: RefactoringCount;
-  table?: RefactoringCount;
-  view?: RefactoringCount;
-  _function?: RefactoringCount;
-  triggers?: RefactoringCount;
-}
+import type { RefactoringCount } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
   tooltip: {
@@ -37,7 +25,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface RefactoringGraphProps {
-  sqlObjects: RecommendedRefactoringGraph | undefined;
+  sqlObjects: RefactoringCount[] | undefined;
 }
 
 export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects }) => {
@@ -46,17 +34,18 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects }) => {
       return [];
     }
 
-    return Object.entries(sqlObjects)
-      .filter(([_, value]) => (value?.automatic ?? 0) + (value?.manual ?? 0) > 0)
-      .map(([key, value]) => {
+    return sqlObjects
+      .filter(({ automatic, manual }) => (automatic ?? 0) + (manual ?? 0) > 0)
+      .map(({ sql_object_type, automatic, manual }) => {
         return {
-          objectType: key
-            .replace(/^_+|_+$/g, "")
-            .trim()
-            .toUpperCase()
-            .replaceAll("_", " "),
-          automaticDDLImport: value?.automatic ?? 0,
-          manualRefactoring: value?.manual ?? 0,
+          objectType:
+            sql_object_type
+              ?.replace(/^_+|_+$/g, "")
+              .trim()
+              .toUpperCase()
+              .replaceAll("_", " ") || "",
+          automaticDDLImport: automatic ?? 0,
+          manualRefactoring: manual ?? 0,
         };
       });
   }, [sqlObjects]);
@@ -64,6 +53,10 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects }) => {
   const barCategoryGap = 34;
   const barSize = 22;
   const graphHeight = graphData.length * 60 + barCategoryGap + barSize;
+
+  if (!graphData.length) {
+    return null;
+  }
 
   return (
     <Box my={4}>
@@ -80,7 +73,14 @@ export const RefactoringGraph: FC<RefactoringGraphProps> = ({ sqlObjects }) => {
         >
           <CartesianGrid horizontal={false} strokeDasharray="3 3" />
           <XAxis type="number" />
-          <YAxis type="category" dataKey="objectType" textAnchor="start" dx={-90} />
+          <YAxis
+            type="category"
+            dataKey="objectType"
+            textAnchor="start"
+            dx={-90}
+            tickLine={false}
+            axisLine={{ stroke: "#FFFFFF00" }}
+          />
           <Tooltip content={<CustomTooltip />} />
           <Bar
             dataKey="automaticDDLImport"
