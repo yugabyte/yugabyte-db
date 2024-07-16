@@ -137,7 +137,7 @@ You will need to install an AGE compatible version of Postgres<a>, for now AGE s
 &nbsp;Installation via Package Manager
 </h4>
 
-You can use a <a href="https://www.postgresql.org/download/">package management </a> that your OS provides to download AGE.
+You can use a <a href="https://www.postgresql.org/download/">package management </a> that your OS provides to download PostgreSQL.
 
 <br>
 
