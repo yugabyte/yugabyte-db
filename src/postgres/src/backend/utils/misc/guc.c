@@ -4762,6 +4762,19 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_query_diagnostics_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Size of query diagnostics circular buffer that stores statuses of bundles"),
+			gettext_noop("The circular buffer is filled sequentially until "
+									"it reaches this size, then it wraps around and "
+									"starts overwriting the oldest entries."),
+			GUC_UNIT_KB
+		},
+		&yb_query_diagnostics_circular_buffer_size,
+		64, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL

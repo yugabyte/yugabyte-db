@@ -40,6 +40,10 @@ CREATE VIEW yb_wait_event_desc AS
     SELECT *
     FROM yb_wait_event_desc();
 
+CREATE VIEW yb_query_diagnostics_status AS
+    SELECT *
+    FROM yb_get_query_diagnostics_status();
+
 CREATE OR REPLACE FUNCTION
   yb_is_database_colocated(check_legacy boolean DEFAULT false)
 RETURNS boolean

@@ -34,12 +34,35 @@
 #include "postmaster/bgworker.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
+#include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 
 #define QUERY_DIAGNOSTICS_HASH_MAX_SIZE 100	/* Maximum number of entries in the hash table */
+/* Constants used for yb_query_diagnostics_status view */
+#define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
+#define DIAGNOSTICS_SUCCESS 0
+#define DIAGNOSTICS_IN_PROGRESS 1
+#define DIAGNOSTICS_ERROR 2
+#define DESCRIPTION_LEN 128
+
+typedef struct BundleInfo
+{
+	YbQueryDiagnosticsMetadata metadata; /* stores bundle's metadata */
+	int			status; /* 0 - Success; 1 - In Progress; 2 - ERROR */
+	char		description[DESCRIPTION_LEN]; /* stores error description */
+} BundleInfo;
+
+typedef struct YbQueryDiagnosticsBundles
+{
+	int			index;			/* index to insert new buffer entry */
+	int			max_entries;	/* maximum # of entries in the buffer */
+	LWLock	 	lock;			/* protects circular buffer from search/modification */
+	BundleInfo	bundles[FLEXIBLE_ARRAY_MEMBER]; /* circular buffer to store info about bundles */
+} YbQueryDiagnosticsBundles;
 
 /* GUC variables */
 int yb_query_diagnostics_bg_worker_interval_ms;
+int yb_query_diagnostics_circular_buffer_size;
 
 /* Saved hook value in case of unload */
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
@@ -48,23 +71,36 @@ static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
 
-static HTAB *yb_query_diagnostics_hash = NULL;
-static LWLock *yb_query_diagnostics_lock; /* protects yb_query_diagnostics_hash */
+static HTAB *bundles_in_progress = NULL;
+static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
+static YbQueryDiagnosticsBundles *bundles_completed = NULL;
+static const char *status_msg[] = {"Success", "In Progress", "Error"};
 
 static void YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc);
 
-static void InsertIntoSharedHashTable(YbQueryDiagnosticsParameters params,
-									 TimestampTz start_time, const char *path);
-static void FetchParams(YbQueryDiagnosticsParameters *params, FunctionCallInfo fcinfo);
-static void ConstructDiagnosticsPath(int64 query_id, TimestampTz current_time, char *path);
+static void InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata);
+static void FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo);
+static void ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata);
 static void FormatParams(StringInfo buf, const ParamListInfo params);
-static bool DumpToFile(const char *path, const char *file_name, const char *data);
+static int DumpToFile(const char *path, const char *file_name,
+					   const char *data, char *description);
 static void RemoveExpiredEntries();
-static void AccumulateBindVariables(int64 query_id,	YbQueryDiagnosticsEntry *entry,
+static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
 									const double totaltime_ms, const ParamListInfo params);
 static void YbQueryDiagnosticsBgWorkerSighup(SIGNAL_ARGS);
 static void YbQueryDiagnosticsBgWorkerSigterm(SIGNAL_ARGS);
 static inline bool HasBundleExpired(const YbQueryDiagnosticsEntry *entry, TimestampTz current_time);
+static int YbQueryDiagnosticsBundlesShmemSize(void);
+static Datum CreateJsonb(const YbQueryDiagnosticsParams *params);
+static void CreateJsonbInt(JsonbParseState *state, char *key, int64 value);
+static void CreateJsonbBool(JsonbParseState *state, char *key, bool value);
+static void InsertCompletedBundleInfo(YbQueryDiagnosticsMetadata *metadata, int status,
+							 const char *description);
+static void OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
+			 const char *status, Tuplestorestate *tupstore, TupleDesc tupdesc);
+static void ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
+static void ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc);
+static inline int CircularBufferMaxEntries(void);
 
 void
 YbQueryDiagnosticsInstallHook(void)
@@ -74,17 +110,33 @@ YbQueryDiagnosticsInstallHook(void)
 }
 
 /*
+ * YbQueryDiagnosticsBundlesShmemSize
+ *		Compute space needed for yb_query_diagnostics_status view related shared memory
+ */
+static int
+YbQueryDiagnosticsBundlesShmemSize(void)
+{
+	Size		size;
+
+	size = offsetof(YbQueryDiagnosticsBundles, bundles);
+	size = add_size(size, mul_size(CircularBufferMaxEntries(), sizeof(BundleInfo)));
+
+	return size;
+}
+
+/*
  * YbQueryDiagnosticsShmemSize
  *		Compute space needed for QueryDiagnostics-related shared memory
  */
 Size
 YbQueryDiagnosticsShmemSize(void)
 {
-	Size        size;
+	Size		size;
 
 	size = MAXALIGN(sizeof(LWLock));
 	size = add_size(size, hash_estimate_size(QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
 													sizeof(YbQueryDiagnosticsEntry)));
+	size = add_size(size, YbQueryDiagnosticsBundlesShmemSize());
 
 	return size;
 }
@@ -99,9 +151,9 @@ YbQueryDiagnosticsShmemInit(void)
 	HASHCTL 	ctl;
 	bool 		found;
 
-	yb_query_diagnostics_hash = NULL;
+	bundles_in_progress = NULL;
 	/* Initialize the hash table control structure */
-	memset(&ctl, 0, sizeof(ctl));
+	MemSet(&ctl, 0, sizeof(ctl));
 
 	/* Set the key size and entry size */
 	ctl.keysize = sizeof(int64);
@@ -109,22 +161,259 @@ YbQueryDiagnosticsShmemInit(void)
 
 	/* Create the hash table in shared memory */
 	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
-	yb_query_diagnostics_lock = (LWLock *)ShmemInitStruct("YbQueryDiagnostics Lock",
+	bundles_in_progress_lock = (LWLock *)ShmemInitStruct("YbQueryDiagnostics Lock",
 														  sizeof(LWLock), &found);
 
 	if (!found)
 	{
 		/* First time through ... */
-		LWLockInitialize(yb_query_diagnostics_lock,
+		LWLockInitialize(bundles_in_progress_lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS);
 	}
-	yb_query_diagnostics_hash = ShmemInitHash("YbQueryDiagnostics shared hash table",
+
+	bundles_in_progress = ShmemInitHash("YbQueryDiagnostics shared hash table",
 											  QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
 											  QUERY_DIAGNOSTICS_HASH_MAX_SIZE,
 											  &ctl,
 											  HASH_ELEM | HASH_BLOBS);
 
 	LWLockRelease(AddinShmemInitLock);
+
+	bundles_completed =
+		(YbQueryDiagnosticsBundles *) ShmemInitStruct("YbQueryDiagnostics Status",
+													  YbQueryDiagnosticsBundlesShmemSize(),
+													  &found);
+
+	if (!found)
+	{
+		/* First time through ... */
+		bundles_completed->index = 0;
+		bundles_completed->max_entries = CircularBufferMaxEntries();
+
+		MemSet(bundles_completed->bundles, 0, sizeof(BundleInfo) * bundles_completed->max_entries);
+
+		LWLockInitialize(&bundles_completed->lock,
+						 LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER);
+	}
+}
+
+static inline int
+CircularBufferMaxEntries(void)
+{
+	return yb_query_diagnostics_circular_buffer_size * 1024 / sizeof(BundleInfo);
+}
+
+/*
+ * InsertBundleInfo
+ * 		Add a query diagnostics entry to the circular buffer.
+ */
+static void
+InsertCompletedBundleInfo(YbQueryDiagnosticsMetadata *metadata, int status,
+						  const char *description)
+{
+	BundleInfo *sample;
+
+	LWLockAcquire(&bundles_completed->lock, LW_EXCLUSIVE);
+
+	sample = &bundles_completed->bundles[bundles_completed->index];
+	sample->status = status;
+	memcpy(&sample->metadata, metadata, sizeof(YbQueryDiagnosticsMetadata));
+	memcpy(sample->description, description, strlen(description));
+
+	/* Advance the index, wrapping around if necessary */
+	if (++bundles_completed->index == bundles_completed->max_entries)
+		bundles_completed->index = 0;
+
+	LWLockRelease(&bundles_completed->lock);
+}
+
+static void
+CreateJsonbInt(JsonbParseState *state, char *key, int64 value)
+{
+	JsonbValue	json_key;
+	JsonbValue	json_value;
+
+	json_key.type = jbvString;
+	json_key.val.string.len = strlen(key);
+	json_key.val.string.val = key;
+
+	json_value.type = jbvNumeric;
+	json_value.val.numeric = DatumGetNumeric(DirectFunctionCall1(int8_numeric, value));
+
+	pushJsonbValue(&state, WJB_KEY, &json_key);
+	pushJsonbValue(&state, WJB_VALUE, &json_value);
+}
+
+static void
+CreateJsonbBool(JsonbParseState *state, char *key, bool value)
+{
+	JsonbValue	json_key;
+	JsonbValue	json_value;
+
+	json_key.type = jbvString;
+	json_key.val.string.len = strlen(key);
+	json_key.val.string.val = key;
+
+	json_value.type = jbvBool;
+	json_value.val.boolean = value;
+
+	pushJsonbValue(&state, WJB_KEY, &json_key);
+	pushJsonbValue(&state, WJB_VALUE, &json_value);
+}
+
+/*
+ * CreateJsonb
+ * 		Create a JSONB representation of the explain parameters given as input
+ * 		while starting query diagnostics.
+ */
+static Datum
+CreateJsonb(const YbQueryDiagnosticsParams *params)
+{
+	JsonbParseState *state = NULL;
+	JsonbValue *result;
+
+	Assert(params != NULL);
+
+	pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+
+	CreateJsonbInt(state, "explain_sample_rate", params->explain_sample_rate);
+	CreateJsonbBool(state, "explain_analyze", params->explain_analyze);
+	CreateJsonbBool(state, "explain_dist", params->explain_dist);
+	CreateJsonbBool(state, "explain_debug", params->explain_debug);
+
+	result = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+
+	PG_RETURN_POINTER(JsonbValueToJsonb(result));
+}
+
+/*
+ * yb_get_query_diagnostics_status
+ *		This function returns a set of rows containing information about active, successful and
+ *		errored out query diagnostic bundles.
+ *		It's designed to be displayed as yb_query_diagnostics_status view.
+ */
+Datum
+yb_get_query_diagnostics_status(PG_FUNCTION_ARGS)
+{
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+
+	/* Ensure that query diagnostics is enabled */
+	if (!YBIsQueryDiagnosticsEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("TEST_yb_enable_query_diagnostics gflag must be true")));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/* Switch context to construct returned data structures */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	ProcessActiveBundles(tupstore, tupdesc);
+	ProcessCompletedBundles(tupstore, tupdesc);
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
+}
+
+static void
+OutputBundle(const YbQueryDiagnosticsMetadata metadata, const char *description,
+			 const char *status, Tuplestorestate *tupstore, TupleDesc tupdesc)
+{
+	/* Arrays to hold the values and null flags for each column in a row */
+	Datum		values[YB_QUERY_DIAGNOSTICS_STATUS_COLS];
+	bool		nulls[YB_QUERY_DIAGNOSTICS_STATUS_COLS];
+	int			j = 0;
+
+	MemSet(values, 0, sizeof(values));
+	MemSet(nulls, 0, sizeof(nulls));
+
+	values[j++] = CStringGetTextDatum(status);
+	values[j++] = CStringGetTextDatum(description);
+	values[j++] = Int64GetDatum(metadata.params.query_id);
+	values[j++] = TimestampTzGetDatum(metadata.start_time);
+	values[j++] = Int64GetDatum(metadata.params.diagnostics_interval_sec);
+	values[j++] = Int64GetDatum(metadata.params.bind_var_query_min_duration_ms);
+	values[j++] = CreateJsonb(&metadata.params);
+	values[j++] = CStringGetTextDatum(metadata.path);
+
+	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+}
+
+/*
+ * ProcessActiveBundles
+ *		Process and store information about active query diagnostics bundles
+ *
+ * This function iterates through the shared hash table, retrieves the information for each entry,
+ * and stores it in the tuplestore in proper format.
+ */
+static void
+ProcessActiveBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
+{
+	HASH_SEQ_STATUS	status;
+	YbQueryDiagnosticsEntry *entry;
+
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
+	hash_seq_init(&status, bundles_in_progress);
+
+	while ((entry = hash_seq_search(&status)) != NULL)
+		OutputBundle(entry->metadata, "",
+					 status_msg[DIAGNOSTICS_IN_PROGRESS], tupstore, tupdesc);
+
+	LWLockRelease(bundles_in_progress_lock);
+}
+
+/*
+ * ProcessCompletedBundles
+ *		Process and store information about successful and errored out query diagnostic bundles
+ *
+ * This function iterates through the circular buffer of query diagnostic bundles,
+ * formats the information for each valid entry, and stores it in the tuplestore.
+ */
+static void
+ProcessCompletedBundles(Tuplestorestate *tupstore, TupleDesc tupdesc)
+{
+	LWLockAcquire(&bundles_completed->lock, LW_SHARED);
+
+	for (int i = 0; i < bundles_completed->max_entries; ++i)
+	{
+		BundleInfo *sample= &bundles_completed->bundles[i];
+
+		if (sample->metadata.params.query_id != 0)
+			OutputBundle(sample->metadata, sample->description,
+						 status_msg[sample->status], tupstore, tupdesc);
+	}
+
+	LWLockRelease(&bundles_completed->lock);
 }
 
 static void
@@ -160,7 +449,7 @@ void
 YbQueryDiagnosticsBgWorkerRegister(void)
 {
 	BackgroundWorker worker;
-	memset(&worker, 0, sizeof(worker));
+	MemSet(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "yb_query_diagnostics bgworker");
 	sprintf(worker.bgw_type, "yb_query_diagnostics bgworker");
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
@@ -181,12 +470,12 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 	double 		totaltime_ms;
 	YbQueryDiagnosticsEntry *entry;
 
-	LWLockAcquire(yb_query_diagnostics_lock, LW_SHARED);
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 
 	/*
 	 * This can slow down the query execution, even if the query is not being bundled.
 	 */
-	entry = (YbQueryDiagnosticsEntry *) hash_search(yb_query_diagnostics_hash,
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
 													&query_id, HASH_FIND,
 													NULL);
 
@@ -194,11 +483,12 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 	{
 		totaltime_ms = INSTR_TIME_GET_MILLISEC(queryDesc->totaltime->counter);
 
-		if (queryDesc->params && entry->params.bind_var_query_min_duration_ms <= totaltime_ms)
-			AccumulateBindVariables(query_id, entry, totaltime_ms, queryDesc->params);
+		if (queryDesc->params &&
+			entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms)
+			AccumulateBindVariables(entry, totaltime_ms, queryDesc->params);
 	}
 
-	LWLockRelease(yb_query_diagnostics_lock);
+	LWLockRelease(bundles_in_progress_lock);
 
 	if (prev_ExecutorEnd)
 		prev_ExecutorEnd(queryDesc);
@@ -207,8 +497,8 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 }
 
 static void
-AccumulateBindVariables(int64 query_id,	YbQueryDiagnosticsEntry *entry,
-						const double totaltime_ms, const ParamListInfo params)
+AccumulateBindVariables(YbQueryDiagnosticsEntry *entry, const double totaltime_ms,
+						const ParamListInfo params)
 {
 	/* TODO(GH#22153): Handle the case when entry->bind_vars overflows */
 
@@ -269,39 +559,36 @@ FormatParams(StringInfo buf, const ParamListInfo params)
 }
 
 /*
- * InsertIntoSharedHashTable
- *		Adds the entry into yb_query_diagnostics_hash.
+ * InsertNewBundleInfo
+ *		Adds the entry into bundles_in_progress hash table.
  *		Entry is inserted only if it is not already present,
  *		otherwise an error is raised.
  */
 static void
-InsertIntoSharedHashTable(YbQueryDiagnosticsParameters params,
-						  TimestampTz start_time, const char *path)
+InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 {
-	int64		key = params.query_id;
+	int64		key = metadata->params.query_id;
 	bool		found;
 	YbQueryDiagnosticsEntry *entry;
 
-	LWLockAcquire(yb_query_diagnostics_lock, LW_EXCLUSIVE);
-	entry = (YbQueryDiagnosticsEntry *) hash_search(yb_query_diagnostics_hash, &key,
+	LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress, &key,
 													HASH_ENTER, &found);
 
 	if (!found)
 	{
-		entry->params = params;
-		entry->start_time = start_time;
-		memcpy(entry->path, path, MAXPGPATH);
-		memset(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
+		entry->metadata = *metadata;
+		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
 		SpinLockInit(&entry->mutex);
 	}
 
-	LWLockRelease(yb_query_diagnostics_lock);
+	LWLockRelease(bundles_in_progress_lock);
 
 	if (found)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("Query diagnostics for query_id[ %ld ] is already being generated",
-						params.query_id)));
+						metadata->params.query_id)));
 }
 
 /*
@@ -313,8 +600,8 @@ InsertIntoSharedHashTable(YbQueryDiagnosticsParameters params,
 static inline bool
 HasBundleExpired(const YbQueryDiagnosticsEntry *entry, TimestampTz current_time)
 {
-	return current_time >= entry->start_time +
-						   (entry->params.diagnostics_interval_sec * USECS_PER_SEC);
+	return current_time >= entry->metadata.start_time +
+						   (entry->metadata.params.diagnostics_interval_sec * USECS_PER_SEC);
 }
 
 static void
@@ -325,9 +612,9 @@ RemoveExpiredEntries()
 	HASH_SEQ_STATUS status;
 	YbQueryDiagnosticsEntry *entry;
 
-	LWLockAcquire(yb_query_diagnostics_lock, LW_SHARED);
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 	/* Initialize the hash table scan */
-	hash_seq_init(&status, yb_query_diagnostics_hash);
+	hash_seq_init(&status, bundles_in_progress);
 
 	/* Scan the hash table */
 	while ((entry = hash_seq_search(&status)) != NULL)
@@ -342,59 +629,62 @@ RemoveExpiredEntries()
 			SpinLockAcquire(&entry->mutex);
 
 			char		bind_var_copy[YB_QD_MAX_BIND_VARS_LEN];
-			int64		query_id_copy = entry->params.query_id;
-			char		path_copy[MAXPGPATH];
+			char 		description[DESCRIPTION_LEN];
+			int			status;
+			YbQueryDiagnosticsMetadata metadata_copy = entry->metadata;
+
 			memcpy(bind_var_copy, entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN);
-			memcpy(path_copy, entry->path, MAXPGPATH);
+			memcpy(&metadata_copy, &entry->metadata, sizeof(YbQueryDiagnosticsMetadata));
+			description[0] = '\0';
 
 			SpinLockRelease(&entry->mutex);
 
 			/* release the shared lock before flushing to disk */
-			LWLockRelease(yb_query_diagnostics_lock);
+			LWLockRelease(bundles_in_progress_lock);
 
-			if (!DumpToFile(path_copy, "bind_variables.csv", bind_var_copy))
-				ereport(LOG,
-						(errmsg("Could not dump bind variables for query_id[ %ld ]",
-						 		query_id_copy)));
+			/* creates the directory structure recursively for this bundle */
+			if (pg_mkdir_p((char *)metadata_copy.path, pg_dir_create_mode) == -1 && errno != EEXIST)
+			{
+				snprintf(description, DESCRIPTION_LEN,
+						 "Failed to create query diagnostics directory");
+				status = DIAGNOSTICS_ERROR;
+			}
+			else
+				status = DumpToFile(metadata_copy.path, "bind_variables.csv",
+									bind_var_copy, description);
 
-			LWLockAcquire(yb_query_diagnostics_lock, LW_EXCLUSIVE);
+			InsertCompletedBundleInfo(&metadata_copy, status, description);
 
-			hash_search(yb_query_diagnostics_hash, &query_id_copy,
+			LWLockAcquire(bundles_in_progress_lock, LW_EXCLUSIVE);
+
+			hash_search(bundles_in_progress, &metadata_copy.params.query_id,
 						HASH_REMOVE, NULL);
 
-			LWLockRelease(yb_query_diagnostics_lock);
-			LWLockAcquire(yb_query_diagnostics_lock, LW_SHARED);
+			LWLockRelease(bundles_in_progress_lock);
+			LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
 		}
 	}
-	LWLockRelease(yb_query_diagnostics_lock);
+	LWLockRelease(bundles_in_progress_lock);
 }
 
 /*
  * DumpToFile
  *		Creates the file (/path/file_name) and writes the data to it.
- * Returns:
- *		true if no error, false otherwise.
  */
-static bool
-DumpToFile(const char *path, const char *file_name, const char *data)
+static int
+DumpToFile(const char *path, const char *file_name, const char *data, char *description)
 {
-	bool 		ok = true;
 	File 		file = 0;
 	const int	file_path_len = MAXPGPATH + strlen(file_name) + 1;
 	char		file_path[file_path_len];
 
 	/* No data to write */
 	if (data[0] == '\0')
-		return false;
-
-	/* creates the directory structure recursively for this bundle */
-	if (pg_mkdir_p((char *)path, pg_dir_create_mode) == -1 && errno != EEXIST)
 	{
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("Failed to create query diagnostics directory : %m")));
-		return false;
+		snprintf(description, DESCRIPTION_LEN, "No data captured");
+		return DIAGNOSTICS_SUCCESS;
 	}
+
 #ifdef WIN32
 	snprintf(file_path, file_path_len, "%s\\%s", path, file_name);
 #else
@@ -409,30 +699,31 @@ DumpToFile(const char *path, const char *file_name, const char *data)
 	{
 		if ((file = PathNameOpenFile(file_path,
 										O_RDWR | O_CREAT | O_TRUNC)) < 0)
-		{
-			ereport(LOG,
-					(errmsg("Error opening file %s: %m", file_path)));
-			ok = false;
-		}
+			snprintf(description, DESCRIPTION_LEN,
+					 "out of file descriptors: %m; release and retry");
 
 		else if(FileWrite(file, (char *)data, strlen(data), 0,
 							WAIT_EVENT_DATA_FILE_WRITE) < 0)
-		{
-			ereport(LOG,
-					(errmsg("Error writing to file %s: %m", file_path)));
-			ok = false;
-		}
+			snprintf(description, DESCRIPTION_LEN, "Error writing to file; %m");
 	}
 	PG_CATCH();
 	{
-		ok = false;
+		ErrorData *edata;
+
+		/* Capture the error data */
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		snprintf(description, DESCRIPTION_LEN, "%s", edata->message);
+
+		FreeErrorData(edata);
 	}
 	PG_END_TRY();
 
 	if (file > 0)
 		FileClose(file);
 
-	return ok;
+	return description[0] == '\0' ? DIAGNOSTICS_SUCCESS : DIAGNOSTICS_ERROR;
 }
 
 /*
@@ -451,7 +742,7 @@ YbQueryDiagnosticsMain(Datum main_arg)
 	 *			       thereby saving resources
 	 */
 	ereport(LOG,
-			(errmsg("starting bgworker for yb_query_diagnostics with time interval of %ds",
+			(errmsg("starting bgworker for yb_query_diagnostics with time interval of %dms",
 					 yb_query_diagnostics_bg_worker_interval_ms)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
@@ -497,22 +788,25 @@ YbQueryDiagnosticsMain(Datum main_arg)
  * ConstructDiagnosticsPath
  *		Creates the directory structure for storing the diagnostics data.
  *		Directory structure: pg_data/query-diagnostics/queryid/random_number/
+ *
+ * Errors out in case the path is too long.
  */
 static void
-ConstructDiagnosticsPath(int64 query_id, TimestampTz current_time, char *path)
+ConstructDiagnosticsPath(YbQueryDiagnosticsMetadata *metadata)
 {
-	int rand_num = DatumGetUInt32(hash_any((unsigned char*)&current_time,
-										   sizeof(current_time)));
+	int rand_num = DatumGetUInt32(hash_any((unsigned char*)&metadata->start_time,
+										   sizeof(metadata->start_time)));
 #ifdef WIN32
-    const char *format = "%s\\%s\\%ld\\%d\\";
+	const char *format = "%s\\%s\\%ld\\%d\\";
 #else
-    const char *format = "%s/%s/%ld/%d/";
+	const char *format = "%s/%s/%ld/%d/";
 #endif
-	if (snprintf(path, MAXPGPATH, format,
-				 DataDir, "query-diagnostics", query_id, rand_num) >= MAXPGPATH)
+	if (snprintf(metadata->path, MAXPGPATH, format,
+				 DataDir, "query-diagnostics", metadata->params.query_id, rand_num) >= MAXPGPATH)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("Path to pg_data is too long")));
+				 errmsg("Path to pg_data is too long"),
+				 errhint("Move the data directory to a shorter path")));
 }
 
 /*
@@ -520,7 +814,7 @@ ConstructDiagnosticsPath(int64 query_id, TimestampTz current_time, char *path)
  *		Fetches the parameters from the yb_query_diagnostics function call and validates them.
  */
 static void
-FetchParams(YbQueryDiagnosticsParameters *params, FunctionCallInfo fcinfo)
+FetchParams(YbQueryDiagnosticsParams *params, FunctionCallInfo fcinfo)
 {
 	params->query_id = PG_GETARG_INT64(0);
 	params->diagnostics_interval_sec = PG_GETARG_INT64(1);
@@ -567,15 +861,14 @@ yb_query_diagnostics(PG_FUNCTION_ARGS)
 				 errmsg("query diagnostics is not enabled"),
 				 errhint("set TEST_yb_enable_query_diagnostics gflag to true")));
 
-	TimestampTz current_time = GetCurrentTimestamp();
-	char 	 	path[MAXPGPATH] = "";
-	YbQueryDiagnosticsParameters params;
+	YbQueryDiagnosticsMetadata metadata;
+	metadata.start_time = GetCurrentTimestamp();
 
-	FetchParams(&params, fcinfo);
+	FetchParams(&metadata.params, fcinfo);
 
-	ConstructDiagnosticsPath(params.query_id, current_time, path);
+	ConstructDiagnosticsPath(&metadata);
 
-	InsertIntoSharedHashTable(params, current_time, path);
+	InsertNewBundleInfo(&metadata);
 
-	PG_RETURN_TEXT_P(cstring_to_text(path));
+	PG_RETURN_TEXT_P(cstring_to_text(metadata.path));
 }

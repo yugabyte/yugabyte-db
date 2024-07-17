@@ -12058,4 +12058,14 @@
   proargnames => '{wait_event_class,wait_event_type,wait_event,wait_event_description}',
   proargmodes => '{o,o,o,o}',
   prosrc => 'yb_wait_event_desc'},
+
+{ oid => '8070',
+  descr => 'Get information about already triggered query diagnostics bundles',
+  proname => 'yb_get_query_diagnostics_status', prorows => '100',
+  proretset => 't', provolatile => 'v', proparallel => 'r',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{text,text,int8,timestamptz,int8,int8,jsonb,text}',
+  proargmodes => '{o,o,o,o,o,o,o,o}',
+  proargnames => '{status,description,query_id,start_time,diagnostics_interval_sec,bind_var_query_min_duration_ms,explain_params,path}',
+  prosrc => 'yb_get_query_diagnostics_status'},
 ]

@@ -189,6 +189,8 @@ static const char *const BuiltinTrancheNames[] = {
 	"YbAshMetadata",
 	/* LWTRANCHE_YB_QUERY_DIAGNOSTICS: */
 	"YbQueryDiagnostics",
+	/* LWTRANCHE_YB_QUERY_DIAGNOSTICS_CIRCULAR_BUFFER: */
+	"YbQueryDiagnosticsCircularBuffer",
 };
 
 StaticAssertDecl(lengthof(BuiltinTrancheNames) ==
