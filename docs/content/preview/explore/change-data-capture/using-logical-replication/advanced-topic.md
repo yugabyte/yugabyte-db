@@ -6,7 +6,7 @@ description: Advanced topics for Change Data Capture in YugabyteDB.
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication
-    identifier: cdc-advanced-topics
+    identifier: advanced-topics
     weight: 50
 type: docs
 ---

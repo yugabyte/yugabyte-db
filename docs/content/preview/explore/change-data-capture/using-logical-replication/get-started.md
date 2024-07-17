@@ -7,7 +7,7 @@ headcontent: Get set up for using CDC in YugabyteDB
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication
-    identifier: cdc-get-started
+    identifier: get-started
     weight: 20
 type: docs
 ---
