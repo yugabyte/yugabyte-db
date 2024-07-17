@@ -55,5 +55,5 @@ It works as follows:
 1. The connector captures change events using YugabyteDB's native gRPC replication and directly publishes them to a Kafka topic.
 
 {{<lead link="./using-yugabytedb-grpc-replication/">}}
-To learn about gRPC Replication, see [Using Yugabyte gRPC Replication](./using-yugabytedb-grpc-replication/).
+To learn about gRPC Replication, see [Using YugabyteDB gRPC Replication](./using-yugabytedb-grpc-replication/).
 {{</lead>}}

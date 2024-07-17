@@ -14,19 +14,9 @@ menu:
 type: docs
 ---
 
-To stream data change events from YugabyteDB databases, you need to use YugabyteDB gRPC Connector. To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [YugabyteDB gRPC Connector](../debezium-connector-yugabytedb/).
-
-## Ordering guarantees
-
-|Ordering guarantee| Description|
-|----------| ----------------------------|
-|Per-tablet ordered delivery guarantee|All changes for a row (or rows in the same tablet) are received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee of the order across tablets.|
-|At least once delivery|Updates for rows are streamed at least once. This can happen in the case of Kafka Connect Node failure. If the Kafka Connect Node pushes the records to Kafka and crashes before committing the offset, on restart, it will again get the same set of records.|
-|No gaps in change stream|Note that after you have received a change for a row for some timestamp `t`, you won't receive a previously unseen change for that row at a lower timestamp. Receiving any change implies that you have received _all older changes_ for that row.|
-
 ## Set up YugabyteDB for CDC
 
-The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector:
+The following steps are necessary to set up YugabyteDB for use with the YugabyteDB gRPC connector:
 
 - Create a DB stream ID.
 
@@ -41,6 +31,16 @@ The following steps are necessary to set up YugabyteDB for use with the Debezium
     The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
     In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+
+## Deploying the YugabyteDB gRPC Connector
+To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
+
+* Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+* Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
+* Configure the Connector: Modify the connector configuration to suit your specific requirements.
+* Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
+
+For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation]((../debezium-connector-yugabytedb/)).
 
 ## Serialization
 

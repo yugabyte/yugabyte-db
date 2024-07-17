@@ -56,6 +56,21 @@ You can monitor the activities and status of the deployed connectors using the h
 To know more about how to monitor your CDC setup, see [Monitor](./cdc-monitor).
 {{</lead>}}
 
+## Known limitations
+
+* A single stream can only be used to stream data from one namespace only.
+* There should be a primary key on the table you want to stream the changes from.
+* CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
+* Currently we don't support schema evolution for changes that require table rewrites (ex: ALTER TYPE).
+* YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
+
+In addition, CDC support for the following features will be added in upcoming releases:
+
+* Support for point-in-time recovery (PITR) is tracked in issue [10938](https://github.com/yugabyte/yugabyte-db/issues/10938).
+* Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
+* Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
+* Support for schema evolution with before image is tracked in issue [15197](https://github.com/yugabyte/yugabyte-db/issues/15197).
+
 ## Learn more
 
 - [Examples of CDC usage and patterns](https://github.com/yugabyte/cdc-examples/tree/main) {{<icon/github>}}
