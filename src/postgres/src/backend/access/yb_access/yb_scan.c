@@ -1212,24 +1212,25 @@ static bool YbIsOidType(Oid typid) {
 	}
 }
 
-static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
-	int64 val;
+static int64 YbDatumGetInt64(Datum value, Oid value_typid)
+{
 	switch (value_typid)
 	{
 		case INT2OID:
-			val = (int64) DatumGetInt16(value);
-			break;
+			return (int64) DatumGetInt16(value);
 		case INT4OID:
-			val = (int64) DatumGetInt32(value);
-			break;
+			return (int64) DatumGetInt32(value);
 		case INT8OID:
-			val = DatumGetInt64(value);
-			break;
+			return DatumGetInt64(value);
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("not an integer type")));
 	}
+}
+
+static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
+	int64 val = YbDatumGetInt64(value, value_typid);
 	return val >= min && val <= max;
 }
 
@@ -2245,7 +2246,7 @@ YbPredetermineNeedsRecheck(Relation relation,
 
 typedef struct {
 	YBCPgBoundType type;
-	uint64_t value;
+	int64 value;
 } YbBound;
 
 typedef struct {
@@ -2275,10 +2276,18 @@ YbIsValidRange(const YbBound *start, const YbBound *end)
 	        YbBoundInclusive(end));
 }
 
+#define YB_HASH_CODE_MAX 65535
+
 static bool
 YbApplyStartBound(YbRange *range, const YbBound *start)
 {
 	Assert(YbBoundValid(start));
+
+	if (start->value < 0)
+		return true;
+	if (start->value > YB_HASH_CODE_MAX)
+		return false;
+
 	if (YbBoundValid(&range->end) && !YbIsValidRange(start, &range->end))
 		return false;
 
@@ -2295,6 +2304,12 @@ static bool
 YbApplyEndBound(YbRange *range, const YbBound *end)
 {
 	Assert(YbBoundValid(end));
+
+	if (end->value < 0)
+		return false;
+	if (end->value > YB_HASH_CODE_MAX)
+		return true;
+
 	if (YbBoundValid(&range->start) && !YbIsValidRange(&range->start, end))
 		return false;
 
@@ -2319,14 +2334,14 @@ YbBindHashKeys(YbScanDesc ybScan)
 		Assert(YbIsHashCodeSearch(key));
 		YbBound bound = {
 			.type = YB_YQL_BOUND_VALID,
-			.value = key->sk_argument
+			.value = YbDatumGetInt64(key->sk_argument, key->sk_subtype)
 		};
 		switch (key->sk_strategy)
 		{
 			case BTEqualStrategyNumber:
 					bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
 					if (!YbApplyStartBound(&range, &bound) ||
-					    !YbApplyEndBound(&range, &bound))
+						!YbApplyEndBound(&range, &bound))
 						return false;
 				break;
 
