@@ -5,8 +5,10 @@ import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.Universe;
+import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
+import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseRestart;
@@ -124,5 +126,18 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
       Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
       throws Exception {
     return universeUpgradeHandler.systemdEnable(request, cUUID, uniUUID, systemd);
+  }
+
+  @Override
+  public YBATask encryptionInTransitToggle(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
+      throws Exception {
+    return universeUpgradeHandler.tlsToggle(request, cUUID, uniUUID, spec);
+  }
+
+  @Override
+  public YBATask encryptionInTransitCertRotate(
+      Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec) throws Exception {
+    return universeUpgradeHandler.certRotate(request, cUUID, uniUUID, spec);
   }
 }

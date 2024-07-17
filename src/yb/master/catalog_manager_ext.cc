@@ -1489,8 +1489,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         return Status::OK();
       }));
 
-  // Pass 3: Get all the SysTabletsEntry that are in a running state as of read_time and belongs to
-  // the running tables from pass 2.
+  // Pass 3: Get all active (not split) tablets that belong to the tables from pass 2.
   docdb::DocRowwiseIterator tablets_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
@@ -1498,10 +1497,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
       [&tables_to_tablets](const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
-        // TODO(Yamen): handle tablet splitting cases by either keeping the parent or the children
-        // according to their state.
-        if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING &&
-            pb.hide_hybrid_time() == 0) {
+        if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0) {
           VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));

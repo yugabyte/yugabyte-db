@@ -4,7 +4,8 @@ service_name="node_exporter.service"
 status=$(systemctl show -p ActiveState "$service_name" | grep ActiveState | awk -F= '{print $2}')
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"
+    add_result "Service Status Check" "PASS" "$service_name is active"
 else
     echo "\"$service_name\"  is not active"
-    exit 1
+    add_result "Service Status Check" "FAIL" "$service_name is not active"
 fi
