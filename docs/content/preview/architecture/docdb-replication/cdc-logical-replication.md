@@ -1,14 +1,14 @@
 ---
 title: Logical replication in YugabyteDB
-headerTitle: Logical replication
-linkTitle: Logical replication
+headerTitle: CDC - logical replication
+linkTitle: CDC - logical replication
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
 headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
 badges: ea
 menu:
   preview:
     parent: architecture-docdb-replication
-    identifier: architecture-docdb-replication-logical-replication
+    identifier: architecture-docdb-replication-cdc-logical-replication
     weight: 500
 type: docs
 ---
