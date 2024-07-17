@@ -1,7 +1,7 @@
 ---
-title: Using Yugabyte gRPC replication
-headerTitle: Using Yugabyte gRPC replication
-linkTitle: Using Yugabyte gRPC replication
+title: Using YugabyteDB gRPC replication
+headerTitle: Using YugabyteDB gRPC replication
+linkTitle: Using YugabyteDB gRPC replication
 description: CDC or Change data capture is a process to capture changes made to data in the database.
 headcontent: Capture changes made to data in the database
 image: /images/section_icons/index/develop.png
@@ -30,12 +30,12 @@ To know more about the internals of CDC, see [Overview](./cdc-overview).
 {{</lead>}}
 -->
 
-## Debezium connector
+## YugabyteDB gRPC Connector
 
-To capture and stream your changes in YugabyteDB to an external system, you need a connector that can read the changes in YugabyteDB and stream it out. For this, you can use the Debezium connector. Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
+To capture and stream your changes in YugabyteDB to an external system, you need a connector that can read the changes in YugabyteDB and stream it out. For this, you can use the YugabyteDB gRPC (Debezium) connector. The connector is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
 
 {{<lead link="./debezium-connector-yugabytedb">}}
-To understand how the various features and configuration of the connector, see [Debezium connector](./debezium-connector-yugabytedb).
+To understand how the various features and configuration of the connector, see [YugabyteDB gRPC Connector](./debezium-connector-yugabytedb).
 {{</lead>}}
 
 ## Get started

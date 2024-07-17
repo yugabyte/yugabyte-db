@@ -1,8 +1,8 @@
 ---
-title: Debezium connector for YugabyteDB
-headerTitle: Debezium connector for YugabyteDB
-linkTitle: Debezium connector
-description: Debezium is an open source distributed platform used to capture the changes in a database.
+title: YugabyteDB gRPC Connector (Debezium)
+headerTitle: YugabyteDB gRPC Connector
+linkTitle: YugabyteDB gRPC Connector
+description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
 aliases:
   - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
   - /preview/explore/change-data-capture/debezium-connector
@@ -19,7 +19,7 @@ rightNav:
   hideH4: true
 ---
 
-The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
+The YugabyteDB gRPC (Debezium) Connector captures row-level changes in the schemas of a YugabyteDB database.
 
 The first time it connects to a YugabyteDB cluster or universe, the connector takes a consistent snapshot of the tables it is configured for. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content that are committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 

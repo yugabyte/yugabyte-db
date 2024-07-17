@@ -24,9 +24,9 @@ In databases, change data capture (CDC) is a set of software design patterns use
 
 - **Compliance and auditing**: Auditing and compliance requirements can require you to use CDC to maintain records of data changes.
 
-YugabyteDB supports the following methods for reading change events:
+YugabyteDB supports the following methods for reading change events.
 
-**PostgreSQL Logical Replication Protocol (Recommended)**
+## PostgreSQL Logical Replication Protocol (Recommended)
 
 This method uses the PostgreSQL replication protocol, ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
 
@@ -44,7 +44,7 @@ To learn about PostgreSQL Logical Replication, see [Using PostgreSQL Logical Rep
 {{</lead>}}
 -->
 
-**YugabyteDB gRPC Replication Protocol**
+## YugabyteDB gRPC Replication Protocol
 
 This method involves setting up a change stream in YugabyteDB that uses the native gRPC replication protocol to publish change events.
 
