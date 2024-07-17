@@ -964,47 +964,44 @@ CREATE TABLE yb_locks_partition(a char PRIMARY KEY) PARTITION BY LIST (a);
 CREATE TABLE yb_locks_partition_default PARTITION OF yb_locks_partition DEFAULT;
 CREATE TABLE yb_locks_partition_a PARTITION OF yb_locks_partition FOR VALUES IN ('a');
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'a' FOR UPDATE;
-                                               QUERY PLAN
---------------------------------------------------------------------------------------------------------
+                                                     QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------
  LockRows (actual rows=0 loops=1)
-   ->  Append (actual rows=0 loops=1)
-         ->  Index Scan using yb_locks_partition_a_pkey on yb_locks_partition_a (actual rows=0 loops=1)
-               Index Cond: (a = 'a'::bpchar)
-               Storage Table Read Requests: 1
+   ->  Index Scan using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition (actual rows=0 loops=1)
+         Index Cond: (a = 'a'::bpchar)
+         Storage Table Read Requests: 1
  Storage Read Requests: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(8 rows)
 
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'b' FOR UPDATE;
-                                                     QUERY PLAN
---------------------------------------------------------------------------------------------------------------------
+                                                           QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------
  LockRows (actual rows=0 loops=1)
-   ->  Append (actual rows=0 loops=1)
-         ->  Index Scan using yb_locks_partition_default_pkey on yb_locks_partition_default (actual rows=0 loops=1)
-               Index Cond: (a = 'b'::bpchar)
-               Storage Table Read Requests: 1
+   ->  Index Scan using yb_locks_partition_default_pkey on yb_locks_partition_default yb_locks_partition (actual rows=0 loops=1)
+         Index Cond: (a = 'b'::bpchar)
+         Storage Table Read Requests: 1
  Storage Read Requests: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(8 rows)
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'a' FOR UPDATE;
-                                                         QUERY PLAN
-----------------------------------------------------------------------------------------------------------------------------
+                                                               QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=0 loops=1)
-   ->  Append (actual rows=0 loops=1)
-         ->  Index Scan (Locked FOR UPDATE) using yb_locks_partition_a_pkey on yb_locks_partition_a (actual rows=0 loops=1)
-               Index Cond: (a = 'a'::bpchar)
-               Storage Table Read Requests: 1
+   ->  Index Scan (Locked FOR UPDATE) using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition (actual rows=0 loops=1)
+         Index Cond: (a = 'a'::bpchar)
+         Storage Table Read Requests: 1
  Storage Read Requests: 1
  Storage Rows Scanned: 0
  Storage Write Requests: 0
  Storage Flush Requests: 0
-(9 rows)
+(8 rows)
 
 COMMIT;
 -- Test JSON.
@@ -1017,6 +1014,7 @@ SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;
      "Plan": {                            +
        "Node Type": "Index Scan",         +
        "Parallel Aware": false,           +
+       "Async Capable": false,            +
        "Lock Type": "FOR UPDATE",         +
        "Scan Direction": "NoMovement",    +
        "Index Name": "yb_locks_t_pkey",   +
@@ -1100,6 +1098,7 @@ EXECUTE yb_locks_plan_rr(1);
      "Plan": {                                +
        "Node Type": "LockRows",               +
        "Parallel Aware": false,               +
+       "Async Capable": false,                +
        "Executes": false,                     +
        "Actual Rows": 1,                      +
        "Actual Loops": 1,                     +
@@ -1108,6 +1107,7 @@ EXECUTE yb_locks_plan_rr(1);
            "Node Type": "Index Scan",         +
            "Parent Relationship": "Outer",    +
            "Parallel Aware": false,           +
+           "Async Capable": false,            +
            "Lock Type": "FOR UPDATE",         +
            "Scan Direction": "NoMovement",    +
            "Index Name": "yb_locks_t_pkey",   +

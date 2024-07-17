@@ -352,32 +352,29 @@ CREATE TABLE yb_locks_partition (a char PRIMARY KEY) PARTITION BY LIST (a);
 CREATE TABLE yb_locks_partition_default PARTITION OF yb_locks_partition DEFAULT;
 CREATE TABLE yb_locks_partition_a PARTITION OF yb_locks_partition FOR VALUES IN ('a');
 EXPLAIN (COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'a' FOR UPDATE;
-                                   QUERY PLAN
---------------------------------------------------------------------------------
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
  LockRows
-   ->  Append
-         ->  Index Scan using yb_locks_partition_a_pkey on yb_locks_partition_a
-               Index Cond: (a = 'a'::bpchar)
-(4 rows)
+   ->  Index Scan using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition
+         Index Cond: (a = 'a'::bpchar)
+(3 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'b' FOR UPDATE;
-                                         QUERY PLAN
---------------------------------------------------------------------------------------------
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
  LockRows
-   ->  Append
-         ->  Index Scan using yb_locks_partition_default_pkey on yb_locks_partition_default
-               Index Cond: (a = 'b'::bpchar)
-(4 rows)
+   ->  Index Scan using yb_locks_partition_default_pkey on yb_locks_partition_default yb_locks_partition
+         Index Cond: (a = 'b'::bpchar)
+(3 rows)
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (COSTS OFF) SELECT * FROM yb_locks_partition WHERE a = 'a' FOR UPDATE;
-                                             QUERY PLAN
-----------------------------------------------------------------------------------------------------
+                                                   QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------
  LockRows (no-op)
-   ->  Append
-         ->  Index Scan (Locked FOR UPDATE) using yb_locks_partition_a_pkey on yb_locks_partition_a
-               Index Cond: (a = 'a'::bpchar)
-(4 rows)
+   ->  Index Scan (Locked FOR UPDATE) using yb_locks_partition_a_pkey on yb_locks_partition_a yb_locks_partition
+         Index Cond: (a = 'a'::bpchar)
+(3 rows)
 
 COMMIT;
 -- Test JSON.
@@ -390,6 +387,7 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
      "Plan": {                         +
        "Node Type": "Index Scan",      +
        "Parallel Aware": false,        +
+       "Async Capable": false,         +
        "Lock Type": "FOR UPDATE",      +
        "Scan Direction": "NoMovement", +
        "Index Name": "yb_locks_t_pkey",+
@@ -450,12 +448,14 @@ EXECUTE yb_locks_plan_rr(1);
      "Plan": {                             +
        "Node Type": "LockRows",            +
        "Parallel Aware": false,            +
+       "Async Capable": false,             +
        "Executes": false,                  +
        "Plans": [                          +
          {                                 +
            "Node Type": "Index Scan",      +
            "Parent Relationship": "Outer", +
            "Parallel Aware": false,        +
+           "Async Capable": false,         +
            "Lock Type": "FOR UPDATE",      +
            "Scan Direction": "NoMovement", +
            "Index Name": "yb_locks_t_pkey",+
