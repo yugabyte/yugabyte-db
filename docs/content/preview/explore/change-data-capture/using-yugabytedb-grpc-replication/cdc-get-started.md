@@ -14,7 +14,15 @@ menu:
 type: docs
 ---
 
-To stream data change events from YugabyteDB databases, you need to use YugabyteDB gRPC Connector. To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [YugabyteDB gRPC Connector](../debezium-connector-yugabytedb/).
+## Deploying the YugabyteDB gRPC Connector
+To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
+
+* Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+* Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
+* Configure the Connector: Modify the connector configuration to suit your specific requirements.
+* Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
+
+For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation]((../debezium-connector-yugabytedb/)).
 
 
 ## Set up YugabyteDB for CDC
