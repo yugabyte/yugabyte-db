@@ -1,7 +1,7 @@
 ---
-title: Change data capture (CDC)
-headerTitle: Change data capture (CDC)
-linkTitle: Change data capture
+title: Using Yugabyte gRPC replication
+headerTitle: Using Yugabyte gRPC replication
+linkTitle: Using Yugabyte gRPC replication
 description: CDC or Change data capture is a process to capture changes made to data in the database.
 headcontent: Capture changes made to data in the database
 image: /images/section_icons/index/develop.png
