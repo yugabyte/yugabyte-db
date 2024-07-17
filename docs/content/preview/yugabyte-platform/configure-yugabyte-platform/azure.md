@@ -53,11 +53,11 @@ When deploying a universe, YBA uses the provider configuration settings to do th
 
 You need to add the following Azure cloud provider credentials via YBA:
 
+- Application client ID and (if using credentials) client secret
+- Resource group name
 - Subscription ID
 - Tenant ID
 - SSH port and user
-- Application client ID and secret
-- Resource group
 
 YBA uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
@@ -128,6 +128,7 @@ If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/
 
 - **Resource Group** is the name of the resource group you created for your application, and in which YugabyteDB node compute and network resources will be created.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription. To get the subscription ID, open Subscriptions in Azure portal and find your subscription. Then, copy the Subscription ID.
+- Optionally, if you created a different resource group for your network interfaces, provide the **Network Resource Group** name and the associated **Network Subscription ID**. If you do not provide a Network Resource Group or Subscription ID, network resources will be created in the default resource group.
 - **Tenant ID** represents the tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Microsoft Entra tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
 

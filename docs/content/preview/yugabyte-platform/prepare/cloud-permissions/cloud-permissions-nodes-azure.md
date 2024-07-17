@@ -65,6 +65,8 @@ Network Contributor
 Virtual Machine Contributor 
 ```
 
+You can optionally create a resource group for network resources if you want network interfaces to be created separately. The network resource group must have the `Network Contributor` permission.
+
 For more information, refer to [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
 
 ### Credentials
@@ -88,6 +90,8 @@ Record the following information about your service account. You will need to pr
 | Client Secret:<br>(not required when using managed identity) | |
 | Resource Group: | |
 | Subscription ID: | |
+| (Optional) Network Resource Group: | |
+| (Optional) Network Subscription ID: | |
 | Tenant ID: | |
 
 ## Managing SSH keys for VMs
