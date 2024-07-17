@@ -8864,7 +8864,7 @@
     "Permission" : {
       "properties" : {
         "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS", "XCLUSTER" ],
           "type" : "string"
         },
         "resourceType" : {
@@ -8890,7 +8890,7 @@
     "PermissionInfo" : {
       "properties" : {
         "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS", "XCLUSTER" ],
           "type" : "string"
         },
         "description" : {
@@ -29204,7 +29204,8 @@
     },
     "/api/v1/customers/{cUUID}/xcluster_configs/sync" : {
       "post" : {
-        "description" : "Available since YBA version 2.16.0.0.",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2.23.0.0.</b></p> Sync xcluster config (V2) instead.",
         "operationId" : "syncXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -29243,7 +29244,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Sync xcluster config",
+        "summary" : "Sync xcluster config - deprecated",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -29438,6 +29439,50 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit xcluster config",
+        "tags" : [ "Asynchronous Replication" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}/sync" : {
+      "post" : {
+        "description" : "Available since YBA version 2.23.0.0",
+        "operationId" : "syncXClusterConfigV2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "xccUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Sync xcluster config (V2)",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
