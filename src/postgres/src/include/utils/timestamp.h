@@ -109,6 +109,4 @@ extern int	date2isoyearday(int year, int mon, int mday);
 
 extern bool TimestampTimestampTzRequiresRewrite(void);
 
-extern const char *YbTimestampTzToStr(TimestampTz dt);
-
 #endif							/* TIMESTAMP_H */
