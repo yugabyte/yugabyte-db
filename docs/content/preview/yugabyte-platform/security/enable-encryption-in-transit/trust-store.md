@@ -21,7 +21,7 @@ YugabyteDB Anywhere uses certificates to validate connections between YugabyteDB
 - [Hashicorp Vault](../../create-kms-config/hashicorp-kms/)
 - Other [YugabyteDB Anywhere high availability](../../../administer-yugabyte-platform/high-availability/) replicas.
 
-If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
+When using self-signed or custom CA certificates, to enable YugabyteDB Anywhere to validate your TLS connections, you _must_ add the certificates to the YugabyteDB Anywhere Trust Store
 
 ## Add certificates to your trust store
 
