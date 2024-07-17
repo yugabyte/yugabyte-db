@@ -1300,15 +1300,18 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 		case AT_DropColumn:
 		case AT_DropColumnRecurse:
 		{
-			/* Skip yb alter for IF EXISTS with non-existent column */
-			if (cmd->missing_ok)
-			{
-				HeapTuple tuple = SearchSysCacheAttName(relationId, cmd->name);
-				if (!HeapTupleIsValid(tuple))
-					break;
-				ReleaseSysCache(tuple);
-			}
-
+			HeapTuple tuple = SearchSysCacheAttName(relationId, cmd->name);
+			/* Skip yb alter for non-existent column */
+			if (!HeapTupleIsValid(tuple))
+				break;
+			AttrNumber attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+			ReleaseSysCache(tuple);
+			/*
+			 * Skip yb alter for primary key columns (the table will be
+			 * rewritten)
+			 */
+			if (YbIsAttrPrimaryKeyColumn(rel, attnum))
+				break;
 			Assert(list_length(handles) == 1);
 			YBCPgStatement drop_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
@@ -2041,13 +2044,45 @@ YBCDropColumn(Relation rel, AttrNumber attnum)
 {
 	TupleDesc tupleDesc = RelationGetDescr(rel);
 	Form_pg_attribute attr = TupleDescAttr(tupleDesc, attnum - 1);
-	YBCPgStatement handle = NULL;
-	HandleYBStatus(YBCPgNewAlterTable(
-		YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
-		YbGetRelfileNodeId(rel),
-		&handle));
-	HandleYBStatus(YBCPgAlterTableDropColumn(
-		handle,
-		attr->attname.data));
-	HandleYBStatus(YBCPgExecAlterTable(handle));
+
+	if (YbIsAttrPrimaryKeyColumn(rel, attnum))
+	{
+		/*
+		 * In YB, dropping a primary key involves a table
+		 * rewrite, so invoke the entire ALTER TABLE logic.
+		 */
+
+		/* Construct a dummy query, as we don't have the original query. */
+		char *query_str = psprintf("ALTER TABLE %s DROP COLUMN %s",
+			quote_qualified_identifier(
+				get_namespace_name(rel->rd_rel->relnamespace),
+				RelationGetRelationName(rel)),
+			attr->attname.data);
+		RawStmt *rawstmt =
+			(RawStmt *) linitial(raw_parser(query_str, RAW_PARSE_DEFAULT));
+
+		/* Construct the ALTER TABLE command. */
+		AlterTableCmd *cmd = makeNode(AlterTableCmd);
+		cmd->subtype = AT_DropColumn;
+		cmd->name = attr->attname.data;
+		List *cmds = list_make1(cmd);
+
+		EventTriggerAlterTableStart((Node *) rawstmt->stmt);
+		AlterTableInternal(RelationGetRelid(rel), cmds, true);
+		EventTriggerAlterTableEnd();
+
+		pfree(query_str);
+	}
+	else
+	{
+		YBCPgStatement handle = NULL;
+		HandleYBStatus(YBCPgNewAlterTable(
+			YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
+			YbGetRelfileNodeId(rel),
+			&handle));
+		HandleYBStatus(YBCPgAlterTableDropColumn(
+			handle,
+			attr->attname.data));
+		HandleYBStatus(YBCPgExecAlterTable(handle));
+	}
 }

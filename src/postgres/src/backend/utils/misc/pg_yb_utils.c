@@ -5225,3 +5225,11 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 bool YbUseFastBackwardScan() {
   return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
 }
+
+/* Used in YB to check if an attribute is a key column. */
+bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
+{
+	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
+	return bms_is_member(attnum -
+		YBGetFirstLowInvalidAttributeNumber(rel), pkey);
+}

@@ -1038,3 +1038,55 @@ SELECT * FROM test_identity;
   3 |   3
   4 |   4
 (4 rows)
+
+--
+-- Test ALTER TABLE ... DROP COLUMN on a primary key column.
+--
+-- basic test
+CREATE TABLE test_drop_pk_column (id int PRIMARY KEY, v int);
+INSERT INTO test_drop_pk_column VALUES (1, 1), (2, 2), (3, 3);
+ALTER TABLE test_drop_pk_column DROP COLUMN id;
+\d test_drop_pk_column;
+        Table "public.test_drop_pk_column"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ v      | integer |           |          |
+Tablespace: "test_tblspc"
+
+INSERT INTO test_drop_pk_column VALUES (1);
+SELECT * FROM test_drop_pk_column ORDER BY v;
+ v
+---
+ 1
+ 1
+ 2
+ 3
+(4 rows)
+
+-- test composite PK
+CREATE TABLE test_drop_pk_column_composite (id int, v int, t int, PRIMARY KEY (id HASH, v ASC));
+INSERT INTO test_drop_pk_column_composite VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+ALTER TABLE test_drop_pk_column_composite DROP COLUMN id;
+\d test_drop_pk_column_composite;
+   Table "public.test_drop_pk_column_composite"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ v      | integer |           | not null |
+ t      | integer |           |          |
+Tablespace: "test_tblspc"
+
+INSERT INTO test_drop_pk_column_composite VALUES (1, 1);
+SELECT * FROM test_drop_pk_column_composite ORDER BY v;
+ v | t
+---+---
+ 1 | 1
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
+
+-- test partitioned table
+CREATE TABLE test_drop_pk_column_part (id int PRIMARY KEY, v int) PARTITION BY RANGE (id);
+CREATE TABLE test_drop_pk_column_part1 PARTITION OF test_drop_pk_column_part FOR VALUES FROM (1) TO (10);
+ALTER TABLE test_drop_pk_column_part DROP COLUMN id; -- should fail.
+ERROR:  cannot drop column "id" because it is part of the partition key of relation "test_drop_pk_column_part"

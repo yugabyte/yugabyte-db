@@ -1182,4 +1182,6 @@ extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
 
 extern bool YbUseFastBackwardScan();
 
+bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
+
 #endif /* PG_YB_UTILS_H */
