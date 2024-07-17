@@ -27,7 +27,7 @@ The **Authentication** tab on the **Security** page displays options for configu
   {{<index/item
     title="Federated authentication"
     body="Sign in using an identity provider."
-    href="managed-authentication/"
+    href="federated-entra/"
     icon="/images/section_icons/secure/authorization.png">}}
 
 {{</index/block>}}
