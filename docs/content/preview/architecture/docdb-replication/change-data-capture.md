@@ -65,6 +65,6 @@ When you have received a change for a row for timestamp `t`, you do not receive 
 
 {{< note title="Note" >}}
 
-See [Change data capture](../../../explore/change-data-capture/) in Explore for more details and limitations.
+See [Change data capture](../../../explore/change-data-capture/using-yugabytedb-grpc-replication) in Explore for more details and limitations.
 
 {{< /note >}}
