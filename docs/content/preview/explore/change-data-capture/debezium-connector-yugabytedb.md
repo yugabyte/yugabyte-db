@@ -10,7 +10,7 @@ aliases:
   - /preview/explore/change-data-capture/debezium-connector-postgresql
 menu:
   preview:
-    parent: explore-change-data-capture
+    parent: explore-change-data-capture-grpc-replication
     identifier: debezium-connector-yugabytedb
     weight: 20
 type: docs

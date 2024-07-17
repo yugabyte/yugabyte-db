@@ -6,7 +6,7 @@ description: Monitor Change Data Capture in YugabyteDB.
 headcontent: Monitor deployed CDC connectors
 menu:
   preview:
-    parent: explore-change-data-capture
+    parent: explore-change-data-capture-grpc-replication
     identifier: cdc-monitor
     weight: 60
 type: docs
