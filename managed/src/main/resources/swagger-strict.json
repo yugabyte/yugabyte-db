@@ -2534,7 +2534,7 @@
         "type" : "object"
       } ]
     },
-    "BootstarpBackupParams" : {
+    "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
         "parallelism" : {
@@ -2555,7 +2555,7 @@
       "description" : "Bootstrap parameters",
       "properties" : {
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
+          "$ref" : "#/definitions/BootstrapBackupParams",
           "description" : "Parameters used to do Backup/restore"
         },
         "tables" : {
@@ -9529,7 +9529,7 @@
       "description" : "Bootstrap parameters for restarting",
       "properties" : {
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
+          "$ref" : "#/definitions/BootstrapBackupParams",
           "description" : "Parameters used to do Backup/restore"
         }
       },
@@ -16974,7 +16974,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "default" : "null",
+          "default" : -1,
           "format" : "int64",
           "in" : "query",
           "name" : "apiTokenVersion",
