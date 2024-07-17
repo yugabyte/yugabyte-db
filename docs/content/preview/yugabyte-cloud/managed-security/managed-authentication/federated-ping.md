@@ -2,8 +2,8 @@
 title: YugabyteDB Aeon Federated authentication
 headerTitle: Federated authentication
 linkTitle: Federated authentication
-description: Use federated authentication for single sign on.
-headContent: Use federated authentication for single sign on
+description: Use federated authentication for single sign-on.
+headContent: Single sign-on using an identity provider
 menu:
   preview_yugabyte-cloud:
     identifier: federated-ping

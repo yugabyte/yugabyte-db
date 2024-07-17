@@ -14,7 +14,7 @@ type: indexpage
 
 In addition to email-based accounts, you can use social logins or federated authentication via an external identity provider (IdP) to provide access to your YugabyteDB Aeon account.
 
-The **Authentication** tab on the **Security** page displays options for configuring social logins and federated authentication.
+To configure social logins and federated authentication, navigate to **Security > Access Control > Authentication**.
 
 {{<index/block>}}
 

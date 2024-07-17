@@ -2,8 +2,8 @@
 title: YugabyteDB Aeon Federated authentication
 headerTitle: Federated authentication
 linkTitle: Federated authentication
-description: Use federated authentication for single sign on.
-headContent: Use federated authentication for single sign on
+description: Use federated authentication for single sign-on.
+headContent: Single sign-on using an identity provider
 menu:
   preview_yugabyte-cloud:
     identifier: federated-entra
@@ -42,7 +42,7 @@ Currently, YugabyteDB Aeon supports IdPs exclusively using the OIDC (OpenID Conn
   </li>
 </ul>
 
-### Prerequisites
+## Prerequisites
 
 Before configuring federated authentication, be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
 
@@ -57,7 +57,11 @@ To use Entra for your IdP, you need to register an application with Microsoft En
 
     ![Azure account types](/images/yb-cloud/managed-authentication-azure-account-types.png)
 
-- Set the Redirect URI platform to Web, and the URI to `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`.
+- Set the Redirect URI platform to Web, and the URI to the following:
+
+    ```sh
+    https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback
+    ```
 
 Use your own Entra account to test the connection. For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app) in the Microsoft documentation.
 
