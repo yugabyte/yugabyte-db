@@ -63,6 +63,7 @@ JAVA	org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
 JAVA	org.yb.pgsql.TestPgRegressDistinctPushdown
 JAVA	org.yb.pgsql.TestPgRegressDml
 JAVA	org.yb.pgsql.TestPgRegressFeatureDatabase
+JAVA	org.yb.pgsql.TestPgRegressFeaturePartition
 JAVA	org.yb.pgsql.TestPgRegressForeignData
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries

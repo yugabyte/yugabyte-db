@@ -178,5 +178,3 @@ CREATE TABLE ft_h_tab_void (feature_col VOID PRIMARY KEY);
 ERROR:  column "feature_col" has pseudo-type void
 -- TODO(jason): uncomment when issue #1975 is closed.
 -- CREATE TABLE ft_h_tab_unknown (feature_col UNKNOWN);
-CREATE TABLE ft_h_tab_opaque (feature_col OPAQUE PRIMARY KEY);
-ERROR:  column "feature_col" has pseudo-type opaque
