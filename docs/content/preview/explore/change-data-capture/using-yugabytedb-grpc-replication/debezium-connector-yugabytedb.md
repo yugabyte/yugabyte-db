@@ -1,16 +1,17 @@
 ---
-title: Debezium connector for YugabyteDB
-headerTitle: Debezium connector for YugabyteDB
-linkTitle: Debezium connector
-description: Debezium is an open source distributed platform used to capture the changes in a database.
+title: YugabyteDB gRPC Connector (Debezium)
+headerTitle: YugabyteDB gRPC Connector
+linkTitle: YugabyteDB gRPC Connector
+description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
 aliases:
   - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
   - /preview/explore/change-data-capture/debezium-connector
   - /preview/explore/change-data-capture/debezium
   - /preview/explore/change-data-capture/debezium-connector-postgresql
+  - /preview/explore/change-data-capture/debezium-connector-yugabytedb
 menu:
   preview:
-    parent: explore-change-data-capture
+    parent: explore-change-data-capture-grpc-replication
     identifier: debezium-connector-yugabytedb
     weight: 20
 type: docs
@@ -18,7 +19,7 @@ rightNav:
   hideH4: true
 ---
 
-The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
+The YugabyteDB gRPC (Debezium) Connector captures row-level changes in the schemas of a YugabyteDB database.
 
 The first time it connects to a YugabyteDB cluster or universe, the connector takes a consistent snapshot of the tables it is configured for. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content that are committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 
@@ -697,7 +698,7 @@ When a row is deleted, the _delete_ event value still works with log compaction,
 
 {{< tip title="TRUNCATE tables when CDC is enabled" >}}
 
-By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
+By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
 
 {{< /tip >}}
 
@@ -917,8 +918,8 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the YugabyteDB connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../admin/yb-admin#create_change_data_stream) command.
-* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../../change-data-capture/cdc-overview/#known-limitations).
+* You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin#create_change_data_stream) command.
+* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../cdc-overview/#known-limitations).
 
 ### WAL disk space consumption
 
@@ -928,7 +929,7 @@ For example, the connector is lagging behind in streaming the changes. In this c
 
 ## Deployment
 
-To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](../../../integrations/cdc/debezium/).
+To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. For complete steps, follow the guide to [running the Debezium connector for YugabyteDB](../../../../integrations/cdc/debezium/).
 
 ### Connector configuration example
 
@@ -959,7 +960,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 1. The address of this YugabyteDB server.
 1. The port number of the YugabyteDB YSQL process.
 1. List of comma separated values of master nodes of the YugabyteDB server. Usually in the form `host`:`port`.
-1. The DB stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands).
+1. The DB stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands).
 1. The name of the YugabyteDB user having the privileges to connect to the database.
 1. The password for the above specified YugabyteDB user.
 1. The name of the YugabyteDB database to connect to.
@@ -1017,7 +1018,7 @@ The following properties are _required_ unless a default value is available:
 | database.password | N/A | Password for the given user. |
 | database.dbname | N/A | The database from which to stream. |
 | database.server.name | N/A | Logical name that identifies and provides a namespace for the particular YugabyteDB database server or cluster for which Debezium is capturing changes. This name must be unique, as it's also used to form the Kafka topic. |
-| database.streamid | N/A | Stream ID created using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
+| database.streamid | N/A | Stream ID created using [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) for Change data capture. |
 | table.include.list | N/A | Comma-separated list of table names and schema names, such as `public.test` or `test_schema.test_table_name`. |
 | table.max.num.tablets | 300 | Maximum number of tablets the connector can poll for. This should be greater than or equal to the number of tablets the table is split into. |
 | database.sslmode | disable | Whether to use an encrypted connection to the YugabyteDB cluster. Supported options are:<ul><li>`disable` uses an unencrypted connection</li><li>`require` uses an encrypted connection and fails if it can't be established</li><li>`verify-ca` uses an encrypted connection, verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, and fails if no valid matching CA certificates are found.</li></ul> |
@@ -1044,9 +1045,9 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 
 If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
-* [Local deployments](../../../secure/tls-encryption/)
-* [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
-* [YugabyteDB Aeon](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
+* [Local deployments](../../../../secure/tls-encryption/)
+* [YugabyteDB Anywhere](../../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YugabyteDB Aeon](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 
@@ -1063,7 +1064,7 @@ Advanced connector configuration properties:
 | time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision: <br/><br/> `adaptive` captures the time and timestamp values exactly as in the database using millisecond precision values based on the database column's type. <br/><br/> `adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using millisecond precision values based on the database column's type. An exception is `TIME` type fields, which are always captured as microseconds. <br/><br/> `connect` always represents time and timestamp values by using Kafka Connect's built-in representations for Time, Date, and Timestamp, which use millisecond precision regardless of the database columns' precision. See temporal values. |
 | decimal.handling.mode | double | The `precise` mode is not currently supported. <br/><br/>  `double` maps all the numeric, double, and money types as Java double values (FLOAT64). <br/><br/>  `string` represents the numeric, double, and money types as their string-formatted form. <br/><br/> |
 | binary.handling.mode | hex | `hex` is the only supported mode. All binary strings are converted to their respective hex format and emitted as their string representation . |
-| interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../api/ysql/datatypes/). |
+| interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/> `numeric` represents intervals using approximate number of microseconds. <br/><br/> `string` represents intervals exactly by using the string pattern representation<br/> `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`.<br/> For example: P1Y2M3DT4H5M6.78S. See [YugabyteDB data types](../../../../api/ysql/datatypes/). |
 | transaction.topic | `${database.server.name}`<br/>`.transaction` | Controls the name of the topic to which the connector sends transaction metadata messages. The placeholder `${database.server.name}` can be used for referring to the connector's logical name; defaults to `${database.server.name}.transaction`, for example `dbserver1.transaction`. |
 | provide.transaction.metadata | `false` | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify `true` if you want the connector to do this. See [Transaction metadata](#transaction-metadata) for details. |
 | skipped.operations | N/A | A comma-separated list of operation types to be skipped during streaming. The types are `c` for insert/create operations, `u` for update operations, and `d` for delete operations. By default, no operations are skipped. |
@@ -1161,7 +1162,7 @@ The connector publishes metadata that can be used to distinguish transaction bou
 
 ### Prerequisites
 
-* Create the Stream ID should in the `EXPLICIT` checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../admin/yb-admin#create-change-data-stream).
+* Create the Stream ID should in the `EXPLICIT` checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../../admin/yb-admin#create-change-data-stream).
 * You should always run the connector with a single task, that is, `tasks.max` should always be set to 1.
 
 ### Known limitations
@@ -1196,7 +1197,7 @@ In case one of the tablet servers crashes, the replicas on other YB-TServer node
 
 ### YugabyteDB server failures
 
-In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [flag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the YB-TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
+In case of YugabyteDB server failures, the Debezium YugabyteDB connector will try for a configurable (using a [flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the YB-TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
 ### Connector unable to find table association with stream ID
 
