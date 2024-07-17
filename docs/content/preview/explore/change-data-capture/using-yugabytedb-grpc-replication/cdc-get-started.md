@@ -14,17 +14,6 @@ menu:
 type: docs
 ---
 
-## Deploying the YugabyteDB gRPC Connector
-To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
-
-* Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
-* Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
-* Configure the Connector: Modify the connector configuration to suit your specific requirements.
-* Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
-
-For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation]((../debezium-connector-yugabytedb/)).
-
-
 ## Set up YugabyteDB for CDC
 
 The following steps are necessary to set up YugabyteDB for use with the YugabyteDB gRPC connector:
@@ -42,6 +31,16 @@ The following steps are necessary to set up YugabyteDB for use with the Yugabyte
     The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
     In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+
+## Deploying the YugabyteDB gRPC Connector
+To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
+
+* Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+* Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
+* Configure the Connector: Modify the connector configuration to suit your specific requirements.
+* Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
+
+For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation]((../debezium-connector-yugabytedb/)).
 
 ## Serialization
 
