@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB gRPC Connector (Debezium)
-headerTitle: YugabyteDB gRPC Connector 
+headerTitle: YugabyteDB gRPC Connector
 linkTitle: YugabyteDB gRPC Connector
 description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
 aliases:
