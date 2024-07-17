@@ -1,6 +1,6 @@
 ---
 title: Change data capture (CDC) in YugabyteDB
-headerTitle: Change data capture (CDC)
+headerTitle: CDC - gRPC replication
 linkTitle: CDC - gRPC replication
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
 badges: ea
