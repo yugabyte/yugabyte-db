@@ -823,7 +823,9 @@
               "label": "Metrics",
               "metricsUnavailableDuringFailover": "Metrics are unavailable during failover."
             },
-            "tables": { "label": "Tables" }
+            "tables": {
+              "label": "Tables"
+            }
           },
           "status": {
             "Initializing": "Initializing",
@@ -1946,6 +1948,75 @@
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "taskDetails": {
+      "header": {
+        "title": "Operation Details"
+      },
+      "taskNotfound": "Task not found!",
+      "actions": {
+        "retry": "Retry",
+        "abort": "Abort",
+        "diffs": {
+          "Update": "View Universe Changes",
+          "SoftwareUpgrade": "View Software Upgrade Changes",
+          "GFlagsUpgrade": "View GFlags Changes"
+        },
+        "messages": {
+          "abortConfirmTitle": "Abort Running Task ?",
+          "abortConfirmMsg": "Do you really want to abort this task?",
+          "retryConfirmTitle": "Retry Task ?",
+          "retryConfirmMsg": "Do you really want to retry this task?",
+          "taskAbortSuccess": "Task aborted successfully",
+          "taskAbortFailed": "Task abort failed",
+          "taskRetrySuccess": "Task retry success",
+          "taskRetryFailed": "Task retry failed"
+        }
+      },
+      "info": {
+        "task": "Task",
+        "type": "Type",
+        "target": "Target",
+        "status": "Status",
+        "startTime": "Start Time",
+        "endTime": "End time",
+        "startVersion": "Start Version",
+        "targetVersion": "Target Version"
+      },
+      "progress": {
+        "title": "Progress",
+        "complete": "{{progress}}% Completed",
+        "expand": "Expand",
+        "showLog": "YugaWare Log"
+      },
+      "banner": {
+        "viewDetails": "View Details",
+        "taskProgress": "{{percent}}%",
+        "opNotAvailable": "Some operations are not available while the current operation is in progress"
+      },
+      "simple": {
+        "viewDetails": "View Details"
+      },
+      "diffModal": {
+        "title": "Universe Changes",
+        "expandAll": "Expand All",
+        "diffDetailsNotFound": "Unable to find diff details",
+        "alerts": {
+          "inProgress": "This operation intends to modify the following {{count}} value(s). ",
+          "failed": "<b>Changes haven't been fully implemented</b> due to the failure of the task."
+        },
+        "titles": {
+          "Update": "Universe Changes",
+          "SoftwareUpgrade": "Software Upgrade Changes",
+          "GFlagsUpgrade": " GFlags Upgrade Changes"
+        },
+        "universeDiff": {
+          "region": "Region",
+          "availabilityZone": "Availability Zone",
+          "nodes": "nodes",
+          "preferred": "preferred"
+        }
       }
     },
     "ha": {

@@ -160,7 +160,11 @@ a:hover .universe-name-cell {
     flex: 0 0 300px;
   }
 }
-
+.new-task-details {
+  & > *:last-child {
+    flex: 0 0 410px;
+  }
+}
 .detail-item-cell {
   border-right: 1px solid grey;
   height: 70px;
