@@ -16,17 +16,10 @@ type: docs
 
 To stream data change events from YugabyteDB databases, you need to use YugabyteDB gRPC Connector. To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [YugabyteDB gRPC Connector](../debezium-connector-yugabytedb/).
 
-## Ordering guarantees
-
-|Ordering guarantee| Description|
-|----------| ----------------------------|
-|Per-tablet ordered delivery guarantee|All changes for a row (or rows in the same tablet) are received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee of the order across tablets.|
-|At least once delivery|Updates for rows are streamed at least once. This can happen in the case of Kafka Connect Node failure. If the Kafka Connect Node pushes the records to Kafka and crashes before committing the offset, on restart, it will again get the same set of records.|
-|No gaps in change stream|Note that after you have received a change for a row for some timestamp `t`, you won't receive a previously unseen change for that row at a lower timestamp. Receiving any change implies that you have received _all older changes_ for that row.|
 
 ## Set up YugabyteDB for CDC
 
-The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector:
+The following steps are necessary to set up YugabyteDB for use with the YugabyteDB gRPC connector:
 
 - Create a DB stream ID.
 
