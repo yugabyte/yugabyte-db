@@ -9,8 +9,8 @@ cascade:
   earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   preview:
-    identifier: explore-change-data-capture
-    parent: explore
+    identifier: explore-change-data-capture-logical-replication
+    parent: explore-change-data-capture
     weight: 240
 type: indexpage
 ---

@@ -10,7 +10,7 @@ cascade:
 menu:
   preview:
     identifier: explore-change-data-capture-grpc-replication
-    parent: explore
+    parent: explore-change-data-capture
     weight: 280
 type: indexpage
 ---
