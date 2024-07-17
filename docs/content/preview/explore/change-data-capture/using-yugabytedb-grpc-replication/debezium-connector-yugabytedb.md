@@ -1,6 +1,6 @@
 ---
 title: YugabyteDB gRPC Connector (Debezium)
-headerTitle: YugabyteDB gRPC Connector
+headerTitle: YugabyteDB gRPC Connector 
 linkTitle: YugabyteDB gRPC Connector
 description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
 aliases:
@@ -19,29 +19,8 @@ rightNav:
   hideH4: true
 ---
 
-The YugabyteDB gRPC (Debezium) Connector captures row-level changes in the schemas of a YugabyteDB database.
-
-The first time it connects to a YugabyteDB cluster or universe, the connector takes a consistent snapshot of the tables it is configured for. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content that are committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
-
-## Overview
-
-The Debezium connector for YugabyteDB reads the changes produced by YugabyteDB. It uses the CDC service APIs implemented on the server side to get the changes.
-
-The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in separate Kafka topics. Client applications read the Kafka topics corresponding to database tables of interest, and can react to every row-level event they receive from those topics.
-
-![What is CDC](/images/explore/cdc-overview-what.png)
-
-YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by taking a snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
-
-The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off using the WAL position called checkpoints managed on the Kafka side as well as on the YugabyteDB cluster.
-
-{{< tip title="Use UTF-8 encoding" >}}
-
-Debezium supports databases with UTF-8 character encoding only. With a single-byte character encoding, it's not possible to correctly process strings that contain extended ASCII code characters.
-
-{{< /tip >}}
-
-## Connector compatibility
+The YugabyteDB gRPC Connector captures row-level changes in a YugabyteDB database's schemas.
+## YugabyteDB gRPC Connector compatibility
 
 The connector is compatible with the following versions of YugabyteDB.
 
@@ -60,6 +39,33 @@ Starting with YugabyteDB v2.20, the naming convention for releases of the connec
 The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise.
 
 {{< /note >}}
+
+## Initial Snapshot and Continuous Streaming:
+
+* Initial Snapshot: Upon its first connection to a YugabyteDB cluster, the connector takes a consistent snapshot of the configured tables.
+* Continuous Streaming: After the snapshot, it continuously captures row-level changes (insertions, updates, and deletions) from the database. It then generates data change event records and streams them to Kafka topics.
+
+![What is CDC](/images/explore/cdc-overview-what.png)
+
+
+
+## Kafka Integration:
+
+For each table, the connector streams all generated events to a separate Kafka topic. Client applications and services can consume these data change event records from their respective topics.
+
+* CDC (Change Data Capture) Service: The Debezium connector for YugabyteDB leverages the CDC service APIs to read the changes from YugabyteDB.
+* Event Production: For every row-level insert, update, and delete operation captured, the connector produces a corresponding change event and sends it to separate Kafka topics dedicated to each table.
+* Client Consumption: Applications read the Kafka topics corresponding to the database tables they are interested in and react to the row-level events received.
+
+## Failure Tolerance
+The connector records the WAL position for each event as it reads changes and produces events. If the connector stops (due to communication failures, network problems, or crashes), it resumes reading the WAL from the last recorded position upon restart. This uses checkpoints managed on both the Kafka side and the YugabyteDB cluster.
+{{< tip title="Use UTF-8 encoding" >}}
+
+Debezium supports databases with UTF-8 character encoding only. With a single-byte character encoding, it's not possible to correctly process strings that contain extended ASCII code characters.
+
+{{< /tip >}}
+
+
 
 ## How the connector works
 
