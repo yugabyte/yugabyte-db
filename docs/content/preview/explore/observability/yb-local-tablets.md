@@ -1,8 +1,8 @@
 ---
 title: View metadata for YSQL/YCQL/system tablets on a server
-linkTitle: Tablets metadata
+linkTitle: Tablet metadata
 description: View metadata for YSQL, YCQL, and system tablets on a server.
-headerTitle: View YSQL/YCQL and tablet metadata with yb_local_tablets
+headerTitle: View metadata for YSQL/YCQL/system tablets on a server
 menu:
   preview:
     identifier: yb-local-tablets

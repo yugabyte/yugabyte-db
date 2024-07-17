@@ -31,7 +31,7 @@ To use ASH, enable and configure the following flags for each node of your clust
 
 | Flag | Description |
 | :--- | :---------- |
-| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra` and `ysql_yb_enable_ash`. |
+| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra`,`ysql_yb_enable_ash`. |
 | ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a VM restart. |
 | ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables collecting of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
 
@@ -71,8 +71,8 @@ This view provides a list of wait events and their metadata. The columns of the 
 | :----- | :--- | :---------- |
 | root_request_id | UUID | A 16-byte UUID that is generated per request. Generated for queries at YSQL/YCQL layer. |
 | rpc_request_id | integer | ID for internal requests, it is a monotonically increasing number for the lifetime of a YB-TServer. |
-| wait_event_component | text | Components of the wait event which can be YSQL, YCQL, and TServer. |
-| wait_event_class | text | Classes of the wait event such as TabletWait, RocksDB, and so on.  |
+| wait_event_component | text | Component of the wait event which can be YSQL, YCQL, and TServer. |
+| wait_event_class | text | Class of the wait event such as TabletWait, RocksDB, and so on.  |
 | wait_event | text | Name of the wait event. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
@@ -84,7 +84,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 
 ## Wait events
 
-List of wait events by the following request types.
+List of wait events by the wait event components.
 
 ### YSQL
 
