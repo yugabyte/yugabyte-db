@@ -41,29 +41,35 @@
 #include "yb/util/env.h"
 #include "yb/util/logging.h"
 #include "yb/util/thread.h"
-
 #include "yb/util/thread_restrictions.h"
+
+DEFINE_RUNTIME_bool(enable_rwc_lock_debugging, false,
+    "Enable debug logging for RWC lock. This can hurt performance significantly since it causes us "
+    "to capture stack traces on each lock acquisition.");
+TAG_FLAG(enable_rwc_lock_debugging, advanced);
+
+DEFINE_RUNTIME_int32(slow_rwc_lock_log_ms, 5000,
+    "How long to wait for a write or commit lock before logging that it took a long time (and "
+    "logging the stacks of the writer / reader threads if FLAGS_enable_rwc_lock_debugging is "
+    "true).");
+TAG_FLAG(slow_rwc_lock_log_ms, advanced);
+
+using namespace std::literals;
 
 namespace yb {
 
 namespace {
-
-const auto kFirstWait = MonoDelta::FromSeconds(1);
-const auto kSecondWait = MonoDelta::FromSeconds(180);
-
+  const auto kMaxDebugWait = MonoDelta::FromMinutes(3);
 } // namespace
 
 RWCLock::RWCLock()
   : no_mutators_(&lock_),
     no_readers_(&lock_),
     reader_count_(0),
-#ifdef NDEBUG
     write_locked_(false) {
-#else
-    write_locked_(false),
-    last_writer_tid_(0),
-    last_writelock_acquire_time_(0) {
-#endif // NDEBUG
+  if (FLAGS_enable_rwc_lock_debugging) {
+    debug_info_ = std::make_unique<DebugInfo>();
+  }
 }
 
 RWCLock::~RWCLock() {
@@ -73,35 +79,33 @@ RWCLock::~RWCLock() {
 void RWCLock::ReadLock() {
   MutexLock l(lock_);
   reader_count_++;
-#ifndef NDEBUG
-  if (VLOG_IS_ON(1)) {
+  if (debug_info_) {
     const int64_t tid = Thread::CurrentThreadId();
-    if (reader_stacks_.find(tid) == reader_stacks_.end()) {
+    auto& reader_stacks = debug_info_->reader_stacks;
+    if (reader_stacks.find(tid) == reader_stacks.end()) {
       StackTrace stack_trace = StackTrace();
       stack_trace.Collect();
-      reader_stacks_[tid] = {
+      reader_stacks[tid] = {
         .count = 1,
         .stack = std::move(stack_trace),
       };
     } else {
-      reader_stacks_[tid].count++;
+      reader_stacks[tid].count++;
     }
   }
-#endif // NDEBUG
 }
 
 void RWCLock::ReadUnlock() {
   MutexLock l(lock_);
   DCHECK_GT(reader_count_, 0);
   reader_count_--;
-#ifndef NDEBUG
-  if (VLOG_IS_ON(1)) {
+  if (debug_info_) {
+    auto& reader_stacks = debug_info_->reader_stacks;
     const int64_t tid = Thread::CurrentThreadId();
-    if (--reader_stacks_[tid].count == 0) {
-      reader_stacks_.erase(tid);
+    if (--reader_stacks[tid].count == 0) {
+      reader_stacks.erase(tid);
     }
   }
-#endif // NDEBUG
   if (reader_count_ == 0) {
     YB_PROFILE(no_readers_.Signal());
   }
@@ -114,20 +118,20 @@ bool RWCLock::HasReaders() const {
 
 bool RWCLock::HasWriteLock() const {
   MutexLock l(lock_);
-#ifndef NDEBUG
-  return last_writer_tid_ == Thread::CurrentThreadId();
-#else
+  if (debug_info_) {
+    DCHECK_EQ(debug_info_->last_writer_tid, Thread::CurrentThreadId());
+  }
   return write_locked_;
-#endif
 }
 
 void RWCLock::WriteLockThreadChanged() {
-#ifndef NDEBUG
+  if (!debug_info_) {
+    return;
+  }
   MutexLock l(lock_);
   DCHECK(write_locked_);
-  last_writer_tid_ = Thread::CurrentThreadId();
-  last_writer_tid_for_stack_ = Thread::CurrentThreadIdForStack();
-#endif
+  debug_info_->last_writer_tid = Thread::CurrentThreadId();
+  debug_info_->last_writer_tid_for_stack = Thread::CurrentThreadIdForStack();
 }
 
 void RWCLock::WriteLock() {
@@ -135,32 +139,36 @@ void RWCLock::WriteLock() {
 
   MutexLock l(lock_);
   // Wait for any other mutations to finish.
-#ifndef NDEBUG
-  bool first_wait = true;
-  while (write_locked_) {
-    if (!no_mutators_.TimedWait(first_wait ? kFirstWait : kSecondWait)) {
-      std::ostringstream ss;
-      ss << "Too long write lock wait, last writer TID: " << last_writer_tid_
-         << ", last writer stack: " << last_writer_stacktrace_.Symbolize();
-      if (VLOG_IS_ON(1) || !first_wait) {
-        ss << "\n\nlast writer current stack: " << DumpThreadStack(last_writer_tid_for_stack_);
-        ss << "\n\ncurrent thread stack: " << GetStackTrace();
-      }
-      (first_wait ? LOG(WARNING) : LOG(FATAL)) << ss.str();
+  if (write_locked_ && !no_mutators_.TimedWait(FLAGS_slow_rwc_lock_log_ms * 1ms)) {
+    std::ostringstream ss;
+    ss << "Waited " << FLAGS_slow_rwc_lock_log_ms << "ms to acquire write lock.";
+    if (debug_info_) {
+      ss << "\n\nlast writer TID: " << debug_info_->last_writer_tid;
+      ss << "\n\nlast writer stack: " << debug_info_->last_writer_stacktrace.Symbolize();
+      ss << "\n\nlast writer current stack: "
+          << DumpThreadStack(debug_info_->last_writer_tid_for_stack);
+      ss << "\n\ncurrent thread stack: " << GetStackTrace();
     }
-    first_wait = false;
+    LOG(WARNING) << ss.str();
   }
-#else
+
+  // Loop to guard against spurious wakeups.
   while (write_locked_) {
+#ifdef NDEBUG
     no_mutators_.Wait();
-  }
+#else
+    if (!no_mutators_.TimedWait(kMaxDebugWait)) {
+      LOG(FATAL) << "Timed out waiting to acquire write lock after " << kMaxDebugWait;
+    }
 #endif
-#ifndef NDEBUG
-  last_writelock_acquire_time_ = GetCurrentTimeMicros();
-  last_writer_tid_ = Thread::CurrentThreadId();
-  last_writer_tid_for_stack_ = Thread::CurrentThreadIdForStack();
-  last_writer_stacktrace_.Collect();
-#endif // NDEBUG
+  }
+
+  if (debug_info_) {
+    debug_info_->last_writelock_acquire_time = GetCurrentTimeMicros();
+    debug_info_->last_writer_tid = Thread::CurrentThreadId();
+    debug_info_->last_writer_tid_for_stack = Thread::CurrentThreadIdForStack();
+    debug_info_->last_writer_stacktrace.Collect();
+  }
   write_locked_ = true;
 }
 
@@ -170,40 +178,43 @@ void RWCLock::WriteUnlock() {
   MutexLock l(lock_);
   DCHECK(write_locked_);
   write_locked_ = false;
-#ifndef NDEBUG
-  last_writer_stacktrace_.Reset();
-#endif // NDEBUG
+  if (debug_info_) {
+    debug_info_->last_writer_stacktrace.Reset();
+  }
   YB_PROFILE(no_mutators_.Signal());
 }
 
 void RWCLock::UpgradeToCommitLock() {
   lock_.lock();
   DCHECK(write_locked_);
-#ifndef NDEBUG
-  bool first_wait = true;
-  while (reader_count_ > 0) {
-    if (!no_readers_.TimedWait(first_wait ? kFirstWait : kSecondWait)) {
-      std::ostringstream ss;
-      ss << "Too long commit lock wait, num readers: " << reader_count_
-         << ", current thread stack: " << GetStackTrace();
-      if (VLOG_IS_ON(1)) {
-        for (const auto& entry : reader_stacks_) {
-          ss << "reader thread " << entry.first;
-          if (entry.second.count > 1) {
-            ss << " (holding " << entry.second.count << " locks) first";
-          }
-          ss << " stack: " << entry.second.stack.Symbolize();
+
+  if (reader_count_ > 0 && !no_readers_.TimedWait(FLAGS_slow_rwc_lock_log_ms * 1ms)) {
+    std::ostringstream ss;
+    ss << "Waited " << FLAGS_slow_rwc_lock_log_ms << "ms to acquire commit lock"
+       << ", num readers: " << reader_count_;
+    if (debug_info_) {
+      ss << ", current thread stack: " << GetStackTrace();
+      for (const auto& entry : debug_info_->reader_stacks) {
+        if (entry.second.count > 1) {
+          ss << "reader thread " << entry.first
+             << " (holding " << entry.second.count << " locks)";
         }
+        ss << " stack: " << entry.second.stack.Symbolize();
       }
-      (first_wait ? LOG(WARNING) : LOG(FATAL)) << ss.str();
     }
-    first_wait = false;
+    LOG(WARNING) << ss.str();
   }
-#else
+
+  // Loop to guard against spurious wakeups.
   while (reader_count_ > 0) {
+#ifdef NDEBUG
     no_readers_.Wait();
-  }
+#else
+    if (!no_readers_.TimedWait(kMaxDebugWait)) {
+      LOG(FATAL) << "Timed out waiting to acquire commit lock for " << kMaxDebugWait;
+    }
 #endif
+  }
   DCHECK(write_locked_);
 
   // Leaves the lock held, which prevents any new readers
@@ -213,9 +224,9 @@ void RWCLock::UpgradeToCommitLock() {
 void RWCLock::CommitUnlock() {
   DCHECK_EQ(0, reader_count_);
   write_locked_ = false;
-#ifndef NDEBUG
-  last_writer_stacktrace_.Reset();
-#endif // NDEBUG
+  if (debug_info_) {
+    debug_info_->last_writer_stacktrace.Reset();
+  }
   YB_PROFILE(no_mutators_.Broadcast());
   lock_.unlock();
 }

@@ -129,9 +129,8 @@ class CowObject {
 
   // Return true if the current thread holds the write lock.
   //
-  // In DEBUG mode this is accurate -- we track the current holder's tid.
-  // In non-DEBUG mode, this may sometimes return true even if another thread
-  // is in fact the holder.
+  // If FLAGS_enable_rwc_lock_debugging is true this is accurate; we track the current holder's tid.
+  // Else, this may sometimes return true even if another thread is in fact the holder.
   // Thus, this is only really useful in the context of a DCHECK assertion.
   bool HasWriteLock() const { return lock_.HasWriteLock(); }
 

@@ -7475,9 +7475,6 @@ Status CatalogManager::RegisterNewTabletForSplit(
   // This has to be done while the table lock is held since TableInfo::partitions_ must be updated
   // at the same time as the partition list version.
   table->AddTablet(new_tablet);
-  // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
-  // committed TabletInfo from the `table` ?
-  new_tablet->mutable_metadata()->CommitMutation();
 
   const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
   LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
@@ -7489,6 +7486,9 @@ Status CatalogManager::RegisterNewTabletForSplit(
             << ") for table " << table->ToString()
             << ", new partition_list_version: " << new_partition_list_version;
 
+  // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
+  // committed TabletInfo from the `table` ?
+  new_tablet->mutable_metadata()->CommitMutation();
   return Status::OK();
 }
 
