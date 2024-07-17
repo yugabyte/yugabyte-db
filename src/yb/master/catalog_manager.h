@@ -2578,6 +2578,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch,
       bool is_clone,
       ExternalTableSnapshotData* table_data);
+
+  // Update the colocated user table info to point to the new parent tablet. Add the colocated table
+  // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
+  // and doesn't have table ids.
+  Status UpdateColocatedUserTableInfoForClone(
+      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
+      const LeaderEpoch& epoch);
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
   Status ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
 
