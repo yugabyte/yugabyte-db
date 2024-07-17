@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-To stream data change events from YugabyteDB databases, you need to use Debezium YugabyteDB connector. To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [Debezium connector](../debezium-connector-yugabytedb/).
+To stream data change events from YugabyteDB databases, you need to use YugabyteDB gRPC Connector. To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [YugabyteDB gRPC Connector](../debezium-connector-yugabytedb/).
 
 ## Ordering guarantees
 
@@ -537,7 +537,7 @@ Longer values of `cdc_intent_retention_ms`, coupled with longer CDC lags (period
 
 ## Content-based routing
 
-By default, the Yugabyte Debezium connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. You can do this using the Debezium `ContentBasedRouter`. But first, two additional dependencies need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. These dependencies are:
+By default, the connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. You can do this using the Debezium `ContentBasedRouter`. But first, two additional dependencies need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. These dependencies are:
 
 - Debezium routing SMT (Single Message Transform)
 - Groovy JSR223 implementation (or other scripting languages that integrate with [JSR 223](https://jcp.org/en/jsr/detail?id=223))
