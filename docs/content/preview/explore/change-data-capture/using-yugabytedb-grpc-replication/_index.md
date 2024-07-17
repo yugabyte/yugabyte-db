@@ -7,48 +7,28 @@ headcontent: Capture changes made to data in the database
 image: /images/section_icons/index/develop.png
 cascade:
   earlyAccess: /preview/releases/versioning/#feature-maturity
+aliases:
+  - /preview/explore/change-data-capture/cdc-overview/
 menu:
   preview:
     identifier: explore-change-data-capture-grpc-replication
     parent: explore-change-data-capture
     weight: 280
 type: indexpage
+showRightNav: true
 ---
-In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. CDC is beneficial in a number of scenarios. Let us look at few of them.
 
-- **Microservice-oriented architectures** : Some microservices require a stream of changes to the data, and using CDC in YugabyteDB can provide consumable data changes to CDC subscribers.
-
-- **Asynchronous replication to remote systems** : Remote systems may subscribe to a stream of data changes and then transform and consume the changes. Maintaining separate database instances for transactional and reporting purposes can be used to manage workload performance.
-
-- **Multiple data center strategies** : Maintaining multiple data centers enables enterprises to provide high availability (HA).
-
-- **Compliance and auditing** : Auditing and compliance requirements can require you to use CDC to maintain records of data changes.
-
-{{<index/block>}}
-
-  {{<index/item
-    title="Get started"
-    body="Get set up for using CDC in YugabyteDB."
-    href="cdc-get-started/"
-    icon="/images/section_icons/index/quick_start.png">}}
-
-  {{<index/item
-    title="Tutorials"
-    body="How to stream data with different Kafka environments."
-    href="../../../tutorials/cdc-tutorials/"
-    icon="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">}}
-
-{{</index/block>}}
-
-## How does CDC work
+## Overview
 
 YugabyteDB CDC captures changes made to data in the database and streams those changes to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB database to downstream consumers based on its Write-Ahead Log (WAL). YugabyteDB CDC uses Debezium to capture row-level changes resulting from INSERT, UPDATE, and DELETE operations in the upstream database, and publishes them as events to Kafka using Kafka Connect-compatible connectors.
 
 ![What is CDC](/images/explore/cdc-overview-what.png)
 
+<!--
 {{<lead link="./cdc-overview">}}
 To know more about the internals of CDC, see [Overview](./cdc-overview).
 {{</lead>}}
+-->
 
 ## Debezium connector
 
@@ -58,6 +38,16 @@ To capture and stream your changes in YugabyteDB to an external system, you need
 To understand how the various features and configuration of the connector, see [Debezium connector](./debezium-connector-yugabytedb).
 {{</lead>}}
 
+## Get started
+
+Get started with Yugabyte gRPC replication.
+
+For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/tutorials/cdc-tutorials/).
+
+{{<lead link="./cdc-get-started">}}
+To learn how get started with the connector, see [Get started](./cdc-get-started).
+{{</lead>}}
+
 ## Monitoring
 
 You can monitor the activities and status of the deployed connectors using the http end points provided by YugabyteDB.
@@ -65,8 +55,6 @@ You can monitor the activities and status of the deployed connectors using the h
 {{<lead link="./cdc-monitor">}}
 To know more about how to monitor your CDC setup, see [Monitor](./cdc-monitor).
 {{</lead>}}
-
-For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/tutorials/cdc-tutorials/).
 
 ## Learn more
 

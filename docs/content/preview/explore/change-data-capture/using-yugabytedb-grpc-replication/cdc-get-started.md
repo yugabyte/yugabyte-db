@@ -4,6 +4,8 @@ headerTitle: Get started
 linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Get set up for using CDC in YugabyteDB
+aliases:
+  - /preview/explore/change-data-capture/cdc-get-started/
 menu:
   preview:
     parent: explore-change-data-capture-grpc-replication

@@ -1,4 +1,4 @@
----
+<!---
 title: Using logical replication
 headerTitle: Using logical replication
 linkTitle: Using logical replication
@@ -13,4 +13,5 @@ menu:
     parent: explore-change-data-capture
     weight: 240
 type: indexpage
----
+private: true
+--->
