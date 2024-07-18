@@ -1320,7 +1320,7 @@ heap_create_with_catalog(const char *relname,
 	if (!OidIsValid(relid))
 	{
 		/* Use binary-upgrade override for pg_class.oid and relfilenode */
-		if (IsBinaryUpgrade && !yb_binary_restore)
+		if (IsBinaryUpgrade || yb_binary_restore)
 		{
 			/*
 			 * Indexes are not supported here; they use
@@ -1356,7 +1356,7 @@ heap_create_with_catalog(const char *relname,
 				relid = binary_upgrade_next_heap_pg_class_oid;
 				binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 
-				if (RELKIND_HAS_STORAGE(relkind))
+				if (RELKIND_HAS_STORAGE(relkind) && !yb_binary_restore)
 				{
 					if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
 						ereport(ERROR,

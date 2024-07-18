@@ -2486,7 +2486,7 @@ AssignTypeMultirangeArrayOid(void)
 	Oid			type_multirange_array_oid;
 
 	/* Use binary-upgrade override for pg_type.oid? */
-	if (IsBinaryUpgrade)
+	if (IsBinaryUpgrade || yb_binary_restore)
 	{
 		if (!OidIsValid(binary_upgrade_next_mrng_array_pg_type_oid))
 			ereport(ERROR,

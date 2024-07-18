@@ -5798,7 +5798,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 	TransactionId freezeXid = InvalidTransactionId;
 	RelFileNode newrnode;
 
-	if (!IsBinaryUpgrade)
+	if (!IsBinaryUpgrade || yb_binary_restore)
 	{
 		/* Allocate a new relfilenode */
 		newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
