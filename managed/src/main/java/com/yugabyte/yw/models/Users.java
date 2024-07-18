@@ -18,6 +18,7 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -317,6 +318,28 @@ public class Users extends Model {
       userToDelete.delete();
     }
     return;
+  }
+
+  /** Wrapper around save to make sure principal entity is created. */
+  @Transactional
+  @Override
+  public void save() {
+    super.save();
+    Principal principal = Principal.get(this.uuid);
+    if (principal == null) {
+      log.info("Adding Principal entry for user with email: " + this.email);
+      new Principal(this).save();
+    }
+  }
+
+  /** Wrapper around delete to make sure principal entity is deleted. */
+  @Transactional
+  @Override
+  public boolean delete() {
+    log.info("Deleting Principal entry for user with email: " + this.email);
+    Principal principal = Principal.getOrBadRequest(this.uuid);
+    principal.delete();
+    return super.delete();
   }
 
   /**

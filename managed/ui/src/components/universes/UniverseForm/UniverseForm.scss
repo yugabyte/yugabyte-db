@@ -131,6 +131,20 @@
   justify-content: center;
 }
 
+.pg-banner {
+  width: 100%;
+  height: fit-content;
+  display: inline-flex;
+  align-items: flex-start;
+  padding: 8px;
+  border-radius: 8px;
+  background-color: #ffeec8;
+  margin-bottom: 16px;
+  font-weight: 400;
+  color: #0b1117;
+  font-size: 13px;
+}
+
 .gflag-detail-container {
   flex-shrink: 1;
   display: flex;
@@ -203,7 +217,7 @@
   display: none;
 }
 
-.table-val-column:hover>.icons>.flag-icons {
+.table-val-column:hover > .icons > .flag-icons {
   display: block;
 }
 
@@ -213,7 +227,7 @@
   margin-left: 2px;
 }
 
-.table-val-column:hover>.icons>.more-icon {
+.table-val-column:hover > .icons > .more-icon {
   display: none;
 }
 
@@ -243,7 +257,7 @@
   display: none;
 }
 
-.table-val-column:hover>.flag-icon-button>.add-label {
+.table-val-column:hover > .flag-icon-button > .add-label {
   display: inline;
   font-size: 11.5px;
   font-family: 400;
@@ -295,7 +309,7 @@
   flex-shrink: 0;
 }
 
-.error-val-column:hover>.icons>.flag-icons {
+.error-val-column:hover > .icons > .flag-icons {
   display: block;
 }
 
@@ -333,8 +347,8 @@
   border-bottom: 1px solid #eeeeee;
 }
 
-.gflag-edit-table .react-bs-table .table-bordered>thead>tr:first-child>th,
-.gflag-read-table .react-bs-table .table-bordered>thead>tr:first-child>th {
+.gflag-edit-table .react-bs-table .table-bordered > thead > tr:first-child > th,
+.gflag-read-table .react-bs-table .table-bordered > thead > tr:first-child > th {
   padding-left: 16px !important;
 }
 

@@ -395,7 +395,8 @@
         "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
-        "flagsModifiedModalLine2": "Note that current changes will be lost."
+        "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -415,6 +416,7 @@
         "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
+        "premiumv2Storage": "! Selected storage type is only available in select regions. Your creation will fail if you choose incorrect region.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",
@@ -823,7 +825,9 @@
               "label": "Metrics",
               "metricsUnavailableDuringFailover": "Metrics are unavailable during failover."
             },
-            "tables": { "label": "Tables" }
+            "tables": {
+              "label": "Tables"
+            }
           },
           "status": {
             "Initializing": "Initializing",
@@ -1946,6 +1950,75 @@
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "taskDetails": {
+      "header": {
+        "title": "Operation Details"
+      },
+      "taskNotfound": "Task not found!",
+      "actions": {
+        "retry": "Retry",
+        "abort": "Abort",
+        "diffs": {
+          "Update": "View Universe Changes",
+          "SoftwareUpgrade": "View Software Upgrade Changes",
+          "GFlagsUpgrade": "View GFlags Changes"
+        },
+        "messages": {
+          "abortConfirmTitle": "Abort Running Task ?",
+          "abortConfirmMsg": "Do you really want to abort this task?",
+          "retryConfirmTitle": "Retry Task ?",
+          "retryConfirmMsg": "Do you really want to retry this task?",
+          "taskAbortSuccess": "Task aborted successfully",
+          "taskAbortFailed": "Task abort failed",
+          "taskRetrySuccess": "Task retry success",
+          "taskRetryFailed": "Task retry failed"
+        }
+      },
+      "info": {
+        "task": "Task",
+        "type": "Type",
+        "target": "Target",
+        "status": "Status",
+        "startTime": "Start Time",
+        "endTime": "End time",
+        "startVersion": "Start Version",
+        "targetVersion": "Target Version"
+      },
+      "progress": {
+        "title": "Progress",
+        "complete": "{{progress}}% Completed",
+        "expand": "Expand",
+        "showLog": "YugaWare Log"
+      },
+      "banner": {
+        "viewDetails": "View Details",
+        "taskProgress": "{{percent}}%",
+        "opNotAvailable": "Some operations are not available while the current operation is in progress"
+      },
+      "simple": {
+        "viewDetails": "View Details"
+      },
+      "diffModal": {
+        "title": "Universe Changes",
+        "expandAll": "Expand All",
+        "diffDetailsNotFound": "Unable to find diff details",
+        "alerts": {
+          "inProgress": "This operation intends to modify the following {{count}} value(s). ",
+          "failed": "<b>Changes haven't been fully implemented</b> due to the failure of the task."
+        },
+        "titles": {
+          "Update": "Universe Changes",
+          "SoftwareUpgrade": "Software Upgrade Changes",
+          "GFlagsUpgrade": " GFlags Upgrade Changes"
+        },
+        "universeDiff": {
+          "region": "Region",
+          "availabilityZone": "Availability Zone",
+          "nodes": "nodes",
+          "preferred": "preferred"
+        }
       }
     },
     "ha": {

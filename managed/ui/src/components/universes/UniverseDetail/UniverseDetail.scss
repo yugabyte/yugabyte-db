@@ -177,6 +177,9 @@ $padding: 30px;
     right: 0;
     position: relative;
     padding: 0 20px;
+    @media (max-width: 1490px) {
+      height: 120px !important;
+    }
     @media (max-width: 1120px) {
       height: fit-content;
     }

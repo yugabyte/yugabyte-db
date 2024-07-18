@@ -23,6 +23,7 @@ import { EncryptionInTransitFormValues } from '../features/universe/universe-act
 import { ReplicationSlotResponse } from '../features/universe/universe-tabs/replication-slots/utils/types';
 import { ExportLogPayload, ExportLogResponse } from '../features/export-log/utils/types';
 import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
+import { GFlagGroupObject } from '../features/universe/universe-actions/edit-gflags/GflagHelper';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -39,7 +40,8 @@ export enum QUERY_KEY {
   getReplicationSlots = 'getReplicationSlots',
   getSessionInfo = 'getSessionInfo',
   getAllTelemetryProviders = 'getAllTelemetryProviders',
-  getTelemetryProviderByID = 'getTelemetryProviderByID'
+  getTelemetryProviderByID = 'getTelemetryProviderByID',
+  getGflagGroups = 'getGflagGroups'
 }
 
 class ApiService {
@@ -148,6 +150,7 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/session_info`;
     return axios.get<any>(requestUrl).then((resp) => resp.data);
   };
+
   getAllTelemetryProviders = (): Promise<ExportLogResponse[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider`;
     return axios.get<ExportLogResponse[]>(requestUrl).then((resp) => resp.data);
@@ -171,6 +174,11 @@ class ApiService {
   deleteTelemetryProvider = (tpID: string): Promise<AxiosResponse> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider/${tpID}`;
     return axios.delete<AxiosResponse>(requestUrl).then((resp) => resp.data);
+  };
+
+  getGflagGroups = (dbVersion: string, groupName: string): Promise<GFlagGroupObject[]> => {
+    const requestUrl = `${ROOT_URL}/metadata/version/${dbVersion}/gflag_groups?group=${groupName}`;
+    return axios.get<GFlagGroupObject[]>(requestUrl).then((resp) => resp.data);
   };
 }
 
