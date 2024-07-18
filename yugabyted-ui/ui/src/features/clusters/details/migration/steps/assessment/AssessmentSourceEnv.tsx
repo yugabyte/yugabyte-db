@@ -3,6 +3,9 @@ import { Box, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui
 import { useTranslation } from "react-i18next";
 import { MigrationSourceEnvSidePanel } from "./AssessmentSourceEnvSidePanel";
 import { convertBytesToGB } from "@app/helpers";
+import type { Migration } from "../../MigrationOverview";
+import { YBButton } from "@app/components";
+import CaretRightIcon from "@app/assets/caret-right-circle.svg";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -42,6 +45,7 @@ interface MigrationSourceEnvProps {
   indexSize: string | number;
   totalSize: string | number;
   rowCount: string;
+  migration: Migration;
 }
 
 export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
@@ -53,6 +57,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
   indexSize,
   totalSize,
   /* rowCount, */
+  migration,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -123,13 +128,13 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
               <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceDB")}
               </Typography>
-              {/* <YBButton
+              <YBButton
                 variant="ghost"
                 startIcon={<CaretRightIcon />}
                 onClick={() => setShowSourceObjects(true)}
               >
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
-              </YBButton> */}
+              </YBButton>
             </Box>
 
             <Grid container spacing={4}>
@@ -172,6 +177,7 @@ export const MigrationSourceEnv: FC<MigrationSourceEnvProps> = ({
       </Box>
 
       <MigrationSourceEnvSidePanel
+        migration={migration}
         open={showSourceObjects}
         onClose={() => setShowSourceObjects(false)}
       />
