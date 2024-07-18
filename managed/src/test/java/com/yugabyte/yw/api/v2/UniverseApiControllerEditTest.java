@@ -4,6 +4,7 @@ package com.yugabyte.yw.api.v2;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,8 +39,10 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
@@ -50,7 +53,7 @@ import org.mockito.ArgumentCaptor;
 public class UniverseApiControllerEditTest extends UniverseTestBase {
 
   @Before
-  public void setupUniverse() throws ApiException {
+  public void setupUniverse() throws ApiException, IOException {
     UniverseApi api = new UniverseApi();
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
 
@@ -58,6 +61,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
 
     YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
     universeUuid = createTask.getResourceUuid();

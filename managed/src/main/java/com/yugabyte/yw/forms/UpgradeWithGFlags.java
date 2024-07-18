@@ -2,14 +2,20 @@
 
 package com.yugabyte.yw.forms;
 
-import com.google.inject.Inject;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
+import com.datadoghq.com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -32,13 +38,28 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
 
-  @Inject protected GFlagsValidation gFlagsValidation;
+  @JsonIgnore GFlagsValidation gFlagsValidation;
 
   protected boolean verifyGFlagsHasChanges(Universe universe) {
     if (isUsingSpecificGFlags(universe)) {
       return verifySpecificGFlags(universe);
     } else {
       return verifyGFlagsOld(universe);
+    }
+  }
+
+  /**
+   * Verifies the preview GFlags settings for the given universe.
+   *
+   * @param universe The universe to verify the GFlags settings for.
+   * @throws PlatformServiceException If the GFlags settings are invalid.
+   */
+  protected void verifyPreviewGFlagsSettings(Universe universe) {
+    gFlagsValidation = StaticInjectorHolder.injector().instanceOf(GFlagsValidation.class);
+    if (isUsingSpecificGFlags(universe)) {
+      checkPreviewGFlagsOnSpecificGFlags(universe, gFlagsValidation);
+    } else {
+      checkPreviewGFlagsOnOld(universe, gFlagsValidation);
     }
   }
 
@@ -124,6 +145,63 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
     }
     GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
     return true;
+  }
+
+  /**
+   * Checks the preview GFlags on specific GFlags for each cluster in the given universe.
+   *
+   * @param universe The universe for which the GFlags are being checked.
+   * @param gFlagsValidation The GFlags validation object.
+   * @throws PlatformServiceException If the GFlags are invalid.
+   */
+  private void checkPreviewGFlagsOnSpecificGFlags(
+      Universe universe, GFlagsValidation gFlagsValidation) {
+    try {
+      for (Cluster cluster : clusters) {
+        SpecificGFlags specificGFlags = cluster.userIntent.specificGFlags;
+        if (specificGFlags == null) {
+          continue;
+        }
+        String errMsg =
+            GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
+                specificGFlags, gFlagsValidation, cluster.userIntent.ybSoftwareVersion);
+        if (errMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, errMsg);
+        }
+      }
+    } catch (IOException e) {
+      log.error("Error while checking preview gflags", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  /**
+   * Checks the preview GFlags on an old version of the Universe.
+   *
+   * @param universe The Universe object.
+   * @param gFlagsValidation The GFlagsValidation object.
+   * @throws PlatformServiceException If the GFlags are invalid.
+   */
+  private void checkPreviewGFlagsOnOld(Universe universe, GFlagsValidation gFlagsValidation) {
+    String ybSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    try {
+      for (UniverseTaskBase.ServerType serverType :
+          Arrays.asList(UniverseTaskBase.ServerType.MASTER, UniverseTaskBase.ServerType.TSERVER)) {
+        String errorMsg =
+            GFlagsUtil.checkPreviewGFlags(
+                serverType.equals(ServerType.MASTER) ? masterGFlags : tserverGFlags,
+                ybSoftwareVersion,
+                serverType,
+                gFlagsValidation);
+        if (errorMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+        }
+      }
+    } catch (IOException e) {
+      log.error("Error while checking preview gflags", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 
   /**
