@@ -30,6 +30,7 @@ import { useFormMainStyles } from '../../universe-form/universeMainStyle';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
+import { isPGEnabledFromIntent } from '../../universe-form/utils/helpers';
 
 interface EditGflagsModalProps {
   open: boolean;
@@ -100,6 +101,9 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   const currentVersion = getCurrentVersion(universeDetails) || '';
   const { gFlags, asyncGflags, inheritFlagsFromPrimary } = transformToEditFlagsForm(universeData);
   const initialGflagSet = useRef({ gFlags, asyncGflags, inheritFlagsFromPrimary });
+  const isPGSupported = primaryCluster?.userIntent
+    ? isPGEnabledFromIntent(primaryCluster.userIntent)
+    : false;
 
   const formMethods = useForm<EditGflagsFormValues>({
     defaultValues: {
@@ -338,6 +342,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
                 isReadOnly={!canEditGFlags}
                 tableMaxHeight={!asyncCluster ? '420px' : inheritFromPrimary ? '362px' : '296px'}
                 isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+                isPGSupported={isPGSupported}
               />
             )}
             {!isPrimary && (
@@ -350,6 +355,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
                 isReadOnly={!canEditGFlags}
                 tableMaxHeight={!asyncCluster ? '412px' : inheritFromPrimary ? '354px' : '288px'}
                 isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+                isPGSupported={isPGSupported}
               />
             )}
           </Box>

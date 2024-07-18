@@ -2,6 +2,8 @@ import { useState, ReactElement } from 'react';
 import _ from 'lodash';
 import * as Yup from 'yup';
 import clsx from 'clsx';
+import { useQuery } from 'react-query';
+import { toast } from 'react-toastify';
 import { useSelector } from 'react-redux';
 import { Box } from '@material-ui/core';
 import { useFieldArray } from 'react-hook-form';
@@ -25,6 +27,13 @@ import { useWhenMounted } from '../../../../../../helpers/hooks';
 import { validateGFlags } from '../../../../../../../actions/universe';
 import { Gflag } from '../../../utils/dto';
 import { MULTILINE_GFLAGS_ARRAY } from '../../../../../../../utils/UniverseUtils';
+import {
+  GFlagGroupObject,
+  getFlagsByGroupName
+} from '../../../../universe-actions/edit-gflags/GflagHelper';
+import { api, QUERY_KEY } from '../../../../../../utils/api';
+import { isVersionPGSupported } from '../../../utils/helpers';
+import { GFLAG_GROUPS } from '../../../../../../helpers/constants';
 //Icons
 import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
@@ -48,6 +57,7 @@ interface GflagsFieldProps {
   isReadReplica: boolean;
   tableMaxHeight?: string;
   isGFlagMultilineConfEnabled: boolean;
+  isPGSupported: boolean;
 }
 
 interface SelectedOption {
@@ -109,7 +119,8 @@ export const GFlagsField = ({
   isReadOnly = false,
   isReadReplica = false,
   tableMaxHeight,
-  isGFlagMultilineConfEnabled
+  isGFlagMultilineConfEnabled,
+  isPGSupported
 }: GflagsFieldProps): ReactElement => {
   const { fields, append, insert, remove } = useFieldArray({
     name: fieldPath as any,
@@ -126,6 +137,15 @@ export const GFlagsField = ({
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const enableRRGflags = featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
 
+  const { data: pgFlags, isLoading } = useQuery<GFlagGroupObject[]>(
+    [QUERY_KEY.getGflagGroups],
+    () => api.getGflagGroups(dbVersion, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY),
+    {
+      enabled: isPGSupported && isVersionPGSupported(dbVersion)
+    }
+  );
+
+  const pgGroupFlags = getFlagsByGroupName(pgFlags, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY);
   //options Array -- TO DRY THE CODE
   const OPTIONS = [
     {
@@ -202,59 +222,64 @@ export const GFlagsField = ({
   };
 
   const handleFormSubmit = (values: any, actions: any) => {
-    switch (values.option) {
-      case FREE_TEXT: {
-        try {
-          const formValues = JSON.parse(values?.flagvalue);
-          const newFlagArr: Gflag[] = [];
-          if (Object.keys(formValues).length > 0) {
-            Object.entries(formValues).forEach(([key, val]) => {
-              const obj = { Name: key, [values?.server]: val };
-              checkExistsAndPush(obj);
-              newFlagArr.push(obj);
-            });
-            callValidation(newFlagArr);
-            setToggleModal(false);
+    if (_.get(pgGroupFlags, values?.flagname || '', false)) {
+      toast.error(t('universeForm.gFlags.pgGroupWarning'));
+      actions.setSubmitting(false);
+    } else {
+      switch (values.option) {
+        case FREE_TEXT: {
+          try {
+            const formValues = JSON.parse(values?.flagvalue);
+            const newFlagArr: Gflag[] = [];
+            if (Object.keys(formValues).length > 0) {
+              Object.entries(formValues).forEach(([key, val]) => {
+                const obj = { Name: key, [values?.server]: val };
+                checkExistsAndPush(obj);
+                newFlagArr.push(obj);
+              });
+              callValidation(newFlagArr);
+              setToggleModal(false);
+            }
+          } catch (e) {
+            setFormError(t('universeForm.gFlags.validationError'));
+            setTimeout(() => {
+              setFormError(null);
+              actions.setSubmitting(false);
+            }, 5000);
           }
-        } catch (e) {
-          setFormError(t('universeForm.gFlags.validationError'));
-          setTimeout(() => {
-            setFormError(null);
-            actions.setSubmitting(false);
-          }, 5000);
-        }
-        break;
-      }
-
-      case ADD_GFLAG: {
-        const obj: AddGFlagConfObject = {
-          Name: values?.flagname,
-          [values?.server]: values?.flagvalue
-        };
-        if (MULTILINE_GFLAGS_ARRAY.includes(values?.server)) {
-          // In case of any multi-line csv flags, the below variables
-          // will have concatenated string and preview flag value to be displayed
-          if (values?.server === TSERVER) {
-            obj.tserverFlagDetails = {
-              ConfValue: values?.tserverFlagDetails?.flagvalueobject,
-              PreviewConfValue: values?.tserverFlagDetails?.previewFlagValue
-            };
-          } else {
-            obj.masterFlagDetails = {
-              ConfValue: values?.masterFlagDetails?.flagvalueobject,
-              PreviewConfValue: values?.masterFlagDetails?.previewFlagValue
-            };
-          }
+          break;
         }
 
-        checkExistsAndPush(obj);
-        callValidation([obj]);
-        setToggleModal(false);
-        break;
-      }
+        case ADD_GFLAG: {
+          const obj: AddGFlagConfObject = {
+            Name: values?.flagname,
+            [values?.server]: values?.flagvalue
+          };
+          if (MULTILINE_GFLAGS_ARRAY.includes(values?.server)) {
+            // In case of any multi-line csv flags, the below variables
+            // will have concatenated string and preview flag value to be displayed
+            if (values?.server === TSERVER) {
+              obj.tserverFlagDetails = {
+                ConfValue: values?.tserverFlagDetails?.flagvalueobject,
+                PreviewConfValue: values?.tserverFlagDetails?.previewFlagValue
+              };
+            } else {
+              obj.masterFlagDetails = {
+                ConfValue: values?.masterFlagDetails?.flagvalueobject,
+                PreviewConfValue: values?.masterFlagDetails?.previewFlagValue
+              };
+            }
+          }
 
-      default:
-        break;
+          checkExistsAndPush(obj);
+          callValidation([obj]);
+          setToggleModal(false);
+          break;
+        }
+
+        default:
+          break;
+      }
     }
   };
 
@@ -513,6 +538,7 @@ export const GFlagsField = ({
           <AddGFlag
             formProps={formProps}
             updateJWKSDialogStatus={updateJWKSDialogStatus}
+            disabledFlags={pgGroupFlags}
             gFlagProps={{
               ...selectedProps,
               dbVersion,
@@ -557,6 +583,8 @@ export const GFlagsField = ({
           ' / ' +
           t('universeForm.gFlags.addFlag');
     }
+
+    const disableForm = _.get(pgGroupFlags, selectedProps?.flagname || '', false);
     return (
       <YBModalForm
         title={modalTitle}
@@ -579,6 +607,7 @@ export const GFlagsField = ({
         }
         headerClassName="add-flag-header"
         showBackButton={true}
+        isSubmitDisabled={disableForm}
       />
     );
   };
@@ -599,12 +628,19 @@ export const GFlagsField = ({
           <b>{dbVersion}</b>)
         </Alert>
       )}
-      <Box flexShrink={1} flexDirection="row">
+      {isLoading && <span>Loading Gflag groups ...</span>}
+      <Box flexShrink={1} mt={0.5} flexDirection="row">
         {!isReadOnly &&
           OPTIONS.map((option) => {
             const { optionName, ...rest } = option;
             return (
-              <DropdownButton {...rest} bsSize="small" id={optionName} key={optionName}>
+              <DropdownButton
+                {...rest}
+                bsSize="small"
+                id={optionName}
+                key={optionName}
+                disabled={isLoading}
+              >
                 {SERVER_LIST.filter((e) => e.visible).map((server) => {
                   const { serverName, label } = server;
                   const serverProps = {

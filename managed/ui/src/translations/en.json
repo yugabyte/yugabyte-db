@@ -395,7 +395,8 @@
         "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
-        "flagsModifiedModalLine2": "Note that current changes will be lost."
+        "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
