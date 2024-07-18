@@ -1463,8 +1463,7 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 																		 &indexDefDocIter));
 			int expireAfterSecondsValAsInt = (int) expireAfterSecondsValAsDouble;
 			if (expireAfterSecondsValAsDouble < INT_MIN ||
-				expireAfterSecondsValAsDouble > INT_MAX ||
-				expireAfterSecondsValAsInt != expireAfterSecondsValAsDouble)
+				expireAfterSecondsValAsDouble > INT_MAX)
 			{
 				ereport(ERROR, (errcode(MongoCannotCreateIndex),
 								errmsg(
