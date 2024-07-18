@@ -16,6 +16,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -52,6 +53,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -69,6 +71,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -105,12 +108,14 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
   private final String TMP_CERTS_PATH = "/tmp/" + getClass().getSimpleName() + "/certs";
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock GFlagsValidation mockGFlagsValidation;
 
   @Override
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
     mockAutoFlagUtil = mock(AutoFlagUtil.class);
     mockXClusterUniverseService = mock(XClusterUniverseService.class);
+    mockGFlagsValidation = mock(GFlagsValidation.class);
     ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
 
     mockConfig = mock(Config.class);
@@ -142,6 +147,7 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
         .overrides(bind(XClusterUniverseService.class).toInstance(mockXClusterUniverseService))
+        .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
@@ -161,6 +167,12 @@ public class UniverseUpgradesManagementApiControllerImpTest extends UniverseCont
     k8sUniverse = ModelFactory.createUniverse("k8s", customer.getId(), Common.CloudType.kubernetes);
     when(mockConfig.hasPath(any())).thenReturn(true);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
+    try {
+      when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+          .thenReturn(Optional.empty());
+    } catch (IOException e) {
+      fail("Failed to mock gflags validation");
+    }
 
     v2ApiClient = Configuration.getDefaultApiClient();
     String basePath = String.format("http://localhost:%d/api/v2", port);
