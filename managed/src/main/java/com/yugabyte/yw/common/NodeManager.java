@@ -1412,9 +1412,9 @@ public class NodeManager extends DevopsBase {
         skipHostValidation =
             skipHostValidation
                 || GFlagsUtil.shouldSkipServerEndpointVerification(
-                    userIntent.specificGFlags.getGFlags(null, ServerType.MASTER))
+                    userIntent.specificGFlags.getGFlagsForNode(null, ServerType.MASTER))
                 || GFlagsUtil.shouldSkipServerEndpointVerification(
-                    userIntent.specificGFlags.getGFlags(null, ServerType.TSERVER));
+                    userIntent.specificGFlags.getGFlagsForNode(null, ServerType.TSERVER));
       }
     }
     return skipHostValidation ? SkipCertValidationType.HOSTNAME : SkipCertValidationType.NONE;

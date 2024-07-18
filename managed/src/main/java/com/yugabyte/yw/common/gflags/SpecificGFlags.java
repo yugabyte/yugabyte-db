@@ -21,6 +21,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.apache.commons.collections4.MapUtils;
 
 @Data
 @ApiModel(description = "GFlags for current cluster")
@@ -45,14 +46,13 @@ public class SpecificGFlags {
   private Map<UUID, PerProcessFlags> perAZ = new HashMap<>();
 
   @JsonIgnore
-  public Map<String, String> getGFlags(
+  public Map<String, String> getGFlagsForNode(
       NodeDetails nodeDetails, UniverseTaskBase.ServerType process) {
     UUID azUUID = nodeDetails == null ? null : nodeDetails.azUuid;
     return getGFlags(azUUID, process);
   }
 
-  private Map<String, String> getGFlags(
-      @Nullable UUID azUuid, UniverseTaskBase.ServerType process) {
+  public Map<String, String> getGFlags(@Nullable UUID azUuid, UniverseTaskBase.ServerType process) {
     Map<String, String> result = new HashMap<>();
     if (perProcessFlags != null) {
       result.putAll(perProcessFlags.value.getOrDefault(process, new HashMap<>()));
@@ -130,6 +130,18 @@ public class SpecificGFlags {
       }
     }
     return true;
+  }
+
+  public boolean hasPerAZOverrides() {
+    if (MapUtils.isEmpty(perAZ)) {
+      return false;
+    }
+    for (PerProcessFlags value : perAZ.values()) {
+      if (value != null && !MapUtils.isEmpty(value.value)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public static SpecificGFlags construct(

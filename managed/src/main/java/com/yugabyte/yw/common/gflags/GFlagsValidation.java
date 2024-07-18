@@ -165,6 +165,12 @@ public class GFlagsValidation {
     }
   }
 
+  public Optional<GFlagDetails> getGFlagDetails(String version, String serverType, String gflagName)
+      throws IOException {
+    List<GFlagDetails> gflagsList = extractGFlags(version, serverType, false);
+    return gflagsList.stream().filter(flag -> flag.name.equals(gflagName)).findFirst();
+  }
+
   public synchronized void fetchGFlagFilesFromTarGZipInputStream(
       InputStream inputStream,
       String dbVersion,

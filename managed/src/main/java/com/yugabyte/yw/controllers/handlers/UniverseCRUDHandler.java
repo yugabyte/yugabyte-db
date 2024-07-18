@@ -49,6 +49,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -83,6 +84,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -134,6 +136,8 @@ public class UniverseCRUDHandler {
   @Inject ReleaseManager releaseManager;
 
   @Inject CertificateHelper certificateHelper;
+
+  @Inject GFlagsValidation gFlagsValidation;
 
   private enum OpType {
     CONFIGURE,
@@ -599,6 +603,21 @@ public class UniverseCRUDHandler {
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
+
+      if (c.userIntent.specificGFlags != null) {
+        try {
+          String errMsg =
+              GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
+                  c.userIntent.specificGFlags, gFlagsValidation, c.userIntent.ybSoftwareVersion);
+          if (errMsg != null) {
+            throw new PlatformServiceException(BAD_REQUEST, errMsg);
+          }
+        } catch (IOException e) {
+          LOG.error("Error while checking preview flags on the cluster: {}", c.uuid, e);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Error while checking preview flags on cluster: " + c.uuid);
+        }
+      }
     }
 
     if (taskParams.getPrimaryCluster() != null) {

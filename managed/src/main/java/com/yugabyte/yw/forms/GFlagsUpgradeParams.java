@@ -62,7 +62,9 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
     if (tserverGFlags == null) {
       tserverGFlags = new HashMap<>();
     }
+
     verifyGFlags(universe, isFirstTry);
+    verifyPreviewGFlagsSettings(universe);
   }
 
   public void checkXClusterAutoFlags(

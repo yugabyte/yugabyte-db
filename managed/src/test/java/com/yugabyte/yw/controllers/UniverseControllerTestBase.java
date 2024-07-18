@@ -45,6 +45,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -116,6 +117,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected ReleaseManager.ReleaseMetadata mockReleaseMetadata;
   protected ReleaseManager.ReleaseMetadata mockYbcReleaseMetadata;
   protected KubernetesManagerFactory kubernetesManagerFactory;
+  protected GFlagsValidation mockGFlagsValidation;
 
   protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
     return applicationBuilder;
@@ -141,6 +143,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     healthChecker = mock(HealthChecker.class);
     mockQueryHelper = mock(QueryHelper.class);
     kubernetesManagerFactory = mock(KubernetesManagerFactory.class);
+    mockGFlagsValidation = mock(GFlagsValidation.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
@@ -180,6 +183,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(KubernetesManagerFactory.class).toInstance(kubernetesManagerFactory))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
+        .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .build();
   }
 
