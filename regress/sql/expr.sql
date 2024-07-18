@@ -3433,8 +3433,22 @@ SELECT agtype_build_map(null, 1);
 SELECT agtype_build_map('name', 'John', 'null'::agtype, 1);
 
 --
+-- Issue 1953 - crash when trying to use a boolean as an object
+--
+SELECT * FROM create_graph('issue_1953');
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[{}][{}][{}][{}][{}] $$) AS (result agtype);
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[{}] $$) AS (result agtype);
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[0] $$) AS (result agtype);
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[0..1] $$) AS (result agtype);
+
+SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[{}] $$) AS (result agtype);
+SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[0] $$) AS (result agtype);
+SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[0..1] $$) AS (result agtype);
+
+--
 -- Cleanup
 --
+SELECT * FROM drop_graph('issue_1953', true);
 SELECT * FROM drop_graph('expanded_map', true);
 SELECT * FROM drop_graph('issue_1124', true);
 SELECT * FROM drop_graph('issue_1303', true);

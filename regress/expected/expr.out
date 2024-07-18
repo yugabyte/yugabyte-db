@@ -8428,8 +8428,56 @@ ERROR:  argument 1: key must not be null
 SELECT agtype_build_map('name', 'John', 'null'::agtype, 1);
 ERROR:  argument 3: key must not be null
 --
+-- Issue 1953 - crash when trying to use a boolean as an object
+--
+SELECT * FROM create_graph('issue_1953');
+NOTICE:  graph "issue_1953" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[{}][{}][{}][{}][{}] $$) AS (result agtype);
+ERROR:  A_indirection could not convert type boolean to agtype
+LINE 1: ...ypher('issue_1953', $$ RETURN delete_global_graphs('issue_19...
+                                                             ^
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[{}] $$) AS (result agtype);
+ERROR:  A_indirection could not convert type boolean to agtype
+LINE 1: ...ypher('issue_1953', $$ RETURN delete_global_graphs('issue_19...
+                                                             ^
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[0] $$) AS (result agtype);
+ERROR:  A_indirection could not convert type boolean to agtype
+LINE 1: ...ypher('issue_1953', $$ RETURN delete_global_graphs('issue_19...
+                                                             ^
+SELECT * FROM cypher('issue_1953', $$ RETURN delete_global_graphs('issue_1953')[0..1] $$) AS (result agtype);
+ERROR:  A_indirection could not convert type boolean to agtype
+LINE 1: ...ypher('issue_1953', $$ RETURN delete_global_graphs('issue_19...
+                                                             ^
+SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[{}] $$) AS (result agtype);
+ERROR:  A_indirection could not convert type boolean to agtype
+LINE 1: ...cypher('issue_1953', $$ RETURN is_valid_label_name('issue_19...
+                                                             ^
+SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[0] $$) AS (result agtype);
+ERROR:  A_indirection could not convert type boolean to agtype
+LINE 1: ...cypher('issue_1953', $$ RETURN is_valid_label_name('issue_19...
+                                                             ^
+SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[0..1] $$) AS (result agtype);
+ERROR:  A_indirection could not convert type boolean to agtype
+LINE 1: ...cypher('issue_1953', $$ RETURN is_valid_label_name('issue_19...
+                                                             ^
+--
 -- Cleanup
 --
+SELECT * FROM drop_graph('issue_1953', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table issue_1953._ag_label_vertex
+drop cascades to table issue_1953._ag_label_edge
+NOTICE:  graph "issue_1953" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('expanded_map', true);
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table expanded_map._ag_label_vertex

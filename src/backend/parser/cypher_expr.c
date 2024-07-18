@@ -1317,6 +1317,7 @@ static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
 static Node *transform_A_Indirection(cypher_parsestate *cpstate,
                                      A_Indirection *a_ind)
 {
+    ParseState *pstate = &cpstate->pstate;
     int location;
     ListCell *lc = NULL;
     Node *ind_arg_expr = NULL;
@@ -1354,6 +1355,9 @@ static Node *transform_A_Indirection(cypher_parsestate *cpstate,
     {
         ind_arg_expr = transform_cypher_expr_recurse(cpstate, a_ind->arg);
     }
+
+    ind_arg_expr = coerce_to_common_type(pstate, ind_arg_expr, AGTYPEOID,
+                                         "A_indirection");
 
     /* get the location of the expression */
     location = exprLocation(ind_arg_expr);
