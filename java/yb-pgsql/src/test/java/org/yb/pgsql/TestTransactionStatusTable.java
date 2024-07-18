@@ -38,7 +38,7 @@ public class TestTransactionStatusTable extends BasePgSQLTest {
 
   @Test
   public void testCreation() throws Throwable {
-    final int kTablesCount = BuildTypeUtil.nonTsanVsTsan(4, 2);
+    final int kTablesCount = BuildTypeUtil.nonSanitizerVsSanitizer(4, 2);
     final CountDownLatch startSignal = new CountDownLatch(kTablesCount);
     List<ThrowingRunnable> cmds = new ArrayList<>();
     for (int i = 0; i <  kTablesCount; ++i) {

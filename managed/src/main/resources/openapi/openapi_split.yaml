@@ -22,6 +22,8 @@ servers:
       host_port:
         default: 'localhost:9000'
 tags:
+  - name: Authentication
+    description: Authentication operations on YBA
   - name: Universe
     description: CRUD operations for a Universe
 paths:

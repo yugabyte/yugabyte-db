@@ -1,3 +1,120 @@
+'/customers/{cUUID}/auth/group-mappings':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: listMappings
+    summary: List Group Mappings
+    description: Get list of all OIDC and LDAP Group Mappings.
+    tags:
+      - Authentication
+    responses:
+      '200':
+        $ref: "../components/responses/GroupMappingResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  put:
+    operationId: updateGroupMappings
+    summary: Create Group Mappings
+    description: Map LDAP and OIDC groups to YBA roles
+    tags:
+      - Authentication
+    requestBody:
+      $ref: "../components/requestBodies/GroupMappingReq.yaml"
+    responses:
+      '200':
+        description: Operation Successfull
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: GroupMapping
+      auditTargetId: cUUID.toString()
+      auditActionType: Set
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: super_admin_actions
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/auth/group-mappings/{gUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: gUUID
+      in: path
+      description: Group UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  delete:
+    operationId: deleteGroupMappings
+    summary: Delete Group Mappings
+    description: Delete LDAP and OIDC group mapping
+    tags:
+      - Authentication
+    responses:
+      '200':
+        description: OK
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: GroupMapping
+      auditTargetId: gUUID.toString()
+      auditActionType: Delete
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: super_admin_actions
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}':
   parameters:
     - name: cUUID

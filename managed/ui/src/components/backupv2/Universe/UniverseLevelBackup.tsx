@@ -9,12 +9,13 @@
 
 import { FC, useState } from 'react';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+import { useQuery } from 'react-query';
 import { withRouter } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { BackupList, Restore } from '..';
 import { YBTabsPanel } from '../../panels';
 import { ScheduledBackup } from '../scheduled/ScheduledBackup';
-import { BackupAndRestoreBanner } from '../restore/BackupAndRestoreBanner';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
@@ -24,13 +25,10 @@ import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPer
 import { Universe } from '../../../redesign/helpers/dtos';
 import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
 
-import './UniverseLevelBackup.scss';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { useQuery } from 'react-query';
 import { api } from '../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { useTranslation } from 'react-i18next';
-
+import './UniverseLevelBackup.scss';
 interface UniverseBackupProps {
   params: {
     uuid: string;
@@ -89,7 +87,6 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
 
   return (
     <>
-      <BackupAndRestoreBanner />
       {featureFlags.test.enableNewAdvancedRestoreModal ? (
         showAdvancedRestore && (
           <AdvancedRestoreNewModal

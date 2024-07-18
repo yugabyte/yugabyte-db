@@ -1,0 +1,25 @@
+title: ResourceDefinitionSpec
+description: Resource definition containing the resource type and resource set.
+type: object
+required:
+  - resource_type
+  - allow_all
+properties:
+  resource_type:
+    description: Resource Type
+    type: string
+    enum:
+      - UNIVERSE
+      - ROLE
+      - USER
+      - OTHER
+  allow_all:
+    description: Select all resources (including future resources)
+    type: boolean
+  resource_uuid_set:
+    description: Set of resource UUIDs
+    type: array
+    items:
+      type: string
+      format: uuid
+    default: []

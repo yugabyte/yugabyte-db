@@ -140,7 +140,12 @@ export interface UserIntent {
   specificGFlags?: {
     gflagGroups?: string[];
     inheritFromPrimary: boolean;
-    perProcessFlags: {};
+    perProcessFlags: {
+      value?: {
+        MASTER?: Record<string, any>;
+        TSERVER?: Record<string, any>;
+      }
+    };
     perAZ?: {};
   };
   masterGFlags?: Record<string, any>;
@@ -227,6 +232,7 @@ export interface UniverseDetails {
   rootAndClientRootCASame: boolean;
   universeUUID: string;
   updateInProgress: boolean;
+  updatingTaskUUID?: string;
   updateSucceeded: boolean;
   userAZSelected: boolean;
   enableYbc: boolean;

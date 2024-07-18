@@ -100,7 +100,8 @@ public class RoleBindingUtil {
       if (Users.Role.SuperAdmin.name().equals(role.getName())) {
         String errMsg =
             String.format(
-                "Cannot assign SuperAdmin role to a user in the roleResourceDefinition: %s.",
+                "Cannot assign SuperAdmin role to a user or group in the roleResourceDefinition:"
+                    + " %s.",
                 roleResourceDefinition.toString());
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);

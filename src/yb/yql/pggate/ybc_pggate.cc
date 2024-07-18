@@ -117,6 +117,7 @@ DEFINE_NON_RUNTIME_bool(
     "Fill postgres' caches with system items only");
 
 DECLARE_bool(TEST_ash_debug_aux);
+DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
 DECLARE_bool(use_fast_backward_scan);
 
@@ -1389,7 +1390,7 @@ YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t 
 }
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
-  return ToYBCStatus(pgapi->SampleNextBlock(handle, has_more));
+  return ExtractValueFromResult(pgapi->SampleNextBlock(handle), has_more);
 }
 
 YBCStatus YBCPgExecSample(YBCPgStatement handle) {
@@ -1397,7 +1398,12 @@ YBCStatus YBCPgExecSample(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows) {
-  return ToYBCStatus(pgapi->GetEstimatedRowCount(handle, liverows, deadrows));
+  return ExtractValueFromResult(
+      pgapi->GetEstimatedRowCount(handle),
+      [liverows, deadrows](const auto& count) {
+        *liverows = count.live;
+        *deadrows = count.dead;
+      });
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
@@ -1500,10 +1506,13 @@ YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
                          const YBCPgPrepareParameters *prepare_params,
                          bool is_region_local,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  const PgObjectId index_id(database_oid,
-                            prepare_params ? prepare_params->index_relfilenode_oid : kInvalidOid);
-  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, is_region_local, handle));
+  const auto index_oid = prepare_params && prepare_params->use_secondary_index
+      ? prepare_params->index_relfilenode_oid
+      : kInvalidOid;
+  const auto index_id =
+      index_oid == kInvalidOid ? PgObjectId{} : PgObjectId{database_oid, index_oid};
+  return ToYBCStatus(pgapi->NewSelect(
+      {database_oid, table_relfilenode_oid}, index_id, prepare_params, is_region_local, handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
@@ -1941,6 +1950,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_db_catalog_version_mode,
       .TEST_ysql_hide_catalog_version_increment_log =
           &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
+      .TEST_generate_ybrowid_sequentially =
+          &FLAGS_TEST_generate_ybrowid_sequentially,
       .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
   };
   // clang-format on

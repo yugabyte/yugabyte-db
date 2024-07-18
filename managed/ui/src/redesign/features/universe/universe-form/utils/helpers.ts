@@ -449,7 +449,9 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
       currentNodeCount: 0,
       newNodeCount: 0,
       oldNumReadReplicas: 0,
-      newNumReadReplicas: 0
+      newNumReadReplicas: 0,
+      oldInstanceTags: null,
+      newInstanceTags: null
     };
   }
 
@@ -462,7 +464,9 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
     newNodeCount: newClusterConfig?.userIntent?.numNodes,
     oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
-    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor
+    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+    oldInstanceTags: currentClusterConfig?.userIntent?.instanceTags,
+    newInstanceTags: newClusterConfig?.userIntent?.instanceTags
   };
 };
 
