@@ -1,8 +1,20 @@
 import React, { FC, useMemo } from "react";
-import { Box, Divider, Grid, MenuItem, Paper, Typography, makeStyles } from "@material-ui/core";
+import {
+  Box,
+  Divider,
+  Grid,
+  LinearProgress,
+  MenuItem,
+  Paper,
+  Typography,
+  makeStyles,
+} from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBInput, YBModal, YBSelect, YBTable } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
+import { AssessmentSourceDbObject, useGetAssessmentSourceDBInfoQuery } from "@app/api/src";
+import type { Migration } from "../../MigrationOverview";
+import { convertBytesToGB } from "@app/helpers";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -41,74 +53,57 @@ const useStyles = makeStyles((theme) => ({
 interface MigrationSourceEnvSidePanelProps {
   open: boolean;
   onClose: () => void;
+  migration: Migration;
 }
 
 export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> = ({
   open,
   onClose,
+  migration,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const sourceObjectData = [
-    {
-      name: "public.geometricshapes_id_seq",
-      type: "Sequence",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
-    },
-    {
-      name: "public.locations_id_seq",
-      type: "Sequence",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
-    },
-    {
-      name: "public.mytable_event_id_idx",
-      type: "Index",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
-    },
-    {
-      name: "public.get_geometricshapes",
-      type: "Function",
-      size: "-",
-      rowCount: "-",
-      iops: "-",
-    },
-    {
-      name: "public.locations",
-      type: "Table",
-      size: "52.5 GB",
-      rowCount: "120398",
-      iops: "36.5",
-    },
-    {
-      name: "public.product_warehouse",
-      type: "Table",
-      size: "12.8 GB",
-      rowCount: "33062",
-      iops: "16.2",
-    },
-  ];
+  const { data: sourceDBDataAPI, isFetching: isFetchingSourceDBData } =
+    useGetAssessmentSourceDBInfoQuery({
+      uuid: migration.migration_uuid || "migration_uuid_not_found",
+    });
+
+  const sourceDBData = sourceDBDataAPI as AssessmentSourceDbObject | undefined;
+
+  const sourceObjectData = useMemo(() => {
+    console.log(sourceDBData);
+    if (!sourceDBData?.sql_objects_metadata) {
+      return [];
+    }
+
+    return sourceDBData.sql_objects_metadata.map((obj) => ({
+      name: obj.object_name || "",
+      type: obj.sql_type || "",
+      size: obj.size || 0,
+      rowCount: obj.row_count || 0,
+      iops: obj.iops || 0,
+    }));
+  }, [sourceDBData]);
 
   const sourceObjects = useMemo(
-    () => ({
-      sequence: sourceObjectData.filter((obj) => obj.type === "Sequence").length,
-      table: sourceObjectData.filter((obj) => obj.type === "Table").length,
-      index: sourceObjectData.filter((obj) => obj.type === "Index").length,
-      function: sourceObjectData.filter((obj) => obj.type === "Function").length,
-      total: sourceObjectData.length,
-    }),
-    [sourceObjectData]
+    () =>
+      sourceDBData?.sql_objects_count
+        ?.filter((obj) => obj.sql_type)
+        .map((obj) => ({
+          type: obj.sql_type || "",
+          count: obj.count || 0,
+        })) || [],
+    [sourceDBData]
   );
+
+  const totalObjects = useMemo(() => {
+    return sourceObjects.reduce((acc, obj) => acc + obj.count, 0);
+  }, [sourceObjects]);
 
   const types = useMemo(() => {
     const typeSet = new Set<string>();
-    sourceObjectData.forEach((obj) => typeSet.add(obj.type));
+    sourceObjectData.forEach((obj) => (obj.type ? typeSet.add(obj.type) : null));
     return Array.from(typeSet);
   }, [sourceObjectData]);
 
@@ -147,6 +142,7 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        customBodyRender: (size: number) => `${convertBytesToGB(size)} GB`,
       },
     },
     {
@@ -177,106 +173,98 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
       cancelLabel={t("common.close")}
       isSidePanel
     >
-      <Box my={2}>
-        <Paper>
-          <Box p={2} className={classes.grayBg}>
-            <Grid container spacing={4}>
-              <Grid item xs={2}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalObjects")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.total}
-                </Typography>
-              </Grid>
-              <Grid item xs={1}>
-                <Divider orientation="vertical" />
-              </Grid>
-              <Grid item xs={2}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.sequenceCount")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.sequence}
-                </Typography>
-              </Grid>
-              <Grid item xs={2}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.tableCount")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.table}
-                </Typography>
-              </Grid>
-              <Grid item xs={2}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.indexCount")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.index}
-                </Typography>
-              </Grid>
-              <Grid item xs={2}>
-                <Typography variant="subtitle2" className={classes.label}>
-                  {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.functionCount")}
-                </Typography>
-                <Typography variant="body2" className={classes.value}>
-                  {sourceObjects.function}
-                </Typography>
-              </Grid>
-            </Grid>
+      {isFetchingSourceDBData && (
+        <Box my={4}>
+          <Box textAlign="center" mt={2.5}>
+            <LinearProgress />
           </Box>
-        </Paper>
-      </Box>
-
-      <Box display="flex" alignItems="center" gridGap={10} my={2}>
-        <Box flex={1}>
-          <Typography variant="body1" className={classes.label}>
-            {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.type")}
-          </Typography>
-          <YBSelect
-            className={classes.fullWidth}
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <MenuItem value="">All</MenuItem>
-            <Divider className={classes.divider} />
-            {types.map((type) => {
-              return (
-                <MenuItem key={type} value={type}>
-                  {type}
-                </MenuItem>
-              );
-            })}
-          </YBSelect>
         </Box>
-        <Box flex={2}>
-          <Typography variant="body1" className={classes.label}>
-            {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.search")}
-          </Typography>
-          <YBInput
-            className={classes.fullWidth}
-            placeholder={t(
-              "clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.searchPlaceholder"
-            )}
-            InputProps={{
-              startAdornment: <SearchIcon />,
-            }}
-            onChange={(ev) => setSearch(ev.target.value)}
-            value={search}
-          />
-        </Box>
-      </Box>
+      )}
 
-      <Box>
-        <YBTable
-          data={filteredSourceObjects}
-          columns={sourceObjectsColumns}
-          options={{
-            pagination: true,
-          }}
-        />
-      </Box>
+      {!isFetchingSourceDBData && (
+        <>
+          <Box my={2}>
+            <Paper>
+              <Box p={2} className={classes.grayBg}>
+                <Grid container spacing={4}>
+                  <Grid item xs={2}>
+                    <Typography variant="subtitle2" className={classes.label}>
+                      {t(
+                        "clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalObjects"
+                      )}
+                    </Typography>
+                    <Typography variant="body2" className={classes.value}>
+                      {totalObjects}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={1}>
+                    <Divider orientation="vertical" />
+                  </Grid>
+                  {sourceObjects.map((obj) => (
+                    <Grid item xs={2} key={obj.type}>
+                      <Typography variant="subtitle2" className={classes.label}>
+                        {obj.type}
+                      </Typography>
+                      <Typography variant="body2" className={classes.value}>
+                        {obj.count}
+                      </Typography>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            </Paper>
+          </Box>
+
+          <Box display="flex" alignItems="center" gridGap={10} my={2}>
+            <Box flex={1}>
+              <Typography variant="body1" className={classes.label}>
+                {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.type")}
+              </Typography>
+              <YBSelect
+                className={classes.fullWidth}
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+              >
+                <MenuItem value="">All</MenuItem>
+                <Divider className={classes.divider} />
+                {types.map((type) => {
+                  return (
+                    <MenuItem key={type} value={type}>
+                      {type}
+                    </MenuItem>
+                  );
+                })}
+              </YBSelect>
+            </Box>
+            <Box flex={2}>
+              <Typography variant="body1" className={classes.label}>
+                {t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.search")}
+              </Typography>
+              <YBInput
+                className={classes.fullWidth}
+                placeholder={t(
+                  "clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.searchPlaceholder"
+                )}
+                InputProps={{
+                  startAdornment: <SearchIcon />,
+                }}
+                onChange={(ev) => setSearch(ev.target.value)}
+                value={search}
+              />
+            </Box>
+          </Box>
+
+          <Box>
+            <YBTable
+              data={filteredSourceObjects}
+              columns={sourceObjectsColumns}
+              options={{
+                pagination: true,
+              }}
+            />
+          </Box>
+        </>
+      )}
     </YBModal>
   );
 };
