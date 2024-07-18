@@ -69,10 +69,11 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: targetRecommendationAPI, isFetching: isFetchingtargetRecommendationData } =
+  const { data: targetRecommendationAPI, isFetching: isFetchingTargetRecommendationData } =
     useGetAssessmentTargetRecommendationInfoQuery({
       uuid: migration.migration_uuid || "migration_uuid_not_found",
     });
+
   const targetRecommendationData = targetRecommendationAPI as
     | AssessmentTargetRecommendationObject
     | undefined;
@@ -163,7 +164,7 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
       cancelLabel={t("common.close")}
       isSidePanel
     >
-      {isFetchingtargetRecommendationData && (
+      {isFetchingTargetRecommendationData && (
         <Box my={4}>
           <Box textAlign="center" mt={2.5}>
             <LinearProgress />
@@ -171,7 +172,7 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
         </Box>
       )}
 
-      {!isFetchingtargetRecommendationData && (
+      {!isFetchingTargetRecommendationData && (
         <>
           <Box my={2}>
             <Paper>
