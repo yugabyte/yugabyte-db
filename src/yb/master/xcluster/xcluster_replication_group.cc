@@ -18,45 +18,27 @@
 #include "yb/client/xcluster_client.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/result.h"
 
 DEFINE_RUNTIME_bool(xcluster_skip_health_check_on_replication_setup, false,
     "Skip health check on xCluster replication setup");
 
+DEFINE_test_flag(bool, exit_unfinished_deleting, false,
+    "Whether to exit part way through the deleting universe process.");
+
 namespace yb::master {
 
 namespace {
-// Returns nullopt when source universe does not support AutoFlags compatibility check.
-// Returns a pair of bool which indicates if the configs are compatible and the source universe
-// AutoFlags config version.
-Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
-    UniverseReplicationInfo& replication_info, const AutoFlagsConfigPB& local_config) {
-  auto master_addresses = replication_info.LockForRead()->pb.producer_master_addresses();
-  auto xcluster_rpc = VERIFY_RESULT(replication_info.GetOrCreateXClusterRpcTasks(master_addresses));
-  auto result = VERIFY_RESULT(
-      xcluster_rpc->client()->ValidateAutoFlagsConfig(local_config, AutoFlagClass::kExternal));
-
-  if (!result) {
-    return std::nullopt;
-  }
-
-  auto& [is_valid, source_version] = *result;
-  VLOG(2) << "ValidateAutoFlagsConfig for replication group: "
-          << replication_info.ReplicationGroupId() << ", is_valid: " << is_valid
-          << ", source universe version: " << source_version
-          << ", target universe version: " << local_config.config_version();
-
-  return result;
-}
 
 Result<cdc::ProducerEntryPB*> GetProducerEntry(
     SysClusterConfigEntryPB& cluster_config_pb,
@@ -182,32 +164,40 @@ Result<bool> IsReplicationGroupReady(
   return IsSafeTimeReady(l->pb, xcluster_manager);
 }
 
+Status ReturnErrorOrAddWarning(
+    const Status& s, bool ignore_errors, DeleteUniverseReplicationResponsePB* resp) {
+  if (!s.ok()) {
+    if (ignore_errors) {
+      // Continue executing, save the status as a warning.
+      AppStatusPB* warning = resp->add_warnings();
+      StatusToPB(s, warning);
+      return Status::OK();
+    }
+    return s.CloneAndAppend("\nUse 'ignore-errors' to ignore this error.");
+  }
+  return s;
+}
+
 }  // namespace
 
-Result<uint32> GetAutoFlagConfigVersionIfCompatible(
+Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
     UniverseReplicationInfo& replication_info, const AutoFlagsConfigPB& local_config) {
-  const auto& replication_group_id = replication_info.ReplicationGroupId();
+  auto master_addresses = replication_info.LockForRead()->pb.producer_master_addresses();
+  auto xcluster_rpc = VERIFY_RESULT(replication_info.GetOrCreateXClusterRpcTasks(master_addresses));
+  auto result = VERIFY_RESULT(
+      xcluster_rpc->client()->ValidateAutoFlagsConfig(local_config, AutoFlagClass::kExternal));
 
-  VLOG_WITH_FUNC(2) << "Validating AutoFlags config for replication group: " << replication_group_id
-                    << " with target config version: " << local_config.config_version();
-
-  auto validate_result = VERIFY_RESULT(ValidateAutoFlagsConfig(replication_info, local_config));
-
-  if (!validate_result) {
-    VLOG_WITH_FUNC(2)
-        << "Source universe of replication group " << replication_group_id
-        << " is running a version that does not support the AutoFlags compatibility check yet";
-    return kInvalidAutoFlagsConfigVersion;
+  if (!result) {
+    return std::nullopt;
   }
 
-  auto& [is_valid, source_version] = *validate_result;
+  auto& [is_valid, source_version] = *result;
+  VLOG(2) << "ValidateAutoFlagsConfig for replication group: "
+          << replication_info.ReplicationGroupId() << ", is_valid: " << is_valid
+          << ", source universe version: " << source_version
+          << ", target universe version: " << local_config.config_version();
 
-  SCHECK(
-      is_valid, IllegalState,
-      "AutoFlags between the universes are not compatible. Upgrade the target universe to a "
-      "version higher than or equal to the source universe");
-
-  return source_version;
+  return result;
 }
 
 Status RefreshAutoFlagConfigVersion(
@@ -610,43 +600,6 @@ Status RemoveTablesFromReplicationGroupInternal(
   return Status::OK();
 }
 
-Status ValidateTableListForDbScopedReplication(
-    UniverseReplicationInfo& universe, const std::vector<NamespaceId>& namespace_ids,
-    const std::set<TableId>& replicated_tables, const CatalogManager& catalog_manager) {
-  std::set<TableId> validated_tables;
-
-  for (const auto& namespace_id : namespace_ids) {
-    auto table_infos =
-        VERIFY_RESULT(GetTablesEligibleForXClusterReplication(catalog_manager, namespace_id));
-
-    std::vector<TableId> missing_tables;
-
-    for (const auto& table_info : table_infos) {
-      const auto& table_id = table_info->id();
-      if (replicated_tables.contains(table_id)) {
-        validated_tables.insert(table_id);
-      } else {
-        missing_tables.push_back(table_id);
-      }
-    }
-
-    SCHECK_FORMAT(
-        missing_tables.empty(), IllegalState,
-        "Namespace $0 has additional tables that were not added to xCluster DB Scoped replication "
-        "group $1: $2",
-        namespace_id, universe.id(), yb::ToString(missing_tables));
-  }
-
-  auto diff = STLSetSymmetricDifference(replicated_tables, validated_tables);
-  SCHECK_FORMAT(
-      diff.empty(), IllegalState,
-      "xCluster DB Scoped replication group $0 contains tables $1 that do not belong to replicated "
-      "namespaces $2",
-      universe.id(), yb::ToString(diff), yb::ToString(namespace_ids));
-
-  return Status::OK();
-}
-
 bool HasNamespace(UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id) {
   auto l = universe.LockForRead();
   if (!l->IsDbScoped()) {
@@ -659,6 +612,122 @@ bool HasNamespace(UniverseReplicationInfo& universe, const NamespaceId& consumer
       [&consumer_namespace_id](const auto& namespace_info) {
         return namespace_info.consumer_namespace_id() == consumer_namespace_id;
       });
+}
+
+Status DeleteUniverseReplication(
+    UniverseReplicationInfo& universe, bool ignore_errors, bool skip_producer_stream_deletion,
+    DeleteUniverseReplicationResponsePB* resp, CatalogManager& catalog_manager,
+    const LeaderEpoch& epoch) {
+  const auto& replication_group_id = universe.ReplicationGroupId();
+  auto xcluster_manager = catalog_manager.GetXClusterManager();
+  auto sys_catalog = catalog_manager.sys_catalog();
+
+  {
+    auto l = universe.LockForWrite();
+    l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETING);
+    Status s = sys_catalog->Upsert(epoch, &universe);
+    RETURN_NOT_OK(
+        CheckLeaderStatus(s, "Updating delete universe replication info into sys-catalog"));
+    l.Commit();
+  }
+
+  auto l = universe.LockForWrite();
+  l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::DELETED);
+
+  // We can skip the deletion of individual streams for DB Scoped replication since deletion of the
+  // outbound replication group will clean it up.
+  if (l->IsDbScoped()) {
+    skip_producer_stream_deletion = true;
+  }
+
+  // Delete subscribers on the Consumer Registry (removes from TServers).
+  LOG(INFO) << "Deleting subscribers for producer " << replication_group_id;
+  {
+    auto cluster_config = catalog_manager.ClusterConfig();
+    auto cl = cluster_config->LockForWrite();
+    auto* consumer_registry = cl.mutable_data()->pb.mutable_consumer_registry();
+    auto replication_group_map = consumer_registry->mutable_producer_map();
+    auto it = replication_group_map->find(replication_group_id.ToString());
+    if (it != replication_group_map->end()) {
+      replication_group_map->erase(it);
+      cl.mutable_data()->pb.set_version(cl.mutable_data()->pb.version() + 1);
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog->Upsert(epoch, cluster_config.get()),
+          "updating cluster config in sys-catalog"));
+
+      xcluster_manager->SyncConsumerReplicationStatusMap(
+          replication_group_id, *replication_group_map);
+      cl.Commit();
+    }
+  }
+
+  // Delete CDC stream config on the Producer.
+  if (!l->pb.table_streams().empty() && !skip_producer_stream_deletion) {
+    auto result = universe.GetOrCreateXClusterRpcTasks(l->pb.producer_master_addresses());
+    if (!result.ok()) {
+      LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
+    } else {
+      auto xcluster_rpc = *result;
+      std::vector<xrepl::StreamId> streams;
+      std::unordered_map<xrepl::StreamId, TableId> stream_to_producer_table_id;
+      for (const auto& [table_id, stream_id_str] : l->pb.table_streams()) {
+        auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream_id_str));
+        streams.emplace_back(stream_id);
+        stream_to_producer_table_id.emplace(stream_id, table_id);
+      }
+
+      DeleteCDCStreamResponsePB delete_cdc_stream_resp;
+      // Set force_delete=true since we are deleting active xCluster streams.
+      // Since we are deleting universe replication, we should be ok with
+      // streams not existing on the other side, so we pass in ignore_errors
+      bool ignore_missing_streams = false;
+      auto s = xcluster_rpc->client()->DeleteCDCStream(
+          streams, true, /* force_delete */
+          true /* ignore_errors */, &delete_cdc_stream_resp);
+
+      if (delete_cdc_stream_resp.not_found_stream_ids().size() > 0) {
+        std::vector<std::string> missing_streams;
+        missing_streams.reserve(delete_cdc_stream_resp.not_found_stream_ids().size());
+        for (const auto& stream_id : delete_cdc_stream_resp.not_found_stream_ids()) {
+          missing_streams.emplace_back(Format(
+              "$0 (table_id: $1)", stream_id,
+              stream_to_producer_table_id[VERIFY_RESULT(xrepl::StreamId::FromString(stream_id))]));
+        }
+        auto message =
+            Format("Could not find the following streams: $0.", AsString(missing_streams));
+
+        if (s.ok()) {
+          // Returned but did not find some streams, so still need to warn the user about those.
+          ignore_missing_streams = true;
+          s = STATUS(NotFound, message);
+        } else {
+          s = s.CloneAndPrepend(message);
+        }
+      }
+      RETURN_NOT_OK(ReturnErrorOrAddWarning(s, ignore_errors | ignore_missing_streams, resp));
+    }
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_exit_unfinished_deleting)) {
+    // Exit for testing services
+    return Status::OK();
+  }
+
+  // Delete universe in the Universe Config.
+  RETURN_NOT_OK(
+      ReturnErrorOrAddWarning(sys_catalog->Delete(epoch, &universe), ignore_errors, resp));
+
+  // Also update the mapping of consumer tables.
+  for (const auto& table : universe.metadata().state().pb.validated_tables()) {
+    xcluster_manager->RemoveTableConsumerStream(table.second, universe.ReplicationGroupId());
+  }
+
+  catalog_manager.RemoveUniverseReplicationFromMap(universe.ReplicationGroupId());
+
+  l.Commit();
+  LOG(INFO) << "Processed delete universe replication of " << universe.ToString();
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

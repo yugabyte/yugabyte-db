@@ -1010,7 +1010,7 @@ Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy(
 Status XClusterTestBase::ClearFailedUniverse(Cluster& cluster) {
   auto& catalog_manager =
       VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
-  return catalog_manager.ClearFailedUniverse();
+  return catalog_manager.ClearFailedUniverse(catalog_manager.GetLeaderEpochInternal());
 }
 
 } // namespace yb
