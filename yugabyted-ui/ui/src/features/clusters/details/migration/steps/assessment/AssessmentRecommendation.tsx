@@ -1,10 +1,11 @@
 import React, { FC } from "react";
 import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBTooltip } from "@app/components";
+import { YBButton, YBTooltip } from "@app/components";
 import { MigrationRecommendationSidePanel } from "./AssessmentRecommendationSidePanel";
 import type { Migration } from "../../MigrationOverview";
 import { convertBytesToGB } from "@app/helpers";
+import CaretRightIcon from "@app/assets/caret-right-circle.svg";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -150,13 +151,13 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
               <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.recommendation.schema.heading")}
               </Typography>
-              {/* <YBButton
+              <YBButton
                 variant="ghost"
                 startIcon={<CaretRightIcon />}
                 onClick={() => setShowRecommendation(true)}
               >
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
-              </YBButton> */}
+              </YBButton>
             </Box>
 
             <Grid container spacing={4}>
