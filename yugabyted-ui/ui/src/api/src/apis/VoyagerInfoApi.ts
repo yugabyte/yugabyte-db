@@ -21,11 +21,19 @@ import type { AxiosInstance } from 'axios';
 import type {
   APIForMigrationAssessmentPage,
   APIForPlanAndAssesPage,
+  APIForSourceDBSQLObjectsMetadataPage,
+  APIForTargetSchemaRecommendationsPage,
   ApiError,
   IndividualMigrationTaskInfo,
   VoyagerMigrationsInfo,
 } from '../models';
 
+export interface GetAssessmentSourceDBInfoForQuery {
+  uuid: string;
+}
+export interface GetAssessmentTargetRecommendationInfoForQuery {
+  uuid: string;
+}
 export interface GetMigrationAssessmentInfoForQuery {
   uuid: string;
 }
@@ -39,6 +47,168 @@ export interface GetVoyagerMigrationTasksForQuery {
   uuid?: string;
   migration_phase?: number;
 }
+
+/**
+ * Get the Source Database SQL object details
+ * Get the Source Database SQL object details
+ */
+
+export const getAssessmentSourceDBInfoAxiosRequest = (
+  requestParameters: GetAssessmentSourceDBInfoForQuery,
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<APIForSourceDBSQLObjectsMetadataPage>(
+    {
+      url: '/assessment_source_db_details',
+      method: 'GET',
+      params: {
+        uuid: requestParameters['uuid'],
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getAssessmentSourceDBInfoQueryKey = (
+  requestParametersQuery: GetAssessmentSourceDBInfoForQuery,
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/assessment_source_db_details`,
+  pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
+];
+
+
+export const useGetAssessmentSourceDBInfoInfiniteQuery = <T = APIForSourceDBSQLObjectsMetadataPage, Error = ApiError>(
+  params: GetAssessmentSourceDBInfoForQuery,
+  options?: {
+    query?: UseInfiniteQueryOptions<APIForSourceDBSQLObjectsMetadataPage, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getAssessmentSourceDBInfoQueryKey(params, pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<APIForSourceDBSQLObjectsMetadataPage, Error, T>(
+    queryKey,
+    () => getAssessmentSourceDBInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetAssessmentSourceDBInfoQuery = <T = APIForSourceDBSQLObjectsMetadataPage, Error = ApiError>(
+  params: GetAssessmentSourceDBInfoForQuery,
+  options?: {
+    query?: UseQueryOptions<APIForSourceDBSQLObjectsMetadataPage, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getAssessmentSourceDBInfoQueryKey(params,  version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<APIForSourceDBSQLObjectsMetadataPage, Error, T>(
+    queryKey,
+    () => getAssessmentSourceDBInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get the Target Database recommendation details
+ * Get the Target Database recommendation details
+ */
+
+export const getAssessmentTargetRecommendationInfoAxiosRequest = (
+  requestParameters: GetAssessmentTargetRecommendationInfoForQuery,
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<APIForTargetSchemaRecommendationsPage>(
+    {
+      url: '/assessment_target_recommendation_details',
+      method: 'GET',
+      params: {
+        uuid: requestParameters['uuid'],
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getAssessmentTargetRecommendationInfoQueryKey = (
+  requestParametersQuery: GetAssessmentTargetRecommendationInfoForQuery,
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/assessment_target_recommendation_details`,
+  pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
+];
+
+
+export const useGetAssessmentTargetRecommendationInfoInfiniteQuery = <T = APIForTargetSchemaRecommendationsPage, Error = ApiError>(
+  params: GetAssessmentTargetRecommendationInfoForQuery,
+  options?: {
+    query?: UseInfiniteQueryOptions<APIForTargetSchemaRecommendationsPage, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getAssessmentTargetRecommendationInfoQueryKey(params, pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<APIForTargetSchemaRecommendationsPage, Error, T>(
+    queryKey,
+    () => getAssessmentTargetRecommendationInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetAssessmentTargetRecommendationInfoQuery = <T = APIForTargetSchemaRecommendationsPage, Error = ApiError>(
+  params: GetAssessmentTargetRecommendationInfoForQuery,
+  options?: {
+    query?: UseQueryOptions<APIForTargetSchemaRecommendationsPage, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getAssessmentTargetRecommendationInfoQueryKey(params,  version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<APIForTargetSchemaRecommendationsPage, Error, T>(
+    queryKey,
+    () => getAssessmentTargetRecommendationInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
 
 /**
  * Get the Database assessment details
