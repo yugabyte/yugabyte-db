@@ -1396,7 +1396,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping", "GroupMapping" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -2835,7 +2835,7 @@
         "type" : "object"
       } ]
     },
-    "BootstarpBackupParams" : {
+    "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
         "parallelism" : {
@@ -2860,7 +2860,7 @@
           "type" : "boolean"
         },
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
+          "$ref" : "#/definitions/BootstrapBackupParams",
           "description" : "Parameters used to do Backup/restore"
         },
         "tables" : {
@@ -5851,6 +5851,31 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "type" : "object"
+    },
+    "GroupMappingInfo" : {
+      "properties" : {
+        "customerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "groupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "identifier" : {
+          "type" : "string"
+        },
+        "roleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "type" : {
+          "enum" : [ "LDAP", "OIDC" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "groupUUID", "identifier", "roleUUID", "type" ],
       "type" : "object"
     },
     "HTTP Auth information" : {
@@ -9160,6 +9185,28 @@
       },
       "type" : "object"
     },
+    "Principal" : {
+      "properties" : {
+        "groupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "type" : {
+          "enum" : [ "USER", "LDAP_GROUP", "OIDC_GROUP" ],
+          "type" : "string"
+        },
+        "userUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "groupUUID", "type", "userUUID", "uuid" ],
+      "type" : "object"
+    },
     "Provider" : {
       "properties" : {
         "active" : {
@@ -10180,7 +10227,7 @@
       "description" : "Bootstrap parameters for restarting",
       "properties" : {
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
+          "$ref" : "#/definitions/BootstrapBackupParams",
           "description" : "Parameters used to do Backup/restore"
         }
       },
@@ -11096,6 +11143,13 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "groupInfo" : {
+          "$ref" : "#/definitions/GroupMappingInfo",
+          "description" : "GroupInfo"
+        },
+        "principal" : {
+          "$ref" : "#/definitions/Principal"
+        },
         "resourceGroup" : {
           "$ref" : "#/definitions/ResourceGroup",
           "description" : "Details of the resource group"
@@ -11126,6 +11180,7 @@
           "type" : "string"
         }
       },
+      "required" : [ "principal" ],
       "type" : "object"
     },
     "RoleBindingFormData" : {
@@ -11166,7 +11221,7 @@
       "type" : "object"
     },
     "RoleResourceDefinition" : {
-      "description" : "Role and resource group definition.",
+      "description" : "Defines the association of Role to Resource Groups.",
       "properties" : {
         "resourceGroup" : {
           "$ref" : "#/definitions/ResourceGroup",
@@ -18209,7 +18264,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "default" : "null",
+          "default" : -1,
           "format" : "int64",
           "in" : "query",
           "name" : "apiTokenVersion",

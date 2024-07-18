@@ -140,6 +140,10 @@ RestorationState::RestorationState(
   }
 }
 
+Result<bool> RestorationState::RestorationComplete() const {
+  return VERIFY_RESULT(AggregatedState()) == SysSnapshotEntryPB::RESTORED;
+}
+
 Status RestorationState::ToPB(RestorationInfoPB* out) {
   out->set_id(restoration_id_.data(), restoration_id_.size());
   return ToEntryPB(ForClient::kTrue, out->mutable_entry());
@@ -168,7 +172,7 @@ void RestorationState::PrepareOperations(
 }
 
 Status RestorationState::Abort() {
-  SCHECK(!VERIFY_RESULT(Complete()), IllegalState, "Cannot abort completed restoration");
+  SCHECK(!VERIFY_RESULT(RestorationComplete()), IllegalState, "Cannot abort completed restoration");
   auto tablets_ = tablets();
   for (auto it = tablets_.begin(); it != tablets_.end(); ++it) {
     const auto& tablet_id = it->id;

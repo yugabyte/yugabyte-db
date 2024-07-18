@@ -58,7 +58,6 @@ export const RuntimeConfigKey = {
   BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources',
   UI_TAG_FILTER: 'yb.runtime_conf_ui.tag_filter',
   ENABLE_AUDIT_LOG: 'yb.universe.audit_logging_enabled'
-
 } as const;
 
 /**
@@ -177,4 +176,11 @@ export const UNIVERSE_TASKS = {
 
   // Backup actions
   CREATE_BACKUP: 'CREATE_BACKUP'
+};
+
+export const MIN_PG_SUPPORTED_PREVIEW_VERSION = '2.23.0.0-b416';
+export const MIN_PG_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';
+
+export const GFLAG_GROUPS = {
+  ENHANCED_POSTGRES_COMPATIBILITY: 'ENHANCED_POSTGRES_COMPATIBILITY'
 };

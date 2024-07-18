@@ -38,6 +38,16 @@ void CloneStateInfo::AddTabletData(TabletData tablet_data) {
   tablet_data_.push_back(std::move(tablet_data));
 }
 
+LeaderEpoch CloneStateInfo::Epoch() {
+  std::lock_guard l(mutex_);
+  return epoch_;
+}
+
+void CloneStateInfo::SetEpoch(const LeaderEpoch& epoch) {
+  std::lock_guard l(mutex_);
+  epoch_ = epoch;
+}
+
 YQLDatabase CloneStateInfo::DatabaseType() {
   std::lock_guard l(mutex_);
   return database_type_;

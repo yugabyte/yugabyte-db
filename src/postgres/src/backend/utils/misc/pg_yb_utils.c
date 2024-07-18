@@ -196,6 +196,7 @@ static bool YBCanEnableDBCatalogVersionMode();
 
 bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
+bool yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t yb_follower_read_staleness_ms = 0;
 
 bool
@@ -2351,6 +2352,10 @@ bool YBEnableTracing() {
 
 bool YBReadFromFollowersEnabled() {
 	return yb_read_from_followers;
+}
+
+bool YBFollowerReadsBehaviorBefore20482() {
+	return yb_follower_reads_behavior_before_fixing_20482;
 }
 
 int32_t YBFollowerReadStalenessMs() {
@@ -4962,4 +4967,18 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 		? (YbReadTimePointHandle){
 			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
 		: (YbReadTimePointHandle){};
+}
+
+// TODO(#22370): the method will be used to make Const Based Optimizer to be aware of
+// fast backward scan capability.
+bool YbUseFastBackwardScan() {
+  return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
+}
+
+/* Used in YB to check if an attribute is a key column. */
+bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
+{
+	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
+	return bms_is_member(attnum -
+		YBGetFirstLowInvalidAttributeNumber(rel), pkey);
 }

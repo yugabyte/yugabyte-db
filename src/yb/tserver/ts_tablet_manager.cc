@@ -156,7 +156,7 @@ DEFINE_UNKNOWN_int32(tablet_start_warn_threshold_ms, 500,
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
-DEFINE_UNKNOWN_int32(cleanup_split_tablets_interval_sec, 60,
+DEFINE_NON_RUNTIME_int32(cleanup_split_tablets_interval_sec, 60,
              "Interval at which tablet manager tries to cleanup split tablets which are no longer "
              "needed. Setting this to 0 disables cleanup of split tablets.");
 

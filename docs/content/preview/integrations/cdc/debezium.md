@@ -154,7 +154,7 @@ Do the following:
     }'
     ```
 
-For a list of all the configuration options provided with the Debezium YugabyteDB connector, see [Connector configuration properties](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
+For a list of all the configuration options provided with the Debezium YugabyteDB connector, see [Connector configuration properties](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 {{< tip title="TRUNCATE tables when CDC is enabled" >}}
 

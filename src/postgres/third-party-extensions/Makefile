@@ -7,6 +7,7 @@ DIRS = \
 	pg_stat_monitor \
 	pgvector \
 	postgresql-hll \
+	pg_partman \
 
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)

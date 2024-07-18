@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
-@ApiModel(description = "Role and resource group definition.")
+@ApiModel(description = "Defines the association of Role to Resource Groups.")
 @Getter
 @Setter
 @AllArgsConstructor

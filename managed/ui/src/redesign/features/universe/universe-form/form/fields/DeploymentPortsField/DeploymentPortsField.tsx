@@ -75,21 +75,21 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
       render={({ field: { value, onChange } }) => {
         return (
           <Box display="flex" alignItems="flex-start" data-testid="DeploymentPortsField-Container">
-            <YBLabel
-              dataTestId="DeploymentPortsField-Label"
-              className={classes.advancedConfigLabel}
-            >
-              {t('universeForm.advancedConfig.overridePorts')}
-            </YBLabel>
+            <YBToggleField
+              name={CUSTOMIZE_PORT_FIELD}
+              inputProps={{
+                'data-testid': 'DeploymentPortsField-CoustomizePortToggle'
+              }}
+              control={control}
+              disabled={disabled}
+            />
             <Box flex={1} display="flex" flexDirection="column">
-              <YBToggleField
-                name={CUSTOMIZE_PORT_FIELD}
-                inputProps={{
-                  'data-testid': 'DeploymentPortsField-CoustomizePortToggle'
-                }}
-                control={control}
-                disabled={disabled}
-              />
+              <YBLabel
+                dataTestId="DeploymentPortsField-Label"
+                className={classes.advancedConfigLabel}
+              >
+                {t('universeForm.advancedConfig.overridePorts')}
+              </YBLabel>
               {customizePort && (
                 <Grid container>
                   {portsConfig.map((item) => (

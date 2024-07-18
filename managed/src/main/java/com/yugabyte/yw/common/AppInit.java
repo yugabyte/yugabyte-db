@@ -44,8 +44,11 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.MetricConfig;
+import com.yugabyte.yw.models.Principal;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.scheduler.JobScheduler;
 import com.yugabyte.yw.scheduler.Scheduler;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
@@ -133,6 +136,16 @@ public class AppInit {
           Customer customer = Customer.getAll().get(0);
           alertDestinationService.createDefaultDestination(customer.getUuid());
           alertConfigurationService.createDefaultConfigs(customer);
+          // Create system roles for the newly created customer.
+          R__Sync_System_Roles.syncSystemRoles();
+          // Principal entry for newly created users.
+          for (Users user : Users.find.all()) {
+            Principal principal = Principal.get(user.getUuid());
+            if (principal == null) {
+              log.info("Adding Principal entry for user with email: " + user.getEmail());
+              new Principal(user).save();
+            }
+          }
         }
 
         String storagePath = AppConfigHelper.getStoragePath();
@@ -142,6 +155,8 @@ public class AppInit {
           fileDataService.fixUpPaths(storagePath);
           releaseManager.fixFilePaths();
         }
+        // yb.fixPaths has a specific, limited use case. This should run always.
+        releasesUtils.releaseUploadPathFixup();
 
         boolean ywFileDataSynced =
             Boolean.parseBoolean(

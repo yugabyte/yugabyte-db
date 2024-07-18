@@ -173,7 +173,7 @@ IntentAwareIterator::IntentAwareIterator(
       transaction_status_cache_(
           txn_op_context_, read_operation_data.read_time, read_operation_data.deadline) {
   VTRACE(1, __func__);
-  VLOG(4) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
+  VLOG(2) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
           << ", txn_op_context: " << txn_op_context_ << ", " << TRACE_BOUNDS
           << ", use_fast_backward_scan: " << use_fast_backward_scan;
 
