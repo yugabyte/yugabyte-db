@@ -38,7 +38,8 @@
       "startDate": "Start Date",
       "endDate": "End Date",
       "dot": ".",
-      "and": "and"
+      "and": "and",
+      "learnMore": "Learn more"
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -199,6 +200,15 @@
           "finalizingTooltip": "Finalizing v{{version}}",
           "upgradingTooltip": "Upgrading to v{{version}}"
         }
+      },
+      "pgCompatibility": {
+        "modalTitle": "Edit Enhanced Postgres Compatibility",
+        "toggleLabel": "Enhanced Postgres Compatibility",
+        "subText": "Configure YSQL for maximum Postgres compatibility by enabling early access features.",
+        "enableWarning": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility:",
+        "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning3": "May impact performance."
       }
     },
     "commonErrors": {
@@ -258,7 +268,11 @@
         "yqlServerHttpPort": "YCQL HTTP Port",
         "yqlServerRpcPort": "YCQL RPC Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
-        "ysqlServerRpcPort": "YSQL RPC Port"
+        "ysqlServerRpcPort": "YSQL RPC Port",
+        "enhancePGCompatibility": "Enhanced Postgres Compatibility",
+        "earlyAccess": "Early Access",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -379,7 +393,8 @@
         "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
-        "flagsModifiedModalLine2": "Note that current changes will be lost."
+        "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",

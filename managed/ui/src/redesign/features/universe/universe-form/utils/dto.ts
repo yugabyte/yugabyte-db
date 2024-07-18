@@ -138,8 +138,14 @@ export interface UserIntent {
   ybcPackagePath?: string | null;
   instanceTags?: Record<string, string>;
   specificGFlags?: {
+    gflagGroups?: string[];
     inheritFromPrimary: boolean;
-    perProcessFlags: {};
+    perProcessFlags: {
+      value?: {
+        MASTER?: Record<string, any>;
+        TSERVER?: Record<string, any>;
+      };
+    };
     perAZ?: {};
   };
   masterGFlags?: Record<string, any>;
@@ -529,6 +535,7 @@ export interface AdvancedConfigFormValue {
   accessKeyCode: string | null;
   ybSoftwareVersion: string | null;
   communicationPorts: CommunicationPorts;
+  enablePGCompatibitilty: boolean;
 }
 
 export interface InstanceTag {
@@ -626,7 +633,8 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
   customizePort: false,
   accessKeyCode: '',
   ybSoftwareVersion: null,
-  communicationPorts: DEFAULT_COMMUNICATION_PORTS
+  communicationPorts: DEFAULT_COMMUNICATION_PORTS,
+  enablePGCompatibitilty: false
 };
 
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];
