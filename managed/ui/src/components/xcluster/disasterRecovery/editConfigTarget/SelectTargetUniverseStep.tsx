@@ -9,7 +9,7 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { YBReactSelectField } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
+import { INPUT_FIELD_WIDTH_PX } from '../../constants';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 
@@ -82,7 +82,7 @@ export const SelectTargetUniverseStep = ({
         options={universeOptions}
         rules={{ required: t('error.targetUniverseRequired') }}
         isDisabled={isFormDisabled}
-        autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+        autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
         maxWidth="100%"
       />
     </>
