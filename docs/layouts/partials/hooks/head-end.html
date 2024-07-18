@@ -10,7 +10,6 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','GTM-5GH7JQS');</script>
 <!-- End Google Tag Manager -->
 
-{{ $rudderstact_api_key := os.Getenv "RUDDERSTACK_API_KEY" }}
 {{- if $rudderstact_api_key -}}
 <script type="text/javascript">
   !function(){"use strict";window.RudderSnippetVersion="3.0.14";var e="rudderanalytics";window[e]||(window[e]=[])
@@ -31,14 +30,13 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   "undefined"==typeof globalThis&&(Object.defineProperty(Object.prototype,"__globalThis_magic__",{get:function get(){
   return this},configurable:true}),__globalThis_magic__.globalThis=__globalThis_magic__,
   delete Object.prototype.__globalThis_magic__),
-  window.rudderAnalyticsAddScript("".concat(sdkBaseUrl,"/").concat(window.rudderAnalyticsBuildType,"/").concat(sdkName),"data-rsa-write-key",window.atob("{{- $rudderstact_api_key -}}"))
+  window.rudderAnalyticsAddScript("".concat(sdkBaseUrl,"/").concat(window.rudderAnalyticsBuildType,"/").concat(sdkName),"data-rsa-write-key","2j9fjy3YN5aK3lXKN87y9phbstx")
   },
   "undefined"==typeof Promise||"undefined"==typeof globalThis?window.rudderAnalyticsAddScript("https://polyfill-fastly.io/v3/polyfill.min.js?version=3.111.0&features=Symbol%2CPromise&callback=rudderAnalyticsMount"):window.rudderAnalyticsMount()
   ;var loadOptions={}
-  ;rudderanalytics.load(window.atob("{{- $rudderstact_api_key -}}"),"https://yugabyteklhgka.dataplane.rudderstack.com",loadOptions)}}
+  ;rudderanalytics.load("2j9fjy3YN5aK3lXKN87y9phbstx","https://yugabyteklhgka.dataplane.rudderstack.com",loadOptions)}}
   }();
 </script>
-{{- end -}}
 
 {{- if .Site.Params.drift_snippet -}}
 <script>
