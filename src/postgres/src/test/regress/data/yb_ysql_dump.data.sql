@@ -117,6 +117,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16551'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16550'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16549'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16553'::pg_catalog.oid);
+
 CREATE TABLE hint_plan.hints (
     id integer NOT NULL,
     norm_query_string text NOT NULL,
@@ -137,6 +145,10 @@ ALTER EXTENSION pg_hint_plan ADD TABLE hint_plan.hints;
 --
 -- Name: hints_id_seq; Type: SEQUENCE; Schema: hint_plan; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16547'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type oid
@@ -177,6 +189,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16471'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16470'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16469'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16472'::pg_catalog.oid);
+
 CREATE TABLE public.chat_user (
     "chatID" text NOT NULL,
     CONSTRAINT chat_user_pkey PRIMARY KEY(("chatID") HASH)
@@ -199,6 +219,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16578'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16577'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16576'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16579'::pg_catalog.oid);
 
 CREATE TABLE public.hash_tbl_pk_with_include_clause (
     k2 text NOT NULL,
@@ -224,6 +252,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16589'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16588'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16587'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16590'::pg_catalog.oid);
 
 CREATE TABLE public.hash_tbl_pk_with_multiple_included_columns (
     col1 integer NOT NULL,
@@ -251,6 +287,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16558'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16557'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16556'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16559'::pg_catalog.oid);
+
 CREATE TABLE public.p1 (
     k integer NOT NULL,
     v text,
@@ -275,6 +319,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16565'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16564'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16563'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16566'::pg_catalog.oid);
+
 CREATE TABLE public.p2 (
     k integer NOT NULL,
     v text,
@@ -298,6 +350,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16538'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16537'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16536'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16539'::pg_catalog.oid);
 
 CREATE TABLE public.pre_split_range (
     id integer NOT NULL,
@@ -336,6 +396,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16572'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16571'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16570'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16573'::pg_catalog.oid);
+
 CREATE TABLE public.range_tbl_pk_with_include_clause (
     k2 text NOT NULL,
     v double precision,
@@ -361,6 +429,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16584'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16583'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16582'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16585'::pg_catalog.oid);
+
 CREATE TABLE public.range_tbl_pk_with_multiple_included_columns (
     col1 integer NOT NULL,
     col2 integer NOT NULL,
@@ -385,6 +461,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16463'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16462'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16461'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16464'::pg_catalog.oid);
 
 CREATE TABLE public.rls_private (
     k integer NOT NULL,
@@ -412,6 +496,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16458'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16457'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16456'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16459'::pg_catalog.oid);
+
 CREATE TABLE public.rls_public (
     k integer NOT NULL,
     v text,
@@ -436,6 +528,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16388'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16387'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16386'::pg_catalog.oid);
+
 CREATE TABLE public.tbl1 (
     a integer NOT NULL,
     b integer
@@ -458,6 +554,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16438'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16437'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16436'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16439'::pg_catalog.oid);
 
 CREATE TABLE public.tbl10 (
     a integer NOT NULL,
@@ -485,6 +589,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16443'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16442'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16441'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16444'::pg_catalog.oid);
+
 CREATE TABLE public.tbl11 (
     a integer NOT NULL,
     b integer NOT NULL,
@@ -508,6 +620,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16448'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16447'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16446'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16449'::pg_catalog.oid);
 
 CREATE TABLE public.tbl12 (
     a integer NOT NULL,
@@ -534,6 +654,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16453'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16452'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16451'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16454'::pg_catalog.oid);
+
 CREATE TABLE public.tbl13 (
     a integer,
     b integer NOT NULL,
@@ -551,6 +679,10 @@ SPLIT INTO 3 TABLETS;
 --
 -- Name: tbl1_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16384'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type oid
@@ -588,6 +720,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16394'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16393'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16392'::pg_catalog.oid);
+
 CREATE TABLE public.tbl2 (
     a integer NOT NULL
 )
@@ -601,6 +737,10 @@ SPLIT INTO 3 TABLETS;
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16390'::pg_catalog.oid);
 
 
 -- For binary upgrade, must preserve pg_type oid
@@ -638,6 +778,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16398'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16397'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16396'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16399'::pg_catalog.oid);
+
 CREATE TABLE public.tbl3 (
     a integer NOT NULL,
     b integer,
@@ -660,6 +808,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16403'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16402'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16401'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16404'::pg_catalog.oid);
 
 CREATE TABLE public.tbl4 (
     a integer NOT NULL,
@@ -684,6 +840,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16408'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16407'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16406'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16409'::pg_catalog.oid);
 
 CREATE TABLE public.tbl5 (
     a integer NOT NULL,
@@ -710,6 +874,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16413'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16412'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16411'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16414'::pg_catalog.oid);
+
 CREATE TABLE public.tbl6 (
     a integer NOT NULL,
     CONSTRAINT tbl6_pkey PRIMARY KEY((a) HASH)
@@ -732,6 +904,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16418'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16417'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16416'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16419'::pg_catalog.oid);
 
 CREATE TABLE public.tbl7 (
     a integer,
@@ -759,6 +939,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16423'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16422'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16421'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16424'::pg_catalog.oid);
+
 CREATE TABLE public.tbl8 (
     a integer NOT NULL,
     b integer,
@@ -785,6 +973,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16433'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16432'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16431'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16434'::pg_catalog.oid);
+
 CREATE TABLE public.tbl9 (
     a integer NOT NULL,
     b integer NOT NULL,
@@ -810,6 +1006,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16503'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16502'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16501'::pg_catalog.oid);
+
 CREATE TABLE public.tgroup_after_options (
     a integer
 )
@@ -833,6 +1033,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16509'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16508'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16507'::pg_catalog.oid);
+
 CREATE TABLE public.tgroup_empty_options (
     a integer
 )
@@ -854,6 +1058,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16506'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16505'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16504'::pg_catalog.oid);
 
 CREATE TABLE public.tgroup_in_between_options (
     a integer
@@ -878,6 +1086,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16485'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16484'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16483'::pg_catalog.oid);
+
 CREATE TABLE public.tgroup_no_options_and_tgroup (
     a integer
 )
@@ -900,6 +1112,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16488'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16487'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16486'::pg_catalog.oid);
 
 CREATE TABLE public.tgroup_one_option (
     a integer
@@ -924,6 +1140,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16491'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16490'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16489'::pg_catalog.oid);
+
 CREATE TABLE public.tgroup_one_option_and_tgroup (
     a integer
 )
@@ -946,6 +1166,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16494'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16493'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16492'::pg_catalog.oid);
 
 CREATE TABLE public.tgroup_options (
     a integer
@@ -970,6 +1194,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16497'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16496'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16495'::pg_catalog.oid);
+
 CREATE TABLE public.tgroup_options_and_tgroup (
     a integer
 )
@@ -992,6 +1220,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16500'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16499'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16498'::pg_catalog.oid);
 
 CREATE TABLE public.tgroup_options_tgroup_and_custom_colocation_id (
     a integer
@@ -1016,6 +1248,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16512'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16511'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16510'::pg_catalog.oid);
+
 CREATE TABLE public.tgroup_with_spc (
     a integer
 )
@@ -1038,6 +1274,10 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16515'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16514'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16513'::pg_catalog.oid);
 
 CREATE TABLE public.th1 (
     a integer,
@@ -1062,6 +1302,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16518'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16517'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16516'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16519'::pg_catalog.oid);
 
 CREATE TABLE public.th2 (
     a integer NOT NULL,
@@ -1088,6 +1336,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16523'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16522'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16521'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16524'::pg_catalog.oid);
+
 CREATE TABLE public.th3 (
     a integer NOT NULL,
     b text NOT NULL,
@@ -1112,6 +1368,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16528'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16527'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16526'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16529'::pg_catalog.oid);
 
 CREATE TABLE public.tr1 (
     a integer NOT NULL,
@@ -1138,6 +1402,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16533'::pg_catalog.oid);
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16532'::pg_catalog.oid);
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16531'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16534'::pg_catalog.oid);
+
 CREATE TABLE public.tr2 (
     a integer NOT NULL,
     b text NOT NULL,
@@ -1162,6 +1434,14 @@ SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16476'::pg_catalog.oid);
 
 -- For binary upgrade, must preserve pg_type array oid
 SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16475'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16474'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16477'::pg_catalog.oid);
 
 CREATE TABLE public.uaccount (
     pguser name NOT NULL,
@@ -1542,6 +1822,10 @@ SELECT pg_catalog.setval('public.tbl2_a_seq', 1, false);
 -- Name: p1 c1; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
 --
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16561'::pg_catalog.oid);
+
 CREATE UNIQUE INDEX NONCONCURRENTLY c1 ON public.p1 USING lsm (v ASC) SPLIT AT VALUES (('foo'), ('qux'));
 
 ALTER TABLE ONLY public.p1
@@ -1551,6 +1835,10 @@ ALTER TABLE ONLY public.p1
 --
 -- Name: p2 c2; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16568'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) SPLIT INTO 10 TABLETS;
 
@@ -1562,12 +1850,20 @@ ALTER TABLE ONLY public.p2
 -- Name: hints_norm_and_app; Type: INDEX; Schema: hint_plan; Owner: yugabyte_test
 --
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16555'::pg_catalog.oid);
+
 CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: non_unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16581'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
 
@@ -1576,12 +1872,20 @@ CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public
 -- Name: tbl8_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16426'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: tbl8_idx2; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16427'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 3 TABLETS;
 
@@ -1590,12 +1894,20 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) 
 -- Name: tbl8_idx3; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16428'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY tbl8_idx3 ON public.tbl8 USING lsm (b ASC);
 
 
 --
 -- Name: tbl8_idx4; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16429'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
 
@@ -1604,12 +1916,20 @@ CREATE INDEX NONCONCURRENTLY tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
 -- Name: tbl8_idx5; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16430'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: th2_c_b_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16541'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
 
@@ -1618,12 +1938,20 @@ CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC
 -- Name: th3_c_b_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16542'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: tr2_c_b_a_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16544'::pg_catalog.oid);
 
 CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12000000000000011, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
 
@@ -1632,12 +1960,20 @@ CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DES
 -- Name: tr2_c_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16543'::pg_catalog.oid);
+
 CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
 
 
 --
 -- Name: unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
+
+
+-- For binary upgrade, must preserve pg_class oids
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16575'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
 

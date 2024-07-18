@@ -1269,7 +1269,7 @@ heap_create_with_catalog(const char *relname,
 	if (!OidIsValid(relid))
 	{
 		/* Use binary-upgrade override for pg_class.oid/relfilenode? */
-		if (IsBinaryUpgrade && !yb_binary_restore &&
+		if ((IsBinaryUpgrade || yb_binary_restore) &&
 			(relkind == RELKIND_RELATION || relkind == RELKIND_SEQUENCE ||
 			 relkind == RELKIND_VIEW || relkind == RELKIND_MATVIEW ||
 			 relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_FOREIGN_TABLE ||
@@ -1284,7 +1284,7 @@ heap_create_with_catalog(const char *relname,
 			binary_upgrade_next_heap_pg_class_oid = InvalidOid;
 		}
 		/* There might be no TOAST table, so we have to test for it. */
-		else if (IsBinaryUpgrade && !yb_binary_restore &&
+		else if ((IsBinaryUpgrade || yb_binary_restore) &&
 				 OidIsValid(binary_upgrade_next_toast_pg_class_oid) &&
 				 relkind == RELKIND_TOASTVALUE)
 		{
