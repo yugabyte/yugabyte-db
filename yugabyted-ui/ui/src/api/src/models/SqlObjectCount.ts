@@ -15,29 +15,23 @@
 
 
 /**
- * count for automatic and manual refactoring
+ * Count of specific Sql Object type in the source DB
  * @export
- * @interface RefactoringCount
+ * @interface SqlObjectCount
  */
-export interface RefactoringCount  {
+export interface SqlObjectCount  {
   /**
    * 
    * @type {string}
-   * @memberof RefactoringCount
+   * @memberof SqlObjectCount
    */
-  sql_object_type?: string;
+  sql_type?: string;
   /**
    * 
    * @type {number}
-   * @memberof RefactoringCount
+   * @memberof SqlObjectCount
    */
-  manual?: number;
-  /**
-   * 
-   * @type {number}
-   * @memberof RefactoringCount
-   */
-  automatic?: number;
+  count?: number;
 }
 
 
