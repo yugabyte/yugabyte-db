@@ -26,7 +26,7 @@ Before you can connect a desktop client to a YugabyteDB Aeon cluster, you need t
 
 Before you can connect using a shell or other client, you need to add your computer to the cluster IP allow list.
 
-By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster **Settings > Network Access** tab. Alternatively, use the [Cloud shell](../connect-cloud-shell/) instead.
+By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable [Public Access](../../cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster **Settings > Network Access** tab. Alternatively, use the [Cloud shell](../connect-cloud-shell/) instead.
 
 For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
 
