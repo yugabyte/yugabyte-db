@@ -1,0 +1,219 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+DROP TABLE IF EXISTS filter_table_1;
+NOTICE:  table "filter_table_1" does not exist, skipping
+DROP TABLE IF EXISTS filter_table_2;
+NOTICE:  table "filter_table_2" does not exist, skipping
+DROP TABLE IF EXISTS filter_table_3;
+NOTICE:  table "filter_table_3" does not exist, skipping
+DROP TABLE IF EXISTS filter_table_4;
+NOTICE:  table "filter_table_4" does not exist, skipping
+DROP TABLE IF EXISTS "Filter_table_5";
+NOTICE:  table "Filter_table_5" does not exist, skipping
+DROP TABLE IF EXISTS "filter table_6";
+NOTICE:  table "filter table_6" does not exist, skipping
+DROP TABLE IF EXISTS "filter.table_7";
+NOTICE:  table "filter.table_7" does not exist, skipping
+DROP TABLE IF EXISTS "filter,table_8";
+NOTICE:  table "filter,table_8" does not exist, skipping
+DROP TABLE IF EXISTS "filter""table_9";
+NOTICE:  table "filter"table_9" does not exist, skipping
+DROP TABLE IF EXISTS " filter_table_10";
+NOTICE:  table " filter_table_10" does not exist, skipping
+DROP TABLE IF EXISTS "*";
+NOTICE:  table "*" does not exist, skipping
+DROP SCHEMA IF EXISTS filter_schema_1 CASCADE;
+NOTICE:  schema "filter_schema_1" does not exist, skipping
+DROP SCHEMA IF EXISTS filter_schema_2 CASCADE;
+NOTICE:  schema "filter_schema_2" does not exist, skipping
+DROP SCHEMA IF EXISTS "*" CASCADE;
+NOTICE:  schema "*" does not exist, skipping
+CREATE SCHEMA filter_schema_1;
+CREATE SCHEMA filter_schema_2;
+CREATE SCHEMA "*";
+CREATE TABLE filter_table_1 (a integer, b text, primary key(a));
+CREATE TABLE filter_schema_1.filter_table_1 (a integer, b text, primary key(a));
+CREATE TABLE filter_schema_1.filter_table_2 (a integer, b text, primary key(a));
+CREATE TABLE filter_schema_2.filter_table_1 (a integer, b text, primary key(a));
+CREATE TABLE filter_schema_2.filter_table_2 (a integer, b text, primary key(a));
+CREATE TABLE filter_schema_2.filter_table_3 (a integer, b text, primary key(a));
+CREATE TABLE filter_table_2 (a integer, b text, primary key(a));
+CREATE TABLE filter_table_3 (a integer, b text, primary key(a));
+CREATE TABLE filter_table_4 (a integer, b text, primary key(a));
+CREATE TABLE "Filter_table_5" (a integer, b text, primary key(a));
+CREATE TABLE "filter table_6" (a integer, b text, primary key(a));
+CREATE TABLE "filter.table_7" (a integer, b text, primary key(a));
+CREATE TABLE "filter,table_8" (a integer, b text, primary key(a));
+CREATE TABLE "filter""table_9" (a integer, b text, primary key(a));
+CREATE TABLE " filter_table_10" (a integer, b text, primary key(a));
+CREATE TABLE "*" (a integer, b text, primary key(a));
+CREATE TABLE "*".filter_table_0 (a integer, b text, primary key(a));
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+INSERT INTO filter_table_1 (a, b) VALUES(1, 'public.filter_table_1');
+INSERT INTO filter_schema_1.filter_table_1 (a, b) VALUES(1, 'filter_schema_1.filter_table_1');
+INSERT INTO filter_schema_1.filter_table_2 (a, b) VALUES(1, 'filter_schema_1.filter_table_2');
+INSERT INTO filter_schema_2.filter_table_1 (a, b) VALUES(1, 'filter_schema_2.filter_table_1');
+INSERT INTO filter_schema_2.filter_table_2 (a, b) VALUES(1, 'filter_schema_2.filter_table_2');
+INSERT INTO filter_schema_2.filter_table_3 (a, b) VALUES(1, 'filter_schema_2.filter_table_3');
+INSERT INTO filter_table_2 (a, b) VALUES(1, 'public.filter_table_2');
+INSERT INTO filter_table_3 (a, b) VALUES(1, 'public.filter_table_3');
+INSERT INTO filter_table_4 (a, b) VALUES(1, 'public.filter_table_4');
+INSERT INTO "Filter_table_5" (a, b) VALUES(1, 'public.Filter_table_5');
+INSERT INTO "filter table_6" (a, b) VALUES(1, 'public.filter table_6');
+INSERT INTO "filter.table_7" (a, b) VALUES(1, 'public.filter.table_7');
+INSERT INTO "filter,table_8" (a, b) VALUES(1, 'public.filter,table_8');
+INSERT INTO "filter""table_9" (a, b) VALUES(1, 'public.filter"table_9');
+INSERT INTO " filter_table_10" (a, b) VALUES(1, 'public. filter_table_10');
+INSERT INTO "*" (a, b) VALUES(1, 'public.*');
+INSERT INTO "*".filter_table_0 (a, b) VALUES(1, '*.filter_table_0');
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'filter-tables', '   foo.bar,*.filter_table_1  ,filter_schema_2.* , public.filter_table_3 , public.Filter_table_5, public.filter\ table_6, public.filter\.table_7 , public.filter\,table_8 , public.filter"table_9, *.\ filter_table_10 , public.\* , \*.filter_table_0  ');
+                                     data                                      
+-------------------------------------------------------------------------------
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "filter_schema_1",                         +
+                         "table": "filter_table_2",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "filter_schema_1.filter_table_2"]+
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "public",                                  +
+                         "table": "filter_table_2",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "public.filter_table_2"]         +
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+                 {                                                            +
+                         "kind": "insert",                                    +
+                         "schema": "public",                                  +
+                         "table": "filter_table_4",                           +
+                         "columnnames": ["a", "b"],                           +
+                         "columntypes": ["integer", "text"],                  +
+                         "columnvalues": [1, "public.filter_table_4"]         +
+                 }                                                            +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+ {                                                                            +
+         "change": [                                                          +
+         ]                                                                    +
+ }
+(17 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'filter-tables', '   foo.bar,*.filter_table_1  ,filter_schema_2.* , public.filter_table_3 , public.Filter_table_5, public.filter\ table_6, public.filter\.table_7 , public.filter\,table_8 , public.filter"table_9, *.\ filter_table_10 , public.\* , \*.filter_table_0  ');
+                                                                                            data                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"filter_schema_1","table":"filter_table_2","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"filter_schema_1.filter_table_2"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"filter_table_2","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"public.filter_table_2"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"filter_table_4","columns":[{"name":"a","type":"integer","value":1},{"name":"b","type":"text","value":"public.filter_table_4"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+(37 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+
