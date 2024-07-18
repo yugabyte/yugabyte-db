@@ -1329,8 +1329,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
 
   // Exclusive mutex_ scope.
   {
-    LOG_WITH_PREFIX(INFO) << __func__
-                          << ": Acquire catalog manager lock_ before loading sys catalog.";
+    LOG_WITH_FUNC(INFO) << "Acquire catalog manager lock_ before loading sys catalog.";
     LockGuard lock(mutex_);
     VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
 
@@ -1400,7 +1399,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
           });
     }
 
-    if (!VERIFY_RESULT(StartRunningInitDbIfNeeded(term))) {
+    if (!VERIFY_RESULT(StartRunningInitDbIfNeeded(state->epoch))) {
       // If we are not running initdb, this is an existing cluster, and we need to check whether we
       // need to do a one-time migration to make YSQL system catalog tables transactional.
       RETURN_NOT_OK(MakeYsqlSysCatalogTablesTransactional(
@@ -1711,10 +1710,10 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
   return Status::OK();
 }
 
-Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
+Result<bool> CatalogManager::StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) {
   {
     auto l = ysql_catalog_config_->LockForRead();
-    if (l->pb.ysql_catalog_config().initdb_done() && !FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    if (l->pb.ysql_catalog_config().initdb_done()) {
       LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
       return false;
     }
@@ -1726,7 +1725,7 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
     // We assume pg_proc table means initdb is done.
     // We do NOT handle the case when initdb was terminated mid-run (neither here nor in
     // MakeYsqlSysCatalogTablesTransactional).
-    RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
+    RETURN_NOT_OK(InitDbFinished(Status::OK(), epoch.leader_term));
     return false;
   }
 
@@ -1735,6 +1734,15 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
     return false;
   }
 
+  LOG(INFO) << "initdb has never been run on this cluster, running it";
+  // Empty db_name_to_oid_list for the clean install path
+  RETURN_NOT_OK(StartInitDb({}, epoch));
+  return true;
+}
+
+Status CatalogManager::StartInitDb(
+    const std::vector<std::pair<std::string, YBCPgOid>>& db_name_to_oid_list,
+    const LeaderEpoch& epoch) {
   if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
     return STATUS(
         IllegalState,
@@ -1742,34 +1750,30 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
         "This should have been done during initial universe creation.");
   }
 
-  std::vector<std::pair<std::string, YBCPgOid>> db_name_to_oid_list;
-  if (!FLAGS_TEST_online_pg11_to_pg15_upgrade) {
-    LOG(INFO) << "initdb has never been run on this cluster, running it";
-  } else {
-    LOG(INFO) << "Running initdb as part of online pg11 to pg15 upgrade";
-    // Store DB name to OID mapping for all system databases except template1. This mapping will be
-    // passed to initdb so that the system database OIDs will match. The template1 database is
-    // special because it's created by the bootstrap phase of initdb (see file comment for initdb.c
-    // for more details). The template1 database always has OID 1.
-    for (const auto& [ns_id, ns_info] : namespace_ids_map_) {
-      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
-        continue;
-      }
-      uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_id));
-      if (oid < kPgFirstNormalObjectId && oid != kTemplate1Oid) {
-        const string& db = ns_info->name();
-        db_name_to_oid_list.push_back({db, oid});
-      }
-    }
+  bool expected = false;
+  if (!in_initdb_or_ysql_major_version_upgrade_rollback_.compare_exchange_strong(expected, true)) {
+    return STATUS(IllegalState,
+                  "initdb or ysql major version upgrade rollback is already in progress");
   }
-
   string master_addresses_str = MasterAddressesToString(
       *master_->opts().GetMasterAddresses());
 
-  initdb_future_ = std::async(std::launch::async, [this, master_addresses_str, term,
+  initdb_future_ = std::async(std::launch::async, [this, master_addresses_str, epoch,
                                                    db_name_to_oid_list] {
+    auto se = ScopeExit([this] () {in_initdb_or_ysql_major_version_upgrade_rollback_ = false;});
     if (FLAGS_create_initial_sys_catalog_snapshot) {
       initial_snapshot_writer_.emplace();
+    }
+
+    // The StartYsqlMajorVersionUpgradeInitdb RPC is idempotent, so it needs to roll back the state
+    // before running. This is a no-op if this is the first time the upgrade initdb is running.
+    // Clean install passes an empty db_name_to_oid_list. The major version upgrade passes a non-
+    // empty list.
+    if (!db_name_to_oid_list.empty()) {
+      SCHECK(FLAGS_TEST_online_pg11_to_pg15_upgrade, IllegalState, "A non-empty "
+          "db_name_to_oid_list is allowed only in upgrade mode");
+      RETURN_NOT_OK_PREPEND(RollbackYsqlMajorVersionUpgrade(epoch),
+                            "Rollback failed during major version upgrade async initdb");
     }
 
     Status status = PgWrapper::InitDbForYSQL(master_addresses_str, FLAGS_tmp_dir,
@@ -1788,7 +1792,7 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
         status = sys_catalog_tablet_result.status();
       }
     }
-    Status finish_status = InitDbFinished(status, term);
+    Status finish_status = InitDbFinished(status, epoch.leader_term);
     if (!finish_status.ok()) {
       if (status.ok()) {
         status = finish_status;
@@ -1798,7 +1802,8 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
     }
     return status;
   });
-  return true;
+  LOG(INFO) << "Successfully started initdb";
+  return Status::OK();
 }
 
 Status CatalogManager::PrepareDefaultNamespaces(int64_t term) {
@@ -3330,6 +3335,152 @@ Status CatalogManager::DeleteNotServingTablet(
 Status CatalogManager::DdlLog(
     const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc) {
   return sys_catalog_->FetchDdlLog(resp->mutable_entries());
+}
+
+Status CatalogManager::StartYsqlMajorVersionUpgradeInitdb(
+    const StartYsqlMajorVersionUpgradeInitdbRequestPB* req,
+    StartYsqlMajorVersionUpgradeInitdbResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG(INFO) << "Running initdb from RPC call";
+  SCHECK(FLAGS_TEST_online_pg11_to_pg15_upgrade, IllegalState, "Must be in upgrade mode "
+         "(FLAGS_TEST_online_pg11_to_pg15_upgrade) to run StartYsqlMajorVersionUpgradeInitdb");
+  return StartYsqlMajorVersionUpgradeInitdb(epoch);
+}
+
+Status CatalogManager::ResetNextVerInitdbStatus(const LeaderEpoch& epoch) {
+  auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForWrite();
+  auto* ysql_major_upgrade_info =
+      l.mutable_data()->pb.mutable_ysql_catalog_config()->mutable_ysql_major_upgrade_info();
+  ysql_major_upgrade_info->set_next_ver_initdb_done(false);
+  ysql_major_upgrade_info->clear_next_ver_initdb_error();
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, ysql_catalog_config_));
+  l.Commit();
+  return Status::OK();
+}
+
+// Requires FLAGS_TEST_online_pg11_to_pg15_upgrade to be true.
+Status CatalogManager::StartYsqlMajorVersionUpgradeInitdb(const LeaderEpoch& epoch) {
+  TRACE("Acquired catalog manager lock");
+  SharedLock lock(mutex_);
+  VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
+
+  // Since StartYsqlMajorVersionUpgradeInitdb is idempotent, if run again we need to reset the
+  // pg15_initdb flags so that callers that check IsYsqlMajorVersionUpgradeInitdbDone won't get
+  // a false positive, while the new invocation goes through rollback and initdb.
+  RETURN_NOT_OK(ResetNextVerInitdbStatus(epoch));
+
+  std::vector<std::pair<std::string, YBCPgOid>> db_name_to_oid_list;
+  // Store DB name to OID mapping for all system databases except template1. This mapping will be
+  // passed to initdb so that the system database OIDs will match. The template1 database is
+  // special because it's created by the bootstrap phase of initdb (see file comment for initdb.c
+  // for more details). The template1 database always has OID 1.
+  for (const auto& [ns_id, ns_info] : namespace_ids_map_) {
+    if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
+      continue;
+    }
+    uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_id));
+    if (oid < kPgFirstNormalObjectId && oid != kTemplate1Oid) {
+      const string& db = ns_info->name();
+      db_name_to_oid_list.push_back({db, oid});
+    }
+  }
+  return StartInitDb(db_name_to_oid_list, epoch);
+}
+
+Status CatalogManager::IsYsqlMajorVersionUpgradeInitdbDone(
+    const IsYsqlMajorVersionUpgradeInitdbDoneRequestPB* req,
+    IsYsqlMajorVersionUpgradeInitdbDoneResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Checking if ysql major version upgrade initdb is done";
+  auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
+  const auto& ysql_catalog_config = l->pb.ysql_catalog_config();
+  resp->set_done(ysql_catalog_config.ysql_major_upgrade_info().next_ver_initdb_done());
+  if (ysql_catalog_config.ysql_major_upgrade_info().has_next_ver_initdb_error()) {
+    resp->mutable_initdb_error()->CopyFrom(
+        ysql_catalog_config.ysql_major_upgrade_info().next_ver_initdb_error());
+  }
+  return Status::OK();
+}
+
+// Note that this function should be able to be called any number of times while in upgrade mode.
+Status CatalogManager::RollbackYsqlMajorVersionUpgrade(
+    const RollbackYsqlMajorVersionUpgradeRequestPB* req,
+    RollbackYsqlMajorVersionUpgradeResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG(INFO) << "YSQL major version upgrade rollback initiated";
+  // Note that as part of the rollback, we're getting rid of the catalog cache table for pg15, so we
+  // have to be in a mode that ensures that we read from a valid catalog table. Also, for simplicity
+  // it's best for DDLs to be disabled.
+  SCHECK(FLAGS_TEST_online_pg11_to_pg15_upgrade, IllegalState, "Must be in upgrade mode "
+         "(FLAGS_TEST_online_pg11_to_pg15_upgrade) to run RollbackYsqlMajorVersionUpgrade");
+  bool expected = false;
+  if (!in_initdb_or_ysql_major_version_upgrade_rollback_.compare_exchange_strong(expected, true)) {
+    return STATUS(IllegalState,
+                  "initdb or ysql major version upgrade rollback is already in progress");
+  }
+  auto se = ScopeExit([this] () {in_initdb_or_ysql_major_version_upgrade_rollback_ = false;});
+  RETURN_NOT_OK_PREPEND(RollbackYsqlMajorVersionUpgrade(epoch),
+                        "YSQL major version upgrade rollback failed");
+  LOG(INFO) << "YSQL major version upgrade rollback completed";
+  return Status::OK();
+}
+
+// Requires FLAGS_TEST_online_pg11_to_pg15_upgrade to be true.
+Status CatalogManager::RollbackYsqlMajorVersionUpgrade(const LeaderEpoch& epoch) {
+  vector<scoped_refptr<NamespaceInfo>> namespaces;
+  {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+    for (const auto& [ns_id, ns_info] : namespace_ids_map_) {
+      TRACE("Locking namespace");
+      NamespaceInfo::ReadLock ns_l = ns_info->LockForRead();
+      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
+        continue;
+      }
+      uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_id));
+      if (oid < kPgFirstNormalObjectId) {
+        namespaces.push_back(ns_info);
+      }
+    }
+  }
+
+  for (const auto& ns_info : namespaces) {
+    LOG(INFO) << "Deleting pg15 catalog tables for namespace " << ns_info->name();
+    RETURN_NOT_OK(DeleteYsqlDBTables(ns_info, epoch));
+  }
+
+  RETURN_NOT_OK(ResetNextVerInitdbStatus(epoch));
+
+  // Reset state machines for all YSQL namespaces.
+  {
+    LockGuard lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+    for (const auto& ns_info : namespaces) {
+      TRACE("Locking namespace");
+      NamespaceInfo::WriteLock ns_l = ns_info->LockForWrite();
+      if (ns_info->database_type() != YQL_DATABASE_PGSQL) {
+        continue;
+      }
+      SysNamespaceEntryPB* metadata = &ns_l.mutable_data()->pb;
+      if (metadata->state() == SysNamespaceEntryPB::DELETED ||
+          metadata->state() == SysNamespaceEntryPB::UNKNOWN) {
+        continue;
+      }
+      SCHECK_FORMAT(metadata->state() == SysNamespaceEntryPB::PREPARING ||
+                    metadata->state() == SysNamespaceEntryPB::RUNNING,
+                    IllegalState, "Namespace $0 in state $1 during rollback. Expected PREPARING or "
+                    "RUNNING.", ns_info->name(),
+                    SysNamespaceEntryPB::State_Name(metadata->state()));
+      metadata->set_state(SysNamespaceEntryPB::RUNNING);
+      // NEXT_VER_RUNNING is the initial state for ysql_next_major_version_state.
+      metadata->set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_RUNNING);
+      TRACE("Reset namespace to running state");
+
+      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, ns_info.get()));
+      ns_l.Commit();
+      LOG(INFO) << "Reset state metadata for namespace " << ns_info->name();
+    }
+  }
+  return Status::OK();
 }
 
 namespace {
@@ -8525,8 +8676,6 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     // Note that during online PG11 -> PG15 upgrade, a namespace whose PG15 catalogs are being
     // prepared will switch into state PREPARING. This is safe because DDLs are not allowed during
     // the upgrade.
-    // TODO(20710): Rollback needs to handle cases where the state does not return to RUNNING during
-    // this process.
     metadata->set_state(SysNamespaceEntryPB::PREPARING);
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
@@ -9276,8 +9425,13 @@ Status CatalogManager::DeleteYsqlDBTables(
 
     // Populate tables and sys_table_ids.
     for (const auto& table : tables_->GetAllTables()) {
-      // In ysql major version upgrade mode, the only tables we delete are PG15 catalog tables, when
-      // a namespace is "deleted" during pg_restore.
+      // In ysql major version upgrade mode, there are two possibilities:
+      //  * To propagate database-level properties for certain databases in an upgrade, pg_upgrade
+      //    drops those databases and recreates them. We pretend to do so, but only delete the PG15
+      //    catalog tables, so the restore portion doesn't get confused.
+      //  * The rollback deletes all PG15 catalog tables in order to prepare for the next upgrade
+      //    attempt.
+      // In both cases, we delete only the PG15 catalog tables.
       if (FLAGS_TEST_online_pg11_to_pg15_upgrade && !IsPg15CatalogId(table->id())) {
         continue;
       }
@@ -9289,8 +9443,12 @@ Status CatalogManager::DeleteYsqlDBTables(
       if (l->started_deleting()) {
         continue;
       }
-      RSTATUS_DCHECK(
-          !l->pb.is_pg_shared_table(), Corruption, "Shared table found in database");
+      // During rollback, shared PG15 tables hosted in the template1 namespace are ok to delete.
+      // This is safe because DDLs are disabled and there are no PG15 tservers connected.
+      if (!FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+        RSTATUS_DCHECK(
+            !l->pb.is_pg_shared_table(), Corruption, "Shared table found in database");
+      }
 
       if (IsSystemTable(*table)) {
         sys_table_ids.insert(table->id());
@@ -9317,6 +9475,13 @@ Status CatalogManager::DeleteYsqlDBTables(
     tables_and_locks.insert(
         tables_and_locks.end(), std::make_move_iterator(colocation_parents.begin()),
         std::make_move_iterator(colocation_parents.end()));
+  }
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    // Delete all rows from the system tables so that initdb after rollback doesn't have conflicts.
+    TRACE("Deleting system table rows");
+    vector<TableId> sys_table_ids_vec(sys_table_ids.begin(), sys_table_ids.end());
+    RETURN_NOT_OK(
+        sys_catalog_->DeleteAllYsqlCatalogTableRows(sys_table_ids_vec, epoch.leader_term));
   }
   // Remove the system tables from RAFT.
   TRACE("Sending system table delete RPCs");
@@ -9901,11 +10066,21 @@ Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
 
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForWrite();
   auto* mutable_ysql_catalog_config = l.mutable_data()->pb.mutable_ysql_catalog_config();
-  mutable_ysql_catalog_config->set_initdb_done(true);
-  if (initdb_status.ok()) {
-    mutable_ysql_catalog_config->clear_initdb_error();
+  if (!FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    mutable_ysql_catalog_config->set_initdb_done(true);
+    if (initdb_status.ok()) {
+      mutable_ysql_catalog_config->clear_initdb_error();
+    } else {
+      mutable_ysql_catalog_config->set_initdb_error(initdb_status.ToString());
+    }
   } else {
-    mutable_ysql_catalog_config->set_initdb_error(initdb_status.ToString());
+    mutable_ysql_catalog_config->mutable_ysql_major_upgrade_info()->set_next_ver_initdb_done(true);
+    if (initdb_status.ok()) {
+      mutable_ysql_catalog_config->mutable_ysql_major_upgrade_info()->clear_next_ver_initdb_error();
+    } else {
+      (void) SetupError(mutable_ysql_catalog_config->mutable_ysql_major_upgrade_info()
+          ->mutable_next_ver_initdb_error(), MasterErrorPB::INTERNAL_ERROR, initdb_status);
+    }
   }
 
   RETURN_NOT_OK(sys_catalog_->Upsert(term, ysql_catalog_config_));
@@ -10478,7 +10653,7 @@ void CatalogManager::DeleteTabletReplicas(
 Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const scoped_refptr<TableInfo>& table) {
   // Do not delete the system catalog tablet.
   if (IsSystemTable(*table)) {
-    return STATUS(InvalidArgument, "It is not allowed to delete system tables");
+    return STATUS(InvalidArgument, "It is not allowed to delete the system table tablet");
   }
   // Do not delete the tablet of a colocated table.
   if (table->IsColocatedUserTable()) {

@@ -316,6 +316,18 @@ class ClusterAdminClient {
   //       look like this workflow is a good fit there.
   Status UpgradeYsql(bool use_single_connection);
 
+  Status StartYsqlMajorVersionUpgradeInitdb();
+
+  // Returns error Result if the RPC failed, otherwise returns the response for the caller to parse
+  // for both whether next version's initdb is done, and whether there is an initdb (non-RPC)
+  // error.
+  Result<master::IsYsqlMajorVersionUpgradeInitdbDoneResponsePB>
+  IsYsqlMajorVersionUpgradeInitdbDone();
+
+  Status WaitForYsqlMajorVersionUpgradeInitdb();
+
+  Status RollbackYsqlMajorVersionUpgrade();
+
   // Set WAL retention time in secs for a table name.
   Status SetWalRetentionSecs(
     const client::YBTableName& table_name, const uint32_t wal_ret_secs);

@@ -149,6 +149,8 @@ DECLARE_int32(retryable_request_timeout_secs);
 DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
     "Max bytes per batch for copy pg sql tables");
+DEFINE_RUNTIME_uint64(delete_systable_rows_batch_bytes, 500_KB,
+    "Max bytes per batch for delete pg sql table rows");
 
 DEFINE_test_flag(int32, sys_catalog_write_rejection_percentage, 0,
   "Reject specified percentage of sys catalog writes.");
@@ -1703,6 +1705,48 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
   return kPgInvalidOid;
 }
 
+Status SysCatalogTable::WriteBatchIfNeeded(size_t max_batch_bytes,
+                                           size_t rows_so_far,
+                                           int64_t leader_term,
+                                           std::unique_ptr<SysCatalogWriter>& writer,
+                                           size_t& total_bytes,
+                                           size_t& batch_count) {
+  // Break up the write into batches of roughly the same serialized size in order to avoid
+  // uncontrolled large network writes.
+  // ByteSizeLong is an expensive calculation so do not perform it each time.
+  if (max_batch_bytes == 0 || (rows_so_far % 128) != 0) {
+    return Status::OK();
+  }
+  auto batch_bytes = writer->req().ByteSizeLong();
+  if (batch_bytes > max_batch_bytes) {
+    RETURN_NOT_OK(SyncWrite(writer.get()));
+
+    total_bytes += batch_bytes;
+    ++batch_count;
+    LOG(INFO) << "WriteBatchIfNeeded: Batch# " << batch_count << " wrote "
+              << writer->req().pgsql_write_batch_size() << " rows with "
+              << HumanizeBytes(batch_bytes) << " bytes";
+
+    writer = NewWriter(leader_term);
+  }
+  return Status::OK();
+}
+
+Status SysCatalogTable::FinishWrite(std::unique_ptr<SysCatalogWriter>& writer,
+                                    size_t& total_bytes,
+                                    size_t& batch_count) {
+  if (writer->req().pgsql_write_batch_size() > 0) {
+    RETURN_NOT_OK(SyncWrite(writer.get()));
+    auto batch_bytes = writer->req().ByteSizeLong();
+    total_bytes += batch_bytes;
+    ++batch_count;
+    LOG(INFO) << "FinishWrite: Batch# " << batch_count << " wrote "
+              << writer->req().pgsql_write_batch_size() << " rows with "
+              << HumanizeBytes(batch_bytes) << " bytes";
+  }
+  return Status::OK();
+}
+
 Status SysCatalogTable::CopyPgsqlTables(
     const vector<TableId>& source_table_ids, const vector<TableId>& target_table_ids,
     const int64_t leader_term) {
@@ -1714,7 +1758,7 @@ Status SysCatalogTable::CopyPgsqlTables(
       source_table_ids.size(), target_table_ids.size(), InvalidArgument,
       "size mismatch between source tables and target tables");
 
-  int batch_count = 0, total_count = 0, total_bytes = 0;
+  size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
   const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   const auto* meta = tablet->metadata();
   for (size_t i = 0; i < source_table_ids.size(); ++i) {
@@ -1735,41 +1779,48 @@ Status SysCatalogTable::CopyPgsqlTables(
           source_table_info->schema(), source_row, target_table_id, target_table_info->schema(),
           target_table_info->schema_version, true /* is_upsert */));
 
-      ++total_count;
-      if (FLAGS_copy_tables_batch_bytes > 0 && 0 == (total_count % 128)) {
-          // Break up the write into batches of roughly the same serialized size
-          // in order to avoid uncontrolled large network writes.
-          // ByteSizeLong is an expensive calculation so do not perform it each time
-
-        size_t batch_bytes = writer->req().ByteSizeLong();
-        if (batch_bytes > FLAGS_copy_tables_batch_bytes) {
-          RETURN_NOT_OK(SyncWrite(writer.get()));
-
-          total_bytes += batch_bytes;
-          ++batch_count;
-          LOG(INFO) << Format(
-              "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
-              writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
-
-          writer = NewWriter(leader_term);
-        }
-      }
+      ++rows_so_far;
+      RETURN_NOT_OK(WriteBatchIfNeeded(FLAGS_copy_tables_batch_bytes, rows_so_far, leader_term,
+                                       writer, total_bytes, batch_count));
     }
   }
+  RETURN_NOT_OK(FinishWrite(writer, total_bytes, batch_count));
 
-  if (writer->req().pgsql_write_batch_size() > 0) {
-    RETURN_NOT_OK(SyncWrite(writer.get()));
-    size_t batch_bytes = writer->req().ByteSizeLong();
-    total_bytes += batch_bytes;
-    ++batch_count;
-    LOG(INFO) << Format(
-        "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
-        writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
+  LOG(INFO) << "CopyPgsqlTables: Copied total " << rows_so_far << " rows, total "
+            << HumanizeBytes(total_bytes) << " bytes in " << batch_count << " batches";
+  return Status::OK();
+}
+
+Status SysCatalogTable::DeleteAllYsqlCatalogTableRows(const std::vector<TableId>& table_ids,
+                                                      int64_t leader_term) {
+  TRACE_EVENT0("master", "DeleteAllYsqlCatalogTableRows");
+
+  std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
+
+  size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  const auto* meta = tablet->metadata();
+  for (const auto& table_id : table_ids) {
+    const std::shared_ptr<tablet::TableInfo> table_info =
+        VERIFY_RESULT(meta->GetTableInfo(table_id));
+    dockv::ReaderProjection projection(table_info->schema());
+    std::unique_ptr<docdb::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
+        tablet->NewRowIterator(projection, {}, table_id));
+    qlexpr::QLTableRow row;
+
+    while (VERIFY_RESULT(iter->FetchNext(&row))) {
+      RETURN_NOT_OK(writer->DeleteYsqlTableRow(table_info->schema(), row, table_id,
+                                               table_info->schema_version));
+
+      ++rows_so_far;
+      RETURN_NOT_OK(WriteBatchIfNeeded(FLAGS_delete_systable_rows_batch_bytes, rows_so_far,
+                                       leader_term, writer, total_bytes, batch_count));
+    }
   }
+  RETURN_NOT_OK(FinishWrite(writer, total_bytes, batch_count));
 
-  LOG(INFO) << Format(
-      "CopyPgsqlTables: Copied total $0 rows, total $1 bytes in $2 batches", total_count,
-      HumanizeBytes(total_bytes), batch_count);
+  LOG(INFO) << "DeleteAllYsqlCatalogTableRows: Deleted total " << rows_so_far << " rows, total "
+            << HumanizeBytes(total_bytes) << " bytes in " << batch_count << " batches";
   return Status::OK();
 }
 

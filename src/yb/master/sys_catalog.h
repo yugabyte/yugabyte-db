@@ -304,6 +304,8 @@ class SysCatalogTable {
                          const std::vector<TableId>& target_table_ids,
                          int64_t leader_term);
 
+  Status DeleteAllYsqlCatalogTableRows(const std::vector<TableId>& table_ids, int64_t leader_term);
+
   // Drop YSQL table by removing the table metadata in sys-catalog.
   Status DeleteYsqlSystemTable(const std::string& table_id, int64_t term);
 
@@ -399,6 +401,25 @@ class SysCatalogTable {
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
       DbOidToCatalogVersionMap* versions);
+
+  // During a batch write operation, if the max batch bytes have been exceeded, performs a write and
+  // creates a new writer. To avoid running the expensive ByteSizeLong calculation too frequently,
+  // this method checks whether the max batch bytes have been exceeded only once every 128 rows.
+  //
+  // The batch itself is atomically written, but there is no atomicity guarantee between two
+  // different batches even if they use the same writer.
+  // NOTE: FinishWrite must be called to flush any partial batches at the end of the write.
+  Status WriteBatchIfNeeded(size_t max_batch_bytes,
+                            size_t rows_so_far,
+                            int64_t leader_term,
+                            std::unique_ptr<SysCatalogWriter>& writer,
+                            size_t& total_bytes,
+                            size_t& batch_count);
+
+  // During a batch write operation, does the final write if any batch operations remain queued.
+  Status FinishWrite(std::unique_ptr<SysCatalogWriter>& writer,
+                     size_t& total_bytes,
+                     size_t& batch_count);
 
   // Table schema, with IDs, used for the YQL write path.
   std::unique_ptr<docdb::DocReadContext> doc_read_context_;

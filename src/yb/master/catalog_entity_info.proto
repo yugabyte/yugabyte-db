@@ -349,6 +349,10 @@ message SysNamespaceEntryPB {
   // NEXT_VER_DELETING -> NEXT_VER_DELETED  - happy path of deletion.
   // NEXT_VER_DELETING -> NEXT_VER_FAILED   - unhappy path of deletion.
   // NEXT_VER_DELETED -> NEXT_VER_RUNNING   - re-populated.
+  //
+  // TODO: Change the initial state to something other than NEXT_VER_RUNNING. Be sure it makes sense
+  // for multiple upgrades (e.g., a system that went from PG11 -> PG15 -> PG17). Therefore it may
+  // need to be changed from NEXT_VER_RUNNING at some point after the upgrade.
   enum YsqlNextMajorVersionState {
     NEXT_VER_UNKNOWN = 0;
     NEXT_VER_FAILED = 1;
@@ -455,6 +459,16 @@ message SysYSQLCatalogConfigEntryPB {
 
   // If this is set, initdb has failed.
   optional string initdb_error = 5;
+
+  message YsqlMajorUpgradeInfoPB {
+    // This is true if the master ran initdb during a ysql major version upgrade and it finished,
+    // successfully or not.
+    optional bool next_ver_initdb_done = 1;
+
+    // If this is set, initdb during a ysql major version upgrade has failed.
+    optional MasterErrorPB next_ver_initdb_error = 2;
+  }
+  optional YsqlMajorUpgradeInfoPB ysql_major_upgrade_info = 7;
 
   // true if transactional system catalogs have been enabled on this cluster. This means all
   // YSQL system catalog tables have been made transactional, both in their schema and in the tablet

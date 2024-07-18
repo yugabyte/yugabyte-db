@@ -102,6 +102,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/version_tracker.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 
@@ -1095,6 +1096,38 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Initiates initdb for the new version of a major YSQL version upgrade. The system must be in
+  // upgrade mode (TEST_online_pg11_to_pg15_upgrade set to true) for this to work.
+  //
+  // Returns immediately. Call IsYsqlMajorVersionUpgradeInitdbDone to wait until it's finished.
+  //
+  // Can be called more than once, but not while it's already running. It internally performs a
+  // rollback before running initdb.
+  Status StartYsqlMajorVersionUpgradeInitdb(const StartYsqlMajorVersionUpgradeInitdbRequestPB* req,
+                                            StartYsqlMajorVersionUpgradeInitdbResponsePB* resp,
+                                            rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  // Checks if initdb has been completed for a YSQL major version upgrade.
+  Status IsYsqlMajorVersionUpgradeInitdbDone(
+      const IsYsqlMajorVersionUpgradeInitdbDoneRequestPB* req,
+      IsYsqlMajorVersionUpgradeInitdbDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  // Rolls back an in-progress major YSQL version upgrade. Deletes all of the new YSQL version's
+  // catalog tables, and resets all upgrade-related state to initial values. Blocks until the
+  // rollback is finished or fails. The system must have been in upgrade mode
+  // (TEST_online_pg11_to_pg15_upgrade set to true), with no DDLs performed, since the beginning of
+  // the upgrade for this to work.
+  //
+  // Takes a long time to run. Set a timeout of at least 5 minutes when calling.
+  //
+  // Can be called more than once, but not at the same time.
+  //
+  // After the rollback successfully completes, it's safe to restart the masters on the old major
+  // YSQL version.
+  Status RollbackYsqlMajorVersionUpgrade(const RollbackYsqlMajorVersionUpgradeRequestPB* req,
+                                         RollbackYsqlMajorVersionUpgradeResponsePB* resp,
+                                         rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
   // Test wrapper around protected DoSplitTablet method.
   Status TEST_SplitTablet(
       const TabletInfoPtr& source_tablet_info,
@@ -1700,7 +1733,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
   // if started running initdb, false if decided that it is not needed.
-  Result<bool> StartRunningInitDbIfNeeded(int64_t term) REQUIRES_SHARED(mutex_);
+  Result<bool> StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) REQUIRES_SHARED(mutex_);
+
+  // Starts global initdb. The db_name_to_oid_list vector is used to specify OIDs for any existing
+  // YSQL databases/namespaces. If db_name_to_oid_list is empty, initdb will choose an OID.
+  Status StartInitDb(const std::vector<std::pair<NamespaceName, YBCPgOid>>& db_name_to_oid_list,
+                     const LeaderEpoch& epoch) REQUIRES_SHARED(mutex_);
+
+  Status ResetNextVerInitdbStatus(const LeaderEpoch& epoch);
 
   Status PrepareDefaultNamespaces(int64_t term) REQUIRES(mutex_);
 
@@ -2471,6 +2511,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletInfoPtr& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
+
+  Status StartYsqlMajorVersionUpgradeInitdb(const LeaderEpoch& epoch);
+  Status RollbackYsqlMajorVersionUpgrade(const LeaderEpoch& epoch);
 
   Status XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
@@ -3264,6 +3307,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::atomic<bool> xcluster_auto_flags_revalidation_needed_{true};
   std::atomic<bool> pg_cron_service_created_{false};
+
+  // Neither ysql major version initdb nor rollback can run if either of them is already running.
+  std::atomic<bool> in_initdb_or_ysql_major_version_upgrade_rollback_{false};
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

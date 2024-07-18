@@ -74,6 +74,12 @@ class SysCatalogWriter {
                              const uint32_t target_schema_version,
                              bool is_upsert);
 
+  // Delete a row in a Postgres sys catalog table.
+  Status DeleteYsqlTableRow(const Schema& schema,
+                            const qlexpr::QLTableRow& row,
+                            const TableId& table_id,
+                            const uint32_t schema_version);
+
   tserver::WriteRequestPB& req() {
     return *req_;
   }
