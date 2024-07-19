@@ -5,20 +5,20 @@ import { makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useMutation, useQueryClient } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { toast } from 'react-toastify';
 
 import { YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, EditDrConfigRequest } from '../../../../redesign/helpers/api';
-import { handleServerError } from '../../../../utils/errorHandlingUtils';
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
 import {
   ReactSelectStorageConfigField,
   StorageConfigOption
 } from '../../sharedComponents/ReactSelectStorageConfig';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH_PX } from '../constants';
-
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { handleServerError } from '../../../../utils/errorHandlingUtils';
+import { INPUT_FIELD_WIDTH_PX } from '../../constants';
 import { DrConfig } from '../dtos';
-import { toast } from 'react-toastify';
+
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 
 interface EditConfigModalProps {
   drConfig: DrConfig;
@@ -169,7 +169,7 @@ export const EditConfigModal = ({ drConfig, modalProps, redirectUrl }: EditConfi
         name="storageConfig"
         rules={{ required: t('error.backupStorageConfigRequired') }}
         isDisabled={isFormDisabled}
-        autoSizeMinWidth={DR_DROPDOWN_SELECT_INPUT_WIDTH_PX}
+        autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
         maxWidth="100%"
         defaultValue={defaultBackupStorageConfigOption}
       />

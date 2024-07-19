@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { useInterval } from 'react-use';
@@ -14,8 +14,7 @@ import { EnableDrPrompt } from './EnableDrPrompt';
 import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigAction,
-  XCLUSTER_UNIVERSE_TABLE_FILTERS
+  XClusterConfigAction
 } from '../constants';
 import { YBButton } from '../../../redesign/components';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';

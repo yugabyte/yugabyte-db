@@ -12,7 +12,6 @@ import {
 } from '../../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { formatUuidForXCluster } from '../../ReplicationUtils';
-import { XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
   api,
@@ -25,6 +24,7 @@ import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+import { XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
@@ -39,12 +39,6 @@ export interface CreateDrConfigFormErrors {
   targetUniverse: string;
   namespaceUuids: { title: string; body: string };
   storageConfig: string;
-}
-
-export interface CreateXClusterConfigFormWarnings {
-  targetUniverse?: string;
-  namespaceUuids?: { title: string; body: string };
-  storageConfig?: string;
 }
 
 interface CreateConfigModalProps {
@@ -67,13 +61,16 @@ const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable'
 
 export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConfigModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
-  const [tableSelectionError, setTableSelectionError] = useState<{ title: string; body: string }>();
+  const [tableSelectionError, setTableSelectionError] = useState<{
+    title: string;
+    body: string;
+  } | null>(null);
 
-  // The purpose of committedTargetUniverse is to store the targetUniverse field value prior
-  // to the user submitting their target universe step.
+  // The purpose of committedTargetUniverseUuid is to store the target universe uuid prior
+  // to the user submitting their select target universe step.
   // This value updates whenever the user submits SelectTargetUniverseStep with a new
   // target universe.
-  const [committedTargetUniverseUUID, setCommittedTargetUniverseUUID] = useState<string>();
+  const [committedTargetUniverseUuid, setCommittedTargetUniverseUuid] = useState<string>();
 
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
@@ -209,26 +206,46 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     );
   }
 
+  const setSelectedNamespaceUuids = (namespaces: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    setTableSelectionError(null);
+    formMethods.clearErrors('namespaceUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
+    formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
+  };
+  const setSelectedTableUuids = (tableUuids: string[]) => {
+    // Clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    setTableSelectionError(null);
+    formMethods.clearErrors('tableUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the 'Validate Selection' button.
+    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
+  };
+
   /**
-   * Reset the selection back to defaults.
+   * Clear table/namespace selection.
    */
   const resetTableSelection = () => {
-    // resetField() will also clear errors unless
-    // `keepError` option is passed.
-    formMethods.resetField('namespaceUuids');
-    formMethods.resetField('tableUuids');
-    setTableSelectionError(undefined);
+    setSelectedTableUuids([]);
+    setSelectedNamespaceUuids([]);
   };
 
   const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {
+    // When the user changes target universe, the old table selection is no longer valid.
+    const isTableSelectionInvalidated =
+      formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUuid;
     switch (currentFormStep) {
       case FormStep.SELECT_TARGET_UNIVERSE:
-        if (formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUUID) {
-          // Reset table selection when changing target universe.
-          // This is because the current table selection may be invalid for
-          // the new target universe.
+        if (isTableSelectionInvalidated) {
           resetTableSelection();
-          setCommittedTargetUniverseUUID(formValues.targetUniverse.value.universeUUID);
+        }
+        if (formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUuid) {
+          setCommittedTargetUniverseUuid(formValues.targetUniverse.value.universeUUID);
         }
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
@@ -269,6 +286,10 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   };
 
   const handleBackNavigation = () => {
+    // We can clear errors here because prior steps have already been validated
+    // and future steps will be revalidated when the user clicks the next page button.
+    formMethods.clearErrors();
+
     switch (currentFormStep) {
       case FIRST_FORM_STEP:
         return;
@@ -299,27 +320,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       default:
         return assertUnreachableCase(formStep);
     }
-  };
-
-  const setSelectedNamespaceUuids = (namespaces: string[]) => {
-    // Clear any existing errors.
-    // The new table/namespace selection will need to be (re)validated.
-    setTableSelectionError(undefined);
-    formMethods.clearErrors('namespaceUuids');
-
-    // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the 'Validate Selection' button.
-    formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
-  };
-  const setSelectedTableUuids = (tableUuids: string[]) => {
-    // Clear any existing errors.
-    // The new table/namespace selection will need to be (re)validated.
-    setTableSelectionError(undefined);
-    formMethods.clearErrors('tableUuids');
-
-    // We will run any required validation on selected namespaces & tables all at once when the
-    // user clicks on the 'Validate Selection' button.
-    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
   };
 
   const sourceUniverse = sourceUniverseQuery.data;
@@ -357,18 +357,15 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           sourceUniverse={sourceUniverse}
           tableSelectProps={{
             configAction: XClusterConfigAction.CREATE,
-            handleTransactionalConfigCheckboxClick: () => {},
             isDrInterface: true,
-            isFixedTableType: false,
             isTransactionalConfig: true,
             initialNamespaceUuids: [],
             selectedNamespaceUuids: selectedNamespaceUuids,
             selectedTableUuids: selectedTableUuids,
             selectionError: tableSelectionError,
-            selectionWarning: undefined,
+            selectionWarning: null,
             setSelectedNamespaceUuids: setSelectedNamespaceUuids,
             setSelectedTableUuids: setSelectedTableUuids,
-            setTableType: () => {}, // DR is only available for YSQL
             sourceUniverseUuid: sourceUniverseUuid,
             tableType: TableType.PGSQL_TABLE_TYPE,
             targetUniverseUuid: targetUniverseUuid

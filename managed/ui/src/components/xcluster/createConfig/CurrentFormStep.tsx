@@ -1,14 +1,15 @@
 import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
-import { Universe } from '../../../../redesign/helpers/dtos';
-import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
-import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
+import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
+import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 
-import { TableSelect, TableSelectProps } from '../../sharedComponents/tableSelect/TableSelect';
-import { ConfirmAlertStep } from '../../sharedComponents/ConfirmAlertStep';
-import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
+import { TableSelect, TableSelectProps } from '../sharedComponents/tableSelect/TableSelect';
 import { FormStep } from './CreateConfigModal';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
+import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
+import { ConfirmAlertStep } from '../sharedComponents/ConfirmAlertStep';
+
+import { TableType, Universe } from '../../../redesign/helpers/dtos';
 
 interface CurrentFormStepProps {
   currentFormStep: FormStep;
@@ -32,7 +33,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.createModal';
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.createConfigModal';
 
 export const CurrentFormStep = ({
   currentFormStep,
@@ -53,26 +54,22 @@ export const CurrentFormStep = ({
         <div className={classes.stepContainer}>
           <ol start={2}>
             <li>
-              <Typography variant="body1">{t('step.selectDatabases.instruction')}</Typography>
+              <Typography variant="body1">
+                {t(
+                  `step.selectTables.instruction.${
+                    tableSelectProps.tableType === TableType.PGSQL_TABLE_TYPE ? 'ysql' : 'ycql'
+                  }`
+                )}
+              </Typography>
             </li>
           </ol>
           <TableSelect {...tableSelectProps} />
-          <div className={classes.bannerContainer}>
-            <YBBanner variant={YBBannerVariant.INFO}>
-              <Typography variant="body2">
-                <Trans
-                  i18nKey={`${TRANSLATION_KEY_PREFIX}.step.selectDatabases.pitrSetUpNote`}
-                  components={{ bold: <b /> }}
-                />
-              </Typography>
-            </YBBanner>
-          </div>
         </div>
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
       return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
     case FormStep.CONFIRM_ALERT:
-      return <ConfirmAlertStep isDrInterface={true} sourceUniverse={sourceUniverse} />;
+      return <ConfirmAlertStep isDrInterface={false} sourceUniverse={sourceUniverse} />;
     default:
       return assertUnreachableCase(currentFormStep);
   }

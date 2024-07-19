@@ -6,7 +6,6 @@ import {
   TableHeaderColumn
 } from 'react-bootstrap-table';
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
-import Select, { ValueType } from 'react-select';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 
@@ -20,21 +19,18 @@ import {
   universeQueryKey,
   xClusterQueryKey
 } from '../../../../redesign/helpers/api';
-import { YBCheckBox, YBControlledSelect, YBInputField } from '../../../common/forms/fields';
+import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
   formatBytes,
   getSharedXClusterConfigs,
   tableSort,
-  hasLinkedXClusterConfig,
   isTableToggleable,
   formatUuidForXCluster
 } from '../../ReplicationUtils';
 import {
-  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
   XClusterConfigAction,
-  XCLUSTER_REPLICATION_DOCUMENTATION_URL,
   XCLUSTER_SUPPORTED_TABLE_TYPES,
   XCLUSTER_TABLE_INELIGIBLE_STATUSES,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
@@ -44,26 +40,13 @@ import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import { XClusterTableEligibility } from '../../constants';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
-import {
-  RuntimeConfigKey,
-  SortOrder,
-  YBTableRelationType
-} from '../../../../redesign/helpers/constants';
+import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../../actions/customers';
-import { YBTooltip } from '../../../../redesign/components';
-import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
-import { compareYBSoftwareVersions, getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 import { ExpandColumnComponent } from './ExpandColumnComponent';
 import { getTableUuid } from '../../../../utils/tableUtils';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 
-import {
-  TableType,
-  TableTypeLabel,
-  Universe,
-  UniverseNamespace,
-  YBTable
-} from '../../../../redesign/helpers/dtos';
+import { TableType, Universe, UniverseNamespace, YBTable } from '../../../../redesign/helpers/dtos';
 import {
   IndexTableReplicationCandidate,
   TableReplicationCandidate,
@@ -85,61 +68,32 @@ interface CommonTableSelectProps {
   selectedTableUuids: string[];
   setSelectedTableUuids: (tableUuids: string[]) => void;
   isDrInterface: boolean;
-  isFixedTableType: boolean;
   tableType: XClusterTableType;
-  setTableType: (tableType: XClusterTableType) => void;
   initialNamespaceUuids: string[];
   selectedNamespaceUuids: string[];
   setSelectedNamespaceUuids: (selectedNamespaceUuids: string[]) => void;
-  selectionError: { title?: string; body?: string } | undefined;
-  selectionWarning: { title: string; body: string } | undefined;
+  selectionError: { title?: string; body?: string } | null;
+  selectionWarning: { title: string; body: string } | null;
   isTransactionalConfig: boolean;
 }
 
 export type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.CREATE;
-      handleTransactionalConfigCheckboxClick: () => void;
     })
   | (CommonTableSelectProps & {
-      configAction:
-        | typeof XClusterConfigAction.ADD_TABLE
-        | typeof XClusterConfigAction.MANAGE_TABLE;
+      configAction: typeof XClusterConfigAction.MANAGE_TABLE;
       xClusterConfigUuid: string;
       sourceDroppedTableUuids: Set<string>;
     });
 
-const DEFAULT_TABLE_TYPE_OPTION = {
-  value: TableType.PGSQL_TABLE_TYPE,
-  label: TableTypeLabel[TableType.PGSQL_TABLE_TYPE]
-} as const;
-const TABLE_TYPE_OPTIONS = [
-  DEFAULT_TABLE_TYPE_OPTION,
-  { value: TableType.YQL_TABLE_TYPE, label: TableTypeLabel[TableType.YQL_TABLE_TYPE] }
-] as const;
-
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
-
-const TABLE_TYPE_SELECT_STYLES = {
-  container: (provided: any) => ({
-    ...provided,
-    width: 115
-  }),
-  control: (provided: any) => ({
-    ...provided,
-    height: 42
-  })
-};
 
 const NOTE_CONTENT = (
   <div>
     <p>
       <b>Note! </b>
-      Tables in an xCluster configuration must all be of the same type (YCQL or YSQL). Please create
-      a separate xCluster configuration if you wish to replicate tables of a different type.
-    </p>
-    <p>
       Selecting or deselecting main tables will select and deselect their associated index tables.
     </p>
     <p>
@@ -205,8 +159,6 @@ export const TableSelect = (props: TableSelectProps) => {
     setSelectedTableUuids,
     tableType,
     isDrInterface,
-    isFixedTableType,
-    setTableType,
     initialNamespaceUuids,
     selectedNamespaceUuids,
     setSelectedNamespaceUuids,
@@ -219,8 +171,6 @@ export const TableSelect = (props: TableSelectProps) => {
   const [activePage, setActivePage] = useState(1);
   const [sortField, setSortField] = useState<keyof NamespaceItem>('name');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
-  const [isTooltipOpen, setIsTooltipOpen] = useState<boolean>(false);
-  const [isMouseOverTooltip, setIsMouseOverTooltip] = useState<boolean>(false);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const theme = useTheme();
 
@@ -411,18 +361,6 @@ export const TableSelect = (props: TableSelectProps) => {
     );
   };
 
-  // Casting workaround: https://github.com/JedWatson/react-select/issues/2902
-  const handleTableTypeChange = (option: ValueType<typeof TABLE_TYPE_OPTIONS[number]>) => {
-    if (!isFixedTableType) {
-      setTableType((option as typeof TABLE_TYPE_OPTIONS[number])?.value);
-
-      // Clear current item selection.
-      // Form submission should only contain tables of the same type (YSQL or YCQL).
-      setSelectedNamespaceUuids([]);
-      setSelectedTableUuids([]);
-    }
-  };
-
   const sharedXClusterConfigs: XClusterConfig[] = [];
   for (const xClusterConfigQuery of sharedXClusterConfigQueries) {
     if (xClusterConfigQuery.isLoading || xClusterConfigQuery.isIdle) {
@@ -435,10 +373,7 @@ export const TableSelect = (props: TableSelectProps) => {
   }
 
   // Deselect any tables which are dropped on the source universe.
-  if (
-    props.configAction === XClusterConfigAction.ADD_TABLE ||
-    props.configAction === XClusterConfigAction.MANAGE_TABLE
-  ) {
+  if (props.configAction === XClusterConfigAction.MANAGE_TABLE) {
     if (selectedTableUuids.some((tableUuid) => props.sourceDroppedTableUuids.has(tableUuid))) {
       setSelectedTableUuids(
         selectedTableUuids.filter((tableUUID) => !props.sourceDroppedTableUuids.has(tableUUID))
@@ -446,7 +381,6 @@ export const TableSelect = (props: TableSelectProps) => {
     }
   }
   const replicationItems =
-    props.configAction === XClusterConfigAction.ADD_TABLE ||
     props.configAction === XClusterConfigAction.MANAGE_TABLE
       ? getReplicationItemsFromTables(
           sourceUniverseNamespaceQuery.data,
@@ -483,84 +417,11 @@ export const TableSelect = (props: TableSelectProps) => {
   const tableDescriptor = isDrInterface
     ? t('selectionDescriptorDr')
     : t('selectionDescriptorXCluster');
-  const runtimeConfigEntries = globalRuntimeConfigQuery.data.configEntries ?? [];
-  const isTransactionalAtomicityEnabled = runtimeConfigEntries.some(
-    (config: any) =>
-      config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG &&
-      config.value === 'true'
-  );
-  const ybSoftwareVersion = getPrimaryCluster(sourceUniverseQuery.data.universeDetails.clusters)
-    ?.userIntent.ybSoftwareVersion;
-
-  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig([
-    sourceUniverseQuery.data,
-    targetUniverseQuery.data
-  ]);
-  const isTransactionalAtomicitySupported =
-    !!ybSoftwareVersion &&
-    compareYBSoftwareVersions(
-      TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
-      ybSoftwareVersion,
-      true
-    ) < 0 &&
-    !participantsHaveLinkedXClusterConfig;
   return (
     <>
-      {isTransactionalAtomicityEnabled &&
-        !isDrInterface &&
-        props.configAction === XClusterConfigAction.CREATE &&
-        tableType === TableType.PGSQL_TABLE_TYPE && (
-          <Box display="flex" gridGap="5px">
-            <YBCheckBox
-              checkState={isTransactionalConfig}
-              onClick={props.handleTransactionalConfigCheckboxClick}
-              label="Enable transactional atomicity"
-              disabled={!isTransactionalAtomicitySupported}
-            />
-            {/* This tooltip needs to be have a z-index greater than the z-index on the modal (3100)*/}
-            <YBTooltip
-              open={isTooltipOpen || isMouseOverTooltip}
-              title={
-                <p>
-                  YBA support for transactional atomicity has the following constraints:
-                  <ol>
-                    <li>
-                      The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.
-                    </li>
-                    <li>PITR must be enabled on the target universe.</li>
-                    <li>
-                      Neither the source universe nor the target universe is a participant in any
-                      other xCluster configuration.
-                    </li>
-                  </ol>
-                  You may find further information on this feature on our{' '}
-                  <a href={XCLUSTER_REPLICATION_DOCUMENTATION_URL}>public docs.</a>
-                </p>
-              }
-              PopperProps={{ style: { zIndex: 4000, pointerEvents: 'auto' } }}
-              style={{ marginBottom: '5px' }}
-            >
-              <img
-                className={styles.transactionalSupportTooltip}
-                alt="Info"
-                src={InfoMessageIcon}
-                onClick={() => setIsTooltipOpen(!isTooltipOpen)}
-                onMouseOver={() => setIsMouseOverTooltip(true)}
-                onMouseOut={() => setIsMouseOverTooltip(false)}
-              />
-            </YBTooltip>
-          </Box>
-        )}
       <div className={styles.tableDescriptor}>{tableDescriptor}</div>
       {!isDrInterface && (
         <div className={styles.tableToolbar}>
-          <Select
-            styles={TABLE_TYPE_SELECT_STYLES}
-            options={TABLE_TYPE_OPTIONS}
-            onChange={handleTableTypeChange}
-            value={{ value: tableType, label: TableTypeLabel[tableType] }}
-            isDisabled={isFixedTableType}
-          />
           <YBInputField
             containerClassName={styles.namespaceSearchInput}
             placeHolder="Search for databases.."

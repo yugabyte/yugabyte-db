@@ -1,13 +1,10 @@
-import clsx from 'clsx';
+import { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
-import { useDispatch, useSelector } from 'react-redux';
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Typography } from '@material-ui/core';
 
-import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
-import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { XClusterConfigList } from './XClusterConfigList';
 import { api, xClusterQueryKey } from '../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../common/indicators';
@@ -19,6 +16,7 @@ import { XClusterConfigType } from './constants';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { YBTooltip } from '../../redesign/components';
+import { CreateConfigModal } from './createConfig/CreateConfigModal';
 
 import { Universe } from '../../redesign/helpers/dtos';
 import { XClusterConfig } from './dtos';
@@ -28,8 +26,7 @@ import styles from './XClusterReplication.module.scss';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster';
 
 export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUUID: string }) => {
-  const dispatch = useDispatch();
-  const { showModal, visibleModal } = useSelector((state: any) => state.modal);
+  const [isCreateConfigModalOpen, setIsCreateConfigModalOpen] = useState<boolean>(false);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const universeQuery = useQuery<Universe>(['universe', currentUniverseUUID], () =>
@@ -66,11 +63,8 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
     );
   }
 
-  const showAddClusterReplicationModal = () => {
-    dispatch(openDialog('addClusterReplicationModal'));
-  };
-
-  const hideModal = () => dispatch(closeDialog());
+  const openCreateConfigModal = () => setIsCreateConfigModalOpen(true);
+  const closeCreateConfigModal = () => setIsCreateConfigModalOpen(false);
 
   const universeHasTxnXCluster = xClusterConfigQueries.some(
     (xClusterConfigQuery) => xClusterConfigQuery.data?.type === XClusterConfigType.TXN
@@ -112,7 +106,7 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
                     <YBButton
                       btnText={t('actionButton.createXClusterConfig.label')}
                       btnClass={'btn btn-orange'}
-                      onClick={showAddClusterReplicationModal}
+                      onClick={openCreateConfigModal}
                       disabled={shouldDisableCreateXClusterConfig}
                     />
                   </span>
@@ -125,13 +119,14 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
       <Row>
         <Col lg={12}>
           <XClusterConfigList currentUniverseUUID={currentUniverseUUID} />
-          <CreateConfigModal
-            sourceUniverseUUID={currentUniverseUUID}
-            onHide={hideModal}
-            visible={showModal && visibleModal === 'addClusterReplicationModal'}
-          />
         </Col>
       </Row>
+      {isCreateConfigModalOpen && (
+        <CreateConfigModal
+          sourceUniverseUuid={currentUniverseUUID}
+          modalProps={{ open: isCreateConfigModalOpen, onClose: closeCreateConfigModal }}
+        />
+      )}
     </>
   );
 };

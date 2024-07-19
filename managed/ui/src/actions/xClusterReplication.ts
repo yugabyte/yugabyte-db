@@ -44,20 +44,22 @@ export function createXClusterReplication(
   name: string,
   configType: XClusterConfigType,
   tables: string[],
-  bootstrapParams?: {
+  bootstrapParams: {
     tables: string[];
     backupRequestParams: any;
-  }
+  } | null
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${customerId}/xcluster_configs`, {
-    sourceUniverseUUID,
-    targetUniverseUUID,
-    name,
-    configType,
-    tables,
-    ...(bootstrapParams !== undefined && { bootstrapParams })
-  });
+  return axios
+    .post<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs`, {
+      sourceUniverseUUID,
+      targetUniverseUUID,
+      name,
+      configType,
+      tables,
+      ...(bootstrapParams && { bootstrapParams })
+    })
+    .then((response) => response.data);
 }
 
 export function restartXClusterConfig(

@@ -45,6 +45,7 @@
     "queryError": {
       "failedToFetchUniverselist": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
+      "failedToFetchUniverseRuntimeConfig": "Failed to fetch runtime configurations for the current universe.",
       "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetUniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
@@ -1016,6 +1017,87 @@
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
             "Dropped": "Dropped from DB"
+          }
+        },
+        "createConfigModal": {
+          "title": "Configure Replication",
+          "step": {
+            "selectTargetUniverse": {
+              "instruction": {
+                "text": "Select a universe to use as the target universe"
+              },
+              "submitButton": {
+                "selectDatabases": "Next: Select Databases",
+                "selectTables": "Next: Select Tables"
+              },
+              "field": {
+                "configName": "Replication Name",
+                "targetUniverse": "Target Universe",
+                "tableType": "Table Type",
+                "isTransactionalConfig": "Enable transactional atomicity"
+              },
+              "isTransactionalConfigTooltip": "<paragraph>YBA support for transactional atomicity has the following constraints:<orderedList><listItem>The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.</listItem><listItem>PITR must be enabled on the target universe.</listItem><listItem>Neither the source universe nor the target universe is a participant in any other xCluster configuration.</listItem></orderedList>You may find further information on this feature on our<xClusterDocLink> public docs.</xClusterDocLink></paragraph>",
+              "backupStorageConfigNote": "<paragraph><bold>Note!</bold> If the tables to replicate are not empty on this source universe, ensure that the <bold> backup storage config can be accessed from both source and target universe </bold> for creating an initial full copy. Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions. In that case, refer to the <ybAdminDocsLink>documentation for creating replication using yb-admin</ybAdminDocsLink>.</paragraph>",
+              "fullCopyNote": "<bold>What is a full copy?</bold><paragraph>A full copy of your source universe is created to bring the target universe to the same checkpoint before turning on async replication. First, YBAnywhere creates a backup of the source universe. Then it restores the backup to the target universe. Hence the need to ensure the backup storage config is accessible from both source &amp; target universe. If the tables selected for xcluster replication are empty on the source universe, no full copy creation is required.</paragraph>",
+              "warning": {
+                "nonTxnXCluster": "Warning: Non-transactional xCluster should only be used for bi-directional replication."
+              },
+              "error": {
+                "requiredField": "Required.",
+                "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
+              }
+            },
+            "selectTables": {
+              "instruction": {
+                "ysql": "Select the databases to enable xCluster replication for",
+                "ycql": "Select the tables to enable xCluster replication for"
+              },
+              "validateButton": "Validate Table Selection",
+              "submitButton": {
+                "validateSelection": "Validate Selection",
+                "configureBootstrap": "Next: Configure Full Copy",
+                "confirmAlert": "Next: Confirm Alert Threshold"
+              }
+            },
+            "configureBootstrap": {
+              "instruction": "Choose the storage config to use for performing the initial copy",
+              "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+              "submitButton": "Next: Confirm Alert Threshold",
+              "backupStorageConfig": {
+                "label": "Backup Storage Config",
+                "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+              },
+              "error": {
+                "backupStorageConfigRequired": "Required."
+              }
+            }
+          },
+          "error": {
+            "requestFailureLabel": "Create xCluster replication config request failed",
+            "taskFailure": "Failed to create xCluster replication config."
+          },
+          "success": {
+            "requestSuccess": "Creating xCluster replication config...",
+            "taskSuccess": "Created xCluster replication replication config."
+          }
+        },
+        "shared": {
+          "confirmAlert": {
+            "instruction": "Confirm alert threshold for acceptable replication lag",
+            "infoText": {
+              "xCluster": "Replication lag measures how far behind in time the target universe lags the source universe. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. <configureReplicationLagAlertDocLink>Learn More</configureReplicationLagAlertDocLink>",
+              "dr": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. <configureReplicationLagAlertDocLink>Learn More</configureReplicationLagAlertDocLink>"
+            },
+            "currentLowestReplicationLagLabel": {
+              "xCluster": "Lowest replication lag alert threshold on this source universe ({{sourceUniverseName}}):",
+              "dr": "Lowest replication lag alert threshold on this DR primary universe ({{sourceUniverseName}}):"
+            },
+            "setUpReplicationLagAlertPrompt": {
+              "xCluster": "<paragraph>This source universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>",
+              "dr": "<paragraph>This DR primary universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>"
+            },
+            "editReplicationLagAlertPrompt": "<manageAlertConfigLink>Change this alert</manageAlertConfigLink>",
+            "submitButton": "Confirm and Enable Replication"
           }
         },
         "selectTable": {
