@@ -85,15 +85,12 @@ typedef struct
 	/*
 	 * let variables for $lookup
 	 */
-	bson_value_t let;
+	pgbson *let;
 
 	/*
 	 * has a join (foreign/local field).
 	 */
 	bool hasLookupMatch;
-
-	/* Whether or not let is specified.*/
-	bool hasLet;
 } LookupArgs;
 
 
@@ -1522,8 +1519,25 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 									BsonTypeName(value->value_type))));
 			}
 
-			args->let = *value;
-			args->hasLet = !IsBsonValueEmptyDocument(value);
+			/* let's use bson_dollar_project to evalute expression just exclude _id field */
+			if (!IsBsonValueEmptyDocument(value))
+			{
+				pgbson_writer letSpecWriter;
+				PgbsonWriterInit(&letSpecWriter);
+				PgbsonWriterAppendInt32(&letSpecWriter, "_id", 3, 0);
+				bson_iter_t letIter;
+				BsonValueInitIterator(value, &letIter);
+
+				while (bson_iter_next(&letIter))
+				{
+					PgbsonWriterAppendValue(&letSpecWriter,
+											bson_iter_key(&letIter),
+											bson_iter_key_len(&letIter),
+											bson_iter_value(&letIter));
+				}
+
+				args->let = PgbsonWriterGetPgbson(&letSpecWriter);
+			}
 		}
 		else if (strcmp(key, "localField") == 0)
 		{
@@ -1677,7 +1691,7 @@ static Query *
 ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 				  LookupArgs *lookupArgs)
 {
-	if (!EnableLookupLetSupport && lookupArgs->hasLet)
+	if (!EnableLookupLetSupport && lookupArgs->let)
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported),
 						errmsg("let not supported")));
@@ -1733,30 +1747,26 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 
 	Var *leftQueryLookupLet = NULL;
 
-	if (lookupArgs->hasLet)
+	if (lookupArgs->let)
 	{
 		/* Add the let evaluation into the left query's targetEntry */
 		TargetEntry *leftExpr = linitial(leftQuery->targetList);
 
 		/* Evaluate the let against the leftExpr */
-		pgbson *letPgbson = PgbsonInitFromDocumentBsonValue(&lookupArgs->let);
-
 		/* Let Expression Evaluation here */
-		Const *letConstValue = MakeBsonConst(letPgbson);
-		Node *trueConst = makeBoolConst(true, false);
+		Const *letConstValue = MakeBsonConst(lookupArgs->let);
 
 		List *args;
 		Oid funcOid;
 		if (context->variableSpec != NULL)
 		{
-			args = list_make4(leftExpr->expr, letConstValue, trueConst,
-							  context->variableSpec);
-			funcOid = BsonExpressionGetWithLetFunctionOid();
+			args = list_make3(leftExpr->expr, letConstValue, context->variableSpec);
+			funcOid = BsonDollarProjectWithLetFunctionOid();
 		}
 		else
 		{
-			args = list_make3(leftExpr->expr, letConstValue, trueConst);
-			funcOid = BsonExpressionGetFunctionOid();
+			args = list_make2(leftExpr->expr, letConstValue);
+			funcOid = BsonDollarProjectFunctionOid();
 		}
 
 		FuncExpr *letEvalFuncExpr = makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
