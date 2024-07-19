@@ -56,9 +56,7 @@ The more permissions that you can provide, the more YBA can automate.
 
 YugabyteDB Anywhere requires cloud permissions to create VMs. You grant YugabyteDB Anywhere access to manage Azure resources such as VMs by registering an application in the Azure portal so the Microsoft identity platform can provide authentication and authorization services for your application. Registering your application establishes a trust relationship between your application and the Microsoft identity platform.
 
-For more information, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate) in the Microsoft Entra documentation.
-
-Your Azure application needs to have a [resource group](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/overview#resource-groups) with the following permissions:
+In addition, your Azure application needs to have a [resource group](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/overview#resource-groups) with the following permissions:
 
 ```sh
 Network Contributor
@@ -67,7 +65,9 @@ Virtual Machine Contributor
 
 You can optionally create a resource group for network resources if you want network interfaces to be created separately. The network resource group must have the `Network Contributor` permission.
 
-For more information, refer to [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
+For more information on registering applications, refer to [Register an application with the Microsoft identity platform](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate) in the Microsoft Entra documentation.
+
+For more information on roles, refer to [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal?tabs=delegate-condition) in the Microsoft Azure documentation.
 
 ### Credentials
 

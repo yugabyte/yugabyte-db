@@ -51,7 +51,7 @@ When deploying a universe, YBA uses the provider configuration settings to do th
 
 ## Prerequisites
 
-You need to add the following Azure cloud provider credentials via YBA:
+You need to add the following Azure cloud provider credentials:
 
 - Application client ID and (if using credentials) client secret
 - Resource group name
