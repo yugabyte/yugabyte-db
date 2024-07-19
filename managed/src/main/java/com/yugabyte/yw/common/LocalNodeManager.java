@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
@@ -224,12 +225,33 @@ public class LocalNodeManager {
             });
   }
 
+  // This does not clear the process map.
   public void killProcess(String nodeName, UniverseTaskBase.ServerType serverType)
       throws IOException, InterruptedException {
     NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
-    Process process = nodeInfo.processMap.get(serverType);
-    log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
-    killProcess(process.pid());
+    if (nodeInfo != null) {
+      Process process = nodeInfo.processMap.get(serverType);
+      if (process != null) {
+        log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
+        killProcess(process.pid());
+      }
+    }
+  }
+
+  public void startProcess(
+      UUID universeUuid, String nodeName, UniverseTaskBase.ServerType serverType) {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    UserIntent userIntent = universe.getCluster(nodeInfo.placementUUID).userIntent;
+    startProcessForNode(userIntent, serverType, nodeInfo);
+  }
+
+  public boolean isProcessRunning(String nodeName, UniverseTaskBase.ServerType serverType) {
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    if (nodeInfo == null) {
+      return false;
+    }
+    return nodeInfo.processMap.containsKey(serverType);
   }
 
   public void checkAllProcessesAlive() {

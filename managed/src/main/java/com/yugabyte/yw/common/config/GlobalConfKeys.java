@@ -1423,4 +1423,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Map LDAP/OIDC groups to custom roles defined by RBAC.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoMasterFailoverPollerInterval =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.poller_interval",
+          ScopeType.GLOBAL,
+          "Universe Poller Interval for Master Failover",
+          "Poller interval for universes to schedule master failover",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

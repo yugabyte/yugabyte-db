@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.JobInstance;
@@ -41,6 +42,7 @@ import play.mvc.Http.Status;
 @RunWith(MockitoJUnitRunner.class)
 public class JobSchedulerTest extends FakeDBApplication {
   private Injector injector;
+  private ShutdownHookHandler shutdownHookHandler;
   private Customer customer;
   private RuntimeConfGetter confGetter;
   private PlatformExecutorFactory platformExecutorFactory;
@@ -51,11 +53,18 @@ public class JobSchedulerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     injector = app.injector().instanceOf(Injector.class);
+    shutdownHookHandler = app.injector().instanceOf(ShutdownHookHandler.class);
     confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     platformExecutorFactory = app.injector().instanceOf(PlatformExecutorFactory.class);
     platformScheduler = app.injector().instanceOf(PlatformScheduler.class);
     jobScheduler =
-        spy(new JobScheduler(injector, confGetter, platformExecutorFactory, platformScheduler));
+        spy(
+            new JobScheduler(
+                injector,
+                shutdownHookHandler,
+                confGetter,
+                platformExecutorFactory,
+                platformScheduler));
   }
 
   @SuppressWarnings("serial")
