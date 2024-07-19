@@ -15,13 +15,15 @@ The Debezium YugabyteDB connector captures row-level changes in the schemas of a
 
 The first time it connects to a YugabyteDB server, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 
+## Compatibility matrix
+
 ## Overview
 
 YugabyteDB’s [logical decoding](#reminder) feature was introduced in YugabyteDB version 2024.1.1. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
 
 The YugabyteDB connector contains two main parts that work together to read and process database changes:
 
-* A logical decoding output plug-in. You might need to install the output plug-in that you choose to use. You must configure a replication slot that uses your chosen output plug-in before running the YugabyteDB server. The plug-in can be one of the following:
+* You must configure a replication slot that uses your chosen output plug-in before running the YugabyteDB server. The plug-in can be one of the following:
 
     <!-- YB specific -->
     * `yboutput` is the plugin packaged with YugabyteDB. It is maintained by Yugabyte and is always present with the distribution.
@@ -29,13 +31,13 @@ The YugabyteDB connector contains two main parts that work together to read and 
     * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plug-in with the standard distribution so it is always present and no additional libraries need to be installed. The Debezium YugabyteDB connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
-* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses YugabyteDB’s [streaming replication protocol](#reminder), by means of the YugabyteDB JDBC driver
+* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses YugabyteDB’s [streaming replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html), by means of the YugabyteDB JDBC driver.
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
 
-YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
+YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the configured tables. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
-The connector is tolerant of failures. As the connector reads changes and produces events, it records the WAL position for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off. This includes snapshots. If the connector stops during a snapshot, the connector begins a new snapshot when it restarts.
+The connector is tolerant of failures. As the connector reads changes and produces events, it records the LSN for each event. If the connector stops for any reason (including communication failures, network problems, or crashes), upon restart the connector continues reading the WAL where it last left off.
 
 {{< tip title="Use UTF-8 encoding" >}}
 
@@ -65,12 +67,11 @@ Most YugabyteDB servers are configured to not retain the complete history of the
 
 The default behavior for performing a snapshot consists of the following steps. You can change this behavior by setting the `snapshot.mode` [connector configuration property](#reminder) to a value other than `initial`.
 
-<!-- todo Vaibhav: the first points need double checking -->
-1. Start a transaction with a [SERIALIZABLE, READ ONLY, DEFERRABLE](#reminder) isolation level to ensure that subsequent reads in this transaction are against a single consistent version of the data. Any changes to the data due to subsequent `INSERT`, `UPDATE`, and `DELETE` operations by other clients are not visible to this transaction.
-2. Read the current position in the server’s transaction log.
-3. Scan the database tables and schemas, generate a `READ` event for each row and write that event to the appropriate table-specific Kafka topic.
-4. Commit the transaction.
-5. Record the successful completion of the snapshot in the connector offsets.
+1. Start a transaction.
+2. Set the transaction read time to the [consistent point](../../../architecture/docdb-replication/cdc-logical-replication#initial-snapshot) associated with the replication slot.
+3. Execute snapshot through the execution of a `SELECT` query.
+4. Generate a `READ` event for each row and write to the appropriate table-specific Kafka topic.
+5. Record successful completion of the snapshot in the connector offsets.
 
 If the connector fails, is rebalanced, or stops after Step 1 begins but before Step 5 completes, upon restart the connector begins a new snapshot. After the connector completes its initial snapshot, the YugabyteDB connector continues streaming from the position that it read in Step 2. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
 
@@ -84,9 +85,9 @@ If the connector fails, is rebalanced, or stops after Step 1 begins but before S
 
 ### Streaming changes
 
-The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [YugabyteDB’s replication protocol](#reminder). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction log at certain positions, which are referred to as Log Sequence Numbers (LSNs).
+The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [PostgreSQL's replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction logs.
 
-Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plug-in](#reminder). This function processes the changes from the transaction, converts them to a specific format (Protobuf or JSON in the case of Debezium plug-in) and writes them on an output stream, which can then be consumed by clients.
+Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plug-in](./overview/#output-plugin). This function processes the changes from the transaction, converts them to a specific format and writes them on an output stream, which can then be consumed by clients.
 
 The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium *create*, *update*, or *delete* events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
@@ -94,25 +95,11 @@ Periodically, Kafka Connect records the most recent *offset* in another Kafka to
 
 When Kafka Connect gracefully shuts down, it stops the connectors, flushes all event records to Kafka, and records the last offset received from each connector. When Kafka Connect restarts, it reads the last recorded offset for each connector, and starts each connector at its last recorded offset. When the connector restarts, it sends a request to the YugabyteDB server to send the events starting just after that position.
 
-{{< note title="Note" >}}
-
-The YugabyteDB connector retrieves schema information as part of the events sent by the logical decoding plug-in. However, the connector does not retrieve information about which columns compose the primary key. The connector obtains this information from the JDBC metadata (side channel). If the primary key definition of a table changes (by adding, removing or renaming primary key columns), there is a tiny period of time when the primary key information from JDBC is not synchronized with the change event that the logical decoding plug-in generates. During this tiny period, a message could be created with an inconsistent key structure. To prevent this inconsistency, update primary key structures as follows:
-1. Put the database or an application into a read-only mode.
-2. Let Debezium process all remaining events.
-3. Stop Debezium.
-4. Update the primary key definition in the relevant table.
-5. Put the database or the application into read/write mode.
-6. Restart Debezium.
-
-{{< /note >}}
-
 ### YugabyteDB 2024.1.1+ logical decoding support (yboutput)
 
-As of YugabyteDB 2024.1.1+, there is a logical replication stream mode, called `yboutput` that is natively supported by YugabyteDB. This means that a Debezium YugabyteDB connector can consume that replication stream without the need for additional plug-ins. This is particularly valuable for environments where installation of plug-ins is not supported or not allowed.
+As of YugabyteDB 2024.1.1+, there is an [output plugin](./overview/#output-plugin), called `yboutput` that is natively supported by YugabyteDB.
 
-Additionally, YugabyteDB also supports PostgreSQL's plugin `pgoutput` natively. This means that the Debezium YugabyteDB connector can work with an existing setup which are configured using `pgoutput`, lift and shift.
-
-For more information, see [Setting up YugabyteDB](#setting-up-yugabytedb).
+Additionally, YugabyteDB also supports PostgreSQL's plugin `pgoutput` natively. This means that the Debezium YugabyteDB connector can work with an existing setup which are configured using `pgoutput`.
 
 ### Topic names
 
@@ -1026,7 +1013,7 @@ The value of a change event for an update in the sample `customers` table has th
 
 | Item | Field name | Description |
 | :---- | :------ | :------------ |
-| 1 | before | An optional field that contains values that were in the row before the database commit. In this example, no previous value for any of the columns, is present because the table’s [REPLICA IDENTITY](#replica-identity) setting is, by default, `DEFAULT`. + For an update event to contain the previous values of all columns in the row, you would have to change the `customers` table by running `ALTER TABLE customers REPLICA IDENTITY FULL`. |
+| 1 | before | An optional field that contains values that were in the row before the database commit. In this example, no previous value for any of the columns, is present because the table’s [REPLICA IDENTITY](#replica-identity) setting is, `DEFAULT`. For an update event to contain the previous values of all columns in the row, you would have to change the `customers` table by running `ALTER TABLE customers REPLICA IDENTITY FULL`. |
 | 2 | after | An optional field that specifies the state of the row after the event occurred. In this example, the `first_name` value is now `Anne Marie`. |
 | 3 | source | Mandatory field that describes the source metadata for the event. The `source` field structure has the same fields as in a create event, but some values are different. The source metadata includes:<br/<br/> <ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contains the new row</li><li>Schema name</li><li>If the event was part of a snapshot (always `false` for *update* events)</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
 | 4 | op | Mandatory string that describes the type of operation. In an update event value, the `op` field value is `u`, signifying that this row changed because of an update. |
@@ -1360,6 +1347,13 @@ Procedure
 
 If you are working with immutable containers, see [Debezium’s Container images](#reminder) for Zookeeper, Kafka, YugabyteDB and Kafka Connect with the YugabyteDB connector already installed and ready to run. You can also [run Debezium on Kubernetes and OpenShift](#reminder).
 
+### Creating Kafka topics
+
+If [auto creation of topics](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html) is not enabled in the Kafka Connect cluster then you will need to create the following topics manually:
+
+* Topic for each table in the format `*<topic.prefix>.<schemaName>.<tableName>*`
+* Heartbeat topic in the format `*<topic.heartbeat.prefix>.<topic.prefix>*`
+
 ### Connector configuration example
 
 Following is an example of the configuration for a YugabyteDB connector that connects to a YugabyteDB server on port `5433` at `192.168.99.100`, whose logical name is `fulfillment`. Typically, you configure the Debezium YugabyteDB connector in a JSON file by setting the configuration properties available for the connector.
@@ -1509,6 +1503,7 @@ The following advanced configuration properties have defaults that work in most 
 | topic.naming.strategy | `io.debezium.schema.SchemaTopicNamingStrategy` | The name of the TopicNamingStrategy class that should be used to determine the topic name for data change, schema change, transaction, heartbeat event etc., defaults to `SchemaTopicNamingStrategy`. |
 | topic.delimiter | `.` | Specify the delimiter for topic name, defaults to `.`. |
 | topic.cache.size | 10000 | The size used for holding the topic names in bounded concurrent hash map. This cache will help to determine the topic name corresponding to a given data collection. |
+| topic.heartbeat.prefix | `__debezium-heartbeat` | Controls the name of the topic to which the connector sends heartbeat messages. The topic name has this pattern:<br/><br/>`topic.heartbeat.prefix.topic.prefix`<br/><br/>For example, if the topic prefix is `fulfillment`, the default topic name is `__debezium-heartbeat.fulfillment.` |
 | topic.transaction | transaction | Controls the name of the topic to which the connector sends transaction metadata messages. The topic name has this pattern:<br/>`<topic.prefix>.<topic.transaction>`<br/><br/>For example, if the `topic.prefix` is `fulfillment`, the default topic name is `fulfillment.transaction`. |
 | snapshot.max.threads | 1 | Specifies the number of threads that the connector uses when performing an initial snapshot. To enable parallel initial snapshots, set the property to a value greater than 1. In a parallel initial snapshot, the connector processes multiple tables concurrently. This feature is incubating. |
 | custom.metric.tags | No default | The custom metric tags will accept key-value pairs to customize the MBean object name which should be appended the end of regular name, each key would represent a tag for the MBean object name, and the corresponding value would be the value of that tag the key is. For example: `k1=v1,k2=v2`. |

@@ -102,12 +102,12 @@ LSN values for a single replication slot satisfy the following properties:
 
 Replica identity is a table level parameter that controls the amount of information being written to the change records. YugabyteDB supports the following four replica identities:
 
-* CHANGE
+* CHANGE (default)
 * DEFAULT
 * FULL
 * NOTHING
 
-The replica identity `INDEX` is not supported in YugabyteDB. Replica identity `CHANGE` is the best performant and the default replica identity. The replica identity of a table can be changed by performing an alter table. However, for a given slot, the alter tables performed to change the replica identity after the creation of the slot will have no effect. This means that the effective replica identity for any table for a slot, is the replica identity of the table that existed at the time of slot creation. A dynamically created table (a table created after slot creation) will have the default replica identity. For a replica identity modified after slot creation to take effect, a new slot will have to be created after performing the Alter table. 
+The replica identity `INDEX` is not supported in YugabyteDB. Replica identity `CHANGE` is the best performant and the **default** replica identity. The replica identity of a table can be changed by performing an alter table. However, for a given slot, the alter tables performed to change the replica identity after the creation of the slot will have no effect. This means that the effective replica identity for any table for a slot, is the replica identity of the table that existed at the time of slot creation. A dynamically created table (a table created after slot creation) will have the default replica identity. For a replica identity modified after slot creation to take effect, a new slot will have to be created after performing the Alter table. 
 
 The tserver flag [ysql_yb_default_replica_identity](../../../../reference/configuration/yb-tserver/#ysql_yb_default_replica_identity) determines the default replica identity for user tables at the time of table creation. This flag has a default value `CHANGE`. The purpose of this flag is to set the replica identities for dynamically created tables. In order to create a dynamic table with desired replica identity, the flag must be set accordingly and then the table must be created.
 
